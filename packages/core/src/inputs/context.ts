@@ -8,6 +8,18 @@ import type { InputIdentity, SuppliedInputs, ValidationContext } from './types.j
 /**
  * The `libraryOptions` key core writes its context under. It names the package that owns it.
  *
+ *
+ * @example
+ * ```ts
+ * import { validationContextKey } from '@loomcli/core';
+ * import type { StandardSchemaV1 } from '@loomcli/core';
+ *
+ * export function carriesCoreContext(options: StandardSchemaV1.Options | undefined): boolean {
+ *   return options?.libraryOptions?.[validationContextKey] !== undefined;
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#validation-context
  * @public
  */
 const validationContextKey = '@loomcli/core';
@@ -58,6 +70,26 @@ function questionIdentity(question: {
 /**
  * The prompts library uses the same authenticated Standard Schema channel as input validation.
  *
+ *
+ * @example
+ * ```ts
+ * import { Command, questionValidationOptions } from '@loomcli/core';
+ *
+ * import { targetSchema } from './schemas.js';
+ *
+ * export const deploy = new Command('deploy')
+ *   .option('target', { type: 'string' })
+ *   .action(async (context) => {
+ *     const options = questionValidationOptions(context, {
+ *       message: 'Where to deploy?',
+ *       option: 'target',
+ *     });
+ *     const result = await targetSchema['~standard'].validate('staging', options);
+ *     context.out.print(result.issues === undefined ? 'valid' : 'invalid');
+ *   });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#validation-context
  * @public
  */
 function questionValidationOptions(
@@ -110,6 +142,21 @@ const noApplication = '';
  * preparation, and no background query, so the background is the one the handle's terminal states.
  * A handle a run would fail to capture throws the failure the run would report.
  *
+ *
+ * @example
+ * ```ts
+ * import { processHandle, validationOptions } from '@loomcli/core';
+ *
+ * import { portSchema } from './schemas.js';
+ *
+ * const options = validationOptions(processHandle({ env: {} }), {
+ *   input: { global: false, kind: 'option', name: 'port' },
+ *   phase: 'default',
+ * });
+ * const result = await portSchema['~standard'].validate('8080', options);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#validation-options-outside-a-run
  * @public
  */
 function validationOptions(
@@ -139,6 +186,28 @@ function validationOptions(
 /**
  * Reads the context core attached to a schema call, or undefined when another caller ran it.
  *
+ *
+ * @example
+ * ```ts
+ * import { validationContext } from '@loomcli/core';
+ * import type { StandardSchemaV1 } from '@loomcli/core';
+ *
+ * export const upper: StandardSchemaV1<string, string> = {
+ *   '~standard': {
+ *     validate(value, options) {
+ *       const context = validationContext(options);
+ *       if (typeof value !== 'string') {
+ *         return { issues: [{ message: 'Expected a string.' }] };
+ *       }
+ *       return { value: context?.phase === 'default' ? value : value.toUpperCase() };
+ *     },
+ *     vendor: 'example',
+ *     version: 1,
+ *   },
+ * };
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#validation-context
  * @public
  */
 function validationContext(

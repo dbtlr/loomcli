@@ -394,6 +394,18 @@ function constructorFinding(name: unknown, options: unknown, mark: string): Find
  * filename set, and a name starts with neither `-`, which reads as an option, nor `.`, which a
  * shell hides. Core exports it so the lint plugin judges a literal name by this same rule.
  *
+ *
+ * @example
+ * ```ts
+ * import { isPortableName } from '@loomcli/core';
+ *
+ * isPortableName('deploy'); // true
+ * isPortableName('db.migrate'); // true
+ * isPortableName('-deploy'); // false: it reads as an option
+ * isPortableName('my command'); // false: it holds a space
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#declaring-a-command
  * @public
  */
 export function isPortableName(name: string): boolean {
@@ -2249,7 +2261,15 @@ export class CommandBuilder<
   Stdin extends StdinContext = StdinContext,
   Provided = {},
 > {
+  /**
+   * A type-only marker that tells a Command declaration from any other value. It holds no runtime
+   * value.
+   */
   declare readonly [commandValue]: true;
+  /**
+   * A type-only marker that carries the declared argument, option, result, stdin, and provided
+   * types, which `ActionHandler` reads. It holds no runtime value.
+   */
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
 
   readonly #name: string;
@@ -2273,9 +2293,21 @@ export class CommandBuilder<
     nodes.set(this, nodeHandle(name, state));
   }
 
+  /**
+   * Declares the Command's stdin as required, so the action reads it as a `Content` that is always
+   * present.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#content-inputs
+   */
   stdin(
     config: StdinConfig & { required: true },
   ): Command<Args, Options, Globals, State, Result, { readonly stdin: Content }, Provided>;
+  /**
+   * Declares the Command's stdin as optional, so the action's `stdin` is absent when the operator
+   * supplies none.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#content-inputs
+   */
   stdin(
     config: StdinConfig,
   ): Command<Args, Options, Globals, State, Result, StdinContext, Provided>;
@@ -2293,6 +2325,11 @@ export class CommandBuilder<
     );
   }
 
+  /**
+   * Declares a positional argument. The name is the key the action reads under `args`.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#declaring-a-command
+   */
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
     config: Config &
@@ -2318,6 +2355,11 @@ export class CommandBuilder<
     return this.#derive(declareArgument(this.#state, input));
   }
 
+  /**
+   * Declares a local option. The name is the key the action reads under `options`.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md
+   */
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
     config: Config &
@@ -2345,6 +2387,11 @@ export class CommandBuilder<
     return this.#derive(declareOption(this.#state, input));
   }
 
+  /**
+   * Declares that at most one of the named local options may be supplied.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
+   */
   exclusive(
     ...names: [
       Extract<keyof Options, string>,
@@ -2355,6 +2402,11 @@ export class CommandBuilder<
     return this.#derive(declareOptionGroup(this.#state, 'exclusive', names));
   }
 
+  /**
+   * Declares that at least one of the named local options must be supplied.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
+   */
   oneRequired(
     ...names: [
       Extract<keyof Options, string>,
@@ -2365,6 +2417,11 @@ export class CommandBuilder<
     return this.#derive(declareOptionGroup(this.#state, 'oneRequired', names));
   }
 
+  /**
+   * Declares that the named local options are supplied all together or not at all.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
+   */
   requiredTogether(
     ...names: [
       Extract<keyof Options, string>,
@@ -2463,6 +2520,11 @@ export class CommandBuilder<
     );
   }
 
+  /**
+   * Adds extension values to the Command.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/extensions.md
+   */
   extend(
     ...values: readonly ExtensionValue<'command'>[]
   ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
@@ -2530,9 +2592,17 @@ export type ResultMethod<Result> = unknown extends Result ? never : 'views';
  * @public
  */
 export interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
+  /** The one-line summary of the Command, which help and every projection read. */
   description?: string;
+  /** Keeps the Command off every listing. An omitted one reads `false`. */
   hidden?: boolean;
+  /** The one-line migration message a listing shows beside the Command. */
   deprecated?: string;
+  /**
+   * The extension values the Command carries.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/extensions.md
+   */
   extensions?: readonly ExtensionValue<'command'>[];
   /** The providers whose values the action reads under `provided`. */
   uses?: MetByRegistration<Uses, OptIn<Uses>>;
@@ -2617,6 +2687,21 @@ class CommandDeclaration<const Uses extends readonly AnyProvider[] = []> extends
 /**
  * The public constructor takes a name and one options object, as the Application does.
  *
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ *
+ * export const greet = new Command('greet', { description: 'Print a greeting.' })
+ *   .argument('name', { description: 'Who to greet.', required: true })
+ *   .option('shout', { type: 'boolean', description: 'Print in capitals.' })
+ *   .action(({ args, options, out }) => {
+ *     const text = `Hello, ${args.name}`;
+ *     out.print(options.shout ? text.toUpperCase() : text);
+ *   });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#declaring-a-command
  * @public
  */
 export const Command: CommandConstructor = CommandDeclaration;

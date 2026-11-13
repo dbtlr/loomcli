@@ -589,6 +589,18 @@ function publishToProcess(name: string, value: string): void {
  * signal source, writes `exitCode` to `process.exitCode`, starts real children, and has
  * `publishEnv` only when it was given neither `env` nor `cwd`.
  *
+ *
+ * @example
+ * ```ts
+ * import { processHandle } from '@loomcli/core';
+ *
+ * import { app } from './app.js';
+ *
+ * const handle = processHandle({ argv: ['--help'], env: { NO_COLOR: '1' } });
+ * const code = await app.run({ process: handle });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/host.md#the-process-handle
  * @public
  */
 function processHandle(fields: ProcessFields = {}): ProcessHandle {

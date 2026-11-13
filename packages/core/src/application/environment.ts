@@ -7,11 +7,14 @@ import type { Plugin } from '../plugins/plugin.js';
  * @sealed
  */
 interface ApplicationEnvironment<Globals = {}, Plugins extends readonly Plugin[] = readonly []> {
+  /** The type of the Application's global option values. */
   readonly globals: Globals;
+  /** The Application's installed plugins. */
   readonly plugins: Plugins;
 }
 
 interface RegistrationShape {
+  /** The Application's environment, once its registration is visible in this compilation. */
   environment?: ApplicationEnvironment<unknown, readonly Plugin[]>;
 }
 
@@ -24,7 +27,13 @@ interface RegistrationShape {
 // oxlint-disable-next-line typescript/no-empty-interface
 interface Register extends RegistrationShape {}
 
-/** @public @sealed */
+/**
+ * The environment of the Application that registered itself in this compilation, or the default
+ * environment when none did.
+ *
+ * @public
+ * @sealed
+ */
 type RegisteredEnvironment = Register extends { environment: infer Environment }
   ? Environment extends ApplicationEnvironment<unknown, readonly Plugin[]>
     ? Environment
@@ -39,7 +48,12 @@ type RegistrationVisible = Register extends { environment: unknown } ? true : fa
 /** A private type marker avoids pretending parsed global values exist before an invocation. */
 declare const applicationEnvironment: unique symbol;
 
-/** @public @sealed */
+/**
+ * The environment an Application or a Command's phantom marker carries.
+ *
+ * @public
+ * @sealed
+ */
 type EnvironmentOf<
   Value extends {
     readonly [applicationEnvironment]: ApplicationEnvironment<unknown, readonly Plugin[]>;

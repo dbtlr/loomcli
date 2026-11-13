@@ -20,6 +20,7 @@ type ActionArgument<Declaration> =
  * @sealed
  */
 interface StdinContext {
+  /** The stdin of the Command, present when it declares stdin. */
   readonly stdin?: Content | undefined;
 }
 
@@ -33,9 +34,13 @@ interface StdinContext {
  * @public
  */
 export interface Request {
+  /** The Command's stdin as a `Content`, present when the Command declares stdin. */
   readonly stdin?: Content | undefined;
+  /** The validated value of each of the routed Command's arguments, by name. */
   readonly args: Readonly<Record<string, unknown>>;
+  /** The validated value of each of the routed Command's local options, by name. */
   readonly options: Readonly<Record<string, unknown>>;
+  /** The words after the `--` separator, which the Command does not parse. */
   readonly passthrough: readonly string[];
 }
 
@@ -65,12 +70,15 @@ export interface ActionChannel {
  * @public
  */
 export interface InvocationValues {
+  /** The value of each argument, by argument name. */
   readonly args?: Readonly<
     Record<string, string | number | boolean | readonly (string | number)[] | undefined>
   >;
+  /** The value of each local or global option, by declared name. */
   readonly options?: Readonly<
     Record<string, string | number | boolean | readonly (string | number)[] | undefined>
   >;
+  /** The words that follow the `--` separator. */
   readonly passthrough?: readonly string[];
 }
 
@@ -83,6 +91,7 @@ export interface InvocationValues {
 export interface InvokeOptions<Mapped = LoomError> {
   /** The starting view selection, as a middleware's `view` assignment. */
   readonly view?: string;
+  /** Maps a failure into the value the failed outcome carries; the failure itself when omitted. */
   readonly failure?: (
     failure: Readonly<LoomError>,
     context: {
@@ -137,17 +146,35 @@ export type InvocationOutcome<Mapped = LoomError> =
  * @sealed
  */
 export interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
+  /**
+   * Whether the run may ask the operator a question. Core decides once per run.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/interaction.md
+   */
   readonly interactive: boolean;
+  /** The raw values the operator supplied for each input, before validation. */
   readonly supplied: SuppliedInputs;
+  /** Cancels the run as the action, which resolves exit code 130. */
   readonly cancel: () => void;
+  /** The Command's stdin as a `Content`, present when the Command declares stdin. */
   readonly stdin?: Content | undefined;
+  /** Styles text for the run's rendering policy and theme. */
   readonly style: ContextualStyle;
+  /** The validated value of each of the Command's arguments, by name. */
   args: Args;
+  /**
+   * The validated value of each of the Command's local options and every global option, by name.
+   */
   options: Options;
+  /** The frozen graph `inspect()` returns for this run. */
   readonly graph: CommandGraph;
+  /** The routed node inside `graph`. */
   readonly command: CommandNode;
+  /** The words after the `--` separator. */
   passthrough: string[];
+  /** The channel the action emits its result and writes its output through. */
   out: Out<Result>;
+  /** The run's host facts. */
   host: Host;
   /** Records a log event for every installed plugin's `onLog` hook, under no plugin. */
   readonly log: Log;
@@ -172,7 +199,13 @@ export interface ActionContext<Args, Options = {}, Result = unknown, Provided = 
   ) => Promise<InvocationOutcome<Mapped>>;
 }
 
-/** @public */
+/**
+ * The handler an `action()` call registers. It receives the action context, whose `stdin` follows
+ * the Command's stdin declaration.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/invocation.md
+ * @public
+ */
 export type Action<
   Args,
   Options = {},
@@ -196,9 +229,13 @@ export interface DeclaredTypes<
   Stdin extends StdinContext = StdinContext,
   Provided = {},
 > {
+  /** The context fragment the Command's stdin declaration contributes. */
   stdin: Stdin;
+  /** The type of the Command's arguments. */
   args: Args;
+  /** The global options the Command requires of its Application, as a contravariant requirement. */
   globals: (value: Globals) => void;
+  /** The type of the Command's local options. */
   options: Options;
   /** The values the Command's opt-ins provide. A plain field keeps it covariant, as `result` is. */
   provided: Provided;

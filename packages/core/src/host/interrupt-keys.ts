@@ -65,6 +65,22 @@ function splitInterruptKeys(text: string): { signals: InterruptSignal[]; rest: s
  * which reaches the run a moment later, and the text without its interrupt keys, or `''` once a
  * signal was raised, as a cooked terminal discards the input still unread.
  *
+ *
+ * @example
+ * ```ts
+ * import { Command, raiseInterruptKeys } from '@loomcli/core';
+ *
+ * export const reader = new Command('reader').action((context) => {
+ *   context.host.stdin.on('data', (chunk: Buffer) => {
+ *     const { rest } = raiseInterruptKeys(context, chunk.toString('utf8'));
+ *     if (rest !== '') {
+ *       context.out.print(rest);
+ *     }
+ *   });
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/signals.md#raw-mode-readers
  * @public
  */
 function raiseInterruptKeys(

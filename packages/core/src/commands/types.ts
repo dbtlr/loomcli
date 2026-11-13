@@ -1,5 +1,6 @@
 /** The named key states the rule, so a rejected declaration name reads as its own diagnostic. */
 interface LiteralNameFault {
+  /** The text of the diagnostic a rejected declaration name shows. */
   'Declaration names must be one literal string': never;
 }
 

@@ -260,19 +260,38 @@ type RootRequirement<Globals, Requires> = [Globals] extends [Requires]
   ? unknown
   : { readonly 'The Application declares no global option its root providers read': Requires };
 
-/** @public */
+/**
+ * What `new Application(name, options)` takes beside the name: its rendering policy, its view
+ * overrides, its translators, its plugins, its core facts, and its shutdown budget.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/application.md
+ * @public
+ */
 export interface ApplicationOptions<
   Plugins extends readonly Plugin[] = readonly Plugin[],
   Uses extends readonly AnyProvider[] = [],
 > {
+  /** The rendering policy of every run, which a run's own `rendering` option replaces. */
   rendering?: RenderingPolicy;
   /** How a signal ends the process: `timeout` is the shutdown budget, 500 milliseconds by default. */
   shutdown?: { readonly timeout?: number };
+  /**
+   * The Application's own view overrides, which replace a plugin's or core's view of the same name.
+   */
   views?: readonly ViewOverride[];
+  /** The Application's failure translations, which resolve ahead of each plugin's. */
   translators?: readonly Translation[];
+  /** The plugins the Application installs. Their global options join the Application's own. */
   plugins?: Plugins;
+  /**
+   * The extension values the Application's root Command carries.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/extensions.md
+   */
   extensions?: readonly ExtensionValue<'command'>[];
+  /** The one-line summary of the Application, which `inspect()` reports. */
   description?: string;
+  /** The version of the Application, which `inspect()` reports. */
   version?: string;
   /** The providers whose values the root's own action reads under `provided`. */
   uses?: OptIn<Uses>;
@@ -315,7 +334,15 @@ class ApplicationBuilder<
   Provided = {},
   Requires = {},
 > {
+  /**
+   * A type-only marker that carries the Application's global option types and plugins, which
+   * `EnvironmentOf` reads. It holds no runtime value.
+   */
   declare readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
+  /**
+   * A type-only marker that carries the declared argument, option, result, stdin, and provided
+   * types, which `ActionHandler` reads. It holds no runtime value.
+   */
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
 
   readonly #stdinBind: (source: Content | undefined) => Stdin;
@@ -357,10 +384,17 @@ class ApplicationBuilder<
     this.#root = declared.root;
   }
 
+  /** The Application's name. */
   get name(): string {
     return this.#name;
   }
 
+  /**
+   * Declares the root's stdin as required, so the action reads it as a `Content` that is always
+   * present.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#content-inputs
+   */
   stdin(
     config: StdinConfig & { required: true },
   ): Application<
@@ -374,6 +408,12 @@ class ApplicationBuilder<
     Provided,
     Requires
   >;
+  /**
+   * Declares the root's stdin as optional, so the action's `stdin` is absent when the operator
+   * supplies none.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#content-inputs
+   */
   stdin(
     config: StdinConfig,
   ): Application<Args, Options, Globals, State, Plugins, Result, StdinContext, Provided, Requires>;
@@ -401,6 +441,11 @@ class ApplicationBuilder<
     );
   }
 
+  /**
+   * Declares a positional argument of the root. The name is the key the action reads under `args`.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#declaring-a-command
+   */
   argument<const Name extends string, const Config extends ArgumentConfig>(
     name: Name,
     config: Config &
@@ -428,6 +473,11 @@ class ApplicationBuilder<
     return this.derive(declareArgument(this.#root, input));
   }
 
+  /**
+   * Declares a local option of the root. The name is the key the action reads under `options`.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md
+   */
   option<const Name extends string, const Config extends OptionConfig>(
     name: Name,
     config: Config &
@@ -457,6 +507,11 @@ class ApplicationBuilder<
     return this.derive(declareOption(this.#root, input, this.table()));
   }
 
+  /**
+   * Declares that at most one of the named local options of the root may be supplied.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
+   */
   exclusive(
     ...names: [
       Extract<keyof Options, string>,
@@ -467,6 +522,11 @@ class ApplicationBuilder<
     return this.derive(declareOptionGroup(this.#root, 'exclusive', names));
   }
 
+  /**
+   * Declares that at least one of the named local options of the root must be supplied.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
+   */
   oneRequired(
     ...names: [
       Extract<keyof Options, string>,
@@ -477,6 +537,11 @@ class ApplicationBuilder<
     return this.derive(declareOptionGroup(this.#root, 'oneRequired', names));
   }
 
+  /**
+   * Declares that the named local options of the root are supplied all together or not at all.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
+   */
   requiredTogether(
     ...names: [
       Extract<keyof Options, string>,
@@ -487,6 +552,12 @@ class ApplicationBuilder<
     return this.derive(declareOptionGroup(this.#root, 'requiredTogether', names));
   }
 
+  /**
+   * Declares a global option, which every Command of the Application reads under `options`. It
+   * closes once the Application's own `command()` or `action()` has run.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#global-options
+   */
   globalOption<const Name extends string, const Config extends OptionConfig>(
     name: Name,
     config: Config &
@@ -639,6 +710,11 @@ class ApplicationBuilder<
     return this.derive(declareResultViews(this.#root, replacements, options));
   }
 
+  /**
+   * Adds extension values to the root Command.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/extensions.md
+   */
   extend(
     ...values: readonly ExtensionValue<'command'>[]
   ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
@@ -797,6 +873,13 @@ class ApplicationBuilder<
     return faults;
   }
 
+  /**
+   * Runs the Application as the process: reads argv, routes it to a Command, writes the run's
+   * output, and resolves the exit code. A failure of the run is reported through its view and
+   * resolves its code, so `run()` does not reject for it.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/application.md
+   */
   async run(options?: RunOptions): Promise<ExitCode> {
     const end = await this.#execute(argvDoor(this.#name, options));
     return end.exitCode;
@@ -1609,7 +1692,12 @@ export type Application<
  * `globalOption()` call adds its own to them.
  */
 interface ApplicationConstructor {
+  /** Creates an Application with the given name, which every authoring call then declares onto. */
   new (name: string): Application<{}, {}, {}, ApplicationMethod, readonly []>;
+  /**
+   * Creates an Application with the given name and options: its plugins, views, translators,
+   * shutdown budget, and core facts.
+   */
   new <
     const Plugins extends readonly Plugin[] = readonly [],
     const Uses extends readonly AnyProvider[] = [],
@@ -1831,5 +1919,25 @@ class ApplicationDeclaration<
   }
 }
 
-/** @public */
+/**
+ * The Application: the declaration of one program, which holds an unnamed root Command and the
+ * global options, plugins, and views every Command shares. Every authoring call returns a new
+ * value, and `run()` runs it as the process.
+ *
+ * @example
+ * ```ts
+ * import { Application, Command } from '@loomcli/core';
+ *
+ * const greet = new Command('greet', { description: 'Print a greeting.' })
+ *   .argument('name', { description: 'Who to greet.', required: true })
+ *   .action(({ args, out }) => out.print(`Hello, ${args.name}`));
+ *
+ * const app = new Application('hello', { description: 'A greeting tool.', version: '1.0.0' }).command(greet);
+ *
+ * process.exitCode = await app.run();
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/application.md
+ * @public
+ */
 export const Application: ApplicationConstructor = ApplicationDeclaration;

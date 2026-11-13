@@ -64,18 +64,42 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * @sealed
  */
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
+  /**
+   * The validated value of every global option, keyed by declared name, or `null` while a global
+   * option holds a fault.
+   */
   readonly options: (PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null;
+  /**
+   * The validated value of each option the middleware's own plugin declared, whatever fault core
+   * holds for another input.
+   */
   readonly ownOptions: Partial<PluginOptionValues<Options>> & Readonly<Record<string, unknown>>;
+  /**
+   * The spelling that supplied each of the plugin's own options as a token; a filled or defaulted
+   * option has none.
+   */
   readonly spellings: PluginOptionSpellings<Options>;
+  /** The frozen graph `inspect()` returns, built once for the run. */
   readonly graph: CommandGraph;
+  /** The routed node inside `graph`. */
   readonly command: CommandNode;
+  /**
+   * The routed Command's parsed and validated invocation, or `null` while core holds a fault and on
+   * a group.
+   */
   readonly request: Request | null;
+  /** The name of the view the result renders through, or `null` on a Command that declares none. */
   get view(): string | null;
   set view(name: string);
+  /** The run's host facts. */
   readonly host: Host;
+  /** The channel the middleware writes the run's output through. */
   readonly out: Out;
   /** Records a log event under the plugin's identity. */
   readonly log: Log;
+  /**
+   * The run's cancellation signal, which a caller, a shutdown, an action, or a closed pipe aborts.
+   */
   readonly signal: AbortSignal;
   /**
    * Registers a synchronous handler that runs once, at the end of a shutdown or of the process, and
@@ -86,6 +110,7 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly onSuspend: OnSuspend;
   /** Registers a synchronous handler that runs when the process resumes, until the run ends. */
   readonly onResume: OnResume;
+  /** Runs the rest of the chain, and resolves what the rest of it did. */
   readonly next: () => Promise<ChainOutcome>;
 }
 

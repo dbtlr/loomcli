@@ -20,8 +20,11 @@ type Content =
   | (ContentReader & { readonly kind: 'stdin'; readonly path: undefined });
 
 interface ContentReader {
+  /** The name the source was supplied under: the operand that named the file, or `stdin`. */
   readonly name: string;
+  /** Opens the source as a stream the action reads. */
   stream(): Readable;
+  /** Reads the whole source as text. */
   text(): Promise<string>;
 }
 

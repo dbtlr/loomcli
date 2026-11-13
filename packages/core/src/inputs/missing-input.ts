@@ -21,6 +21,22 @@ function rememberInputNames(host: Host, invokedBy: 'argv' | 'name'): void {
 /**
  * Builds the ordinary missing-option failure for an action-owned question.
  *
+ *
+ * @example
+ * ```ts
+ * import { Command, missingInputError } from '@loomcli/core';
+ *
+ * export const deploy = new Command('deploy')
+ *   .option('target', { type: 'string', description: 'Where to deploy.' })
+ *   .action((context) => {
+ *     if (context.options.target === undefined) {
+ *       throw missingInputError(context, 'target');
+ *     }
+ *     context.out.print(`Deploying to ${context.options.target}`);
+ *   });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/interaction.md
  * @public
  */
 function missingInputError(

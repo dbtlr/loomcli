@@ -69,6 +69,26 @@ function linkedCommand(graph: CommandGraph, node: CommandNode) {
  * validation context, and resolves the validator's result. A context whose graph core did not
  * build throws under `@loomcli/core/foreign-graph`.
  *
+ *
+ * @example
+ * ```ts
+ * import { Command, validateLinkedValue } from '@loomcli/core';
+ *
+ * import { targetSchema } from './schemas.js';
+ *
+ * export const deploy = new Command('deploy')
+ *   .option('target', { type: 'string', validate: targetSchema })
+ *   .action(async (context) => {
+ *     const result = await validateLinkedValue(
+ *       context,
+ *       { message: 'Where to deploy?', option: 'target' },
+ *       'staging',
+ *     );
+ *     context.out.print(result.issues === undefined ? 'valid' : 'invalid');
+ *   });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#validation-context
  * @public
  */
 function validateLinkedValue<Args, Options, const Link extends ValueLink<Args, Options>>(

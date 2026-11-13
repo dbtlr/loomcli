@@ -533,6 +533,19 @@ async function validateDeclared(
  * itself. Core's default text and an application's own view read a position through this one
  * helper, so a rejected item reads alike wherever its diagnostic is written.
  *
+ *
+ * @example
+ * ```ts
+ * import { issuePath } from '@loomcli/core';
+ * import type { StandardSchemaV1 } from '@loomcli/core';
+ *
+ * export function describeIssue(issue: StandardSchemaV1.Issue): string {
+ *   const path = issuePath(issue);
+ *   return path === undefined ? issue.message : `${path}: ${issue.message}`;
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/validation.md#issues-and-validator-failures
  * @public
  */
 export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
