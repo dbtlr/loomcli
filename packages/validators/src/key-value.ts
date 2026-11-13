@@ -12,6 +12,7 @@ import { keyValueSeparator } from './rules.js';
  * @public
  */
 interface KeyValueOptions {
+  /** The text that splits the token, `=` when omitted; it is nonempty and holds no whitespace. */
   separator?: string;
 }
 
@@ -22,7 +23,9 @@ interface KeyValueOptions {
  * @sealed
  */
 interface KeyValuePair {
+  /** The text before the first separator, one character or more, as written. */
   key: string;
+  /** The text after the first separator, possibly empty, as written. */
   value: string;
 }
 
@@ -62,6 +65,15 @@ function separatorOf(options: KeyValueOptions | undefined): string {
 /**
  * A key and a value joined by the separator, `=` unless the author names another, split at its
  * first occurrence. The key holds one character or more, and the value may be empty.
+ *
+ * @example
+ * ```ts
+ * import { keyValue } from '@loomcli/validators';
+ *
+ * const label = keyValue({ separator: ':' });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#keyvalue
  *
  * @public
  */

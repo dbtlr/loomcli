@@ -11,6 +11,7 @@ import { dateRules, firstReading, readingOf } from './layout.js';
  * @public
  */
 interface DateOptions {
+  /** Layouts the validator reads after its default grammar, tried in order; the first that reads the token wins. */
   layouts?: readonly [string, ...string[]];
 }
 
@@ -24,6 +25,15 @@ const grammar = {
 /**
  * A calendar date, output as `YYYY-MM-DD` whichever form the token took, because a date has no
  * time or zone. The default grammar reads first, then each layout in order.
+ *
+ * @example
+ * ```ts
+ * import { date } from '@loomcli/validators';
+ *
+ * const day = date({ layouts: ['%d/%m/%Y'] });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#date
  *
  * @public
  */

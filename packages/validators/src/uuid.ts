@@ -8,6 +8,15 @@ const grouped = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0
 /**
  * A UUID of any version in any letter case, read as lowercase so two spellings compare equal.
  *
+ * @example
+ * ```ts
+ * import { uuid } from '@loomcli/validators';
+ *
+ * const identifier = uuid();
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#uuid
+ *
  * @public
  */
 function uuid(): Validator<string> {

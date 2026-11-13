@@ -14,6 +14,7 @@ import { formatTimeOfDay, readTimeOfDay, timeGrammar, timePattern } from './time
  * @public
  */
 interface TimeOptions extends SpelledBoundOptions {
+  /** Layouts the validator reads after its default grammar, tried in order; the first that reads the token wins. */
   layouts?: readonly [string, ...string[]];
 }
 
@@ -26,6 +27,15 @@ const grammar = { expression: timeGrammar, form: 'hh:mm', schema: { pattern: tim
  * A time of day, output as the number of milliseconds since midnight, the unit `duration()` uses,
  * within `min` and `max`, both inclusive. The default grammar reads first, then each layout in
  * order. A fraction beyond milliseconds is dropped.
+ *
+ * @example
+ * ```ts
+ * import { time } from '@loomcli/validators';
+ *
+ * const opens = time({ min: '09:00', max: '17:00' });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#time
  *
  * @public
  */

@@ -25,6 +25,15 @@ const factory = 'duration';
  * `max`, both inclusive. A bare number counts seconds, and a unit is a systemd.time(7) spelling
  * such as `ms`, `sec`, `min`, `hr`, `day`, or `weeks`. Whitespace may separate the parts.
  *
+ * @example
+ * ```ts
+ * import { duration } from '@loomcli/validators';
+ *
+ * const timeout = duration({ min: '1s', max: '1h' });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#duration
+ *
  * @public
  */
 function duration(options?: DurationOptions): Validator<number> {

@@ -16,7 +16,9 @@ import { reject } from './issues.js';
  * @public
  */
 interface IntegerOptions {
+  /** The least accepted value, inclusive. */
   min?: number;
+  /** The greatest accepted value, inclusive. */
   max?: number;
 }
 
@@ -33,6 +35,15 @@ function readInteger(raw: string): number | undefined {
 
 /**
  * A decimal whole number that is a safe integer within `min` and `max`, both inclusive.
+ *
+ * @example
+ * ```ts
+ * import { integer } from '@loomcli/validators';
+ *
+ * const workers = integer({ min: 1, max: 64 });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#integer
  *
  * @public
  */

@@ -43,6 +43,15 @@ function catalogCode(rule: string): string {
 /**
  * The issue code for the `text-nonempty` rejection.
  *
+ * @example
+ * ```ts
+ * import { textNonemptyIssue } from '@loomcli/validators';
+ *
+ * const issue = textNonemptyIssue.issue({});
+ * const params = textNonemptyIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const textNonemptyIssue = issueCode(catalogCode('text-nonempty'), {
@@ -53,6 +62,15 @@ const textNonemptyIssue = issueCode(catalogCode('text-nonempty'), {
 /**
  * The issue code for the `text-min-length` rejection.
  *
+ * @example
+ * ```ts
+ * import { textMinLengthIssue } from '@loomcli/validators';
+ *
+ * const issue = textMinLengthIssue.issue({ min: 1 });
+ * const params = textMinLengthIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const textMinLengthIssue = issueCode(catalogCode('text-min-length'), {
@@ -63,6 +81,15 @@ const textMinLengthIssue = issueCode(catalogCode('text-min-length'), {
 /**
  * The issue code for the `text-max-length` rejection.
  *
+ * @example
+ * ```ts
+ * import { textMaxLengthIssue } from '@loomcli/validators';
+ *
+ * const issue = textMaxLengthIssue.issue({ max: 64 });
+ * const params = textMaxLengthIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const textMaxLengthIssue = issueCode(catalogCode('text-max-length'), {
@@ -73,6 +100,15 @@ const textMaxLengthIssue = issueCode(catalogCode('text-max-length'), {
 /**
  * The issue code for the `text-exact-length` rejection.
  *
+ * @example
+ * ```ts
+ * import { textExactLengthIssue } from '@loomcli/validators';
+ *
+ * const issue = textExactLengthIssue.issue({ length: 8 });
+ * const params = textExactLengthIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const textExactLengthIssue = issueCode(catalogCode('text-exact-length'), {
@@ -83,6 +119,15 @@ const textExactLengthIssue = issueCode(catalogCode('text-exact-length'), {
 /**
  * The issue code for the `text-length-range` rejection.
  *
+ * @example
+ * ```ts
+ * import { textLengthRangeIssue } from '@loomcli/validators';
+ *
+ * const issue = textLengthRangeIssue.issue({ max: 64, min: 1 });
+ * const params = textLengthRangeIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const textLengthRangeIssue = issueCode(catalogCode('text-length-range'), {
@@ -93,6 +138,15 @@ const textLengthRangeIssue = issueCode(catalogCode('text-length-range'), {
 /**
  * The author's own sentence for a `text()` pattern, which is the code's one blank.
  *
+ * @example
+ * ```ts
+ * import { textPatternIssue } from '@loomcli/validators';
+ *
+ * const issue = textPatternIssue.issue({ message: 'Expected lowercase letters, digits, and hyphens.' });
+ * const params = textPatternIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const textPatternIssue = issueCode(catalogCode('text-pattern'), {
@@ -103,6 +157,15 @@ const textPatternIssue = issueCode(catalogCode('text-pattern'), {
 /**
  * The issue code for the `integer` rejection.
  *
+ * @example
+ * ```ts
+ * import { integerIssue } from '@loomcli/validators';
+ *
+ * const issue = integerIssue.issue({});
+ * const params = integerIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const integerIssue = issueCode(catalogCode('integer'), {
@@ -113,6 +176,15 @@ const integerIssue = issueCode(catalogCode('integer'), {
 /**
  * The issue code for the `integer-range` rejection.
  *
+ * @example
+ * ```ts
+ * import { integerRangeIssue } from '@loomcli/validators';
+ *
+ * const issue = integerRangeIssue.issue({ max: 64, min: 1 });
+ * const params = integerRangeIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const integerRangeIssue = issueCode(catalogCode('integer-range'), {
@@ -123,6 +195,15 @@ const integerRangeIssue = issueCode(catalogCode('integer-range'), {
 /**
  * The issue code for the `integer-min` rejection.
  *
+ * @example
+ * ```ts
+ * import { integerMinIssue } from '@loomcli/validators';
+ *
+ * const issue = integerMinIssue.issue({ min: 1 });
+ * const params = integerMinIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const integerMinIssue = issueCode(catalogCode('integer-min'), {
@@ -133,6 +214,15 @@ const integerMinIssue = issueCode(catalogCode('integer-min'), {
 /**
  * The issue code for the `integer-max` rejection.
  *
+ * @example
+ * ```ts
+ * import { integerMaxIssue } from '@loomcli/validators';
+ *
+ * const issue = integerMaxIssue.issue({ max: 64 });
+ * const params = integerMaxIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const integerMaxIssue = issueCode(catalogCode('integer-max'), {
@@ -143,6 +233,15 @@ const integerMaxIssue = issueCode(catalogCode('integer-max'), {
 /**
  * The issue code for the `number` rejection.
  *
+ * @example
+ * ```ts
+ * import { numberIssue } from '@loomcli/validators';
+ *
+ * const issue = numberIssue.issue({});
+ * const params = numberIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const numberIssue = issueCode(catalogCode('number'), {
@@ -153,6 +252,15 @@ const numberIssue = issueCode(catalogCode('number'), {
 /**
  * The issue code for the `number-range` rejection.
  *
+ * @example
+ * ```ts
+ * import { numberRangeIssue } from '@loomcli/validators';
+ *
+ * const issue = numberRangeIssue.issue({ max: 64, min: 1 });
+ * const params = numberRangeIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const numberRangeIssue = issueCode(catalogCode('number-range'), {
@@ -163,6 +271,15 @@ const numberRangeIssue = issueCode(catalogCode('number-range'), {
 /**
  * The issue code for the `number-min` rejection.
  *
+ * @example
+ * ```ts
+ * import { numberMinIssue } from '@loomcli/validators';
+ *
+ * const issue = numberMinIssue.issue({ min: 1 });
+ * const params = numberMinIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const numberMinIssue = issueCode(catalogCode('number-min'), {
@@ -173,6 +290,15 @@ const numberMinIssue = issueCode(catalogCode('number-min'), {
 /**
  * The issue code for the `number-max` rejection.
  *
+ * @example
+ * ```ts
+ * import { numberMaxIssue } from '@loomcli/validators';
+ *
+ * const issue = numberMaxIssue.issue({ max: 64 });
+ * const params = numberMaxIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const numberMaxIssue = issueCode(catalogCode('number-max'), {
@@ -183,6 +309,15 @@ const numberMaxIssue = issueCode(catalogCode('number-max'), {
 /**
  * The issue code for the `port` rejection.
  *
+ * @example
+ * ```ts
+ * import { portIssue } from '@loomcli/validators';
+ *
+ * const issue = portIssue.issue({});
+ * const params = portIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const portIssue = issueCode(catalogCode('port'), {
@@ -193,6 +328,15 @@ const portIssue = issueCode(catalogCode('port'), {
 /**
  * The issue code for the `one-of` rejection.
  *
+ * @example
+ * ```ts
+ * import { oneOfIssue } from '@loomcli/validators';
+ *
+ * const issue = oneOfIssue.issue({ values: ['dev', 'prod'] });
+ * const params = oneOfIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const oneOfIssue = issueCode(catalogCode('one-of'), {
@@ -203,6 +347,15 @@ const oneOfIssue = issueCode(catalogCode('one-of'), {
 /**
  * The issue code for the `url` rejection.
  *
+ * @example
+ * ```ts
+ * import { urlIssue } from '@loomcli/validators';
+ *
+ * const issue = urlIssue.issue({});
+ * const params = urlIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const urlIssue = issueCode(catalogCode('url'), {
@@ -213,6 +366,15 @@ const urlIssue = issueCode(catalogCode('url'), {
 /**
  * The issue code for the `url-scheme` rejection.
  *
+ * @example
+ * ```ts
+ * import { urlSchemeIssue } from '@loomcli/validators';
+ *
+ * const issue = urlSchemeIssue.issue({ protocols: ['https'] });
+ * const params = urlSchemeIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const urlSchemeIssue = issueCode(catalogCode('url-scheme'), {
@@ -223,6 +385,15 @@ const urlSchemeIssue = issueCode(catalogCode('url-scheme'), {
 /**
  * The issue code for the `uuid` rejection.
  *
+ * @example
+ * ```ts
+ * import { uuidIssue } from '@loomcli/validators';
+ *
+ * const issue = uuidIssue.issue({});
+ * const params = uuidIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const uuidIssue = issueCode(catalogCode('uuid'), {
@@ -233,6 +404,15 @@ const uuidIssue = issueCode(catalogCode('uuid'), {
 /**
  * The issue code for the `date` rejection.
  *
+ * @example
+ * ```ts
+ * import { dateIssue } from '@loomcli/validators';
+ *
+ * const issue = dateIssue.issue({});
+ * const params = dateIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const dateIssue = issueCode(catalogCode('date'), {
@@ -243,6 +423,15 @@ const dateIssue = issueCode(catalogCode('date'), {
 /**
  * The issue code for the `date-time` rejection.
  *
+ * @example
+ * ```ts
+ * import { dateTimeIssue } from '@loomcli/validators';
+ *
+ * const issue = dateTimeIssue.issue({});
+ * const params = dateTimeIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const dateTimeIssue = issueCode(catalogCode('date-time'), {
@@ -253,6 +442,15 @@ const dateTimeIssue = issueCode(catalogCode('date-time'), {
 /**
  * The issue code for the `date-layouts` rejection.
  *
+ * @example
+ * ```ts
+ * import { dateLayoutsIssue } from '@loomcli/validators';
+ *
+ * const issue = dateLayoutsIssue.issue({ forms: ['YYYY-MM-DD'] });
+ * const params = dateLayoutsIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const dateLayoutsIssue = issueCode(catalogCode('date-layouts'), {
@@ -263,6 +461,15 @@ const dateLayoutsIssue = issueCode(catalogCode('date-layouts'), {
 /**
  * The issue code for the `date-time-layouts` rejection.
  *
+ * @example
+ * ```ts
+ * import { dateTimeLayoutsIssue } from '@loomcli/validators';
+ *
+ * const issue = dateTimeLayoutsIssue.issue({ forms: ['YYYY-MM-DD'] });
+ * const params = dateTimeLayoutsIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const dateTimeLayoutsIssue = issueCode(catalogCode('date-time-layouts'), {
@@ -274,6 +481,15 @@ const dateTimeLayoutsIssue = issueCode(catalogCode('date-time-layouts'), {
 /**
  * The issue code for the `time` rejection.
  *
+ * @example
+ * ```ts
+ * import { timeIssue } from '@loomcli/validators';
+ *
+ * const issue = timeIssue.issue({});
+ * const params = timeIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const timeIssue = issueCode(catalogCode('time'), {
@@ -284,6 +500,15 @@ const timeIssue = issueCode(catalogCode('time'), {
 /**
  * The issue code for the `time-layouts` rejection.
  *
+ * @example
+ * ```ts
+ * import { timeLayoutsIssue } from '@loomcli/validators';
+ *
+ * const issue = timeLayoutsIssue.issue({ forms: ['YYYY-MM-DD'] });
+ * const params = timeLayoutsIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const timeLayoutsIssue = issueCode(catalogCode('time-layouts'), {
@@ -294,6 +519,15 @@ const timeLayoutsIssue = issueCode(catalogCode('time-layouts'), {
 /**
  * The issue code for the `time-range` rejection.
  *
+ * @example
+ * ```ts
+ * import { timeRangeIssue } from '@loomcli/validators';
+ *
+ * const issue = timeRangeIssue.issue({ max: 61_200_000, min: 32_400_000 });
+ * const params = timeRangeIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const timeRangeIssue = issueCode(catalogCode('time-range'), {
@@ -305,6 +539,15 @@ const timeRangeIssue = issueCode(catalogCode('time-range'), {
 /**
  * The issue code for the `time-min` rejection.
  *
+ * @example
+ * ```ts
+ * import { timeMinIssue } from '@loomcli/validators';
+ *
+ * const issue = timeMinIssue.issue({ min: 32_400_000 });
+ * const params = timeMinIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const timeMinIssue = issueCode(catalogCode('time-min'), {
@@ -315,6 +558,15 @@ const timeMinIssue = issueCode(catalogCode('time-min'), {
 /**
  * The issue code for the `time-max` rejection.
  *
+ * @example
+ * ```ts
+ * import { timeMaxIssue } from '@loomcli/validators';
+ *
+ * const issue = timeMaxIssue.issue({ max: 61_200_000 });
+ * const params = timeMaxIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const timeMaxIssue = issueCode(catalogCode('time-max'), {
@@ -325,6 +577,15 @@ const timeMaxIssue = issueCode(catalogCode('time-max'), {
 /**
  * The issue code for the `duration` rejection.
  *
+ * @example
+ * ```ts
+ * import { durationIssue } from '@loomcli/validators';
+ *
+ * const issue = durationIssue.issue({});
+ * const params = durationIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const durationIssue = issueCode(catalogCode('duration'), {
@@ -335,6 +596,15 @@ const durationIssue = issueCode(catalogCode('duration'), {
 /**
  * The issue code for the `duration-capital-m` rejection.
  *
+ * @example
+ * ```ts
+ * import { durationCapitalMIssue } from '@loomcli/validators';
+ *
+ * const issue = durationCapitalMIssue.issue({});
+ * const params = durationCapitalMIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const durationCapitalMIssue = issueCode(catalogCode('duration-capital-m'), {
@@ -345,6 +615,15 @@ const durationCapitalMIssue = issueCode(catalogCode('duration-capital-m'), {
 /**
  * The issue code for the `duration-range` rejection.
  *
+ * @example
+ * ```ts
+ * import { durationRangeIssue } from '@loomcli/validators';
+ *
+ * const issue = durationRangeIssue.issue({ max: 64, min: 1 });
+ * const params = durationRangeIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const durationRangeIssue = issueCode(catalogCode('duration-range'), {
@@ -356,6 +635,15 @@ const durationRangeIssue = issueCode(catalogCode('duration-range'), {
 /**
  * The issue code for the `duration-min` rejection.
  *
+ * @example
+ * ```ts
+ * import { durationMinIssue } from '@loomcli/validators';
+ *
+ * const issue = durationMinIssue.issue({ min: 1 });
+ * const params = durationMinIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const durationMinIssue = issueCode(catalogCode('duration-min'), {
@@ -366,6 +654,15 @@ const durationMinIssue = issueCode(catalogCode('duration-min'), {
 /**
  * The issue code for the `duration-max` rejection.
  *
+ * @example
+ * ```ts
+ * import { durationMaxIssue } from '@loomcli/validators';
+ *
+ * const issue = durationMaxIssue.issue({ max: 64 });
+ * const params = durationMaxIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const durationMaxIssue = issueCode(catalogCode('duration-max'), {
@@ -376,6 +673,15 @@ const durationMaxIssue = issueCode(catalogCode('duration-max'), {
 /**
  * The issue code for the `path` rejection.
  *
+ * @example
+ * ```ts
+ * import { pathIssue } from '@loomcli/validators';
+ *
+ * const issue = pathIssue.issue({});
+ * const params = pathIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const pathIssue = issueCode(catalogCode('path'), {
@@ -400,6 +706,15 @@ const writableKinds: Readonly<Record<PathKind, string>> = {
 /**
  * The issue code for the `path-readable` rejection.
  *
+ * @example
+ * ```ts
+ * import { pathReadableIssue } from '@loomcli/validators';
+ *
+ * const issue = pathReadableIssue.issue({ kind: 'file' });
+ * const params = pathReadableIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const pathReadableIssue = issueCode(catalogCode('path-readable'), {
@@ -410,6 +725,15 @@ const pathReadableIssue = issueCode(catalogCode('path-readable'), {
 /**
  * The issue code for the `path-writable` rejection.
  *
+ * @example
+ * ```ts
+ * import { pathWritableIssue } from '@loomcli/validators';
+ *
+ * const issue = pathWritableIssue.issue({ kind: 'file' });
+ * const params = pathWritableIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const pathWritableIssue = issueCode(catalogCode('path-writable'), {
@@ -421,6 +745,15 @@ const pathWritableIssue = issueCode(catalogCode('path-writable'), {
 /**
  * The issue code for the `bytes` rejection.
  *
+ * @example
+ * ```ts
+ * import { bytesIssue } from '@loomcli/validators';
+ *
+ * const issue = bytesIssue.issue({});
+ * const params = bytesIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const bytesIssue = issueCode(catalogCode('bytes'), {
@@ -431,6 +764,15 @@ const bytesIssue = issueCode(catalogCode('bytes'), {
 /**
  * The issue code for the `bytes-range` rejection.
  *
+ * @example
+ * ```ts
+ * import { bytesRangeIssue } from '@loomcli/validators';
+ *
+ * const issue = bytesRangeIssue.issue({ max: 64, min: 1 });
+ * const params = bytesRangeIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const bytesRangeIssue = issueCode(catalogCode('bytes-range'), {
@@ -442,6 +784,15 @@ const bytesRangeIssue = issueCode(catalogCode('bytes-range'), {
 /**
  * The issue code for the `bytes-min` rejection.
  *
+ * @example
+ * ```ts
+ * import { bytesMinIssue } from '@loomcli/validators';
+ *
+ * const issue = bytesMinIssue.issue({ min: 1 });
+ * const params = bytesMinIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const bytesMinIssue = issueCode(catalogCode('bytes-min'), {
@@ -452,6 +803,15 @@ const bytesMinIssue = issueCode(catalogCode('bytes-min'), {
 /**
  * The issue code for the `bytes-max` rejection.
  *
+ * @example
+ * ```ts
+ * import { bytesMaxIssue } from '@loomcli/validators';
+ *
+ * const issue = bytesMaxIssue.issue({ max: 64 });
+ * const params = bytesMaxIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const bytesMaxIssue = issueCode(catalogCode('bytes-max'), {
@@ -462,6 +822,15 @@ const bytesMaxIssue = issueCode(catalogCode('bytes-max'), {
 /**
  * The issue code for the `host` rejection.
  *
+ * @example
+ * ```ts
+ * import { hostIssue } from '@loomcli/validators';
+ *
+ * const issue = hostIssue.issue({});
+ * const params = hostIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const hostIssue = issueCode(catalogCode('host'), {
@@ -472,6 +841,15 @@ const hostIssue = issueCode(catalogCode('host'), {
 /**
  * The issue code for the `host-or-ip` rejection.
  *
+ * @example
+ * ```ts
+ * import { hostOrIpIssue } from '@loomcli/validators';
+ *
+ * const issue = hostOrIpIssue.issue({});
+ * const params = hostOrIpIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const hostOrIpIssue = issueCode(catalogCode('host-or-ip'), {
@@ -483,6 +861,15 @@ const hostOrIpIssue = issueCode(catalogCode('host-or-ip'), {
 /**
  * The issue code for the `ip` rejection.
  *
+ * @example
+ * ```ts
+ * import { ipIssue } from '@loomcli/validators';
+ *
+ * const issue = ipIssue.issue({});
+ * const params = ipIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const ipIssue = issueCode(catalogCode('ip'), {
@@ -493,6 +880,15 @@ const ipIssue = issueCode(catalogCode('ip'), {
 /**
  * The issue code for the `ip-v4` rejection.
  *
+ * @example
+ * ```ts
+ * import { ipV4Issue } from '@loomcli/validators';
+ *
+ * const issue = ipV4Issue.issue({});
+ * const params = ipV4Issue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const ipV4Issue = issueCode(catalogCode('ip-v4'), {
@@ -503,6 +899,15 @@ const ipV4Issue = issueCode(catalogCode('ip-v4'), {
 /**
  * The issue code for the `ip-v6` rejection.
  *
+ * @example
+ * ```ts
+ * import { ipV6Issue } from '@loomcli/validators';
+ *
+ * const issue = ipV6Issue.issue({});
+ * const params = ipV6Issue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const ipV6Issue = issueCode(catalogCode('ip-v6'), {
@@ -513,6 +918,15 @@ const ipV6Issue = issueCode(catalogCode('ip-v6'), {
 /**
  * The issue code for the `cidr` rejection.
  *
+ * @example
+ * ```ts
+ * import { cidrIssue } from '@loomcli/validators';
+ *
+ * const issue = cidrIssue.issue({});
+ * const params = cidrIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const cidrIssue = issueCode(catalogCode('cidr'), {
@@ -523,6 +937,15 @@ const cidrIssue = issueCode(catalogCode('cidr'), {
 /**
  * The issue code for the `cidr-v4` rejection.
  *
+ * @example
+ * ```ts
+ * import { cidrV4Issue } from '@loomcli/validators';
+ *
+ * const issue = cidrV4Issue.issue({});
+ * const params = cidrV4Issue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const cidrV4Issue = issueCode(catalogCode('cidr-v4'), {
@@ -533,6 +956,15 @@ const cidrV4Issue = issueCode(catalogCode('cidr-v4'), {
 /**
  * The issue code for the `cidr-v6` rejection.
  *
+ * @example
+ * ```ts
+ * import { cidrV6Issue } from '@loomcli/validators';
+ *
+ * const issue = cidrV6Issue.issue({});
+ * const params = cidrV6Issue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const cidrV6Issue = issueCode(catalogCode('cidr-v6'), {
@@ -543,6 +975,15 @@ const cidrV6Issue = issueCode(catalogCode('cidr-v6'), {
 /**
  * The issue code for the `cidr-host-bits` rejection.
  *
+ * @example
+ * ```ts
+ * import { cidrHostBitsIssue } from '@loomcli/validators';
+ *
+ * const issue = cidrHostBitsIssue.issue({});
+ * const params = cidrHostBitsIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const cidrHostBitsIssue = issueCode(catalogCode('cidr-host-bits'), {
@@ -553,6 +994,15 @@ const cidrHostBitsIssue = issueCode(catalogCode('cidr-host-bits'), {
 /**
  * The issue code for the `key-value` rejection.
  *
+ * @example
+ * ```ts
+ * import { keyValueIssue } from '@loomcli/validators';
+ *
+ * const issue = keyValueIssue.issue({ separator: ':' });
+ * const params = keyValueIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const keyValueIssue = issueCode(catalogCode('key-value'), {
@@ -563,6 +1013,15 @@ const keyValueIssue = issueCode(catalogCode('key-value'), {
 /**
  * The issue code for the `email` rejection.
  *
+ * @example
+ * ```ts
+ * import { emailIssue } from '@loomcli/validators';
+ *
+ * const issue = emailIssue.issue({});
+ * const params = emailIssue.read(issue);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
 const emailIssue = issueCode(catalogCode('email'), {

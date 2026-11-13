@@ -198,8 +198,6 @@ export const surfacePackages = [
       },
     },
     modules: ['@loomcli/core', '@standard-schema/spec', 'node:*'],
-    // Comments and examples a later pass writes (ADR-0147); the last pass removes the list.
-    pendingDocumentation: ['dist/'],
   },
   {
     directory: 'packages/prompts',

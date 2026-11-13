@@ -45,7 +45,9 @@ type AcceptedOutput<Result> = Result extends StandardSchemaV1.FailureResult
  * @public
  */
 interface ValidatorDefinition<Output, Return extends ParseReturn<Output> = ParseReturn<Output>> {
+  /** Reads one raw string and the validation context, and returns the accepted value or the issues, directly or as a promise. */
   parse: (raw: string, context: ValidationContext) => Return;
+  /** The JSON Schema the validator publishes for its input, stated as plain data; leave it out to publish none. */
   inputSchema?: Readonly<Record<string, unknown>>;
 }
 
@@ -130,6 +132,21 @@ function checkSchema(definition: ValidatorDefinition<unknown>): void {
 /**
  * Builds a Standard Schema value from the author's parse function.
  * With an input schema it also publishes that schema through Standard JSON Schema.
+ *
+ * @example
+ * ```ts
+ * import { createValidator } from '@loomcli/validators';
+ *
+ * const branch = createValidator({
+ *   parse: (raw) =>
+ *     /^[a-z0-9-]+$/u.test(raw)
+ *       ? { value: raw }
+ *       : { issues: [{ message: 'Expected lowercase letters, digits, and hyphens.' }] },
+ *   inputSchema: { type: 'string', pattern: '^[a-z0-9-]+$' },
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#createvalidator
  *
  * @public
  */

@@ -84,7 +84,9 @@ function boundsIssue(codes: BoundCodes, { max, min }: Bounds): StandardSchemaV1.
  * @public
  */
 interface SpelledBoundOptions {
+  /** The least accepted value, spelled in the factory's grammar; a smaller value is rejected. */
   min?: string;
+  /** The greatest accepted value, spelled in the factory's grammar; a larger value is rejected. */
   max?: string;
 }
 

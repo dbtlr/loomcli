@@ -12,9 +12,13 @@ import { issueCodeName, issueParameters } from './rules.js';
  * @sealed
  */
 interface IssueCode<Params> {
+  /** The code string every issue of this descriptor carries, in the rule-identity grammar. */
   readonly code: string;
+  /** The schema the issue's parameters pass, whose input and output are one type. */
   readonly schema: StandardSchemaV1<Params>;
+  /** Builds the rejection a `parse` function returns, faulting on parameters the schema rejects. */
   issue(this: void, params: Params): StandardSchemaV1.Issue;
+  /** Recovers the typed parameters from an issue carrying this code, or `undefined` for any other issue or parameters the schema rejects. */
   read(this: void, issue: StandardSchemaV1.Issue): Params | undefined;
 }
 
@@ -24,7 +28,9 @@ interface IssueCode<Params> {
  * @public
  */
 interface IssueCodeConfig<Params> {
+  /** The schema the parameters pass, which `issue` checks before it builds an issue and `read` checks before it returns them. */
   schema: StandardSchemaV1<Params>;
+  /** Writes the issue's one sentence from its parameters. */
   message: (params: Params) => string;
 }
 
@@ -50,6 +56,19 @@ function accepted<Params>(
  * Declares one issue code with its parameter schema and its one sentence, and returns its
  * descriptor. The code follows the rule-identity grammar. `issue` builds the rejection a `parse`
  * function returns, and `read` recovers the typed parameters from an issue carrying the code.
+ *
+ * @example
+ * ```ts
+ * import { issueCode } from '@loomcli/validators';
+ * import { z } from 'zod';
+ *
+ * const portRange = issueCode('@acme/validators/port-range', {
+ *   message: ({ max, min }) => `Expected a port from ${String(min)} through ${String(max)}.`,
+ *   schema: z.object({ max: z.number(), min: z.number() }),
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  *
  * @public
  */

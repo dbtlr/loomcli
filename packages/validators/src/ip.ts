@@ -11,6 +11,7 @@ import { reject } from './issues.js';
  * @public
  */
 interface IpOptions {
+  /** The one IP family the validator accepts, `4` or `6`; without it both families are accepted. */
   version?: IpVersion;
 }
 
@@ -34,6 +35,15 @@ function codeOf(version: IpVersion | undefined) {
  * An IPv4 address in dotted decimal with no leading zero, or an IPv6 address in a text form of
  * RFC 4291 with no zone, output in its canonical form so two spellings of one address compare
  * equal. `version` accepts one family alone.
+ *
+ * @example
+ * ```ts
+ * import { ip } from '@loomcli/validators';
+ *
+ * const address = ip({ version: 6 });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#ip
  *
  * @public
  */

@@ -11,6 +11,7 @@ import { reject } from './issues.js';
  * @public
  */
 interface CidrOptions {
+  /** The one IP family a block may belong to, `4` or `6`; without it both families are accepted. */
   version?: IpVersion;
 }
 
@@ -21,7 +22,9 @@ interface CidrOptions {
  * @sealed
  */
 interface CidrBlock {
+  /** The network's address in canonical form, with every bit below the prefix clear. */
   address: string;
+  /** The prefix length in bits, from 0 through 32 for IPv4 and 0 through 128 for IPv6. */
   prefix: number;
 }
 
@@ -54,6 +57,15 @@ function readBlock(raw: string): { address: IpAddress; prefix: number } | undefi
  * An IP network as an address, `/`, and a prefix length, output as the canonical address and the
  * prefix. The address is the network itself, so a bit set below the prefix is rejected with its
  * own sentence. `version` accepts one family alone.
+ *
+ * @example
+ * ```ts
+ * import { cidr } from '@loomcli/validators';
+ *
+ * const network = cidr({ version: 4 });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#cidr
  *
  * @public
  */
