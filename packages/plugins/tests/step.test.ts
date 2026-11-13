@@ -41,6 +41,12 @@ test('on a terminal a step wraps at columns minus its gutter, each continuation 
   );
 });
 
+test('the gutter decides where a step breaks, so no line runs past columns', async () => {
+  await expect(
+    renderEach({ widths: [12] }, (out) => out.print('Build all pk', step())),
+  ).resolves.toBe('❯ Build all\n  pk\n');
+});
+
 test('off a terminal a step does not wrap, and an authored line break keeps the layout', async () => {
   await expect(
     renderEach({ env: { COLUMNS: '20' }, widths: [null] }, (out) =>
@@ -56,6 +62,17 @@ test('with color on, the pointer is primary and the text bold, its own styling k
       out.print(`Building ${style.red('core')}`, step()),
     ),
   ).resolves.toBe('\u001B[36m❯\u001B[39m \u001B[1mBuilding \u001B[31mcore\u001B[39;22m\n');
+});
+
+test('with color on, every wrapped line of a step is bold, an author style crossing the break kept', async () => {
+  const rendering = { color: 'always', modifiers: 'always' } as const;
+  await expect(
+    renderEach({ rendering, widths: [8] }, (out) =>
+      out.print(`aa ${style.red('bb cc dd')} ee`, step()),
+    ),
+  ).resolves.toBe(
+    '❯ \u001B[1maa \u001B[31mbb\u001B[39;22m\n  \u001B[31;1mcc dd\u001B[39;22m\n  \u001B[1mee\u001B[22m\n',
+  );
 });
 
 test('on the Linux console the pointer takes its compatibility form', async () => {
