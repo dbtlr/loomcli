@@ -45,8 +45,16 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, test, vi } from 'vite-plus/test';
@@ -1218,6 +1226,23 @@ test('re-running init re-renders an unedited authoring file and warns about an e
     stdout: `Wrote ${second?.path}.\n`,
   });
 });
+
+test.each(['.agents', '.agents/skills', authoringFolder])(
+  'the sweep leaves alone a skill folder reached through a symbolic link at %s',
+  async (linked) => {
+    const root = ownPackage();
+    const shared = join(dirname(root), `shared-${linked.replaceAll('/', '-')}`);
+    const below = posix.relative(linked, authoringFolder);
+    mkdirSync(join(shared, below, 'references'), { recursive: true });
+    writeFileSync(join(shared, below, retired), retiredUnedited);
+    mkdirSync(dirname(join(root, linked)), { recursive: true });
+    symlinkSync(shared, join(root, linked));
+    const result = await loom(root, ['init', '--only', 'skill']);
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('Removed');
+    expect(readFileSync(join(shared, below, retired), 'utf8')).toBe(retiredUnedited);
+  },
+);
 
 test('an unedited file the running loom no longer ships is removed with one line, and its emptied directory goes too', async () => {
   const nested = `${authoringFolder}/old/deep/gone.md`;

@@ -73,7 +73,7 @@ function tsBlocks(text) {
       if (fence !== undefined) {
         open = { code: [], fence, line: index + 2 };
       }
-    } else if (new RegExp(`^${open.fence}\\s*$`, 'u').test(line)) {
+    } else if (new RegExp(`^${open.fence}\`*\\s*$`, 'u').test(line)) {
       blocks.push({ code: `${open.code.join('\n')}\n`, line: open.line });
       open = undefined;
     } else {

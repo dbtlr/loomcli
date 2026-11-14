@@ -1,6 +1,7 @@
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -240,11 +241,26 @@ function writeManaged(run: Run, path: string, content: string, mode?: number) {
 }
 
 /**
+ * Whether each folder from the package directory down to `folder` is a real directory, not a
+ * symbolic link, so the sweep never reaches files outside the package through a link.
+ */
+function ownFolder(run: Run, folder: string): boolean {
+  const parts = folder.split('/');
+  return parts.every((_part, index) => {
+    const stats = lstatSync(join(run.directory, ...parts.slice(0, index + 1)), {
+      throwIfNoEntry: false,
+    });
+    return stats?.isDirectory() === true;
+  });
+}
+
+/**
  * The Markdown files under the authoring skill's folder, as paths from the package directory, in
- * walk order, with symbolic links left out. A package that has no such folder yields none.
+ * walk order, with symbolic links left out. A package that has no such folder, or reaches it through a
+ * symbolic link, yields none.
  */
 function authoringSkillFiles(run: Run, folder = authoringSkillFolder): string[] {
-  if (!existsSync(join(run.directory, folder))) {
+  if (!ownFolder(run, folder)) {
     return [];
   }
   return readdirSync(join(run.directory, folder), { withFileTypes: true })
