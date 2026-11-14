@@ -25,6 +25,10 @@ interface Removal {
   readonly issuePath: readonly Step[];
   /** The path of every issue behind the removal: each issue whose value lies at or inside it. */
   readonly issuePaths: readonly (readonly Step[])[];
+  /** `path` with each array item's index as its position in the file as read. */
+  readonly readPath: readonly Step[];
+  /** `issuePath` with each array item's index as its position in the file as read. */
+  readonly readIssuePath: readonly Step[];
 }
 
 /**
@@ -98,6 +102,9 @@ function isWithin(inner: readonly Step[], outer: readonly Step[]): boolean {
   return samePath(inner.slice(nothing, outer.length), outer);
 }
 
+/** A removal before its paths are read back to the file as read. */
+type Removed = Omit<Removal, 'readIssuePath' | 'readPath'>;
+
 /** One distinct value a round removes, with the path of each issue that names it. */
 interface Target {
   readonly path: readonly Step[];
@@ -113,7 +120,7 @@ interface Target {
 function removalsOf(
   file: Record<string, unknown>,
   issues: readonly StandardSchemaV1.Issue[],
-): Removal[] {
+): Removed[] {
   const found: Target[] = [];
   for (const issue of issues) {
     const keys = (issue.path ?? []).map(keyOf);
@@ -136,6 +143,34 @@ function removalsOf(
       message,
       path,
     }));
+}
+
+/**
+ * A path with each array item's index as its position in the file as read, by `origins`. The walk
+ * follows the path through the round's file, and a step past the values the file holds stays as it is.
+ */
+function readPositions(file: unknown, path: readonly Step[], origins: Origins): Step[] {
+  const [step, ...rest] = path;
+  if (step === undefined) {
+    return [];
+  }
+  if (Array.isArray(file) && typeof step === 'number') {
+    return [origins.get(file)?.[step] ?? step, ...readPositions(file[step], rest, origins)];
+  }
+  const next =
+    isRecord(file) && typeof step === 'string' && Object.hasOwn(file, step)
+      ? file[step]
+      : undefined;
+  return [step, ...readPositions(next, rest, origins)];
+}
+
+/** The removal with its paths read back to the file as read. */
+function locatedAt(removal: Removed, file: Record<string, unknown>, origins: Origins): Removal {
+  return {
+    ...removal,
+    readIssuePath: readPositions(file, removal.issuePath, origins),
+    readPath: readPositions(file, removal.path, origins),
+  };
 }
 
 /** A path as one key a set can hold. */
@@ -218,7 +253,7 @@ function prunedNode(node: unknown, path: readonly Step[], pruning: Pruning): unk
 /** The file with every removal of a round made. A removal with no steps leaves no key. */
 function removeAll(
   file: Record<string, unknown>,
-  removals: readonly Removal[],
+  removals: readonly Removed[],
   origins: Origins,
 ): Record<string, unknown> {
   const doomed = new Set(removals.map((removal) => pathKey(removal.path)));
@@ -274,7 +309,7 @@ async function dropRound<Schema extends StandardSchemaV1>(
   }
   const removals = removalsOf(file, result.issues);
   for (const removal of removals) {
-    await rounds.announce(removal, file);
+    await rounds.announce(locatedAt(removal, file, rounds.origins), file);
   }
   return dropRound(schema, removeAll(file, removals, rounds.origins), rounds);
 }

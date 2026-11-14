@@ -72,3 +72,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 
 - 2026-11-14: Proposed with the contract for the strict setting (LM-509). It supersedes ADR-0118's drop clause and its fallback for a linked option's rejected value for what `strict` covers, and narrows ADR-0117's fallback for an answer marked strict. ADR-0117 and ADR-0118 carry dated entries.
 - 2026-11-14: Judged a removal by the paths of the issues behind it and by the value it discards at a listed path, named the issue's own path in a rejected value's line, and made a listed path through an array a `strict-schema-path` fault (LM-509).
+- 2026-11-15: A strict failure's line and its problem's issue path name an array item by its position in the file as read, in every round, as the `-v` line does (LM-528). What `strict` covers is unchanged.

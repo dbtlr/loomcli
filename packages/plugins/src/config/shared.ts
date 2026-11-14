@@ -103,7 +103,7 @@ interface Reporting {
 
 /**
  * One removed value: held for the failure when `strict` covers it, naming its issue's own path,
- * and else written at `-v`, naming the removed value. `round` is the file of the round that removes
+ * and else written at `-v`, naming the removed value, each by its position in the file as read. `round` is the file of the round that removes
  * it.
  */
 async function reportRemoval(
@@ -117,14 +117,15 @@ async function reportRemoval(
       removalLine(
         {
           message: removal.message,
-          path: removal.path.length === noSteps ? undefined : shownPath(removal.path),
+          path: removal.readPath.length === noSteps ? undefined : shownPath(removal.readPath),
         },
         file,
         style,
       ),
     );
   }
-  const path = removal.issuePath.length === noSteps ? undefined : shownPath(removal.issuePath);
+  const path =
+    removal.readIssuePath.length === noSteps ? undefined : shownPath(removal.readIssuePath);
   held.push(valueLine({ message: removal.message, path }, file));
   return undefined;
 }

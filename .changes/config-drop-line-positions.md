@@ -1,0 +1,1 @@
+- Fix a `configuration()` dropped-value line, and a strict failure's line, to name an array item by its position in the file as read in every round. A line from a later round named the position after earlier rounds removed items before it, so one `-v` run could name the same item two ways. A file whose drops happen in one round prints as before.
