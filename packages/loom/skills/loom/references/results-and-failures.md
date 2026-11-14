@@ -41,9 +41,9 @@ Declare one class for each failure a reader must tell apart:
 A `FatalError`'s message is marked text that core does not escape. Escape each raw value you interpolate with `style.escape`, which `@loomcli/core` exports, or override the `FatalError` view to escape the whole message, as [Failure views](../../../../../docs/core/failure-views.md#failure-views) shows. Do one, not both, because text escaped twice no longer displays as written.
 
 ```ts
-import { Application, Command, EX_DATAERR, FatalError, translate } from '@loomcli/core';
-import { format } from '@loomcli/plugins/format';
-import { table } from '@loomcli/plugins/table';
+import { Application, Command, EX_DATAERR, FatalError, translate } from "@loomcli/core";
+import { format } from "@loomcli/plugins/format";
+import { table } from "@loomcli/plugins/table";
 
 interface Entry {
   key: string;
@@ -51,31 +51,36 @@ interface Entry {
 }
 
 export class InvalidJsonError extends FatalError {
-  static override readonly code = 'invalid-json';
+  static override readonly code = "invalid-json";
   static override readonly exitCode = EX_DATAERR;
 
   constructor(options?: ErrorOptions) {
-    super('The document is not valid JSON. Correct its syntax, or supply another document.', options);
-    this.name = 'InvalidJsonError';
+    super(
+      "The document is not valid JSON. Correct its syntax, or supply another document.",
+      options,
+    );
+    this.name = "InvalidJsonError";
   }
 }
 
-export const keys = new Command('keys', { description: 'List the top-level keys of a JSON document.' })
-  .argument('document', { description: 'The JSON text to read.', required: true })
-  .rows<Entry>({ views: { table: table({ columns: ['key', 'kind'] }) } })
+export const keys = new Command("keys", {
+  description: "List the top-level keys of a JSON document.",
+})
+  .argument("document", { description: "The JSON text to read.", required: true })
+  .rows<Entry>({ views: { table: table({ columns: ["key", "kind"] }) } })
   .action(async ({ args, out }) => {
     // A malformed document throws a SyntaxError here, and the translator below answers it.
     const document: unknown = JSON.parse(args.document);
     const entries: Entry[] =
-      typeof document === 'object' && document !== null
+      typeof document === "object" && document !== null
         ? Object.entries(document).map(([key, value]) => ({ key, kind: typeof value }))
         : [];
-    await out.info('Read the document.');
+    await out.info("Read the document.");
     await out.results(entries);
   });
 
 // format() adds --format json and jsonl, and writes a failed run as JSON when one is selected.
-export const app = new Application('doc', {
+export const app = new Application("doc", {
   plugins: [format()],
   translators: [translate(SyntaxError, (error) => new InvalidJsonError({ cause: error }))],
 }).command(keys);

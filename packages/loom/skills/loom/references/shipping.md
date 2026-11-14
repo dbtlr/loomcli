@@ -82,13 +82,13 @@ gh release create v1.4.0 dist/notes-* dist/SHA256SUMS --notes "$(npx loom change
 - **`afterReplace` runs the old code.** The hook runs in the replaced process, so anything that needs the new version runs the binary at `path`. The completion, man page, and skills plugins each export a refresh that does this. Compose them in one hook:
 
 ```ts
-import { Application } from '@loomcli/core';
-import { completion, refreshCompletion } from '@loomcli/plugins/completion';
-import { manpage, refreshManpages } from '@loomcli/plugins/manpage';
-import { selfUpdate } from '@loomcli/plugins/self-update';
+import { Application } from "@loomcli/core";
+import { completion, refreshCompletion } from "@loomcli/plugins/completion";
+import { manpage, refreshManpages } from "@loomcli/plugins/manpage";
+import { selfUpdate } from "@loomcli/plugins/self-update";
 
-export const notes = new Application('notes', {
-  description: 'Keep notes.',
+export const notes = new Application("notes", {
+  description: "Keep notes.",
   plugins: [
     completion(),
     manpage(),

@@ -23,52 +23,52 @@ Most tests run the Application through its own `run()` on a mock process handle:
 - **Typed calls.** `app.invoke(path, values, { process: mock })` runs one Command by name on the mock's facts and returns its outcome: `output` and `messages` as text, and for a failure its `exitCode` and failure `form`. It writes nothing to the mock's streams.
 
 ```ts
-import { Application, FatalError } from '@loomcli/core';
-import { mockProcess } from '@loomcli/testing';
-import { expect, test } from 'vitest';
+import { Application, FatalError } from "@loomcli/core";
+import { mockProcess } from "@loomcli/testing";
+import { expect, test } from "vitest";
 
 class NotARepositoryError extends FatalError {
-  static override readonly code = 'not-a-repository';
+  static override readonly code = "not-a-repository";
 
   constructor() {
-    super('The folder is not a git repository. Run revision inside one.');
-    this.name = 'NotARepositoryError';
+    super("The folder is not a git repository. Run revision inside one.");
+    this.name = "NotARepositoryError";
   }
 }
 
 // A real test imports the Application from the application module instead.
-const revision = new Application('revision').action(async ({ host, out, signal }) => {
-  const exit = await host.spawn('git', ['rev-parse', 'HEAD'], { signal }).exited;
-  if (exit.kind === 'unstarted' || exit.code !== 0) {
+const revision = new Application("revision").action(async ({ host, out, signal }) => {
+  const exit = await host.spawn("git", ["rev-parse", "HEAD"], { signal }).exited;
+  if (exit.kind === "unstarted" || exit.code !== 0) {
     throw new NotARepositoryError();
   }
   await out.print(exit.stdout.text.trim());
 });
 
-test('revision prints the commit git reports, with no git run', async () => {
+test("revision prints the commit git reports, with no git run", async () => {
   const calls: (readonly string[])[] = [];
   const mock = mockProcess({
     programs: {
       git: ({ args }) => {
         calls.push(args);
-        return { stdout: '3f2a9c1\n' };
+        return { stdout: "3f2a9c1\n" };
       },
     },
   });
   await expect(revision.run({ process: mock })).resolves.toBe(0);
-  expect(calls).toEqual([['rev-parse', 'HEAD']]);
-  expect(mock.stdout.text).toBe('3f2a9c1\n');
-  expect(mock.stderr.text).toBe('');
+  expect(calls).toEqual([["rev-parse", "HEAD"]]);
+  expect(mock.stdout.text).toBe("3f2a9c1\n");
+  expect(mock.stderr.text).toBe("");
 });
 
-test('outside a repository, revision fails with its own sentence and failure code', async () => {
+test("outside a repository, revision fails with its own sentence and failure code", async () => {
   const mock = mockProcess({ programs: { git: () => ({ code: 128 }) } });
   await expect(revision.run({ process: mock })).resolves.toBe(1);
-  expect(mock.stderr.text).toBe('The folder is not a git repository. Run revision inside one.\n');
+  expect(mock.stderr.text).toBe("The folder is not a git repository. Run revision inside one.\n");
 
   const outside = mockProcess({ programs: { git: () => ({ code: 128 }) } });
   const outcome = await revision.invoke([], {}, { process: outside });
-  expect(outcome.status === 'failed' ? outcome.form.code : outcome.status).toBe('not-a-repository');
+  expect(outcome.status === "failed" ? outcome.form.code : outcome.status).toBe("not-a-repository");
 });
 ```
 
@@ -91,11 +91,11 @@ When an action, a middleware, a hook, or a view holds logic worth testing alone,
 - **Functions with no builder.** A failure view and a configuration source have no builder, so test them through a whole run. Test an `onCommandAttach` or `onGraphBuilt` hook by installing its plugin on a small Application and reading `inspect()`, or with `assertAssembles`.
 
 ```ts
-import { Command } from '@loomcli/core';
-import type { ActionHandler } from '@loomcli/core';
-import { table } from '@loomcli/plugins/table';
-import { actionContext } from '@loomcli/testing';
-import { expect, test, vi } from 'vitest';
+import { Command } from "@loomcli/core";
+import type { ActionHandler } from "@loomcli/core";
+import { table } from "@loomcli/plugins/table";
+import { actionContext } from "@loomcli/testing";
+import { expect, test, vi } from "vitest";
 
 interface Entry {
   key: string;
@@ -106,18 +106,18 @@ interface Entry {
 const listKeys: ActionHandler<typeof keys> = async ({ args, out }) => {
   const document: unknown = JSON.parse(args.document);
   const entries: Entry[] =
-    typeof document === 'object' && document !== null
+    typeof document === "object" && document !== null
       ? Object.entries(document).map(([key, value]) => ({ key, kind: typeof value }))
       : [];
   await out.results(entries);
 };
 
-export const keys = new Command('keys')
-  .argument('document', { required: true })
-  .rows<Entry>({ views: { table: table({ columns: ['key', 'kind'] }) } })
+export const keys = new Command("keys")
+  .argument("document", { required: true })
+  .rows<Entry>({ views: { table: table({ columns: ["key", "kind"] }) } })
   .action(listKeys);
 
-test('keys emits one row for each top-level key', async () => {
+test("keys emits one row for each top-level key", async () => {
   const results = vi.fn(async (_rows: Iterable<Entry> | AsyncIterable<Entry>) => {});
   const context = actionContext(listKeys, {
     args: { document: '{"a":1}' },
@@ -126,11 +126,11 @@ test('keys emits one row for each top-level key', async () => {
     provided: {},
   });
   await listKeys(context);
-  expect(results).toHaveBeenCalledWith([{ key: 'a', kind: 'number' }]);
+  expect(results).toHaveBeenCalledWith([{ key: "a", kind: "number" }]);
 });
 
-test('a malformed document reaches the test as the SyntaxError, untranslated', async () => {
-  const context = actionContext(listKeys, { args: { document: '{' }, options: {}, provided: {} });
+test("a malformed document reaches the test as the SyntaxError, untranslated", async () => {
+  const context = actionContext(listKeys, { args: { document: "{" }, options: {}, provided: {} });
   await expect(Promise.resolve().then(() => listKeys(context))).rejects.toThrow(SyntaxError);
 });
 ```

@@ -2,7 +2,7 @@
 name: loom
 description: Use when writing, changing, testing, building, or shipping a command-line application built with Loom (@loomcli/core). Teaches how a Loom application fits together, which the code and its doc comments do not show, and links the reference for each rule.
 metadata:
-  version: '0.19.0'
+  version: "0.19.0"
 ---
 
 # Author a Loom application
@@ -27,14 +27,12 @@ Read the doc comment of every export you use. It states the export's contract, s
 
 Read the reference for the work at hand.
 
-| Read | When you |
-| --- | --- |
-| [Structure](references/structure.md) | Lay out files, add a Command, install a plugin, or share an option, a view, or a failure class |
-| [Middleware and actions](references/middleware-and-actions.md) | Decide where work goes, or write a middleware |
-| [Results and failures](references/results-and-failures.md) | Declare what a Command produces, throw or translate a failure, or write a failure message |
-| [Testing](references/testing.md) | Write or change a test |
-| [Toolchain](references/toolchain.md) | Run `loom init`, `loom build`, or `loom changelog`, or change `loom.config.json` |
-| [Shipping](references/shipping.md) | Choose a build target, publish a release, or set up installation and self-update |
+- [Structure](references/structure.md): read it when you lay out files, add a Command, install a plugin, or share an option, a view, or a failure class.
+- [Middleware and actions](references/middleware-and-actions.md): read it when you decide where work goes, or write a middleware.
+- [Results and failures](references/results-and-failures.md): read it when you declare what a Command produces, throw or translate a failure, or write a failure message.
+- [Testing](references/testing.md): read it when you write or change a test.
+- [Toolchain](references/toolchain.md): read it when you run `loom init`, `loom build`, or `loom changelog`, or change `loom.config.json`.
+- [Shipping](references/shipping.md): read it when you choose a build target, publish a release, or set up installation and self-update.
 
 The `loom-changelog` skill beside this one teaches the change fragments and version cuts.
 

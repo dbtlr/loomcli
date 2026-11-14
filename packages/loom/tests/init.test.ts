@@ -418,8 +418,7 @@ test(
   async () => {
     const directory = emptyNotes();
     await loom(directory, ['init']);
-    // The authoring skill is left out: its tables hold links whose width a formatter pads to.
-    const paths = [guidePath, skillPath];
+    const paths = [guidePath, skillPath, ...authoringPaths];
     const written = paths.map((path) => read(directory, path));
     // The formatter runs on its defaults, from a configuration in the sandbox.
     // Its own search would reach one above the temporary directory, such as the repository's.

@@ -6,18 +6,16 @@ This reference covers when work belongs in a Command's action and when it belong
 
 An action does one Command's work. A middleware wraps every invocation that activates it, whichever Command was routed. Most work an application adds is an action. Choose by the job:
 
-| The job | The mechanism |
-| --- | --- |
-| The work of one Command | That Command's action |
-| A step several actions repeat, such as reading a document | A plain function each action calls |
-| A value the operator supplies that every action reads | A [global option](../../../../../docs/core/commands.md#global-options) |
-| A typed value an action reads, such as a pool, a session, or data derived from global options | A [provider](../../../../../docs/core/providers.md) the Command opts in to |
-| Code around every invocation, such as an audit line or a state restore | An `'always'` middleware |
-| Code around an invocation when the operator asks for it, such as `--timing` | A middleware activated by its own option |
-| Ending an invocation in place of the action, as `--help` and `--version` do | A middleware activated by its own option, marked `control: true`, which takes over |
-| Choosing the view a result renders through | A middleware that assigns `view` |
-| Adding an option or a fact to every Command at graph build | An [`onCommandAttach`](../../../../../docs/core/lifecycle-hooks.md) hook |
-| Adding hints to a failure, observing log events, or adding environment variables | [`onFailure`](../../../../../docs/core/lifecycle-hooks.md#failure-hints), [`onLog`](../../../../../docs/core/lifecycle-hooks.md#observing-log-events), or [`onEnvironment`](../../../../../docs/core/plugin-contract.md#environment-preparation) |
+- The work of one Command: that Command's action.
+- A step several actions repeat, such as reading a document: a plain function each action calls.
+- A value the operator supplies that every action reads: a [global option](../../../../../docs/core/commands.md#global-options).
+- A typed value an action reads, such as a pool, a session, or data derived from global options: a [provider](../../../../../docs/core/providers.md) the Command opts in to.
+- Code around every invocation, such as an audit line or a state restore: an `'always'` middleware.
+- Code around an invocation when the operator asks for it, such as `--timing`: a middleware activated by its own option.
+- Ending an invocation in place of the action, as `--help` and `--version` do: a middleware activated by its own option, marked `control: true`, which takes over.
+- Choosing the view a result renders through: a middleware that assigns `view`.
+- Adding an option or a fact to every Command at graph build: an [`onCommandAttach`](../../../../../docs/core/lifecycle-hooks.md) hook.
+- Adding hints to a failure, observing log events, or adding environment variables: [`onFailure`](../../../../../docs/core/lifecycle-hooks.md#failure-hints), [`onLog`](../../../../../docs/core/lifecycle-hooks.md#observing-log-events), or [`onEnvironment`](../../../../../docs/core/plugin-contract.md#environment-preparation).
 
 An Application has no middleware of its own. Middleware belongs to a plugin, so an application that needs one writes a plugin and installs it in its `plugins` list, under the same [plugin contract](../../../../../docs/core/plugin-contract.md) as a first-party plugin. [Structure](structure.md) says where that plugin's files go.
 
@@ -57,33 +55,33 @@ A middleware reads the routed invocation after parsing and validation, under [Mi
 This plugin reports how long a dispatched Command took when the operator supplies `--timing`. The action knows nothing about it.
 
 ```ts
-import { Application, plugin } from '@loomcli/core';
-import type { Middleware, Plugin, PluginOptions } from '@loomcli/core';
+import { Application, plugin } from "@loomcli/core";
+import type { Middleware, Plugin, PluginOptions } from "@loomcli/core";
 
 const options = {
-  timing: { description: 'Report how long the command took.', type: 'boolean' },
+  timing: { description: "Report how long the command took.", type: "boolean" },
 } satisfies PluginOptions;
 
 // In the application, this is the default export of its own module, loaded with import().
 const middleware: Middleware<typeof timing> = async ({ next, out }) => {
   const started = Date.now();
   const outcome = await next();
-  if (outcome === 'dispatched') {
+  if (outcome === "dispatched") {
     await out.info(`Finished in ${Date.now() - started} ms.`);
   }
 };
 
 function timing(): Plugin<typeof options> {
-  return plugin('notes/timing', {
-    middleware: { activate: ['timing'], load: async () => ({ default: middleware }) },
+  return plugin("notes/timing", {
+    middleware: { activate: ["timing"], load: async () => ({ default: middleware }) },
     options,
   });
 }
 
-export const notes = new Application('notes', {
-  description: 'Keep short notes.',
+export const notes = new Application("notes", {
+  description: "Keep short notes.",
   plugins: [timing()],
-}).action(({ out }) => out.print('No notes yet.'));
+}).action(({ out }) => out.print("No notes yet."));
 ```
 
 The factory's annotated return type is what lets the middleware module type-import the plugin without a type cycle. When `next()` rejects, the `await` throws, so the failure propagates and nothing is printed.

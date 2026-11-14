@@ -15,17 +15,17 @@ This reference covers the `loom` bin: how to run it, when to run each command, w
 
 ## Choose the command
 
-| Run | When |
-| --- | --- |
-| `loom init` | To start an application in an empty directory or add the pieces a package lacks, and again after you upgrade `@loomcli/loom` or change `loom.config.json` or the `package.json` `repository`, so the managed files follow. |
-| `loom init --only <piece>` | To write only some pieces, such as `--only install` after you set `repository`, or `--only skill` to refresh both skills. |
-| `loom build --target node` | To build the bundle the scaffold's `bin` and `build` script name. |
-| `loom build --target bun-<os>-<arch> --release` | To build a release binary, under [shipping](shipping.md). |
-| `loom build --watch --target node` | To rebuild a development artifact on each change while you work. |
-| `loom build --define` or `--facts` | To compose the same release facts into another bundler's call. It builds nothing. |
-| `loom changelog check` | After you write a change fragment, and in CI on every change. |
-| `loom changelog write` | To cut a version or a prerelease from the pending fragments. |
-| `loom changelog notes <version>` | To print a version's release notes for its release page. |
+- `loom init`: to start an application in an empty directory or add the pieces a package lacks, and again after you upgrade `@loomcli/loom` or change `loom.config.json` or the `package.json` `repository`, so the managed files follow.
+- `loom init --only <piece>`: to write only some pieces, such as `--only install` after you set `repository`, or `--only skill` to refresh both skills.
+- `loom build --target node`: to build the bundle the scaffold's `bin` and `build` script name.
+- `loom build --target bun-<os>-<arch> --release`: to build a release binary, under [shipping](shipping.md).
+- `loom build --watch --target node`: to rebuild a development artifact on each change while you work.
+- `loom build --define` or `--facts`: to compose the same release facts into another bundler's call. It builds nothing.
+- `loom changelog check`: after you write a change fragment, and in CI on every change.
+- `loom changelog write`: to cut a version or a prerelease from the pending fragments.
+- `loom changelog notes <version>`: to print a version's release notes for its release page.
+
+Three rules hold across the commands:
 
 - Name `--target` on every `loom build`. Without it, the build compiles a binary for the host, not a bundle.
 - Follow the loom-changelog skill, at `.agents/skills/loom-changelog/SKILL.md`, for fragments and cuts. The [changelog reference](../../../../../docs/toolchain/changelog.md) holds every rule.
