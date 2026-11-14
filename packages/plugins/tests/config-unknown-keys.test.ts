@@ -229,6 +229,8 @@ const invisibleKeys: [string, string, string][] = [
   ['a quote beside a zero-width space', `a"${zeroWidth}b`, String.raw`"a\"U+200Bb"`],
   ['a backslash beside a soft hyphen', `a\\${softHyphen}b`, String.raw`"a\\U+00ADb"`],
   ['a trailing run of spaces', 'stateDir  ', '"stateDirU+0020U+0020"'],
+  ['an inner space beside a zero-width space', `a b${zeroWidth}c`, '"a bU+200Bc"'],
+  ['a space at both edges around an inner space', ' a b ', '"U+0020a bU+0020"'],
   ['an edge newline', 'stateDir\n', String.raw`"stateDir\u000a"`],
 ];
 
@@ -264,4 +266,15 @@ test('a control character inside a key stays escaped by the line and does not qu
   await expect(stderrOf(closed, { 'a\u001bb': 1 })).resolves.toBe(
     unknownLine(String.raw`a\u001bb`),
   );
+});
+
+test('a value dropped at an empty top-level key names that key and never every key', async () => {
+  const schema = z.record(z.string(), z.number());
+  await expect(stderrOf(schema, { '': 'x', other: 1 })).resolves.toBe(
+    '› Ignored  in .app.json: Invalid input: expected number, received string\n',
+  );
+});
+
+test('a tab inside a key stays escaped by the line and does not quote the key', async () => {
+  await expect(stderrOf(closed, { 'a\tb': 1 })).resolves.toBe(unknownLine(String.raw`a\u0009b`));
 });

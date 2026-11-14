@@ -76,15 +76,15 @@ function shownPath(path: readonly Step[]): string {
   }, '');
 }
 
-/** The `-v` line for one removed value or unknown key, from its shown path (empty for the whole file), each piece of raw data escaped. */
+/** The `-v` line for one removed value or unknown key, from its shown path (undefined for the whole file, which has no steps), each piece of raw data escaped. */
 function removalLine(
-  removal: { readonly message: string; readonly path: string },
+  removal: { readonly message: string; readonly path: string | undefined },
   file: string | undefined,
   style: ContextualStyle,
 ): string {
   const raw = (text: string) => style.escape(escapeControlCharacters(text));
   const where = file === undefined ? '' : ` in ${nowrap(style.escape(file))}`;
-  const subject = removal.path === '' ? 'every key' : nowrap(raw(removal.path));
+  const subject = removal.path === undefined ? 'every key' : nowrap(raw(removal.path));
   return `Ignored ${subject}${where}: ${raw(removal.message)}`;
 }
 
@@ -114,7 +114,14 @@ async function reportRemoval(
   const { file, held, out, strict, style } = reporting;
   if (!coversRemoval(strict, removal, round)) {
     return out.debug(
-      removalLine({ message: removal.message, path: shownPath(removal.path) }, file, style),
+      removalLine(
+        {
+          message: removal.message,
+          path: removal.path.length === noSteps ? undefined : shownPath(removal.path),
+        },
+        file,
+        style,
+      ),
     );
   }
   const path = removal.issuePath.length === noSteps ? undefined : shownPath(removal.issuePath);
