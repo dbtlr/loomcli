@@ -637,6 +637,14 @@ test('an unknown key that holds a control character prints it escaped, in stderr
   await expect(problemsOf(strictApp(closed), file)).resolves.toEqual([fileProblem(line)]);
 });
 
+test('an unknown key that holds an invisible character fails the run with the quoted key, in stderr and in the problem', async () => {
+  const file = { [`state${String.fromCodePoint(0x20_0b)}dir`]: 'x' };
+  const line = 'Unknown key "stateU+200Bdir" in .app.json. Check its spelling, or remove it.';
+  const result = await ran({ file, strict: true });
+  expect(result).toEqual({ status: 2, stderr: `app: ${line}\n`, stdout: '' });
+  await expect(problemsOf(strictApp(closed), file)).resolves.toEqual([fileProblem(line)]);
+});
+
 test('a schema message that ends in a period gets no second one', async () => {
   const schema = z.object({}).catchall(z.number({ error: 'Use a number.' }));
   const result = await ran({ file: { alpha: 'x' }, schema, strict: true });

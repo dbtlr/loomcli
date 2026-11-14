@@ -9,6 +9,7 @@ import { withoutPointer } from './pointer.js';
 import type { Reach } from './scopes.js';
 import { covers, coversRemoval, unknownLine, valueLine } from './strict.js';
 import type { Strictness } from './strict.js';
+import { shownUnknownPath } from './unknown-path.js';
 import { unknownKeys } from './unknown.js';
 
 /**
@@ -75,16 +76,15 @@ function shownPath(path: readonly Step[]): string {
   }, '');
 }
 
-/** The `-v` line for one removed value, each piece of raw data escaped. */
+/** The `-v` line for one removed value or unknown key, from its shown path (undefined for the whole file, which has no steps), each piece of raw data escaped. */
 function removalLine(
-  removal: Pick<Removal, 'message' | 'path'>,
+  removal: { readonly message: string; readonly path: string | undefined },
   file: string | undefined,
   style: ContextualStyle,
 ): string {
   const raw = (text: string) => style.escape(escapeControlCharacters(text));
   const where = file === undefined ? '' : ` in ${nowrap(style.escape(file))}`;
-  const subject =
-    removal.path.length === noSteps ? 'every key' : nowrap(raw(shownPath(removal.path)));
+  const subject = removal.path === undefined ? 'every key' : nowrap(raw(removal.path));
   return `Ignored ${subject}${where}: ${raw(removal.message)}`;
 }
 
@@ -113,7 +113,16 @@ async function reportRemoval(
 ): Promise<void> {
   const { file, held, out, strict, style } = reporting;
   if (!coversRemoval(strict, removal, round)) {
-    return out.debug(removalLine(removal, file, style));
+    return out.debug(
+      removalLine(
+        {
+          message: removal.message,
+          path: removal.path.length === noSteps ? undefined : shownPath(removal.path),
+        },
+        file,
+        style,
+      ),
+    );
   }
   const path = removal.issuePath.length === noSteps ? undefined : shownPath(removal.issuePath);
   held.push(valueLine({ message: removal.message, path }, file));
@@ -125,9 +134,11 @@ async function reportUnknown(paths: readonly Step[][], reporting: Reporting): Pr
   const { file, held, out, strict, style } = reporting;
   for (const path of paths) {
     if (covers(strict, path)) {
-      held.push(unknownLine(shownPath(path), file));
+      held.push(unknownLine(shownUnknownPath(path), file));
     } else {
-      await out.debug(removalLine({ message: unknownKeyMessage, path }, file, style));
+      await out.debug(
+        removalLine({ message: unknownKeyMessage, path: shownUnknownPath(path) }, file, style),
+      );
     }
   }
 }
