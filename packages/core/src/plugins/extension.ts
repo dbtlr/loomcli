@@ -35,8 +35,17 @@ type ExtensionTarget = 'argument' | 'command' | 'option';
  * @sealed
  */
 interface AnyExtension {
+  /**
+   * The identity that keys this extension's values on a declaration, fixed at the `extension()`
+   * call.
+   */
   readonly identity: string;
+  /** The kind of declaration the extension attaches to: a command, an option, or an argument. */
   readonly target: ExtensionTarget;
+  /**
+   * Whether a declaration's values of this extension accumulate in order, or a later value replaces
+   * an earlier one.
+   */
   readonly collect: boolean;
 }
 
@@ -68,6 +77,9 @@ declare const extensionTarget: unique symbol;
  * that produced it, and the input it carries stays private to this package.
  */
 class ExtensionCarrier<Target extends ExtensionTarget> {
+  /**
+   * Phantom brand: it ties the value to the declaration kind it is for, and holds no runtime value.
+   */
   declare readonly [extensionTarget]: (target: Target) => Target;
 
   constructor(record: CarriedValue) {
@@ -100,9 +112,19 @@ interface Extension<
   Schema extends StandardSchemaV1 = StandardSchemaV1,
   Collect extends boolean = false,
 > extends AnyExtension {
+  /**
+   * Creates the branded value a declaration lists under `extensions`, from the input the schema
+   * accepts. The declaration that receives the value validates the input against the schema.
+   */
   (input: StandardSchemaV1.InferInput<Schema>): ExtensionValue<Target>;
+  /**
+   * The Standard Schema that validates the input of each value. Its output is what a declaration
+   * stores and `readExtension()` returns.
+   */
   readonly schema: Schema;
+  /** The kind of declaration the extension attaches to, which the value is typed by. */
   readonly target: Target;
+  /** Whether a declaration collects every value of this extension, or keeps the latest alone. */
   readonly collect: Collect;
 }
 
@@ -111,13 +133,35 @@ interface Extension<
  * it appears, so one identity means one descriptor and a duplicated package copy is visible. With
  * `collect: true` it is a collecting extension, whose values accumulate on a declaration in order.
  *
+ * @example
+ * ```ts
+ * import { Command, extension } from '@loomcli/core';
+ * import { object, optional, string } from 'valibot';
+ *
+ * const helpCommand = extension('@acme/tool/help/command', {
+ *   schema: object({ details: optional(string()) }),
+ *   target: 'command',
+ * });
+ *
+ * const build = new Command('build', {
+ *   description: 'Build the project.',
+ *   extensions: [helpCommand({ details: 'Compiles every package.' })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/extensions.md
  * @public
  */
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
   config: { schema: Schema; target: Target; collect?: false | undefined },
 ): Extension<Target, Schema>;
-/** @public */
+/**
+ * The overload for a collecting extension, whose values accumulate on a declaration in order and
+ * which a read returns as a list.
+ *
+ * @public
+ */
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
   config: { schema: Schema; target: Target; collect: true },
@@ -176,6 +220,26 @@ const noValues: readonly never[] = Object.freeze([]);
  * value, and runs no schema. Through a collecting descriptor it returns every collected output in
  * collection order, and an empty list where the node carries none.
  *
+ * @example
+ * ```ts
+ * import { extension, plugin, readExtension } from '@loomcli/core';
+ * import { object, string } from 'valibot';
+ *
+ * const owner = extension('@acme/owners/command', {
+ *   schema: object({ team: string() }),
+ *   target: 'command',
+ * });
+ *
+ * export const owners = plugin('@acme/owners', {
+ *   extensions: [owner],
+ *   onGraphBuilt(graph) {
+ *     const team = readExtension(graph.root, owner)?.team;
+ *     return undefined;
+ *   },
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/extensions.md
  * @public
  */
 function readExtension<

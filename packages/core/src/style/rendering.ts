@@ -2,13 +2,30 @@ import type { Background } from '../host/background.js';
 import { underCI } from '../host/host.js';
 import type { Host } from '../host/types.js';
 
-/** @public */
+/**
+ * One rendering switch: `'auto'` leaves the setting to detection, and `'always'` and `'never'`
+ * turn it on or off.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
 type SwitchPolicy = 'auto' | 'always' | 'never';
-/** @public */
+/**
+ * How a run resolves marked output: whether it emits color, text modifiers, and hyperlinks, what
+ * it does with terminal controls, and the background it assumes. The Application's `rendering`
+ * option and `run()`'s each take one.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
 interface RenderingPolicy {
+  /** Whether foreground and background colors are emitted. */
   color?: SwitchPolicy | undefined;
+  /** Whether text modifiers such as `bold` are emitted. */
   modifiers?: SwitchPolicy | undefined;
+  /** Whether OSC 8 hyperlinks are emitted. */
   hyperlinks?: SwitchPolicy | undefined;
+  /** Whether terminal control sequences such as cursor movement are stripped or preserved. */
   terminalControls?: 'strip' | 'preserve' | undefined;
   /** The author's background: `'dark'` or `'light'` states it, and `'auto'`, the default, leaves it to detection. */
   background?: 'auto' | Background | undefined;

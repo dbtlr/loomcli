@@ -169,6 +169,18 @@ function lastWord(scope: Scope, last: string): WordPosition {
  * word. It runs no validator, input source, or middleware, and a structural fault among the earlier
  * words reads as `none`.
  *
+ * @example
+ * ```ts
+ * import { Application, locate } from '@loomcli/core';
+ *
+ * const graph = new Application('jsonkit').inspect();
+ * const position = locate(graph, ['--ver']);
+ * if (position.kind === 'option') {
+ *   console.log(position.prefix);
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/graph-inspection.md#locating-a-word
  * @public
  */
 function locate(graph: CommandGraph, words: readonly string[]): WordPosition {

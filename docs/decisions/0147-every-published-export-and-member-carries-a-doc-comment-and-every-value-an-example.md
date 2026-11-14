@@ -26,7 +26,7 @@ A link in a hover resolves only as an absolute URL: a relative `docs/` path in a
 - **Every value carries an example.** A function, class, variable, enum, or namespace an entry point exports carries an `@example` block whose content holds a fenced code block tagged `ts`. For an overloaded function, the first overload carries it, and each other overload carries a comment that counts. A type may carry an example and need not: its use shows at the value that takes or returns it.
 - **The check reads examples and does not compile them.** `check:api` parses the comment above each exported value's first declaration with TSDoc, configured from the repository's `tsdoc.json` as API Extractor's parser is, and fails a value without the block. It does not type-check or run the code.
 - **Review judges what a comment says.** A comment states what the export or member is for in the [glossary](../glossary.md)'s terms. Where a page in `docs/` governs it, the comment links that page with `@see` and an absolute `https://github.com/dbtlr/loomcli/blob/main/docs/...` URL, and does not restate that page's rules. An example is a complete module: it imports what it uses from the published specifier, such as `@loomcli/plugins/help`, so the hover also shows where the name lives. No check reads these rules.
-- **A pending list covers the libraries one pass at a time.** Each package's policy in `scripts/api-surface.mjs` may name `pendingDocumentation`: paths of emitted declaration files under the package's `dist`, relative to the package directory, such as `dist/` or `dist/application/`, whose comments and examples the check does not judge yet. A path covers every file it names or that lies under it. A path under which no entry point of the package has a missing comment or example fails as an unneeded entry, as every other list in the check does. The list ends empty, and the last pass removes it.
+- **Every rule applies to every published entry point.** No list exempts a declaration path from the comment or the example rule. While the libraries were documented one pass at a time, a `pendingDocumentation` list in `scripts/api-surface.mjs` named the declaration paths whose comments a later pass would write; the last pass emptied it and removed it from the check.
 
 ## Considered options
 
@@ -45,8 +45,9 @@ A link in a hover resolves only as an absolute URL: a relative `docs/` path in a
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships every library's comments, with `pendingDocumentation` empty.
+Proposed. It moves to accepted in the release PR of the release that ships every library's comments.
 
 ## Changelog
 
 - 2026-11-13: Proposed with the check (LM-219). It supersedes ADR-0137's exception for the missing-comment rule; ADR-0137 carries a dated entry.
+- 2026-11-14: The last documentation pass (LM-506) covered core's remaining declarations and removed `pendingDocumentation`, so the check judges all six libraries in full.

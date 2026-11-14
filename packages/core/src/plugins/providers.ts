@@ -34,8 +34,11 @@ interface Provider<
   Life extends Lifetime = 'ephemeral',
   Uses extends readonly AnyProvider[] = [],
 > {
+  /** The key the value reads under in an action's `provided`. */
   readonly name: Name;
+  /** How long the value lasts: one run, or the outermost run and every run nested in it. */
   readonly lifetime: Life;
+  /** The providers whose values reach this provider's opener under `provided`. */
   readonly uses: Uses;
   /** Phantom key: it carries the value and globals types and holds no runtime value. */
   readonly [providerTypes]: { value: Value; globals: (value: Globals) => void };
@@ -136,7 +139,9 @@ interface ProviderContext<Globals = {}, Provided = {}> {
   readonly provided: Provided;
   /** The frozen graph the run built, which `inspect()` returns. */
   readonly graph: CommandGraph;
+  /** The run's host. */
   readonly host: Host;
+  /** Records a log event, which names no plugin. */
   readonly log: Log;
   /** The channel a middleware receives, so an opener warns the operator or writes a line at `-v`. */
   readonly out: Out;
@@ -147,7 +152,13 @@ interface ProviderContext<Globals = {}, Provided = {}> {
    * names an option by its declared name, as core's own problems do there, and `'argv'` otherwise.
    */
   readonly invokedBy: 'argv' | 'name';
+  /** The run's signal. A persistent provider receives the outermost run's. */
   readonly signal: AbortSignal;
+  /**
+   * Registers a synchronous handler that runs once, at the end of a shutdown or of the process, and
+   * is removed when the run ends while no shutdown is under way; a persistent provider's handler
+   * belongs to the outermost run. Answers the call that removes it, as a middleware's does.
+   */
   readonly onShutdown: OnShutdown;
 }
 
@@ -254,6 +265,21 @@ function readUses(
  * The frozen value a provider declaration holds. The declaration's annotation states its types, so
  * the call checks the definition against them.
  *
+ * @example
+ * ```ts
+ * import { provider } from '@loomcli/core';
+ * import type { Provider } from '@loomcli/core';
+ *
+ * import type { Pool } from './pool.js';
+ *
+ * export const acmePool: Provider<'acmePool', Pool, {}, 'persistent'> = provider('acmePool', {
+ *   close: (pool) => pool.end(),
+ *   lifetime: 'persistent',
+ *   load: () => import('./open-pool.js'),
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/providers.md
  * @public
  */
 function provider<const Declared extends AnyProvider>(

@@ -38,6 +38,7 @@ const records = new WeakMap<object, TranslationRecord>();
 
 /** The runtime value `translate()` returns. Its record lives in the registry above. */
 class TranslationDeclaration {
+  /** The brand that makes the public translation type opaque. It holds no runtime value. */
   declare readonly [translation]: true;
 
   constructor(record: TranslationRecord) {
@@ -58,6 +59,30 @@ type Translation = Pick<TranslationDeclaration, typeof translation>;
  * Pairs an error class with the translator that turns its instances into a failure. The
  * translator receives the thrown instance typed from the class, and a `translators` list on the
  * Application or a plugin registers the pair.
+ *
+ * @example
+ * ```ts
+ * import { Application, EX_DATAERR, FatalError, translate } from '@loomcli/core';
+ *
+ * class InvalidJsonError extends FatalError {
+ *   static override readonly exitCode = EX_DATAERR;
+ *
+ *   constructor(options?: ErrorOptions) {
+ *     super(
+ *       'The document is not valid JSON. Correct its syntax, or supply another document.',
+ *       options,
+ *     );
+ *   }
+ * }
+ *
+ * export const jsonkit = new Application('jsonkit', {
+ *   translators: [
+ *     translate(SyntaxError, (error) => new InvalidJsonError({ cause: error })),
+ *   ],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md#translators
  *
  * @public
  */

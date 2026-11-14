@@ -188,10 +188,35 @@ export function failureCodeOf(failure: LoomError): string {
  * machine reader branches on, and it stays on the class: an instance carries no `code` of core's.
  * `message` never carries a category prefix; the default views add it.
  *
+ * @example
+ * ```ts
+ * import { Application, EX_UNAVAILABLE, LoomError } from '@loomcli/core';
+ *
+ * class RegistryDownError extends LoomError {
+ *   static override readonly code: string = 'registry-down';
+ *   static override readonly exitCode = EX_UNAVAILABLE;
+ * }
+ *
+ * // `run()` reports the failure with exit code 69 and the failure code `registry-down`.
+ * export const app = new Application('jsonkit').action(() => {
+ *   throw new RegistryDownError('The registry is down. Try again later.');
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
  * @public
  */
 export abstract class LoomError extends Error {
+  /**
+   * The failure code of this class, a kebab-case word a machine reader branches on. A subclass
+   * declares its own, and one that declares none reads the nearest ancestor's.
+   */
   static readonly code: string = 'failure';
+  /**
+   * The exit code of this class. A subclass declares its own, and one that declares none exits with
+   * the nearest ancestor's.
+   */
   static readonly exitCode: FailureExitCode = 1;
 
   /**
@@ -225,10 +250,29 @@ export abstract class LoomError extends Error {
 /**
  * Exit 2: the invocation, not the application, is wrong.
  *
+ * @example
+ * ```ts
+ * import { Application, UsageError } from '@loomcli/core';
+ *
+ * class QuotaUsageError extends UsageError {
+ *   static override readonly code: string = 'bad-quota';
+ * }
+ *
+ * // The failure exits 2, the code every `UsageError` inherits, and core's default text opens its
+ * // line with the application name.
+ * export const app = new Application('jsonkit').action(() => {
+ *   throw new QuotaUsageError('The quota must be a positive number. Supply a larger quota.');
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
  * @public
  */
 export abstract class UsageError extends LoomError {
+  /** The failure code of a usage failure, `usage`. */
   static override readonly code: string = 'usage';
+  /** The exit code of a usage failure, 2. */
   static override readonly exitCode: FailureExitCode = 2;
 
   constructor(message: string, options?: ErrorOptions) {
@@ -260,12 +304,36 @@ export type InputProblem =
 /**
  * Individual problems in authoring order, followed by broken groups in declaration order.
  *
+ * @example
+ * ```ts
+ * import { Application, InputError } from '@loomcli/core';
+ *
+ * const app = new Application('textstat')
+ *   .argument('files', { required: true, variadic: true })
+ *   .action(({ args, out }) => out.print(args.files.join('\n')));
+ *
+ * // The invocation omits the required argument, so the run fails with one problem.
+ * const outcome = await app.invoke([], {});
+ * if (outcome.status === 'failed' && outcome.failure instanceof InputError) {
+ *   for (const problem of outcome.failure.problems) {
+ *     console.log(problem.reason);
+ *   }
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
  * @public
  * @sealed
  */
 export class InputError extends UsageError {
+  /** The failure code of an input failure, `invalid-input`. */
   static override readonly code: string = 'invalid-input';
 
+  /**
+   * Every problem the failure reports: individual problems in authoring order, then broken groups
+   * in declaration order.
+   */
   readonly problems: readonly InputProblem[];
 
   constructor(message: string, problems: readonly InputProblem[], options?: ErrorOptions) {
@@ -275,11 +343,35 @@ export class InputError extends UsageError {
   }
 }
 
-/** @public @sealed */
+/**
+ * A word that routing took for a Command name that no Command answers to.
+ *
+ * @example
+ * ```ts
+ * import { UnknownCommandError } from '@loomcli/core';
+ *
+ * const failure = new UnknownCommandError('nope', ['get', 'keys']);
+ *
+ * console.log(failure.token); // nope
+ * console.log(failure.candidates); // ['get', 'keys']
+ * console.log(failure.exitCode); // 2
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
+ * @public
+ * @sealed
+ */
 export class UnknownCommandError extends UsageError {
+  /** The failure code of an unknown command, `unknown-command`. */
   static override readonly code: string = 'unknown-command';
 
+  /** The word the operator typed, or the path element a caller wrote in an invocation by name. */
   readonly token: string;
+  /**
+   * The names the message offers in its place. It is empty when the Command offers none: every
+   * child is hidden or deprecated, or, in an invocation by name, the Command has no children.
+   */
   readonly candidates: readonly string[];
 
   constructor(token: string, candidates: readonly string[]) {
@@ -293,13 +385,29 @@ export class UnknownCommandError extends UsageError {
 /**
  * A group answers no invocation of its own, so the routed path names no callable Command.
  *
+ * @example
+ * ```ts
+ * import { NonCallableCommandError } from '@loomcli/core';
+ *
+ * const failure = new NonCallableCommandError(['remote'], ['add', 'remove']);
+ *
+ * console.log(failure.command); // ['remote']
+ * console.log(failure.candidates); // ['add', 'remove']
+ * console.log(failure.exitCode); // 2
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
  * @public
  * @sealed
  */
 export class NonCallableCommandError extends UsageError {
+  /** The failure code of a group routed without a subcommand, `missing-subcommand`. */
   static override readonly code: string = 'missing-subcommand';
 
+  /** The routed path from the root, which is empty for the root. */
   readonly command: readonly string[];
+  /** The subcommand names the message offers. It is empty when every child is hidden or deprecated. */
   readonly candidates: readonly string[];
 
   constructor(command: readonly string[], candidates: readonly string[]) {
@@ -318,12 +426,37 @@ export class NonCallableCommandError extends UsageError {
  */
 export type InvokedBy = 'argv' | 'name';
 
-/** @public @sealed */
+/**
+ * The invocation supplied more arguments than the routed Command declares.
+ *
+ * @example
+ * ```ts
+ * import { UnexpectedArgumentError } from '@loomcli/core';
+ *
+ * const failure = new UnexpectedArgumentError(['get'], 1, ['extra.json']);
+ *
+ * console.log(failure.accepted); // 1
+ * console.log(failure.extra); // ['extra.json']
+ * console.log(failure.exitCode); // 2
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
+ * @public
+ * @sealed
+ */
 export class UnexpectedArgumentError extends UsageError {
+  /** The failure code of an unexpected argument, `unexpected-argument`. */
   static override readonly code: string = 'unexpected-argument';
 
+  /** The routed path from the root, which is empty for the root. */
   readonly command: readonly string[];
+  /** The number of arguments the routed Command accepts. */
   readonly accepted: number;
+  /**
+   * The values the Command has no argument for. An invocation by name holds the unknown `args` key
+   * alone.
+   */
   readonly extra: readonly string[];
 
   constructor(command: readonly string[], accepted: number, extra: readonly string[]) {
@@ -339,10 +472,30 @@ export class UnexpectedArgumentError extends UsageError {
   }
 }
 
-/** @public @sealed */
+/**
+ * An option word that the Command routing reached does not declare, and no visible Command
+ * below it does either.
+ *
+ * @example
+ * ```ts
+ * import { UnknownOptionError } from '@loomcli/core';
+ *
+ * const failure = new UnknownOptionError('--verbos');
+ *
+ * console.log(failure.spelling); // --verbos
+ * console.log(failure.exitCode); // 2
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
+ * @public
+ * @sealed
+ */
 export class UnknownOptionError extends UsageError {
+  /** The failure code of an unknown option, `unknown-option`. */
   static override readonly code: string = 'unknown-option';
 
+  /** The spelling the operator typed, or the key a caller wrote in an invocation by name. */
   readonly spelling: string;
 
   constructor(spelling: string) {
@@ -384,10 +537,29 @@ export function undeclaredArgument(
  */
 type MissingValueForm = 'attached' | 'separate';
 
-/** @public @sealed */
+/**
+ * An option that takes a value was supplied without one.
+ *
+ * @example
+ * ```ts
+ * import { MissingValueError } from '@loomcli/core';
+ *
+ * const failure = new MissingValueError('--file');
+ *
+ * console.log(failure.spelling); // --file
+ * console.log(failure.exitCode); // 2
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
+ * @public
+ * @sealed
+ */
 export class MissingValueError extends UsageError {
+  /** The failure code of a missing value, `missing-value`. */
   static override readonly code: string = 'missing-value';
 
+  /** The spelling the operator typed. */
   readonly spelling: string;
 
   constructor(spelling: string, form: MissingValueForm = 'separate') {
@@ -406,13 +578,29 @@ export class MissingValueError extends UsageError {
  * accept. A counted option's sentence tells the operator to repeat the spelling instead, and `kind`
  * chooses the sentence alone.
  *
+ * @example
+ * ```ts
+ * import { UnexpectedValueError } from '@loomcli/core';
+ *
+ * const failure = new UnexpectedValueError('--force', 'yes');
+ *
+ * console.log(failure.spelling); // --force
+ * console.log(failure.value); // yes
+ * console.log(failure.exitCode); // 2
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
  * @public
  * @sealed
  */
 export class UnexpectedValueError extends UsageError {
+  /** The failure code of an unexpected value, `unexpected-value`. */
   static override readonly code: string = 'unexpected-value';
 
+  /** The spelling the operator typed. */
   readonly spelling: string;
+  /** The value the token attached to the spelling. */
   readonly value: string;
 
   constructor(spelling: string, value: string, kind: 'boolean' | 'count' = 'boolean') {
@@ -427,10 +615,29 @@ export class UnexpectedValueError extends UsageError {
   }
 }
 
-/** @public @sealed */
+/**
+ * An option that can be supplied only once was supplied again.
+ *
+ * @example
+ * ```ts
+ * import { RepeatedOptionError } from '@loomcli/core';
+ *
+ * const failure = new RepeatedOptionError('--file');
+ *
+ * console.log(failure.spelling); // --file
+ * console.log(failure.exitCode); // 2
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
+ * @public
+ * @sealed
+ */
 export class RepeatedOptionError extends UsageError {
+  /** The failure code of a repeated option, `repeated-option`. */
   static override readonly code: string = 'repeated-option';
 
+  /** The spelling the operator typed. */
   readonly spelling: string;
 
   constructor(spelling: string) {
@@ -446,13 +653,36 @@ export class RepeatedOptionError extends UsageError {
  * Command declares with another value class. `commands` holds each such Command's path from the
  * root, in authoring order.
  *
+ * @example
+ * ```ts
+ * import { MisplacedOptionError } from '@loomcli/core';
+ *
+ * const failure = new MisplacedOptionError('--force', [['cache', 'clear']]);
+ *
+ * console.log(failure.spelling); // --force
+ * console.log(failure.commands); // [['cache', 'clear']]
+ * console.log(failure.exitCode); // 2
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
  * @public
  * @sealed
  */
 export class MisplacedOptionError extends UsageError {
+  /** The failure code of a misplaced option, `misplaced-option`. */
   static override readonly code: string = 'misplaced-option';
 
+  /**
+   * The spelling the operator typed, without an attached value, and one letter of a short group as
+   * `-p`.
+   */
   readonly spelling: string;
+  /**
+   * The path from the root of each visible Command below the routed one that declares the option,
+   * in authoring order, or the routed Command's own path alone when it declares a parent's own
+   * option with another value class.
+   */
   readonly commands: readonly (readonly string[])[];
 
   constructor(spelling: string, commands: readonly (readonly string[])[]) {
@@ -537,15 +767,49 @@ function faultParts(first: unknown, second: unknown, third: unknown): FaultParts
  * the whole diagnostic as plain text at 80 columns, so a fault thrown at an authoring call prints
  * it through the runtime's own uncaught-error output, and `sentence` holds the sentence alone.
  *
+ * @example
+ * ```ts
+ * import { DeclarationError, diagnosticRule } from '@loomcli/core';
+ *
+ * const retryLimit = diagnosticRule('@acme/retry/retry-limit', {
+ *   headline: 'Retry limit out of range',
+ *   explanation: 'The plugin accepts from 0 through 10 retries.',
+ * });
+ *
+ * export function retry(limit: number): number {
+ *   if (!Number.isInteger(limit) || limit < 0 || limit > 10) {
+ *     throw new DeclarationError(retryLimit, {
+ *       sentence: `retry() received ${String(limit)} retries.`,
+ *       findings: [{ call: 'retry', arguments: [limit], mark: '0', note: 'from 0 through 10' }],
+ *       correction: 'Pass a whole number from 0 through 10.',
+ *     });
+ *   }
+ *   return limit;
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/declaration-faults.md
+ *
  * @public
  * @sealed
  */
 export class DeclarationError extends LoomError {
+  /**
+   * The failure code of a declaration fault, `internal`, which no machine reader can tell from a
+   * defect.
+   */
   static override readonly code: string = 'internal';
 
+  /** The rule the fault raises, or `undefined` for a fault built from a sentence alone. */
   readonly rule: DiagnosticRule | undefined;
+  /** The sentence alone, where `message` holds the whole diagnostic. */
   readonly sentence: string;
+  /** The declarations the diagnostic points at, frozen. It is empty when the fault has none. */
   readonly findings: readonly Finding[];
+  /**
+   * The correction the author gave, as one sentence or a list of them, or `undefined` when none was
+   * given.
+   */
   readonly correction: string | readonly string[] | undefined;
 
   constructor(rule: DiagnosticRule, parts: DiagnosticParts, options?: ErrorOptions);
@@ -572,9 +836,27 @@ export class DeclarationError extends LoomError {
  * Exit 1: the application ended the invocation itself. An application may subclass it, and the
  * subclass may declare its own exit code.
  *
+ * @example
+ * ```ts
+ * import { Application, EX_DATAERR, FatalError } from '@loomcli/core';
+ *
+ * class PathNotFoundError extends FatalError {
+ *   static override readonly code = 'path-not-found';
+ *   static override readonly exitCode = EX_DATAERR;
+ * }
+ *
+ * // `run()` writes the message as the failure's text and exits 65.
+ * export const app = new Application('jsonkit').action(() => {
+ *   throw new PathNotFoundError('Path not found: "name". Run jsonkit keys to list the keys at the root.');
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
  * @public
  */
 export class FatalError extends LoomError {
+  /** The failure code of a fatal failure, `fatal`, which a subclass that declares none reads. */
   static override readonly code: string = 'fatal';
 
   constructor(message: string, options?: ErrorOptions) {
@@ -588,10 +870,26 @@ export class FatalError extends LoomError {
  * Core raises it when it captures the host, before the graph builds, and its `cause` is the value
  * the capture threw. It is an operator failure, so both builds print the same line.
  *
+ * @example
+ * ```ts
+ * import { WorkingDirectoryError } from '@loomcli/core';
+ *
+ * export function currentDirectory(): string {
+ *   try {
+ *     return process.cwd();
+ *   } catch (error) {
+ *     throw new WorkingDirectoryError({ cause: error });
+ *   }
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
+ *
  * @public
  * @sealed
  */
 export class WorkingDirectoryError extends LoomError {
+  /** The failure code of an unreadable working directory, `working-directory-unreadable`. */
   static override readonly code: string = 'working-directory-unreadable';
 
   constructor(options?: ErrorOptions) {
@@ -609,14 +907,40 @@ export class WorkingDirectoryError extends LoomError {
  * defect with no rule. `message` stays the sentence, because only `run()` reports a defect, and a
  * development build renders its Developer Diagnostic from the parts.
  *
+ * @example
+ * ```ts
+ * import { InternalError } from '@loomcli/core';
+ *
+ * declare const cause: unknown;
+ *
+ * // A defect with no rule: `run()` reports it, and a distributed build shows only the generic message.
+ * export const defect = new InternalError('The cache holds an entry no writer produces.', cause);
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/declaration-faults.md
+ *
  * @public
  */
 export class InternalError extends LoomError {
+  /** The failure code of a defect, `internal`. */
   static override readonly code: string = 'internal';
 
+  /**
+   * The thrown value this defect wraps. It is the value passed as the second argument, or the
+   * `cause` of the parts the rule form received.
+   */
   readonly cause: unknown;
+  /**
+   * The rule the defect raises, or `undefined` for a defect built from a sentence and a thrown
+   * value.
+   */
   readonly rule: DiagnosticRule | undefined;
+  /** The sentence that states the defect, which `message` repeats. */
   readonly sentence: string;
+  /**
+   * The correction the rule form received, as one sentence or a list of them, or `undefined` when
+   * none was given.
+   */
   readonly correction: string | readonly string[] | undefined;
 
   constructor(
@@ -653,12 +977,31 @@ export type ResultFault = 'missing' | 'repeated';
  * and its default text carries the same prefix, while an override keyed by this class reaches it
  * alone.
  *
+ * @example
+ * ```ts
+ * import { ResultError } from '@loomcli/core';
+ *
+ * const failure = new ResultError('missing', ['report']);
+ *
+ * console.log(failure.kind); // missing
+ * console.log(failure.path); // ['report']
+ * console.log(failure.exitCode); // 1
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/results.md
+ *
  * @public
  * @sealed
  */
 export class ResultError extends InternalError {
+  /** The path from the root of the Command that declared the result. */
   readonly path: readonly string[];
+  /**
+   * Which way the action broke the results lane: it returned without emitting a result, or emitted
+   * it twice.
+   */
   readonly kind: ResultFault;
+  /** Always `undefined`, because the failure wraps no thrown value. */
   declare readonly cause: undefined;
 
   constructor(kind: ResultFault, path: readonly string[]) {

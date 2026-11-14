@@ -46,13 +46,17 @@ type LogFields = Readonly<Record<string, unknown>>;
 interface LogEvent {
   /** ISO 8601 UTC with milliseconds, read at the call. */
   readonly time: string;
+  /** The event's severity. `fatal` is core's alone, for a defect. */
   readonly level: LogLevel;
+  /** The message the `log` call passed, or for an event core logs, the message core gives it. */
   readonly message: string;
   /** The frozen copy of the call's fields. */
   readonly fields: Readonly<Record<string, JsonValue>>;
+  /** The name and version of the Application the run belongs to. */
   readonly application: { readonly name: string; readonly version: string };
   /** 32 lowercase hexadecimal characters, one per run. */
   readonly run: string;
+  /** The canonical Command names routing had walked when the event was written. */
   readonly path: readonly string[];
   /** The identity of the plugin whose `log` it is, or `null`. */
   readonly plugin: string | null;
@@ -69,10 +73,15 @@ interface LogEvent {
  * @sealed
  */
 interface Log {
+  /** Logs a `trace` event with a message and optional fields. */
   trace(message: string, fields?: LogFields): void;
+  /** Logs a `debug` event with a message and optional fields. */
   debug(message: string, fields?: LogFields): void;
+  /** Logs an `info` event with a message and optional fields. */
   info(message: string, fields?: LogFields): void;
+  /** Logs a `warn` event with a message and optional fields. */
   warn(message: string, fields?: LogFields): void;
+  /** Logs an `error` event with a message and optional fields. */
   error(message: string, fields?: LogFields): void;
 }
 
@@ -84,10 +93,13 @@ interface Log {
  * @sealed
  */
 interface LogDestination {
+  /** The outermost run's environment variables. */
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The outermost run's `host.home`. */
   readonly home: string;
+  /** The outermost run's platform name. */
   readonly platform: string;
+  /** The outermost run's stderr stream, or `null` under an invocation by name. */
   readonly stderr: Writable | null;
 }
 

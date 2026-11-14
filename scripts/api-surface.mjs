@@ -105,16 +105,6 @@ export const surfacePackages = [
     },
     // `node` is the reference to Node's own typings, which a declaration that names a stream needs.
     modules: ['node', 'node:*', '@standard-schema/spec'],
-    // Comments and examples a later pass writes (ADR-0147); the last pass removes the list.
-    pendingDocumentation: [
-      'dist/output/',
-      'dist/style/',
-      'dist/failures/',
-      'dist/diagnostics/',
-      'dist/plugins/',
-      'dist/inspection/',
-      'dist/support/',
-    ],
   },
   {
     directory: 'packages/plugins',

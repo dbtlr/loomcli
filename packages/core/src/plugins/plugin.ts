@@ -117,7 +117,12 @@ const nodes = new WeakMap<object, BuiltPlugin>();
  * overrides for different keys, and `Middleware` and `load` accept a narrower plugin.
  */
 class PluginDeclaration<Options extends PluginOptions, Theme extends ThemeMapping> {
+  /** Phantom key: it carries the plugin's theme type and holds no runtime value. */
   declare readonly [pluginTheme]: Theme;
+  /**
+   * Phantom key: it carries the plugin's declared options in a read position and holds no runtime
+   * value.
+   */
   declare readonly [pluginOptions]: () => Options;
 
   constructor(node: BuiltPlugin) {
@@ -186,12 +191,22 @@ type Middleware<Contributor extends Plugin | ((...args: never[]) => Plugin)> = (
  * @sealed
  */
 interface SourceContext<Options extends PluginOptions = PluginOptions> {
+  /** The run's host. */
   readonly host: Host;
+  /**
+   * The values of the plugin's own options, resolved from argv, the environment, and their
+   * defaults.
+   */
   readonly options: PluginOptionValues<Options>;
+  /** The options core asks the source to fill, each a node inside `graph`. */
   readonly requests: readonly OptionNode[];
+  /** The graph `inspect()` returns for the run. */
   readonly graph: CommandGraph;
+  /** The channel a middleware receives, so a source warns as a middleware does. */
   readonly out: Out;
+  /** The contextual style an action receives, so a source escapes text as an action does. */
   readonly style: ContextualStyle;
+  /** How the run received its inputs. It reads `'name'` in a run `invoke()` started. */
   readonly invokedBy: 'argv' | 'name';
   /** Records a log event under the plugin's identity, as a middleware's `log` does. */
   readonly log: Log;
@@ -205,7 +220,11 @@ interface SourceContext<Options extends PluginOptions = PluginOptions> {
  * @public
  */
 interface SourceAnswer {
+  /** The value for the option, of the kind the option's type takes. */
   readonly value: string | boolean | number | readonly string[];
+  /**
+   * The one-line label core prints in a diagnostic about the value, such as where it was read from.
+   */
   readonly label: string;
   /**
    * The absolute path of the directory of the file the value came from. The option's validator
@@ -227,10 +246,11 @@ type SourceResolver<Contributor extends Plugin | ((...args: never[]) => Plugin)>
 /**
  * Everything a plugin declares. `plugin()` checks every rule the definition carries on its own, and
  * creating and installing the value runs none of its code: `onCommandAttach` runs at graph build,
- * `onGraphBuilt` runs once the graph is built and frozen, `onFailure` runs when `run()` renders a
- * failure, `onLog` runs when a run logs an event, `onEnvironment` prepares additions before input validation, the middleware runs inside an invocation, the configuration source runs in the
- * input-source stage when an unfilled option carries its binding, and a translator runs when a
- * foreign throw its key matches leaves the application's work.
+ * `onGraphBuilt` runs once the graph is built and frozen, `onFailure` runs when a run from `run()`
+ * or `invoke()` renders a failure, `onLog` runs when a run logs an event, `onEnvironment` prepares
+ * additions before input validation, the middleware runs inside an invocation, the configuration
+ * source runs in the input-source stage when an unfilled option carries its binding, and a
+ * translator runs when a foreign throw its key matches leaves the application's work.
  *
  * @public
  */
@@ -238,22 +258,53 @@ interface PluginDefinition<
   Options extends PluginOptions = PluginOptions,
   Theme extends ThemeMapping = ThemeMapping,
 > {
+  /**
+   * The theme the plugin contributes, which claims the theme slot. Only one installed plugin may
+   * claim it.
+   */
   theme?: Theme & ThemeConstraint<Theme>;
+  /** The global options the plugin contributes, keyed by declared name. */
   options?: Options;
+  /**
+   * The plugin's one middleware. `activate` says when it runs, always or when any listed own option
+   * is present, and `load` imports its module, which core calls only when the activation matched
+   * and the chain reaches it.
+   */
   middleware?: {
     activate: 'always' | readonly (keyof Options & string)[];
     load: () => Promise<{ default: Middleware<Plugin<Options>> }>;
   };
+  /**
+   * Called once per Command at graph build, in installation order, with the value the previous
+   * plugin returned.
+   */
   onCommandAttach?: CommandAttachHook;
+  /**
+   * Called once per graph build, after every `onCommandAttach` hook, with the frozen graph. It
+   * rejects the graph by throwing a `DeclarationError`.
+   */
   onGraphBuilt?: GraphBuiltHook;
+  /**
+   * Called when a run, from `run()` or `invoke()`, renders a failure after graph build, and returns
+   * hints to print under it.
+   */
   onFailure?: FailureHook;
+  /** Called with each event a run logs, to observe it. */
   onLog?: LogHook;
+  /** Called before input validation to add environment variables the environment lacks. */
   onEnvironment?: EnvironmentHook;
+  /** The extensions the plugin defines, which declarations carry values of. */
   extensions?: readonly AnyExtension[];
+  /** The views the plugin declares and the view overrides it makes. */
   views?: readonly ViewContribution[];
+  /** The translators that turn a foreign throw of the class each names into a failure. */
   translators?: readonly Translation[];
   /** The encoders a failed `run()` writes its failure through, one per media type. */
   failureEncoders?: readonly FailureEncoding[];
+  /**
+   * The plugin's configuration source. It fills the options that carry a value of `binding`, and
+   * `load` imports the module that answers for them.
+   */
   source?: {
     binding: AnyExtension & { readonly target: 'option' };
     load: () => Promise<{ default: SourceResolver<Plugin<Options>> }>;
@@ -273,11 +324,31 @@ interface PluginDefinition<
 /**
  * One plugin: an identity and the contributions it carries. Creating and installing the value runs
  * none of its code: `onCommandAttach` and `onGraphBuilt` run at graph build, `onFailure` runs when
- * `run()` renders a failure, `onLog` runs when a run logs an event, `onEnvironment` prepares additions before input validation, and the middleware runs inside an invocation, so an installed plugin
- * an invocation never reaches costs that invocation its hooks alone. The definition is read once,
+ * a run from `run()` or `invoke()` renders a failure, `onLog` runs when a run logs an event,
+ * `onEnvironment` prepares additions before input validation, and the middleware runs inside an
+ * invocation, so an installed plugin an invocation never reaches costs that invocation its hooks
+ * alone. The definition is read once,
  * after the identity, and every rule that one definition carries on its own throws here, before
  * the value exists.
  *
+ * @example
+ * ```ts
+ * import { plugin } from '@loomcli/core';
+ * import type { Plugin, PluginOptions } from '@loomcli/core';
+ *
+ * const options = {
+ *   timing: { description: 'Print how long the run took.', type: 'boolean' },
+ * } satisfies PluginOptions;
+ *
+ * export function timing(): Plugin<typeof options> {
+ *   return plugin('@acme/timing', {
+ *     middleware: { activate: ['timing'], load: () => import('./middleware.js') },
+ *     options,
+ *   });
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/plugin-contract.md
  * @public
  */
 function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMapping = {}>(

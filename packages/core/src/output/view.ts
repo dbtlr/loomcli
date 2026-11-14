@@ -24,6 +24,7 @@ declare const viewOverride: unique symbol;
  * @sealed
  */
 interface DeclaredViewBrand {
+  /** The phantom brand that tells a declared view from a bare view; no value is stored. */
   readonly [declaredView]: true;
 }
 
@@ -37,7 +38,9 @@ interface DeclaredViewBrand {
  * @sealed
  */
 interface DeclaredView<Data> extends View<Data>, DeclaredViewBrand {
+  /** The name a diagnostic calls this view by. */
   readonly identity: string;
+  /** The phantom witness that makes `Data` invariant; no value is stored. */
   readonly [invariant]: (data: Data) => Data;
 }
 
@@ -49,7 +52,9 @@ interface DeclaredView<Data> extends View<Data>, DeclaredViewBrand {
  * @sealed
  */
 interface DeclaredRowView<Row> extends RowView<Row>, DeclaredViewBrand {
+  /** The name a diagnostic calls this view by. */
   readonly identity: string;
+  /** The phantom witness that makes `Row` invariant; no value is stored. */
   readonly [invariant]: (row: Row) => Row;
 }
 
@@ -85,9 +90,13 @@ type FailureClass<Failure extends LoomError> = abstract new (...args: never[]) =
  * @sealed
  */
 interface FailureViewContext extends ViewContext {
+  /** The Application's name. */
   readonly application: string;
+  /** The canonical names routing walked, `[]` before routing. */
   readonly path: readonly string[];
+  /** The hints the installed plugins' `onFailure` hooks returned, `[]` when none contributed. */
   readonly hints: readonly string[];
+  /** `'name'` for a run `invoke()` started, where no command line exists, and `'argv'` otherwise. */
   readonly invokedBy: 'argv' | 'name';
   /** The view the result would render through when the run failed, or `undefined` for none. */
   readonly view: string | undefined;
@@ -102,6 +111,7 @@ interface FailureViewContext extends ViewContext {
  * @public
  */
 interface FailureView<Failure extends LoomError> {
+  /** Turns the failure into the marked text core writes on stderr. */
   render: (failure: Readonly<Failure>, context: FailureViewContext) => string;
   /** A failure view has one shape, as a view does. */
   row?: undefined;
@@ -189,10 +199,25 @@ class RowViewDeclaration<Row> implements DeclaredRowView<Row> {
  * view. The media type is read once, so a later write to the definition changes nothing the
  * declaration holds.
  *
+ * @example
+ * ```ts
+ * import { view } from '@loomcli/core';
+ *
+ * export const banner = view<string>('@acme/tool/banner', {
+ *   render: (title, { style }) => `${style.bold(title)}\n`,
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/views.md
  * @public
  */
 function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
-/** @public */
+/**
+ * One declared row view, declared from a definition whose `row` is a function, which renders a
+ * sequence one row at a time.
+ *
+ * @public
+ */
 function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>;
 function view(identity: string, definition: View<never> | RowView<never>): AnyDeclaredView {
   const { mediaType } = definition;
@@ -222,6 +247,7 @@ const overrides = new WeakMap<object, OverrideRecord>();
 
 /** The runtime value `override()` returns. Its pair lives in the registry above. */
 class OverrideDeclaration {
+  /** The phantom brand that marks an override; its pair lives in a registry, not on the value. */
   declare readonly [viewOverride]: true;
 
   constructor(record: OverrideRecord) {
@@ -275,6 +301,16 @@ type ReplacementView<Key> = [Key] extends [DeclaredView<infer Data>]
  * carry a different type parameter per element. One signature serves every key, so a mismatch
  * names the replacement's type against the one the key expects.
  *
+ * @example
+ * ```ts
+ * import { Application, lanes, override } from '@loomcli/core';
+ *
+ * const app = new Application('plain', {
+ *   views: [override(lanes.info, { render: (message) => `info: ${message}` })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/views.md
  * @public
  */
 function override<Key extends AnyOverrideKey>(

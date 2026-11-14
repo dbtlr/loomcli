@@ -38,24 +38,31 @@ import type { BuiltPlugin } from './plugin.js';
  * @sealed
  */
 interface FailureHookContext {
+  /** The Application's name. */
   readonly application: string;
+  /** The route of the Command the run reached, which is empty for the root. */
   readonly path: readonly string[];
+  /** How the run received its inputs: as argv tokens, or by an `invoke()` by name. */
   readonly invokedBy: InvokedBy;
   /** The view the result would render through when the run failed, as the failure view reads it. */
   readonly view: string | undefined;
   /** The media type that view declares. */
   readonly mediaType: string | undefined;
+  /** The contextual style for stderr, which a hook escapes operator-typed text with. */
   readonly style: ContextualStyle;
+  /** Records a log event under the identity of the plugin whose hook is running. */
   readonly log: Log;
+  /** The frozen graph `inspect()` returns for the run, built on the first read. */
   readonly graph: CommandGraph;
+  /** The node at `path` inside `graph`, built on the first read. */
   readonly command: CommandNode;
 }
 
 /**
  * A plugin's `onFailure` hook: a synchronous function that returns one hint, a list of hints, or
- * nothing for a failure `run()` renders after graph build. It receives the failure typed read-only,
- * as a failure view does. Core does not freeze the failure, and it reads the exit code before any
- * hook runs, so a working hook cannot change the code.
+ * nothing for a failure a run from `run()` or `invoke()` renders after graph build. It receives the
+ * failure typed read-only, as a failure view does. Core does not freeze the failure, and it reads
+ * the exit code before any hook runs, so a working hook cannot change the code.
  *
  * @public
  */

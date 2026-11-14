@@ -27,7 +27,9 @@ export interface ViewContext {
   readonly expandTabs: (text: string) => string;
   /** Resolves marked text without styles or controls, keeping this destination's glyph forms. */
   readonly plain: (text: string) => string;
+  /** The style chain a view applies to its text, carrying core's tokens and the installed theme's. */
   readonly style: ContextualStyle;
+  /** Measures marked text in terminal columns, as this destination resolves it. */
   readonly width: (text: string) => number;
   /**
    * Breaks marked text at spaces so each line fits `columns`, measured as `width` measures. A word
@@ -42,6 +44,7 @@ export interface ViewContext {
  * @public
  */
 export interface View<Data> {
+  /** Turns the data into the marked text core resolves for the destination. */
   render: (data: Readonly<Data>, context: ViewContext) => string;
   /** The media type of the text the view writes, such as `application/json`; omitted for none. */
   mediaType?: string;
@@ -57,8 +60,11 @@ export interface View<Data> {
  * @public
  */
 export interface RowView<Row> {
+  /** Renders one row; `index` counts the sequence's rows from zero. */
   row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
+  /** Opens the sequence; it defaults to the empty string. */
   head?: (context: ViewContext) => string;
+  /** Closes the sequence with the number of rows rendered; it defaults to the empty string. */
   tail?: (count: number, context: ViewContext) => string;
   /** The media type of the text the rows write together, such as `application/jsonl`. */
   mediaType?: string;
@@ -151,7 +157,14 @@ export type RowViewOver<Data> = [Data] extends [Iterable<infer Row> | AsyncItera
   ? RowView<Row>
   : never;
 
-/** @public @sealed */
+/**
+ * The output channel an action or a middleware receives: the semantic methods, the neutral render
+ * call, live regions, and the fatal path.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/output.md
+ * @public
+ * @sealed
+ */
 export interface Out<Result = unknown> {
   /**
    * A message on stdout at every verbosity, or on stderr from the action of a Command that declares
@@ -202,6 +215,7 @@ export interface Out<Result = unknown> {
    * a neutral `Out` never stands in for one that carries a declaration.
    */
   results: (value: ResultInput<Result>) => Promise<void>;
+  /** Ends the action with a message by throwing `FatalError` at once, writing nothing itself. */
   fatal(message: string): never;
 }
 
@@ -229,8 +243,11 @@ export type RegionCloser = 'end' | 'completion' | 'failure' | 'cancellation';
  * @public
  */
 export interface ProgressReport {
+  /** How much of the work is done, in whatever unit `total` counts. */
   readonly completed?: number;
+  /** How much work there is in all. */
   readonly total?: number;
+  /** What the region is doing; the event carries its plain text. */
   readonly label?: string;
 }
 
@@ -265,10 +282,15 @@ export interface Region {
  * @sealed
  */
 export interface ProgressEvent {
+  /** Numbers the reporting regions from 1, in the order each first reports. */
   readonly id: number;
+  /** The plain text of the region's last reported label, or of the label `end()` passed. */
   readonly label: string;
+  /** Where the region is: its first report is `started`, and its close builds the end state. */
   readonly state: 'started' | 'updated' | 'ended' | 'failed' | 'cancelled';
+  /** The last reported `completed`, when the region reported one. */
   readonly completed?: number;
+  /** The last reported `total`, when the region reported one. */
   readonly total?: number;
 }
 

@@ -101,9 +101,9 @@ The [changelog guide](../../.changes/README.md#explain-a-breaking-change) holds 
 - a type a public signature uses that the entry point does not export, unless the check lists it with its reason;
 - a declaration that imports a module outside its package's list, such as a library the package uses only in its implementation;
 - an entry in the check's lists that the surface no longer needs, lists for an entry the check does not run, or a covered entry that the package's exports map does not name;
-- an export, a member, or a listed declaration's member without a doc comment, or a function, class, constant, enum, or namespace without an `@example` that holds a fenced `ts` block, outside the declaration paths its package's `pendingDocumentation` names;
+- an export, a member, or a listed declaration's member without a doc comment, or a function, class, constant, enum, or namespace without an `@example` that holds a fenced `ts` block;
 - any other API Extractor message, except a dependency's typings importing a source file, which Loom cannot change.
 
-The check reads examples and does not compile them, and review judges what a comment says. `pendingDocumentation` in `scripts/api-surface.mjs` names the emitted declaration paths under a package's `dist`, such as `dist/application/`, whose comments a later pass writes; a path with nothing left to write fails as an unneeded entry.
+The check reads examples and does not compile them, and review judges what a comment says.
 
 After a surface change, `pnpm check:api --update` rewrites the reports and their companion files, and the pull request carries their diff.

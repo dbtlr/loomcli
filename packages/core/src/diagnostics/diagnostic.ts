@@ -14,6 +14,18 @@ function callFinding(identity: unknown, definition: unknown) {
  * explanation that says why the rule exists, and an optional docs link. It returns a frozen
  * descriptor that every site raising the rule shares, as `extension()` and `issueCode()` do.
  *
+ * @example
+ * ```ts
+ * import { diagnosticRule } from '@loomcli/core';
+ *
+ * export const retryLimit = diagnosticRule('@acme/retry/retry-limit', {
+ *   headline: 'Retry limit out of range',
+ *   explanation: 'The plugin accepts from 0 through 10 retries.',
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/declaration-faults.md
+ *
  * @public
  */
 export function diagnosticRule(

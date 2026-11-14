@@ -10,15 +10,28 @@ import type { BuiltPlugin } from './plugin.js';
  * @sealed
  */
 interface EnvironmentContext {
+  /**
+   * The host's working directory and a read-only snapshot of its environment, including the
+   * additions earlier hooks made.
+   */
   readonly host: {
     readonly cwd: Host['cwd'];
     readonly env: Readonly<Host['env']>;
   };
+  /** The output channel, which a hook uses to warn the operator. */
   readonly out: Pick<Out, 'warn'>;
+  /** Records a log event under the identity of the plugin whose hook is running. */
   readonly log: Log;
 }
 
-/** @public */
+/**
+ * A plugin's `onEnvironment` hook: it returns the environment variables to add before any input is
+ * validated, or nothing. A variable the environment already defines, an empty one included, keeps
+ * its value.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/plugin-contract.md#environment-preparation
+ * @public
+ */
 type EnvironmentHook = (
   context: EnvironmentContext,
 ) => Readonly<Record<string, string>> | void | Promise<Readonly<Record<string, string>> | void>;

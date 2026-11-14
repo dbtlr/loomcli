@@ -8,16 +8,25 @@ import type { FailureExitCode } from './exit-codes.js';
  * caller's handler, and a failure encoder under `run()`. `code` is the class's failure code, or
  * `internal` for a defect or a declaration fault. `exitCode` is the failure's declared exit code,
  * which the code a run resolves can differ from. `message` is the sentence as plain text, without
- * the application-name prefix, and `hints` are the `onFailure` lines as plain text, in the order
+ * the application-name prefix (for a defect or a declaration fault, the generic message in a
+ * distributed build), and `hints` are the `onFailure` lines as plain text, in the order
  * the failure view receives them.
  *
  * @public
  * @sealed
  */
 interface FailureForm {
+  /** The failure code of the failure's class, or `internal` for a defect or a declaration fault. */
   readonly code: string;
+  /** The exit code the failure's class declares, which the code a run resolves can differ from. */
   readonly exitCode: FailureExitCode;
+  /**
+   * The failure's sentence as plain text, without the application-name prefix. For a defect or a
+   * declaration fault it is the sentence in a development build and `Something went wrong.` in a
+   * distributed one.
+   */
   readonly message: string;
+  /** The `onFailure` hints as plain text, in the order the failure view receives them. */
   readonly hints: readonly string[];
 }
 

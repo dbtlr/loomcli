@@ -14,7 +14,13 @@ import {
 } from './style.js';
 import type { Color, Operation } from './style.js';
 
-/** @public */
+/**
+ * Where `pad` places text within its width: `'left'` puts the padding after the text, `'right'`
+ * before it, and `'center'` splits it, the smaller half first.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
 type Alignment = 'left' | 'right' | 'center';
 interface Padding {
   width: number;

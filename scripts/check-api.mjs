@@ -129,7 +129,6 @@ function entryConfigs(root, policy) {
         entry,
         listedFile: join(directory, 'api', reportFileName.replace(/\.api\.md$/u, '.listed.md')),
         packageName: manifest.name,
-        packagePolicy: policy,
         policy: policy.entries[entry] ?? {},
       };
     }),
@@ -434,18 +433,6 @@ function listedText(packageName, entry, found) {
   ].join('\n');
 }
 
-/**
- * The `pendingDocumentation` paths that cover a declaration file, none when no path does. A path,
- * relative to the package directory, covers the file it names and every file under it.
- */
-function pendingPaths(policy, directory, file) {
-  const path = relative(directory, file).replaceAll('\\', '/');
-  return (policy.pendingDocumentation ?? []).filter(
-    (pending) =>
-      path === pending || path.startsWith(pending.endsWith('/') ? pending : `${pending}/`),
-  );
-}
-
 /** Checks emitted API surfaces; update writes reports but never suppresses declaration failures. */
 function checkApi(root, packages, { update = false } = {}) {
   const failures = [];
@@ -491,19 +478,7 @@ function checkApi(root, packages, { update = false } = {}) {
     additionalEntryPoints: entries.map(({ config }) => config.mainEntryPointFilePath),
   });
   const parser = docParser();
-  // The pendingDocumentation paths that still cover a missing comment or example, per package.
-  const pendingUsed = new Map(packages.map((policy) => [policy, new Set()]));
-  for (const { config, entry, listedFile, packageName, packagePolicy, policy } of entries) {
-    // A missing comment or example under a pendingDocumentation path waits for its pass.
-    const failDocumentation = (file, line, id, name, text) => {
-      const pending = pendingPaths(packagePolicy, config.projectFolder, file);
-      if (pending.length === 0) {
-        fail(file, line, id, name, text);
-      }
-      for (const path of pending) {
-        pendingUsed.get(packagePolicy).add(path);
-      }
-    };
+  for (const { config, entry, listedFile, packageName, policy } of entries) {
     const seenForgotten = new Set();
     const seenExternal = new Set();
     // Extractor silently preserves external re-exports, so inspect its resolved export symbols.
@@ -519,7 +494,7 @@ function checkApi(root, packages, { update = false } = {}) {
       }),
     );
     for (const { file, line, name } of missingExamples(exported, config.projectFolder, parser)) {
-      failDocumentation(
+      fail(
         file,
         line,
         'api-missing-example',
@@ -569,7 +544,7 @@ function checkApi(root, packages, { update = false } = {}) {
           return;
         }
         if (messageId === 'ae-undocumented') {
-          failDocumentation(
+          fail(
             message.sourceFilePath ?? config.mainEntryPointFilePath,
             message.sourceFileLine ?? 1,
             messageId,
@@ -630,7 +605,7 @@ function checkApi(root, packages, { update = false } = {}) {
       );
     }
     for (const { file, line, name } of undocumentedListedMembers(found, parser)) {
-      failDocumentation(
+      fail(
         file,
         line,
         'api-undocumented',
@@ -682,17 +657,6 @@ function checkApi(root, packages, { update = false } = {}) {
     }
   }
   for (const policy of packages) {
-    for (const path of policy.pendingDocumentation ?? []) {
-      if (!pendingUsed.get(policy).has(path)) {
-        fail(
-          resolve(root, policy.directory, 'package.json'),
-          1,
-          'stale-pending-documentation',
-          path,
-          'Nothing under this path lacks a comment or an example; remove the entry.',
-        );
-      }
-    }
     for (const file of declarations(resolve(root, policy.directory, 'dist'))) {
       const source = ts.createSourceFile(
         file,
