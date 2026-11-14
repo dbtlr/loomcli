@@ -42,7 +42,7 @@ Choose a short release description from the actual changes. Add an optional narr
 
 The release guard fails a cut whose authoring skill, `packages/loom/skills/loom/SKILL.md`, names a `metadata.version` other than the release version, and it rejects any change to the skill in the cut itself. Review the skill before the cut, in an ordinary PR:
 
-1. Learn the target version. Run `pnpm loom release cut --dry-run --date YYYY-MM-DD` at the cut base, with the same `--target VERSION` when one is specified, and read the version it prints.
+1. Learn the target version. In a checkout of the cut base, install with the frozen lockfile and run `pnpm run build`, because `pnpm loom` runs the built `dist`. Then run `pnpm loom release cut --dry-run --date YYYY-MM-DD`, with the same `--target VERSION` when one is specified, and read the version it prints.
 2. Read every pending feature and breaking fragment, and the cycle diff where a fragment is unclear, against what `SKILL.md` and each file in `references/` teach. Update each passage a change makes wrong or incomplete.
 3. Set `metadata.version` in `SKILL.md` to the target version, even when nothing else changes.
 4. Open the preparatory PR. A version-only change takes the `skip-changelog` label, with the reason that it records the skill's release review. A change to what the skill teaches takes a fragment for `@loomcli/loom`.

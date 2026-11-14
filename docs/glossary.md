@@ -1017,7 +1017,7 @@ A file or `package.json` key `loom init` writes once, when it is missing, and ne
 _Avoid_: Template, generated file, boilerplate
 
 **Managed file**:
-A file `loom init` keeps current, such as the fragment guide, marked by a header that holds a checksum of its content. Init re-renders it while the checksum matches, removes an unedited one the running version no longer renders, and warns once it drifts; deleting the header makes it the author's file.
+A file `loom init` keeps current, such as the fragment guide, marked by a header that holds a checksum of its content. Init re-renders it while the checksum matches, removes an unedited one in the authoring skill's folder that the running version no longer renders, and warns once it drifts; deleting the header makes it the author's file.
 _Avoid_: Generated file, owned file, vendored file
 
 **Authoring skill**:
