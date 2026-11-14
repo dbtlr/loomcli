@@ -34,7 +34,7 @@ Whether an unknown key ever fails a run, in a strict mode, is LM-509's question.
 
 ## Considered options
 
-- **Comparing the file's keys with the validated output's keys.** Rejected. The output is the library's value after its transforms: a transform that renames a key makes the file's key read as unknown, and a default adds keys the file never held. The JSON Schema describes the input the operator writes.
+- **Comparing the file's keys with the validated output's keys.** Rejected. The output is the library's value after its transforms: a transform that renames a key makes the file's key read as unknown, and a default adds keys the file never held. The JSON Schema describes the input the operator writes, as the library publishes it: input-side rewriting the published schema does not show, such as a `z.preprocess` that reads a legacy key, can leave a key the application read named as unknown.
 - **Reading the schema library's own shape, such as zod's `shape`.** Rejected. It works for one library alone, and Standard Schema exposes no shape.
 - **Walking the file after the drop rule has passed it.** Rejected. An item removed before another moves that item's index, so the line would name an item the operator did not write there.
 - **Walking into dropped values.** Rejected. A table the schema rejected as the wrong type would be judged against a shape that describes no object, and every key in it would print beside the dropped-value line that already names the table.
