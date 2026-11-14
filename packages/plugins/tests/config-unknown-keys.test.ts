@@ -278,3 +278,14 @@ test('a value dropped at an empty top-level key names that key and never every k
 test('a tab inside a key stays escaped by the line and does not quote the key', async () => {
   await expect(stderrOf(closed, { 'a\tb': 1 })).resolves.toBe(unknownLine(String.raw`a\u0009b`));
 });
+
+test('an escape character or a bidirectional control at an edge stays escaped and does not quote the key', async () => {
+  const escapeCharacter = String.fromCodePoint(0x1b);
+  const rightToLeftOverride = String.fromCodePoint(0x20_2e);
+  await expect(stderrOf(closed, { [`stateDir${escapeCharacter}`]: 1 })).resolves.toBe(
+    unknownLine(String.raw`stateDir\u001b`),
+  );
+  await expect(stderrOf(closed, { [`stateDir${rightToLeftOverride}`]: 1 })).resolves.toBe(
+    unknownLine(String.raw`stateDir\u202e`),
+  );
+});
