@@ -86,6 +86,30 @@ function decodedLine(bytes: Uint8Array) {
   }
 }
 
+// Refuses one line whose bytes are not UTF-8 or hold a character `unsafeCharacter` refuses.
+function requireSafeLine(path: string, line: number, bytes: Buffer, source: ProseSource) {
+  const text = decodedLine(bytes);
+  if (text === undefined) {
+    throw new Error(
+      `${path}: line ${String(line)} is not valid UTF-8. Save the ${source} as UTF-8.`,
+    );
+  }
+  for (const character of text) {
+    const sentence = unsafeCharacter(character, source);
+    if (sentence !== undefined) {
+      throw new Error(`${path}: line ${String(line)} ${sentence}`);
+    }
+  }
+}
+
+/** The one-based lines of a file that a character scan covers, both ends included. */
+interface ScannedLines {
+  readonly first: number;
+  readonly last: number;
+}
+
+const everyLine: ScannedLines = { first: 1, last: Number.POSITIVE_INFINITY };
+
 function validateBody(path: string, kind: FragmentKind, body: string) {
   requireClosedBlocks(body, path);
   const nodes = fromMarkdown(body).children;
@@ -203,24 +227,21 @@ export async function readFragments(
 /**
  * Refuses a fragment or a narrative whose bytes are not UTF-8 or hold a character
  * `unsafeCharacter` refuses, naming the path and the line of the first one. A line feed byte never
- * occurs inside a UTF-8 sequence, so each line decodes alone.
+ * occurs inside a UTF-8 sequence, so each line decodes alone. The scan covers every line, or only
+ * the given lines of a file that holds a narrative among other text, numbered within the file.
  */
-export function requireSafeCharacters(path: string, bytes: Buffer, source: ProseSource) {
+export function requireSafeCharacters(
+  path: string,
+  bytes: Buffer,
+  source: ProseSource,
+  lines = everyLine,
+) {
   let start = 0;
-  for (let line = 1; start <= bytes.length; line += 1) {
+  for (let line = 1; start <= bytes.length && line <= lines.last; line += 1) {
     const found = bytes.indexOf(lineFeed, start);
     const end = found === -1 ? bytes.length : found;
-    const text = decodedLine(bytes.subarray(start, end));
-    if (text === undefined) {
-      throw new Error(
-        `${path}: line ${String(line)} is not valid UTF-8. Save the ${source} as UTF-8.`,
-      );
-    }
-    for (const character of text) {
-      const sentence = unsafeCharacter(character, source);
-      if (sentence !== undefined) {
-        throw new Error(`${path}: line ${String(line)} ${sentence}`);
-      }
+    if (line >= lines.first) {
+      requireSafeLine(path, line, bytes.subarray(start, end), source);
     }
     start = end + 1;
   }

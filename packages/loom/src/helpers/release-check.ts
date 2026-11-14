@@ -4,11 +4,19 @@ import { parse } from 'yaml';
 
 import { authoringSkillSource } from '../content/authoring-skill.js';
 import { placedSection, releaseDate, releaseInsertion } from './changelog.js';
+import { requireSafeCharacters } from './fragments.js';
 import { frontmatter } from './managed.js';
 import { checkDecisions } from './release-decisions.js';
 import { prepareLockfile } from './release-files.js';
 import { prepareRelease, requireReleaseNotes } from './release.js';
-import { currentVersion, git, gitLine, readLibraries, readRegularFile } from './repository.js';
+import {
+  currentVersion,
+  git,
+  gitLine,
+  readLibraries,
+  readRegularFile,
+  readRegularFileBytes,
+} from './repository.js';
 import type { Checkout } from './repository.js';
 
 /** The authoring skill `loom init` ships, whose version a release carries. */
@@ -68,6 +76,26 @@ async function checkSkillVersion(checkout: Checkout, head: string, version: stri
   }
 }
 
+// How many line feeds the text holds.
+function lineFeeds(text: string) {
+  return text.split('\n').length - 1;
+}
+
+/**
+ * Refuses a release PR's narrative, which starts at the offset in the changelog's text, when it
+ * holds a byte or character a `--narrative` file refuses, naming its line in CHANGELOG.md. The scan
+ * reads the file's bytes, because decoding has already replaced the bytes that are not UTF-8. A
+ * line feed byte decodes alone, so the text and the bytes break into the same lines.
+ */
+function requireSafeNarrative(bytes: Buffer, text: string, offset: number, narrative: string) {
+  if (narrative === '') {
+    return;
+  }
+  const first = lineFeeds(text.slice(0, offset)) + 1;
+  const last = first + lineFeeds(narrative.slice(0, -1));
+  requireSafeCharacters('CHANGELOG.md', bytes, 'narrative', { first, last });
+}
+
 export async function checkRelease(
   checkout: Checkout,
   base: string,
@@ -77,7 +105,8 @@ export async function checkRelease(
 ) {
   const previous = await readLibraries(checkout, base);
   const libraries = await readLibraries(checkout, head);
-  const changelog = await readRegularFile(checkout, 'CHANGELOG.md', head);
+  const changelogBytes = await readRegularFileBytes(checkout, 'CHANGELOG.md', head);
+  const changelog = changelogBytes.toString('utf8');
   const { after, before } = releaseInsertion(
     await readRegularFile(checkout, 'CHANGELOG.md', base),
     version,
@@ -166,6 +195,7 @@ export async function checkRelease(
     throw new Error('CHANGELOG.md must contain the compiler output for the consumed fragments.');
   }
   const narrative = section.slice(heading.length, section.length - entries.length);
+  requireSafeNarrative(changelogBytes, changelog, before.length + heading.length, narrative);
   const compiled = await prepareRelease(
     checkout,
     { ...options, narrative: narrative || undefined },
