@@ -28,9 +28,10 @@ export interface FormatSettings {
 }
 
 /**
- * A plugin that puts `--format` on every Command that declares a result, copies a supplied name
- * into `view`, and writes a failed run's form as one JSON line when the run selected a `json()` or
- * `jsonl()` view. It reads the settings once, at the call. The annotated return type is the
+ * A plugin that puts `--format` on every Command that declares a result and a hidden `--format` on
+ * every group, copies a supplied name into `view`, or at a group the media type that name's view
+ * declares into `mediaType`, and writes a failed run's form as one JSON line when the run's media
+ * type is `application/json` or `application/jsonl`. It reads the settings once, at the call. The annotated return type is the
  * boundary that breaks the cycle between this module and the middleware module `load` names.
  *
  * @example

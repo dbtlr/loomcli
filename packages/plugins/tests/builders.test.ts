@@ -39,10 +39,11 @@ describe('the format middleware through middlewareContext', () => {
     expect(context.view).toBe('plain');
   });
 
-  it('leaves a null view alone, as a Command with no result has none', async () => {
+  it('leaves a null view alone and states the media type, as at a group, which has no result', async () => {
     const context = formatContext('json', null);
     await middleware(context);
     expect(context.view).toBeNull();
+    expect(context.mediaType).toBe('application/json');
   });
 });
 

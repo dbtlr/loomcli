@@ -31,8 +31,9 @@ type MiddlewareValues<Options extends PluginOptions> = Pick<
 
 /**
  * Builds the context a middleware takes from the values the test states. The context keeps the
- * last view the middleware assigns, so a test reads `context.view` after the call; no check runs on
- * it, because no dispatch boundary follows.
+ * last view and the last media type the middleware assigns, so a test reads `context.view` and
+ * `context.mediaType` after the call; no check runs on either, because no dispatch boundary
+ * follows. An unstated `mediaType` reads `undefined`, and nothing derives it from `view`.
  *
  * @example
  * ```ts
@@ -60,7 +61,7 @@ function middlewareContext<Options extends PluginOptions>(
   middleware: (context: MiddlewareContext<Options>) => Promise<void> | void,
   values: MiddlewareValues<Options>,
 ): MiddlewareContext<Options> {
-  let { view } = values;
+  let { mediaType, view } = values;
   return {
     ...values,
     get command() {
@@ -73,6 +74,12 @@ function middlewareContext<Options extends PluginOptions>(
       return values.host ?? unstated('middlewareContext', 'host');
     },
     log: logWith(values.log),
+    get mediaType(): string | undefined {
+      return mediaType;
+    },
+    set mediaType(type: string) {
+      mediaType = type;
+    },
     next: values.next ?? unstatedNext,
     onResume: values.onResume ?? registersNothing,
     onShutdown: values.onShutdown ?? registersNothing,

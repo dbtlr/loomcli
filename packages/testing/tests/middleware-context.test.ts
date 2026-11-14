@@ -16,6 +16,12 @@ const middleware: Middleware<typeof dryRun> = async (context) => {
   await context.next();
 };
 
+/** States the run's media type, as the formatter does at a group, and continues the chain. */
+const stating: Middleware<typeof dryRun> = async (context) => {
+  context.mediaType = 'application/json';
+  await context.next();
+};
+
 /** The inputs a middleware reads on a Command whose invocation parsed cleanly. */
 const inputs = {
   options: { dryRun: false },
@@ -48,6 +54,17 @@ describe('middlewareContext', () => {
     await middleware(context);
     expect(context.view).toBe('json');
     expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('mediaType reads undefined unstated, the stated value, and the last one the middleware assigns', async () => {
+    const next = vi.fn(async (): Promise<ChainOutcome> => 'dispatched');
+    expect(middlewareContext(stating, inputs).mediaType).toBeUndefined();
+    expect(
+      middlewareContext(stating, { ...inputs, mediaType: 'application/jsonl' }).mediaType,
+    ).toBe('application/jsonl');
+    const context = middlewareContext(stating, { ...inputs, next });
+    await stating(context);
+    expect(context.mediaType).toBe('application/json');
   });
 
   it('an unstated next rejects with a sentence that shows a stated one', async () => {

@@ -1,11 +1,12 @@
 import { stripVTControlCharacters } from 'node:util';
 
-import { Application, Command, override } from '@loomcli/core';
+import { Application, Command, override, style } from '@loomcli/core';
 import type { ReleaseFacts } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { prose } from '@loomcli/plugins/prose';
+import { theme } from '@loomcli/plugins/theme';
 import { version } from '@loomcli/plugins/version';
-import { versionFacts } from '@loomcli/plugins/version/views';
+import { versionFacts, versionLine } from '@loomcli/plugins/version/views';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
@@ -232,12 +233,162 @@ test('the formatter has to be installed ahead of the version plugin to be read',
   expect(stdout.startsWith('notes v1.1.0-next.3\nchannel')).toBe(true);
 });
 
-test('a Command that declares no result prints the block under --format json', async () => {
-  const { stdout } = await printed(application(), {
-    argv: ['--format', 'json', '--version'],
+test('a Command with an action that declares no result prints the block under --format json', async () => {
+  await expect(
+    printed(application(), {
+      argv: ['--format', 'json', '--version'],
+      release: distributed,
+      runtime: bun,
+    }),
+  ).resolves.toEqual({ code: 0, stderr: '', stdout: distributedBlock });
+});
+
+/** A group application: the root registers no action, `list` declares a result, `cache` is a group. */
+function group(plugins: Parameters<typeof version>[0] | 'without-format' = { extended: true }) {
+  const installed =
+    plugins === 'without-format' ? [version({ extended: true })] : [format(), version(plugins)];
+  return new Application('notes', { plugins: installed, version: '1.1.0-next.3' })
+    .command(new Command('list').result<string>({ views: { text: prose() } }).action(() => 'a'))
+    .command(new Command('cache').command(new Command('clear').action(() => {})));
+}
+
+const distributedDocument = [
+  '{',
+  '  "name": "notes",',
+  '  "version": "1.1.0-next.3",',
+  '  "channel": "next",',
+  '  "build": "distributed",',
+  '  "asset": "notes-linux-x64",',
+  '  "installationMethod": "script",',
+  '  "runtime": "bun 1.3.2",',
+  '  "platform": "linux-x64"',
+  '}',
+  '',
+].join('\n');
+
+const distributedLine =
+  '{"name":"notes","version":"1.1.0-next.3","channel":"next","build":"distributed","asset":"notes-linux-x64","installationMethod":"script","runtime":"bun 1.3.2","platform":"linux-x64"}\n';
+
+test('--version --format json and jsonl at the root of a group application print the object', async () => {
+  const facts = { release: distributed, runtime: bun };
+  for (const argv of [
+    ['--version', '--format', 'json'],
+    ['--format', 'json', '--version'],
+  ]) {
+    await expect(printed(group(), { argv, ...facts })).resolves.toEqual({
+      code: 0,
+      stderr: '',
+      stdout: distributedDocument,
+    });
+  }
+  for (const argv of [
+    ['--format', 'jsonl', '-V'],
+    ['--format', 'ndjson', '--version'],
+  ]) {
+    await expect(printed(group(), { argv, ...facts })).resolves.toEqual({
+      code: 0,
+      stderr: '',
+      stdout: distributedLine,
+    });
+  }
+});
+
+test('a nested group prints the object as the root does', async () => {
+  await expect(
+    printed(group(), {
+      argv: ['cache', '--version', '--format', 'jsonl'],
+      release: distributed,
+      runtime: bun,
+    }),
+  ).resolves.toEqual({ code: 0, stderr: '', stdout: distributedLine });
+});
+
+test('under a Command with a result, the JSON form is the same bytes in a group application', async () => {
+  const facts = { release: distributed, runtime: bun };
+  await expect(
+    printed(group(), { argv: ['list', '--format', 'json', '--version'], ...facts }),
+  ).resolves.toEqual({ code: 0, stderr: '', stdout: distributedDocument });
+  await expect(
+    printed(group(), { argv: ['list', '--format', 'jsonl', '-V'], ...facts }),
+  ).resolves.toEqual({ code: 0, stderr: '', stdout: distributedLine });
+  await expect(
+    printed(group(), { argv: ['--format', 'json', 'list', '--version'], ...facts }),
+  ).resolves.toEqual({ code: 0, stderr: '', stdout: distributedDocument });
+});
+
+test('a format the formatter does not know prints the line and the block under --version, and fails without it', async () => {
+  const facts = { release: distributed, runtime: bun };
+  await expect(
+    printed(group(), { argv: ['--version', '--format', 'yaml'], ...facts }),
+  ).resolves.toEqual({ code: 0, stderr: '', stdout: distributedBlock });
+  await expect(printed(group(), { argv: ['--format', 'yaml'], ...facts })).resolves.toEqual({
+    code: 2,
+    stderr: 'notes: A command is required. Use one of: list, cache.\n',
+    stdout: '',
+  });
+});
+
+test('without the formatter, --format at a group root is an unknown option the takeover leaves held', async () => {
+  const facts = { release: distributed, runtime: bun };
+  await expect(
+    printed(group('without-format'), { argv: ['--version', '--format', 'json'], ...facts }),
+  ).resolves.toEqual({ code: 0, stderr: '', stdout: distributedBlock });
+  const failed = await printed(group('without-format'), { argv: ['--format', 'json'], ...facts });
+  expect(failed.code).toBe(2);
+  expect(failed.stderr).toContain('Unknown option "--format".');
+});
+
+test("without the formatter, an author's own JSON view under a Command with a result selects the object", async () => {
+  const app = new Application('notes', {
+    plugins: [version({ extended: true })],
+    version: '1.1.0-next.3',
+  })
+    .command(
+      new Command('list')
+        .result<string>({
+          views: { json: { mediaType: 'application/json', render: (data) => `${data}\n` } },
+        })
+        .action(() => 'a'),
+    )
+    .command(new Command('add').action(() => {}));
+  await expect(
+    printed(app, { argv: ['list', '--version'], release: distributed, runtime: bun }),
+  ).resolves.toEqual({ code: 0, stderr: '', stdout: distributedDocument });
+});
+
+test('an override of versionLine renders the first line of the extended output, above the block', async () => {
+  const app = new Application('notes', {
+    plugins: [format(), version({ extended: true })],
+    version: '1.1.0-next.3',
+    views: [override(versionLine, { render: ({ graph }) => `${graph.name} release\n` })],
+  }).action(() => {});
+  const { stdout } = await printed(app, {
+    argv: ['--version'],
+    release: distributed,
     runtime: bun,
   });
-  expect(stdout.startsWith('notes v1.1.0-next.3\nchannel')).toBe(true);
+  expect(stdout).toBe(distributedBlock.replace('notes v1.1.0-next.3\n', 'notes release\n'));
+});
+
+test("the block's values are styled primary and its labels dim", async () => {
+  const app = new Application('notes', {
+    plugins: [version({ extended: true }), theme({ dim: style.red, primary: style.green })],
+    version: '1.1.0-next.3',
+  }).action(() => {});
+  const mock = mockProcess({
+    argv: ['--version'],
+    env: { FORCE_COLOR: '1' },
+    release: distributed,
+    runtime: bun,
+  });
+  await app.run({ process: mock });
+  const rows = mock.stdout.text.split('\n').slice(1, -1);
+  // The label is padded inside its dim style, then the two-space gap, then the primary value.
+  expect(rows[0]).toBe('\u001B[31mchannel            \u001B[39m  \u001B[32mnext\u001B[39m');
+  expect(rows.at(-1)).toBe(
+    '\u001B[31mplatform           \u001B[39m  \u001B[32mlinux-x64\u001B[39m',
+  );
+  expect(stripVTControlCharacters(mock.stdout.text)).toBe(distributedBlock);
 });
 
 test('an override of versionFacts restyles the block and never the JSON object', async () => {

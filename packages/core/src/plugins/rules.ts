@@ -41,7 +41,7 @@ const slotTaken = registerRule('@loomcli/core/slot-taken', {
 /** Two failure encoders for one media type, in one plugin or across two installed plugins. */
 const failureEncoderTaken = registerRule('@loomcli/core/failure-encoder-taken', {
   explanation:
-    'A failed run writes its failure through the one encoder registered for the media type its selected view declares. Two encoders for one media type leave core no way to choose between them.',
+    'A failed run writes its failure through the one encoder registered for its media type: the one its selected view declares, or on a Command that declares no result the one a middleware assigned. Two encoders for one media type leave core no way to choose between them.',
   headline: 'Failure encoder taken',
 });
 

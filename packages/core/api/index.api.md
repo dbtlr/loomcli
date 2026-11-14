@@ -847,7 +847,7 @@ export interface Host {
     raise: (signal: 'SIGINT' | 'SIGQUIT' | 'SIGTSTP') => boolean;
     readSource?: (path: string, cwd: string) => string | undefined;
     release: ReleaseFacts;
-    readonly runtime: JavaScriptRuntime | undefined;
+    readonly runtime?: JavaScriptRuntime | undefined;
     spawn: (command: string, args: readonly string[], options?: SpawnOptions) => Child;
     stderr: Writable;
     stdin: Readable;
@@ -1109,6 +1109,8 @@ export interface MiddlewareContext<Options extends PluginOptions = PluginOptions
     readonly graph: CommandGraph;
     readonly host: Host;
     readonly log: Log;
+    get mediaType(): string | undefined;
+    set mediaType(type: string);
     readonly next: () => Promise<ChainOutcome>;
     readonly onResume: OnResume;
     readonly onShutdown: OnShutdown;

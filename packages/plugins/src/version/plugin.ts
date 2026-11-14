@@ -45,8 +45,9 @@ export interface VersionSettings {
   readonly postfix?: string;
   /**
    * Whether `-V` and `--version` print the release facts, runtime, and platform below the line, or
-   * one JSON object under a selected view that declares `application/json` or `application/jsonl`.
-   * Only `true` turns it on. `false` by default, which prints the line alone.
+   * one JSON object when the run's media type is `application/json` or `application/jsonl`, as
+   * the formatter's `--format json` states. Only `true` turns it on. `false` by default, which
+   * prints the line alone.
    */
   readonly extended?: boolean;
 }
@@ -66,16 +67,23 @@ export interface VersionSettings {
  *
  * @example
  * With `extended: true`, `-V` and `--version` also print the release channel, build, asset,
- * installation method, runtime, and platform. Install `format()` ahead of the version plugin so
- * `--format json` prints them as one JSON object.
+ * installation method, runtime, and platform. With `format()` installed ahead of the version
+ * plugin, `notes --version --format json` prints them as one JSON object, at the group root as
+ * under `notes list`.
  * ```ts
- * import { Application } from '@loomcli/core';
+ * import { Application, Command } from '@loomcli/core';
  * import { format } from '@loomcli/plugins/format';
+ * import { prose } from '@loomcli/plugins/prose';
  * import { version } from '@loomcli/plugins/version';
+ *
+ * const list = new Command('list')
+ *   .result<string>({ views: { text: prose() } })
+ *   .action(({ out }) => out.results('notes'));
  *
  * export const app = new Application('notes', {
  *   plugins: [format(), version({ extended: true })],
- * });
+ *   version: '1.0.0',
+ * }).command(list);
  * ```
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/version.md

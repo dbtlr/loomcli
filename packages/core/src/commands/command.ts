@@ -247,7 +247,7 @@ export interface BuiltCommand {
   /**
    * The one table the parser reads this Command's words against, built after every lifecycle hook
    * ran: its own options, hook-declared ones included, and every global option. Each entry names
-   * one declaration, so a group's table holds the global options alone.
+   * one declaration, and a group's table holds its own options too, which routing reads there.
    */
   table: SpellingTable;
   /** The result the Command declares, or nothing where it declares none. */
@@ -2996,8 +2996,9 @@ function validateInvocation(
 /**
  * The options of the plugins that a held fault left unvalidated and that core still validates for
  * `ownOptions`: each plugin's global options, and each local option a hook declared on the routed
- * Command, whose tokens parsed, none of whose occurrences faulted, and that no earlier pass
- * reached. A group validates no local option. Under a validation problem the run's own pass
+ * Command, a group included, whose tokens parsed, none of whose occurrences faulted, and that no
+ * earlier pass reached. An author's option on a group is never validated, because it reaches no
+ * action. Under a validation problem the run's own pass
  * validated every one of them, so only a structural fault, an input-source fault, or a validator
  * that threw leaves any to add. An option whose validator threw was reached, so it is never
  * validated again.
@@ -3009,15 +3010,10 @@ function ownUnderFault({ graph, ledger, routed }: Preparation): ReadonlySet<Inpu
   const globals = graph.globals.plugins
     .flatMap(({ inputs }) => inputs)
     .filter((input) => parsed(input, values.globals));
-  const attached =
-    command.dispatch === undefined
-      ? []
-      : command.inputs.filter(
-          (input) =>
-            input.kind === 'option' &&
-            command.attachedBy.has(input) &&
-            parsed(input, values.locals),
-        );
+  const attached = command.inputs.filter(
+    (input) =>
+      input.kind === 'option' && command.attachedBy.has(input) && parsed(input, values.locals),
+  );
   return new Set([...globals, ...attached]);
 }
 
@@ -3035,10 +3031,7 @@ async function validateOwn(preparation: Preparation, globals: OptionValues): Pro
   }
   try {
     await validateInvocation(preparation, {
-      local:
-        routed.command.dispatch === undefined
-          ? undefined
-          : { args: routed.args, options: copyValues(routed.values.locals), passthrough: [] },
+      local: { args: routed.args, options: copyValues(routed.values.locals), passthrough: [] },
       only,
       sources: { labels: new Map(), rejected: new Map() },
       values: globals,

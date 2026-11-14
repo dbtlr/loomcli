@@ -60,13 +60,17 @@ const validatorFailed = registerRule('@loomcli/core/validator-failed', {
 /** A middleware that assigned `view` a name the routed Command's result cannot render. */
 const viewSelection = registerRule('@loomcli/core/view-selection', {
   explanation:
-    "A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render.",
+    "A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render. A middleware states the run's media type only on a Command that declares no result, because on one that declares a result the selected view states it.",
   headline: 'Invalid view selection',
 });
 
 /** The fix every invalid view selection a middleware made shares. */
 const viewSelectionCorrection =
   "Assign view one of the view names the routed Command's result declares, and only on a Command that declares a result.";
+
+/** The fix a media type a middleware assigned on a Command that declares a result states. */
+const mediaTypeCorrection =
+  'Assign mediaType only on a Command that declares no result; select a view by name on one that does.';
 
 /** The fix every invalid starting view an `invoke()` caller selected shares. */
 const invokeViewCorrection = "Supply a view name the Command's result declares.";
@@ -138,6 +142,7 @@ export {
   foreignThrowCorrection,
   invalidReleaseFacts,
   invokeViewCorrection,
+  mediaTypeCorrection,
   nextMisuse,
   pluginLoaderFailed,
   resultContract,

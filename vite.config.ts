@@ -298,7 +298,9 @@ export default defineConfig({
       {
         files: ['packages/plugins/src/version/middleware.ts'],
         rules: {
+          // The version document's key order is its contract: name, version, then the six facts.
           // The version document is JSON data, which spells an absent fact `null`.
+          'eslint/sort-keys': 'off',
           'unicorn/no-null': 'off',
         },
       },

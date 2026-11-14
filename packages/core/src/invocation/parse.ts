@@ -300,9 +300,9 @@ type HeldFault = ({ error: LoomError } | { extra: number }) & { at: number };
 type DeclaredOccurrence = Occurrence & { kind: 'missing' | 'repeated' | 'unexpected' | 'value' };
 
 /**
- * An occurrence routing read against the own option of a Command that has an action and children,
- * with the fault that declaration found, if any. It binds to the Command routing finally reaches,
- * once routing ends.
+ * An occurrence routing read against the own option of a Command that has children, with the
+ * fault that declaration found, if any. It binds to the Command routing finally reaches, once
+ * routing ends.
  */
 interface PendingOccurrence {
   at: number;
@@ -621,12 +621,12 @@ function argumentSlot(slots: readonly ArgumentSlot[], position: number): Argumen
 }
 
 /**
- * Whether routing reads a Command's own options: it has an action and children. A Command with
+ * Whether routing reads a Command's own options: it has children, a group included. A Command with
  * children takes no arguments, so a plain word after its own option can only name a child, and its
  * own declaration says whether the next word is that option's value.
  */
 function readsOwnOptions(command: BuiltCommand): boolean {
-  return command.dispatch !== undefined && command.children.size > 0;
+  return command.children.size > 0;
 }
 
 /** One reading of one word list: the graph it reads against, and who hears each routed name. */
@@ -637,8 +637,8 @@ interface Routing {
 }
 
 /**
- * An option word under routing, read against the global options, and at a Command with an action
- * and children against its whole table, whose own options bind once routing ends. A walk that meets
+ * An option word under routing, read against the global options, and at a Command with children
+ * against its whole table, whose own options bind once routing ends. A walk that meets
  * a spelling those options do not declare ends routing at the Command reached, which reads the word
  * again against its own table. Answers how many words it read, and `0` where routing ends.
  */
@@ -687,8 +687,9 @@ function routeWord(routing: Routing, state: ReadState, index: number): number {
 }
 
 /**
- * Routing: the words before the first bare `--`, read from the root against the global options
- * alone. Answers the index of the first word it did not read.
+ * Routing: the words before the first bare `--`, read from the root against the global options and
+ * the own options of each Command with children it passes. Answers the index of the first word it
+ * did not read.
  */
 function route(routing: Routing, state: ReadState): number {
   let index = 0;
@@ -792,7 +793,7 @@ function routingEnded(
 
 /**
  * Reads a word list through routing, against the global options and the own options of each
- * Command with an action and children it passes through, binds those own options to the Command
+ * Command with children it passes through, binds those own options to the Command
  * routing reached once routing has ended, and then reads that Command's own words, up to the first
  * bare `--`, against the one table it holds.
  * Parsing continues past a fault, so every global option is found wherever it sits, and only the

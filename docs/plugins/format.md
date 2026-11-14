@@ -114,8 +114,8 @@ const middleware: Middleware<typeof format> = async (context) => {
     const encoding = encodings.get(selected);
     if (context.view !== null) {
       context.view = selected;
-    } else if (!context.command.hasAction && encoding !== undefined) {
-      // A group declares no result, so the formatter states the media type its views declare.
+    } else if (encoding !== undefined) {
+      // Only a group holds the option where no view is, so this states the group's media type.
       context.mediaType = encoding;
     }
   }

@@ -11,8 +11,21 @@ interface VersionBehavior {
   readonly postfix: string | undefined;
 }
 
-/** The JSON object: strings, and `null` for an absent fact. */
-type VersionDocument = Readonly<Record<string, string | null>>;
+/**
+ * The JSON object: the eight keys in the order the contract fixes, strings, and `null` for an
+ * absent fact. The key order is the document's contract, so this module turns `eslint/sort-keys`
+ * off and the literal below keeps that order.
+ */
+interface VersionDocument {
+  readonly name: string;
+  readonly version: string;
+  readonly channel: string | null;
+  readonly build: string;
+  readonly asset: string | null;
+  readonly installationMethod: string | null;
+  readonly runtime: string | null;
+  readonly platform: string;
+}
 
 /** The bare views the JSON form writes through, which no declared view's override reaches. */
 const documentViews = {
@@ -34,32 +47,27 @@ function factsOf({ host }: MiddlewareContext): VersionFacts {
   };
 }
 
-/**
- * The JSON object: the name, the declared version, and the six facts, `null` for an absent one. The
- * keys go in as entries, in the order the contract fixes, because `eslint/sort-keys` would reorder
- * an object literal's keys.
- */
+/** The JSON object: the name, the declared version, and the six facts, `null` for an absent one. */
 function documentOf(context: MiddlewareContext, facts: VersionFacts): VersionDocument {
   const { graph } = context;
-  return Object.fromEntries([
-    ['name', graph.name],
-    ['version', graph.version],
-    ['channel', facts.channel ?? null],
-    ['build', facts.build],
-    ['asset', facts.asset ?? null],
-    ['installationMethod', facts.installationMethod ?? null],
-    ['runtime', facts.runtime ?? null],
-    ['platform', facts.platform],
-  ]);
+  return {
+    name: graph.name,
+    version: graph.version,
+    channel: facts.channel ?? null,
+    build: facts.build,
+    asset: facts.asset ?? null,
+    installationMethod: facts.installationMethod ?? null,
+    runtime: facts.runtime ?? null,
+    platform: facts.platform,
+  };
 }
 
 /**
- * The media type of the view the run selected, when it is one of the two JSON ones. A Command that
- * declares no result selects no view, so it has none.
+ * The run's media type, when it is one of the two JSON ones: the selected view's on a Command that
+ * declares a result, and the one a middleware ahead of this one stated on a Command that declares
+ * none, as the formatter does at a group.
  */
-function selectedDocumentType(context: MiddlewareContext): keyof typeof documentViews | undefined {
-  const { view } = context;
-  const mediaType = view === null ? undefined : context.command.result?.mediaTypes[view];
+function documentType({ mediaType }: MiddlewareContext): keyof typeof documentViews | undefined {
   return mediaType === 'application/json' || mediaType === 'application/jsonl'
     ? mediaType
     : undefined;
@@ -67,8 +75,8 @@ function selectedDocumentType(context: MiddlewareContext): keyof typeof document
 
 /**
  * The middleware for one `version()` call. It renders the version line with that call's postfix,
- * and with `extended` the facts below it, or as one JSON object when the selected view declares a
- * JSON media type. It ends the invocation by returning without calling `next()`, so nothing after
+ * and with `extended` the facts below it, or as one JSON object when the run's media type is a
+ * JSON one. It ends the invocation by returning without calling `next()`, so nothing after
  * routing runs and the exit code is 0. The routed Command never changes the output, because the
  * version is a fact of the Application.
  */
@@ -82,7 +90,7 @@ export function versionMiddleware({
       return out.render({ graph, postfix }, versionLine);
     }
     const facts = factsOf(context);
-    const mediaType = selectedDocumentType(context);
+    const mediaType = documentType(context);
     if (mediaType !== undefined) {
       return out.render(documentOf(context, facts), documentViews[mediaType]);
     }

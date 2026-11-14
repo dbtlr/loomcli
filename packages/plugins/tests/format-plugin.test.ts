@@ -204,7 +204,7 @@ test("a short spelling another plugin's option holds is the hook-collision error
     ],
     rule: '@loomcli/core/spelling-taken',
     sentence:
-      'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-h" on Command "count", which "--help" already uses.',
+      'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-h" on the root Command, which "--help" already uses.',
   });
 });
 

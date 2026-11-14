@@ -303,9 +303,10 @@ export interface Host {
   readonly libc: 'glibc' | 'musl' | undefined;
   /**
    * The JavaScript runtime the process runs on, copied from the handle at entry and frozen, or
-   * `undefined` when the handle holds none.
+   * `undefined` when the handle holds none. Core always sets it on a run's host; it is optional,
+   * as `ceiling` is, so a host a test states whole compiles without it.
    */
-  readonly runtime: JavaScriptRuntime | undefined;
+  readonly runtime?: JavaScriptRuntime | undefined;
   /** The process's user ID, or `undefined` on a runtime with none. */
   uid: number | undefined;
   /** The command-line words after the program, as the operator typed them. */
