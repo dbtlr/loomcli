@@ -1,20 +1,15 @@
 import { join } from 'node:path';
 
-import { DeclarationError, diagnosticRule } from '@loomcli/core';
+import type { Threw } from './helpers/application-load-failure.js';
 
 /*
  * What the processes that load an application module share: `loom init`'s read of its exports and
  * `loom build`'s read of its skills folder each import the module under Bun in a process of their
  * own, take the same arguments, resolve the package's own core the same way, and read a throw while
- * the module loads the same way.
+ * the module loads the same way. They import no module of `@loomcli/core` themselves, only the
+ * package's own core at run time, so each bundles to a few kilobytes; the `loom` process formats
+ * the Developer Diagnostic of a throw.
  */
-
-/** A module that threw while it loaded, for a throw that is not a `DeclarationError`. */
-const loadFailed = diagnosticRule('@loomcli/loom/application-load-failed', {
-  explanation:
-    'loom imports the application module to learn what it declares, loom init how the entry imports its Application and loom build the skills folder skills() names, and the module threw while it loaded, so the command could not finish.',
-  headline: 'Application failed to load',
-});
 
 /** What a reader is given: the result file, the package directory, the module, and its name. */
 interface ReaderArguments {
@@ -71,22 +66,17 @@ function reasonOf(error: unknown): string {
 }
 
 /**
- * What a throw while the module loads reads as: a `DeclarationError`'s own Developer Diagnostic, or
- * the load failure any other throw is.
+ * What a throw while the module loads reads as: a `DeclarationError`'s own Developer Diagnostic as
+ * the failure, or any other throw's reason, which the `loom` process formats as the load failure.
  */
-function loadFailure(
+function loadThrow(
   error: unknown,
   isDeclarationError: (value: unknown) => boolean,
-  module: string,
-): string {
+): { readonly failure: string } | Threw {
   if (isDeclarationError(error) && error instanceof Error) {
-    return error.message;
+    return { failure: error.message };
   }
-  return new DeclarationError(loadFailed, {
-    correction:
-      'Fix the code that throws, or move the work into an action, which runs only when its Command runs.',
-    sentence: `${module} threw while it loaded: ${reasonOf(error)}`,
-  }).message;
+  return { threw: reasonOf(error) };
 }
 
-export { coreAddress, coreClass, loadFailure, member, readerArguments };
+export { coreAddress, coreClass, loadThrow, member, readerArguments };

@@ -1,0 +1,1 @@
+- Install a smaller `@loomcli/loom`: the two programs that `loom init` and `loom build` run under Bun to read an application module no longer each carry a copy of `@loomcli/core`, so they take about 7 KB together, down from about 418 KB, a fifth of the installed package. What `loom init` and `loom build` print is unchanged.

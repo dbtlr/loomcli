@@ -477,6 +477,17 @@ test('an authored application module that cannot be loaded draws the load warnin
   expect(existsSync(join(root, 'src/main.ts'))).toBe(false);
 });
 
+test('an authored application module that throws while it loads draws the load warning naming the throw and no entry', async () => {
+  const root = ownPackage({ 'src/application.ts': "throw new Error('The module broke.');\n" });
+  await expect(loom(root, ['init', '--only', 'entry'])).resolves.toEqual({
+    status: 0,
+    stderr:
+      'warning: src/main.ts was not written because src/application.ts could not be loaded: src/application.ts threw while it loaded: Error: The module broke. Install the package and run loom init again, or write the entry by hand.\n',
+    stdout: '',
+  });
+  expect(existsSync(join(root, 'src/main.ts'))).toBe(false);
+});
+
 test('an authored application module that throws a declaration fault while it loads draws the load warning naming the fault and no entry', async () => {
   const root = ownPackage({
     'src/application.ts':

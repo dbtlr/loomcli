@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { array, boolean, literal, strictObject, string, union } from 'valibot';
 import type { InferOutput } from 'valibot';
 
+import { loadFailure, threw } from './application-load-failure.js';
+import type { Threw } from './application-load-failure.js';
 import { runReader } from './application-reader.js';
 import type { RunHost } from './run-host.js';
 
@@ -15,14 +17,15 @@ const judgedSkill = strictObject({ files: array(judgedFile), name: string() });
 
 /**
  * What the reading process found: no `skills()` call while the module loaded; calls that name no
- * folder; the folder, absolute, with the skills the plugin judged there; or the failure the build
- * stops with.
+ * folder; the folder, absolute, with the skills the plugin judged there; the failure the build
+ * stops with; or the reason the module threw while it loaded.
  */
 const readResult = union([
   strictObject({ kind: literal('uncalled') }),
   strictObject({ kind: literal('none') }),
   strictObject({ folder: string(), kind: literal('read'), skills: array(judgedSkill) }),
   strictObject({ failure: string() }),
+  threw,
 ]);
 
 /** One read as the reading process writes it, before the build checks its shape. */
@@ -30,7 +33,8 @@ type SkillsRead =
   | { readonly kind: 'uncalled' }
   | { readonly kind: 'none' }
   | { readonly kind: 'read'; readonly folder: string; readonly skills: unknown }
-  | { readonly failure: string };
+  | { readonly failure: string }
+  | Threw;
 
 /** A skill the build carries: its name and its files' paths and executable bits. */
 type JudgedSkill = InferOutput<typeof judgedSkill>;
@@ -87,6 +91,9 @@ async function readSkillsDeclaration(run: RunHost, options: SkillsModule): Promi
     { directory, module: options.shown, path: module, reader: 'read-skills' },
     readResult,
   );
+  if ('threw' in result) {
+    throw new Error(loadFailure(options.shown, result.threw));
+  }
   if ('failure' in result) {
     throw new Error(result.failure);
   }
