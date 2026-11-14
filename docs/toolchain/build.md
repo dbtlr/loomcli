@@ -67,7 +67,7 @@ A package may keep `loom.config.json` beside its `package.json` to depart from a
 - **One base.** Every path in the file resolves against the package directory, whichever directory the file sits in, and an absolute path stays as written. A path may leave the package directory, such as a monorepo's root `install.sh`.
 - **`sharedVersion`.** A list of `package.json` files that carry this package's version, which [`loom changelog write`](changelog.md) sets in the same replacement as the package's own, such as `["../hub/package.json"]`. Each entry resolves against the package directory. `loom changelog write` validates the value itself, and anything but a list of nonempty strings fails the cut before any file changes, rather than being dropped, because a dropped list would leave the listed files at the old version.
 - **`postInstall`.** The [post-install command and message](install.md#the-post-install-command) the installer script runs and prints: `{ "message": "…", "command": ["setup"] }`.
-- **Fixed paths.** `package.json`, `tsconfig.json`, the linter's configuration file, `bunfig.toml`, and the [changelog skill](init.md#managed-files) are where other tools look for them, so the file does not move them.
+- **Fixed paths.** `package.json`, `tsconfig.json`, the linter's configuration file, `bunfig.toml`, the [changelog skill](init.md#managed-files), and the authoring skill are where other tools look for them, so the file does not move them.
 
 ## loom build
 

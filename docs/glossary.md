@@ -1017,11 +1017,11 @@ A file or `package.json` key `loom init` writes once, when it is missing, and ne
 _Avoid_: Template, generated file, boilerplate
 
 **Managed file**:
-A file `loom init` keeps current, such as the fragment guide, marked by a header that holds a checksum of its content. Init re-renders it while the checksum matches and warns once it drifts; deleting the header makes it the author's file.
+A file `loom init` keeps current, such as the fragment guide, marked by a header that holds a checksum of its content. Init re-renders it while the checksum matches, removes an unedited one the running version no longer renders, and warns once it drifts; deleting the header makes it the author's file.
 _Avoid_: Generated file, owned file, vendored file
 
 **Authoring skill**:
-The managed agent skill `loom init` writes at `.agents/skills/loom/`, which teaches a coding agent to author a Loom application: how the parts fit, which the code and its doc comments do not show. It is written by hand, never generated, and its `metadata.version` names the release it was last reviewed against.
+The skill `loom init` writes as managed files at `.agents/skills/loom/`, which teaches a coding agent to author a Loom application: how the parts fit, which the code and its doc comments do not show. It is written by hand, never generated, and its `metadata.version` names the release it was last reviewed against.
 _Avoid_: Loom skill, author guide
 
 **Installer script**:

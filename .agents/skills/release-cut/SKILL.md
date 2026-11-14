@@ -36,9 +36,17 @@ Read the pending fragments and the full cycle diff from the last completed relea
 
 Identify the release's purpose, consumer-visible changes, and required migrations. Check for unmarked breaking changes and fragments that describe behavior later removed or changed. Land corrections in an ordinary preparatory PR before the cut, then refresh the base and repeat the review.
 
-Review the authoring skill at `packages/loom/skills/loom/` against the release. Read every pending feature and breaking fragment, and the cycle diff where a fragment is unclear, against what `SKILL.md` and each reference teach. Update each passage a change makes wrong or incomplete, and set `metadata.version` in `SKILL.md` to the target version, even when nothing else changes. Land it in a preparatory PR, because the release guard rejects a cut whose skill names another version and rejects any change to the skill in the cut itself. Record in the release PR body what the review changed, or that it changed nothing but the version.
-
 Choose a short release description from the actual changes. Add an optional narrative only when users need connected explanations, a new mental model, compatibility context, or upgrade actions. Keep the narrative file outside the release checkout. Review the compiler's no-material-changes list against the cycle diff and library dependencies.
+
+### Review the authoring skill
+
+The release guard fails a cut whose authoring skill, `packages/loom/skills/loom/SKILL.md`, names a `metadata.version` other than the release version, and it rejects any change to the skill in the cut itself. Review the skill before the cut, in an ordinary PR:
+
+1. Learn the target version. Run `pnpm loom release cut --dry-run --date YYYY-MM-DD` at the cut base, with the same `--target VERSION` when one is specified, and read the version it prints.
+2. Read every pending feature and breaking fragment, and the cycle diff where a fragment is unclear, against what `SKILL.md` and each file in `references/` teach. Update each passage a change makes wrong or incomplete.
+3. Set `metadata.version` in `SKILL.md` to the target version, even when nothing else changes.
+4. Open the preparatory PR. A version-only change takes the `skip-changelog` label, with the reason that it records the skill's release review. A change to what the skill teaches takes a fragment for `@loomcli/loom`.
+5. When that fragment raises the minimum version past the target, repeat from step 1 at the new target. Once the PR merges, refresh the cut base.
 
 ## Prepare in isolation
 
@@ -80,6 +88,7 @@ Recheck that the target version is still unpublished and untagged, and that no o
 - Previous-release tag and npm evidence, or a statement that this is the initial cut.
 - Validation results and any merge blocker.
 - Consumed fragments and optional narrative rationale.
+- What the authoring skill's review changed, or that it changed nothing but the version, with the preparatory PR.
 - Decisions the cut accepts, and each proposed decision it leaves proposed with the reason.
 
 Use a body file or a structured API argument to preserve Markdown and avoid shell evaluation. The generated release diff is its changelog decision; it needs no new fragment or `skip-changelog` exemption.
