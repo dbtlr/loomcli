@@ -358,8 +358,45 @@ test('a module that throws while it loads fails the build with the load failure'
     'src/application.ts': `${application(urlFolder)}\nthrow new Error('The module broke.');\n`,
   });
   const stderr = await failedBuild(root, ['--target', 'node']);
-  expect(stderr).toContain('@loomcli/loom/application-load-failed');
-  expect(stderr).toContain('src/application.ts threw while it loaded: Error: The module broke.');
+  expect(stderr).toBe(
+    [
+      '-- APPLICATION FAILED TO LOAD ------------ @loomcli/loom/application-load-failed',
+      '',
+      'src/application.ts threw while it loaded: Error: The module broke.',
+      '',
+      'loom imports the application module to learn what it declares, loom init how the',
+      'entry imports its Application and loom build the skills folder skills() names,',
+      'and the module threw while it loaded, so the command could not finish.',
+      '',
+      'Fix the code that throws, or move the work into an action, which runs only when its Command runs.',
+      '',
+    ].join('\n'),
+  );
+});
+
+test('a module that throws a declaration fault while it loads fails the build with its own diagnostic', async () => {
+  const root = notesPackage({
+    'src/application.ts': application(urlFolder).replace("'notes'", "'no tes'"),
+  });
+  const stderr = await failedBuild(root, ['--target', 'node']);
+  expect(stderr).toBe(
+    [
+      '-- NAME NOT PORTABLE ------------------------------- @loomcli/core/portable-name',
+      '',
+      'Application name "no tes" is invalid.',
+      '',
+      "    new Application('no tes')",
+      '                    ^^^^^^^^',
+      '',
+      'An operator types the application name, each Command name, and each alias as a',
+      'command at a shell prompt. A character outside the POSIX portable filename set',
+      'needs quoting there, a leading "-" reads as an option, and a leading "." names a',
+      'file a shell hides.',
+      '',
+      'Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".',
+      '',
+    ].join('\n'),
+  );
 });
 
 test.each([

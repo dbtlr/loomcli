@@ -2,13 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import {
-  coreAddress,
-  coreClass,
-  loadFailure,
-  member,
-  readerArguments,
-} from './application-load.js';
+import { coreAddress, coreClass, loadThrow, member, readerArguments } from './application-load.js';
 import type { SkillsRead } from './helpers/skills-declaration.js';
 
 /*
@@ -101,7 +95,7 @@ async function readDeclaration(
   try {
     await import(pathToFileURL(path).href);
   } catch (error) {
-    return { failure: loadFailure(error, isDeclarationError, module) };
+    return loadThrow(error, isDeclarationError);
   }
   const entries = registryEntries();
   if (entries.length === none) {
