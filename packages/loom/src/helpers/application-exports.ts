@@ -29,9 +29,10 @@ export type ApplicationRead = InferOutput<typeof readResult>;
 
 /**
  * Reads the exports of one application module under Bun, in a process of its own in the package
- * directory, as a build runs. `path` is absolute, resolved against the working directory before the
+ * directory, as init runs. `path` is absolute, resolved against the working directory before the
  * spawn, and `module` is the module as the operator reads it. A module that threw while it loaded
- * reads as the failure `@loomcli/loom/application-load-failed` names.
+ * reads as the failure `@loomcli/loom/application-load-failed` names, or, for a throw of the
+ * package's own `DeclarationError`, as that error's own Developer Diagnostic.
  */
 export async function readApplicationExports(
   run: RunHost,
