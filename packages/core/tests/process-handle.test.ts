@@ -324,6 +324,37 @@ test('the host copies arch, libc, and uid from the handle, in run() and app.invo
   ]);
 });
 
+test('the host copies a frozen runtime from the handle, in run() and app.invoke alike, and holds none for a handle without one', async () => {
+  const read: Host['runtime'][] = [];
+  const app = new Application('notes').action(({ host }) => {
+    read.push(host.runtime);
+  });
+  const { handle } = handBuilt({ runtime: { name: 'bun', version: '1.3.2' } });
+  await app.run({ process: handle });
+  await app.invoke([], {}, { process: handle });
+  await app.run({ process: handBuilt().handle });
+  expect(read).toEqual([
+    { name: 'bun', version: '1.3.2' },
+    { name: 'bun', version: '1.3.2' },
+    undefined,
+  ]);
+  expect(Object.isFrozen(read[0])).toBe(true);
+});
+
+test('processHandle reads the runtime it runs on unless it was given one, and a stated undefined gives none', () => {
+  const bun = process.versions.bun;
+  expect(processHandle().runtime).toEqual(
+    bun === undefined
+      ? { name: 'node', version: process.versions.node }
+      : { name: 'bun', version: bun },
+  );
+  expect(processHandle({ runtime: { name: 'bun', version: '1.3.2' } }).runtime).toEqual({
+    name: 'bun',
+    version: '1.3.2',
+  });
+  expect(processHandle({ runtime: undefined }).runtime).toBeUndefined();
+});
+
 test("processHandle reads the process's own architecture and user unless it was given them", async () => {
   expect(processHandle().arch).toBe(process.arch);
   expect(processHandle().uid).toBe(process.getuid?.());

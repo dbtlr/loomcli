@@ -35,6 +35,7 @@ describe('the sealed defaults', () => {
     ['platform', (mock) => mock.platform, 'linux'],
     ['arch', (mock) => mock.arch, 'x64'],
     ['libc', (mock) => mock.libc, 'glibc'],
+    ['runtime', (mock) => mock.runtime, { name: 'node', version: '24.0.0' }],
     ['uid', (mock) => mock.uid, 1000],
     ['timeZone', (mock) => mock.timeZone, 'UTC'],
     ['program', (mock) => mock.program, ['/loom-test/runtime', '/loom-test/app.js']],
@@ -73,6 +74,14 @@ describe('the sealed defaults', () => {
     expect(mockProcess({ platform: 'darwin' }).libc).toBeUndefined();
     expect(mockProcess({ libc: 'musl', platform: 'darwin' }).libc).toBe('musl');
     expect(mockProcess({ libc: undefined }).libc).toBeUndefined();
+  });
+
+  it('runtime is the supplied runtime, and none when stated undefined', () => {
+    expect(mockProcess({ runtime: { name: 'bun', version: '1.3.2' } }).runtime).toEqual({
+      name: 'bun',
+      version: '1.3.2',
+    });
+    expect(mockProcess({ runtime: undefined }).runtime).toBeUndefined();
   });
 
   it('reads nothing from the process the test runs in', () => {

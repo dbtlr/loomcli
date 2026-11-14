@@ -195,6 +195,8 @@ const noListeners = 0;
 
 /** The default user id, an ordinary account's. */
 const defaultUid = 1000;
+/** The runtime a mock reports, whichever one runs the test. */
+const defaultRuntime = { name: 'node', version: '24.0.0' } as const;
 
 /** The default `program` words: a runtime and a script that do not exist. */
 const defaultProgram = ['/loom-test/runtime', '/loom-test/app.js'];
@@ -802,6 +804,7 @@ function mockProcess(fields: MockFields = {}): MockProcess {
       size.columns = columns;
       size.rows = rows;
     },
+    runtime: 'runtime' in fields ? fields.runtime : defaultRuntime,
     signals: mockSignals(life, streams.keyboard),
     spawn(command, args, options) {
       const program = Object.hasOwn(programs, command) ? programs[command] : undefined;

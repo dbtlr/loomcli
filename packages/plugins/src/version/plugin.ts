@@ -3,7 +3,7 @@ import type { Plugin, PluginOptions } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { versionPostfix } from '../rules.js';
-import { versionLine } from './views.js';
+import { versionFacts, versionLine } from './views.js';
 
 const identity = `${packageName}/version`;
 
@@ -35,13 +35,20 @@ function postfixOf(settings: VersionSettings | undefined): string | undefined {
 export type VersionOptions = typeof options;
 
 /**
- * What an application tells the version plugin: the text it prints after the standard line.
+ * What an application tells the version plugin: the text it prints after the standard line, and
+ * whether `-V` and `--version` print the extended output.
  *
  * @public
  */
 export interface VersionSettings {
   /** One line printed after the name and version, such as `(Report schema v1)`. None by default. */
   readonly postfix?: string;
+  /**
+   * Whether `-V` and `--version` print the release facts, runtime, and platform below the line, or
+   * one JSON object under a selected view that declares `application/json` or `application/jsonl`.
+   * Only `true` turns it on. `false` by default, which prints the line alone.
+   */
+  readonly extended?: boolean;
 }
 
 /**
@@ -57,21 +64,36 @@ export interface VersionSettings {
  * export const app = new Application('notes', { plugins: [version({ postfix: '(Report schema v1)' })] });
  * ```
  *
+ * @example
+ * With `extended: true`, `-V` and `--version` also print the release channel, build, asset,
+ * installation method, runtime, and platform. Install `format()` ahead of the version plugin so
+ * `--format json` prints them as one JSON object.
+ * ```ts
+ * import { Application } from '@loomcli/core';
+ * import { format } from '@loomcli/plugins/format';
+ * import { version } from '@loomcli/plugins/version';
+ *
+ * export const app = new Application('notes', {
+ *   plugins: [format(), version({ extended: true })],
+ * });
+ * ```
+ *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/version.md
  *
  * @public
  */
 export function version(settings?: VersionSettings): Plugin<VersionOptions> {
   const postfix = postfixOf(settings);
+  const extended = settings?.extended === true;
   return plugin(identity, {
     middleware: {
       activate: ['version'],
       load: async () => {
         const { versionMiddleware } = await import('./middleware.js');
-        return { default: versionMiddleware(postfix) };
+        return { default: versionMiddleware({ extended, postfix }) };
       },
     },
     options,
-    views: [versionLine],
+    views: [versionLine, versionFacts],
   });
 }
