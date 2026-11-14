@@ -12,10 +12,13 @@
  *   rows, so unknown rows are not reachable here.
  * - Cannot start. A shell that cannot start, and exit 126 or 127, print the page unpaged and exit 0.
  * - The exit. Any other exit code of the pager leaves the run at 0.
+ * - The terminal. A live region held while the pager runs draws no frame until the pager exits, and
+ *   redraws after it.
  * - Cancellation. A run cancelled while the pager is open ends it and resolves 130.
  */
 
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, plugin } from '@loomcli/core';
+import type { MiddlewareContext } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { mockProcess } from '@loomcli/testing';
 import type { MockFields, ProgramCall } from '@loomcli/testing';
@@ -250,4 +253,35 @@ test('SIGINT while the pager is open ends the pager and resolves 130', async () 
   await expect(notes(true).run({ process: mock })).resolves.toBe(130);
   expect(ended).toBe(true);
   expect(mock.stdout.text).toBe('');
+});
+
+test('a live region held while the pager runs draws no frame until the pager exits, and redraws after it', async () => {
+  const holder = plugin('@fixture/holder', {
+    middleware: {
+      activate: 'always',
+      load: async () => ({
+        default: async ({ next, out }: Pick<MiddlewareContext, 'next' | 'out'>) => {
+          await out.region().draw('live frame', { render: (text: string) => text });
+          await next();
+        },
+      }),
+    },
+  });
+  const app = new Application('notes', { plugins: [holder, help({ paging: true })] }).command(
+    note('add'),
+  );
+  let during = '';
+  const mock = mockProcess({
+    ...terminal,
+    argv: ['--help'],
+    programs: {
+      '/bin/sh': () => {
+        during = mock.stderr.text;
+        return {};
+      },
+    },
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(during.match(/live frame/gu)).toHaveLength(1);
+  expect(mock.stderr.text.match(/live frame/gu)?.length).toBeGreaterThan(1);
 });

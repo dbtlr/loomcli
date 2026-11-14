@@ -20,7 +20,11 @@ export async function showPage(context: ShowContext, page: HelpPage, paging: boo
   const pager = paging ? pagerOf(host) : undefined;
   if (pager !== undefined) {
     const text = out.text(page, helpPage);
-    if (outgrowsScreen(host, text) && (await showInPager(context, pager, text))) {
+    // The pager draws on the terminal itself, so live regions hold their frames until it exits.
+    if (
+      outgrowsScreen(host, text) &&
+      (await out.lendTerminal(() => showInPager(context, pager, text)))
+    ) {
       return;
     }
   }
