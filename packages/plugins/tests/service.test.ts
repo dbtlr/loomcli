@@ -96,6 +96,9 @@ const uid = process.getuid?.() ?? 0;
 const domain = `gui/${uid}`;
 const agent = `${domain}/com.acme.notes`;
 
+/** How long one read that status makes may run, in milliseconds (docs/plugins/service.md#status). */
+const readLimit = 5000;
+
 const program = ['/opt/notes/bin/notes'];
 const runWords = ['serve', '--port', '8080'];
 
@@ -199,14 +202,14 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
     umask: scenario.umask,
   };
   writeFileSync(join(box.root, 'scenario.json'), JSON.stringify(facts));
+  const given = Object.values(scenario.answers ?? {}).flat();
   // A real process owns the umask and the manager termination signals.
-  if (
-    scenario.umask !== undefined ||
-    Object.values(scenario.answers ?? {})
-      .flat()
-      .some((answer) => answer.hang)
-  ) {
-    return invoke(fixture, [join(box.root, 'scenario.json'), 'service', ...argv]);
+  if (scenario.umask !== undefined || given.some((answer) => answer.hang)) {
+    // A call that hangs and no abort ends runs until status's read limit ends it.
+    const waits = given.some((answer) => answer.hang && answer.abort !== true);
+    return invoke(fixture, [join(box.root, 'scenario.json'), 'service', ...argv], {
+      wait: waits ? readLimit : 0,
+    });
   }
   return await fixtureRun(['service', ...argv], {
     ...facts,
@@ -1250,11 +1253,15 @@ describe('waiting', () => {
     const stateNote =
       'systemctl --user did not report com.acme.notes.service within 5 seconds, so status ended the call. Run systemctl --user status com.acme.notes.service to see why.';
 
-    it('ends a state read that never exits and one that ignores SIGTERM, reads unknown with the note, and exits 0', async () => {
-      const box = sandbox();
-      const fixtureResult34 = await run(box, ['install']);
-      expect(fixtureResult34.status).toBe(0);
-      for (const deaf of [false, true]) {
+    it.each([
+      { deaf: false, read: 'a state read that never exits' },
+      { deaf: true, read: 'a state read that ignores SIGTERM' },
+    ])(
+      'ends $read, reads unknown with the note, and exits 0',
+      async ({ deaf }) => {
+        const box = sandbox();
+        const fixtureResult34 = await run(box, ['install']);
+        expect(fixtureResult34.status).toBe(0);
         const result = await run(box, ['status'], {
           answers: { ...shown('active', 1), [stateRead]: { deaf, hang: true } },
         });
@@ -1263,8 +1270,9 @@ describe('waiting', () => {
           stderr: '',
           stdout: `com.acme.notes: unknown\n  unit  ${systemdPath(box)}\n  note  ${stateNote}\n`,
         });
-      }
-    }, 30_000);
+      },
+      30_000,
+    );
 
     it('ends a session read that never exits and adds no note', async () => {
       const box = sandbox();

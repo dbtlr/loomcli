@@ -88,7 +88,10 @@ export function childEnvironment(
 
 /**
  * Runs one file as a process under the runtime the test run names, or under the one a case names,
- * such as Bun for an application's source, which only Bun runs directly.
+ * such as Bun for an application's source, which only Bun runs directly. `wait` is how many
+ * milliseconds the scenario deliberately waits, such as a time limit the code under test runs out.
+ * It is added to the fixture's timeout, so such a fixture keeps the same time for everything else
+ * as a fixture that waits for nothing.
  */
 export function invoke(
   file: URL,
@@ -98,9 +101,10 @@ export function invoke(
     env?: Record<string, string | undefined>;
     input?: string;
     runtime?: string;
+    wait?: number;
   } = {},
 ) {
-  const { env, runtime, ...rest } = options;
+  const { env, runtime, wait = 0, ...rest } = options;
   const result = spawnSync(
     runtime ?? process.env.LOOM_TEST_RUNTIME ?? 'node',
     [fileURLToPath(file), ...args],
@@ -108,7 +112,7 @@ export function invoke(
       ...rest,
       encoding: 'utf8',
       env: childEnvironment(env),
-      timeout: fixtureTimeout,
+      timeout: fixtureTimeout + wait,
     },
   );
   if (result.error) {
