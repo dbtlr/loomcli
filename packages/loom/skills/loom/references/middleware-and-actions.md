@@ -30,6 +30,7 @@ An action receives the validated invocation. Declare a validator on the input in
 - **Its catch is final.** An action that catches a failure and returns ends the run with what it produced, under [the ordinary failure path](../../../../../docs/core/failures.md#the-ordinary-failure-path).
 - **It restores what it changes.** Restore raw mode, the cursor, or a child program in a `finally`, and register a synchronous [`onShutdown`](../../../../../docs/core/signals.md#onshutdown) handler so a shutdown that runs out of budget restores it too. Read `signal` in long work. Do not register `process.on` handlers.
 - **It alone runs other Commands.** `invoke` is on the action context, not the middleware context.
+- **It can load its work when it runs.** Every module the Application imports statically loads at launch, whichever Command runs. When a Command's work, or a dependency only it uses, is large, keep the extracted handler in its own module and give the declaration an inline handler that loads it with `import()` and passes it the context, under [Loading an action's work when it runs](../../../../../docs/core/commands.md#loading-an-actions-work-when-it-runs). The handler type-imports its declaration, and the declaration never imports the handler statically. A `node` or `bun` bundle puts that module in a chunk of its own; a compiled binary loads it at launch either way.
 
 ## What a middleware reads and writes
 
