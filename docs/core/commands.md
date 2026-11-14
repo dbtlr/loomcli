@@ -177,6 +177,29 @@ export const getValue: ActionHandler<typeof get> = async ({ args, options, out }
 
 `ActionHandler<typeof declaration>` works for a Command and for the root alike. `ActionArgs<typeof declaration>` and `ActionOptions<typeof declaration>` derive the same two objects for a handler that names its parameters separately, as `textstat` does. A handler written inline in `action()` needs no helper, because it infers its context from the declaration it receives. An extracted handler is also what a unit test calls, with the context `@loomcli/testing`'s [`actionContext`](../libs/testing.md#actioncontext) builds for it; an inline handler has no public way to reach it.
 
+### Loading an action's work when it runs
+
+Core calls an action only when routing selects its Command, as [Application declarations](application.md) states, but every module the Application imports statically loads at launch, whichever Command runs. An action can load the module that holds its work with `import()` instead, so an invocation that routes elsewhere never evaluates that module or a module only it imports. The first-party completion, manpage, and MCP plugins load each Command's work this way, under [Plugin Commands](plugin-contract.md#plugin-commands). No API is involved: the declaration keeps an inline handler that imports the extracted one and passes it its context.
+
+```ts
+// src/commands/get.ts
+import { Command } from '@loomcli/core';
+
+export const get = new Command('get')
+  .argument('path', { required: true })
+  .action(async (context) => {
+    const { getValue } = await import('../actions/get-value.js');
+    return getValue(context);
+  });
+```
+
+`getValue` is the extracted handler shown above, unchanged. It type-imports its declaration, and a type import is erased, so the two modules share no runtime import. The declaration reaches the handler only through `import()`, so the declaration's module never loads the handler's module at launch.
+
+- **What stays eager.** The declaration's module loads with the Application, with everything it imports statically: the Command's arguments and options, their validators and defaults, its description, and its extension values. Routing, `--help`, completion, and projections read them without running the action.
+- **What moves.** The handler's module, and every module that only it imports, loads the first time its Command runs. A module that a declaration or another eager module also imports statically stays eager.
+- **The bundle.** A `node` or `bun` bundle from [`loom build`](../toolchain/build.md#loom-build) splits, so the loaded module and the modules only it imports go into a chunk of their own, which the runtime reads only when the action imports it. A compile target builds without splitting, so the module's code is part of the one program Bun compiles and is read at launch, but Bun defers evaluating it, and the modules only it imports, until the action imports it.
+- **When it pays.** A bundle saves reading and evaluating the work the action loads, and a compiled binary saves evaluating it. It matters when a Command's work, or a dependency only that Command uses, is large next to the rest of the application. A small application whose launch is mostly core gains little.
+
 ## Global consumption and routing
 
 ```ts
