@@ -59,7 +59,7 @@ new Command('count')
 	});
 ```
 
-`stdin: true` claims piped or redirected stdin. A Command has at most one stdin target. A collection appends available stdin after its file sources, unless `-` already places it in the list. A scalar uses its supplied path instead of stdin. Environment and configuration bindings fill content options through the ordinary input-source stage; a path from either source counts as supplied. A path the configuration source filled reads against the file's directory when its answer carries one, and one core cannot read falls back, under [Input sources](input-sources.md).
+`stdin: true` claims piped or redirected stdin. A Command has at most one stdin target. A collection appends available stdin after its file sources, unless `-` already places it in the list. A scalar uses its supplied path instead of stdin. Environment and configuration bindings fill content options through the ordinary input-source stage; a path from either source counts as supplied. A path the configuration source filled reads against the file's directory when its answer carries one, and one core cannot read falls back unless its answer is strict, under [Input sources](input-sources.md).
 
 Only the stdin target accepts `-`. Repeated `-` entries share one stream: a read to EOF leaves later reads empty. A literal file named `-` is spelled `./-`. Terminal stdin is unavailable even for explicit `-`; an action asks through [`@loomcli/prompts`](../libs/prompts.md) for keyboard interaction. Automatic inclusion depends on a command-line run and nonterminal stdin, not on whether bytes are present. An inherited empty pipe or redirected file therefore counts as a source.
 

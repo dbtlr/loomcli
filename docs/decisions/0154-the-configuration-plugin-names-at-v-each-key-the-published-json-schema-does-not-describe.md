@@ -55,3 +55,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-14: Proposed with the contract for naming unknown keys (LM-516). It supersedes ADR-0118's sentence that a key the schema does not describe is never reported at any verbosity, and withdraws that record's rejection of reporting unknown keys at `-v`. ADR-0118 carries a dated entry.
+- 2026-11-14: [ADR-0155](0155-the-configuration-plugins-strict-setting-fails-the-run-for-a-value-at-or-under-a-path-it-lists.md), proposed, narrows the **Nothing else changes** clause that no exit code changes: under `strict`, an unknown key at or under a covered path fails the run with code 2 in place of its `-v` line. The lines for every key that `strict` does not cover stand.
