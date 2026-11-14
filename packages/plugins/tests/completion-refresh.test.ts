@@ -132,8 +132,8 @@ test('a self-update rewrites a recorded script to the replaced binary’s versio
     join(installation, 'completion.bash.json'),
     `{"format":1,"state":"committed","directories":[],"files":[{"path":${JSON.stringify(script)},"digest":"sha256:${digestOf('old script\n')}"}]}\n`,
   );
-  // The replacing binary runs the completion fixture application with the arguments it was given,
-  // Once the update wrote its bytes at the recorded path.
+  // The replacing binary runs the completion fixture application with the arguments it was given.
+  // It does so once the update wrote its bytes at the recorded path.
   const bytes = 'jsonkit 1.5.0 binary\n';
   const replacing: Program = async (call) => {
     if (readFileSync(call.command, 'utf8') !== bytes) {

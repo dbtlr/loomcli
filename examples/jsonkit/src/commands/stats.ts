@@ -7,8 +7,8 @@ import { maxDepth } from '../actions/max-depth.js';
 import { documentInput } from '../document-input.js';
 import { pathFailures, readFailures } from '../failures.js';
 
-// `stats depth max` sits three levels below the root, so routing, help, completion, and every
-// Projection jsonkit installs serve a path that deep.
+// `stats depth max` sits three levels below the root.
+// So routing, help, completion, and every projection jsonkit installs serve a path that deep.
 const max = new Command('max', {
   description: 'Print the deepest nesting level under a path.',
   extensions: [

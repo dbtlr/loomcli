@@ -298,8 +298,8 @@ interface Frame {
  */
 function childrenOf(source: object): { key: string; value: unknown }[] | undefined {
   if (Array.isArray(source)) {
-    // `Array.from` reads a hole as the `undefined` it is, which the walk rejects like any other
-    // Value that is not plain data.
+    // `Array.from` reads a hole as the `undefined` it is.
+    // The walk rejects it like any other value that is not plain data.
     return Array.from(source, (value: unknown, index) => ({ key: String(index), value }));
   }
   if (!isPlainObject(source) || Object.getOwnPropertySymbols(source).length > 0) {

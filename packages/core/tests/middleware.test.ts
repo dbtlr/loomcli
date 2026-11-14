@@ -224,8 +224,8 @@ test("a middleware that catches the action's failure decides the outcome, read a
 });
 
 test('a next() queued as a microtask lands before the middleware result settles', async () => {
-  // "`next` is live until the middleware's own result settles", so the queued call continues
-  // The chain and the action dispatches under the wrapper that observes the outcome.
+  // "`next` is live until the middleware's own result settles", so the queued call continues the chain.
+  // The action dispatches under the wrapper that observes the outcome.
   const result = await run('microtask', ['get', 'a.b']);
   expect(result.status).toBe(0);
   expect(result.stderr).toBe('ℹ outer:start\nℹ outer:dispatched\nℹ outer:cleanup\n');

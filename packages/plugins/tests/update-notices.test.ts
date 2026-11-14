@@ -606,8 +606,8 @@ test.each([
     const children = await childrenDone(box);
     const all = events(box);
     const runExit = all.find(({ event, role }) => event === 'exit' && role === 'run');
-    // The run wrote `checked` before it started the child, and kept a latest only from a cache
-    // Whose one fault is its `checked`.
+    // The run wrote `checked` before it started the child.
+    // It kept a latest only from a cache whose one fault is its `checked`.
     const kept = line?.includes('"latest":"1.5.0"') === true ? '1.5.0' : null;
     expectRefreshed(runExit?.cache, from, kept);
     const starts = children.filter(({ event }) => event === 'start');

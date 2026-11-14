@@ -369,8 +369,8 @@ try {
   for (const name of ['core', 'plugins', 'validators', 'prompts', 'testing', 'eslint-plugin']) {
     pnpm(['exec', 'attw', join(temporary, `${name}.tgz`), '--profile', 'esm-only'], root);
   }
-  // The toolchain's bin is a bundle that carries every module it runs, so installing it installs
-  // No runtime dependency. Its optional peers, pnpm and TypeScript, stay the consumer's own.
+  // The toolchain's bin is a bundle that carries every module it runs, so installing it installs no runtime dependency.
+  // Its optional peers, pnpm and TypeScript, stay the consumer's own.
   const loomManifest = run('tar', ['-xzOf', 'loom.tgz', 'package/package.json'], temporary);
   assert.equal(loomManifest.status, 0, loomManifest.output);
   const loomPackage = JSON.parse(loomManifest.stdout);
@@ -458,8 +458,8 @@ try {
       type: 'module',
     }),
   );
-  // The overrides resolve every first-party package to the packed tarballs, so the check never
-  // Reads any from the registry, where a release cut's version is not yet published.
+  // The overrides resolve every first-party package to the packed tarballs.
+  // So the check never reads any from the registry, where a release cut's version is not yet published.
   await writeFile(join(temporary, 'pnpm-workspace.yaml'), workspaceOverrides(temporary));
   pnpm(['install', '--prefer-offline', '--ignore-scripts', '--lockfile=false'], temporary);
 
@@ -902,8 +902,8 @@ try {
       );
     }
   }
-  // The packed loom bin bundles the release facts probe, baking a distributed build's release facts
-  // Into the packed core, and the bundle reads them under each runtime and writes the generic message.
+  // The packed loom bin bundles the release facts probe, baking a distributed build's release facts into the packed core.
+  // The bundle reads them under each runtime and writes the generic message.
   const bundled = run(
     join(temporary, 'node_modules/.bin/loom'),
     ['build', '--target', 'node', '--entry', 'release.ts', '--out', 'release-dist'],
@@ -966,8 +966,8 @@ try {
     );
   }
   // Core carries its Unicode tables as a module, so any bundler bundles an application without a define.
-  // Each bundle measures text with the packed Unicode tables, reads source, and so writes the
-  // Developer Diagnostic for a defect.
+  // Each bundle measures text with the packed Unicode tables and reads source.
+  // So it writes the Developer Diagnostic for a defect.
   const plainSource = fileURLToPath(new URL('fixtures/bundled', import.meta.url));
   await cp(plainSource, join(temporary, 'bundled'), { recursive: true });
   const measured = [
@@ -1029,8 +1029,8 @@ try {
     assert.equal(sourced.status, 0, sourced.output);
     assert.equal(sourced.stdout, 'source\n', `${file}: the unbundled release facts`);
   }
-  // Each scaffold the packed loom bin writes installs from the packed tarballs and passes its own
-  // Check script under Bun: the type check, the linter, and the assembly test.
+  // Each scaffold the packed loom bin writes installs from the packed tarballs.
+  // It passes its own check script under Bun: the type check, the linter, and the assembly test.
   for (const scaffold of scaffolds) {
     await checkScaffold(temporary, scaffold);
   }

@@ -60,8 +60,8 @@ function helpOnTerminal(env: Record<string, string>) {
     [
       'sh',
       '-c',
-      // The shell catches Ctrl-C, so it outlives the fixture to print its status; a caught signal
-      // Is back at its default in the fixture, which Ctrl-C still reaches.
+      // The shell catches Ctrl-C, so it outlives the fixture to print its status.
+      // A caught signal is back at its default in the fixture, which Ctrl-C still reaches.
       [
         'trap : INT',
         'stty rows 10 cols 80',

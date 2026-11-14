@@ -75,7 +75,7 @@ const timeout = 60_000;
 /** The runtimes every bundle runs under. */
 const runtimes = ['node', 'bun'] as const;
 
-// The root is resolved through symbolic links, because macOS's temporary directory is a link and
+// The root is resolved through symbolic links, because macOS's temporary directory is a link.
 // Bun resolves the script path it reports, so host.program names the resolved bundle.
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'loom-release-')));
 

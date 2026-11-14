@@ -155,8 +155,8 @@ function declarationName(program, message) {
     if (position < node.getFullStart() || position >= node.end) {
       return;
     }
-    // A variable statement names the declaration the position falls in, or its first when the
-    // Position sits on the statement's comment, so its declarations add no name of their own.
+    // A variable statement names the declaration the position falls in, or its first when the position sits on the statement's comment.
+    // So its declarations add no name of their own.
     if (node.name && !ts.isVariableDeclaration(node)) {
       names.push(node.name.getText(source));
     }

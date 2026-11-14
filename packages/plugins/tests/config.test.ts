@@ -2104,8 +2104,8 @@ test(
     space.write('.app.json', json({ mode: 'slow', title: 'abc', unknown: { value: 1 } }));
     const found = await space.run(['-L'], shown('typed'));
     expect(found.stderr).toBe('');
-    // The default fills and the transform runs. A key the schema does not describe is never reported,
-    // And this schema is a loose object, so it reaches the output.
+    // The default fills and the transform runs. A key the schema does not describe is never reported.
+    // This schema is a loose object, so it reaches the output.
     expect(provided(found.stdout)).toEqual({
       mode: 'slow',
       retries: 3,

@@ -53,8 +53,8 @@ function testsReadingDocs(files: Map<string, string>): string[] {
   return [...readers].filter((path) => path.endsWith('.test.ts')).toSorted();
 }
 
-// A pull request that changes only documentation runs the tests tagged `docs` in CI instead of the
-// Whole suite, so every test that reads a file under docs/ carries the tag, and no other test does.
+// A pull request that changes only documentation runs the tests tagged `docs` in CI instead of the whole suite.
+// So every test that reads a file under docs/ carries the tag, and no other test does.
 test('the docs tag marks exactly the tests that read docs/', async () => {
   const files = await sources();
   const tagged = [...files]

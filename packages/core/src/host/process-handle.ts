@@ -227,8 +227,8 @@ function foundLanes(found: object): LaneRegistry {
   if (isSharedLane(found)) {
     return { others, real: found };
   }
-  // An object without the lane's members still holds the real process's source: this copy uses it
-  // And goes without the lane rather than creating a second one.
+  // An object without the lane's members still holds the real process's source.
+  // This copy uses it and goes without the lane rather than creating a second one.
   const source: unknown = Reflect.get(found, 'source');
   return { others, real: absentLane(isSignalSource(source) ? source : processSource()) };
 }
@@ -433,8 +433,8 @@ function connectOutput(
   if (piped === null || choice === 'ignore') {
     return noOutput;
   }
-  // A read error on the child's pipe ends its output early, which exited still reports, and is no
-  // Failure of the run, as a closed stdin pipe is not.
+  // A read error on the child's pipe ends its output early, which exited still reports.
+  // It is no failure of the run, as a closed stdin pipe is not.
   piped.on('error', () => undefined);
   if (choice === 'capture') {
     const chunks: Buffer[] = [];

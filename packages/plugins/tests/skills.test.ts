@@ -165,7 +165,7 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
     umask: scenario.umask,
   };
   writeFileSync(box.scenario, JSON.stringify(facts));
-  // A real process owns the umask, and only the process fixture installs the .git ceiling trap,
+  // A real process owns the umask, and only the process fixture installs the .git ceiling trap.
   // So the ceiling cases run there under both runtimes.
   if (scenario.umask !== undefined || scenario.processCeiling === true) {
     return invoke(fixture, argv, { env: { SKILLS_SCENARIO: box.scenario } });

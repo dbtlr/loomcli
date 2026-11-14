@@ -46,8 +46,8 @@ const highlight = {
   light: '\u001b[38;2;156;90;30mSaved\u001b[39m',
 };
 
-// A process test under ADR-0103: the query is read from a terminal in raw mode, and only the
-// Process fixture's scripted terminal answers it with a background.
+// A process test under ADR-0103: the query is read from a terminal in raw mode.
+// Only the process fixture's scripted terminal answers it with a background.
 test('the scripted light terminal answers the query, and the Loom theme prints its light side', () => {
   expect(invoke(fixture, [])).toEqual({
     status: 0,

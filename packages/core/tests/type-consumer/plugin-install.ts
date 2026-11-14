@@ -5,7 +5,7 @@ import { help } from './plugin-entry.js';
 import { helpArgument, helpCommand, helpInput } from './plugin-extension.js';
 import { timer } from './plugin-timer.js';
 
-// Extension values sit on a global option, a Command, a local option, and an argument alike, and
+// Extension values sit on a global option, a Command, a local option, and an argument alike.
 // The plugin option in `plugin-entry.ts` carries one too.
 
 const get = new Command('get', {

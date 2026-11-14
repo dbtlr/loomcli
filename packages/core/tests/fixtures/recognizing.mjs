@@ -7,8 +7,8 @@ async function runFixture(words, fixtureOptions = {}) {
   const fixture = fixtureScenario({ ...fixtureOptions, argv: words });
   const { stdout: writeStdout } = fixture;
   try {
-    // Prints, for each value, whether `instanceof Application` recognizes it, and under `subclass`,
-    // Whether `instanceof` an author's own subclass of Application recognizes each value.
+    // Prints, for each value, whether `instanceof Application` recognizes it.
+    // Under `subclass`, it prints whether `instanceof` an author's own subclass of Application recognizes each value.
 
     /** A plugin the Application installs, so a constructed value carries its globals. */
     const installed = plugin('@fixture/recognizing', {});

@@ -64,8 +64,8 @@ test('an update refreshes a recorded skill to the replaced binary’s version', 
     skillsRecord,
     `{"format":1,"state":"committed","directories":[],"files":[],"folders":[{"path":${JSON.stringify(folder)}}]}\n`,
   );
-  // The new binary's skill is what the skills application answers. The program for the binary's
-  // Path runs that application, as the refresh spawns it, once the update wrote the new bytes there.
+  // The new binary's skill is what the skills application answers.
+  // The program for the binary's path runs that application, as the refresh spawns it, once the update wrote the new bytes there.
   const notesBinary: Program = async (call) => {
     if (readFileSync(call.command, 'utf8') !== newBytes) {
       throw new Error(`${call.command} is not the new notes binary.`);

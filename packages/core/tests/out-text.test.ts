@@ -118,7 +118,7 @@ test("on a Command that declares a result, the action's out.text resolves for st
     terminal: { columns: 80, rows: 24, streams: ['stderr'] },
   });
   await expect(app.run({ process: mock })).resolves.toBe(0);
-  // Stderr is the terminal and stdout a pipe, so each text names the stream it resolved for, and
+  // Stderr is the terminal and stdout a pipe, so each text names the stream it resolved for.
   // Each equals what the same call's out.render wrote there.
   expect(texts.action).toBe(`\u001B[38;5;172;1mloom\u001B[39;22m ${link} 80\n`);
   expect(mock.stderr.text).toBe(texts.action);

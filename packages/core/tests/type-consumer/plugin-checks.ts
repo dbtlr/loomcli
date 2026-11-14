@@ -32,8 +32,8 @@ const argumentValue = new Command('wrong').argument('path', argumentSlot);
 // @ts-expect-error TS2322: The plugin declares no "hlep" option.
 const misnamed = plugin('@fixture/bad', { middleware: activation, options: declared });
 
-// A plugin's option is a global option: it takes a validator, a default, and an environment binding,
-// And no presence rule, whatever the key's value.
+// A plugin's option is a global option: it takes a validator, a default, and an environment binding.
+// It takes no presence rule, whatever the key's value.
 const validated = {
   level: { default: 'info', env: 'LEVEL', type: 'string', validate: z.enum(['debug', 'info']) },
   tags: { multiple: true, type: 'string', validate: z.string().min(1) },

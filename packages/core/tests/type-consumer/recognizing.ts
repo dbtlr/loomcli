@@ -1,8 +1,8 @@
 import { Application } from '@loomcli/core';
 import type { CommandGraph, DeclarationError } from '@loomcli/core';
 
-// `instanceof Application` narrows an unknown value to an Application whose doors answer, and
-// Publishes no authoring call, because a recognized Application may sit in any authoring state.
+// `instanceof Application` narrows an unknown value to an Application whose doors answer.
+// It publishes no authoring call, because a recognized Application may sit in any authoring state.
 
 declare const value: unknown;
 

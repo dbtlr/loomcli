@@ -460,8 +460,8 @@ test.each([
   });
 });
 
-// The mode names a file as written; whether a name in another case matches is the file system's
-// Rule, as for any path, so no assertion here depends on a case-sensitive file system.
+// The mode names a file as written.
+// Whether a name in another case matches is the file system's rule, as for any path, so no assertion here depends on a case-sensitive file system.
 test('the mode is read as written, and a file for another mode is not read', async () => {
   const files = { '.env': 'TOKEN=base', '.env.Production': 'TOKEN=cased', '.env.staging': 'ALT=x' };
   const invocation5 = await readLayers(files, { env: { NODE_ENV: 'Production' } });
