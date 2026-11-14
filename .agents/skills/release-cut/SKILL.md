@@ -38,6 +38,15 @@ Identify the release's purpose, consumer-visible changes, and required migration
 
 Choose a short release description from the actual changes. Add an optional narrative only when users need connected explanations, a new mental model, compatibility context, or upgrade actions. Keep the narrative file outside the release checkout. Review the compiler's no-material-changes list against the cycle diff and library dependencies.
 
+### Order the breaking changes
+
+The compiled `### Breaking Changes` section lists entries in commit order, and a reader upgrading works down it. Put the breaks the type checker will not report first, because the author cannot find them by compiling.
+
+1. Read each pending `breaking.*.md` fragment's **Affected surface**. Its first sentence states how the author finds the break, as the [fragment guide](../../../.changes/README.md) requires.
+2. Mark a fragment as silent when any of its breaks has no compile error. A fragment that holds both kinds is silent.
+3. The compiler fixes the order of the entries, so do not edit the compiled section. Write the optional narrative so its upgrade actions name each silent break first, in one line each, before it names any break the type checker reports.
+4. When a first sentence is missing or contradicts the change, fix the fragment in a preparatory PR before the cut. Judge the break from the code and the API report diff, not from the fragment's wording.
+
 ### Review the authoring skill
 
 The release guard fails a cut whose authoring skill, `packages/loom/skills/loom/SKILL.md`, names a `metadata.version` other than the release version, and it rejects any change to the skill in the cut itself. Review the skill before the cut, in an ordinary PR:

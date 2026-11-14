@@ -4,7 +4,7 @@
 
 ### Migration
 
-**Affected surface.** Calls to `out.print`, `out.info`, `out.success`, `out.warn`, `out.error`, `out.debug`, and `out.trace` whose message ends with a line break, and lane overrides under `views` whose text ends with one. A message that ends with no line break, which is how a message is usually written, writes the same bytes as before.
+**Affected surface.** No compile error: the output changes at run time. The surface is calls to `out.print`, `out.info`, `out.success`, `out.warn`, `out.error`, `out.debug`, and `out.trace` whose message ends with a line break, and lane overrides under `views` whose text ends with one. A message that ends with no line break, which is how a message is usually written, writes the same bytes as before.
 
 **Why.** A semantic method now ends every message with exactly one line break, whichever view drew it, so a pack view that owns its last line break can draw a message without a blank line after it. One rule covers the lane views and a passed view alike.
 

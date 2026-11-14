@@ -2,7 +2,7 @@
 
 ### Migration
 
-**Affected surface.** `loom changelog write` in a package below `1.0.0` with a feature fragment pending, when it passes `--target` at a patch version, or when its version is a prerelease of a patch version, such as `0.4.8-rc.1`.
+**Affected surface.** No compile error: the cut fails at run time and names the minimum. The surface is `loom changelog write` in a package below `1.0.0` with a feature fragment pending, when it passes `--target` at a patch version, or when its version is a prerelease of a patch version, such as `0.4.8-rc.1`.
 
 **Why.** The fragment minimum for a feature fragment below `1.0.0` is now the next minor, so a target or a prerelease's release part below that minor no longer meets it, and the cut fails and names the minimum.
 
