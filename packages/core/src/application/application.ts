@@ -1105,6 +1105,11 @@ class ApplicationBuilder<
         const choice = spellings && colorChoice(host.argv, spellings);
         const invocationOutput = door.output(host, controller.signal, chosenPolicy({}, choice));
         output = invocationOutput;
+        invocationOutput.useLiveRegionsHooks(
+          this.#config.plugins.flatMap(({ onLiveRegions }) =>
+            onLiveRegions === undefined ? [] : [onLiveRegions],
+          ),
+        );
         // A closed reader on stdout ends the run as a cancellation does, with its own reason.
         invocationOutput.useClosedPipe((cause) => signals?.closePipe(cause));
         // Core's own handlers on the run's place: the live regions and the background query.
@@ -1336,6 +1341,12 @@ class ApplicationBuilder<
       const hookThrow = logged.current?.thrown;
       if (hookThrow !== undefined) {
         await reportFault(foreignFailure(hookThrow.value));
+        code = 1;
+      }
+      // The first throw of an `onLiveRegions` hook is reported the same way, after the `onLog` one.
+      const regionsThrow = output?.liveRegionsThrow;
+      if (regionsThrow !== undefined) {
+        await reportFault(foreignFailure(regionsThrow.value));
         code = 1;
       }
       if (output) {

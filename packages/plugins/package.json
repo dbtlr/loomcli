@@ -99,6 +99,10 @@
       "types": "./dist/src/mcp/extension.d.ts",
       "import": "./dist/src/mcp/extension.js"
     },
+    "./patch-console": {
+      "types": "./dist/src/patch-console/plugin.d.ts",
+      "import": "./dist/src/patch-console/plugin.js"
+    },
     "./prose": {
       "types": "./dist/src/prose.d.ts",
       "import": "./dist/src/prose.js"

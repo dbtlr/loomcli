@@ -150,6 +150,14 @@ class Screen {
     return this.#slots.length > 0;
   }
 
+  /**
+   * Whether any region holds a frame: one drew, and its last frame has not yet moved into
+   * scrollback, which waits for the end of a lend or of an input region that holds it still.
+   */
+  get holdsFrame(): boolean {
+    return this.#slots.some((slot) => slot.latest !== undefined);
+  }
+
   /** Whether an input region is open, which holds every other region's frame still. */
   get #frozen(): boolean {
     return this.#slots.some((slot) => slot.input && !slot.closed);

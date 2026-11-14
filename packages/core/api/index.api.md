@@ -1040,6 +1040,14 @@ export type ListBinding = {
 };
 
 // @public
+export type LiveRegionsHook = (state: 'drawn' | 'closed', context: LiveRegionsHookContext) => undefined;
+
+// @public @sealed
+export interface LiveRegionsHookContext {
+    readonly out: Out;
+}
+
+// @public
 export function locate(graph: CommandGraph, words: readonly string[]): WordPosition;
 
 // @public @sealed
@@ -1286,6 +1294,7 @@ export interface PluginDefinition<Options extends PluginOptions = PluginOptions,
     onEnvironment?: EnvironmentHook;
     onFailure?: FailureHook;
     onGraphBuilt?: GraphBuiltHook;
+    onLiveRegions?: LiveRegionsHook;
     onLog?: LogHook;
     options?: Options;
     source?: {

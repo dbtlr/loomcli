@@ -16,6 +16,8 @@ import { Handed } from '../support/handed.js';
 import { handled } from '../support/thenable.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
+import { LiveRegionSpan } from './live-regions.js';
+import type { LiveRegionsHook } from './live-regions.js';
 import type { LogDestination } from './log.js';
 import { ProgressLedger } from './progress-events.js';
 import { endsWithLineBreak, Regions, Screen } from './region.js';
@@ -156,6 +158,11 @@ class Destination {
   order: { shared: Destination; joins: () => boolean } | undefined = undefined;
   /** The turn this destination's sends take with the other destination on the same terminal. */
   turn: Turn | undefined = undefined;
+  /**
+   * What observes each composition this destination writes, called synchronously right before its
+   * bytes reach the stream and right after, which the run's live-region span reads.
+   */
+  around: { before: () => void; after: () => void } | undefined = undefined;
   /** How many sequences hold a place in this destination's order and have not closed. */
   #sequences = 0;
   /** The compositions queued and not yet sent, which a flush writes at once. */
@@ -257,7 +264,10 @@ class Destination {
           return Promise.resolve();
         }
         const text = produce();
-        return text === '' ? Promise.resolve() : this.writeText(text);
+        this.around?.before();
+        const written = text === '' ? Promise.resolve() : this.writeText(text);
+        this.around?.after();
+        return written;
       });
     });
   }
@@ -271,14 +281,15 @@ class Destination {
     const queued = [...this.#composed];
     this.#composed.clear();
     const text = queued.map(({ produce }) => produce()).join('') + after();
-    if (text === '' || this.state.kind !== 'ok' || this.stream.destroyed) {
-      return;
-    }
+    this.around?.before();
     try {
-      this.stream.write(text, () => undefined);
+      if (text !== '' && this.state.kind === 'ok' && !this.stream.destroyed) {
+        this.stream.write(text, () => undefined);
+      }
     } catch {
       // A terminal that has hung up drops the write.
     }
+    this.around?.after();
   }
 
   /** Sends text now, inside an operation this destination is running, recording any failure. */
@@ -467,6 +478,8 @@ export class Output {
   private readonly screen: Screen;
   // The live regions this run opened.
   private readonly regions: Regions;
+  // The span of drawn regions the installed onLiveRegions hooks observe, once the run hands them over.
+  private span: LiveRegionSpan | undefined = undefined;
   // Closes every region at once when the run's signal aborts.
   private readonly onCancel = (): void => {
     this.regions.closeAll('cancellation');
@@ -761,6 +774,19 @@ export class Output {
     };
   }
 
+  /**
+   * The installed `onLiveRegions` hooks, in installation order, which this run calls at the first
+   * frame its regions hold and at the write after which none holds one.
+   */
+  useLiveRegionsHooks(hooks: readonly LiveRegionsHook[]): void {
+    this.span = hooks.length === 0 ? undefined : new LiveRegionSpan(hooks, this.out);
+  }
+
+  /** The first value an `onLiveRegions` hook threw in this run, which the run reports once. */
+  get liveRegionsThrow(): { readonly value: unknown } | undefined {
+    return this.span?.thrown;
+  }
+
   /** The registry one invocation resolves through, republished as each contributor is read. */
   useViews(registry: ViewRegistry): void {
     this.registry = registry;
@@ -791,6 +817,8 @@ export class Output {
         () => this.screen.finishLends() + this.cursorShown(),
       );
     }
+    // The process is ending, so a span still open closes after those bytes.
+    this.span?.finish();
   }
 
   /**
@@ -849,6 +877,15 @@ export class Output {
       return;
     }
     const errors = this.destination(stderr);
+    // Only a terminal stderr holds a frame, and every write that changes one is a composition there.
+    errors.around = {
+      after: () => {
+        this.span?.after(this.screen.holdsFrame);
+      },
+      before: () => {
+        this.span?.before(this.screen.holdsFrame);
+      },
+    };
     errors.passage = (text, send) => {
       const { after, before } = this.screen.around(text);
       return send(before + text + after);
@@ -1200,7 +1237,12 @@ export class Output {
     return { kind: 'ok' };
   }
 
+  /**
+   * Ends the run's output. A span still open, because a region's closing write never reached a
+   * stderr that failed, closes here, so no span outlives its run.
+   */
   dispose(): void {
+    this.span?.finish();
     this.signal.removeEventListener('abort', this.onCancel);
     for (const destination of this.destinations.values()) {
       destination.dispose();
