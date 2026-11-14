@@ -666,11 +666,14 @@ test('an initial cut whose section lost its narrative carries no notes and fails
 });
 
 /**
- * Checks a release PR whose cut wrote a one-line narrative, which CHANGELOG.md holds at line 5,
- * and whose author then replaced that narrative by hand with the given bytes.
+ * Builds a release PR whose cut wrote a one-line narrative, which CHANGELOG.md holds at line 5 when
+ * it starts with only its title, and whose author then replaced that narrative by hand with the
+ * given bytes. The blank line after the narrative stays. `earlier` is the base's CHANGELOG.md,
+ * whose introduction and earlier releases the cut keeps.
  */
-async function editedNarrativeCheck(narrative: Buffer) {
+async function editedNarrativeRelease(narrative: Buffer, earlier = '# Changelog\n\n') {
   const { root } = repository();
+  put(root, 'CHANGELOG.md', earlier);
   put(root, '.changes/fix.md', '- Fix output.\n');
   const base = commit(root);
   const file = join(temporaryRoot('loom-narrative-'), 'narrative.md');
@@ -686,7 +689,18 @@ async function editedNarrativeCheck(narrative: Buffer) {
     Buffer.concat([changelog.subarray(0, at), narrative, changelog.subarray(at + written.length)]),
   );
   commit(root);
+  return { base, root };
+}
+
+/** Checks a release PR whose narrative the author replaced by hand with the given bytes. */
+async function editedNarrativeCheck(narrative: Buffer, earlier?: string) {
+  const { base, root } = await editedNarrativeRelease(narrative, earlier);
   return await releaseCheck(root, base, '0.4.8');
+}
+
+/** The 1-based number of the first line of the bytes that holds the needle, counted by line feeds. */
+function lineHolding(bytes: Buffer, needle: Buffer) {
+  return bytes.subarray(0, bytes.indexOf(needle)).toString('latin1').split('\n').length;
 }
 
 test.each([
@@ -725,6 +739,53 @@ test.each([
     await expect(editedNarrativeCheck(narrative)).resolves.toEqual({
       status: 1,
       stderr: `CHANGELOG.md: ${sentence}\n`,
+      stdout: '',
+    });
+  },
+);
+
+test('a release PR whose narrative holds a refused character on its first line fails, naming line 5', async () => {
+  const narrative = Buffer.from(`Start ${String.fromCodePoint(0x1b)}[31musing the API.\n`);
+  await expect(editedNarrativeCheck(narrative)).resolves.toEqual({
+    status: 1,
+    stderr:
+      'CHANGELOG.md: line 5 holds the control character U+001B. Remove it, because a narrative accepts no control character but tab and line feed.\n',
+    stdout: '',
+  });
+});
+
+test('a release PR whose narrative holds a lone carriage return on its last line fails, naming line 6', async () => {
+  // The cut's blank line follows the replaced text, so the carriage return becomes line 6 by itself.
+  const narrative = Buffer.from(`${narrativeProse}\n\r`);
+  await expect(editedNarrativeCheck(narrative)).resolves.toEqual({
+    status: 1,
+    stderr:
+      'CHANGELOG.md: line 6 holds the carriage return U+000D. Save the narrative with LF line endings.\n',
+    stdout: '',
+  });
+});
+
+test.each([
+  ['a carriage return', '\r'],
+  ['U+200E', String.fromCodePoint(0x20_0e)],
+  ['U+200B', String.fromCodePoint(0x20_0b)],
+])(
+  'a narrative is scanned from its own lines when an earlier release holds %s',
+  async (_label, character) => {
+    const earlier = `# Changelog\n\nThis project keeps a changelog.\nIts introduction runs\nthree lines.\n\n## v0.4.7 - 2026-01-01\n\n### Changes\n\n- Earlier${character}result.\n\n`;
+    const clean = await editedNarrativeCheck(Buffer.from(`${narrativeProse}\n`), earlier);
+    expect(clean).toEqual({ status: 0, stderr: '', stdout: 'PR checks passed.\n' });
+    const marker = String.fromCodePoint(0x20_2e);
+    const { base, root } = await editedNarrativeRelease(
+      Buffer.from(`${narrativeProse}\nIt ${marker}reorders.\n`),
+      earlier,
+    );
+    const line = lineHolding(readFileSync(join(root, 'CHANGELOG.md')), Buffer.from(marker));
+    // The new section follows the six introduction lines: heading 7, blank 8, narrative 9 and 10.
+    expect(line).toBe(10);
+    await expect(releaseCheck(root, base, '0.4.8')).resolves.toEqual({
+      status: 1,
+      stderr: `CHANGELOG.md: line ${line} holds the invisible format character U+202E. Remove it.\n`,
       stdout: '',
     });
   },
