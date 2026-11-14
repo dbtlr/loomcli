@@ -3,7 +3,7 @@ import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // Node strips the types of this TypeScript module as it loads, which needs Node 22.18 or later.
-import { extractLinks } from '../packages/loom/src/helpers/markdown-links.ts';
+import { extractLinks, proseLines } from '../packages/loom/src/helpers/markdown-links.ts';
 
 /*
  * Points a published package's README at the docs of its own version. npm shows the README a
@@ -46,15 +46,26 @@ const absoluteFileUrl =
 /** Whether a link target opens with a URL scheme (`https:`, `mailto:`) or is protocol-relative. */
 const notRelative = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
 
+/** An HTML `src` or `href` attribute and its quoted value, as an `<img>` or `<a>` tag carries it. */
+const htmlTarget = /\b(?:src|href)\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)')/giu;
+
+/** The `src` and `href` values of the HTML tags in the text's prose, outside code. */
+function htmlTargets(text) {
+  return proseLines(text).flatMap(({ blanked }) =>
+    [...blanked.matchAll(htmlTarget)].map(({ groups }) => groups?.double ?? groups?.single ?? ''),
+  );
+}
+
 /**
  * Every link from the README into the repository's files: each absolute URL of a file or folder,
- * in text order, then each relative link target, which npm would resolve against the default
- * branch. An anchor within the page and a link to another site are not repository links.
+ * in text order, then each relative target of a Markdown link or an HTML `src` or `href`, which
+ * npm would resolve against the default branch. An anchor within the page and a link to another
+ * site are not repository links.
  */
 function repositoryLinks(text) {
   const absolute = [...text.matchAll(absoluteFileUrl)].map(([link]) => link);
-  const relative = extractLinks(text)
-    .map(({ target }) => target.trim())
+  const relative = [...extractLinks(text).map(({ target }) => target), ...htmlTargets(text)]
+    .map((target) => target.trim())
     .filter((target) => target !== '' && !target.startsWith('#') && !notRelative.test(target));
   return [...absolute, ...relative];
 }

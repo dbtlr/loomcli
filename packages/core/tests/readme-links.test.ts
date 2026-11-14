@@ -99,6 +99,21 @@ test.each([
     'Read https://github.com/dbtlr/loomcli/blob/main/docs/core/README.md first.',
     'https://github.com/dbtlr/loomcli/blob/main/docs/core/README.md',
   ],
+  [
+    'an HTML image with a relative source',
+    '<img src="../../examples/textstat/diagram.svg" width="480">',
+    '../../examples/textstat/diagram.svg',
+  ],
+  [
+    'an HTML anchor with a relative target',
+    "<a href='../../examples/textstat/README.md'>example</a>",
+    '../../examples/textstat/README.md',
+  ],
+  [
+    'an HTML anchor with an absolute target',
+    '<a href="https://github.com/dbtlr/loomcli/tree/main/examples">examples</a>',
+    'https://github.com/dbtlr/loomcli/tree/main/examples',
+  ],
 ])('%s into the repository is a repository link', (_form, text, link) => {
   expect(repositoryLinks(text)).toEqual([link]);
 });
@@ -106,7 +121,21 @@ test.each([
 test('an anchor, an external page, and the repository home are not repository links', () => {
   expect(
     repositoryLinks(
-      '[top](#install), [npm](https://www.npmjs.com), [repo](https://github.com/dbtlr/loomcli).',
+      '[top](#install), [npm](https://www.npmjs.com), [repo](https://github.com/dbtlr/loomcli). <a href="#usage">Usage</a>',
+    ),
+  ).toEqual([]);
+});
+
+test('HTML shown in a code block or a code span is not a repository link', () => {
+  expect(
+    repositoryLinks(
+      [
+        '```html',
+        '<img src="../../examples/textstat/diagram.svg">',
+        '```',
+        '',
+        'Write `<a href="./x.md">`.',
+      ].join('\n'),
     ),
   ).toEqual([]);
 });
