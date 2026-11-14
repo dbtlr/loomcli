@@ -300,10 +300,33 @@ test.each(
   },
 );
 
+test.each([
+  [
+    'a last line with no final line feed',
+    `- Fix ${String.fromCodePoint(0x1b)}[31moutput.`,
+    'line 1 holds the control character U+001B. Remove it, because a fragment accepts no control character but tab and line feed.',
+  ],
+  [
+    'only carriage return line endings',
+    `- Fix output.${String.fromCodePoint(0x0d)}- Fix input.${String.fromCodePoint(0x0d)}`,
+    'line 1 holds the carriage return U+000D. Save the fragment with LF line endings.',
+  ],
+])(
+  'check refuses a fragment with %s that holds an unsafe character',
+  async (_label, body, sentence) => {
+    const root = directory({ '.changes/fix.md': body });
+    await expect(run(root, 'check')).resolves.toEqual({
+      status: 1,
+      stderr: `.changes/fix.md: ${sentence}\n`,
+      stdout: '',
+    });
+  },
+);
+
 test('check accepts tab, line feed, and the characters beside each refused range', async () => {
   const beside = [
-    0x09, 0x20, 0x7e, 0xa0, 0xad, 0x06_1b, 0x06_1d, 0x20_0a, 0x20_0c, 0x20_0d, 0x20_10, 0x20_2f,
-    0x20_65, 0x20_6a,
+    0x09, 0x20, 0x7e, 0xa0, 0xad, 0x06_1b, 0x06_1d, 0x20_0a, 0x20_0c, 0x20_0d, 0x20_10, 0x20_28,
+    0x20_29, 0x20_2f, 0x20_65, 0x20_6a,
   ];
   const text = beside.map((codePoint) => String.fromCodePoint(codePoint)).join('');
   // A leading byte order mark, an emoji's zero-width joiner, and right-to-left text are content.
