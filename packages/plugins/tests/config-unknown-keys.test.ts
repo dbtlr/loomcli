@@ -210,3 +210,58 @@ test('a tuple item is walked against its own entry, so a misspelled key inside i
   const file = { pair: [{ id: 'a' }, { label: 'b', lable: 'c' }] };
   await expect(stderrOf(schema, file)).resolves.toBe(unknownLine('pair[1].lable'));
 });
+
+/** Characters a reader cannot see, built from code points so the source holds none of them. */
+const zeroWidth = String.fromCodePoint(0x20_0b);
+const noBreakSpace = String.fromCodePoint(0xa0);
+const softHyphen = String.fromCodePoint(0xad);
+const byteOrderMark = String.fromCodePoint(0xfe_ff);
+
+/** Each case: what the case is, the key the file holds, and the key as the line shows it. */
+const invisibleKeys: [string, string, string][] = [
+  ['an empty key', '', '""'],
+  ['a trailing space', 'stateDir ', '"stateDirU+0020"'],
+  ['a leading space', ' stateDir', '"U+0020stateDir"'],
+  ['a zero-width space', `state${zeroWidth}Dir`, '"stateU+200BDir"'],
+  ['a no-break space', `state${noBreakSpace}Dir`, '"stateU+00A0Dir"'],
+  ['a soft hyphen', `state${softHyphen}Dir`, '"stateU+00ADDir"'],
+  ['a byte order mark', `${byteOrderMark}stateDir`, '"U+FEFFstateDir"'],
+  ['a quote beside a zero-width space', `a"${zeroWidth}b`, String.raw`"a\"U+200Bb"`],
+  ['a backslash beside a soft hyphen', `a\\${softHyphen}b`, String.raw`"a\\U+00ADb"`],
+  ['a trailing run of spaces', 'stateDir  ', '"stateDirU+0020U+0020"'],
+  ['an edge newline', 'stateDir\n', String.raw`"stateDir\u000a"`],
+];
+
+test.each(invisibleKeys)(
+  '%s prints quoted, with each unseen character as its code point',
+  async (_name, key, shown) => {
+    await expect(stderrOf(closed, { [key]: 'x' })).resolves.toBe(unknownLine(shown));
+  },
+);
+
+test('only the key that is invisible is quoted in a nested path', async () => {
+  const file = { sessions: { sources: [{ harness: 'a', [`na${zeroWidth}me`]: 'x' }] } };
+  await expect(stderrOf(closed, file)).resolves.toBe(
+    unknownLine('sessions.sources[0]."naU+200Bme"'),
+  );
+  await expect(stderrOf(closed, { updates: { ' chanel': 'x' } })).resolves.toBe(
+    unknownLine('updates."U+0020chanel"'),
+  );
+});
+
+test('an ordinary key, a dotted key, an inner space, and a quote inside a plain key print as they did', async () => {
+  const file = { 'a b': 1, 'a"b': 2, 'a.b': 3, 'a\\b': 4, state_dir: 5 };
+  await expect(stderrOf(closed, file)).resolves.toBe(
+    unknownLine('a b') +
+      unknownLine('a"b') +
+      unknownLine('a.b') +
+      unknownLine(String.raw`a\b`) +
+      unknownLine('state_dir'),
+  );
+});
+
+test('a control character inside a key stays escaped by the line and does not quote the key', async () => {
+  await expect(stderrOf(closed, { 'a\u001bb': 1 })).resolves.toBe(
+    unknownLine(String.raw`a\u001bb`),
+  );
+});
