@@ -100,7 +100,7 @@ A Command input declared through `stdin()` that consumes no command-line word an
 _Avoid_: Stdin argument, stdin option, stream parameter
 
 **Local option**:
-An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the request a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so a group cannot declare one.
+An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the request a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so an author cannot declare one on a group; a lifecycle hook can, and that option reaches its plugin's middleware alone.
 _Avoid_: Command option, scoped option
 
 **Declared name**:
@@ -315,7 +315,7 @@ The point the middleware chain reaches when it continues past its last middlewar
 _Avoid_: Terminal step, end of chain, action phase
 
 **Routing**:
-The invocation phase that reads words from the root downward and selects the Command whose table reads the remaining words. A plain word that names a child descends; an option word is read against the global options and, at a Command with an action and children, that Command's own options, which bind to the Command routing finally reaches, and one none of those declares stops routing at the Command reached. Core once read the global options in a separate pre-scan before routing; the term is retired.
+The invocation phase that reads words from the root downward and selects the Command whose table reads the remaining words. A plain word that names a child descends; an option word is read against the global options and, at a Command with children, that Command's own options, which bind to the Command routing finally reaches, and one none of those declares stops routing at the Command reached. Core once read the global options in a separate pre-scan before routing; the term is retired.
 _Avoid_: Dispatch (for selection), resolution, matching, pre-scan
 
 **Misplaced option**:
@@ -514,7 +514,7 @@ A named, unstyled mark from core's inventory with main and compatibility forms. 
 _Avoid_: Icon, symbol, emoji, bullet
 
 **Media type**:
-The type a view declares for the text it writes, such as `application/json` or `application/jsonl`, which a result publishes by view name. Core stores the string and never checks it, and a reader parses a view's output by its media type rather than by its view name. A failed run reads its selected view's media type to find a failure encoder.
+The type a view declares for the text it writes, such as `application/json` or `application/jsonl`, which a result publishes by view name. Core stores the string and never checks it, and a reader parses a view's output by its media type rather than by its view name. A run's media type is its selected view's on a Command that declares a result, and the one a middleware assigned on a Command that declares none; a takeover reads it to choose its encoding, and a failed run reads it to find a failure encoder.
 _Avoid_: Encoding (for the fact), format, content type, encoding name
 
 **Result**:
@@ -596,7 +596,7 @@ One failure as plain data, `{ code, exitCode, message, hints }`: its failure cod
 _Avoid_: Error object, error payload, error JSON, failure document
 
 **Failure encoder**:
-A function a plugin registers for one media type that turns a failure form into text. When a failed `run()`'s selected view declares that media type, core writes the encoder's text to stderr in place of the failure view, and that line is the run's only failure text there, with no incomplete-result line. A run whose failure no encoder writes, such as a cancelled stream or a broken encoder, keeps that line. One media type has one encoder, and core encodes nothing itself.
+A function a plugin registers for one media type that turns a failure form into text. When a failed `run()`'s media type is that one, core writes the encoder's text to stderr in place of the failure view, and that line is the run's only failure text there, with no incomplete-result line. A run whose failure no encoder writes, such as a cancelled stream or a broken encoder, keeps that line. One media type has one encoder, and core encodes nothing itself.
 _Avoid_: Error formatter, JSON failure view, error serializer, failure override
 
 **Hint**:
