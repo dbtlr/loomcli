@@ -366,11 +366,11 @@ export class UnknownCommandError extends UsageError {
   /** The failure code of an unknown command, `unknown-command`. */
   static override readonly code: string = 'unknown-command';
 
-  /** The word the operator typed, as typed. */
+  /** The word the operator typed, or the path element a caller wrote in an invocation by name. */
   readonly token: string;
   /**
-   * The names the message offers in its place. It is empty when the Command offers none, because
-   * every child is hidden or deprecated.
+   * The names the message offers in its place. It is empty when the Command offers none: every
+   * child is hidden or deprecated, or, in an invocation by name, the Command has no children.
    */
   readonly candidates: readonly string[];
 
@@ -673,11 +673,15 @@ export class MisplacedOptionError extends UsageError {
   /** The failure code of a misplaced option, `misplaced-option`. */
   static override readonly code: string = 'misplaced-option';
 
-  /** The option word the operator typed. */
+  /**
+   * The spelling the operator typed, without an attached value, and one letter of a short group as
+   * `-p`.
+   */
   readonly spelling: string;
   /**
    * The path from the root of each visible Command below the routed one that declares the option,
-   * in authoring order.
+   * in authoring order, or the routed Command's own path alone when it declares a parent's own
+   * option with another value class.
    */
   readonly commands: readonly (readonly string[])[];
 

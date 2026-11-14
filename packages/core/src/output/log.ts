@@ -48,7 +48,7 @@ interface LogEvent {
   readonly time: string;
   /** The event's severity. `fatal` is core's alone, for a defect. */
   readonly level: LogLevel;
-  /** The message the `log` call passed. */
+  /** The message the `log` call passed, or for an event core logs, the message core gives it. */
   readonly message: string;
   /** The frozen copy of the call's fields. */
   readonly fields: Readonly<Record<string, JsonValue>>;

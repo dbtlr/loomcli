@@ -341,7 +341,7 @@ interface ConfigurationNode {
  * const spellings = graph.globals.map((option) => reportedSpelling(option));
  * ```
  *
- * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/graph-inspection.md
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md#failure-classes
  * @public
  */
 export function reportedSpelling(option: OptionNode): string {

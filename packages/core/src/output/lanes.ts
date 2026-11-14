@@ -114,7 +114,10 @@ const lanes: Readonly<Record<Lane, DeclaredView<string>>> = {
 interface IncompleteResult {
   /** The canonical names of the Command whose sequence stopped. */
   path: readonly string[];
-  /** How many rows the sequence's source produced before it stopped. */
+  /**
+   * How many rows the sequence's source produced, including one an in-flight request delivered after
+   * the stop, which core never writes.
+   */
   yielded: number;
   /** How many rows core wrote before the sequence stopped. */
   written: number;

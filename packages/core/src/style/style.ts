@@ -35,7 +35,9 @@ type Ansi16Color = keyof typeof colors;
  * @public
  */
 interface ColorFallbacks {
-  /** The 256-color palette index used where the terminal lacks truecolor. */
+  /**
+   * The 256-color palette index used at 256-color depth; it never changes the sixteen-color result.
+   */
   readonly ansi256?: number | undefined;
   /** The palette color used where the terminal has sixteen colors. */
   readonly ansi16?: Ansi16Color | undefined;
@@ -129,7 +131,9 @@ type EnvironmentStyle<Environment extends ApplicationEnvironment<unknown, readon
  */
 type ContextualStyle = EnvironmentStyle<RegisteredEnvironment>;
 /**
- * A style chain that carries only core's tokens, the kind a theme mapping holds unapplied.
+ * A style chain that has applied no semantic token, only colors, modifiers, and resets: the kind a
+ * theme mapping holds unapplied. Reading a token from it, core's included, gives a chain that is no
+ * longer concrete.
  *
  * @public
  * @sealed

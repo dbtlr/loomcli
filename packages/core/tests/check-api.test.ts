@@ -550,7 +550,24 @@ test("a listed interface's construct signature needs a comment", () => {
   ]);
 });
 
-/** A package whose root entry is documented and whose `./later` entry is not yet. */
+test("a subpath entry's missing comment, member comment, and example each fail", () => {
+  const { config, root } = fixture(tagged, {
+    'dist/later/index.d.ts':
+      '/** @public */\nexport declare function later(): void;\n/** A later shape. @public */\nexport interface Later {\n  value: string;\n}\n',
+    'package.json': JSON.stringify({
+      exports: {
+        '.': { types: './dist/index.d.ts' },
+        './later': { types: './dist/later/index.d.ts' },
+      },
+      name: 'fixture',
+    }),
+  });
+  const failures = checkApi(root, [config], { update: true });
+  expect(failures).toContainEqual(expect.stringContaining('ae-undocumented: later:'));
+  expect(failures).toContainEqual(expect.stringContaining('api-missing-example: later:'));
+  expect(failures).toContainEqual(expect.stringContaining('ae-undocumented: Later.value:'));
+});
+
 test("an undocumented constant's failure names the constant once", () => {
   const { config, root } = fixture(
     `/** @public */\nexport declare const value: string;\n${exampled('A pair.', '```ts\none;\n```')}export declare const one: string, two: string;\n`,

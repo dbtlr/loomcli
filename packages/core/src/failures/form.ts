@@ -19,7 +19,11 @@ interface FailureForm {
   readonly code: string;
   /** The exit code the failure's class declares, which the code a run resolves can differ from. */
   readonly exitCode: FailureExitCode;
-  /** The failure's sentence as plain text, without the application-name prefix. */
+  /**
+   * The failure's sentence as plain text, without the application-name prefix. For a defect or a
+   * declaration fault it is the sentence in a development build and `Something went wrong.` in a
+   * distributed one.
+   */
   readonly message: string;
   /** The `onFailure` hints as plain text, in the order the failure view receives them. */
   readonly hints: readonly string[];

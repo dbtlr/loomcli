@@ -155,8 +155,9 @@ interface ProviderContext<Globals = {}, Provided = {}> {
   /** The run's signal. A persistent provider receives the outermost run's. */
   readonly signal: AbortSignal;
   /**
-   * Registers a synchronous handler that runs when the process ends, and answers its remover, as a
-   * middleware's does.
+   * Registers a synchronous handler that runs once, at the end of a shutdown or of the process, and
+   * is removed when the run ends while no shutdown is under way; a persistent provider's handler
+   * belongs to the outermost run. Answers the call that removes it, as a middleware's does.
    */
   readonly onShutdown: OnShutdown;
 }

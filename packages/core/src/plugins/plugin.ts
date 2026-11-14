@@ -284,7 +284,8 @@ interface PluginDefinition<
    */
   onGraphBuilt?: GraphBuiltHook;
   /**
-   * Called when `run()` renders a failure after graph build, and returns hints to print under it.
+   * Called when a run, from `run()` or `invoke()`, renders a failure after graph build, and returns
+   * hints to print under it.
    */
   onFailure?: FailureHook;
   /** Called with each event a run logs, to observe it. */

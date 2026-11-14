@@ -66,11 +66,18 @@ type Translation = Pick<TranslationDeclaration, typeof translation>;
  *
  * class InvalidJsonError extends FatalError {
  *   static override readonly exitCode = EX_DATAERR;
+ *
+ *   constructor(options?: ErrorOptions) {
+ *     super(
+ *       'The document is not valid JSON. Correct its syntax, or supply another document.',
+ *       options,
+ *     );
+ *   }
  * }
  *
  * export const jsonkit = new Application('jsonkit', {
  *   translators: [
- *     translate(SyntaxError, (error) => new InvalidJsonError(error.message, { cause: error })),
+ *     translate(SyntaxError, (error) => new InvalidJsonError({ cause: error })),
  *   ],
  * });
  * ```
