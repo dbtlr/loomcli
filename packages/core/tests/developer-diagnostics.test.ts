@@ -197,8 +197,8 @@ test("a defect prints its sentence, the thrown value's source and stack, then th
   expect(result.status).toBe(1);
   // Each stack frame names a path on the machine that ran the test, so the golden elides frames.
   const framed = result.stderr.replaceAll(/(?:^ {4}at .+\n)+/gmu, '    at …\n');
-  // Node reports the throw's column at `new` and Bun at the class name, so the golden reads the
-  // Column the runtime reported and pins the caret beneath it.
+  // Node reports the throw's column at `new` and Bun at the class name.
+  // So the golden reads the column the runtime reported and pins the caret beneath it.
   const column = Number(/translators\.mjs:147:(?<column>\d+)$/mu.exec(framed)?.groups?.column);
   expect(column).toBeGreaterThan(0);
   const stderr = framed

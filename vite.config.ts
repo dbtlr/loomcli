@@ -198,8 +198,8 @@ export default defineConfig({
         files: ['packages/core/src/**'],
         rules: {
           // Exit codes, argv offsets, and the missing-index sentinel have fixed meanings.
-          // 129, 130, 131, and 143 are the cancellation codes SIGHUP, SIGINT, SIGQUIT, and SIGTERM
-          // Resolve, and 141 a closed pipe's.
+          // 129, 130, 131, and 143 are the cancellation codes SIGHUP, SIGINT, SIGQUIT, and SIGTERM resolve.
+          // 141 is a closed pipe's.
           // oxlint-disable-next-line eslint/no-magic-numbers
           'eslint/no-magic-numbers': ['warn', { ignore: [-1, 0, 1, 2, 129, 130, 131, 141, 143] }],
         },
@@ -222,8 +222,8 @@ export default defineConfig({
         ],
         rules: {
           // Keep each ordered lifecycle and write-completion boundary in one method.
-          // A declaration rule sequence and the `next()` lifecycle read the same way: splitting one
-          // Rule out of its sequence hides which diagnostic answers first.
+          // A declaration rule sequence and the `next()` lifecycle read the same way.
+          // Splitting one rule out of its sequence hides which diagnostic answers first.
           // An absent spelling reports as `null`, as the inspected graph's public types state.
           'eslint/max-statements': 'off',
           'import/exports-last': 'off',

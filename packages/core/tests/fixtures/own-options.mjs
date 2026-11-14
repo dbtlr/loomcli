@@ -8,8 +8,8 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
   const fixture = fixtureScenario({ ...fixtureOptions, argv: fixtureWords });
   const { createProcess, env: fixtureEnv, stdout: writeStdout } = fixture;
   try {
-    // Each run prints the `ownOptions` record the fixture plugin's middleware reads, then its exit code,
-    // Then how many times the word validator was called with each value.
+    // Each run prints the `ownOptions` record the fixture plugin's middleware reads, then its exit code.
+    // It then prints how many times the word validator was called with each value.
     // FIXTURE_SOURCE=fails installs a configuration source that cannot read its settings.
     const words = fixtureWords;
 

@@ -11,8 +11,8 @@ import type {
 import type { help } from './plugin-entry.js';
 import { helpCommand } from './plugin-extension.js';
 
-// `Middleware<typeof help>` reads the declared options from the factory's annotated return type,
-// And `OptionsOf` extracts the same record for a consumer that names it.
+// `Middleware<typeof help>` reads the declared options from the factory's annotated return type.
+// `OptionsOf` extracts the same record for a consumer that names it.
 type Options = OptionsOf<typeof help>;
 
 const middleware: Middleware<typeof help> = async (context) => {
