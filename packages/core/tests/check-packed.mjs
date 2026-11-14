@@ -166,6 +166,39 @@ const scaffolds = [
   },
 ];
 
+/** The files of the authoring skill in this repository, as paths below its folder. */
+const references = await readdir(join(root, 'packages/loom/skills/loom/references'));
+const authoringSkillFiles = ['SKILL.md', ...references.map((name) => `references/${name}`)];
+
+/**
+ * Requires the packed `loom init` to have written the authoring skill, which proves the tarball
+ * carries the `skills` folder: `SKILL.md` and each reference, with init's header and documentation
+ * links at the packed version's tag.
+ */
+async function checkAuthoringSkill(directory, label) {
+  assert.ok(authoringSkillFiles.length > 1, `${label}: the repository holds no authoring skill`);
+  for (const file of authoringSkillFiles) {
+    const path = join(directory, '.agents/skills/loom', file);
+    const text = await readFile(path, 'utf8').catch(() => undefined);
+    assert.notEqual(text, undefined, `${label}: init wrote no .agents/skills/loom/${file}`);
+    assert.match(text, /<!-- Managed by loom init\. sha256:[\da-f]{64} -->/u, `${label}: ${file}`);
+  }
+  const written = await Promise.all(
+    authoringSkillFiles.map((file) =>
+      readFile(join(directory, '.agents/skills/loom', file), 'utf8'),
+    ),
+  );
+  const links = `https://github.com/dbtlr/loomcli/blob/v${version}/`;
+  assert.ok(
+    written.some((text) => text.includes(`${links}docs/`)),
+    `${label}: no documentation link names ${links}`,
+  );
+  assert.ok(
+    written.every((text) => !/\]\((?:\.\.\/)+docs\//u.test(text)),
+    `${label}: a link still reaches into the repository by a relative path`,
+  );
+}
+
 /**
  * Scaffolds an application with the packed `loom init`, installs it from the packed tarballs, and
  * requires its `check` script to pass under Bun. Then it adds an undescribed option to the
@@ -177,6 +210,7 @@ async function checkScaffold(temporary, { args, label, linter }) {
   await mkdir(directory, { recursive: true });
   const initialized = run(join(temporary, 'node_modules/.bin/loom'), ['init', ...args], directory);
   assert.equal(initialized.status, 0, `${label}: ${initialized.output}`);
+  await checkAuthoringSkill(directory, label);
   // The scaffold pins the synchronized version, so each first-party package installs from its tarball.
   const manifestPath = join(directory, 'package.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));

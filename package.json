@@ -34,6 +34,7 @@
     "@loomcli/testing": "workspace:*",
     "@loomcli/validators": "workspace:*",
     "@microsoft/api-extractor": "7.60.1",
+    "@types/bun": "1.4.4",
     "@types/node": "22.20.5",
     "@xterm/headless": "6.0.0",
     "publint": "0.3.25",
@@ -41,6 +42,7 @@
     "signal-exit": "4.1.0",
     "typescript": "^7.0.2",
     "vite-plus": "1.4.0",
+    "vitest": "5.0.5",
     "zod": "^4.6.7"
   },
   "devEngines": {
