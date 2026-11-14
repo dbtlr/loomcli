@@ -6,7 +6,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { withoutByteOrderMark } from './byte-order-mark.js';
 import { conventionalChangelog, conventionalFragments } from './conventions.js';
 import type { FragmentKind } from './fragments.js';
-import { readFragments } from './fragments.js';
+import { readFragments, requireSafeCharacters } from './fragments.js';
 import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
 import { git, gitLine, requireFullHistory } from './repository.js';
 import type { Checkout } from './repository.js';
@@ -31,11 +31,18 @@ function blankLine(text: string) {
   return '\n\n';
 }
 
-// The narrative file an option names, resolved against the working directory, without its byte order mark.
+/**
+ * The narrative file an option names, resolved against the working directory, without its byte
+ * order mark. A narrative holding bytes or a character a fragment refuses fails, naming the path
+ * as the option gave it.
+ */
 export function readNarrative(cwd: string, path: string | undefined) {
-  return path === undefined
-    ? undefined
-    : withoutByteOrderMark(readFileSync(resolve(cwd, path), 'utf8'));
+  if (path === undefined) {
+    return undefined;
+  }
+  const bytes = readFileSync(resolve(cwd, path));
+  requireSafeCharacters(path, bytes, 'narrative');
+  return withoutByteOrderMark(bytes.toString('utf8'));
 }
 
 export function releaseDate(input: string | undefined) {
