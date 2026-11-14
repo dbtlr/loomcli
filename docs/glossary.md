@@ -335,11 +335,11 @@ A program a run starts through `host.spawn`, with no shell unless the call names
 _Avoid_: Child process (for what a run starts), subprocess
 
 **Host**:
-The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, environment, platform, architecture, C library, user ID, the standard streams, terminal facts, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, the ceiling when the handle names one, environment, platform, architecture, C library, user ID, the standard streams, terminal facts, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Process handle**:
-The one object a run reads every process fact from and sends every process effect to, such as its exit status, the signals core listens for and re-raises, and the child programs the run starts, bound when the run enters and never replaced during it. It owns no clock, timer, randomness, network, or file system. `processHandle()` builds the real process's handle, and `@loomcli/testing`'s `mockProcess()` builds an isolated one that reads nothing from the process a test runs in and scripts each child program instead of running it.
+The one object a run reads every process fact from and sends every process effect to, such as its exit status, the signals core listens for and re-raises, and the child programs the run starts, bound when the run enters and never replaced during it. It owns no clock, timer, randomness, network, or file system. `processHandle()` builds the real process's handle, and `@loomcli/testing`'s `mockProcess()` builds an isolated one that reads nothing from the process a test runs in, names its working directory as its ceiling, and scripts each child program instead of running it.
 _Avoid_: Host (for the handle), process object, host overrides
 
 **Mock keyboard**:
@@ -821,7 +821,7 @@ The value of `NODE_ENV` in the environment the dotenv plugin receives, which nam
 _Avoid_: Environment (for the mode), stage, profile
 
 **Configuration file**:
-The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found in the configuration scopes the author chooses: the walk from the start directory up to below the home directory or to a root marker, then the home file, then the XDG user file. A run under `--no-config` reads none. A JSON file may hold comments and trailing commas. Only the file `--config` names can fail a run; a broken file found any other way warns and leaves the run with no configuration.
+The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found in the configuration scopes the author chooses: the walk from the start directory up to below the home directory, to the ceiling, or to a root marker, then the home file, then the XDG user file. A run under `--no-config` reads none. A JSON file may hold comments and trailing commas. Only the file `--config` names can fail a run; a broken file found any other way warns and leaves the run with no configuration.
 _Avoid_: Config, settings file, rc file, dotfile
 
 **Configuration scope**:
@@ -829,8 +829,12 @@ One of the places the configuration plugin's lookup looks, which the author choo
 _Avoid_: Config level, search strategy, layer
 
 **Root marker**:
-A name, such as `package.json` or `.git`, whose presence in a directory ends the configuration plugin's project walk after it looks in that directory, so a file above the project is never read. The author names it with `root`; with none, the walk runs to the directory below home or to the filesystem root.
+A name, such as `package.json` or `.git`, whose presence in a directory ends the configuration plugin's project walk after it looks in that directory, so a file above the project is never read. The author names it with `root`; with none, the walk runs to the directory below home, to the ceiling, or to the filesystem root.
 _Avoid_: Project root (for the marker), stop file, boundary file
+
+**Ceiling**:
+A directory a process handle may name, which core copies into `host.ceiling`, above which the configuration plugin's project walk never looks: the walk looks in the ceiling itself and in no ancestor of it, and ends at whichever stop it meets first, below home, the ceiling, a root marker, or the filesystem root. The real process's handle names none, and `mockProcess()` names its working directory unless the test names a higher one, so a test's walk never reads a file above its sandbox. It bounds the walk alone, not the user scope or any other read.
+_Avoid_: Sandbox (for the ceiling), walk limit, boundary
 
 **Configuration schema**:
 The one Standard Schema an author writes for the whole configuration file, in which every object key outside an array item or a record value is optional so that an empty file passes. Application code reads its output as the configuration's provided value. The configuration plugin passes it to the configuration source with a `$schema` property added, so core publishes the file's JSON Schema as the graph's `configuration` fact, which the manifest prints.

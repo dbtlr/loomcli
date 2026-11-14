@@ -150,18 +150,33 @@ function isInside(directory: string, home: string): boolean {
 /**
  * The directories the walk may look in, nearest first: the start directory and each ancestor, up
  * to the directory below home when the start is inside it, and up to the root otherwise. The home
- * directory belongs to the user scope, so a start at home walks nowhere.
+ * directory belongs to the user scope, so a start at home walks nowhere. No ancestor of the
+ * ceiling is looked in: a start at or inside the ceiling climbs to the ceiling and no higher, a
+ * start that is an ancestor of the ceiling walks nowhere, and any other start outside the ceiling
+ * is looked in alone. The walk ends at the first of home, the ceiling, and the root that it meets.
  */
-function walkDirectories(start: string, home: string | undefined): string[] {
+function walkDirectories(
+  start: string,
+  home: string | undefined,
+  ceiling: string | undefined,
+): string[] {
   const bound = home !== undefined && isInside(start, home) ? home : undefined;
+  if (ceiling !== undefined && !isInside(start, ceiling)) {
+    return start === bound || isAncestor(start, ceiling) ? [] : [start];
+  }
   const directories: string[] = [];
   for (let directory = start; directory !== bound; directory = dirname(directory)) {
     directories.push(directory);
-    if (dirname(directory) === directory) {
+    if (directory === ceiling || dirname(directory) === directory) {
       break;
     }
   }
   return directories;
+}
+
+/** Whether a directory is a strict ancestor of another, compared as `node:path` resolves them. */
+function isAncestor(directory: string, of: string): boolean {
+  return directory !== of && isInside(of, directory);
 }
 
 /** The extensions the user file may carry. */
@@ -384,13 +399,20 @@ function startDirectory(lookup: Lookup): string {
   return resolve(lookup.host.cwd, lookup.directory ?? '.');
 }
 
+/** The directories the project walk looks in, bounded by the host's ceiling when it names one. */
+function projectDirectories(lookup: Lookup, home: string | undefined): string[] {
+  const { ceiling } = lookup.host;
+  const bound = ceiling === undefined ? undefined : resolve(ceiling);
+  return walkDirectories(startDirectory(lookup), home, bound);
+}
+
 /**
  * The project scope's steps: the walk's directories, nearest first, ending after a directory that
  * holds a root marker. The marker is checked after the directory is looked in.
  */
 async function* projectSteps(lookup: Lookup, home: string | undefined): AsyncGenerator<Step> {
   const { candidates, reach } = lookup;
-  for (const directory of walkDirectories(startDirectory(lookup), home)) {
+  for (const directory of projectDirectories(lookup, home)) {
     yield { candidates, directory, walked: true };
     if (await holdsMarker(directory, reach.markers)) {
       return;
@@ -433,7 +455,7 @@ async function* searchSteps(lookup: Lookup): AsyncGenerator<Step> {
  */
 function noticeStep(lookup: Lookup): Step | undefined {
   const home = resolvedHome(lookup.host);
-  const [start] = lookup.reach.project ? walkDirectories(startDirectory(lookup), home) : [];
+  const [start] = lookup.reach.project ? projectDirectories(lookup, home) : [];
   if (start !== undefined) {
     return { candidates: lookup.candidates, directory: start, walked: true };
   }

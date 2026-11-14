@@ -163,6 +163,11 @@ interface Write {
  * @public @sealed
  */
 interface MockProcess extends ProcessHandle {
+  /**
+   * The directory the configuration walk never looks above: the `ceiling` the test supplied, or
+   * the working directory, whether or not it is inside the mock's home.
+   */
+  readonly ceiling: string;
   /** The run's stdin: the piped text, or the terminal's keyboard. */
   readonly stdin: MockStdin;
   /** The run's stdout, which keeps everything written to it. */
@@ -481,6 +486,11 @@ function mockTerminal(
   };
 }
 
+/** The working directory a mock's `cwd` field names: a function's answer, or the string itself. */
+function workingDirectory(cwd: string | (() => string)): string {
+  return typeof cwd === 'function' ? cwd() : cwd;
+}
+
 /** The folders a mock names by default, neither of which exists. */
 const defaultHome = '/loom-test/home';
 const defaultTmpdir = '/loom-test/tmp';
@@ -763,7 +773,14 @@ function mockProcess(fields: MockFields = {}): MockProcess {
   return {
     arch: fields.arch ?? 'x64',
     argv: fields.argv ?? [],
-    cwd: typeof cwd === 'function' ? cwd : () => cwd,
+    /**
+     * The ceiling is the working directory unless the test names one. With a `cwd` function, the
+     * ceiling calls it again when core reads the ceiling, right after the `cwd()` read.
+     */
+    get ceiling() {
+      return fields.ceiling ?? workingDirectory(cwd);
+    },
+    cwd: () => workingDirectory(cwd),
     get endedBy() {
       return life.ended;
     },

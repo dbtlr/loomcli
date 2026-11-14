@@ -59,8 +59,12 @@ vi.mock(import('node:fs'), async (importOriginal) => {
   };
 });
 
+// A run's configuration walk may climb to `ceiling`, which a case names when its file sits above `cwd`.
 async function run(cwd: string, ...args: string[]) {
   return await runLoom(['changelog', ...args], { cwd });
+}
+async function runCeiled(ceiling: string, cwd: string, ...args: string[]) {
+  return await runLoom(['changelog', ...args], { ceiling, cwd });
 }
 afterEach(() => {
   vi.restoreAllMocks();
@@ -164,11 +168,11 @@ test('check resolves paths.changes against the package directory, from a subdire
     'src/main.ts': 'export {};\n',
   });
   const checked = { status: 0, stderr: '', stdout: 'Checked 1 fragment.\n' };
-  await expect(run(join(root, 'src'), '--config', '../other/loom.json', 'check')).resolves.toEqual(
-    checked,
-  );
+  await expect(
+    runCeiled(root, join(root, 'src'), '--config', '../other/loom.json', 'check'),
+  ).resolves.toEqual(checked);
   put(root, 'loom.config.json', '{ "paths": { "changes": "notes/changes" } }\n');
-  await expect(run(join(root, 'src'), 'check')).resolves.toEqual(checked);
+  await expect(runCeiled(root, join(root, 'src'), 'check')).resolves.toEqual(checked);
 });
 
 test('check outside any package fails and says to run it inside a package directory', async () => {

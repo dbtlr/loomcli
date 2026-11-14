@@ -92,6 +92,7 @@ type Overrides = Record<string, string | undefined> & { [settingsKey]?: Settings
 
 /** The names of the environment entries that configure the fixture application, not the run. */
 const fixtureNames = new Set([
+  'FIXTURE_CEILING',
   'FIXTURE_CWD',
   'FIXTURE_LIMIT_PATH',
   'FIXTURE_LOUD',
@@ -119,6 +120,7 @@ function split(env: Overrides) {
   const entries = Object.entries(env);
   const own = Object.fromEntries(entries.filter(([name]) => !fixtureNames.has(name)));
   const {
+    FIXTURE_CEILING,
     FIXTURE_CWD,
     FIXTURE_LIMIT_PATH,
     FIXTURE_LOUD,
@@ -139,6 +141,7 @@ function split(env: Overrides) {
   return {
     declared,
     env: own,
+    ...(FIXTURE_CEILING === undefined ? {} : { ceiling: FIXTURE_CEILING }),
     ...(FIXTURE_CWD === undefined ? {} : { cwd: FIXTURE_CWD }),
     ...(FIXTURE_TTY === undefined ? {} : { columns: Number(FIXTURE_TTY) }),
   };
@@ -176,7 +179,10 @@ function workspace(): Workspace {
     mkdirSync(directory);
   }
   const run = (argv: string[], env: Overrides = {}) =>
-    runInProcess({ argv, ...split({ FIXTURE_CWD: project, HOME: home, ...env }) });
+    runInProcess({
+      argv,
+      ...split({ FIXTURE_CEILING: root, FIXTURE_CWD: project, HOME: home, ...env }),
+    });
   return {
     elsewhere,
     home,

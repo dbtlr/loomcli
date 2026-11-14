@@ -112,6 +112,7 @@ export type MockFields = MockFacts & ({
 
 // @public @sealed
 export interface MockProcess extends ProcessHandle {
+    readonly ceiling: string;
     readonly endedBy: ProcessSignal | undefined;
     resize(columns: number, rows: number): void;
     readonly stderr: RecordingStream;

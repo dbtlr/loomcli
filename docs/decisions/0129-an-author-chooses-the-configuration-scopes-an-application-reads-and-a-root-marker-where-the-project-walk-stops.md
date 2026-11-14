@@ -4,7 +4,7 @@ title: ADR-0129 - An author chooses the configuration scopes an application read
 description: configuration() takes scopes, a list of project and user that defaults to both, and the lookup reads only the scopes listed, in a fixed order, project first. The project scope is the walk, which never looks in the home directory; the user scope is the home file and the XDG user file. root names one or more entries whose presence marks the directory where the project walk stops, after it looks there; root false states that there is none. A root beside scopes without project is a declaration fault. The lint rule unrooted-configuration warns on a configuration() call that reads the project scope and sets no root. With neither setting the lookup is ADR-0119's. It amends ADR-0119.
 status: accepted
 created: 2026-10-31
-modified: 2026-11-02
+modified: 2026-11-14
 ---
 
 # ADR-0129 - An author chooses the configuration scopes an application reads, and a root marker where the project walk stops
@@ -46,3 +46,4 @@ Accepted in 0.17.0.
 ## Changelog
 
 - 2026-10-31: Proposed with the toolchain configuration contract (LM-434). It amends ADR-0119's lookup by letting the author choose its scopes and bound its walk. ADR-0119 carries a dated entry.
+- 2026-11-14: [ADR-0153](0153-a-process-handle-may-name-a-ceiling-the-configuration-walk-never-looks-above-and-a-mock-names-its-working-directory.md), proposed, adds the host's ceiling to the project walk's stops, when a process handle names one: the walk looks in the ceiling directory and never in an ancestor of it, and ends at whichever it meets first of below home, the ceiling, a root marker, and the filesystem root. The real process's handle names none, so a real run's walk is this record's, and `mockProcess` names its working directory. It binds when that record is accepted.

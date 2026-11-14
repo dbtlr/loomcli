@@ -837,6 +837,7 @@ export type GraphBuiltHook = (graph: CommandGraph) => undefined;
 export interface Host {
     arch: string;
     argv: string[];
+    ceiling?: string;
     cwd: string;
     env: Record<string, string | undefined>;
     home: string;
@@ -1312,6 +1313,7 @@ export type ProcessFields = Partial<Omit<ProcessHandle, 'cwd' | 'exitCode' | 'pu
 export interface ProcessHandle {
     readonly arch: string;
     readonly argv: readonly string[];
+    readonly ceiling?: string;
     cwd(): string;
     readonly env: Readonly<Record<string, string | undefined>>;
     exitCode: ExitCode | undefined;
