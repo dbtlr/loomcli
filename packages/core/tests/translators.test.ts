@@ -34,6 +34,7 @@ import { expect, test } from 'vite-plus/test';
  *   a string or an `Error` that is not a `LoomError` is a compile error.
  */
 
+import { invoke } from '../../../scripts/test-process.js';
 import { coreRuleParts } from './rule-parts.js';
 import { invoke as invokeFixture } from './run-fixture.ts';
 
@@ -187,8 +188,16 @@ test.each(['broken-throws', 'broken-plugin'])(
   },
 );
 
-test("a throwing translator's diagnostic shows the translator's own source and its throw alone", async () => {
-  const { stderr } = await develop('broken-throws');
+/**
+ * This test reads the throw's source line from its stack, so it runs the fixture as a process,
+ * where the runtime names the line of the file as written. An in-process run loads the fixture as
+ * the test runner's transformed code and maps each frame back through `Error.prepareStackTrace`.
+ * Bun skips that hook when a garbage collection formats the stack before anything reads it, and
+ * the frame then names the transformed code's line.
+ */
+test("a throwing translator's diagnostic shows the translator's own source and its throw alone", () => {
+  const fixture = new URL('fixtures/translators.mjs', import.meta.url);
+  const { stderr } = invoke(fixture, ['broken-throws'], { env: { FIXTURE_BUILD: 'development' } });
   expect(stderr).toMatch(/\n> +\d+ \|   throw new Error\('The translator failed\.'\);\n/u);
   expect(stderr).toContain('\n\nError: The translator failed.\n    at ');
   expect(stderr).not.toContain('SyntaxError');
