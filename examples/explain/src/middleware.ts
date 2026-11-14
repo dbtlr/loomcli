@@ -26,7 +26,7 @@ function lines(command: CommandNode, graph: CommandGraph): string[] {
 
 /**
  * Explains the routed Command and ends the invocation by returning without calling `next()`, so the
- * remaining tokens are never parsed and no document or file is ever read.
+ * routed Command's action never runs and reads no document or file.
  */
 const middleware: Middleware<typeof explain> = async ({ command, graph, out }) => {
   for (const line of lines(command, graph)) {

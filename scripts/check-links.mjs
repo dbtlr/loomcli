@@ -4,6 +4,9 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Node strips the types of this TypeScript module as it loads, which needs Node 22.18 or later.
+import { extractLinks, proseLines } from '../packages/loom/src/helpers/markdown-links.ts';
+
 /**
  * Checks that every relative link in the repository's Markdown files resolves. It reads each
  * Markdown file Git tracks or would track, finds its inline links, images, and reference
@@ -27,18 +30,11 @@ const skippedSegments = new Set(['dist', 'node_modules']);
 /** Whether a target opens with a URL scheme (`https:`, `mailto:`) or is protocol-relative. */
 const external = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
 
-/** The opening of a fenced code block: its indentation, its fence, and the rest of the line. */
-const fenceOpening = /^(?<indent>\s*)(?<fence>`{3,}|~{3,})(?<info>.*)$/u;
-
 /** An ATX heading, with its optional closing run of `#`. */
 const heading = /^ {0,3}#{1,6}[ \t]+(?<text>.*?)(?:[ \t]+#+)?[ \t]*$/u;
 
 /** An explicit HTML anchor, by the `id` or `name` it declares. */
 const htmlAnchor = /<a\s[^>]*?\b(?:id|name)\s*=\s*(?:"(?<double>[^"]*)"|'(?<single>[^']*)')/giu;
-
-/** A reference definition: its label and the target that follows. */
-const referenceDefinition =
-  /^ {0,3}\[(?<label>[^\]]+)\]:[ \t]*(?:<(?<angled>[^>]*)>|(?<bare>\S+))/u;
 
 /** A character GitHub drops from a heading before it makes the slug. */
 const droppedFromSlug = /[^\p{L}\p{M}\p{N}_ -]/gu;
@@ -55,51 +51,11 @@ function slugify(text) {
     .replaceAll(' ', '-');
 }
 
-/** Blanks every inline code span in one line, so a link inside it is not read. */
-function blankCodeSpans(line) {
-  return line.replaceAll(/(?<!`)(?<run>`+)(?!`)(?<body>.*?)(?<!`)\k<run>(?!`)/gu, (span) =>
-    ' '.repeat(span.length),
-  );
-}
-
-/**
- * The lines of a Markdown text that prose can occupy, as `{ line, raw, text }` with the 1-based
- * line number: frontmatter and fenced code blocks are left out, and `text` is the line with its
- * inline code spans blanked.
- */
-function proseLines(text) {
-  const lines = text.split(/\r?\n/u);
-  const prose = [];
-  let start = 0;
-  if (lines[0] === '---') {
-    const end = lines.findIndex((line, index) => index > 0 && /^(?:---|\.\.\.)\s*$/u.test(line));
-    start = end === -1 ? 0 : end + 1;
-  }
-  let open = '';
-  for (let index = start; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-    if (open === '') {
-      const opening = fenceOpening.exec(line);
-      if (
-        opening?.groups !== undefined &&
-        !(opening.groups.fence.startsWith('`') && opening.groups.info.includes('`'))
-      ) {
-        open = opening.groups.fence;
-      } else {
-        prose.push({ line: index + 1, raw: line, text: blankCodeSpans(line) });
-      }
-    } else if (new RegExp(`^\\s*${open[0]}{${open.length},}\\s*$`, 'u').test(line)) {
-      open = '';
-    }
-  }
-  return prose;
-}
-
 /** The anchors one Markdown text offers: heading slugs, repeats numbered, and HTML anchors. */
 function collectAnchors(text) {
   const anchors = new Set();
   const seen = new Map();
-  for (const { raw, text: line } of proseLines(text)) {
+  for (const { blanked: line, raw } of proseLines(text)) {
     const found = heading.exec(raw)?.groups?.text;
     if (found !== undefined) {
       const slug = slugify(found);
@@ -112,81 +68,6 @@ function collectAnchors(text) {
     }
   }
   return anchors;
-}
-
-/** Reads an unbracketed destination: a run without spaces whose parentheses balance. */
-function bareDestination(rest) {
-  let depth = 0;
-  const first = /^[ \t]*/u.exec(rest)?.[0].length ?? 0;
-  let index = first;
-  for (; index < rest.length; index += 1) {
-    const char = rest[index] ?? '';
-    if (char === ')' && depth === 0) {
-      break;
-    }
-    if (/\s/u.test(char)) {
-      break;
-    }
-    depth += (char === '(' ? 1 : 0) - (char === ')' ? 1 : 0);
-  }
-  return { after: rest.slice(index), target: rest.slice(first, index) };
-}
-
-/**
- * Reads one inline link's destination from the text just after its `](`: an angle-bracketed
- * destination, or a run without spaces whose parentheses balance, then an optional title, then the
- * closing parenthesis. It returns the destination, or undefined when the text is no link.
- */
-function inlineDestination(rest) {
-  const angled = /^[ \t]*<(?<target>[^>\n]*)>/u.exec(rest);
-  const { after, target } =
-    angled === null
-      ? bareDestination(rest)
-      : { after: rest.slice(angled[0].length), target: angled.groups?.target ?? '' };
-  const closed = /^(?:[ \t\n]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t\n]*\)/u.test(after);
-  return closed ? target : undefined;
-}
-
-/**
- * Every link target in one Markdown text, as `{ line, target }` with the 1-based line: inline links
- * and images, whose text may wrap across the lines of a paragraph, and reference definitions.
- */
-function extractLinks(text) {
-  const links = [];
-  let block = [];
-  const flush = () => {
-    const joined = block.map((entry) => entry.text).join('\n');
-    const starts = [];
-    let offset = 0;
-    for (const entry of block) {
-      starts.push(offset);
-      offset += entry.text.length + 1;
-    }
-    for (const match of joined.matchAll(/\]\(/gu)) {
-      const before = joined.slice(0, match.index);
-      const target = before.includes('[')
-        ? inlineDestination(joined.slice(match.index + 2))
-        : undefined;
-      if (target !== undefined) {
-        const at = match.index + 2;
-        const row = starts.findLastIndex((start) => start <= at);
-        links.push({ line: block[row]?.line ?? 0, target });
-      }
-    }
-    block = [];
-  };
-  for (const entry of proseLines(text)) {
-    const definition = referenceDefinition.exec(entry.text)?.groups;
-    if (entry.text.trim() === '') {
-      flush();
-    } else if (definition !== undefined && !definition.label.startsWith('^')) {
-      links.push({ line: entry.line, target: definition.angled ?? definition.bare ?? '' });
-    } else {
-      block.push(entry);
-    }
-  }
-  flush();
-  return links.toSorted((left, right) => left.line - right.line);
 }
 
 /** Decodes percent-escapes, leaving the text as written when an escape is malformed. */
@@ -290,4 +171,4 @@ if (runDirectly()) {
   }
 }
 
-export { checkLinks, collectAnchors, extractLinks, formatBroken, markdownFiles, slugify };
+export { checkLinks, collectAnchors, formatBroken, markdownFiles, slugify };

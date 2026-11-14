@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -43,6 +43,66 @@ async function compile(cwd, keep = false) {
   return result;
 }
 
+/** The authoring skill's Markdown, whose `ts` blocks each compile as a module of their own. */
+const skillFolder = join(root, 'packages/loom/skills/loom');
+
+/** Every Markdown file under a folder, as absolute paths in a stable order. */
+async function markdownUnder(folder) {
+  const entries = await readdir(folder, { withFileTypes: true });
+  const found = [];
+  for (const entry of entries.toSorted((left, right) => left.name.localeCompare(right.name))) {
+    if (entry.isDirectory()) {
+      found.push(...(await markdownUnder(join(folder, entry.name))));
+    } else if (entry.name.endsWith('.md')) {
+      found.push(join(folder, entry.name));
+    }
+  }
+  return found;
+}
+
+/**
+ * The blocks fenced `ts` in a Markdown text, each with the 1-based line its first code line stands
+ * on. A block ends at the next line that closes its fence: a fence of at least as many backticks,
+ * indented up to three spaces, as CommonMark closes one.
+ */
+function tsBlocks(text) {
+  const blocks = [];
+  let open = undefined;
+  for (const [index, line] of text.split('\n').entries()) {
+    if (open === undefined) {
+      const fence = /^(?<fence>`{3,})ts\s*$/u.exec(line)?.groups?.fence;
+      if (fence !== undefined) {
+        open = { code: [], fence, line: index + 2 };
+      }
+    } else if (new RegExp(`^ {0,3}${open.fence}\`*\\s*$`, 'u').test(line)) {
+      blocks.push({ code: `${open.code.join('\n')}\n`, line: open.line });
+      open = undefined;
+    } else {
+      open.code.push(line);
+    }
+  }
+  return blocks;
+}
+
+/**
+ * Writes each `ts` block of the authoring skill to a module of its own in a folder, and answers
+ * where each came from, by the module's file name.
+ */
+async function writeSkillExamples(folder) {
+  const origins = new Map();
+  for (const file of await markdownUnder(skillFolder)) {
+    const blocks = tsBlocks(await readFile(file, 'utf8'));
+    for (const [index, block] of blocks.entries()) {
+      const name = `example-${String(origins.size + 1).padStart(3, '0')}.ts`;
+      await writeFile(join(folder, name), block.code);
+      const markdown = relative(root, file);
+      origins.set(name, `${markdown}, block ${index + 1} (line ${block.line})`);
+    }
+  }
+  assert.ok(origins.size > 0, 'The authoring skill holds no ts blocks to compile.');
+  return origins;
+}
+
 const source = fileURLToPath(new URL('type-consumer', import.meta.url));
 const projects = [
   'library',
@@ -66,10 +126,12 @@ try {
   const pluginsTarball = join(temporary, 'plugins.tgz');
   const promptsTarball = join(temporary, 'prompts.tgz');
   const validatorsTarball = join(temporary, 'validators.tgz');
+  const testingTarball = join(temporary, 'testing.tgz');
   pnpm(['pack', '--out', coreTarball], join(root, 'packages/core'));
   pnpm(['pack', '--out', pluginsTarball], join(root, 'packages/plugins'));
   pnpm(['pack', '--out', promptsTarball], join(root, 'packages/prompts'));
   pnpm(['pack', '--out', validatorsTarball], join(root, 'packages/validators'));
+  pnpm(['pack', '--out', testingTarball], join(root, 'packages/testing'));
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),
@@ -78,9 +140,14 @@ try {
         '@loomcli/core': 'file:./core.tgz',
         '@loomcli/plugins': 'file:./plugins.tgz',
         '@loomcli/prompts': 'file:./prompts.tgz',
+        '@loomcli/testing': 'file:./testing.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
+        // The authoring skill's examples import bun:test, whose types a consumer installs too.
+        '@types/bun': devDependencies['@types/bun'],
         // A consumer installs its own Node types, which core's declarations type-check against.
         '@types/node': devDependencies['@types/node'],
+        // The authoring skill's examples import a test runner, vitest or bun:test.
+        vitest: devDependencies.vitest,
         zod: zod.version,
       },
       private: true,
@@ -145,6 +212,33 @@ const read = new Command('read').action(handler).extend();
     assert.notEqual(rejected.status, 0, 'A circular registration or action anchor compiled.');
     assert.match(rejected.output, diagnostic);
   }
+  // The authoring skill's examples compile against the packed libraries, one module for each block.
+  const examples = join(temporary, 'skill-examples');
+  await mkdir(examples);
+  const origins = await writeSkillExamples(examples);
+  await writeFile(
+    join(examples, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        module: 'NodeNext',
+        moduleDetection: 'force',
+        moduleResolution: 'NodeNext',
+        noEmit: true,
+        skipLibCheck: true,
+        strict: true,
+        target: 'ES2022',
+        // TypeScript 7 loads no @types package that a configuration does not list.
+        types: ['bun', 'node'],
+      },
+      include: ['*.ts'],
+    }),
+  );
+  const compiled = await compile(examples);
+  let report = compiled.output;
+  for (const [name, origin] of origins) {
+    report = report.replaceAll(name, origin);
+  }
+  assert.equal(compiled.status, 0, `The authoring skill's examples do not compile:\n${report}`);
   let rejectedCount = 0;
   for (const project of projects) {
     const directory = join(temporary, project);

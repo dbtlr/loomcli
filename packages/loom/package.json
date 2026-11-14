@@ -12,6 +12,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "LICENSE"
   ],
   "type": "module",

@@ -1,0 +1,1 @@
+- Fix the `@loomcli/host-bypass` message for `process.exit()` and `process.exitCode`, which suggested a result the action returns: it now suggests a return from the action or a thrown failure, because core reads no value an action returns.

@@ -20,6 +20,17 @@
  * - Managed files. Re-running init on an unedited managed file re-renders it. An edited one draws
  *   one warning and stays byte-identical, and `--force` re-renders it. A file whose header was
  *   deleted stays byte-identical under `--force` and draws no warning.
+ * - The authoring skill. A new application gets `.agents/skills/loom/SKILL.md` and the six
+ *   references under `references/`, each a managed file whose header sits where the changelog
+ *   skill's does for `SKILL.md` and on the first line for a reference, and each link into the
+ *   repository names the running version's tag. `--only skill` writes it beside the changelog
+ *   skill. Re-running re-renders an unedited file and warns about an edited one, as for any managed
+ *   file.
+ * - A file the running loom no longer ships. With the piece `skill` selected, a Markdown file under
+ *   `.agents/skills/loom/` that carries init's header and matches its checksum is removed with one
+ *   line, and so is a directory the removal empties. An edited one stays and draws a warning of its
+ *   own, which `--force` removes. A file without the header is never touched. `--only changes`
+ *   sweeps nothing.
  * - The installer script. In a package whose `repository` reads as `me/notes`, init writes
  *   `install.sh` with the shell header, the application's name, and `me/notes`, and the file is
  *   executable. After `repository` changes to `me/jot`, init re-renders an unedited script with
@@ -34,14 +45,23 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, test, vi } from 'vite-plus/test';
 import { z } from 'zod';
 
 import { drive } from '../../../scripts/test-terminal.js';
+import { authoringSkill } from '../src/content/authoring-skill.js';
 import { changelogSkill } from '../src/content/changelog-skill.js';
 import { fragmentGuide } from '../src/content/fragment-guide.js';
 import { installerScript } from '../src/content/installer-script.js';
@@ -92,6 +112,17 @@ const skillPath = '.agents/skills/loom-changelog/SKILL.md';
 /** The fragment guide and the changelog skill a package with no configuration file gets. */
 const guide = fragmentGuide(conventionalFiles);
 const skill = changelogSkill(conventionalFiles);
+
+/** The folder of the authoring skill, and each file the running loom renders there. */
+const authoringFolder = '.agents/skills/loom';
+const authoringFiles = authoringSkill(version).map(({ content, path }) => ({
+  content,
+  path: `${authoringFolder}/${path}`,
+}));
+const authoringPaths = authoringFiles.map(({ path }) => path);
+
+/** The lines init prints when it writes the whole authoring skill. */
+const authoringLines = authoringPaths.map((path) => `Wrote ${path}.`);
 
 /** An empty directory with the supplied name, where init scaffolds a new application. */
 function emptyDirectory(name: string) {
@@ -177,6 +208,7 @@ test('in an empty directory init writes package.json, the scaffold files, the te
       'Wrote .oxlintrc.json.',
       `Wrote ${guidePath}.`,
       `Wrote ${skillPath}.`,
+      ...authoringLines,
       '',
     ].join('\n'),
   });
@@ -262,6 +294,7 @@ test('in an existing package init writes the missing pieces and leaves its appli
       'Wrote .oxlintrc.json.',
       `Wrote ${guidePath}.`,
       `Wrote ${skillPath}.`,
+      ...authoringLines,
       '',
     ].join('\n'),
   });
@@ -306,7 +339,9 @@ test('--only changes writes .changes/README.md alone', async () => {
 test('--only repeats, and each piece it names is written', async () => {
   const root = ownPackage();
   const runResult = await loom(root, ['init', '--only', 'skill', '--only', 'entry']);
-  expect(runResult.stdout).toBe(`Wrote src/main.ts.\nWrote ${skillPath}.\n`);
+  expect(runResult.stdout).toBe(
+    ['Wrote src/main.ts.', `Wrote ${skillPath}.`, ...authoringLines, ''].join('\n'),
+  );
 });
 
 test('init in a subdirectory acts on the package directory and names paths relative to it', async () => {
@@ -352,7 +387,7 @@ test('an edited managed file draws exactly one warning and stays byte-identical'
   await expect(loom(root, ['init', '--only', 'skill'])).resolves.toEqual({
     status: 0,
     stderr: warning(skillPath),
-    stdout: '',
+    stdout: [...authoringLines, ''].join('\n'),
   });
   expect(read(root, skillPath)).toBe(edited);
 });
@@ -391,19 +426,20 @@ test(
   async () => {
     const directory = emptyNotes();
     await loom(directory, ['init']);
-    const written = [read(directory, guidePath), read(directory, skillPath)];
+    const paths = [guidePath, skillPath, ...authoringPaths];
+    const written = paths.map((path) => read(directory, path));
     // The formatter runs on its defaults, from a configuration in the sandbox.
     // Its own search would reach one above the temporary directory, such as the repository's.
     const defaults = join(dirname(directory), 'formatter.json');
     writeFileSync(defaults, '{}\n');
-    const formatted = spawnSync(vp, ['fmt', '-c', defaults, guidePath, skillPath], {
+    const formatted = spawnSync(vp, ['fmt', '-c', defaults, ...paths], {
       cwd: directory,
       encoding: 'utf8',
       timeout: slow,
     });
     expect(formatted.error).toBeUndefined();
     expect(formatted.status).toBe(0);
-    expect([read(directory, guidePath), read(directory, skillPath)]).toEqual(written);
+    expect(paths.map((path) => read(directory, path))).toEqual(written);
     await expect(loom(directory, ['init'])).resolves.toEqual({
       status: 0,
       stderr: noRepository,
@@ -537,9 +573,11 @@ test('--only skill in an empty directory writes package.json and the skill alone
   await expect(loom(directory, ['init', '--only', 'skill'])).resolves.toEqual({
     status: 0,
     stderr: '',
-    stdout: `Wrote package.json.\nWrote ${skillPath}.\n`,
+    stdout: ['Wrote package.json.', `Wrote ${skillPath}.`, ...authoringLines, ''].join('\n'),
   });
-  expect([...snapshot(directory).keys()].toSorted()).toEqual([skillPath, 'package.json']);
+  expect([...snapshot(directory).keys()].toSorted()).toEqual(
+    [skillPath, ...authoringPaths, 'package.json'].toSorted(),
+  );
 });
 
 test('an empty directory inside a package scaffolds there and leaves the outer package.json byte-identical', async () => {
@@ -603,7 +641,7 @@ test('--only install writes install.sh alone, executable, with the shell header,
 test('a full init in a package with a GitHub repository writes install.sh after the skill', async () => {
   const root = repositoryPackage('git+https://github.com/me/notes.git');
   const { stdout } = await loom(root, ['init']);
-  expect(stdout.endsWith(`Wrote ${skillPath}.\nWrote install.sh.\n`)).toBe(true);
+  expect(stdout.endsWith(`${authoringLines.at(-1)}\nWrote install.sh.\n`)).toBe(true);
 });
 
 test('after repository changes, init re-renders an unedited install.sh with the new repository and keeps it executable', async () => {
@@ -980,7 +1018,7 @@ function atTerminal(directory: string, args: string[] = []) {
 }
 
 /** The last line init prints in a package with no repository. */
-const lastWrite = `Wrote ${skillPath}.`;
+const lastWrite = authoringLines.at(-1) ?? '';
 
 /** The key presses that move a select's highlight from its first choice to its second, and pick it. */
 const secondChoice = String.raw`\x1b[B\r`;
@@ -1132,4 +1170,139 @@ test('ESLint over the typescript alias, and oxlint over a plain typescript key, 
 test('a new ESLint scaffold draws no typescript warning', async () => {
   const runResult = await loom(emptyNotes(), ['init', '--linter', 'eslint']);
   expect(runResult.stderr).toBe(noRepository);
+});
+
+/** The renderings of a file the running loom does not ship, one unedited and one edited. */
+const retired = 'references/retired.md';
+const retiredPath = `${authoringFolder}/${retired}`;
+const retiredUnedited = renderManaged('\n# Retired\n\nAn older reference.\n');
+const retiredEdited = `${retiredUnedited}An edit.\n`;
+
+const staleWarning = (path: string) =>
+  `warning: ${path} differs from what loom init wrote, and the running loom no longer ships it. Run loom init --force to remove it, or delete its header to keep it.\n`;
+
+test('a new application gets SKILL.md and all six references, each with its header, and links at the version tag', async () => {
+  const directory = emptyNotes();
+  await loom(directory, ['init']);
+  expect(authoringPaths).toHaveLength(7);
+  for (const { content, path } of authoringFiles) {
+    expect(read(directory, path)).toBe(renderManaged(content));
+    expect(read(directory, path)).toMatch(
+      /^(?:---\n[\s\S]*?\n---\n\n)?<!-- Managed by loom init\. /u,
+    );
+  }
+  const text = authoringPaths.map((path) => read(directory, path)).join('\n');
+  expect(text).toContain(`https://github.com/dbtlr/loomcli/blob/v${version}/docs/`);
+  expect(text).not.toMatch(/\]\((?:\.\.\/)+docs\//u);
+});
+
+test('--only skill writes the changelog skill and the authoring skill', async () => {
+  const root = ownPackage();
+  await expect(loom(root, ['init', '--only', 'skill'])).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: [`Wrote ${skillPath}.`, ...authoringLines, ''].join('\n'),
+  });
+  expect(read(root, skillPath)).toBe(renderManaged(skill));
+});
+
+test('re-running init re-renders an unedited authoring file and warns about an edited one', async () => {
+  const [first, second] = authoringFiles;
+  const stale = renderManaged('\n# An older reference\n');
+  const edited = `${renderManaged(second?.content ?? '')}An edit.\n`;
+  const root = ownPackage({ [first?.path ?? '']: stale, [second?.path ?? '']: edited });
+  await expect(loom(root, ['init', '--only', 'skill'])).resolves.toEqual({
+    status: 0,
+    stderr: warning(second?.path ?? ''),
+    stdout: [`Wrote ${skillPath}.`, `Wrote ${first?.path}.`, ...authoringLines.slice(2), ''].join(
+      '\n',
+    ),
+  });
+  expect(read(root, first?.path ?? '')).toBe(renderManaged(first?.content ?? ''));
+  expect(read(root, second?.path ?? '')).toBe(edited);
+  await expect(loom(root, ['init', '--only', 'skill', '--force'])).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `Wrote ${second?.path}.\n`,
+  });
+});
+
+test.each(['.agents', '.agents/skills', authoringFolder])(
+  'the sweep leaves alone a skill folder reached through a symbolic link at %s',
+  async (linked) => {
+    const root = ownPackage();
+    const shared = join(dirname(root), `shared-${linked.replaceAll('/', '-')}`);
+    const below = posix.relative(linked, authoringFolder);
+    mkdirSync(join(shared, below, 'references'), { recursive: true });
+    writeFileSync(join(shared, below, retired), retiredUnedited);
+    mkdirSync(dirname(join(root, linked)), { recursive: true });
+    symlinkSync(shared, join(root, linked));
+    const result = await loom(root, ['init', '--only', 'skill']);
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('Removed');
+    expect(readFileSync(join(shared, below, retired), 'utf8')).toBe(retiredUnedited);
+  },
+);
+
+test('an unedited file the running loom no longer ships is removed with one line, and its emptied directory goes too', async () => {
+  const nested = `${authoringFolder}/old/deep/gone.md`;
+  const root = ownPackage({ [nested]: retiredUnedited, [retiredPath]: retiredUnedited });
+  const result = await loom(root, ['init', '--only', 'skill']);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toBe(
+    [
+      `Wrote ${skillPath}.`,
+      ...authoringLines,
+      `Removed ${nested}.`,
+      `Removed ${retiredPath}.`,
+      '',
+    ].join('\n'),
+  );
+  expect(existsSync(join(root, retiredPath))).toBe(false);
+  expect(existsSync(join(root, authoringFolder, 'old'))).toBe(false);
+  expect(existsSync(join(root, authoringFolder, 'references'))).toBe(true);
+});
+
+test('an edited file the running loom no longer ships stays with its own warning, and --force removes it', async () => {
+  const root = ownPackage({ [retiredPath]: retiredEdited });
+  const kept = await loom(root, ['init', '--only', 'skill']);
+  expect(kept.stderr).toBe(staleWarning(retiredPath));
+  expect(kept.stdout).not.toContain('Removed');
+  expect(read(root, retiredPath)).toBe(retiredEdited);
+  const forced = await loom(root, ['init', '--only', 'skill', '--force']);
+  expect(forced.stderr).toBe('');
+  expect(forced.stdout).toBe(`Removed ${retiredPath}.\n`);
+  expect(existsSync(join(root, retiredPath))).toBe(false);
+});
+
+test('a file without the header under the authoring skill folder is never touched, even under --force', async () => {
+  const own = '# My own notes\n';
+  const root = ownPackage({ [`${authoringFolder}/notes.md`]: own, [retiredPath]: `# Mine\n` });
+  const result = await loom(root, ['init', '--only', 'skill', '--force']);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).not.toContain('Removed');
+  expect(read(root, `${authoringFolder}/notes.md`)).toBe(own);
+  expect(read(root, retiredPath)).toBe('# Mine\n');
+});
+
+test('a managed file outside the authoring skill folder, and a file that is not Markdown, stay', async () => {
+  const other = '.agents/skills/loom-changelog/references/old.md';
+  const root = ownPackage({
+    [other]: retiredUnedited,
+    [`${authoringFolder}/old.txt`]: retiredUnedited,
+  });
+  const result = await loom(root, ['init', '--only', 'skill']);
+  expect(result.stdout).not.toContain('Removed');
+  expect(read(root, other)).toBe(retiredUnedited);
+  expect(read(root, `${authoringFolder}/old.txt`)).toBe(retiredUnedited);
+});
+
+test('--only changes sweeps nothing', async () => {
+  const root = ownPackage({ [retiredPath]: retiredUnedited });
+  await expect(loom(root, ['init', '--only', 'changes'])).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `Wrote ${guidePath}.\n`,
+  });
+  expect(read(root, retiredPath)).toBe(retiredUnedited);
 });

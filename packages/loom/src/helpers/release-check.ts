@@ -1,11 +1,72 @@
 import { isDeepStrictEqual } from 'node:util';
 
+import { parse } from 'yaml';
+
+import { authoringSkillSource } from '../content/authoring-skill.js';
 import { placedSection, releaseDate, releaseInsertion } from './changelog.js';
+import { frontmatter } from './managed.js';
 import { checkDecisions } from './release-decisions.js';
 import { prepareLockfile } from './release-files.js';
 import { prepareRelease, requireReleaseNotes } from './release.js';
 import { currentVersion, git, gitLine, readLibraries, readRegularFile } from './repository.js';
 import type { Checkout } from './repository.js';
+
+/** The authoring skill `loom init` ships, whose version a release carries. */
+const authoringSkillPath = `${authoringSkillSource}/SKILL.md`;
+
+/** The string `metadata.version` of a skill's frontmatter, or the reason there is none. */
+function skillVersion(text: string): { reason: string } | { version: string } {
+  const source = frontmatter.exec(text)?.groups?.yaml;
+  if (source === undefined) {
+    return { reason: 'has no YAML frontmatter' };
+  }
+  let data: unknown = undefined;
+  try {
+    data = parse(source);
+  } catch (error) {
+    return { reason: `has frontmatter that is not valid YAML: ${String(error)}` };
+  }
+  const metadata =
+    typeof data === 'object' && data !== null && 'metadata' in data ? data.metadata : undefined;
+  const version =
+    typeof metadata === 'object' && metadata !== null && 'version' in metadata
+      ? metadata.version
+      : undefined;
+  if (version === undefined || version === null) {
+    return { reason: 'has no metadata.version' };
+  }
+  return typeof version === 'string'
+    ? { version }
+    : { reason: 'has a metadata.version that is not a string, so quote it' };
+}
+
+/**
+ * Checks that the authoring skill at the head names the title version as its `metadata.version`.
+ * The release diff cannot change the skill, so its review and its version land before the cut.
+ */
+async function checkSkillVersion(checkout: Checkout, head: string, version: string) {
+  let text = '';
+  try {
+    text = await readRegularFile(checkout, authoringSkillPath, head);
+  } catch (error) {
+    checkout.signal.throwIfAborted();
+    throw new Error(
+      `${authoringSkillPath} must exist at the head of a release PR as a regular file, so add it in an ordinary PR before the cut: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  const found = skillVersion(text);
+  if ('reason' in found) {
+    throw new Error(
+      `${authoringSkillPath} ${found.reason}. Set its metadata.version to "${version}" in an ordinary PR before the cut.`,
+    );
+  }
+  if (found.version !== version) {
+    throw new Error(
+      `${authoringSkillPath} carries metadata.version ${found.version}, not title version ${version}. Review the skill against the release and set its metadata.version to "${version}" in an ordinary PR before the cut.`,
+    );
+  }
+}
 
 export async function checkRelease(
   checkout: Checkout,
@@ -47,6 +108,7 @@ export async function checkRelease(
   if (currentVersion(libraries).text !== version) {
     throw new Error(`Every participating library must carry title version ${version}.`);
   }
+  await checkSkillVersion(checkout, head, version);
   if (await gitLine(checkout, ['tag', '--list', `v${version}`])) {
     throw new Error(`Tag v${version} already exists.`);
   }

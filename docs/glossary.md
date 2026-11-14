@@ -608,7 +608,7 @@ The near match a plugin's failure view offers as the fix inside the sentence for
 _Avoid_: Did-you-mean (as the term), correction, autocorrect, hint (for the match)
 
 **Translator**:
-A function registered by the application or a plugin, keyed by a foreign error class, that turns a throw from an action, a row source or destination write the action set going, a middleware before its `next()` has settled, or an input source into one of the author's failure classes, or passes. Translators resolve in the order view overrides do, and the first failure returned wins.
+A function registered by the application or a plugin, keyed by a foreign error class, that turns a foreign throw into one of the author's failure classes, or passes. Core offers it each throw from an action or a middleware where the throw leaves the middleware chain, a middleware's own throw while it unwinds after `next()` included, each throw from a row source or destination write the action set going, and each throw from an input source. Translators resolve in the order view overrides do, and the first failure returned wins.
 _Avoid_: Error mapper, catch, handler, adapter
 
 **Issue**:
@@ -1017,8 +1017,12 @@ A file or `package.json` key `loom init` writes once, when it is missing, and ne
 _Avoid_: Template, generated file, boilerplate
 
 **Managed file**:
-A file `loom init` keeps current, such as the fragment guide, marked by a header that holds a checksum of its content. Init re-renders it while the checksum matches and warns once it drifts; deleting the header makes it the author's file.
+A file `loom init` keeps current, such as the fragment guide, marked by a header that holds a checksum of its content. Init re-renders it while the checksum matches, removes an unedited one in the authoring skill's folder that the running version no longer renders, and warns once it drifts; deleting the header makes it the author's file.
 _Avoid_: Generated file, owned file, vendored file
+
+**Authoring skill**:
+The skill `loom init` writes as managed files at `.agents/skills/loom/`, which teaches a coding agent to author a Loom application: how the parts fit, which the code and its doc comments do not show. It is written by hand, never generated, and its `metadata.version` names the release it was last reviewed against.
+_Avoid_: Loom skill, author guide
 
 **Installer script**:
 The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary, and, when `loom.config.json` declares them, runs its post-install command and prints its post-install message.

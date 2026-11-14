@@ -221,6 +221,13 @@ test('an explicit feature-only cut passes admission and plans and records its se
   const root = baseRepository('0.12.0');
   put(root, '.changes/README.md', '# Change fragments\n');
   put(root, '.changes/feature.input.md', '- Add typed input.\n');
+  // The release guard reads the authoring skill, which sits in a private package of its own.
+  put(root, 'packages/loom/package.json', '{"name":"@sample/loom","private":true}\n');
+  put(
+    root,
+    'packages/loom/skills/loom/SKILL.md',
+    "---\nname: loom\ndescription: The authoring skill.\nmetadata:\n  version: '0.13.0'\n---\n\n# Author\n",
+  );
   const base = commit(root);
   await expect(
     run(['release', 'cut', '--target', '0.13.0', '--date', '2026-10-15'], { cwd: root }),
