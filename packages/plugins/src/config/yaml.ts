@@ -1,8 +1,8 @@
 import type { Document, visit } from 'yaml';
 
-import { positionAt } from './position.js';
 import { readingOf } from './reading.js';
 import type { Reading } from './reading.js';
+import { positionAt } from './text.js';
 
 /** The warnings that mean a tag the core schema does not define, which make the file not valid YAML. */
 const tagFaults = new Set(['BAD_COLLECTION_TYPE', 'TAG_RESOLVE_FAILED']);

@@ -1,8 +1,7 @@
-import { scanJson } from './json.js';
 import { splitExtension } from './names.js';
-import { positionAt } from './position.js';
 import { readingOf } from './reading.js';
 import type { Reading } from './reading.js';
+import { positionAt, scanJson } from './text.js';
 import { readToml } from './toml.js';
 import { readYaml } from './yaml.js';
 

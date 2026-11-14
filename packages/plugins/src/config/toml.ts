@@ -1,6 +1,6 @@
-import { countedFrom, positionAt, textStart } from './position.js';
-import type { Position } from './position.js';
 import type { Reading } from './reading.js';
+import { countedFrom, positionAt, textStart } from './text.js';
+import type { Position } from './text.js';
 
 /** A comment, from `#` to the end of its line. */
 const comment = /#[^\n]*/u;

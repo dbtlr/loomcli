@@ -59,6 +59,31 @@ test.each([
   },
 );
 
+test.each([
+  ['a sign after an item', '[1 -]', 1, 4, 'a comma or ]'],
+  ['a sign where a property name belongs', '{-}', 1, 2, 'a property name in double quotes'],
+  ['a broken string after an item', String.raw`["dist" "src\lib"]`, 1, 9, 'a comma or ]'],
+  [
+    'a doubled closing quote',
+    '{\n  "name": "demo"",\n  "version": "1.0.0"\n}\n',
+    2,
+    17,
+    'a comma or }',
+  ],
+])(
+  '%s is judged by what the container needs where it stands, not inside a value',
+  (_case, text, line, column, expected) => {
+    expect(jsonFault(text)).toEqual({ column, expected, line });
+  },
+);
+
+test('a manifest with leftover diff markers names the marker where a property name belongs', () => {
+  const text = '{\n  "name": "notes",\n-  "version": "1.0.0",\n+  "version": "1.1.0"\n}\n';
+  expect(() => parseManifest(text, path)).toThrow(
+    'line 3, column 1 needs a property name in double quotes',
+  );
+});
+
 test('a CRLF file counts lines by their line breaks', () => {
   expect(jsonFault('{\r\n  "name": "notes",\r\n}\r\n')).toEqual({
     column: 1,
@@ -69,6 +94,36 @@ test('a CRLF file counts lines by their line breaks', () => {
 
 test('a column counts characters, so text outside the Basic Multilingual Plane counts once', () => {
   expect(jsonFault('{ "d": "🧵é" "x": 1 }')).toMatchObject({ column: 13, line: 1 });
+});
+
+test('a lone CR ends a line, as an editor shows it', () => {
+  expect(jsonFault('{\r  "name": "notes",\r}\r')).toEqual({
+    column: 1,
+    expected: 'a property name in double quotes',
+    line: 3,
+  });
+});
+
+test('a CRLF counts as one line ending, before the fault and inside a line of its own', () => {
+  expect(jsonFault('{\r\n  "a": 1\r\n  "b": 2\r\n}')).toEqual({
+    column: 3,
+    expected: 'a comma or }',
+    line: 3,
+  });
+});
+
+test('a line break that is not CR or LF does not end a line', () => {
+  expect(jsonFault('{ "a": "\u2028" x }')).toMatchObject({ column: 12, line: 1 });
+});
+
+test('a manifest with CRLF, a lone CR, or an astral character before the fault names the place an editor shows', () => {
+  expect(() => parseManifest('{\r\n  "name": "notes",\r\n}\r\n', path)).toThrow(
+    'line 3, column 1 needs a property name in double quotes',
+  );
+  expect(() => parseManifest('{\r  "name": "notes",\r}\r', path)).toThrow(
+    'line 3, column 1 needs a property name in double quotes',
+  );
+  expect(() => parseManifest('{ "d": "🧵é" "x": 1 }', path)).toThrow('line 1, column 13 needs');
 });
 
 test('valid JSON has no fault, whatever value it holds', () => {

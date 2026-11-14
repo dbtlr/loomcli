@@ -4,6 +4,7 @@ await Promise.all(
   [
     'packages/core/dist',
     'packages/eslint-plugin/dist',
+    'packages/json/dist',
     'packages/loom/dist',
     'packages/mcp/dist',
     'packages/plugins/dist',

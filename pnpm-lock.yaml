@@ -312,8 +312,13 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/json: {}
+
   packages/loom:
     devDependencies:
+      '@loom/json':
+        specifier: workspace:*
+        version: link:../json
       '@loomcli/core':
         specifier: workspace:*
         version: link:../core
@@ -365,6 +370,9 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
     devDependencies:
+      '@loom/json':
+        specifier: workspace:*
+        version: link:../json
       '@loom/mcp':
         specifier: workspace:*
         version: link:../mcp
