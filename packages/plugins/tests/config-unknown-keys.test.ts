@@ -16,8 +16,8 @@ import { z } from 'zod';
  * Schema does not describe, under "Naming unknown keys" in the plugin's reference.
  */
 
-const unknownLine = (path: string) =>
-  `› Ignored ${path} in .app.json: Unknown key. Check its spelling, or remove it.\n`;
+const unknownLine = (path: string, name = '.app.json') =>
+  `› Ignored ${path} in ${name}: Unknown key. Check its spelling, or remove it.\n`;
 
 /** A verbose mark, spelled -L, so a run can show its `-v` lines. */
 const loud = plugin('fixture/loud', {
@@ -39,11 +39,22 @@ async function stderrOf(
   argv: readonly string[] = ['-L'],
   linked = 'stateDir',
 ): Promise<string> {
+  return stderrOfText(schema, '.app.json', JSON.stringify(file), argv, linked);
+}
+
+/** Runs the same application over a file written as `text` under `name`, and answers its stderr. */
+async function stderrOfText(
+  schema: StandardSchemaV1,
+  name: string,
+  text: string,
+  argv: readonly string[] = ['-L'],
+  linked = 'stateDir',
+): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), 'loom-unknown-keys-'));
   try {
-    writeFileSync(join(root, '.app.json'), JSON.stringify(file));
+    writeFileSync(join(root, name), text);
     const mock = mockProcess({ argv, cwd: root, env: { HOME: root } });
-    const config = configuration({ file: '.app.json', schema });
+    const config = configuration({ file: name, schema });
     // The plugin reads the file only for a run that links an option or opts in to the provider.
     await new Application('app', { plugins: [config.plugin, loud] })
       .option('state', {
@@ -144,4 +155,58 @@ test('a key that holds a dot names its text as a nested path', async () => {
 
 test('a control character in a key prints as its escape on one line', async () => {
   await expect(stderrOf(closed, { 'a\nb': 1 })).resolves.toBe(unknownLine(String.raw`a\u000ab`));
+});
+
+test('an array item keeps its position in the file as read across a second round of drops', async () => {
+  // The refinement judges the array only once its items hold, so it drops an item in a second round.
+  const sources = z
+    .array(z.object({ harness: z.string(), name: z.string().optional() }))
+    .superRefine((items, context) => {
+      if (items[0]?.harness === 'bad') {
+        context.addIssue({ code: 'custom', message: 'A bad harness.', path: [0] });
+      }
+    });
+  const schema = z.object({
+    sessions: z.object({ sources: sources.optional() }).optional(),
+    stateDir: z.string().optional(),
+  });
+  const file = {
+    sessions: {
+      sources: [{ harness: 1 }, { harness: 'bad' }, { harness: 'c' }, { harness: 'd', nmae: 'x' }],
+    },
+  };
+  const text = await stderrOf(schema, file);
+  const lines = text.split('\n');
+  expect(lines.filter((line) => line.includes('Unknown key'))).toEqual([
+    unknownLine('sessions.sources[3].nmae').trimEnd(),
+  ]);
+  // Two dropped items, one in each round, and the unknown key.
+  expect(lines.filter((line) => line.includes('Ignored sessions.sources['))).toHaveLength(3);
+});
+
+test('a YAML value two aliases share is walked at each path', async () => {
+  const text = 'sessions:\n  sources:\n    - &one { harness: a, nmae: x }\n    - *one\n';
+  await expect(stderrOfText(closed, '.app.yaml', text)).resolves.toBe(
+    unknownLine('sessions.sources[0].nmae', '.app.yaml') +
+      unknownLine('sessions.sources[1].nmae', '.app.yaml'),
+  );
+});
+
+test('a YAML value inside itself is walked once, and its unknown key is named once', async () => {
+  const node: z.ZodType = z.lazy(() =>
+    z.object({ child: node.optional(), name: z.string().optional() }),
+  );
+  const text = '&a\nchild: *a\nnmae: x\n';
+  await expect(stderrOfText(node, '.app.yaml', text, ['-L'], 'name')).resolves.toBe(
+    unknownLine('nmae', '.app.yaml'),
+  );
+});
+
+test('a tuple item is walked against its own entry, so a misspelled key inside it is named', async () => {
+  const schema = z.object({
+    pair: z.tuple([z.object({ id: z.string() }), z.object({ label: z.string() })]).optional(),
+    stateDir: z.string().optional(),
+  });
+  const file = { pair: [{ id: 'a' }, { label: 'b', lable: 'c' }] };
+  await expect(stderrOf(schema, file)).resolves.toBe(unknownLine('pair[1].lable'));
 });
