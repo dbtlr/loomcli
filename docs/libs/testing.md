@@ -203,7 +203,7 @@ test('revision prints the commit git reports, with no git run', async () => {
   | `platform`  | `linux`                                                          |
   | `arch`      | `x64`                                                            |
   | `libc`      | `glibc` when `platform` is `linux`, and `undefined` otherwise    |
-  | `runtime`   | `{ name: 'node', version: '24.0.0' }`, whichever runtime runs the test |
+  | `runtime`   | `{ name: 'node', version: '24.0.0' }`, whichever runtime runs the test; a supplied `runtime: undefined` leaves the handle with none |
   | `uid`       | `1000`                                                           |
   | `timeZone`  | `UTC`                                                            |
   | `program`   | `['/loom-test/runtime', '/loom-test/app.js']`                    |
