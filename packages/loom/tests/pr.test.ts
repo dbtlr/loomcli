@@ -19,7 +19,24 @@ import {
 import { cli } from './package.js';
 import { run } from './run.js';
 
-function repository(version = '0.4.7', { tag = true } = {}) {
+const skillPath = 'packages/loom/skills/loom/SKILL.md';
+
+/** The version one patch above a stable version, the target most release tests cut. */
+function nextPatch(version: string) {
+  const [major = '0', minor = '0', patch = '0'] = version.split('.');
+  return `${major}.${minor}.${Number(patch) + 1}`;
+}
+
+/** An authoring skill whose `metadata.version` is the given YAML scalar. */
+function skillFile(version: string) {
+  return `---\nname: loom\ndescription: The authoring skill.\nmetadata:\n  version: ${version}\n---\n\n# Author\n`;
+}
+
+/**
+ * A repository at a version. Its authoring skill carries `skill` as `metadata.version`, by default
+ * the next patch, which most tests cut.
+ */
+function repository(version = '0.4.7', { skill = nextPatch(version), tag = true } = {}) {
   return fixtureRepository({
     files: {
       '.changes/README.md': '# Guide\n',
@@ -27,6 +44,9 @@ function repository(version = '0.4.7', { tag = true } = {}) {
       'package.json': '{"name":"fixture","private":true}',
       'packages/core/index.js': 'export const value = 1;\n',
       'packages/core/package.json': JSON.stringify({ name: '@sample/core', version }),
+      // The skill sits in a package of its own, as in the repository, and every packages/ entry needs a manifest.
+      'packages/loom/package.json': JSON.stringify({ name: '@sample/loom', private: true }),
+      'packages/loom/skills/loom/SKILL.md': skillFile(`'${skill}'`),
       'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
     },
     prefix: 'loom-pr-',
@@ -107,7 +127,7 @@ test('a release check reads a tracked file larger than a mebibyte at the base', 
 });
 
 test('a feature-only explicit target passes admission with synchronized manifests and lockfile', async () => {
-  const { root } = repository('0.12.0');
+  const { root } = repository('0.12.0', { skill: '0.13.0' });
   put(root, '.changes/feature.input.md', '- Add typed input.\n');
   put(
     root,
@@ -420,7 +440,7 @@ test('a release cut that changes only the index fails naming the index', async (
 });
 
 test('a release check derives the material baseline at the base without a tag', async () => {
-  const { root } = repository('0.4.7', { tag: false });
+  const { root } = repository('0.4.7', { skill: '0.5.1', tag: false });
   put(
     root,
     'packages/core/package.json',
@@ -516,7 +536,7 @@ test('release validation checks generated entries and preserves earlier changelo
 });
 
 test('a release cannot delete its lockfile or change a manifest file mode', async () => {
-  const { root } = repository('0.0.0');
+  const { root } = repository('0.0.0', { skill: '0.1.0' });
   const base = git(root, ['rev-parse', 'HEAD']);
   const runResult = await writeInitialRelease(root);
   expect(runResult.status).toBe(0);
@@ -623,7 +643,7 @@ test('ordinary PRs allow private version edits and require new libraries to join
 });
 
 test('the initial empty cut and a narrative round-trip through the compiler', async () => {
-  const { base, root } = repository('0.0.0');
+  const { base, root } = repository('0.0.0', { skill: '0.1.0' });
   const runResult = await writeInitialRelease(root);
   expect(runResult.status).toBe(0);
   commit(root);
@@ -635,7 +655,7 @@ test('the initial empty cut and a narrative round-trip through the compiler', as
 });
 
 test('an initial cut whose section lost its narrative carries no notes and fails', async () => {
-  const { base, root } = repository('0.0.0');
+  const { base, root } = repository('0.0.0', { skill: '0.1.0' });
   const runResult = await writeInitialRelease(root);
   expect(runResult.status).toBe(0);
   const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
@@ -698,7 +718,7 @@ test('the Ubuntu workflow checks metadata as data and reruns admission when a la
 });
 
 test('breaking cuts advance the minor and synchronize every library', async () => {
-  const { root } = repository();
+  const { root } = repository('0.4.7', { skill: '0.5.0' });
   put(root, 'packages/other/package.json', '{"name":"other","version":"0.4.7"}');
   put(
     root,
@@ -734,7 +754,7 @@ test('breaking cuts advance the minor and synchronize every library', async () =
 });
 
 test('a release rejects lockfile changes that the version writer did not produce', async () => {
-  const { base, root } = repository('0.0.0');
+  const { base, root } = repository('0.0.0', { skill: '0.1.0' });
   const runResult = await writeInitialRelease(root);
   expect(runResult.status).toBe(0);
   const lockfile = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8');
@@ -808,4 +828,77 @@ test('a committed hidden entry in .changes/ is ignored, neither rejected nor cou
     stderr: '',
     stdout: 'PR checks passed.\n',
   });
+});
+
+/** A release that passes every check but the authoring skill, with the skill rewritten before the cut. */
+async function releaseWithSkill(skill: string | undefined) {
+  const { root } = repository();
+  if (skill === undefined) {
+    git(root, ['rm', '-q', skillPath]);
+  } else {
+    put(root, skillPath, skill);
+  }
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  const base = commit(root);
+  const cutResult = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  expect(cutResult.status).toBe(0);
+  commit(root);
+  return await releaseCheck(root, base, '0.4.8');
+}
+
+test.each([
+  { problem: 'a missing file', skill: undefined, text: 'must exist' },
+  { problem: 'no frontmatter', skill: '# Author\n', text: 'has no YAML frontmatter' },
+  {
+    problem: 'frontmatter that is not YAML',
+    skill: '---\nname: [loom\n---\n\n# Author\n',
+    text: 'not valid YAML',
+  },
+  {
+    problem: 'no metadata',
+    skill: '---\nname: loom\n---\n\n# Author\n',
+    text: 'has no metadata.version',
+  },
+  {
+    problem: 'a metadata block with no version',
+    skill: '---\nname: loom\nmetadata:\n  other: x\n---\n\n# Author\n',
+    text: 'has no metadata.version',
+  },
+  { problem: 'a number for a version', skill: skillFile('0.4'), text: 'not a string' },
+  {
+    problem: 'an unquoted version that reads as a number',
+    skill: skillFile('4'),
+    text: 'not a string',
+  },
+  {
+    problem: 'another version',
+    skill: skillFile("'0.4.7'"),
+    text: 'carries metadata.version 0.4.7, not title version 0.4.8',
+  },
+])('a release PR fails for $problem in the authoring skill, naming the file', async (example) => {
+  const result = await releaseWithSkill(example.skill);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(skillPath);
+  expect(result.stderr).toContain(example.text);
+});
+
+test('a release PR passes when the authoring skill names the title version', async () => {
+  await expect(releaseWithSkill(skillFile('"0.4.8"'))).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
+});
+
+test('a release cut that changes the authoring skill is outside the release cut', async () => {
+  const { root } = repository();
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  const base = commit(root);
+  const cutResult = await run(['release', 'cut', '--date', '2026-09-07'], { cwd: root });
+  expect(cutResult.status).toBe(0);
+  put(root, skillPath, `${skillFile("'0.4.8'")}A change.\n`);
+  commit(root);
+  const result = await releaseCheck(root, base, '0.4.8');
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(`${skillPath}: outside the release cut`);
 });
