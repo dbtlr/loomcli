@@ -1020,6 +1020,10 @@ _Avoid_: Template, generated file, boilerplate
 A file `loom init` keeps current, such as the fragment guide, marked by a header that holds a checksum of its content. Init re-renders it while the checksum matches and warns once it drifts; deleting the header makes it the author's file.
 _Avoid_: Generated file, owned file, vendored file
 
+**Authoring skill**:
+The managed agent skill `loom init` writes at `.agents/skills/loom/`, which teaches a coding agent to author a Loom application: how the parts fit, which the code and its doc comments do not show. It is written by hand, never generated, and its `metadata.version` names the release it was last reviewed against.
+_Avoid_: Loom skill, author guide
+
 **Installer script**:
 The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary, and, when `loom.config.json` declares them, runs its post-install command and prints its post-install message.
 _Avoid_: Installer (alone), bootstrap script, setup script

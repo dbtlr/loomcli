@@ -36,6 +36,8 @@ Read the pending fragments and the full cycle diff from the last completed relea
 
 Identify the release's purpose, consumer-visible changes, and required migrations. Check for unmarked breaking changes and fragments that describe behavior later removed or changed. Land corrections in an ordinary preparatory PR before the cut, then refresh the base and repeat the review.
 
+Review the authoring skill at `packages/loom/skills/loom/` against the release. Read every pending feature and breaking fragment, and the cycle diff where a fragment is unclear, against what `SKILL.md` and each reference teach. Update each passage a change makes wrong or incomplete, and set `metadata.version` in `SKILL.md` to the target version, even when nothing else changes. Land it in a preparatory PR, because the release guard rejects a cut whose skill names another version and rejects any change to the skill in the cut itself. Record in the release PR body what the review changed, or that it changed nothing but the version.
+
 Choose a short release description from the actual changes. Add an optional narrative only when users need connected explanations, a new mental model, compatibility context, or upgrade actions. Keep the narrative file outside the release checkout. Review the compiler's no-material-changes list against the cycle diff and library dependencies.
 
 ## Prepare in isolation
