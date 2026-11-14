@@ -141,6 +141,10 @@ export function sourceModule({ env, stdout, abort }) {
         if (host.env.FIXTURE_DIRECTORY !== undefined) {
           answer.directory = JSON.parse(host.env.FIXTURE_DIRECTORY);
         }
+        // A strict answer names a value that fails the run when the option's validator rejects it.
+        if (host.env.FIXTURE_STRICT !== undefined) {
+          answer.strict = JSON.parse(host.env.FIXTURE_STRICT);
+        }
         answers[request.name] = mode === 'bare' ? settings[key] : answer;
       }
     }

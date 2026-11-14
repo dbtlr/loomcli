@@ -1599,6 +1599,7 @@ export interface SignalSource {
 export interface SourceAnswer {
     readonly directory?: string;
     readonly label: string;
+    readonly strict?: boolean;
     readonly value: string | boolean | number | readonly string[];
 }
 

@@ -231,6 +231,11 @@ interface SourceAnswer {
    * reads it as `host.cwd`, so a relative path in the file resolves against the file.
    */
   readonly directory?: string;
+  /**
+   * Whether a value the option's validator rejects, or a content path core cannot read, fails the
+   * run with code 2 instead of falling back, as an environment value does. Off by default.
+   */
+  readonly strict?: boolean;
 }
 
 /**

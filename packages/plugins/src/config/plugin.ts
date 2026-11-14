@@ -18,6 +18,7 @@ import type { EmptyFileGuard } from './schema-types.js';
 import { judgeReach } from './scopes.js';
 import type { ScopeSettings } from './scopes.js';
 import type { Loaded } from './shared.js';
+import { judgeStrict, judgeStrictPaths } from './strict.js';
 
 const options = {
   config: {
@@ -88,6 +89,24 @@ interface ConfigurationSettings<
       : { readonly name: never });
   /** Write one line when the lookup finds no file. Off by default. */
   readonly notice?: boolean;
+  /**
+   * Fail the run, instead of dropping, for a value the schema rejects, an unknown key, or a linked
+   * option's value: `true` for the whole file, or the dotted key paths at or under which one fails.
+   * Off by default.
+   *
+   * @example
+   * ```ts
+   * import { configuration } from '@loomcli/plugins/config';
+   * import { z } from 'zod';
+   *
+   * // A service whose delivery section must be right fails on a bad value, and drops any other.
+   * export const config = configuration({
+   *   schema: z.object({ delivery: z.object({ retries: z.number().optional() }).optional() }),
+   *   strict: ['delivery'],
+   * });
+   * ```
+   */
+  readonly strict?: boolean | readonly [string, ...string[]];
 }
 
 /**
@@ -182,10 +201,14 @@ function configuration<
     reach: judgeReach(settings),
     reads: new WeakMap<Host, Promise<Loaded<Schema>>>(),
     schema: settings.schema,
+    strict: judgeStrict(settings),
   };
   const installed: Plugin<ConfigOptions<Directory>> = plugin(identity, {
     extensions: [configInput],
-    onGraphBuilt: judgeLinks,
+    onGraphBuilt: (graph) => {
+      judgeLinks(graph);
+      return judgeStrictPaths(shared.strict)(graph);
+    },
     options: declaredOptions<Directory>(settings),
     source: {
       binding: configInput,

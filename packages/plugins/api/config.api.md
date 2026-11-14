@@ -43,6 +43,7 @@ export interface ConfigurationSettings<Schema extends StandardSchemaV1, Director
     readonly notice?: boolean;
     readonly schema: Schema & EmptyFileGuard<Schema>;
     readonly short?: Short;
+    readonly strict?: boolean | readonly [string, ...string[]];
 }
 
 // @public

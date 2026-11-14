@@ -4,6 +4,7 @@ import { object, pipe, regex, string } from 'valibot';
 
 import { packageName } from '../constants.js';
 import { exactFacts } from '../exact-facts.js';
+import { dottedPath } from './names.js';
 
 /**
  * The configuration plugin's binding on an option: the dotted path of object keys it reads in the
@@ -21,10 +22,7 @@ interface ConfigInputFacts {
  * A dotted path of object keys, each segment nonempty. There is no escaping and no array indexing,
  * so a key that holds a dot is not reachable.
  */
-const configPath = pipe(
-  string(),
-  regex(/^[^.]+(?:\.[^.]+)*$/u, 'Supply a dotted path of nonempty keys.'),
-);
+const configPath = pipe(string(), regex(dottedPath, 'Supply a dotted path of nonempty keys.'));
 
 const inputFactsSchema = object({
   path: configPath,
