@@ -65,12 +65,7 @@ function packageExports(directory) {
 function entryConfigs(root, policy) {
   const directory = resolve(root, policy.directory);
   const { exportsMap, manifest, packageJsonFullPath } = packageExports(directory);
-  // A package being tagged one group of subpaths at a time names the entries it covers so far.
-  const covered = policy.coveredEntries;
-  const checked = Object.entries(exportsMap).filter(
-    ([entry]) => covered === undefined || covered.includes(entry),
-  );
-  return checked.flatMap(([entry, conditions]) =>
+  return Object.entries(exportsMap).flatMap(([entry, conditions]) =>
     [...new Set(typesPaths(conditions))].map((path) => {
       const reportFileName =
         entry === '.' ? 'index.api.md' : `${entry.slice(2).replaceAll('/', '.')}.api.md`;
@@ -443,29 +438,15 @@ function checkApi(root, packages, { update = false } = {}) {
   };
   for (const policy of packages) {
     const { exportsMap, packageJsonFullPath } = packageExports(resolve(root, policy.directory));
-    for (const entry of policy.coveredEntries ?? []) {
-      if (!Object.hasOwn(exportsMap, entry)) {
-        fail(
-          packageJsonFullPath,
-          1,
-          'api-unknown-entry',
-          entry,
-          'The exports map names no such entry.',
-        );
-      }
-    }
     // An entry's lists are read only while the check runs that entry, so others would sit unread.
     for (const entry of Object.keys(policy.entries)) {
-      const checked =
-        Object.hasOwn(exportsMap, entry) &&
-        (policy.coveredEntries === undefined || policy.coveredEntries.includes(entry));
-      if (!checked) {
+      if (!Object.hasOwn(exportsMap, entry)) {
         fail(
           packageJsonFullPath,
           1,
           'api-unchecked-entry',
           entry,
-          'The check does not run this entry, so its lists are never read; cover the entry or remove them.',
+          'The exports map names no such entry, so its lists are never read; remove them.',
         );
       }
     }
