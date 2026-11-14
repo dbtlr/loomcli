@@ -18,6 +18,10 @@
       "import": "./dist/index.js"
     }
   },
+  "scripts": {
+    "prepack": "node ../../scripts/readme-links.mjs pin",
+    "postpack": "node ../../scripts/readme-links.mjs unpin"
+  },
   "devDependencies": {
     "@types/estree": "^1.0.10",
     "@typescript-eslint/parser": "^8.72.1",

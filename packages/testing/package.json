@@ -18,6 +18,10 @@
       "import": "./dist/index.js"
     }
   },
+  "scripts": {
+    "prepack": "node ../../scripts/readme-links.mjs pin",
+    "postpack": "node ../../scripts/readme-links.mjs unpin"
+  },
   "peerDependencies": {
     "@loomcli/core": "workspace:*"
   },

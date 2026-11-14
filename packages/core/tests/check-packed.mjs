@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { repositoryLinks } from '../../../scripts/readme-links.mjs';
+
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const typescript = require('typescript/package.json');
@@ -322,6 +324,13 @@ function pnpm(args, cwd) {
 
 const source = fileURLToPath(new URL('runtime-consumer', import.meta.url));
 const temporary = await mkdtemp(join(tmpdir(), 'loom-runtime-consumer-'));
+/** The published packages, each named by its directory under `packages/` and its tarball. */
+const published = ['core', 'plugins', 'validators', 'prompts', 'testing', 'eslint-plugin', 'loom'];
+/** Each source README before packing, which its postpack script must restore byte for byte. */
+const sourceReadmes = new Map();
+for (const name of published) {
+  sourceReadmes.set(name, await readFile(join(root, 'packages', name, 'README.md'), 'utf8'));
+}
 try {
   pnpm(['pack', '--out', join(temporary, 'core.tgz')], join(root, 'packages/core'));
   pnpm(['pack', '--out', join(temporary, 'plugins.tgz')], join(root, 'packages/plugins'));
@@ -334,16 +343,26 @@ try {
   );
   pnpm(['pack', '--out', join(temporary, 'loom.tgz')], join(root, 'packages/loom'));
   // Publint fails each tarball on any warning, such as a nested manifest's exports map.
-  for (const name of [
-    'core',
-    'plugins',
-    'validators',
-    'prompts',
-    'testing',
-    'eslint-plugin',
-    'loom',
-  ]) {
+  for (const name of published) {
     pnpm(['exec', 'publint', '--strict', join(temporary, `${name}.tgz`)], root);
+  }
+  // Each packed README links to its own version's docs, because npm shows the README it published.
+  for (const name of published) {
+    const packed = run('tar', ['-xzOf', `${name}.tgz`, 'package/README.md'], temporary);
+    assert.equal(packed.status, 0, packed.output);
+    const links = repositoryLinks(packed.stdout);
+    assert.ok(links.length > 0, `The packed ${name} README holds no link into the repository.`);
+    for (const link of links) {
+      assert.ok(
+        link.startsWith(`https://github.com/dbtlr/loomcli/blob/v${version}/`),
+        `The packed ${name} README links to ${link}, not to the v${version} tag.`,
+      );
+    }
+    assert.equal(
+      await readFile(join(root, 'packages', name, 'README.md'), 'utf8'),
+      sourceReadmes.get(name),
+      `Packing ${name} left its source README changed; its postpack script restores it.`,
+    );
   }
   // Attw resolves each export's declarations under the module settings an ESM-only package serves.
   // The toolchain ships only its bin and exports no module, so it has no export to resolve.

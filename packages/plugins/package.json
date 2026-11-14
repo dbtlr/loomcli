@@ -152,6 +152,10 @@
       "import": "./dist/src/version/views.js"
     }
   },
+  "scripts": {
+    "prepack": "node ../../scripts/readme-links.mjs pin",
+    "postpack": "node ../../scripts/readme-links.mjs unpin"
+  },
   "dependencies": {
     "@loomcli/validators": "workspace:*",
     "smol-toml": "^1.9.1",
