@@ -1,9 +1,11 @@
 import { DeclarationError, escapeControlCharacters, InputError } from '@loomcli/core';
 import type { GraphBuiltHook, InputProblem } from '@loomcli/core';
 
+import { isRecord } from '../plain-data.js';
 import { configStrictPath, configStrictSchemaPath } from '../rules.js';
-import type { Step } from './drop.js';
-import { reach } from './links.js';
+import type { Removal, Step } from './drop.js';
+import { isArrayShape, leavesOf, stepInto } from './links.js';
+import type { Shape } from './links.js';
 import { configIdentity as identity, dottedPath } from './names.js';
 
 /**
@@ -83,6 +85,39 @@ function coversLink(strictness: Strictness, linkPath: string): boolean {
   return covers(strictness, linkPath.split('.'));
 }
 
+/** Whether the file holds a value at a listed path's keys, each an own key of an object. */
+function holdsAt(file: unknown, keys: readonly string[]): boolean {
+  let node = file;
+  for (const key of keys) {
+    if (!isRecord(node) || !Object.hasOwn(node, key)) {
+      return false;
+    }
+    node = node[key];
+  }
+  return true;
+}
+
+/**
+ * Whether a removal fails the run: an issue behind it names a path at or under a listed path, or the
+ * removal discards a value the file holds at a listed path. `file` is the file of the round that
+ * removes it.
+ */
+function coversRemoval(
+  strictness: Strictness,
+  removal: Removal,
+  file: Readonly<Record<string, unknown>>,
+): boolean {
+  if (strictness.everything || removal.issuePaths.some((path) => covers(strictness, path))) {
+    return true;
+  }
+  return strictness.keys.some(
+    (keys) =>
+      removal.path.length <= keys.length &&
+      removal.path.every((step, index) => step === keys[index]) &&
+      holdsAt(file, keys),
+  );
+}
+
 /** A period unless the message already ends in one, as the `empty-file` sentence adds one. */
 function stopped(message: string): string {
   const text = escapeControlCharacters(message);
@@ -95,8 +130,9 @@ function placeOf(file: string | undefined): string {
 }
 
 /**
- * The line for a value the schema rejected. A removal with no path removed every key, and its line
- * names the file. `file` is the file as its labels show it, already escaped.
+ * The line for a value the schema rejected, naming the issue's own path. An issue with no path
+ * rejected the whole file, and its line names the file. `file` is the file as its labels show it,
+ * already escaped.
  */
 function valueLine(
   removal: { readonly path: string | undefined; readonly message: string },
@@ -148,9 +184,55 @@ function strictFailure(
 }
 
 /**
+ * What a listed path's walk through the shape came to: a path the shape holds or leaves unchecked,
+ * a key it does not hold, or an array met before the last key, with the array's own path.
+ */
+type Walked = { kind: 'passes' } | { kind: 'missing' } | { kind: 'array'; array: string };
+
+/** Follows a listed path's keys through the shape, as a link's path is followed. */
+function walkListed(path: string, shape: Shape): Walked {
+  const keys = path.split('.');
+  let leaves = leavesOf(shape, shape);
+  for (const [index, key] of keys.entries()) {
+    if (leaves.some(isArrayShape)) {
+      return { array: keys.slice(none, index).join('.'), kind: 'array' };
+    }
+    const step = stepInto(leaves, key, shape);
+    if (step.kind !== 'held') {
+      return step.kind === 'missing' ? step : { kind: 'passes' };
+    }
+    leaves = step.next;
+  }
+  return { kind: 'passes' };
+}
+
+/** The fault of a listed path the shape cannot cover, or `undefined` when it passes. */
+function listedFault(
+  walked: Walked,
+  path: string,
+  finding: { arguments: unknown[]; call: string; mark: string },
+): DeclarationError | undefined {
+  if (walked.kind === 'passes') {
+    return undefined;
+  }
+  const listed = escapeControlCharacters(path);
+  return walked.kind === 'missing'
+    ? new DeclarationError(configStrictSchemaPath, {
+        correction: 'List a path the schema describes, or add the key to the schema.',
+        findings: [finding],
+        sentence: `Plugin "${identity}" strict lists ${listed}, which the configuration schema does not hold.`,
+      })
+    : new DeclarationError(configStrictSchemaPath, {
+        correction: "List the array's own path, which covers every item.",
+        findings: [finding],
+        sentence: `Plugin "${identity}" strict lists ${listed}, which passes through the array at ${escapeControlCharacters(walked.array)}.`,
+      });
+}
+
+/**
  * The `onGraphBuilt` judgment of the listed paths: where the graph holds the configuration's
- * shape, each path's keys must be ones the shape holds, in list order. A key the shape leaves
- * unchecked passes.
+ * shape, each path's keys must be ones the shape holds, and none may pass through an array, in
+ * list order. A key the shape leaves unchecked passes.
  */
 function judgeStrictPaths(strictness: Strictness): GraphBuiltHook {
   return (graph) => {
@@ -159,23 +241,27 @@ function judgeStrictPaths(strictness: Strictness): GraphBuiltHook {
       return undefined;
     }
     for (const [index, path] of strictness.listed.entries()) {
-      if (reach(path, shape).kind === 'missing') {
-        throw new DeclarationError(configStrictSchemaPath, {
-          correction: 'List a path the schema describes, or add the key to the schema.',
-          findings: [
-            {
-              arguments: [{ strict: strictness.listed }],
-              call: 'configuration',
-              mark: `0.strict.${String(index)}`,
-            },
-          ],
-          sentence: `Plugin "${identity}" strict lists ${escapeControlCharacters(path)}, which the configuration schema does not hold.`,
-        });
+      const fault = listedFault(walkListed(path, shape), path, {
+        arguments: [{ strict: strictness.listed }],
+        call: 'configuration',
+        mark: `0.strict.${String(index)}`,
+      });
+      if (fault !== undefined) {
+        throw fault;
       }
     }
     return undefined;
   };
 }
 
-export { covers, coversLink, judgeStrict, judgeStrictPaths, strictFailure, unknownLine, valueLine };
+export {
+  covers,
+  coversLink,
+  coversRemoval,
+  judgeStrict,
+  judgeStrictPaths,
+  strictFailure,
+  unknownLine,
+  valueLine,
+};
 export type { LinkedProblem, StrictSetting, Strictness };

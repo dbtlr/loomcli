@@ -64,10 +64,13 @@ const configStrictPath = diagnosticRule(`${packageName}/config/strict-path`, {
   headline: 'Invalid strict configuration path',
 });
 
-/** A configuration plugin `strict` setting that lists a path whose keys the schema does not hold. */
+/**
+ * A configuration plugin `strict` setting that lists a path whose keys the schema does not hold, or
+ * one that passes through an array.
+ */
 const configStrictSchemaPath = diagnosticRule(`${packageName}/config/strict-schema-path`, {
   explanation:
-    'A path that strict lists covers the values of the configuration file at or under it, and the configuration schema describes the whole file. A path whose keys the schema does not describe means the setting and the shape of the file disagree, and the check catches a typo, which would otherwise make the setting cover nothing, at build time.',
+    'A path that strict lists covers the values of the configuration file at or under it, and the configuration schema describes the whole file. A path whose keys the schema does not describe means the setting and the shape of the file disagree, and the check catches a typo, which would otherwise make the setting cover nothing, at build time. A path that passes through an array would cover nothing too, because the index of an array item equals no key, so the check rejects it, and listing the path of the array itself covers every item.',
   headline: 'Strict path the configuration schema does not hold',
 });
 

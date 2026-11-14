@@ -7,7 +7,7 @@ import { findFile } from './lookup.js';
 import type { UsableFile } from './lookup.js';
 import { withoutPointer } from './pointer.js';
 import type { Reach } from './scopes.js';
-import { covers, unknownLine, valueLine } from './strict.js';
+import { covers, coversRemoval, unknownLine, valueLine } from './strict.js';
 import type { Strictness } from './strict.js';
 import { unknownKeys } from './unknown.js';
 
@@ -76,7 +76,11 @@ function shownPath(path: readonly Step[]): string {
 }
 
 /** The `-v` line for one removed value, each piece of raw data escaped. */
-function removalLine(removal: Removal, file: string | undefined, style: ContextualStyle): string {
+function removalLine(
+  removal: Pick<Removal, 'message' | 'path'>,
+  file: string | undefined,
+  style: ContextualStyle,
+): string {
   const raw = (text: string) => style.escape(escapeControlCharacters(text));
   const where = file === undefined ? '' : ` in ${nowrap(style.escape(file))}`;
   const subject =
@@ -97,13 +101,21 @@ interface Reporting {
   readonly style: ContextualStyle;
 }
 
-/** One removed value: held for the failure when `strict` covers it, and else written at `-v`. */
-async function reportRemoval(removal: Removal, reporting: Reporting): Promise<void> {
+/**
+ * One removed value: held for the failure when `strict` covers it, naming its issue's own path,
+ * and else written at `-v`, naming the removed value. `round` is the file of the round that removes
+ * it.
+ */
+async function reportRemoval(
+  removal: Removal,
+  round: Readonly<Record<string, unknown>>,
+  reporting: Reporting,
+): Promise<void> {
   const { file, held, out, strict, style } = reporting;
-  if (!covers(strict, removal.path)) {
+  if (!coversRemoval(strict, removal, round)) {
     return out.debug(removalLine(removal, file, style));
   }
-  const path = removal.path.length === noSteps ? undefined : shownPath(removal.path);
+  const path = removal.issuePath.length === noSteps ? undefined : shownPath(removal.issuePath);
   held.push(valueLine({ message: removal.message, path }, file));
   return undefined;
 }
@@ -150,8 +162,8 @@ async function load<Schema extends StandardSchemaV1>(
     strict: shared.strict,
     style,
   };
-  const passed = await dropUntilPasses(shared.schema, object, (removal) =>
-    reportRemoval(removal, reporting),
+  const passed = await dropUntilPasses(shared.schema, object, (removal, round) =>
+    reportRemoval(removal, round, reporting),
   );
   const published = graph.configuration?.schema;
   if (published !== undefined && published !== null) {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { Application, Command, DeclarationError, InputError, plugin } from '@loomcli/core';
-import type { StandardSchemaV1 } from '@loomcli/core';
+import type { InvocationOutcome, StandardSchemaV1 } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import type { ConfigurationSettings } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
@@ -172,15 +172,109 @@ test('one failure names every rejected value and every unknown key, removals fir
   });
 });
 
-test('a rejected value in an array item names the item by its index', async () => {
+test('a rejected value in an array item names the issue path, with the item by its index', async () => {
   const result = await ran({
     file: { sessions: { sources: [{ harness: 'a' }, { harness: 2 }] } },
     strict: ['sessions.sources'],
   });
   expect(result).toMatchObject({ status: 2 });
   expect(result.stderr).toBe(
-    'app: Configuration value sessions.sources[1] in .app.json: Invalid input: expected string, received number. Correct the value, or remove it.\n',
+    'app: Configuration value sessions.sources[1].harness in .app.json: Invalid input: expected string, received number. Correct the value, or remove it.\n',
   );
+});
+
+test('the failure names the one wrong key of a two-key array item, and -v still names the item', async () => {
+  const schema = closed.extend({
+    sessions: z
+      .object({ sources: z.array(z.object({ harness: z.string(), root: z.string() })).optional() })
+      .optional(),
+  });
+  const file = {
+    sessions: {
+      sources: [
+        { harness: 'a', root: '/a' },
+        { harness: 'b', root: 7 },
+      ],
+    },
+  };
+  // Listing the array's own path covers an issue inside any of its items.
+  const failed = await ran({ file, schema, strict: ['sessions.sources'] });
+  expect(failed).toEqual({
+    status: 2,
+    stderr:
+      'app: Configuration value sessions.sources[1].root in .app.json: Invalid input: expected string, received number. Correct the value, or remove it.\n',
+    stdout: '',
+  });
+  const dropped = await ran({ argv: ['-L'], file, schema, strict: ['delivery'] });
+  expect(dropped.status).toBe(0);
+  expect(dropped.stderr).toBe(
+    '› Ignored sessions.sources[1] in .app.json: Invalid input: expected string, received number\n',
+  );
+});
+
+test('a required key missing at a listed path fails the run although the removal lands on its section', async () => {
+  const schema = closed.extend({
+    delivery: z.object({ retries: z.number().optional(), webhook: z.string() }).optional(),
+  });
+  const result = await ran({
+    file: { delivery: { retries: 1 } },
+    schema,
+    strict: ['delivery.webhook'],
+  });
+  expect(result).toEqual({
+    status: 2,
+    stderr:
+      'app: Configuration value delivery.webhook in .app.json: Invalid input: expected string, received undefined. Correct the value, or remove it.\n',
+    stdout: '',
+  });
+});
+
+/** A delivery section whose cross-field refinement fails on the section itself. */
+const refinedDelivery = closed.extend({
+  delivery: z
+    .object({
+      backoff: z.number().optional(),
+      retries: z.number().optional(),
+      webhook: z.string().optional(),
+    })
+    .refine(
+      (section) => section.retries === undefined || section.backoff !== undefined,
+      'Set backoff when retries is set',
+    )
+    .optional(),
+});
+
+test('a section-level refinement that would discard a valid value at a listed path fails the run', async () => {
+  const result = await ran({
+    file: { delivery: { retries: 2, webhook: 'https://alerts.example.com/hook' } },
+    schema: refinedDelivery,
+    strict: ['delivery.webhook'],
+  });
+  expect(result).toEqual({
+    status: 2,
+    stderr:
+      'app: Configuration value delivery in .app.json: Set backoff when retries is set. Correct the value, or remove it.\n',
+    stdout: '',
+  });
+});
+
+test('a removal of an ancestor drops and is named at -v when the file holds nothing at the listed path', async () => {
+  const refined = await ran({
+    argv: ['-L'],
+    file: { delivery: { retries: 2 } },
+    schema: refinedDelivery,
+    strict: ['delivery.webhook'],
+  });
+  expect(refined).toMatchObject({
+    status: 0,
+    stderr: '› Ignored delivery in .app.json: Set backoff when retries is set\n',
+  });
+  // A section that is no object holds no value at the listed path either.
+  const holder = await ran({ argv: ['-L'], file: { delivery: 5 }, strict: ['delivery.webhook'] });
+  expect(holder).toMatchObject({
+    status: 0,
+    stderr: '› Ignored delivery in .app.json: Invalid input: expected object, received number\n',
+  });
 });
 
 test('a file the schema rejects whole fails under strict: true and names the file', async () => {
@@ -193,8 +287,14 @@ test('a file the schema rejects whole fails under strict: true and names the fil
     stderr: 'app: Configuration file .app.json: Leave it empty. Correct the file, or remove it.\n',
     stdout: '',
   });
-  // A list covers no removal of every key, which has no path.
-  await expect(ran({ file: { alpha: 1 }, schema, strict: ['alpha'] })).resolves.toMatchObject({
+  // A removal of every key discards the value a listed path holds, so a list fails the run too.
+  await expect(ran({ file: { alpha: 1 }, schema, strict: ['alpha'] })).resolves.toEqual({
+    status: 2,
+    stderr: 'app: Configuration file .app.json: Leave it empty. Correct the file, or remove it.\n',
+    stdout: '',
+  });
+  // It drops when the file holds nothing at the listed path.
+  await expect(ran({ file: { beta: 1 }, schema, strict: ['alpha'] })).resolves.toMatchObject({
     status: 0,
   });
 });
@@ -375,8 +475,6 @@ test('a listed path the schema does not hold is a build fault, and a held or unc
     rule: '@loomcli/plugins/config/strict-schema-path',
   });
   expect(built(['delivery.retries', 'sessions.sources'])).toBe('built');
-  // A key below an array is unchecked, so it builds although it covers nothing.
-  expect(built(['sessions.sources.harness'])).toBe('built');
   expect(built(true)).toBe('built');
   // A schema that publishes no JSON Schema gets no check.
   const valibot = configuration({
@@ -386,6 +484,15 @@ test('a listed path the schema does not hold is a build fault, and a held or unc
   expect(() =>
     new Application('app', { plugins: [valibot.plugin] }).action(() => undefined).inspect(),
   ).not.toThrow();
+});
+
+test('a listed path that passes through an array is a build fault that points to the array', () => {
+  expect(built(['delivery', 'sessions.sources.harness'])).toEqual({
+    correction: "List the array's own path, which covers every item.",
+    rule: '@loomcli/plugins/config/strict-schema-path',
+    sentence:
+      'Plugin "@loomcli/plugins/config" strict lists sessions.sources.harness, which passes through the array at sessions.sources.',
+  });
 });
 
 test('a global linked option is requested on a subcommand, so strict fails its rejected value there', async () => {
@@ -412,4 +519,127 @@ test('a global linked option is requested on a subcommand, so strict fails its r
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
+});
+
+/** The escape character, built from its code point so the source holds no invisible character. */
+const escape = String.fromCodePoint(0x1b);
+
+/** One invocation of an application with the given mock process. */
+type Invoke = (process: ReturnType<typeof mockProcess>) => Promise<InvocationOutcome>;
+
+/** Runs `invoke` over a file written as `file`, and returns the failure's problems. */
+async function problemsOf(invoke: Invoke, file: unknown): Promise<readonly unknown[] | 'ran'> {
+  const root = mkdtempSync(join(tmpdir(), 'loom-strict-'));
+  try {
+    writeFileSync(join(root, '.app.json'), JSON.stringify(file));
+    const outcome = await invoke(mockProcess({ cwd: root, env: { HOME: root } }));
+    if (outcome.status !== 'failed') {
+      return 'ran';
+    }
+    return outcome.failure instanceof InputError ? outcome.failure.problems : [outcome.failure];
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+}
+
+/** An invocation of an application that reads `.app.json` under `strict: true` and provides the file. */
+function strictApp(schema: StandardSchemaV1): Invoke {
+  const config = configuration({ file: '.app.json', schema, strict: true });
+  const app = new Application('app', { plugins: [config.plugin], uses: [config.values] }).action(
+    () => undefined,
+  );
+  return (process) => app.invoke([], {}, { process });
+}
+
+/** The file's problem of a strict failure, holding one issue for each message. */
+function fileProblem(...messages: string[]) {
+  return {
+    input: { global: true, kind: 'option', name: 'config' },
+    issues: messages.map((message) => ({ message })),
+    reason: 'invalid',
+    spelling: 'config',
+  };
+}
+
+test('a schema message that holds a control character prints it escaped, in stderr and in the problem', async () => {
+  const schema = z.object({}).catchall(z.number({ error: `Use a number${escape}[31m` }));
+  const line = String.raw`Configuration value alpha in .app.json: Use a number\u001b[31m. Correct the value, or remove it.`;
+  const result = await ran({ file: { alpha: 'x' }, schema, strict: true });
+  expect(result).toEqual({ status: 2, stderr: `app: ${line}\n`, stdout: '' });
+  await expect(problemsOf(strictApp(schema), { alpha: 'x' })).resolves.toEqual([fileProblem(line)]);
+});
+
+test('an unknown key that holds a control character prints it escaped, in stderr and in the problem', async () => {
+  const file = { [`state${escape}dir`]: 'x' };
+  const line = String.raw`Unknown key state\u001bdir in .app.json. Check its spelling, or remove it.`;
+  const result = await ran({ file, strict: true });
+  expect(result).toEqual({ status: 2, stderr: `app: ${line}\n`, stdout: '' });
+  await expect(problemsOf(strictApp(closed), file)).resolves.toEqual([fileProblem(line)]);
+});
+
+test('a schema message that ends in a period gets no second one', async () => {
+  const schema = z.object({}).catchall(z.number({ error: 'Use a number.' }));
+  const result = await ran({ file: { alpha: 'x' }, schema, strict: true });
+  expect(result.stderr).toBe(
+    'app: Configuration value alpha in .app.json: Use a number. Correct the value, or remove it.\n',
+  );
+});
+
+test('a multiple option with two items it cannot take names each item by its position', async () => {
+  const schema = closed.extend({ fields: z.array(z.unknown()).optional() });
+  const config = configuration({ file: '.app.json', schema, strict: true });
+  const app = new Application('app', { plugins: [config.plugin] })
+    .option('field', {
+      extensions: [configInput({ path: 'fields' })],
+      multiple: true,
+      type: 'string',
+    })
+    .action(() => undefined);
+  const file = { fields: ['a', true, {}] };
+  const root = mkdtempSync(join(tmpdir(), 'loom-strict-'));
+  try {
+    writeFileSync(join(root, '.app.json'), JSON.stringify(file));
+    const mock = mockProcess({ argv: [], cwd: root, env: { HOME: root } });
+    await app.run({ process: mock });
+    expect(mock.exitCode).toBe(2);
+    expect(mock.stderr.text).toBe(
+      'app: Option "--field" (from fields in .app.json) at 1: Use a string or a number.\napp: Option "--field" (from fields in .app.json) at 2: Use a string or a number.\n',
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+  await expect(problemsOf((process) => app.invoke([], {}, { process }), file)).resolves.toEqual([
+    {
+      input: { global: false, kind: 'option', name: 'field' },
+      issues: [
+        { message: 'Use a string or a number.', path: [1] },
+        { message: 'Use a string or a number.', path: [2] },
+      ],
+      reason: 'invalid',
+      spelling: 'field',
+    },
+  ]);
+});
+
+test('the file problem comes before a linked global option, which the problem marks global', async () => {
+  const config = configuration({ file: '.app.json', schema: closed, strict: true });
+  const app = new Application('app', { plugins: [config.plugin] })
+    .globalOption('flag', { extensions: [configInput({ path: 'flag' })], type: 'boolean' })
+    .action(() => undefined);
+  await expect(
+    problemsOf((process) => app.invoke([], {}, { process }), {
+      delivery: { retries: 'three' },
+      flag: 'yes',
+    }),
+  ).resolves.toEqual([
+    fileProblem(
+      'Configuration value delivery.retries in .app.json: Invalid input: expected number, received string. Correct the value, or remove it.',
+    ),
+    {
+      input: { global: true, kind: 'option', name: 'flag' },
+      issues: [{ message: 'Use true or false.' }],
+      reason: 'invalid',
+      spelling: 'flag',
+    },
+  ]);
 });
