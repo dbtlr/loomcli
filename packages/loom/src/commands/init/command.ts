@@ -76,7 +76,8 @@ export const init = new Command('init', {
     validate: runnerOption,
   })
   .option('force', {
-    description: 'Re-render a managed file that was edited. Scaffold files are never overwritten.',
+    description:
+      'Re-render a managed file that was edited, or remove an edited file of the authoring skill that this loom no longer ships. Scaffold files are never overwritten.',
     type: 'boolean',
   })
   .action(async (context) => {

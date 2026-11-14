@@ -1,0 +1,2 @@
+- Add the authoring skill to `loom init`, which writes `SKILL.md` and its references to `.agents/skills/loom/` under the piece `skill`, beside the changelog skill, so a coding agent learns how a Loom application fits together. Each file is a managed file, and its links to the documentation name the installed version.
+- Remove an unedited file of the authoring skill that the installed `loom` no longer ships, when `loom init` writes the piece `skill`. An edited one stays with a warning, and `--force` removes it.

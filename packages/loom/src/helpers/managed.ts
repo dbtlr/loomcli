@@ -85,7 +85,7 @@ export function renderManaged(content: string): string {
 
 /**
  * The warning a managed file draws once its content no longer matches its header, which `loom
- * check` and `loom init` print alike.
+ * init` prints.
  */
 export function driftWarning(path: string) {
   return `warning: ${path} differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.`;

@@ -4,13 +4,16 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, posix, resolve } from 'node:path';
 
 import type { ActionHandler } from '@loomcli/core';
 import { confirm, select } from '@loomcli/prompts';
 
+import { authoringSkill } from '../../content/authoring-skill.js';
 import { changelogSkill } from '../../content/changelog-skill.js';
 import { fragmentGuide } from '../../content/fragment-guide.js';
 import { installerScript } from '../../content/installer-script.js';
@@ -72,6 +75,9 @@ const typescriptConfigPath = 'tsconfig.json';
 
 /** The changelog skill, where coding agents look for skills, whatever the configuration holds. */
 const skillPath = '.agents/skills/loom-changelog/SKILL.md';
+
+/** The folder of the authoring skill, where coding agents look for skills, whatever the configuration holds. */
+const authoringSkillFolder = '.agents/skills/loom';
 
 /** The mode init writes the installer script with, so an operator can run it directly. */
 const executableMode = 0o755;
@@ -231,6 +237,83 @@ function writeManaged(run: Run, path: string, content: string, mode?: number) {
     return;
   }
   write(run, path, rendered, mode);
+}
+
+/**
+ * The Markdown files under the authoring skill's folder, as paths from the package directory, in
+ * walk order, with symbolic links left out. A package that has no such folder yields none.
+ */
+function authoringSkillFiles(run: Run, folder = authoringSkillFolder): string[] {
+  if (!existsSync(join(run.directory, folder))) {
+    return [];
+  }
+  return readdirSync(join(run.directory, folder), { withFileTypes: true })
+    .toSorted((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => {
+      const path = posix.join(folder, entry.name);
+      if (entry.isDirectory()) {
+        return authoringSkillFiles(run, path);
+      }
+      return entry.isFile() && entry.name.endsWith('.md') ? [path] : [];
+    });
+}
+
+/** Removes a file init managed, and each directory the removal leaves empty below the skill folder. */
+function removeManaged(run: Run, path: string) {
+  try {
+    rmSync(join(run.directory, path));
+    for (
+      let folder = posix.dirname(path);
+      folder !== authoringSkillFolder && folder.startsWith(`${authoringSkillFolder}/`);
+      folder = posix.dirname(folder)
+    ) {
+      if (readdirSync(join(run.directory, folder)).length > 0) {
+        break;
+      }
+      rmdirSync(join(run.directory, folder));
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Cannot remove ${path}: ${reason}.`, { cause: error });
+  }
+  run.line(`Removed ${path}.`);
+}
+
+/**
+ * Removes the Markdown files of the authoring skill's folder that init wrote and the running loom
+ * no longer renders. An unedited one goes, an edited one goes under `--force` and otherwise stays
+ * with a warning, and a file without init's header is the author's and is never touched.
+ */
+function sweepStaleSkillFiles(run: Run, rendered: ReadonlySet<string>) {
+  for (const path of authoringSkillFiles(run)) {
+    const file = rendered.has(path)
+      ? undefined
+      : readManaged(readFileSync(join(run.directory, path), 'utf8'));
+    if (file === undefined) {
+      // Rendered by this run, or a file of the author's, which init never touches.
+    } else if (hasDrifted(file) && !run.force) {
+      run.warn(
+        `warning: ${path} differs from what loom init wrote, and the running loom no longer ships it. Run loom init --force to remove it, or delete its header to keep it.`,
+      );
+    } else {
+      removeManaged(run, path);
+    }
+  }
+}
+
+/**
+ * Keeps the authoring skill current, one managed file for each file the running loom ships under
+ * `.agents/skills/loom/`, then sweeps the files it no longer renders.
+ */
+function writeAuthoringSkill(run: Run) {
+  const files = authoringSkill(loomVersion).map(({ content, path }) => ({
+    content,
+    path: posix.join(authoringSkillFolder, path),
+  }));
+  for (const { content, path } of files) {
+    writeManaged(run, path, content);
+  }
+  sweepStaleSkillFiles(run, new Set(files.map(({ path }) => path)));
 }
 
 /**
@@ -540,6 +623,7 @@ async function runInit(
   }
   if (selected('skill')) {
     writeManaged(context, skillPath, changelogSkill(layout));
+    writeAuthoringSkill(context);
   }
   if (selected('install')) {
     writeInstaller(context, run.target.postInstall);
