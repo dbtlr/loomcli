@@ -1,3 +1,5 @@
+// @module-tag docs
+
 /*
  * Acceptance plan for the authoring skill's content module (docs/decisions/0149-...).
  *

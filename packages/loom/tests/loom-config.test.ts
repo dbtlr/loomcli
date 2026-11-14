@@ -23,9 +23,11 @@ import { mockProcess } from '@loomcli/testing';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { loom } from '../src/application.js';
+import { authoringSkill } from '../src/content/authoring-skill.js';
 import { changelogSkill } from '../src/content/changelog-skill.js';
 import { fragmentGuide } from '../src/content/fragment-guide.js';
 import { installerScript } from '../src/content/installer-script.js';
+import { loomVersion } from '../src/helpers/loom-version.js';
 import { renderManaged } from '../src/helpers/managed.js';
 import { put, removeRoots, temporaryRoot } from './fixture.js';
 
@@ -127,7 +129,13 @@ test('paths.changes and paths.changelog move the fragment guide, whose text and 
   expect(result).toEqual({
     status: 0,
     stderr: '',
-    stdout: 'Wrote notes/changes/README.md.\nWrote .agents/skills/loom-changelog/SKILL.md.\n',
+    stdout: [
+      'Wrote notes/changes/README.md.',
+      'Wrote .agents/skills/loom-changelog/SKILL.md.',
+      // The authoring skill names the conventions whatever the configuration holds.
+      ...authoringSkill(loomVersion).map(({ path }) => `Wrote .agents/skills/loom/${path}.`),
+      '',
+    ].join('\n'),
   });
   const changelog = { changelog: 'docs/CHANGELOG.md', changes: 'notes/changes' };
   const guide = read(directory, 'notes/changes/README.md');
@@ -135,6 +143,7 @@ test('paths.changes and paths.changelog move the fragment guide, whose text and 
   expect(guide).toContain('`notes/changes/`');
   expect(guide).toContain('`docs/CHANGELOG.md`');
   expect(guide).not.toContain('.changes');
+  expect(read(directory, '.agents/skills/loom/SKILL.md')).not.toContain('notes/changes');
   const skill = read(directory, '.agents/skills/loom-changelog/SKILL.md');
   expect(skill).toBe(renderManaged(changelogSkill(changelog)));
   expect(skill).toContain('`notes/changes/README.md`');
