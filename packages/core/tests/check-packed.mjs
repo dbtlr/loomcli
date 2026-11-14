@@ -402,8 +402,8 @@ try {
     { loom: 'dist/main.js' },
     'The packed @loomcli/loom must declare the loom bin.',
   );
-  // The plugin pack inlines the private MCP protocol package and the private JSON scanner package,
-  // So no consumer installs either.
+  // The plugin pack inlines the private MCP protocol package and the private JSON scanner package.
+  // No consumer installs either of them.
   const pluginsManifest = run('tar', ['-xzOf', 'plugins.tgz', 'package/package.json'], temporary);
   assert.equal(pluginsManifest.status, 0, pluginsManifest.output);
   const { dependencies = {}, peerDependencies = {} } = JSON.parse(pluginsManifest.stdout);

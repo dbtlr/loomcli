@@ -59,6 +59,31 @@ test.each([
   },
 );
 
+test.each([
+  ['a sign after an item', '[1 -]', 1, 4, 'a comma or ]'],
+  ['a sign where a property name belongs', '{-}', 1, 2, 'a property name in double quotes'],
+  ['a broken string after an item', String.raw`["dist" "src\lib"]`, 1, 9, 'a comma or ]'],
+  [
+    'a doubled closing quote',
+    '{\n  "name": "demo"",\n  "version": "1.0.0"\n}\n',
+    2,
+    17,
+    'a comma or }',
+  ],
+])(
+  '%s is judged by what the container needs where it stands, not inside a value',
+  (_case, text, line, column, expected) => {
+    expect(jsonFault(text)).toEqual({ column, expected, line });
+  },
+);
+
+test('a manifest with leftover diff markers names the marker where a property name belongs', () => {
+  const text = '{\n  "name": "notes",\n-  "version": "1.0.0",\n+  "version": "1.1.0"\n}\n';
+  expect(() => parseManifest(text, path)).toThrow(
+    'line 3, column 1 needs a property name in double quotes',
+  );
+});
+
 test('a CRLF file counts lines by their line breaks', () => {
   expect(jsonFault('{\r\n  "name": "notes",\r\n}\r\n')).toEqual({
     column: 1,

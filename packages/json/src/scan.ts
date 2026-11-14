@@ -96,23 +96,16 @@ function brokenString(text: string, index: number): Break {
     : { offset };
 }
 
-/** The token at an index, or where nothing matches. */
-function tokenAt(text: string, index: number, mode: JsonMode): Token | Break {
+/** The token at an index, or `undefined` where nothing matches. */
+function tokenAt(text: string, index: number, mode: JsonMode): Token | undefined {
   const pattern = tokenPatterns[mode];
   pattern.lastIndex = index;
   const groups = pattern.exec(text)?.groups;
   const kind = kinds.find((name) => groups?.[name] !== undefined);
   const matched = kind === undefined ? undefined : groups?.[kind];
-  if (kind === undefined || matched === undefined) {
-    if (text[index] === '"') {
-      return brokenString(text, index);
-    }
-    // A strict scan reads a sign as the start of a number and finds the missing digit after it.
-    return mode === 'strict' && text[index] === '-'
-      ? { expected: 'a digit', offset: index + pastCharacter }
-      : { offset: index };
-  }
-  return { kind, start: index, text: matched };
+  return kind === undefined || matched === undefined
+    ? undefined
+    : { kind, start: index, text: matched };
 }
 
 /** What a number may continue with when its token ends: a point or an exponent, or an exponent. */
@@ -151,6 +144,16 @@ class Scanner {
   /** Whether the text has ended where it may. */
   get complete(): boolean {
     return this.expect === 'end';
+  }
+
+  /** Whether a value may stand at the scan's place: the text's value or an array's item. */
+  get takesValue(): boolean {
+    return this.expect === 'value' || this.expect === 'item';
+  }
+
+  /** Whether a string may stand at the scan's place: a value, an item, or an object's key. */
+  get takesString(): boolean {
+    return this.takesValue || this.expect === 'member';
   }
 
   /** What JSON needs at the scan's place. */
@@ -271,6 +274,23 @@ function take(scanner: Scanner, token: Token): boolean {
   return true;
 }
 
+/**
+ * Where the text breaks at an index no token matches. A comments scan judges a broken string inside
+ * it and any other character where it stands. A strict scan reads as RFC 8259's grammar does: it
+ * enters a string or a number only where one may stand, so it judges a broken string inside it and
+ * finds a sign's missing digit after it there, and elsewhere names what the scan needs at the index.
+ */
+function unmatched(scanner: Scanner, text: string, index: number): Break {
+  const character = text[index];
+  const strict = scanner.mode === 'strict';
+  if (character === '"' && (!strict || scanner.takesString)) {
+    return brokenString(text, index);
+  }
+  return strict && character === '-' && scanner.takesValue
+    ? { expected: 'a digit', offset: index + pastCharacter }
+    : { offset: index };
+}
+
 /** Where a token that matched breaks the scan, or `undefined` when the token may stand. */
 function readToken(scanner: Scanner, text: string, token: Token): Break | undefined {
   if (!take(scanner, token)) {
@@ -294,8 +314,8 @@ function scanJson(text: string, mode: JsonMode): Scan {
   const scanner = new Scanner(mode);
   for (let index = 0; index < text.length;) {
     const token = tokenAt(text, index, mode);
-    if (!('kind' in token)) {
-      return faultOf(scanner, token);
+    if (token === undefined) {
+      return faultOf(scanner, unmatched(scanner, text, index));
     }
     const broken = readToken(scanner, text, token);
     if (broken !== undefined) {

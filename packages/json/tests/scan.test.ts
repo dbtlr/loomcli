@@ -30,6 +30,7 @@ test('a strict scan names a cut-short number where its digit is missing', () => 
   expect(scanJson('[1e+]', 'strict')).toEqual({ expected: 'a digit', offset: 4 });
   expect(scanJson('[-]', 'strict')).toEqual({ expected: 'a digit', offset: 2 });
   expect(scanJson('[1.5.2]', 'strict')).toEqual({ expected: 'a comma or ]', offset: 4 });
+  expect(scanJson('[1e5.]', 'strict')).toEqual({ expected: 'a comma or ]', offset: 4 });
 });
 
 test('a comments scan stops a cut-short number at the character that cannot continue it', () => {
