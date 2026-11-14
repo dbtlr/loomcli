@@ -150,10 +150,10 @@ function isInside(directory: string, home: string): boolean {
 /**
  * The directories the walk may look in, nearest first: the start directory and each ancestor, up
  * to the directory below home when the start is inside it, and up to the root otherwise. The home
- * directory belongs to the user scope, so a start at home walks nowhere. The ceiling directory is
- * the last one looked in and no ancestor of it is looked in, so a start outside the ceiling climbs
- * until it meets an ancestor of the ceiling and ends without looking there. The walk ends at the
- * first of home, the ceiling, and the root that it meets.
+ * directory belongs to the user scope, so a start at home walks nowhere. No ancestor of the
+ * ceiling is looked in: a start at or inside the ceiling climbs to the ceiling and no higher, a
+ * start that is an ancestor of the ceiling walks nowhere, and any other start outside the ceiling
+ * is looked in alone. The walk ends at the first of home, the ceiling, and the root that it meets.
  */
 function walkDirectories(
   start: string,
@@ -161,11 +161,11 @@ function walkDirectories(
   ceiling: string | undefined,
 ): string[] {
   const bound = home !== undefined && isInside(start, home) ? home : undefined;
+  if (ceiling !== undefined && !isInside(start, ceiling)) {
+    return start === bound || isAncestor(start, ceiling) ? [] : [start];
+  }
   const directories: string[] = [];
   for (let directory = start; directory !== bound; directory = dirname(directory)) {
-    if (ceiling !== undefined && isAncestor(directory, ceiling)) {
-      break;
-    }
     directories.push(directory);
     if (directory === ceiling || dirname(directory) === directory) {
       break;

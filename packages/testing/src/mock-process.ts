@@ -773,8 +773,10 @@ function mockProcess(fields: MockFields = {}): MockProcess {
   return {
     arch: fields.arch ?? 'x64',
     argv: fields.argv ?? [],
-    // The ceiling is the working directory unless the test names one. With a `cwd` function the
-    // Ceiling calls it again when core reads the ceiling, right after the `cwd()` read.
+    /**
+     * The ceiling is the working directory unless the test names one. With a `cwd` function, the
+     * ceiling calls it again when core reads the ceiling, right after the `cwd()` read.
+     */
     get ceiling() {
       return fields.ceiling ?? workingDirectory(cwd);
     },
