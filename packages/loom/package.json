@@ -16,6 +16,10 @@
     "LICENSE"
   ],
   "type": "module",
+  "scripts": {
+    "prepack": "node ../../scripts/readme-links.mjs pin",
+    "postpack": "node ../../scripts/readme-links.mjs unpin"
+  },
   "devDependencies": {
     "@loomcli/core": "workspace:*",
     "@loomcli/eslint-plugin": "workspace:*",

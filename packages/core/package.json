@@ -20,6 +20,10 @@
       "import": "./dist/index.js"
     }
   },
+  "scripts": {
+    "prepack": "node ../../scripts/readme-links.mjs pin",
+    "postpack": "node ../../scripts/readme-links.mjs unpin"
+  },
   "dependencies": {
     "@standard-schema/spec": "^1.1.0"
   },

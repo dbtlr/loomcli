@@ -18,6 +18,10 @@
       "import": "./dist/index.js"
     }
   },
+  "scripts": {
+    "prepack": "node ../../scripts/readme-links.mjs pin",
+    "postpack": "node ../../scripts/readme-links.mjs unpin"
+  },
   "devDependencies": {
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1"
