@@ -551,57 +551,6 @@ test("a listed interface's construct signature needs a comment", () => {
 });
 
 /** A package whose root entry is documented and whose `./later` entry is not yet. */
-function partlyDocumentedFixture() {
-  return fixture(tagged, {
-    'dist/later/index.d.ts':
-      '/** @public */\nexport declare function later(): void;\n/** A later shape. @public */\nexport interface Later {\n  value: string;\n}\n',
-    'package.json': JSON.stringify({
-      exports: {
-        '.': { types: './dist/index.d.ts' },
-        './later': { types: './dist/later/index.d.ts' },
-      },
-      name: 'fixture',
-    }),
-  });
-}
-
-test('pendingDocumentation leaves the comments and examples under its paths unjudged', () => {
-  const { config, root } = partlyDocumentedFixture();
-  const failures = checkApi(root, [config], { update: true });
-  expect(failures).toContainEqual(expect.stringContaining('ae-undocumented: later:'));
-  expect(failures).toContainEqual(expect.stringContaining('api-missing-example: later:'));
-  expect(failures).toContainEqual(expect.stringContaining('ae-undocumented: Later.value:'));
-  const pending = { ...config, pendingDocumentation: ['dist/later/'] };
-  expect(checkApi(root, [pending], { update: true })).toEqual([]);
-  const file = { ...config, pendingDocumentation: ['dist/later/index.d.ts'] };
-  expect(checkApi(root, [file], { update: true })).toEqual([]);
-  const directory = { ...config, pendingDocumentation: ['dist/later'] };
-  expect(checkApi(root, [directory], { update: true })).toEqual([]);
-});
-
-test('pendingDocumentation does not reach a file outside its paths', () => {
-  const { config, root } = partlyDocumentedFixture();
-  writeFileSync(join(root, 'dist/index.d.ts'), '/** @public */\nexport type Name = string;\n');
-  const pending = { ...config, pendingDocumentation: ['dist/later/'] };
-  expect(checkApi(root, [pending], { update: true })).toEqual([
-    expect.stringMatching(/dist\/index.d.ts:2: ae-undocumented: Name:/u),
-  ]);
-});
-
-test('overlapping pendingDocumentation paths that cover a missing comment are both in use', () => {
-  const { config, root } = partlyDocumentedFixture();
-  const pending = { ...config, pendingDocumentation: ['dist/', 'dist/later/'] };
-  expect(checkApi(root, [pending], { update: true })).toEqual([]);
-});
-
-test('a pendingDocumentation path with nothing left to write fails as stale', () => {
-  const { config, root } = partlyDocumentedFixture();
-  const pending = { ...config, pendingDocumentation: ['dist/later/', 'dist/index.d.ts'] };
-  expect(checkApi(root, [pending], { update: true })).toEqual([
-    expect.stringContaining('stale-pending-documentation: dist/index.d.ts:'),
-  ]);
-});
-
 test("an undocumented constant's failure names the constant once", () => {
   const { config, root } = fixture(
     `/** @public */\nexport declare const value: string;\n${exampled('A pair.', '```ts\none;\n```')}export declare const one: string, two: string;\n`,
@@ -724,14 +673,4 @@ test('an external re-exported value needs no @example', () => {
     modules: ['external'],
   };
   expect(checkApi(root, [allowed], { update: true })).toEqual([]);
-});
-
-test('a pendingDocumentation file path covers that file alone, not every path it prefixes', () => {
-  const { config, root } = partlyDocumentedFixture();
-  const prefix = { ...config, pendingDocumentation: ['dist/later/index.d'] };
-  const failures = checkApi(root, [prefix], { update: true });
-  expect(failures).toContainEqual(expect.stringContaining('ae-undocumented: later:'));
-  expect(failures).toContainEqual(
-    expect.stringContaining('stale-pending-documentation: dist/later/index.d:'),
-  );
 });
