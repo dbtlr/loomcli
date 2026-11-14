@@ -62,7 +62,8 @@ async function markdownUnder(folder) {
 
 /**
  * The blocks fenced `ts` in a Markdown text, each with the 1-based line its first code line stands
- * on. A block ends at the next line that closes its fence.
+ * on. A block ends at the next line that closes its fence: a fence of at least as many backticks,
+ * indented up to three spaces, as CommonMark closes one.
  */
 function tsBlocks(text) {
   const blocks = [];
@@ -73,7 +74,7 @@ function tsBlocks(text) {
       if (fence !== undefined) {
         open = { code: [], fence, line: index + 2 };
       }
-    } else if (new RegExp(`^${open.fence}\`*\\s*$`, 'u').test(line)) {
+    } else if (new RegExp(`^ {0,3}${open.fence}\`*\\s*$`, 'u').test(line)) {
       blocks.push({ code: `${open.code.join('\n')}\n`, line: open.line });
       open = undefined;
     } else {
