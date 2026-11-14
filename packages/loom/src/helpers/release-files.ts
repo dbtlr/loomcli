@@ -23,7 +23,7 @@ function pnpmManifestPath(
     return fileURLToPath(resolve('pnpm/package.json'));
   } catch (error) {
     throw new Error(
-      'Preparing pnpm-lock.yaml requires pnpm, an optional peer dependency of @loomcli/loom. Install pnpm 12.8.1 beside @loomcli/loom and run the command again.',
+      'Preparing pnpm-lock.yaml requires pnpm, an optional peer dependency of @loomcli/loom. Install pnpm 12.16.1 beside @loomcli/loom and run the command again.',
       { cause: error },
     );
   }
