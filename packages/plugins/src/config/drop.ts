@@ -92,24 +92,33 @@ function pathKey(path: readonly Step[]): string {
 
 /**
  * What one pruning holds: the paths it removes, and the copy in progress of each node on the path
- * being copied, keyed by the original, so a node that is its own ancestor reuses that copy.
+ * being copied, keyed by the original, so a node that is its own ancestor reuses that copy. `origins`
+ * records, for each array copy, the position every kept item held in the file as read, across rounds.
  */
 interface Pruning {
   readonly doomed: ReadonlySet<string>;
   readonly ancestors: Map<object, unknown>;
+  readonly origins: Origins;
 }
+
+/** The position in the file as read of each item of an array the drop rule copied. */
+type Origins = WeakMap<readonly unknown[], readonly number[]>;
 
 /** The array copied without the items a removal names, each pruned at its own path. */
 function prunedList(node: readonly unknown[], path: readonly Step[], pruning: Pruning): unknown[] {
   const copy: unknown[] = [];
+  const kept: number[] = [];
+  const before = pruning.origins.get(node);
   pruning.ancestors.set(node, copy);
   node.forEach((item, index) => {
     const at = [...path, index];
     if (!pruning.doomed.has(pathKey(at))) {
       copy.push(prunedNode(item, at, pruning));
+      kept.push(before?.[index] ?? index);
     }
   });
   pruning.ancestors.delete(node);
+  pruning.origins.set(copy, kept);
   return copy;
 }
 
@@ -157,11 +166,12 @@ function prunedNode(node: unknown, path: readonly Step[], pruning: Pruning): unk
 function removeAll(
   file: Record<string, unknown>,
   removals: readonly Removal[],
+  origins: Origins,
 ): Record<string, unknown> {
   const doomed = new Set(removals.map((removal) => pathKey(removal.path)));
   const made = doomed.has(pathKey([]))
     ? {}
-    : prunedNode(file, [], { ancestors: new Map(), doomed });
+    : prunedNode(file, [], { ancestors: new Map(), doomed, origins });
   return isRecord(made) ? made : {};
 }
 
@@ -179,6 +189,8 @@ function emptyFileFault(message: string | undefined): DeclarationError {
 interface Passed<Output> {
   readonly file: Record<string, unknown>;
   readonly output: Output;
+  /** The position in the file as read of each array item the file still holds. */
+  readonly origins: Origins;
 }
 
 /** The value a schema's own validate returned, as the output type its declaration names. */
@@ -188,29 +200,44 @@ function outputOf<Schema extends StandardSchemaV1>(
   return value;
 }
 
-/**
- * Validates `parsed` and drops what the schema rejects until it passes. A round that finds the file
- * already empty and still rejected throws `@loomcli/plugins/config/empty-file`. The schema may
- * answer through a promise.
- */
-async function dropUntilPasses<Schema extends StandardSchemaV1>(
+/** What the rounds share: the callback that names each removal, and the origins of array items. */
+interface Rounds {
+  readonly announce: Announce;
+  readonly origins: Origins;
+}
+
+/** One round: validate the file, and remove what the schema rejects until it passes. */
+async function dropRound<Schema extends StandardSchemaV1>(
   schema: Schema,
   file: Record<string, unknown>,
-  announce: Announce,
+  rounds: Rounds,
 ): Promise<Passed<StandardSchemaV1.InferOutput<Schema>>> {
   const result = await schema['~standard'].validate(file);
   if (result.issues === undefined) {
-    return { file, output: outputOf<Schema>(result.value) };
+    return { file, origins: rounds.origins, output: outputOf<Schema>(result.value) };
   }
   if (Object.keys(file).length === nothing) {
     throw emptyFileFault(result.issues[nothing]?.message);
   }
   const removals = removalsOf(file, result.issues);
   for (const removal of removals) {
-    await announce(removal);
+    await rounds.announce(removal);
   }
-  return dropUntilPasses(schema, removeAll(file, removals), announce);
+  return dropRound(schema, removeAll(file, removals, rounds.origins), rounds);
+}
+
+/**
+ * Validates `parsed` and drops what the schema rejects until it passes. A round that finds the file
+ * already empty and still rejected throws `@loomcli/plugins/config/empty-file`. The schema may
+ * answer through a promise.
+ */
+function dropUntilPasses<Schema extends StandardSchemaV1>(
+  schema: Schema,
+  file: Record<string, unknown>,
+  announce: Announce,
+): Promise<Passed<StandardSchemaV1.InferOutput<Schema>>> {
+  return dropRound(schema, file, { announce, origins: new WeakMap() });
 }
 
 export { dropUntilPasses };
-export type { Announce, Passed, Removal, Step };
+export type { Announce, Origins, Passed, Removal, Step };
