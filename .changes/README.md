@@ -80,7 +80,7 @@ Open the **Affected surface** with a sentence that says how the author finds the
 - A break the type checker reports: `The type checker reports every affected site. The surface is a Command that omits the new required field.`
 - A break with no compile error: `No compile error: behavior changes at run time. The surface is calls whose message ends with a line break.`
 
-The release cut lists the breaks with no compile error first, as the [release-cut skill](../.agents/skills/release-cut/SKILL.md) states.
+The release cut's narrative names the breaks with no compile error first, while the compiled section keeps landing order, as the [release-cut skill](../.agents/skills/release-cut/SKILL.md) states.
 
 This example describes a hypothetical increase in the library's minimum Node.js version:
 
