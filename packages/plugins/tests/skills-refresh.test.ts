@@ -152,8 +152,8 @@ test('adds the warn event with the error and writes the pinned line for a path t
   expect(event?.fields).not.toHaveProperty('code');
 });
 
-// A process test: the runtime's own spawn throws for a path through a regular file, which only the
-// Real process handle meets; a mock's spawn has no runtime under it.
+// A process test: the runtime's own spawn throws for a path through a regular file.
+// Only the real process handle meets that; a mock's spawn has no runtime under it.
 test('adds the warn event and writes the pinned line for a file the runtime throws on starting, and resolves', () => {
   const box = sandbox();
   // A path through a regular file fails with ENOTDIR, which spawn throws itself on every platform.
@@ -182,8 +182,8 @@ test('escapes control characters in the path the line repeats', async () => {
   );
 });
 
-// A process test under ADR-0103: a real child's SIGTERM handler chooses its own exit code, while a
-// Mock child ended by a signal always ends with 128 plus the signal's number.
+// A process test under ADR-0103: a real child's SIGTERM handler chooses its own exit code.
+// A mock child ended by a signal always ends with 128 plus the signal's number.
 test('ends the child with SIGTERM when the run is aborted while it runs, warns with its code, and resolves', () => {
   const box = sandbox();
   const path = childProgram(

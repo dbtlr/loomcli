@@ -253,8 +253,8 @@ test('level error still writes the fatal record of a defect, with its stack', as
   expect(written.defect.stack).toContain('The action failed.');
 });
 
-// A process test under ADR-0103: the action ends a real process with process.exit(), and only a
-// Record written before the process ended survives in the file.
+// A process test under ADR-0103: the action ends a real process with process.exit().
+// Only a record written before the process ended survives in the file.
 test('a record survives a process.exit() that follows the call', async () => {
   const box = sandbox();
   expect(

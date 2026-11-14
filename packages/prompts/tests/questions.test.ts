@@ -302,8 +302,8 @@ test.each(['abort', 'eof'])(
   },
 );
 
-// An embedding host's scripted raw-mode stdin, not a mock's keyboard: it is not the real process's
-// Terminal, so the branch of a reader whose stdin is another stream is reachable only through it.
+// An embedding host's scripted raw-mode stdin, not a mock's keyboard: it is not the real process's terminal.
+// The branch of a reader whose stdin is another stream is reachable only through it.
 class ScriptedStdin extends Readable {
   modes: boolean[] = [];
   get isRaw() {

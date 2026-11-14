@@ -317,8 +317,8 @@ function removeCreatedDirectories(directory: string, created: string | undefined
     try {
       rmdirSync(current);
     } catch (error) {
-      // A directory that holds anything refuses removal in the same call, so a build running beside
-      // This one that fills it at any moment keeps it. One already gone is no longer ours to remove.
+      // A directory that holds anything refuses removal in the same call.
+      // So a build running beside this one that fills it at any moment keeps it. One already gone is no longer ours to remove.
       if (
         error instanceof Error &&
         'code' in error &&

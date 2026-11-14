@@ -125,8 +125,8 @@ test.skipIf(zsh === undefined).each([
       const ended = await terminal.expect('@@DONE@@');
       expect(ended).toContain('\u001B[?25h');
       expect(ended).toContain(`status=${status}`);
-      // The handler left raw mode: the shell reads every flag as it was before the run, which was
-      // Cooked. The driver's terminal starts with its echo off, so `echo` is compared, not required.
+      // The handler left raw mode: the shell reads every flag as it was before the run, which was cooked.
+      // The driver's terminal starts with its echo off, so `echo` is compared, not required.
       const before = modesOf(ended, 'modes-before');
       expect(before.split(' ').filter((flag) => !flag.endsWith('echo'))).toEqual(cooked);
       expect(modesOf(ended, 'modes-after')).toBe(before);

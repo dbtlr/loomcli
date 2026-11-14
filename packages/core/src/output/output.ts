@@ -646,7 +646,7 @@ export class Output {
     const selected = binding.view ?? result.default;
     const view = result.views.get(selected);
     if (!view) {
-      // The boundary proved a selected name is a view, but only the types tie the default to one,
+      // The boundary proved a selected name is a view, but only the types tie the default to one.
       // So an empty views record or a default no view matches fails here, as a broken view does.
       return this.renderFailed(new Error(`The view "${selected}" is not declared.`));
     }

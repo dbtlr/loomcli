@@ -13,8 +13,8 @@ function compareNumbers(left: number, right: number) {
   return Math.sign(left - right);
 }
 
-// Numbers rank below words and by value; words rank in ASCII order. A number has no leading zero,
-// So a longer one is the larger.
+// Numbers rank below words and by value; words rank in ASCII order.
+// A number has no leading zero, so a longer one is the larger.
 function compareIdentifiers(left: string, right: string) {
   const leftNumeric = /^\d+$/u.test(left);
   const rightNumeric = /^\d+$/u.test(right);

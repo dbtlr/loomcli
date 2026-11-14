@@ -384,31 +384,25 @@ export default defineConfig({
           '**/*.spec.ts',
           '**/*.spec.tsx',
         ],
-        // The `vitest` plugin lives here, not in the whole-project `plugins`
-        // Array — so every vitest rule (matcher preferences + test-structure)
-        // Applies to test files only.
+        // The `vitest` plugin lives here, not in the whole-project `plugins` array.
+        // So every vitest rule (matcher preferences + test-structure) applies to test files only.
         plugins: ['vitest'],
         rules: {
           // It is not-helpful to constrain the number of statements in a test
           'max-statements': 'off',
 
-          // Nested expect matchers (objectContaining/arrayContaining trees) are
-          // The idiomatic way to assert structure; extracting them into named
-          // Variables obscures the asserted shape. Same author's-call policy as
-          // The test-structure rules below.
+          // Nested expect matchers (objectContaining/arrayContaining trees) are the idiomatic way to assert structure.
+          // Extracting them into named variables obscures the asserted shape.
+          // The author's-call policy is the same as for the test-structure rules below.
           'unicorn/max-nested-calls': 'off',
 
-          // Over-opinionated test rules relaxed in test scope — dogfooded from a
-          // Real adopter. Most are test-structure style (max-expects, no-hooks,
-          // Require-hook, require-top-level-describe); require-mock-type-parameters
-          // Is oxlint-categorized correctness but in practice just enforces
-          // Explicit mock type params, an ergonomic preference. The two prefer-*
-          // Are relaxed because their "safe" autofix is behavior-/type-breaking:
-          // Prefer-describe-function-title passes a non-function title,
-          // Prefer-import-in-mock flips the mock overload. prefer-lowercase-title
-          // And prefer-todo legislate the author's call — how a test title reads
-          // And whether to write `it.todo()` — so they're off by the same policy
-          // That retired the matcher-equivalence rules (ADR-0008).
+          // These over-opinionated test rules are relaxed in test scope, dogfooded from a real adopter.
+          // Most are test-structure style (max-expects, no-hooks, require-hook, require-top-level-describe).
+          // The rule require-mock-type-parameters is oxlint-categorized correctness, but in practice it just enforces explicit mock type params, an ergonomic preference.
+          // The two prefer-* rules are relaxed because their "safe" autofix is behavior-/type-breaking.
+          // The rule prefer-describe-function-title passes a non-function title, and prefer-import-in-mock flips the mock overload.
+          // The rules prefer-lowercase-title and prefer-todo legislate the author's call: how a test title reads and whether to write `it.todo()`.
+          // So they're off by the same policy that retired the matcher-equivalence rules (ADR-0008).
           'vitest/max-expects': 'off',
           'vitest/no-hooks': 'off',
           'vitest/no-importing-vitest-globals': 'off',

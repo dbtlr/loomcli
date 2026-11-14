@@ -228,8 +228,8 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       sources,
     });
 
-    // PowerShell's Tab inserts no common prefix of several matches, and its own file completion
-    // Offers each name with a leading ./ on Linux and macOS.
+    // PowerShell's Tab inserts no common prefix of several matches.
+    // Its own file completion offers each name with a leading ./ on Linux and macOS.
     it.runIf(shell !== 'pwsh')('kit --file d<Tab> falls back to file names', async () => {
       const { line } = await complete('kit --file d');
       expect(line).toBe('kit --file doc-');
@@ -361,8 +361,8 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         expect(sentinel()).toBe(false);
       });
 
-      // A Bash with compopt hands the fallback to its own default file completion, which may
-      // Append a file name found under the expanded directory while leaving the typed text.
+      // A Bash with compopt hands the fallback to its own default file completion.
+      // That completion may append a file name found under the expanded directory while leaving the typed text.
       it('reads kit --file $HOME/ as text: the typed word stays and nothing runs', async () => {
         const typed = 'kit --file $HOME/';
         const { line } = await complete(typed);
@@ -542,8 +542,8 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
   });
 
   describe.skipIf(!installed)('after kit completion install alone', () => {
-    // PowerShell's session dot-sources the home's profile itself. Its case proves that the line
-    // Install writes there completes; loading the profile at startup is pwsh's own behavior.
+    // PowerShell's session dot-sources the home's profile itself.
+    // Its case proves that the line install writes there completes; loading the profile at startup is pwsh's own behavior.
     const started =
       shell === 'pwsh'
         ? 'a pwsh that dot-sources its profile'

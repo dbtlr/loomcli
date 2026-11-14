@@ -5,8 +5,8 @@ import { z } from 'zod';
 import { getValue } from './get-value.js';
 import { summary } from './summary.js';
 
-// The registered Application installs this plugin, so every Application these Commands attach to
-// Installs it too: its options are global options the Commands' actions read typed.
+// The registered Application installs this plugin.
+// So every Application these Commands attach to installs it too: its options are global options the Commands' actions read typed.
 const vocabulary = () =>
   plugin('registered/vocabulary', {
     options: {
