@@ -75,6 +75,13 @@ Three rules hold whatever the tag:
 
 After the change bullets, add one `### Migration` section with all five labels shown below. Give exact affected surfaces, a reason, before-and-after examples, ordered steps, and validation commands.
 
+Open the **Affected surface** with a sentence that says how the author finds the break, because a break the type checker reports at every site costs far less to adopt than one that fails only when the application runs. Judge it by reading the change and its API report diff, not the wording of the fragment. A fragment that holds several breaks states it for each. Two examples:
+
+- A break the type checker reports: `The type checker reports every affected site. The surface is a Command that omits the new required field.`
+- A break with no compile error: `No compile error: behavior changes at run time. The surface is calls whose message ends with a line break.`
+
+The release cut's narrative names the breaks with no compile error first, while the compiled section keeps landing order, as the [release-cut skill](../.agents/skills/release-cut/SKILL.md) states.
+
 This example describes a hypothetical increase in the library's minimum Node.js version:
 
 ````markdown
@@ -82,7 +89,7 @@ This example describes a hypothetical increase in the library's minimum Node.js 
 
 ### Migration
 
-**Affected surface.** Applications running the library on Node.js 22 or 23.
+**Affected surface.** No compile error: the library fails at run time on an older Node.js. The surface is applications running the library on Node.js 22 or 23.
 
 **Why.** The library now uses a runtime API available from Node.js 24.
 

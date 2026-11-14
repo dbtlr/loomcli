@@ -36,7 +36,16 @@ Read the pending fragments and the full cycle diff from the last completed relea
 
 Identify the release's purpose, consumer-visible changes, and required migrations. Check for unmarked breaking changes and fragments that describe behavior later removed or changed. Land corrections in an ordinary preparatory PR before the cut, then refresh the base and repeat the review.
 
-Choose a short release description from the actual changes. Add an optional narrative only when users need connected explanations, a new mental model, compatibility context, or upgrade actions. Keep the narrative file outside the release checkout. Review the compiler's no-material-changes list against the cycle diff and library dependencies.
+Choose a short release description from the actual changes. Add an optional narrative only when users need connected explanations, a new mental model, compatibility context, or upgrade actions. A release that holds a break with no compile error always carries one, as **Order the breaking changes** states. Keep the narrative file outside the release checkout. Review the compiler's no-material-changes list against the cycle diff and library dependencies.
+
+### Order the breaking changes
+
+The compiled `### Breaking Changes` section lists entries in commit order, and the release guard holds it to that order. So the narrative names the breaks the type checker will not report first, because the author cannot find them by compiling.
+
+1. Read each pending `breaking.*.md` fragment's **Affected surface**. Its opening sentences state how the author finds each break, as the [fragment guide](../../../.changes/README.md) requires.
+2. Mark a fragment as silent when any of its breaks has no compile error. A fragment that holds both kinds is silent.
+3. The compiler fixes the order of the entries, so do not edit the compiled section. When any pending breaking fragment is silent, the narrative is required: write it so its upgrade actions name each silent break first, in one line each, before it names any break the type checker reports.
+4. When that statement is missing or contradicts the change, fix the fragment in a preparatory PR before the cut. Judge the break from the code and the API report diff, not from the fragment's wording.
 
 ### Review the authoring skill
 

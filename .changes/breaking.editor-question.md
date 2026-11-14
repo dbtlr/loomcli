@@ -4,7 +4,7 @@
 
 ### Migration
 
-**Affected surface.** A view override of `questionFrame` from `@loomcli/prompts/views` that switches on its data's `kind`.
+**Affected surface.** The type checker reports an override with an exhaustive check on `kind`, such as one that ends in `assertNever`. An override that falls through to a default case for a kind it does not know has no compile error: it draws whatever the default draws for an editor question. The surface is a view override of `questionFrame` from `@loomcli/prompts/views` that switches on its data's `kind`.
 
 **Why.** An editor question draws through `questionFrame` with a frame of its own, `{ kind: 'editor', message, issue, editing }`, so the data's union gains a variant.
 
