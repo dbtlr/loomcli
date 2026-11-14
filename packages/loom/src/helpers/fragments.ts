@@ -48,24 +48,27 @@ function codePointName(character: string) {
   return `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
 }
 
+/** The kind of file a character refusal names: each is prose `write` copies into the changelog. */
+type ProseSource = 'fragment' | 'narrative';
+
 /**
- * The sentence for a character a fragment refuses, or undefined for one it keeps. A fragment
- * refuses what core's `escapeControlCharacters` escapes, except tab, line feed, and the line and
- * paragraph separators, and also the zero-width space, so `write` never copies a terminal control,
- * a carriage return, or an invisible reordering into the changelog. The sentence names the
- * character by its code point and never prints it.
+ * The sentence for a character a fragment or a narrative refuses, or undefined for one it keeps.
+ * Both refuse what core's `escapeControlCharacters` escapes, except tab, line feed, and the line
+ * and paragraph separators, and also the zero-width space, so `write` never copies a terminal
+ * control, a carriage return, or an invisible reordering into the changelog. The sentence names
+ * the character by its code point and never prints it.
  */
-function unsafeCharacter(character: string) {
+function unsafeCharacter(character: string, source: ProseSource) {
   const escaped = escapeControlCharacters(character) !== character;
   if (character !== zeroWidthSpace && (!escaped || keptEscapes.has(character))) {
     return undefined;
   }
   const name = codePointName(character);
   if (character === '\r') {
-    return `holds the carriage return ${name}. Save the fragment with LF line endings.`;
+    return `holds the carriage return ${name}. Save the ${source} with LF line endings.`;
   }
   if (/\p{Cc}/u.test(character)) {
-    return `holds the control character ${name}. Remove it, because a fragment accepts no control character but tab and line feed.`;
+    return `holds the control character ${name}. Remove it, because a ${source} accepts no control character but tab and line feed.`;
   }
   return `holds the invisible format character ${name}. Remove it.`;
 }
@@ -80,32 +83,6 @@ function decodedLine(bytes: Uint8Array) {
     return strictDecoder.decode(bytes);
   } catch {
     return undefined;
-  }
-}
-
-/**
- * Refuses a fragment whose bytes are not UTF-8 or hold a character `unsafeCharacter` refuses,
- * naming the line of the first one. A line feed byte never occurs inside a UTF-8 sequence, so each
- * line decodes alone.
- */
-function requireSafeCharacters(path: string, bytes: Buffer) {
-  let start = 0;
-  for (let line = 1; start <= bytes.length; line += 1) {
-    const found = bytes.indexOf(lineFeed, start);
-    const end = found === -1 ? bytes.length : found;
-    const text = decodedLine(bytes.subarray(start, end));
-    if (text === undefined) {
-      throw new Error(
-        `${path}: line ${String(line)} is not valid UTF-8. Save the fragment as UTF-8.`,
-      );
-    }
-    for (const character of text) {
-      const sentence = unsafeCharacter(character);
-      if (sentence !== undefined) {
-        throw new Error(`${path}: line ${String(line)} ${sentence}`);
-      }
-    }
-    start = end + 1;
   }
 }
 
@@ -177,7 +154,7 @@ async function readFragment(
     throw new Error(`${path}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`);
   }
   const bytes = await readRegularFileBytes(checkout, path, ref);
-  requireSafeCharacters(path, bytes);
+  requireSafeCharacters(path, bytes, 'fragment');
   const source = bytes.toString('utf8');
   const body = withoutByteOrderMark(source);
   validateBody(path, kind, body);
@@ -221,4 +198,30 @@ export async function readFragments(
     throw new Error(failures.join('\n'));
   }
   return fragments;
+}
+
+/**
+ * Refuses a fragment or a narrative whose bytes are not UTF-8 or hold a character
+ * `unsafeCharacter` refuses, naming the path and the line of the first one. A line feed byte never
+ * occurs inside a UTF-8 sequence, so each line decodes alone.
+ */
+export function requireSafeCharacters(path: string, bytes: Buffer, source: ProseSource) {
+  let start = 0;
+  for (let line = 1; start <= bytes.length; line += 1) {
+    const found = bytes.indexOf(lineFeed, start);
+    const end = found === -1 ? bytes.length : found;
+    const text = decodedLine(bytes.subarray(start, end));
+    if (text === undefined) {
+      throw new Error(
+        `${path}: line ${String(line)} is not valid UTF-8. Save the ${source} as UTF-8.`,
+      );
+    }
+    for (const character of text) {
+      const sentence = unsafeCharacter(character, source);
+      if (sentence !== undefined) {
+        throw new Error(`${path}: line ${String(line)} ${sentence}`);
+      }
+    }
+    start = end + 1;
+  }
 }

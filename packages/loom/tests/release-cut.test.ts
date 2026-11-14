@@ -479,6 +479,27 @@ test('an optional narrative appears before entries without rewriting it', async 
   );
 });
 
+test.each([
+  [
+    'a control character on a last line with no final line feed',
+    `This release adds ${String.fromCodePoint(0x1b)}[31mtyped input.`,
+    'line 1 holds the control character U+001B. Remove it, because a narrative accepts no control character but tab and line feed.',
+  ],
+  [
+    'CRLF line endings',
+    'This release adds typed input.\r\n',
+    'line 1 holds the carriage return U+000D. Save the narrative with LF line endings.',
+  ],
+])('the cut refuses a narrative holding %s and changes no file', async (_label, body, sentence) => {
+  const root = repository();
+  put(root, '.changes/add.md', '- Add.\n');
+  put(root, 'narrative.md', body);
+  commit(root);
+  const runResult = await cut(root, '--date', '2026-09-07', '--narrative', 'narrative.md');
+  expect(runResult).toEqual({ status: 1, stderr: `narrative.md: ${sentence}\n`, stdout: '' });
+  expect(git(root, ['status', '--porcelain'])).toBe('');
+});
+
 test('opaque fragment names are literal Git paths and merges establish landing order', async () => {
   const root = repository();
   const branch = git(root, ['branch', '--show-current']);

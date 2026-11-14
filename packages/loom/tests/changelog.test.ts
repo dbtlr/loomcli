@@ -13,7 +13,9 @@
  *   in a subdirectory each fail `check` with exit 1 and their names. A fragment holding a control
  *   character other than tab and line feed, a carriage return, invalid UTF-8, a bidirectional
  *   control or mark, or a zero-width space fails `check` and `write`, naming its line and the
- *   first such character as U+XXXX, at both edges of each refused range.
+ *   first such character as U+XXXX, at both edges of each refused range. A `--narrative` file
+ *   holding one fails `write`, a prerelease cut's included, naming the file as given and changing
+ *   no file, and a clean narrative is copied byte for byte.
  * - `write`. A cut prepends the section, sets `version` with the rest of `package.json`
  *   byte-identical, deletes the consumed fragments, and leaves `.changes/README.md`. A shallow
  *   clone fails and changes no file. `--dry-run` prints the section and the version and leaves
@@ -655,6 +657,92 @@ test.each([
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('Narrative');
   expect(snapshot(root)).toEqual(before);
+});
+
+test.each([
+  [
+    'a control character',
+    Buffer.from(`This release fixes output.\n\nIt ${String.fromCodePoint(0x1b)}[31mcolors.\n`),
+    'line 3 holds the control character U+001B. Remove it, because a narrative accepts no control character but tab and line feed.',
+  ],
+  [
+    'a C1 control character',
+    Buffer.from(`This release fixes output.\n\nIt ${String.fromCodePoint(0x9b)}colors.\n`),
+    'line 3 holds the control character U+009B. Remove it, because a narrative accepts no control character but tab and line feed.',
+  ],
+  [
+    'a bidirectional control',
+    Buffer.from(`This release fixes output.\n\nIt ${String.fromCodePoint(0x20_2e)}reorders.\n`),
+    'line 3 holds the invisible format character U+202E. Remove it.',
+  ],
+  [
+    'a zero-width space',
+    Buffer.from(`This release fixes output.\n\nIt ${String.fromCodePoint(0x20_0b)}hides.\n`),
+    'line 3 holds the invisible format character U+200B. Remove it.',
+  ],
+  [
+    'bytes that are not UTF-8',
+    Buffer.concat([
+      Buffer.from('This release fixes output.\n\nIt '),
+      Buffer.from([0xff]),
+      Buffer.from(' breaks.\n'),
+    ]),
+    'line 3 is not valid UTF-8. Save the narrative as UTF-8.',
+  ],
+  [
+    'CRLF line endings',
+    Buffer.from('This release fixes output.\r\n\r\nMore prose.\r\n'),
+    'line 1 holds the carriage return U+000D. Save the narrative with LF line endings.',
+  ],
+  [
+    'a last line with no final line feed',
+    Buffer.from(`This release fixes output.\n\nIt ${String.fromCodePoint(0x07)}rings.`),
+    'line 3 holds the control character U+0007. Remove it, because a narrative accepts no control character but tab and line feed.',
+  ],
+])(
+  'write refuses a narrative holding %s, names its line, and changes no file',
+  async (_label, narrative, sentence) => {
+    const root = packageRepository('1.4.7', { '.changes/fix.md': '- Fix output.\n' });
+    writeFileSync(join(root, 'narrative.md'), narrative);
+    const before = snapshot(root);
+    const result = await run(root, 'write', '--date', '2026-10-07', '--narrative', 'narrative.md');
+    expect(result).toEqual({ status: 1, stderr: `narrative.md: ${sentence}\n`, stdout: '' });
+    expect(snapshot(root)).toEqual(before);
+  },
+);
+
+test('write refuses an unsafe narrative for a prerelease cut too', async () => {
+  const root = packageRepository('1.4.7', {
+    '.changes/fix.md': '- Fix output.\n',
+    'CHANGELOG.md': '# Changelog\n\n## v1.4.7 - 2026-01-01\n\n### Fixes\n\n- Old entry.\n',
+  });
+  writeFileSync(
+    join(root, 'narrative.md'),
+    `Prose about the ${String.fromCodePoint(0x1b)}candidate.\n`,
+  );
+  const before = snapshot(root);
+  const result = await run(root, 'write', '--target', '1.4.8-rc.1', '--narrative', 'narrative.md');
+  expect(result).toEqual({
+    status: 1,
+    stderr:
+      'narrative.md: line 1 holds the control character U+001B. Remove it, because a narrative accepts no control character but tab and line feed.\n',
+    stdout: '',
+  });
+  expect(snapshot(root)).toEqual(before);
+});
+
+test('write copies a narrative of tabs, separators, joined emoji, and right-to-left text byte for byte', async () => {
+  const separators = `${String.fromCodePoint(0x20_28)} and ${String.fromCodePoint(0x20_29)}`;
+  const prose = `This release\tfixes \u{1F469}${String.fromCodePoint(0x20_0d)}\u{1F4BB} output ${separators} with سلام.\n`;
+  const root = packageRepository('1.4.7', {
+    '.changes/fix.md': '- Fix output.\n',
+    'narrative.md': `${String.fromCodePoint(0xfe_ff)}${prose}`,
+  });
+  const result = await run(root, 'write', '--date', '2026-10-07', '--narrative', 'narrative.md');
+  expect(result.status).toBe(0);
+  expect(readFileSync(join(root, 'CHANGELOG.md'), 'utf8')).toBe(
+    `# Changelog\n\n## v1.4.8 - 2026-10-07\n\n${prose}\n### Fixes\n\n- Fix output.\n`,
+  );
 });
 
 test('write refuses an invalid calendar date and dates the cut today by default', async () => {
