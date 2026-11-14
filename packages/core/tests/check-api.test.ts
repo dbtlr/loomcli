@@ -192,6 +192,14 @@ test('an external re-export entry the surface no longer needs fails', () => {
   ]);
 });
 
+test('a bare conditions exports object is the entry "."', () => {
+  const { config, root } = fixture(tagged, {
+    'package.json': JSON.stringify({ exports: { types: './dist/index.d.ts' }, name: 'fixture' }),
+  });
+  expect(checkApi(root, [config], { update: true })).toEqual([]);
+  expect(readFileSync(join(root, 'api/index.api.md'), 'utf8')).toContain('const value: string');
+});
+
 test('a declaration may import a Node built-in when the package lists node:*', () => {
   const { config, root } = fixture(tagged, {
     'dist/stream.d.ts':
