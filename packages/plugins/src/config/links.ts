@@ -270,3 +270,6 @@ export const judgeLinks: GraphBuiltHook = (graph) => {
   }
   return undefined;
 };
+
+export { isAny, isArrayShape, leavesOf, stepInto };
+export type { Shape };

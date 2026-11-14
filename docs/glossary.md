@@ -838,7 +838,11 @@ _Avoid_: Section schema, config type, settings schema
 
 **Dropped value**:
 A value in the configuration file that is set aside so that its fallback applies: removed from the configuration when the configuration schema rejects it, and kept there but not given to an option that cannot take it or whose validator rejects it. It never fails the run and is named at `-v` alone.
-_Avoid_: Invalid config, lenient input, ignored key (for an unknown key, which is never reported)
+_Avoid_: Invalid config, lenient input, ignored key (for an unknown key, which has its own entry)
+
+**Unknown key**:
+A key in the configuration file that a closed object of the configuration schema's published JSON Schema does not list. It is no dropped value: it never fails the run, and it is named at `-v` alone, in a line of its own, where the schema publishes a JSON Schema. Under a schema that publishes none, such as valibot's, it is named at no verbosity.
+_Avoid_: Ignored key, invalid key, extra key
 
 **Start directory**:
 The directory the configuration walk begins in: the value of the configuration plugin's directory option when the author declares one and the operator gives it, and the working directory otherwise. It never changes `host.cwd`.

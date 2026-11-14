@@ -7,6 +7,7 @@ import { findFile } from './lookup.js';
 import type { UsableFile } from './lookup.js';
 import { withoutPointer } from './pointer.js';
 import type { Reach } from './scopes.js';
+import { unknownKeys } from './unknown.js';
 
 /**
  * What the source and the provider of one `configuration()` call share: the lookup, the read, and
@@ -77,6 +78,9 @@ function removalLine(removal: Removal, file: string | undefined, style: Contextu
   return `Ignored ${subject}${where}: ${raw(removal.message)}`;
 }
 
+/** The fixed sentence after an unknown key's path, which Loom writes. */
+const unknownKeyMessage = 'Unknown key. Check its spelling, or remove it.';
+
 /** The lookup, the read, and the validation of one run. */
 async function load<Schema extends StandardSchemaV1>(
   shared: Shared<Schema>,
@@ -103,6 +107,12 @@ async function load<Schema extends StandardSchemaV1>(
   const passed = await dropUntilPasses(shared.schema, object, (removal) =>
     out.debug(removalLine(removal, usable?.file.shown, style)),
   );
+  const published = graph.configuration?.schema;
+  if (published !== undefined && published !== null) {
+    for (const path of unknownKeys(passed.file, published, passed.origins)) {
+      await out.debug(removalLine({ message: unknownKeyMessage, path }, usable?.file.shown, style));
+    }
+  }
   return {
     output: passed.output,
     usable: usable === undefined ? undefined : { file: usable.file, object: passed.file },
