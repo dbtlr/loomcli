@@ -246,7 +246,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/config/strict-schema-path
 
-**Strict path the configuration schema does not hold.** A path that strict lists covers the values of the configuration file at or under it, and the configuration schema describes the whole file. A path whose keys the schema does not describe means the setting and the shape of the file disagree, and the check catches a typo, which would otherwise make the setting cover nothing, at build time. A path that passes through an array would cover nothing too, because the index of an array item equals no key, so the check rejects it, and listing the path of the array itself covers every item.
+**Strict path the configuration schema does not hold.** A path that strict lists covers the values of the configuration file at or under it, and the configuration schema describes the whole file. A path whose keys the schema does not describe means the setting and the shape of the file disagree, and the check catches a typo, which would otherwise make the setting cover nothing, at build time. A listed path that passes through an array is a declaration fault, unless a member of the same shape that is not an array holds the next key. Such a path would cover nothing too, because the index of an array item equals no key, and listing the path of the array itself covers every item.
 
 ### @loomcli/plugins/config/variable-name
 

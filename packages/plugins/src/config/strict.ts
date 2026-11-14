@@ -5,7 +5,7 @@ import { isRecord } from '../plain-data.js';
 import { configStrictPath, configStrictSchemaPath } from '../rules.js';
 import type { Removal, Step } from './drop.js';
 import { isArrayShape, leavesOf, stepInto } from './links.js';
-import type { Shape } from './links.js';
+import type { Shape, ShapeStep } from './links.js';
 import { configIdentity as identity, dottedPath } from './names.js';
 
 /**
@@ -185,19 +185,41 @@ function strictFailure(
 
 /**
  * What a listed path's walk through the shape came to: a path the shape holds or leaves unchecked,
- * a key it does not hold, or an array met before the last key, with the array's own path.
+ * a key it does not hold, or an array met before a key no member that is not an array holds, with
+ * the array's own path.
  */
 type Walked = { kind: 'passes' } | { kind: 'missing' } | { kind: 'array'; array: string };
+
+/**
+ * One key of a listed path's walk, as a link's key is followed. Where a shape describes an array,
+ * the walk goes on through its members that are not arrays when one of them holds the key, and
+ * otherwise the path passes through the array.
+ */
+function stepListed(
+  leaves: readonly Shape[],
+  key: string,
+  root: Shape,
+): ShapeStep | { kind: 'array' } {
+  if (!leaves.some(isArrayShape)) {
+    return stepInto(leaves, key, root);
+  }
+  const step = stepInto(
+    leaves.filter((leaf) => !isArrayShape(leaf)),
+    key,
+    root,
+  );
+  return step.kind === 'held' ? step : { kind: 'array' };
+}
 
 /** Follows a listed path's keys through the shape, as a link's path is followed. */
 function walkListed(path: string, shape: Shape): Walked {
   const keys = path.split('.');
   let leaves = leavesOf(shape, shape);
   for (const [index, key] of keys.entries()) {
-    if (leaves.some(isArrayShape)) {
+    const step = stepListed(leaves, key, shape);
+    if (step.kind === 'array') {
       return { array: keys.slice(none, index).join('.'), kind: 'array' };
     }
-    const step = stepInto(leaves, key, shape);
     if (step.kind !== 'held') {
       return step.kind === 'missing' ? step : { kind: 'passes' };
     }
@@ -231,8 +253,9 @@ function listedFault(
 
 /**
  * The `onGraphBuilt` judgment of the listed paths: where the graph holds the configuration's
- * shape, each path's keys must be ones the shape holds, and none may pass through an array, in
- * list order. A key the shape leaves unchecked passes.
+ * shape, each path's keys must be ones the shape holds, in list order. None may pass through an
+ * array unless a member of the same shape that is not an array holds the next key. A key the shape
+ * leaves unchecked passes.
  */
 function judgeStrictPaths(strictness: Strictness): GraphBuiltHook {
   return (graph) => {

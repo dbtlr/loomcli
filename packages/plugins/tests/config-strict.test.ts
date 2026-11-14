@@ -450,9 +450,9 @@ test.each([[['a..b']], [['']], [['delivery', 7]], [['.a']], [['delivery.']]])(
   },
 );
 
-/** The fault the graph build throws for `strict`, or `built`. */
-function built(strict: Strict) {
-  const config = configuration({ schema: closed, ...(strict === undefined ? {} : { strict }) });
+/** The fault the graph build throws for `strict` over `schema`, or `built`. */
+function built(strict: Strict, schema: StandardSchemaV1 = closed) {
+  const config = configuration({ schema, ...(strict === undefined ? {} : { strict }) });
   try {
     new Application('app', { plugins: [config.plugin] }).action(() => undefined).inspect();
     return 'built';
@@ -492,6 +492,46 @@ test('a listed path that passes through an array is a build fault that points to
     rule: '@loomcli/plugins/config/strict-schema-path',
     sentence:
       'Plugin "@loomcli/plugins/config" strict lists sessions.sources.harness, which passes through the array at sessions.sources.',
+  });
+});
+
+/** A schema whose `targets` is an array of strings or an object that holds `primary`. */
+const arrayOrObject = closed.extend({
+  targets: z.union([z.array(z.string()), z.object({ primary: z.string() })]).optional(),
+});
+
+test('a listed path through the object member of an array-or-object union builds and fails its value', async () => {
+  expect(built(['targets.primary'], arrayOrObject)).toBe('built');
+  // The removal discards the value at targets.primary, so it fails the run.
+  // Its line names the path of the union's own issue, which is targets.
+  const result = await ran({
+    file: { targets: { primary: 5 } },
+    schema: arrayOrObject,
+    strict: ['targets.primary'],
+  });
+  expect(result).toEqual({
+    status: 2,
+    stderr:
+      'app: Configuration value targets in .app.json: Invalid input. Correct the value, or remove it.\n',
+    stdout: '',
+  });
+});
+
+test('a listed path through an array-or-object union whose object member lacks the key is a build fault', () => {
+  expect(built(['targets.backup'], arrayOrObject)).toEqual({
+    correction: "List the array's own path, which covers every item.",
+    rule: '@loomcli/plugins/config/strict-schema-path',
+    sentence:
+      'Plugin "@loomcli/plugins/config" strict lists targets.backup, which passes through the array at targets.',
+  });
+});
+
+test('a listed path through an array of objects alone is still a build fault', () => {
+  const schema = closed.extend({ items: z.array(z.object({ name: z.string() })).optional() });
+  expect(built(['items.name'], schema)).toMatchObject({
+    rule: '@loomcli/plugins/config/strict-schema-path',
+    sentence:
+      'Plugin "@loomcli/plugins/config" strict lists items.name, which passes through the array at items.',
   });
 });
 
