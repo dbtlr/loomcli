@@ -8,7 +8,8 @@ import type { FailureExitCode } from './exit-codes.js';
  * caller's handler, and a failure encoder under `run()`. `code` is the class's failure code, or
  * `internal` for a defect or a declaration fault. `exitCode` is the failure's declared exit code,
  * which the code a run resolves can differ from. `message` is the sentence as plain text, without
- * the application-name prefix, and `hints` are the `onFailure` lines as plain text, in the order
+ * the application-name prefix (for a defect or a declaration fault, the generic message in a
+ * distributed build), and `hints` are the `onFailure` lines as plain text, in the order
  * the failure view receives them.
  *
  * @public

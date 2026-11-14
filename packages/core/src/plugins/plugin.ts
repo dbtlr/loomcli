@@ -246,10 +246,11 @@ type SourceResolver<Contributor extends Plugin | ((...args: never[]) => Plugin)>
 /**
  * Everything a plugin declares. `plugin()` checks every rule the definition carries on its own, and
  * creating and installing the value runs none of its code: `onCommandAttach` runs at graph build,
- * `onGraphBuilt` runs once the graph is built and frozen, `onFailure` runs when `run()` renders a
- * failure, `onLog` runs when a run logs an event, `onEnvironment` prepares additions before input validation, the middleware runs inside an invocation, the configuration source runs in the
- * input-source stage when an unfilled option carries its binding, and a translator runs when a
- * foreign throw its key matches leaves the application's work.
+ * `onGraphBuilt` runs once the graph is built and frozen, `onFailure` runs when a run from `run()`
+ * or `invoke()` renders a failure, `onLog` runs when a run logs an event, `onEnvironment` prepares
+ * additions before input validation, the middleware runs inside an invocation, the configuration
+ * source runs in the input-source stage when an unfilled option carries its binding, and a
+ * translator runs when a foreign throw its key matches leaves the application's work.
  *
  * @public
  */
@@ -323,8 +324,10 @@ interface PluginDefinition<
 /**
  * One plugin: an identity and the contributions it carries. Creating and installing the value runs
  * none of its code: `onCommandAttach` and `onGraphBuilt` run at graph build, `onFailure` runs when
- * `run()` renders a failure, `onLog` runs when a run logs an event, `onEnvironment` prepares additions before input validation, and the middleware runs inside an invocation, so an installed plugin
- * an invocation never reaches costs that invocation its hooks alone. The definition is read once,
+ * a run from `run()` or `invoke()` renders a failure, `onLog` runs when a run logs an event,
+ * `onEnvironment` prepares additions before input validation, and the middleware runs inside an
+ * invocation, so an installed plugin an invocation never reaches costs that invocation its hooks
+ * alone. The definition is read once,
  * after the identity, and every rule that one definition carries on its own throws here, before
  * the value exists.
  *
