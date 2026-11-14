@@ -838,7 +838,7 @@ _Avoid_: Section schema, config type, settings schema
 
 **Dropped value**:
 A value in the configuration file that is set aside so that its fallback applies: removed from the configuration when the configuration schema rejects it, and kept there but not given to an option that cannot take it or whose validator rejects it. It never fails the run and is named at `-v` alone.
-_Avoid_: Invalid config, lenient input, ignored key (for an unknown key, which is never reported)
+_Avoid_: Invalid config, lenient input, ignored key (for an unknown key, one the configuration schema does not describe, which is named at `-v` in a line of its own)
 
 **Start directory**:
 The directory the configuration walk begins in: the value of the configuration plugin's directory option when the author declares one and the operator gives it, and the working directory otherwise. It never changes `host.cwd`.
