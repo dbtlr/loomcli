@@ -37,11 +37,12 @@ function unpinLinks(text, version) {
 
 /**
  * A URL of a file or folder in the repository, at any ref: on github.com through `blob`, `tree`, or
- * `raw`, with or without `www.` and over either scheme, or on raw.githubusercontent.com. It matches
- * anywhere in the text, so a bare URL, an autolink, or an HTML attribute counts as well as a link.
+ * `raw`, with or without `www.`, over either scheme or protocol-relative, or on
+ * raw.githubusercontent.com. It matches anywhere in the text, so a bare URL, an autolink, or an
+ * HTML attribute counts as well as a link.
  */
 const absoluteFileUrl =
-  /https?:\/\/(?:(?:www\.)?github\.com\/dbtlr\/loomcli\/(?:blob|tree|raw)\/|raw\.githubusercontent\.com\/dbtlr\/loomcli\/)[^\s)>\]"'<]+/giu;
+  /(?:https?:)?\/\/(?:(?:www\.)?github\.com\/dbtlr\/loomcli\/(?:blob|tree|raw)\/|raw\.githubusercontent\.com\/dbtlr\/loomcli\/)[^\s)>\]"'<]+/giu;
 
 /** Whether a link target opens with a URL scheme (`https:`, `mailto:`) or is protocol-relative. */
 const notRelative = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;

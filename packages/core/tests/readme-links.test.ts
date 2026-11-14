@@ -95,6 +95,11 @@ test.each([
     'https://www.github.com/dbtlr/loomcli/blob/main/docs/core/README.md',
   ],
   [
+    'a protocol-relative link',
+    '[core](//github.com/dbtlr/loomcli/blob/main/docs/core/README.md)',
+    '//github.com/dbtlr/loomcli/blob/main/docs/core/README.md',
+  ],
+  [
     'a bare URL',
     'Read https://github.com/dbtlr/loomcli/blob/main/docs/core/README.md first.',
     'https://github.com/dbtlr/loomcli/blob/main/docs/core/README.md',
