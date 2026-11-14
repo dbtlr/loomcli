@@ -237,6 +237,19 @@ test('a question rejects a variadic argument link at its call', async () => {
 
 test('an accepted secret discards a paste started in its Enter read and completed during validation', async () => {
   const answers: unknown[] = [];
+  const mock = mockProcess({
+    terminal: { columns: 40, keys: ['hidden\r\u001b[', 'safe\r'], rows: 24 },
+  });
+  /**
+   * Types `chunk` as the next read and resolves once the reader has fed it. The validator types
+   * the rest of the paste itself, so the paste completes during validation by construction, and
+   * not because the keyboard's timed reads happened to land before a validator's timer.
+   */
+  const typed = (chunk: string) =>
+    new Promise((resolve) => {
+      mock.stdin.once('data', resolve);
+      mock.stdin.push(chunk);
+    });
   const app = new Application('ask').action(async (context) => {
     answers.push(
       await secret(context, {
@@ -244,7 +257,8 @@ test('an accepted secret discards a paste started in its Enter read and complete
         validate: {
           '~standard': {
             validate: async (value) => {
-              await new Promise((resolve) => setTimeout(resolve, 250));
+              await typed('200~leak');
+              await typed('\u001b[201~');
               return { value };
             },
             vendor: 'test',
@@ -254,13 +268,6 @@ test('an accepted secret discards a paste started in its Enter read and complete
       }),
     );
     answers.push(await text(context, { message: 'Name' }));
-  });
-  const mock = mockProcess({
-    terminal: {
-      columns: 40,
-      keys: [['hidden\r\u001b[', '200~leak', '\u001b[201~'], 'safe\r'],
-      rows: 24,
-    },
   });
   await expect(app.run({ process: mock })).resolves.toBe(0);
   expect(answers).toEqual(['hidden', 'safe']);
