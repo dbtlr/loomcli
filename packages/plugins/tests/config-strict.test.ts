@@ -526,6 +526,26 @@ test('a listed path through an array-or-object union whose object member lacks t
   });
 });
 
+test('a listed path into the map of a list-or-map union builds', () => {
+  const schema = closed.extend({
+    labels: z.union([z.array(z.string()), z.record(z.string(), z.string())]).optional(),
+  });
+  expect(built(['labels.primary'], schema)).toBe('built');
+});
+
+test('a listed path builds when an open object member leaves the key unchecked beside an array and a member that declares it', () => {
+  const schema = closed.extend({
+    targets: z
+      .union([
+        z.array(z.string()),
+        z.looseObject({ other: z.string() }),
+        z.object({ primary: z.string() }),
+      ])
+      .optional(),
+  });
+  expect(built(['targets.primary'], schema)).toBe('built');
+});
+
 test('a listed path through an array of objects alone is still a build fault', () => {
   const schema = closed.extend({ items: z.array(z.object({ name: z.string() })).optional() });
   expect(built(['items.name'], schema)).toMatchObject({

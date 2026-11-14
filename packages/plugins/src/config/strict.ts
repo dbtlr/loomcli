@@ -185,15 +185,15 @@ function strictFailure(
 
 /**
  * What a listed path's walk through the shape came to: a path the shape holds or leaves unchecked,
- * a key it does not hold, or an array met before a key no member that is not an array holds, with
- * the array's own path.
+ * a key it does not hold, or an array met before a key no member that is not an array holds or
+ * leaves unchecked, with the array's own path.
  */
 type Walked = { kind: 'passes' } | { kind: 'missing' } | { kind: 'array'; array: string };
 
 /**
  * One key of a listed path's walk, as a link's key is followed. Where a shape describes an array,
- * the walk goes on through its members that are not arrays when one of them holds the key, and
- * otherwise the path passes through the array.
+ * the walk goes on through its members that are not arrays when one of them holds the key or leaves
+ * it unchecked, and otherwise the path passes through the array.
  */
 function stepListed(
   leaves: readonly Shape[],
@@ -208,7 +208,7 @@ function stepListed(
     key,
     root,
   );
-  return step.kind === 'held' ? step : { kind: 'array' };
+  return step.kind === 'missing' ? { kind: 'array' } : step;
 }
 
 /** Follows a listed path's keys through the shape, as a link's path is followed. */
@@ -254,8 +254,8 @@ function listedFault(
 /**
  * The `onGraphBuilt` judgment of the listed paths: where the graph holds the configuration's
  * shape, each path's keys must be ones the shape holds, in list order. None may pass through an
- * array unless a member of the same shape that is not an array holds the next key. A key the shape
- * leaves unchecked passes.
+ * array unless a member of the same shape that is not an array holds the next key or leaves it
+ * unchecked. A key the shape leaves unchecked passes.
  */
 function judgeStrictPaths(strictness: Strictness): GraphBuiltHook {
   return (graph) => {
