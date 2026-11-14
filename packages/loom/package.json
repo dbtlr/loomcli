@@ -21,6 +21,7 @@
     "postpack": "node ../../scripts/readme-links.mjs unpin"
   },
   "devDependencies": {
+    "@loom/json": "workspace:*",
     "@loomcli/core": "workspace:*",
     "@loomcli/eslint-plugin": "workspace:*",
     "@loomcli/plugins": "workspace:*",

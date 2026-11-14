@@ -402,15 +402,19 @@ try {
     { loom: 'dist/main.js' },
     'The packed @loomcli/loom must declare the loom bin.',
   );
-  // The plugin pack inlines the private MCP protocol package, so no consumer installs it.
+  // The plugin pack inlines the private MCP protocol package and the private JSON scanner package,
+  // So no consumer installs either.
   const pluginsManifest = run('tar', ['-xzOf', 'plugins.tgz', 'package/package.json'], temporary);
   assert.equal(pluginsManifest.status, 0, pluginsManifest.output);
   const { dependencies = {}, peerDependencies = {} } = JSON.parse(pluginsManifest.stdout);
+  const privatePackages = ['@loom/mcp', '@loom/json'];
   for (const [field, listed] of Object.entries({ dependencies, peerDependencies })) {
-    assert.ok(
-      !Object.hasOwn(listed, '@loom/mcp'),
-      `The packed @loomcli/plugins must not list @loom/mcp under ${field}.`,
-    );
+    for (const name of privatePackages) {
+      assert.ok(
+        !Object.hasOwn(listed, name),
+        `The packed @loomcli/plugins must not list ${name} under ${field}.`,
+      );
+    }
   }
   // No built file names the private package either, so no module or declaration imports it.
   // The manifest keeps it as a development dependency, which no consumer installs.
@@ -424,11 +428,15 @@ try {
   for (const entry of builtFiles.filter((file) => file.isFile())) {
     const path = join(entry.parentPath, entry.name);
     const text = await readFile(path, 'utf8');
-    if (text.includes('@loom/mcp')) {
+    if (privatePackages.some((name) => text.includes(name))) {
       naming.push(relative(pluginsBuild, path));
     }
   }
-  assert.deepEqual(naming, [], 'No built file of the packed @loomcli/plugins may name @loom/mcp.');
+  assert.deepEqual(
+    naming,
+    [],
+    `No built file of the packed @loomcli/plugins may name ${privatePackages.join(' or ')}.`,
+  );
   await cp(source, temporary, { recursive: true });
   await writeFile(
     join(temporary, 'package.json'),

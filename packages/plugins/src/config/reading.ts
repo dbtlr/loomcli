@@ -1,5 +1,5 @@
 import { isRecord } from '../plain-data.js';
-import type { Position } from './position.js';
+import type { Position } from './text.js';
 
 /** The clause that says why a file cannot be used, after its name in a warning or a failure. */
 export type Clause =

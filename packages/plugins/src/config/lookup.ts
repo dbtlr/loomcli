@@ -7,9 +7,9 @@ import type { ContextualStyle, Host, Out } from '@loomcli/core';
 import { homeOf } from '../application-folders.js';
 import { parseFile } from './formats.js';
 import { splitExtension } from './names.js';
-import type { Position } from './position.js';
 import type { Clause, Reading } from './reading.js';
 import type { Reach } from './scopes.js';
+import type { Position } from './text.js';
 
 /**
  * The configuration plugin's lookup: the one file a run reads. `--config` names it, or else the

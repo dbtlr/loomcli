@@ -84,6 +84,12 @@ test('a line ends at LF, at CRLF, or at a lone CR', async () => {
   );
 });
 
+test('a CRLF, a lone CR, and an astral character before the fault count as one position rule', async () => {
+  await expect(parseFile('.app.json', '{\r\n"😀": 1,\r"b": x}')).resolves.toEqual(
+    broken('is not valid JSON.', 3, 6),
+  );
+});
+
 test('a leading byte order mark is not a column', async () => {
   await expect(parseFile('.app.json', `${String.fromCodePoint(65_279)}{ x }`)).resolves.toEqual(
     broken('is not valid JSON.', 1, 3),
