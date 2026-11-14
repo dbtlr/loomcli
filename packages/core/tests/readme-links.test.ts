@@ -62,6 +62,55 @@ test('a pinned link names the tag, and no link names main', () => {
   ]);
 });
 
+// The pin rewrites only blob/main/, so the guards must see every other way a README links in.
+test.each([
+  [
+    'a relative link',
+    '[example](../../examples/textstat/README.md)',
+    '../../examples/textstat/README.md',
+  ],
+  [
+    'a folder on main',
+    '[docs](https://github.com/dbtlr/loomcli/tree/main/docs)',
+    'https://github.com/dbtlr/loomcli/tree/main/docs',
+  ],
+  [
+    'a raw file on main',
+    '![diagram](https://github.com/dbtlr/loomcli/raw/main/docs/x.svg)',
+    'https://github.com/dbtlr/loomcli/raw/main/docs/x.svg',
+  ],
+  [
+    'a raw.githubusercontent.com file',
+    '![diagram](https://raw.githubusercontent.com/dbtlr/loomcli/main/docs/x.svg)',
+    'https://raw.githubusercontent.com/dbtlr/loomcli/main/docs/x.svg',
+  ],
+  [
+    'an http link',
+    '[core](http://github.com/dbtlr/loomcli/blob/main/docs/core/README.md)',
+    'http://github.com/dbtlr/loomcli/blob/main/docs/core/README.md',
+  ],
+  [
+    'a www link',
+    '[core](https://www.github.com/dbtlr/loomcli/blob/main/docs/core/README.md)',
+    'https://www.github.com/dbtlr/loomcli/blob/main/docs/core/README.md',
+  ],
+  [
+    'a bare URL',
+    'Read https://github.com/dbtlr/loomcli/blob/main/docs/core/README.md first.',
+    'https://github.com/dbtlr/loomcli/blob/main/docs/core/README.md',
+  ],
+])('%s into the repository is a repository link', (_form, text, link) => {
+  expect(repositoryLinks(text)).toEqual([link]);
+});
+
+test('an anchor, an external page, and the repository home are not repository links', () => {
+  expect(
+    repositoryLinks(
+      '[top](#install), [npm](https://www.npmjs.com), [repo](https://github.com/dbtlr/loomcli).',
+    ),
+  ).toEqual([]);
+});
+
 test('unpinning a pinned README gives back the source README exactly', () => {
   expect(unpinLinks(pinLinks(readme, '0.19.0'), '0.19.0')).toBe(readme);
 });
