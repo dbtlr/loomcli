@@ -2,7 +2,7 @@
 
 ### Migration
 
-**Affected surface.** An application that installs `pnpm` beside `@loomcli/loom` to prepare `pnpm-lock.yaml` for a release, and whose `pnpm` is 12.8.1.
+**Affected surface.** No compile error: `pnpm install` reports an unmet peer. An application that installs `pnpm` beside `@loomcli/loom` to prepare `pnpm-lock.yaml` for a release, and whose `pnpm` is 12.8.1.
 
 **Why.** The peer is exact, because the pnpm that prepares `pnpm-lock.yaml` must be the version Loom was tested with. A project that keeps 12.8.1 now has an unmet peer.
 
@@ -26,4 +26,4 @@ After:
 2. Run `pnpm install` to refresh `pnpm-lock.yaml`.
 3. Update any pnpm version your CI or tool manager pins to match.
 
-**Validation.** Run `pnpm install` and confirm it reports no unmet peer for `pnpm`. Then run `pnpm loom changelog check` and confirm it exits 0.
+**Validation.** Run `pnpm install` and confirm it reports no unmet peer for `pnpm`.
