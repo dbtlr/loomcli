@@ -1,12 +1,13 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { escapeControlCharacters } from '@loomcli/core';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { withoutByteOrderMark } from './byte-order-mark.js';
 import { conventionalFragments } from './conventions.js';
 import { requireClosedBlocks } from './markdown.js';
-import { readDirectory, readRegularFile } from './repository.js';
+import { readDirectory, readRegularFileBytes } from './repository.js';
 import type { Checkout } from './repository.js';
 
 // Undefined for a name outside the grammar: a bare kind prefix, an empty slug, or another extension.
@@ -24,6 +25,88 @@ function fragmentKind(name: string): FragmentKind | undefined {
     }
   }
   return 'fix';
+}
+
+const lineFeed = 0x0a;
+
+/**
+ * Characters core escapes in a quoted diagnostic that a fragment keeps: tab and line feed shape
+ * Markdown, and the line and paragraph separators are text.
+ */
+const keptEscapes = new Set([
+  '\t',
+  '\n',
+  String.fromCodePoint(0x20_28),
+  String.fromCodePoint(0x20_29),
+]);
+
+/** The zero-width space, which core leaves unescaped and a fragment refuses as invisible. */
+const zeroWidthSpace = String.fromCodePoint(0x20_0b);
+
+function codePointName(character: string) {
+  const codePoint = character.codePointAt(0) ?? 0;
+  return `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+/**
+ * The sentence for a character a fragment refuses, or undefined for one it keeps. A fragment
+ * refuses what core's `escapeControlCharacters` escapes, except tab, line feed, and the line and
+ * paragraph separators, and also the zero-width space, so `write` never copies a terminal control,
+ * a carriage return, or an invisible reordering into the changelog. The sentence names the
+ * character by its code point and never prints it.
+ */
+function unsafeCharacter(character: string) {
+  const escaped = escapeControlCharacters(character) !== character;
+  if (character !== zeroWidthSpace && (!escaped || keptEscapes.has(character))) {
+    return undefined;
+  }
+  const name = codePointName(character);
+  if (character === '\r') {
+    return `holds the carriage return ${name}. Save the fragment with LF line endings.`;
+  }
+  if (/\p{Cc}/u.test(character)) {
+    return `holds the control character ${name}. Remove it, because a fragment accepts no control character but tab and line feed.`;
+  }
+  return `holds the invisible format character ${name}. Remove it.`;
+}
+
+// A fatal decoder throws on bytes that are not UTF-8.
+// Each call decodes one whole line, so the decoder keeps no state between calls.
+const strictDecoder = new TextDecoder('utf-8', { fatal: true });
+
+// One line's text, or undefined when its bytes are not valid UTF-8.
+function decodedLine(bytes: Uint8Array) {
+  try {
+    return strictDecoder.decode(bytes);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Refuses a fragment whose bytes are not UTF-8 or hold a character `unsafeCharacter` refuses,
+ * naming the line of the first one. A line feed byte never occurs inside a UTF-8 sequence, so each
+ * line decodes alone.
+ */
+function requireSafeCharacters(path: string, bytes: Buffer) {
+  let start = 0;
+  for (let line = 1; start <= bytes.length; line += 1) {
+    const found = bytes.indexOf(lineFeed, start);
+    const end = found === -1 ? bytes.length : found;
+    const text = decodedLine(bytes.subarray(start, end));
+    if (text === undefined) {
+      throw new Error(
+        `${path}: line ${String(line)} is not valid UTF-8. Save the fragment as UTF-8.`,
+      );
+    }
+    for (const character of text) {
+      const sentence = unsafeCharacter(character);
+      if (sentence !== undefined) {
+        throw new Error(`${path}: line ${String(line)} ${sentence}`);
+      }
+    }
+    start = end + 1;
+  }
 }
 
 function validateBody(path: string, kind: FragmentKind, body: string) {
@@ -93,7 +176,9 @@ async function readFragment(
   if (kind === undefined) {
     throw new Error(`${path}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`);
   }
-  const source = await readRegularFile(checkout, path, ref);
+  const bytes = await readRegularFileBytes(checkout, path, ref);
+  requireSafeCharacters(path, bytes);
+  const source = bytes.toString('utf8');
   const body = withoutByteOrderMark(source);
   validateBody(path, kind, body);
   return { body, kind, name, source };
