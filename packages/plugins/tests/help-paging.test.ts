@@ -12,10 +12,13 @@
  *   rows, so unknown rows are not reachable here.
  * - Cannot start. A shell that cannot start, and exit 126 or 127, print the page unpaged and exit 0.
  * - The exit. Any other exit code of the pager leaves the run at 0.
+ * - The terminal. A live region draws no frame while the pager runs, and a frame drawn during the
+ *   pager appears after it exits.
  * - Cancellation. A run cancelled while the pager is open ends it and resolves 130.
  */
 
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, plugin } from '@loomcli/core';
+import type { MiddlewareContext } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { mockProcess } from '@loomcli/testing';
 import type { MockFields, ProgramCall } from '@loomcli/testing';
@@ -250,4 +253,47 @@ test('SIGINT while the pager is open ends the pager and resolves 130', async () 
   await expect(notes(true).run({ process: mock })).resolves.toBe(130);
   expect(ended).toBe(true);
   expect(mock.stdout.text).toBe('');
+});
+
+/** Draws a frame as its own text. */
+function render(text: string) {
+  return text;
+}
+
+test('a live region draws no frame while the pager runs, and the frame drawn during it appears after it exits', async () => {
+  let region: ReturnType<MiddlewareContext['out']['region']> | undefined = undefined;
+  const holder = plugin('@fixture/holder', {
+    middleware: {
+      activate: 'always',
+      load: async () => ({
+        default: async ({ next, out }: Pick<MiddlewareContext, 'next' | 'out'>) => {
+          region = out.region();
+          await region.draw('first frame', { render });
+          await next();
+        },
+      }),
+    },
+  });
+  const app = new Application('notes', { plugins: [holder, help({ paging: true })] }).command(
+    note('add'),
+  );
+  let during = '';
+  const mock = mockProcess({
+    ...terminal,
+    argv: ['--help'],
+    programs: {
+      '/bin/sh': async () => {
+        // Not awaited: a draw on a held region may wait for the hold to end.
+        void region?.draw('second frame', { render });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        during = mock.stderr.text;
+        return {};
+      },
+    },
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(during).toContain('first frame');
+  expect(during).not.toContain('second frame');
+  expect(mock.stderr.text.startsWith(during)).toBe(true);
+  expect(mock.stderr.text).toContain('second frame');
 });
