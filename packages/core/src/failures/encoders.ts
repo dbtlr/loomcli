@@ -29,6 +29,7 @@ const records = new WeakMap<object, EncodingRecord>();
 
 /** The runtime value `encodeFailure()` returns. Its record lives in the registry above. */
 class FailureEncodingDeclaration {
+  /** The brand that makes the public encoding type opaque. It holds no runtime value. */
   declare readonly [failureEncoding]: true;
 
   constructor(record: EncodingRecord) {
@@ -50,6 +51,20 @@ type FailureEncoding = Pick<FailureEncodingDeclaration, typeof failureEncoding>;
  * pair under its `failureEncoders`, and a failed `run()` whose selected view declares the media type
  * writes the encoder's text to stderr in place of the failure view. Media types compare as the
  * exact strings core stores, so core judges no grammar.
+ *
+ * @example
+ * ```ts
+ * import { encodeFailure, plugin } from '@loomcli/core';
+ * import type { FailureEncoder } from '@loomcli/core';
+ *
+ * const errorLine: FailureEncoder = (form) => `${JSON.stringify({ error: form })}\n`;
+ *
+ * export const jsonErrors = plugin('@acme/json-errors', {
+ *   failureEncoders: [encodeFailure('application/json', errorLine)],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failure-views.md#failure-encoders
  *
  * @public
  */

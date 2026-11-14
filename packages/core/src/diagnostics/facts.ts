@@ -127,6 +127,15 @@ export function pluginOptionSite(
  * The label a configuration source answers with reads this rule, and a plugin whose setting prints
  * inside one line may read it too.
  *
+ * @example
+ * ```ts
+ * import { isProseLine } from '@loomcli/core';
+ *
+ * isProseLine('Project settings'); // true
+ * isProseLine('   '); // false, because it holds only whitespace
+ * isProseLine('two\nlines'); // false, because it holds a line terminator
+ * ```
+ *
  * @public
  */
 export function isProseLine(value: unknown): value is string {

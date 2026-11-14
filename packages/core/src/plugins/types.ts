@@ -16,30 +16,49 @@ export declare const attachedCommand: unique symbol;
  * @sealed
  */
 export interface AttachedCommand {
+  /** Brand that marks a value as the surface core handed the hook, so a forged value is not one. */
   readonly [attachedCommand]: true;
   /** The Command's own name, and `null` for the root. */
   readonly name: string | null;
+  /** The Command's route from the root, which is empty for the root. */
   readonly path: readonly string[];
+  /** Whether the Command has an action registered. */
   readonly hasAction: boolean;
   /** The declared argument names, in declaration order. */
   readonly arguments: readonly string[];
   /** The declared local option names, in declaration order. */
   readonly options: readonly string[];
+  /**
+   * The result the Command declares as `inspect()` publishes it, or `null` where it declares none.
+   */
   readonly result: ResultNode | null;
   /**
    * The extension record `inspect()` would publish for this Command at this hook: the author's
    * layers, then every value an earlier hook or this hook's earlier `extend()` calls added.
    */
   readonly extensions: Readonly<Record<string, unknown>>;
+  /** Declares one more argument and returns a new value that lists it. */
   argument(name: string, config: ArgumentConfig): AttachedCommand;
+  /** Declares one more local option and returns a new value that lists it. */
   option(name: string, config: OptionConfig & Unmarked): AttachedCommand;
+  /** Declares that at most one of the named local options may be supplied. */
   exclusive(...names: [string, string, ...string[]]): AttachedCommand;
+  /** Declares that at least one of the named local options must be supplied. */
   oneRequired(...names: [string, string, ...string[]]): AttachedCommand;
+  /** Declares that the named local options are supplied together or not at all. */
   requiredTogether(...names: [string, string, ...string[]]): AttachedCommand;
+  /**
+   * Reshapes the views of the Command's result: a view under a name the result already holds
+   * replaces it in place, and a new name is appended. It returns a new value whose `result` lists
+   * them, and `options.default` names the default view.
+   */
   views<const Replacements extends Readonly<Record<string, ResultView>>>(
     replacements: Replacements,
     options?: { default?: keyof Replacements & string },
   ): AttachedCommand;
+  /**
+   * Adds command-targeted extension values and returns a new value whose `extensions` carry them.
+   */
   extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand;
 }
 

@@ -54,17 +54,16 @@ export type ActionOptions<Declaration> = ActionArgument<Declaration> extends {
 
 // @public @sealed
 export interface AdaptiveStyle {
-    // (undocumented)
     readonly [adaptiveStyle]: true;
 }
 
-// @public (undocumented)
+// @public
 export type Alignment = 'left' | 'right' | 'center';
 
-// @public (undocumented)
+// @public
 export type Ansi16Color = keyof typeof colors;
 
-// @public (undocumented)
+// @public
 export type Ansi256Fallbacks = Pick<ColorFallbacks, 'ansi16'>;
 
 // @public @sealed
@@ -74,11 +73,8 @@ export type AnyDeclaredView = (View<never> | RowView<never>) & DeclaredViewBrand
 
 // @public @sealed
 export interface AnyExtension {
-    // (undocumented)
     readonly collect: boolean;
-    // (undocumented)
     readonly identity: string;
-    // (undocumented)
     readonly target: ExtensionTarget;
 }
 
@@ -133,65 +129,40 @@ export type ArgumentConfig = VariadicArgument | ScalarArgument | ContentArgument
 
 // @public @sealed
 export interface ArgumentNode {
-    // (undocumented)
     readonly default: {
         readonly value: unknown;
     } | undefined;
-    // (undocumented)
     readonly description: string | undefined;
-    // (undocumented)
     readonly extensions: Readonly<Record<string, unknown>>;
-    // (undocumented)
     readonly max?: number | undefined;
-    // (undocumented)
     readonly min?: number | undefined;
-    // (undocumented)
     readonly name: string;
-    // (undocumented)
     readonly required: boolean;
-    // (undocumented)
     readonly requiredWhen: 'non-interactive' | null;
-    // (undocumented)
     readonly schema: InputSchema;
-    // (undocumented)
     readonly stdin?: boolean;
-    // (undocumented)
     readonly type?: 'content';
-    // (undocumented)
     readonly validated: boolean;
-    // (undocumented)
     readonly validateOmitted: boolean;
-    // (undocumented)
     readonly variadic: boolean;
 }
 
 // @public @sealed
 export interface AttachedCommand {
-    // (undocumented)
     readonly [attachedCommand]: true;
-    // (undocumented)
     argument(name: string, config: ArgumentConfig): AttachedCommand;
     readonly arguments: readonly string[];
-    // (undocumented)
     exclusive(...names: [string, string, ...string[]]): AttachedCommand;
-    // (undocumented)
     extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand;
     readonly extensions: Readonly<Record<string, unknown>>;
-    // (undocumented)
     readonly hasAction: boolean;
     readonly name: string | null;
-    // (undocumented)
     oneRequired(...names: [string, string, ...string[]]): AttachedCommand;
-    // (undocumented)
     option(name: string, config: OptionConfig & Unmarked): AttachedCommand;
     readonly options: readonly string[];
-    // (undocumented)
     readonly path: readonly string[];
-    // (undocumented)
     requiredTogether(...names: [string, string, ...string[]]): AttachedCommand;
-    // (undocumented)
     readonly result: ResultNode | null;
-    // (undocumented)
     views<const Replacements extends Readonly<Record<string, ResultView>>>(replacements: Replacements, options?: {
         default?: keyof Replacements & string;
     }): AttachedCommand;
@@ -252,11 +223,9 @@ export interface ChildOutput {
     readonly text: string;
 }
 
-// @public (undocumented)
+// @public
 export interface ColorFallbacks {
-    // (undocumented)
     readonly ansi16?: Ansi16Color | undefined;
-    // (undocumented)
     readonly ansi256?: number | undefined;
 }
 
@@ -272,15 +241,10 @@ export type CommandAttachHook = (command: AttachedCommand) => AttachedCommand;
 // @public @sealed
 export interface CommandGraph {
     readonly configuration: ConfigurationNode | null;
-    // (undocumented)
     readonly description: string | undefined;
-    // (undocumented)
     readonly globals: readonly OptionNode[];
-    // (undocumented)
     readonly name: string;
-    // (undocumented)
     readonly root: CommandNode;
-    // (undocumented)
     readonly version: string;
 }
 
@@ -289,33 +253,19 @@ export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'optio
 
 // @public @sealed
 export interface CommandNode {
-    // (undocumented)
     readonly aliases: readonly string[];
-    // (undocumented)
     readonly arguments: readonly ArgumentNode[];
-    // (undocumented)
     readonly children: readonly CommandNode[];
-    // (undocumented)
     readonly deprecated: string | undefined;
-    // (undocumented)
     readonly description: string | undefined;
-    // (undocumented)
     readonly extensions: Readonly<Record<string, unknown>>;
-    // (undocumented)
     readonly hasAction: boolean;
-    // (undocumented)
     readonly hidden: boolean;
-    // (undocumented)
     readonly name: string | null;
-    // (undocumented)
     readonly optionGroups: readonly OptionGroup[];
-    // (undocumented)
     readonly options: readonly OptionNode[];
-    // (undocumented)
     readonly path: readonly string[];
-    // (undocumented)
     readonly result: ResultNode | null;
-    // (undocumented)
     readonly stdin?: Readonly<{
         description: string | undefined;
         required: boolean;
@@ -331,12 +281,11 @@ export interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
     uses?: MetByRegistration<Uses, OptIn<Uses>>;
 }
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type ConcreteStyle = Style;
 
 // @public @sealed
 export interface ConfigurationNode {
-    // (undocumented)
     readonly schema: InputSchema;
 }
 
@@ -373,10 +322,10 @@ export type ContentOption = ContentInput & OptionSpelling & Described & Listed &
     max?: never;
 } & EnvBinding));
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type ContextualStyle = EnvironmentStyle<RegisteredEnvironment>;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type CoreToken = (typeof tokens)[number];
 
 // @public
@@ -411,59 +360,42 @@ export type CountOption = OptionSpelling & Described & Listed & Controlled & Opt
 export class DeclarationError extends LoomError {
     constructor(rule: DiagnosticRule, parts: DiagnosticParts, options?: ErrorOptions);
     constructor(sentence: string, options?: ErrorOptions);
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly correction: string | readonly string[] | undefined;
-    // (undocumented)
     readonly findings: readonly Finding[];
-    // (undocumented)
     readonly rule: DiagnosticRule | undefined;
-    // (undocumented)
     readonly sentence: string;
 }
 
 // @public @sealed
 export interface DeclaredRowView<Row> extends RowView<Row>, DeclaredViewBrand {
-    // (undocumented)
     readonly [invariant]: (row: Row) => Row;
-    // (undocumented)
     readonly identity: string;
 }
 
 // @public @sealed
 export interface DeclaredView<Data> extends View<Data>, DeclaredViewBrand {
-    // (undocumented)
     readonly [invariant]: (data: Data) => Data;
-    // (undocumented)
     readonly identity: string;
 }
 
 // @public @sealed
 export interface DeclaredViewBrand {
-    // (undocumented)
     readonly [declaredView]: true;
 }
 
 // @public
 export interface DiagnosticParts {
-    // (undocumented)
     readonly correction?: string | readonly string[];
-    // (undocumented)
     readonly findings?: readonly Finding[];
-    // (undocumented)
     readonly sentence: string;
 }
 
 // @public
 export interface DiagnosticRule {
-    // (undocumented)
     readonly docs: string | undefined;
-    // (undocumented)
     readonly explanation: string;
-    // (undocumented)
     readonly headline: string;
-    // (undocumented)
     readonly identity: string;
 }
 
@@ -496,18 +428,15 @@ export interface EnvBinding {
 
 // @public @sealed
 export interface EnvironmentContext {
-    // (undocumented)
     readonly host: {
         readonly cwd: Host['cwd'];
         readonly env: Readonly<Host['env']>;
     };
-    // (undocumented)
     readonly log: Log;
-    // (undocumented)
     readonly out: Pick<Out, 'warn'>;
 }
 
-// @public (undocumented)
+// @public
 export type EnvironmentHook = (context: EnvironmentContext) => Readonly<Record<string, string>> | void | Promise<Readonly<Record<string, string>> | void>;
 
 // @public @sealed
@@ -571,13 +500,9 @@ export type ExitCode = 0 | FailureExitCode | 129 | 130 | 131 | 141 | 143;
 
 // @public @sealed
 export interface Extension<Target extends ExtensionTarget = ExtensionTarget, Schema extends StandardSchemaV1 = StandardSchemaV1, Collect extends boolean = false> extends AnyExtension {
-    // (undocumented)
     (input: StandardSchemaV1.InferInput<Schema>): ExtensionValue<Target>;
-    // (undocumented)
     readonly collect: Collect;
-    // (undocumented)
     readonly schema: Schema;
-    // (undocumented)
     readonly target: Target;
 }
 
@@ -588,7 +513,7 @@ export function extension<Target extends ExtensionTarget, Schema extends Standar
     collect?: false | undefined;
 }): Extension<Target, Schema>;
 
-// @public (undocumented)
+// @public
 export function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(identity: string, config: {
     schema: Schema;
     target: Target;
@@ -615,13 +540,9 @@ export type FailureExitCode = Exclude<WholeNumbersBelow<typeof firstReserved>, 0
 
 // @public @sealed
 export interface FailureForm {
-    // (undocumented)
     readonly code: string;
-    // (undocumented)
     readonly exitCode: FailureExitCode;
-    // (undocumented)
     readonly hints: readonly string[];
-    // (undocumented)
     readonly message: string;
 }
 
@@ -630,41 +551,29 @@ export type FailureHook = (failure: Readonly<LoomError>, context: FailureHookCon
 
 // @public @sealed
 export interface FailureHookContext {
-    // (undocumented)
     readonly application: string;
-    // (undocumented)
     readonly command: CommandNode;
-    // (undocumented)
     readonly graph: CommandGraph;
-    // (undocumented)
     readonly invokedBy: InvokedBy;
-    // (undocumented)
     readonly log: Log;
     readonly mediaType: string | undefined;
-    // (undocumented)
     readonly path: readonly string[];
-    // (undocumented)
     readonly style: ContextualStyle;
     readonly view: string | undefined;
 }
 
 // @public
 export interface FailureView<Failure extends LoomError> {
-    // (undocumented)
     render: (failure: Readonly<Failure>, context: FailureViewContext) => string;
     row?: undefined;
 }
 
 // @public @sealed
 export interface FailureViewContext extends ViewContext {
-    // (undocumented)
     readonly application: string;
-    // (undocumented)
     readonly hints: readonly string[];
-    // (undocumented)
     readonly invokedBy: 'argv' | 'name';
     readonly mediaType: string | undefined;
-    // (undocumented)
     readonly path: readonly string[];
     readonly view: string | undefined;
 }
@@ -672,28 +581,22 @@ export interface FailureViewContext extends ViewContext {
 // @public
 export class FatalError extends LoomError {
     constructor(message: string, options?: ErrorOptions);
-    // (undocumented)
     static readonly code: string;
 }
 
 // @public
 export interface Finding {
-    // (undocumented)
     readonly arguments: readonly unknown[];
-    // (undocumented)
     readonly call: string;
-    // (undocumented)
     readonly mark?: string;
-    // (undocumented)
     readonly note?: string;
-    // (undocumented)
     readonly path?: readonly string[];
 }
 
 // @public
 export type GlobalOptionConfig = Exclude<OptionConfig, ContentOption> & Readonly<Partial<Record<PresenceRuleKey, never>>>;
 
-// @public (undocumented)
+// @public
 export const glyph: Readonly<{
     circleQuestionMark: string;
     questionMarkPrefix: string;
@@ -963,11 +866,8 @@ export interface HostTerminal {
 
 // @public @sealed
 export interface IncompleteResult {
-    // (undocumented)
     path: readonly string[];
-    // (undocumented)
     written: number;
-    // (undocumented)
     yielded: number;
 }
 
@@ -977,9 +877,7 @@ export const incompleteResult: DeclaredView<IncompleteResult>;
 // @public @sealed
 export class InputError extends UsageError {
     constructor(message: string, problems: readonly InputProblem[], options?: ErrorOptions);
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly problems: readonly InputProblem[];
 }
 
@@ -1021,15 +919,10 @@ export class InternalError extends LoomError {
         readonly cause: unknown;
     });
     constructor(message: string, cause: unknown);
-    // (undocumented)
     readonly cause: unknown;
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly correction: string | readonly string[] | undefined;
-    // (undocumented)
     readonly rule: DiagnosticRule | undefined;
-    // (undocumented)
     readonly sentence: string;
 }
 
@@ -1143,42 +1036,30 @@ export function locate(graph: CommandGraph, words: readonly string[]): WordPosit
 
 // @public @sealed
 export interface Log {
-    // (undocumented)
     debug(message: string, fields?: LogFields): void;
-    // (undocumented)
     error(message: string, fields?: LogFields): void;
-    // (undocumented)
     info(message: string, fields?: LogFields): void;
-    // (undocumented)
     trace(message: string, fields?: LogFields): void;
-    // (undocumented)
     warn(message: string, fields?: LogFields): void;
 }
 
 // @public @sealed
 export interface LogDefect {
-    // (undocumented)
     readonly message: string;
-    // (undocumented)
     readonly name: string;
-    // (undocumented)
     readonly stack?: string;
 }
 
 // @public @sealed
 export interface LogDestination {
-    // (undocumented)
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly home: string;
-    // (undocumented)
     readonly platform: string;
-    // (undocumented)
     readonly stderr: Writable | null;
 }
 
 // @public @sealed
 export interface LogEvent {
-    // (undocumented)
     readonly application: {
         readonly name: string;
         readonly version: string;
@@ -1186,11 +1067,8 @@ export interface LogEvent {
     readonly defect?: LogDefect;
     readonly failure?: FailureForm;
     readonly fields: Readonly<Record<string, JsonValue>>;
-    // (undocumented)
     readonly level: LogLevel;
-    // (undocumented)
     readonly message: string;
-    // (undocumented)
     readonly path: readonly string[];
     readonly plugin: string | null;
     readonly run: string;
@@ -1209,9 +1087,7 @@ export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 // @public
 export abstract class LoomError extends Error {
     constructor(message: string, options?: ErrorOptions);
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     static readonly exitCode: FailureExitCode;
     get exitCode(): FailureExitCode;
 }
@@ -1242,11 +1118,8 @@ export interface MiddlewareContext<Options extends PluginOptions = PluginOptions
 // @public @sealed
 export class MisplacedOptionError extends UsageError {
     constructor(spelling: string, commands: readonly (readonly string[])[]);
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly commands: readonly (readonly string[])[];
-    // (undocumented)
     readonly spelling: string;
 }
 
@@ -1255,26 +1128,21 @@ export function missingInputError(context: Pick<ActionContext<unknown>, 'command
     argument: string;
 }): InputError;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export class MissingValueError extends UsageError {
     constructor(spelling: string, form?: MissingValueForm);
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly spelling: string;
 }
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type Modifier = (typeof modifiers)[number];
 
 // @public @sealed
 export class NonCallableCommandError extends UsageError {
     constructor(command: readonly string[], candidates: readonly string[]);
-    // (undocumented)
     readonly candidates: readonly string[];
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly command: readonly string[];
 }
 
@@ -1311,7 +1179,7 @@ export interface OptionGroup {
     readonly options: readonly string[];
 }
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'background' | 'envAllowEmpty'> & {
     readonly type: 'content';
     readonly stdin: boolean;
@@ -1354,12 +1222,11 @@ export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'ba
 // @public
 export type OptionsOf<Contributor> = Contributor extends Plugin_2<infer Options> ? Options : Contributor extends (...args: never[]) => Plugin_2<infer Options> ? Options : PluginOptions;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export interface Out<Result = unknown> {
     debug(message: string, view?: View<string>): Promise<void>;
     draw<Data>(data: Data, view: View<Data>): Promise<number>;
     error(message: string, view?: View<string>): Promise<void>;
-    // (undocumented)
     fatal(message: string): never;
     info(message: string, view?: View<string>): Promise<void>;
     lendTerminal<Value>(work: () => Value | PromiseLike<Value>): Promise<Value>;
@@ -1382,7 +1249,7 @@ export interface OutputTerminal extends InputTerminal {
 // @public
 export function override<Key extends AnyOverrideKey>(key: Key, replacement: NoInfer<ReplacementView<Key>>): ViewOverride;
 
-// @public (undocumented)
+// @public
 export function pad(text: string, minimumWidth: number, options?: {
     align?: Alignment;
 }): string;
@@ -1397,29 +1264,20 @@ export { Plugin_2 as Plugin }
 // @public
 export interface PluginDefinition<Options extends PluginOptions = PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
     commands?: readonly Command<unknown, unknown, NoInfer<PluginOptionValues<Options>>>[];
-    // (undocumented)
     extensions?: readonly AnyExtension[];
     failureEncoders?: readonly FailureEncoding[];
-    // (undocumented)
     middleware?: {
         activate: 'always' | readonly (keyof Options & string)[];
         load: () => Promise<{
             default: Middleware<Plugin_2<Options>>;
         }>;
     };
-    // (undocumented)
     onCommandAttach?: CommandAttachHook;
-    // (undocumented)
     onEnvironment?: EnvironmentHook;
-    // (undocumented)
     onFailure?: FailureHook;
-    // (undocumented)
     onGraphBuilt?: GraphBuiltHook;
-    // (undocumented)
     onLog?: LogHook;
-    // (undocumented)
     options?: Options;
-    // (undocumented)
     source?: {
         binding: AnyExtension & {
             readonly target: 'option';
@@ -1429,11 +1287,8 @@ export interface PluginDefinition<Options extends PluginOptions = PluginOptions,
         }>;
         schema?: StandardSchemaV1;
     };
-    // (undocumented)
     theme?: Theme & ThemeConstraint<Theme>;
-    // (undocumented)
     translators?: readonly Translation[];
-    // (undocumented)
     views?: readonly ViewContribution[];
 }
 
@@ -1497,26 +1352,18 @@ export interface ProcessTerminal {
 
 // @public @sealed
 interface ProgressEvent_2 {
-    // (undocumented)
     readonly completed?: number;
-    // (undocumented)
     readonly id: number;
-    // (undocumented)
     readonly label: string;
-    // (undocumented)
     readonly state: 'started' | 'updated' | 'ended' | 'failed' | 'cancelled';
-    // (undocumented)
     readonly total?: number;
 }
 export { ProgressEvent_2 as ProgressEvent }
 
 // @public
 export interface ProgressReport {
-    // (undocumented)
     readonly completed?: number;
-    // (undocumented)
     readonly label?: string;
-    // (undocumented)
     readonly total?: number;
 }
 
@@ -1531,11 +1378,8 @@ export interface Provider<Name extends string = string, Value = unknown, Globals
         value: Value;
         globals: (value: Globals) => void;
     };
-    // (undocumented)
     readonly lifetime: Life;
-    // (undocumented)
     readonly name: Name;
-    // (undocumented)
     readonly uses: Uses;
 }
 
@@ -1545,17 +1389,13 @@ export function provider<const Declared extends AnyProvider>(name: Declared['nam
 // @public @sealed
 export interface ProviderContext<Globals = {}, Provided = {}> {
     readonly graph: CommandGraph;
-    // (undocumented)
     readonly host: Host;
     readonly invokedBy: 'argv' | 'name';
-    // (undocumented)
     readonly log: Log;
-    // (undocumented)
     readonly onShutdown: OnShutdown;
     readonly options: Globals;
     readonly out: Out;
     readonly provided: Provided;
-    // (undocumented)
     readonly signal: AbortSignal;
     readonly style: ContextualStyle;
 }
@@ -1642,25 +1482,19 @@ export interface ReleaseFacts {
 // @public
 export type RenderedData<Data, Row> = Data & ([Row] extends [never] ? unknown : Iterable<NoInfer<Row>> | AsyncIterable<NoInfer<Row>>);
 
-// @public (undocumented)
+// @public
 export interface RenderingPolicy {
     background?: 'auto' | Background | undefined;
-    // (undocumented)
     color?: SwitchPolicy | undefined;
-    // (undocumented)
     hyperlinks?: SwitchPolicy | undefined;
-    // (undocumented)
     modifiers?: SwitchPolicy | undefined;
-    // (undocumented)
     terminalControls?: 'strip' | 'preserve' | undefined;
 }
 
-// @public @sealed (undocumented)
+// @public @sealed
 export class RepeatedOptionError extends UsageError {
     constructor(spelling: string);
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly spelling: string;
 }
 
@@ -1682,11 +1516,8 @@ export { Request_2 as Request }
 // @public @sealed
 export class ResultError extends InternalError {
     constructor(kind: ResultFault, path: readonly string[]);
-    // (undocumented)
     readonly cause: undefined;
-    // (undocumented)
     readonly kind: ResultFault;
-    // (undocumented)
     readonly path: readonly string[];
 }
 
@@ -1704,13 +1535,9 @@ export type ResultInput<Result> = Result extends {
 
 // @public @sealed
 export interface ResultNode {
-    // (undocumented)
     readonly default: string;
-    // (undocumented)
     readonly kind: 'value' | 'rows';
-    // (undocumented)
     readonly mediaTypes: Readonly<Record<string, string | null>>;
-    // (undocumented)
     readonly views: readonly string[];
 }
 
@@ -1722,13 +1549,10 @@ export type ResultViews<Value> = Readonly<Record<string, View<Value>>>;
 
 // @public
 export interface RowView<Row> {
-    // (undocumented)
     head?: (context: ViewContext) => string;
     mediaType?: string;
     render?: undefined;
-    // (undocumented)
     row: (row: Readonly<Row>, index: number, context: ViewContext) => string;
-    // (undocumented)
     tail?: (count: number, context: ViewContext) => string;
 }
 
@@ -1772,28 +1596,19 @@ export interface SignalSource {
 // @public
 export interface SourceAnswer {
     readonly directory?: string;
-    // (undocumented)
     readonly label: string;
-    // (undocumented)
     readonly value: string | boolean | number | readonly string[];
 }
 
 // @public @sealed
 export interface SourceContext<Options extends PluginOptions = PluginOptions> {
-    // (undocumented)
     readonly graph: CommandGraph;
-    // (undocumented)
     readonly host: Host;
-    // (undocumented)
     readonly invokedBy: 'argv' | 'name';
     readonly log: Log;
-    // (undocumented)
     readonly options: PluginOptionValues<Options>;
-    // (undocumented)
     readonly out: Out;
-    // (undocumented)
     readonly requests: readonly OptionNode[];
-    // (undocumented)
     readonly style: ContextualStyle;
 }
 
@@ -1847,7 +1662,7 @@ export type StringBinding = EnvBinding | {
 // @public
 export type StringOption = UnmarkedStringOption | BackgroundOption;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export type Style<Names extends string = CoreToken, Semantic extends boolean = false> = {
     (text: string): string;
     readonly [semanticStyle]: Semantic;
@@ -1873,18 +1688,18 @@ export interface SuppliedInputs {
     options: Readonly<Record<string, string | readonly string[] | boolean | number | undefined>>;
 }
 
-// @public (undocumented)
+// @public
 export type SwitchPolicy = 'auto' | 'always' | 'never';
 
 // @public
 export type Synchronous<Returned> = Returned extends PromiseLike<unknown> ? never : Returned;
 
-// @public (undocumented)
+// @public
 export type ThemeConstraint<Mapping> = {
     readonly [Key in keyof Mapping]: Key extends Exclude<keyof Style, CoreToken> | (typeof reservedCallableNames)[number] ? never : Mapping[Key];
 };
 
-// @public (undocumented)
+// @public
 export type ThemeMapping = Readonly<Record<string, ConcreteStyle | AdaptiveStyle | undefined>>;
 
 // @public
@@ -1896,56 +1711,42 @@ export type Translation = Pick<TranslationDeclaration, typeof translation>;
 // @public
 export type Translator<Thrown extends object> = (error: Thrown) => LoomError | undefined;
 
-// @public @sealed (undocumented)
+// @public @sealed
 export class UnexpectedArgumentError extends UsageError {
     constructor(command: readonly string[], accepted: number, extra: readonly string[]);
-    // (undocumented)
     readonly accepted: number;
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly command: readonly string[];
-    // (undocumented)
     readonly extra: readonly string[];
 }
 
 // @public @sealed
 export class UnexpectedValueError extends UsageError {
     constructor(spelling: string, value: string, kind?: 'boolean' | 'count');
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly spelling: string;
-    // (undocumented)
     readonly value: string;
 }
 
-// @public @sealed (undocumented)
+// @public @sealed
 export class UnknownCommandError extends UsageError {
     constructor(token: string, candidates: readonly string[]);
-    // (undocumented)
     readonly candidates: readonly string[];
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly token: string;
 }
 
-// @public @sealed (undocumented)
+// @public @sealed
 export class UnknownOptionError extends UsageError {
     constructor(spelling: string);
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     readonly spelling: string;
 }
 
 // @public
 export abstract class UsageError extends LoomError {
     constructor(message: string, options?: ErrorOptions);
-    // (undocumented)
     static readonly code: string;
-    // (undocumented)
     static readonly exitCode: FailureExitCode;
 }
 
@@ -2019,7 +1820,6 @@ export type VariadicArgument = (Presence | ConditionalPresence) & Described & Ar
 // @public
 export interface View<Data> {
     mediaType?: string;
-    // (undocumented)
     render: (data: Readonly<Data>, context: ViewContext) => string;
     row?: undefined;
 }
@@ -2027,7 +1827,7 @@ export interface View<Data> {
 // @public
 export function view<Data>(identity: string, definition: View<Data>): DeclaredView<Data>;
 
-// @public (undocumented)
+// @public
 export function view<Row>(identity: string, definition: RowView<Row>): DeclaredRowView<Row>;
 
 // @public @sealed
@@ -2036,9 +1836,7 @@ export interface ViewContext {
     readonly columns: number | undefined;
     readonly expandTabs: (text: string) => string;
     readonly plain: (text: string) => string;
-    // (undocumented)
     readonly style: ContextualStyle;
-    // (undocumented)
     readonly width: (text: string) => number;
     readonly wrap: (text: string, columns: number | undefined) => string;
 }
@@ -2086,7 +1884,6 @@ export type WordPosition = {
 // @public @sealed
 export class WorkingDirectoryError extends LoomError {
     constructor(options?: ErrorOptions);
-    // (undocumented)
     static readonly code: string;
 }
 

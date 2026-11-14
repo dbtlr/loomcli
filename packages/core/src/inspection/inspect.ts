@@ -40,19 +40,52 @@ type InputSchema = Readonly<Record<string, unknown>> | null;
  * @sealed
  */
 interface ArgumentNode {
+  /** `'content'` for a content argument, and absent for any other. */
   readonly type?: 'content';
+  /**
+   * Whether a content argument is the Command's stdin target. Only a content argument carries it.
+   */
   readonly stdin?: boolean;
+  /**
+   * The fewest sources a variadic content argument accepts, or `undefined` when it declares none.
+   * Only a content argument carries it.
+   */
   readonly min?: number | undefined;
+  /**
+   * The most sources a variadic content argument accepts, or `undefined` when it declares none.
+   * Only a content argument carries it.
+   */
   readonly max?: number | undefined;
+  /** The declared name. */
   readonly name: string;
+  /** The declared one-line description, or `undefined` when there is none. */
   readonly description: string | undefined;
+  /** Whether a value must be supplied. A content argument with a `min` above 0 is required. */
   readonly required: boolean;
+  /**
+   * `'non-interactive'` when the argument is declared required only in a non-interactive run, and
+   * `null` otherwise.
+   */
   readonly requiredWhen: 'non-interactive' | null;
+  /** Whether the argument takes every remaining positional value. */
   readonly variadic: boolean;
+  /** Whether the argument has a validator. A content argument counts as validated. */
   readonly validated: boolean;
+  /** Whether an omitted value is still sent to the validator. */
   readonly validateOmitted: boolean;
+  /**
+   * The input JSON Schema the argument's validator publishes, or `null` where it publishes none.
+   */
   readonly schema: InputSchema;
+  /**
+   * The declared default wrapped, so `default: undefined` reads apart from no default, or
+   * `undefined` when none is declared.
+   */
   readonly default: { readonly value: unknown } | undefined;
+  /**
+   * The extension outputs the argument carries, keyed by extension identity. `readExtension()`
+   * reads one.
+   */
   readonly extensions: Readonly<Record<string, unknown>>;
 }
 
@@ -80,33 +113,70 @@ interface ArgumentNode {
  * `aliases`; parsing and `locate` read the table, which holds every alias's spellings.
  */
 interface StringOptionNode {
+  /** Discriminates a string option from the other option kinds. */
   readonly type: 'string';
+  /** The declared name. */
   readonly name: string;
+  /** The declared one-line description, or `undefined` when there is none. */
   readonly description: string | undefined;
+  /** Whether a listing projection omits the option. */
   readonly hidden: boolean;
+  /** The declared migration message, or `undefined` when the option is not deprecated. */
   readonly deprecated: string | undefined;
+  /** Whether the option controls the invocation rather than feeding the Command's work. */
   readonly control: boolean;
+  /** The long spelling the declared name derives, or `null` where the option has none. */
   readonly long: string | null;
+  /** The short spelling the declaration gives, or `null` where the option has none. */
   readonly short: string | null;
+  /** The declared aliases as bare names, in declaration order. */
   readonly aliases: readonly string[];
+  /** Whether a value must be supplied. A content option with a `min` above 0 is required. */
   readonly required: boolean;
+  /**
+   * `'non-interactive'` when the option is declared required only in a non-interactive run, and
+   * `null` otherwise.
+   */
   readonly requiredWhen: 'non-interactive' | null;
+  /** Whether the option may be given more than once and collects its values. */
   readonly multiple: boolean;
+  /** Whether the option has a validator. A content option counts as validated. */
   readonly validated: boolean;
+  /** Whether an omitted value is still sent to the validator. */
   readonly validateOmitted: boolean;
+  /** The input JSON Schema the option's validator publishes, or `null` where it publishes none. */
   readonly schema: InputSchema;
+  /**
+   * The variables the option's environment binding names, in declaration order, and none when it
+   * binds none.
+   */
   readonly env: readonly string[];
   /** The delimiter a multiple option's binding declares, or `null` when it declares none. */
   readonly envDelimiter: string | null;
   /** Whether the binding lets a defined empty variable supply the option. */
   readonly envAllowEmpty: boolean;
+  /**
+   * The declared default wrapped, so `default: undefined` reads apart from no default, or
+   * `undefined` when none is declared.
+   */
   readonly default: { readonly value: unknown } | undefined;
+  /** The value a bare spelling supplies, or `null` when the option declares none. */
   readonly implied: string | null;
   /** Whether the option carries the background mark, whose value the run reads as its background choice. */
   readonly background: boolean;
+  /**
+   * The extension outputs the option carries, keyed by extension identity. `readExtension()` reads
+   * one.
+   */
   readonly extensions: Readonly<Record<string, unknown>>;
 }
-/** @public @sealed */
+/**
+ * One declared option, a string, content, Boolean, or counted option, told apart by its `type`.
+ * `StringOptionNode`'s description above states the facts every kind shares.
+ *
+ * @public
+ * @sealed
+ */
 type OptionNode =
   | StringOptionNode
   | (Omit<StringOptionNode, 'type' | 'background' | 'envAllowEmpty'> & {
@@ -161,19 +231,39 @@ type OptionNode =
  * @sealed
  */
 interface CommandNode {
+  /** The relationships declared over the local options, in declaration order. */
   readonly optionGroups: readonly OptionGroup[];
+  /** The Command's declared stdin, present only when the Command declares one. */
   readonly stdin?: Readonly<{ description: string | undefined; required: boolean }>;
+  /** The Command's own name, and `null` for the root. */
   readonly name: string | null;
+  /** The declared aliases, in declaration order. */
   readonly aliases: readonly string[];
+  /** The route from the root through canonical names, which is empty for the root. */
   readonly path: readonly string[];
+  /**
+   * The declared one-line description, or `undefined` when there is none. The root reports the
+   * Application's.
+   */
   readonly description: string | undefined;
+  /** Whether a listing projection omits the Command. */
   readonly hidden: boolean;
+  /** The declared migration message, or `undefined` when the Command is not deprecated. */
   readonly deprecated: string | undefined;
+  /** Whether the Command has an action registered. */
   readonly hasAction: boolean;
+  /** The result the Command declares, or `null` where it declares none. */
   readonly result: ResultNode | null;
+  /** The Command's arguments, in declaration order. */
   readonly arguments: readonly ArgumentNode[];
+  /** The Command's local options, in declaration order. The globals appear on the graph. */
   readonly options: readonly OptionNode[];
+  /** The child Commands, in authoring order. */
   readonly children: readonly CommandNode[];
+  /**
+   * The extension outputs the Command carries, keyed by extension identity. `readExtension()` reads
+   * one.
+   */
   readonly extensions: Readonly<Record<string, unknown>>;
 }
 
@@ -186,9 +276,13 @@ interface CommandNode {
  * @sealed
  */
 interface ResultNode {
+  /** Whether the action emits one value or rows. */
   readonly kind: 'value' | 'rows';
+  /** The names of the result's views, in record order. */
   readonly views: readonly string[];
+  /** The name of the view core renders when nothing selects another. */
   readonly default: string;
+  /** The media type each view declares, by view name, and `null` where a view declares none. */
   readonly mediaTypes: Readonly<Record<string, string | null>>;
 }
 
@@ -202,10 +296,18 @@ interface ResultNode {
  * @sealed
  */
 interface CommandGraph {
+  /** The Application's name. */
   readonly name: string;
+  /** The Application's declared version, or `0.0.0` when it declares none. */
   readonly version: string;
+  /** The Application's declared description, or `undefined` when it declares none. */
   readonly description: string | undefined;
+  /**
+   * Every global option, the Application's own and then each installed plugin's in installation
+   * order.
+   */
   readonly globals: readonly OptionNode[];
+  /** The root Command, whose `children` hold every other Command. */
   readonly root: CommandNode;
   /** The configuration source's published schema, or `null` when no plugin claims the slot. */
   readonly configuration: ConfigurationNode | null;
@@ -219,6 +321,10 @@ interface CommandGraph {
  * @sealed
  */
 interface ConfigurationNode {
+  /**
+   * The input-side JSON Schema of the configuration, or `null` when the source declares none or
+   * publishes none.
+   */
   readonly schema: InputSchema;
 }
 
@@ -227,6 +333,15 @@ interface ConfigurationNode {
  * its long form, a negative-only Boolean option's negative form, and otherwise its short form. A
  * plugin that reports a problem for an option, such as an input source, names it this way too.
  *
+ * @example
+ * ```ts
+ * import { Application, reportedSpelling } from '@loomcli/core';
+ *
+ * const graph = new Application('jsonkit').inspect();
+ * const spellings = graph.globals.map((option) => reportedSpelling(option));
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/graph-inspection.md
  * @public
  */
 export function reportedSpelling(option: OptionNode): string {

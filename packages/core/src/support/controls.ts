@@ -21,6 +21,14 @@ const escaped = /[\p{Cc}\p{Zl}\p{Zp}\u{202a}-\u{202e}\u{2066}-\u{2069}\u{200e}\u
  * diagnostic quotes, such as a file path, a typed token, or a reason a plugin threw, is escaped
  * with this before it is written.
  *
+ * @example
+ * ```ts
+ * import { escapeControlCharacters } from '@loomcli/core';
+ *
+ * const line = escapeControlCharacters('first\nsecond');
+ * // 'first\\u000asecond', one line with no control character in it
+ * ```
+ *
  * @public
  */
 export function escapeControlCharacters(text: string): string {

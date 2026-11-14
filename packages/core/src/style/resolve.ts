@@ -67,6 +67,14 @@ function markedWidth(text: string, palette: Palette, caps: Capabilities): number
  * marked-string frame read: every terminal control sequence is skipped and none is emulated, so a
  * cursor movement or a carriage return moves nothing back.
  *
+ * @example
+ * ```ts
+ * import { width } from '@loomcli/core';
+ *
+ * const columns = width('status');
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
  * @public
  */
 function width(text: string): number {

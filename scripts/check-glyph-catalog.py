@@ -13,6 +13,23 @@ SOURCE = f"https://raw.githubusercontent.com/SBoudrias/Inquirer.js/{REVISION}/pa
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "docs" / "maintaining" / "glyphs.md"
 GENERATED = ROOT / "packages" / "core" / "src" / "style" / "glyphs.generated.ts"
+
+# The doc comment the generated `glyph` export carries.
+GLYPH_COMMENT = """/**
+ * Every glyph in the catalog as an unstyled marked string, resolved to its main or its
+ * compatibility form for the destination. A glyph carries no theme token or color of its own.
+ *
+ * @example
+ * ```ts
+ * import { glyph, style } from '@loomcli/core';
+ *
+ * const line = `${style.green(glyph.tick)} Built`;
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
+"""
 LICENSES = ROOT / "packages" / "core" / "licenses"
 SOCKET_TIMEOUT_SECONDS = 30
 
@@ -102,7 +119,7 @@ def main():
     generated += "import { frame } from './style.js';\n\nexport const glyphForms = {\n"
     for name, value in main_forms.items():
         generated += f"  {name}: [{json.dumps(value, ensure_ascii=False)}, {json.dumps(compatibility[name], ensure_ascii=False)}],\n"
-    generated += "} as const;\n\nexport const glyph = Object.freeze({\n"
+    generated += "} as const;\n\n" + GLYPH_COMMENT + "export const glyph = Object.freeze({\n"
     for name in main_forms:
         generated += f"  {name}: frame(['glyph', '{name}'], ''),\n"
     generated += "});\n"

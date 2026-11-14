@@ -78,6 +78,14 @@ function lastLineHasText(parsed: ReturnType<typeof parseText>): boolean {
  * leaks from one onto another. A trailing line break ends the last line and adds no empty one, as
  * `pad` adds no padded line after it, and text without a break comes back as one line.
  *
+ * @example
+ * ```ts
+ * import { splitLines, style } from '@loomcli/core';
+ *
+ * const lines = splitLines(style.red('first\nsecond'));
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
  * @public
  */
 function splitLines(text: string): string[] {

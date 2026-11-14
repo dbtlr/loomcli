@@ -26,6 +26,16 @@ const ruleGrammar = new RegExp(`^${packageName}(?:${kebabSegment})+$`, 'u');
 /**
  * Whether a value is a diagnostic rule identity: an identity and a kebab-case rule name.
  *
+ * @example
+ * ```ts
+ * import { isRuleIdentity } from '@loomcli/core';
+ *
+ * isRuleIdentity('@acme/retry/retry-limit'); // true
+ * isRuleIdentity('@acme/retry'); // false, because no rule name follows the package
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/declaration-faults.md
+ *
  * @public
  */
 function isRuleIdentity(value: unknown): value is string {
@@ -44,6 +54,16 @@ const failureCodeGrammar = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 /**
  * Whether a value is a failure code: a string in the grammar, such as `path-not-found`.
+ *
+ * @example
+ * ```ts
+ * import { isFailureCode } from '@loomcli/core';
+ *
+ * isFailureCode('path-not-found'); // true
+ * isFailureCode('Path_Not_Found'); // false
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md#failure-codes
  *
  * @public
  */

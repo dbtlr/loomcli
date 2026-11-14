@@ -22,14 +22,29 @@ const colors = {
   yellow: 3,
 };
 
-/** @public */
+/**
+ * The name of one of the sixteen terminal palette colors, such as `red` or `brightBlue`.
+ *
+ * @public
+ */
 type Ansi16Color = keyof typeof colors;
-/** @public */
+/**
+ * The colors a custom color falls back to at a lower color depth.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
 interface ColorFallbacks {
+  /** The 256-color palette index used where the terminal lacks truecolor. */
   readonly ansi256?: number | undefined;
+  /** The palette color used where the terminal has sixteen colors. */
   readonly ansi16?: Ansi16Color | undefined;
 }
-/** @public */
+/**
+ * The fallbacks an `ansi256` color takes: its sixteen-color form alone.
+ *
+ * @public
+ */
 type Ansi256Fallbacks = Pick<ColorFallbacks, 'ansi16'>;
 type RgbArguments = [
   red: number,
@@ -51,10 +66,21 @@ const modifiers = [
   'strikethrough',
   'overline',
 ] as const;
-/** @public @sealed */
+/**
+ * The name of a text modifier a style chain applies, such as `bold` or `underline`.
+ *
+ * @public
+ * @sealed
+ */
 type Modifier = (typeof modifiers)[number];
 const tokens = ['dim', 'primary', 'highlight', 'success', 'warning', 'error', 'info'] as const;
-/** @public @sealed */
+/**
+ * The name of a semantic token core always declares: `dim`, `primary`, `highlight`, `success`,
+ * `warning`, `error`, or `info`. A theme plugin gives each one its look.
+ *
+ * @public
+ * @sealed
+ */
 type CoreToken = (typeof tokens)[number];
 type Reset = 'reset' | 'resetForeground' | 'resetBackground';
 type Operation =
@@ -64,7 +90,14 @@ type Operation =
   | readonly ['token', string];
 
 declare const semanticStyle: unique symbol;
-/** @public @sealed */
+/**
+ * A style chain: call it with text to get marked text, or read a color, modifier, reset, or
+ * semantic token from it to extend the chain. A chain never changes; each read returns a new one.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ * @sealed
+ */
 type Style<Names extends string = CoreToken, Semantic extends boolean = false> = {
   (text: string): string;
   readonly [semanticStyle]: Semantic;
@@ -87,9 +120,20 @@ type ThemeNames<Contributor> = Contributor extends Plugin
   : never;
 type EnvironmentStyle<Environment extends ApplicationEnvironment<unknown, readonly Plugin[]>> =
   Style<CoreToken | ThemeNames<Environment['plugins'][number]>>;
-/** @public @sealed */
+/**
+ * The style chain a view context carries: core's tokens plus those of the theme the registered
+ * Application installs.
+ *
+ * @public
+ * @sealed
+ */
 type ContextualStyle = EnvironmentStyle<RegisteredEnvironment>;
-/** @public @sealed */
+/**
+ * A style chain that carries only core's tokens, the kind a theme mapping holds unapplied.
+ *
+ * @public
+ * @sealed
+ */
 type ConcreteStyle = Style;
 
 /** The brand an adaptive style carries, which no export names, so only `style.adaptive` makes one. */
@@ -104,12 +148,15 @@ const adaptiveStyle: unique symbol = Symbol('adaptiveStyle');
  * @sealed
  */
 interface AdaptiveStyle {
+  /** The brand only `style.adaptive` applies; no value is stored under it. */
   readonly [adaptiveStyle]: true;
 }
 
 /** The two sides `style.adaptive` takes: an unapplied concrete chain for each background. */
 interface AdaptiveSides {
+  /** The chain used on a dark background. */
   readonly dark: ConcreteStyle;
+  /** The chain used on a light background. */
   readonly light: ConcreteStyle;
 }
 
@@ -118,9 +165,21 @@ type RootStyle = Style & {
   readonly adaptive: (sides: AdaptiveSides) => AdaptiveStyle;
 };
 
-/** @public */
+/**
+ * What a theme plugin maps its token names to: an unapplied concrete style chain, an adaptive
+ * style, or `undefined` for a token left unstyled.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
 type ThemeMapping = Readonly<Record<string, ConcreteStyle | AdaptiveStyle | undefined>>;
-/** @public */
+/**
+ * Constrains a theme mapping so a key that would shadow a style member or a reserved name has the
+ * type `never`.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
 type ThemeConstraint<Mapping> = {
   readonly [Key in keyof Mapping]: Key extends
     | Exclude<keyof Style, CoreToken>
@@ -363,7 +422,21 @@ function isColorName(value: unknown): value is Ansi16Color {
   return typeof value === 'string' && Object.hasOwn(colors, value);
 }
 
-/** @public */
+/**
+ * Pads text with spaces to a minimum display width, measured in terminal cells. The default
+ * alignment is `'left'`, which puts the padding after the text. It throws a `RangeError` for a
+ * width that is not a nonnegative safe integer and a `TypeError` for an unknown alignment.
+ *
+ * @example
+ * ```ts
+ * import { pad } from '@loomcli/core';
+ *
+ * const cell = pad('status', 24, { align: 'right' });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
 function pad(text: string, minimumWidth: number, options?: { align?: Alignment }): string {
   textOnly(text);
   if (!Number.isSafeInteger(minimumWidth) || minimumWidth < 0) {
@@ -380,6 +453,14 @@ function pad(text: string, minimumWidth: number, options?: { align?: Alignment }
  * Text that line breaking keeps whole, such as a path that holds spaces. The frame resolves to its
  * body exactly and measures as its body; only the view context's `wrap` and `splitLines` read it.
  *
+ * @example
+ * ```ts
+ * import { nowrap } from '@loomcli/core';
+ *
+ * const line = `Saved to ${nowrap('/home/ada/My Notes/draft.txt')}`;
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
  * @public
  */
 function nowrap(text: string): string {
@@ -389,6 +470,14 @@ function nowrap(text: string): string {
 /**
  * The exported style, whose root alone carries `adaptive`, so a theme may name a token `adaptive`.
  *
+ * @example
+ * ```ts
+ * import { style } from '@loomcli/core';
+ *
+ * const message = `${style.bold.green('Done')} in ${style.dim('1.2s')}`;
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
  * @public
  */
 const style: RootStyle = styleRoot(new Set(tokens), { adaptive });

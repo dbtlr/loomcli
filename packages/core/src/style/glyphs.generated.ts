@@ -269,7 +269,20 @@ export const glyphForms = {
   error: ["✘", "×"],
 } as const;
 
-/** @public */
+/**
+ * Every glyph in the catalog as an unstyled marked string, resolved to its main or its
+ * compatibility form for the destination. A glyph carries no theme token or color of its own.
+ *
+ * @example
+ * ```ts
+ * import { glyph, style } from '@loomcli/core';
+ *
+ * const line = `${style.green(glyph.tick)} Built`;
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/styles.md
+ * @public
+ */
 export const glyph = Object.freeze({
   circleQuestionMark: frame(['glyph', 'circleQuestionMark'], ''),
   questionMarkPrefix: frame(['glyph', 'questionMarkPrefix'], ''),

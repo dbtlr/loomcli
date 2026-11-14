@@ -15,9 +15,13 @@ import type { FailureExitCode } from './exit-codes.js';
  * @sealed
  */
 interface FailureForm {
+  /** The failure code of the failure's class, or `internal` for a defect or a declaration fault. */
   readonly code: string;
+  /** The exit code the failure's class declares, which the code a run resolves can differ from. */
   readonly exitCode: FailureExitCode;
+  /** The failure's sentence as plain text, without the application-name prefix. */
   readonly message: string;
+  /** The `onFailure` hints as plain text, in the order the failure view receives them. */
   readonly hints: readonly string[];
 }
 

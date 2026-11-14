@@ -287,8 +287,11 @@ function defectEvidence(cause: unknown, access: SourceAccess): string[] {
  * @sealed
  */
 interface LogDefect {
+  /** The name of the caught error, or `InternalError` for a thrown value that is not an Error. */
   readonly name: string;
+  /** The caught error's reason, or the thrown value rendered as a Developer Diagnostic renders it. */
   readonly message: string;
+  /** The stack as the runtime formats it. It is absent for a thrown value that is not an Error. */
   readonly stack?: string;
 }
 

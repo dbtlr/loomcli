@@ -9,9 +9,13 @@ import { isPlainObject } from '../support/plain.js';
  * @public
  */
 interface DiagnosticRule {
+  /** The rule's identity: a package name, optional subpath segments, and a kebab-case rule name. */
   readonly identity: string;
+  /** The short noun phrase the diagnostic's banner prints. */
   readonly headline: string;
+  /** The prose that says why the rule exists. */
   readonly explanation: string;
+  /** The documentation link the author gave, or `undefined` when none was given. */
   readonly docs: string | undefined;
 }
 
@@ -23,10 +27,15 @@ interface DiagnosticRule {
  * @public
  */
 interface Finding {
+  /** The path from the root of the Command the declaration sits on, where an empty path is the root. */
   readonly path?: readonly string[];
+  /** The authoring call, such as `option` or a plugin factory's name. */
   readonly call: string;
+  /** The arguments that call received, as core holds them. */
   readonly arguments: readonly unknown[];
+  /** A dotted path into `arguments` that the diagnostic underlines, such as `1.multiple`. */
   readonly mark?: string;
+  /** One line printed beside the marks. */
   readonly note?: string;
 }
 
@@ -36,8 +45,11 @@ interface Finding {
  * @public
  */
 interface DiagnosticParts {
+  /** The sentence that states this site's fault. */
   readonly sentence: string;
+  /** The declarations the diagnostic points at. */
   readonly findings?: readonly Finding[];
+  /** The correction the diagnostic prints, as one sentence or a list of them. */
   readonly correction?: string | readonly string[];
 }
 

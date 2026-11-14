@@ -79,6 +79,16 @@ function lane(name: Lane, render: (message: string, context: ViewContext) => str
  * function of any of them through `views`, and the replacement owns the gutter the default
  * supplies. A trace line nests one step under a debug line and fades past it, `faint` over `dim`.
  *
+ * @example
+ * ```ts
+ * import { Application, lanes, override } from '@loomcli/core';
+ *
+ * const app = new Application('quiet', {
+ *   views: [override(lanes.warn, { render: (message, { style }) => style.dim(message) })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/views.md
  * @public
  */
 const lanes: Readonly<Record<Lane, DeclaredView<string>>> = {
@@ -102,8 +112,11 @@ const lanes: Readonly<Record<Lane, DeclaredView<string>>> = {
  * @sealed
  */
 interface IncompleteResult {
+  /** The canonical names of the Command whose sequence stopped. */
   path: readonly string[];
+  /** How many rows the sequence's source produced before it stopped. */
   yielded: number;
+  /** How many rows core wrote before the sequence stopped. */
   written: number;
 }
 
@@ -111,6 +124,16 @@ interface IncompleteResult {
  * The line a sequence writes on stderr when it stopped before its end, so an empty result and a
  * truncated one never read alike. An override that returns the empty string silences it.
  *
+ * @example
+ * ```ts
+ * import { Application, incompleteResult, override } from '@loomcli/core';
+ *
+ * const app = new Application('quiet', {
+ *   views: [override(incompleteResult, { render: () => '' })],
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/results.md
  * @public
  */
 const incompleteResult: DeclaredView<IncompleteResult> = view<IncompleteResult>(
