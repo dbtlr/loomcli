@@ -193,12 +193,12 @@ export const get = new Command('get')
   });
 ```
 
-`getValue` is the extracted handler shown above, unchanged. It type-imports its declaration, and a type import is erased, so the declaration's module never loads the handler's module at launch.
+`getValue` is the extracted handler shown above, unchanged. It type-imports its declaration, and a type import is erased, so the two modules share no runtime import. The declaration reaches the handler only through `import()`, so the declaration's module never loads the handler's module at launch.
 
 - **What stays eager.** The declaration's module loads with the Application, with everything it imports statically: the Command's arguments and options, their validators and defaults, its description, and its extension values. Routing, `--help`, completion, and projections read them without running the action.
 - **What moves.** The handler's module, and every module that only it imports, loads the first time its Command runs. A module that a declaration or another eager module also imports statically stays eager.
-- **The bundle.** A `node` or `bun` bundle from [`loom build`](../toolchain/build.md#loom-build) splits, so the loaded module and the modules only it imports go into a chunk of their own, which the runtime reads only when the action imports it. A compile target builds without splitting, and Bun places the module in the one program it compiles, so a compiled binary loads it at launch either way.
-- **When it pays.** The saving is the size of the work the action loads. It matters when a Command's work, or a dependency only that Command uses, is large next to the rest of the application. A small application whose launch is mostly core gains little.
+- **The bundle.** A `node` or `bun` bundle from [`loom build`](../toolchain/build.md#loom-build) splits, so the loaded module and the modules only it imports go into a chunk of their own, which the runtime reads only when the action imports it. A compile target builds without splitting, so the module's code is part of the one program Bun compiles and is read at launch, but Bun defers evaluating it, and the modules only it imports, until the action imports it.
+- **When it pays.** A bundle saves reading and evaluating the work the action loads, and a compiled binary saves evaluating it. It matters when a Command's work, or a dependency only that Command uses, is large next to the rest of the application. A small application whose launch is mostly core gains little.
 
 ## Global consumption and routing
 
