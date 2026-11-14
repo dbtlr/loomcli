@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0154 - The configuration plugin names at -v each key the published JSON Schema does not describe
-description: Where the configuration schema publishes a JSON Schema, the configuration plugin walks the file it read against the graph's configuration.schema and writes one out.debug line for each key a closed object does not list, judged by the link check's rule, after the dropped-value lines and in the dropped-value line's form. Nothing at or below a dropped value, in an open object, or in a file whose schema publishes no JSON Schema prints a line. It supersedes ADR-0118's sentence that such a key is never reported at any verbosity.
+description: Where the configuration schema publishes a JSON Schema, the configuration plugin walks the file it read against the graph's configuration.schema and writes one out.debug line for each key a closed object does not list, judged by the link check's rule, after the lines for removed values and in the dropped-value line's form. Nothing at or below a dropped value, in an open object, or in a file whose schema publishes no JSON Schema prints a line. It supersedes ADR-0118's sentence that such a key is never reported at any verbosity.
 status: proposed
 created: 2026-11-14
 modified: 2026-11-14
@@ -27,7 +27,7 @@ Whether an unknown key ever fails a run, in a strict mode, is LM-509's question.
 - **Array items are entered.** A link path holds no array index, so the link check never enters an array. The walk does: each item is judged against the `prefixItems` entry at its index, or else the `items`, of each shape that describes the array, so a misspelled key in a `[[sessions.sources]]` table prints. A shape that names neither takes any item.
 - **The file as read, without its dropped values.** The plugin walks the file it read, less its top-level `$schema` key, and enters no value the drop rule removed, so a key at or below a dropped value prints no line of its own: the dropped-value line already names the value that holds it. An array item's index in the line is its position in the file as read.
 - **The line.** `Ignored <path> in <file>: Unknown key. Check its spelling, or remove it.`, built as a dropped-value line is: the path's keys joined by dots, an array item as its index in brackets, the file as its labels show it, and each control character escaped. The sentence after the colon is fixed, because Loom writes it.
-- **The order.** The lines follow every dropped-value line of the run, in the order the parsed file lists its keys, depth first.
+- **The order.** The lines follow every line the drop rule writes for a value the schema removed, in the order the parsed file lists its keys, depth first. The lines the source writes for a value a linked option cannot take, and the line core writes for a value a validator rejects, come after the plugin's `load` returns, so they follow these lines.
 - **Nothing else changes.** An unknown key is no dropped value. The walk removes nothing from the file, so whether `provided.config` holds it stays the schema library's choice, it answers no link, and no exit code, warning, log event, or manifest field changes. The line is stderr text for the operator.
 
 [Configuration plugin](../plugins/config.md#naming-unknown-keys) carries the contract.
