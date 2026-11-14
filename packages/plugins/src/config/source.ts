@@ -19,6 +19,8 @@ import type { UsableFile } from './lookup.js';
 import type { ConfigOptions } from './plugin.js';
 import { loadOnce } from './shared.js';
 import type { Shared } from './shared.js';
+import { coversLink, strictFailure } from './strict.js';
+import type { LinkedProblem, Strictness } from './strict.js';
 
 /**
  * The configuration plugin's resolver. Its rules are the plugin contract: answer every request from
@@ -35,11 +37,24 @@ type Shaped =
   | { kind: 'value'; value: string | boolean | number | readonly string[] }
   | { kind: 'wrong'; issues: readonly Issue[] };
 
-/** What one request came to: an answer, a value the option cannot take with its `-v` lines, or nothing. */
+/**
+ * What one request came to: an answer, a value the option cannot take with its `-v` lines, the
+ * issues, and whether `strict` covers the option, or nothing.
+ */
 type Answered =
   | { kind: 'answer'; answer: SourceAnswer }
-  | { kind: 'ignored'; lines: readonly string[] }
+  | {
+      kind: 'ignored';
+      covered: boolean;
+      issues: readonly Issue[];
+      label: string;
+      lines: readonly string[];
+      spelling: string;
+    }
   | undefined;
+
+/** No entry: the length of an empty list. */
+const none = 0;
 
 /** Marks where a path stops leading to a value, distinct from every value a file holds. */
 const missing = Symbol('missing');
@@ -154,35 +169,57 @@ function ignoredLines(
 }
 
 /**
+ * The lines a covered value the option cannot take adds to the failure, one per issue, in core's
+ * form for a filled value: the option by its spelling, the label in parentheses, any position
+ * after it, and the message.
+ */
+function strictLines(
+  subject: { label: string; spelling: string },
+  issues: readonly Issue[],
+): string[] {
+  return issues.map((issue) => {
+    const path = issuePath(issue);
+    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
+    return `Option "${subject.spelling}" (from ${subject.label})${position}: ${issue.message}`;
+  });
+}
+
+/**
  * One request answered from the file when its path leads to a value. A request the file does not
  * answer comes to nothing, and a value the option cannot take comes to its `-v` lines and no answer,
  * which names the option as core does: by its reported spelling, or, in an invocation by name, by
- * its declared name.
+ * its declared name. An answer for an option that `strict` covers is marked strict.
  */
 function answer(
   request: OptionNode,
   usable: UsableFile,
-  scene: { invokedBy: InvokedBy; style: ContextualStyle },
+  scene: { invokedBy: InvokedBy; strict: Strictness; style: ContextualStyle },
 ): Answered {
   const located = locate(request, usable);
   if (located === undefined) {
     return undefined;
   }
   const shaped = shape(request, located.value);
+  const covered = coversLink(scene.strict, located.path);
   if (shaped.kind === 'value') {
     return {
       answer: {
         directory: dirname(usable.file.path),
         label: located.label,
         value: shaped.value,
+        ...(covered ? { strict: true } : {}),
       },
       kind: 'answer',
     };
   }
   const spelling = scene.invokedBy === 'name' ? request.name : reportedSpelling(request);
   return {
+    covered,
+    issues: shaped.issues,
     kind: 'ignored',
+    label: located.label,
     lines: ignoredLines({ label: located.label, spelling }, shaped.issues, scene.style),
+    spelling,
   };
 }
 
@@ -194,7 +231,7 @@ function answer(
 function locate(
   request: OptionNode,
   { file, object }: UsableFile,
-): { label: string; value: unknown } | undefined {
+): { label: string; path: string; value: unknown } | undefined {
   const binding = readExtension(request, configInput);
   if (binding === undefined) {
     return undefined;
@@ -202,41 +239,93 @@ function locate(
   const value = valueAt(object, binding.path.split('.'));
   return value === missing
     ? undefined
-    : { label: `${escapeControlCharacters(binding.path)} in ${file.shown}`, value };
+    : {
+        label: `${escapeControlCharacters(binding.path)} in ${file.shown}`,
+        path: binding.path,
+        value,
+      };
+}
+
+/** What every request came to: the answers by option name, and each covered value the option cannot take. */
+interface Answers {
+  readonly answers: Record<string, SourceAnswer>;
+  readonly linked: LinkedProblem[];
+}
+
+/** The problem a covered value the option cannot take adds to the failure. */
+function linkedProblem(
+  request: OptionNode,
+  outcome: Extract<Answered, { kind: 'ignored' }>,
+  isGlobal: boolean,
+): LinkedProblem {
+  return {
+    lines: strictLines(outcome, outcome.issues),
+    problem: {
+      input: { global: isGlobal, kind: 'option', name: request.name },
+      issues: outcome.issues,
+      reason: 'invalid',
+      spelling: outcome.spelling,
+    },
+  };
 }
 
 /**
- * Every request answered from the file, by option name. A value an option cannot take writes its
- * lines at `-v` and answers nothing.
+ * Every request answered from the file, by option name. A value an option cannot take answers
+ * nothing: it writes its lines at `-v`, or, for an option that `strict` covers, joins the failure.
  */
 async function answerAll(
   requests: readonly OptionNode[],
   usable: UsableFile,
-  scene: { invokedBy: InvokedBy; out: Out; style: ContextualStyle },
-): Promise<Record<string, SourceAnswer>> {
+  scene: {
+    globals: readonly OptionNode[];
+    invokedBy: InvokedBy;
+    out: Out;
+    strict: Strictness;
+    style: ContextualStyle;
+  },
+): Promise<Answers> {
   const answers: Record<string, SourceAnswer> = {};
+  const linked: LinkedProblem[] = [];
   for (const request of requests) {
     const outcome = answer(request, usable, scene);
     if (outcome?.kind === 'answer') {
       answers[request.name] = outcome.answer;
-    }
-    for (const line of outcome?.kind === 'ignored' ? outcome.lines : []) {
-      await scene.out.debug(line);
+    } else if (outcome?.covered === true) {
+      linked.push(linkedProblem(request, outcome, scene.globals.includes(request)));
+    } else {
+      for (const line of outcome?.lines ?? []) {
+        await scene.out.debug(line);
+      }
     }
   }
-  return answers;
+  return { answers, linked };
 }
 
 /**
  * The resolver for the call's settings and schema. It answers each request whose path leads to a
  * value in the file the run read, once the file passed the schema, so a value the schema removed
- * fills nothing. A value the option cannot take writes its lines at `-v` and answers nothing.
+ * fills nothing. A value the option cannot take writes its lines at `-v` and answers nothing. A
+ * read that held a value or key `strict` covers, or a covered option's value it cannot take, fails
+ * the run.
  */
 export function configSource<Schema extends StandardSchemaV1, Directory extends string>(
   shared: Shared<Schema>,
 ): SourceResolver<Plugin<ConfigOptions<Directory>>> {
   return async ({ graph, host, invokedBy, options, out, requests, style }) => {
-    const { usable } = await loadOnce(shared, { graph, host, invokedBy, options, out, style });
-    return usable === undefined ? {} : answerAll(requests, usable, { invokedBy, out, style });
+    const { held, usable } = await loadOnce(shared, {
+      graph,
+      host,
+      invokedBy,
+      options,
+      out,
+      style,
+    });
+    const scene = { globals: graph.globals, invokedBy, out, strict: shared.strict, style };
+    const { answers, linked } =
+      usable === undefined ? { answers: {}, linked: [] } : await answerAll(requests, usable, scene);
+    if (held.length > none || linked.length > none) {
+      throw strictFailure(held, linked, invokedBy);
+    }
+    return answers;
   };
 }

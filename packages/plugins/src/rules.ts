@@ -57,6 +57,24 @@ const configLinkPath = diagnosticRule(`${packageName}/config/link-path`, {
   headline: 'Option linked to a path the configuration schema does not hold',
 });
 
+/** A configuration plugin `strict` setting that lists a path that is not a dotted path of keys. */
+const configStrictPath = diagnosticRule(`${packageName}/config/strict-path`, {
+  explanation:
+    'The configuration plugin judges each path that strict lists as it judges the path of a linked option: it splits on dots, and each segment is one nonempty object key, with no escaping and no array indexing. A path of another form can never be at or under a key of the file, so the setting would cover nothing.',
+  headline: 'Invalid strict configuration path',
+});
+
+/**
+ * A configuration plugin `strict` setting that lists a path whose keys the schema does not hold, or
+ * one that passes through an array where no member of the shape that is not an array holds the next
+ * key or leaves it unchecked.
+ */
+const configStrictSchemaPath = diagnosticRule(`${packageName}/config/strict-schema-path`, {
+  explanation:
+    'A path that strict lists covers the values of the configuration file at or under it, and the configuration schema describes the whole file. A path whose keys the schema does not describe means the setting and the shape of the file disagree, and the check catches a typo, which would otherwise make the setting cover nothing, at build time. A listed path that passes through an array is a declaration fault, unless a member of the same shape that is not an array holds the next key or leaves it unchecked. Such a path would cover nothing too, because the index of an array item equals no key, and listing the path of the array itself covers every item.',
+  headline: 'Strict path the configuration schema does not hold',
+});
+
 /** An option linked to a configuration path that holds a value the option cannot take. */
 const configLinkType = diagnosticRule(`${packageName}/config/link-type`, {
   explanation:
@@ -174,6 +192,8 @@ export {
   configLinkType,
   configRootName,
   configRootWithoutProject,
+  configStrictPath,
+  configStrictSchemaPath,
   configVariableName,
   failureCodeConflict,
   manpagePageNameTaken,

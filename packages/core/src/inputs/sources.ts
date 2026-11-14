@@ -249,7 +249,7 @@ function readAnswer(
   sentence: string,
   input: OptionInput,
   answer: unknown,
-): { directory: string | undefined; label: string; value: RawFill } {
+): { directory: string | undefined; label: string; strict: boolean; value: RawFill } {
   const shape = isPlainObject(answer) ? answer : undefined;
   const label = shape?.label;
   if (!shape || !isProseLine(label)) {
@@ -270,13 +270,21 @@ function readAnswer(
       `${sentence} answered option ${quoted(input.name)} with a directory that is not an absolute path.`,
     );
   }
-  return { directory, label, value };
+  const { strict = false } = shape;
+  if (typeof strict !== 'boolean') {
+    throw ruleFault(
+      `${sentence} answered option ${quoted(input.name)} with a strict flag that is not true or false.`,
+    );
+  }
+  return { directory, label, strict, value };
 }
 
 /** One answer read under the answers rule, with the requested option it fills. */
 interface Answer {
   directory: string | undefined;
   label: string;
+  /** Whether a value the option's validator rejects fails the run instead of falling back. */
+  strict: boolean;
   target: Requested;
   value: RawFill;
 }
@@ -299,8 +307,8 @@ function readAnswers(
     if (!target) {
       throw ruleFault(`${sentence} answered option ${quoted(name)}, which core did not request.`);
     }
-    const { directory, label, value } = readAnswer(sentence, target.input, answer);
-    return { directory, label, target, value };
+    const { directory, label, strict, value } = readAnswer(sentence, target.input, answer);
+    return { directory, label, strict, target, value };
   });
 }
 
@@ -520,15 +528,15 @@ async function fillTiers(stage: SourceStage): Promise<SourceOutcome> {
       return { fault: undefined, labels, rejected };
     }
     const options = frozenValues(owner.inputs, validated.values);
-    const fills = new Map<string, { directory: string | undefined }>();
-    for (const { directory, label, target, value } of await askSource(stage, {
+    const fills = new Map<string, { directory: string | undefined; strict: boolean }>();
+    for (const { directory, label, strict, target, value } of await askSource(stage, {
       options,
       owner,
       requested,
     })) {
       fill(target.scope.values, target.input.name, value);
       labels.set(target.input.name, label);
-      fills.set(target.input.name, { directory });
+      fills.set(target.input.name, { directory, strict });
     }
     return { fault: undefined, fills, labels, rejected };
   } catch (error) {

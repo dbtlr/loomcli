@@ -94,6 +94,12 @@ const settingsCases: Record<string, Expected> = {
     rule: 'config/root-without-project',
     sentence: 'Plugin "@loomcli/plugins/config" root bounds a project walk the lookup never takes.',
   },
+  'config-strict': {
+    correction: 'List dotted paths of nonempty keys, such as delivery or delivery.webhook.',
+    rule: 'config/strict-path',
+    sentence:
+      'Plugin "@loomcli/plugins/config" strict lists a path that is not a dotted path of nonempty keys.',
+  },
   'config-variable': {
     correction:
       'Name a variable such as COLLECTOR_CONFIG: a letter or an underscore, then letters, digits, or underscores.',
@@ -155,6 +161,7 @@ const pinnedElsewhere = [
   'config/empty-file',
   'config/link-path',
   'config/link-type',
+  'config/strict-schema-path',
   'manifest/failure-code-conflict',
   'manpage/page-name-taken',
   'mcp/property-name-taken',

@@ -21,6 +21,7 @@ const scenarios = {
   'config-path': () => configuration({ file: '/etc/textstat.json', schema }),
   'config-root': () => configuration({ root: 'packages/cli', schema }),
   'config-root-scope': () => configuration({ root: '.git', schema, scopes: ['user'] }),
+  'config-strict': () => configuration({ schema, strict: ['delivery..webhook'] }),
   'config-variable': () => configuration({ env: 'TEXTSTAT-CONFIG', schema }),
   'dotenv-except': () => dotenv({ except: ['1X'] }),
   'dotenv-only': () => dotenv({ only: ['API_TOKEN', 'API-TOKEN'] }),

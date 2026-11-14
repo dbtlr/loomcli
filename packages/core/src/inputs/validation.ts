@@ -85,10 +85,10 @@ interface ScopedInput {
 export interface Provenance {
   /**
    * The options the configuration source filled, by option name, with the directory of the file
-   * each answer came from. A rejected one is dropped, and its validator reads that directory as
-   * `host.cwd`.
+   * each answer came from, and whether the answer is strict. A rejected one is dropped unless it is
+   * strict, and its validator reads that directory as `host.cwd`.
    */
-  fills?: ReadonlyMap<string, { directory: string | undefined }>;
+  fills?: ReadonlyMap<string, { directory: string | undefined; strict: boolean }>;
   labels: ReadonlyMap<string, string>;
   rejected: ReadonlyMap<string, string>;
   unanswered?: ReadonlySet<InputDeclaration>;
@@ -915,7 +915,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
   };
   /**
    * Drops a value the configuration source filled, recording the `out.debug` line that names its
-   * first issue, and says whether it did. A value from any other tier is never dropped.
+   * first issue, and says whether it did. A value from any other tier, and a strict fill, is never dropped.
    */
   const dropsFill = (
     entry: ScopedInput,
@@ -926,7 +926,8 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     if (
       named.origin === undefined ||
       input.kind !== 'option' ||
-      sources.fills?.has(input.name) !== true
+      sources.fills?.has(input.name) !== true ||
+      sources.fills.get(input.name)?.strict === true
     ) {
       return false;
     }

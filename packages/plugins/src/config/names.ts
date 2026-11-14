@@ -18,4 +18,10 @@ function splitExtension(path: string): { stem: string; extension: string } | und
   return stem === undefined || extension === undefined ? undefined : { extension, stem };
 }
 
-export { configIdentity, splitExtension };
+/**
+ * A dotted path of object keys, each segment nonempty. There is no escaping and no array indexing,
+ * so a key that holds a dot is not reachable. A linked option's path and a strict path follow it.
+ */
+const dottedPath = /^[^.]+(?:\.[^.]+)*$/u;
+
+export { configIdentity, dottedPath, splitExtension };

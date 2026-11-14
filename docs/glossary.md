@@ -809,7 +809,7 @@ A core-declared position that exactly one plugin may claim. A second claim is a 
 _Avoid_: Singleton, capability (for the position)
 
 **Configuration source**:
-The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. It may also declare `schema`, the configuration's Standard Schema, whose JSON Schema core publishes as the graph's `configuration` fact and never validates with. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. A fill the option's validator rejects is dropped and the option falls back as if no tier supplied it. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
+The one optional `source` a plugin definition declares, which answers for configuration-bound options: those carrying a value of the plugin's own binding extension. It may also declare `schema`, the configuration's Standard Schema, whose JSON Schema core publishes as the graph's `configuration` fact and never validates with. Core loads it lazily only when such an option is still unfilled after argv and the environment and holds no environment fault, calls it once, and fills each option it answers, with a label core prints in failure messages. A fill the option's validator rejects is dropped and the option falls back as if no tier supplied it, unless its answer is marked strict, when the rejection fails the run as an environment fill's does. Core holds no store, file format, or path grammar; the plugin owns what the binding means.
 _Avoid_: Config loader, config provider, settings store
 
 **Dotenv file**:
@@ -821,7 +821,7 @@ The value of `NODE_ENV` in the environment the dotenv plugin receives, which nam
 _Avoid_: Environment (for the mode), stage, profile
 
 **Configuration file**:
-The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found in the configuration scopes the author chooses: the walk from the start directory up to below the home directory, to the ceiling, or to a root marker, then the home file, then the XDG user file. A run under `--no-config` reads none. A JSON file may hold comments and trailing commas. Only the file `--config` names can fail a run; a broken file found any other way warns and leaves the run with no configuration.
+The one JSON, TOML, or YAML file the first-party configuration plugin reads in a run, never merged with another: the file `--config` names, or the file the author's variable names, or else the first found in the configuration scopes the author chooses: the walk from the start directory up to below the home directory, to the ceiling, or to a root marker, then the home file, then the XDG user file. A run under `--no-config` reads none. A JSON file may hold comments and trailing commas. Only the file `--config` names can fail a run for being missing or broken; a broken file found any other way warns and leaves the run with no configuration. Under the plugin's `strict` setting, a value in whichever file the run reads can fail it.
 _Avoid_: Config, settings file, rc file, dotfile
 
 **Configuration scope**:
@@ -841,11 +841,11 @@ The one Standard Schema an author writes for the whole configuration file, in wh
 _Avoid_: Section schema, config type, settings schema
 
 **Dropped value**:
-A value in the configuration file that is set aside so that its fallback applies: removed from the configuration when the configuration schema rejects it, and kept there but not given to an option that cannot take it or whose validator rejects it. It never fails the run and is named at `-v` alone.
+A value in the configuration file that is set aside so that its fallback applies: removed from the configuration when the configuration schema rejects it, and kept there but not given to an option that cannot take it or whose validator rejects it. It never fails the run and is named at `-v` alone, except where the configuration plugin's `strict` setting covers it: there the value fails the run instead of dropping.
 _Avoid_: Invalid config, lenient input, ignored key (for an unknown key, which has its own entry)
 
 **Unknown key**:
-A key in the configuration file that a closed object of the configuration schema's published JSON Schema does not list. It is no dropped value: it never fails the run, and it is named at `-v` alone, in a line of its own, where the schema publishes a JSON Schema. Under a schema that publishes none, such as valibot's, it is named at no verbosity.
+A key in the configuration file that a closed object of the configuration schema's published JSON Schema does not list. It is no dropped value: it never fails the run unless the configuration plugin's `strict` setting covers it, and it is named at `-v` alone, in a line of its own, where the schema publishes a JSON Schema. Under a schema that publishes none, such as valibot's, it is named at no verbosity, and `strict` cannot fail the run on it.
 _Avoid_: Ignored key, invalid key, extra key
 
 **Start directory**:

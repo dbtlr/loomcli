@@ -13,14 +13,25 @@ import { configEmptyFile } from '../rules.js';
 /** One step of a path into the file: an object key, or an array item's index. */
 type Step = string | number;
 
-/** What one removal names: the value it removes and the first message the schema gave for it. */
+/**
+ * What one removal names: the value it removes, the first message the schema gave for it, and the
+ * paths of the issues behind it. An issue's path reaches below the removed value where the drop
+ * rule cuts the path, at an array item or at the nearest value the file holds.
+ */
 interface Removal {
   readonly path: readonly Step[];
   readonly message: string;
+  /** The path of the issue whose message the removal names. */
+  readonly issuePath: readonly Step[];
+  /** The path of every issue behind the removal: each issue whose value lies at or inside it. */
+  readonly issuePaths: readonly (readonly Step[])[];
 }
 
-/** What the loop reports once per removed value, so the caller writes its `-v` line. */
-type Announce = (removal: Removal) => Promise<void>;
+/**
+ * What the loop reports once per removed value, with the file of the round that removes it, so the
+ * caller writes its `-v` line or judges what the removal discards.
+ */
+type Announce = (removal: Removal, file: Readonly<Record<string, unknown>>) => Promise<void>;
 
 const nothing = 0;
 
@@ -55,6 +66,28 @@ function stepsBelow(node: unknown, keys: readonly PropertyKey[]): Step[] {
   return isRecord(node) && Object.hasOwn(node, name) ? [name, ...stepsBelow(node[name], rest)] : [];
 }
 
+/**
+ * An issue's whole path as steps. An index into an array the file holds is an item's index, as
+ * `stepsBelow` reads it, and every other key keeps its own form, so the path goes on past the
+ * values the file holds.
+ */
+function issueSteps(node: unknown, keys: readonly PropertyKey[]): Step[] {
+  const [key, ...rest] = keys;
+  if (key === undefined) {
+    return [];
+  }
+  const index = Array.isArray(node) ? indexOf(key) : undefined;
+  if (Array.isArray(node) && index !== undefined) {
+    return [index, ...issueSteps(node[index], rest)];
+  }
+  const step = typeof key === 'number' ? key : String(key);
+  const next =
+    isRecord(node) && typeof step === 'string' && Object.hasOwn(node, step)
+      ? node[step]
+      : undefined;
+  return [step, ...issueSteps(next, rest)];
+}
+
 /** Whether two paths name the same value. */
 function samePath(left: readonly Step[], right: readonly Step[]): boolean {
   return left.length === right.length && left.every((step, index) => step === right[index]);
@@ -65,24 +98,44 @@ function isWithin(inner: readonly Step[], outer: readonly Step[]): boolean {
   return samePath(inner.slice(nothing, outer.length), outer);
 }
 
+/** One distinct value a round removes, with the path of each issue that names it. */
+interface Target {
+  readonly path: readonly Step[];
+  readonly message: string;
+  readonly issuePath: readonly Step[];
+  readonly issuePaths: Step[][];
+}
+
 /**
  * The removals one round makes, one per distinct value, in the order the schema reported them. A
- * target inside a value the same round removes is skipped.
+ * target inside a value the same round removes is skipped, and its issues join that removal's.
  */
 function removalsOf(
   file: Record<string, unknown>,
   issues: readonly StandardSchemaV1.Issue[],
 ): Removal[] {
-  const found: Removal[] = [];
+  const found: Target[] = [];
   for (const issue of issues) {
-    const path = stepsBelow(file, (issue.path ?? []).map(keyOf));
-    if (!found.some((entry) => samePath(entry.path, path))) {
-      found.push({ message: issue.message, path });
+    const keys = (issue.path ?? []).map(keyOf);
+    const path = stepsBelow(file, keys);
+    const issuePath = issueSteps(file, keys);
+    const target = found.find((entry) => samePath(entry.path, path));
+    if (target === undefined) {
+      found.push({ issuePath, issuePaths: [issuePath], message: issue.message, path });
+    } else {
+      target.issuePaths.push(issuePath);
     }
   }
-  return found.filter(
-    (entry) => !found.some((other) => other !== entry && isWithin(entry.path, other.path)),
-  );
+  return found
+    .filter((entry) => !found.some((other) => other !== entry && isWithin(entry.path, other.path)))
+    .map(({ issuePath, message, path }) => ({
+      issuePath,
+      issuePaths: found
+        .filter((other) => isWithin(other.path, path))
+        .flatMap((other) => other.issuePaths),
+      message,
+      path,
+    }));
 }
 
 /** A path as one key a set can hold. */
@@ -221,7 +274,7 @@ async function dropRound<Schema extends StandardSchemaV1>(
   }
   const removals = removalsOf(file, result.issues);
   for (const removal of removals) {
-    await rounds.announce(removal);
+    await rounds.announce(removal, file);
   }
   return dropRound(schema, removeAll(file, removals, rounds.origins), rounds);
 }

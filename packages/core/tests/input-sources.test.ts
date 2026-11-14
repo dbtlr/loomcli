@@ -456,6 +456,48 @@ test('a configuration path its content option cannot read falls back and is name
   ).resolves.toBe(2);
 });
 
+const strict = { FIXTURE_STRICT: 'true' };
+
+test('a strict configuration answer its validator rejects fails the run with code 2 and names its label', async () => {
+  const rejected = settings({ 'limits.bytes': 'many' });
+  const ran = await run([], { ...rejected, ...strict });
+  expect(ran.status).toBe(2);
+  expect(ran.stderr).toBe(
+    'app: Option "--limit" (from limits.bytes in fixture.json): Supply a whole number.\n',
+  );
+  // A strict answer the validator accepts fills as any answer does.
+  const accepted = await run([], { ...settings({ 'limits.bytes': '3' }), ...strict });
+  expect(accepted.status).toBe(0);
+  expect(valueOf(accepted.stdout, 'root', 'limit')).toBe('3');
+  // An answer marked false falls back, as an unmarked one does.
+  const unmarked = await run([], { ...rejected, FIXTURE_STRICT: 'false' });
+  expect(unmarked.status).toBe(0);
+  expect(valueOf(unmarked.stdout, 'root', 'limit')).toBe('10');
+});
+
+test('a strict configuration path its content option cannot read fails the run with code 2', async () => {
+  const ran = await run(['reading'], { ...settings({ input: 'absent.txt' }), ...strict });
+  expect(ran.status).toBe(2);
+  expect(ran.stderr).toContain(
+    'Option "--input" (from input in fixture.json): Expected a readable file that exists.',
+  );
+});
+
+test.each(['yes', 1, null])(
+  'an answer whose strict flag is %j is a source defect',
+  async (value) => {
+    const env = { ...settings({ where: 'x' }), FIXTURE_STRICT: JSON.stringify(value) };
+    await expect(run(['traced'], env)).resolves.toMatchObject({
+      status: 1,
+      stderr: 'app: Something went wrong.\n',
+    });
+    const result = await run(['traced'], { ...env, FIXTURE_BUILD: 'development' });
+    expect(result.stderr).toContain(
+      '\n\nPlugin "@fixture/config" answered option "where" with a strict flag that is not true or false.\n',
+    );
+  },
+);
+
 test("a relative configuration path for a content option resolves against the answer's directory", async () => {
   const result = await run(['reading'], {
     ...settings({ input: 'source.mjs' }),

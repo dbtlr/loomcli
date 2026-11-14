@@ -176,7 +176,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/source-answers
 
-**Invalid source answers.** A configuration source answers with a record that maps each option core requested to { value, label }, where the value has the raw type the option takes and the label is one line of prose, and an answer may add a directory, the absolute path of the folder holding the file the value came from. Core fills no option from any other answer.
+**Invalid source answers.** A configuration source answers with a record that maps each option core requested to { value, label }, where the value has the raw type the option takes and the label is one line of prose, and an answer may add a directory, the absolute path of the folder holding the file the value came from, and a strict flag, true when a value its option rejects fails the run instead of falling back. Core fills no option from any other answer.
 
 ### @loomcli/core/spelling-taken
 
@@ -239,6 +239,14 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 ### @loomcli/plugins/config/root-without-project
 
 **Configuration root marker without the project scope.** A root marker bounds the project walk, and a scopes list without project reads the home file and the user file alone, so the marker would bound nothing and its setting would say something the lookup never does.
+
+### @loomcli/plugins/config/strict-path
+
+**Invalid strict configuration path.** The configuration plugin judges each path that strict lists as it judges the path of a linked option: it splits on dots, and each segment is one nonempty object key, with no escaping and no array indexing. A path of another form can never be at or under a key of the file, so the setting would cover nothing.
+
+### @loomcli/plugins/config/strict-schema-path
+
+**Strict path the configuration schema does not hold.** A path that strict lists covers the values of the configuration file at or under it, and the configuration schema describes the whole file. A path whose keys the schema does not describe means the setting and the shape of the file disagree, and the check catches a typo, which would otherwise make the setting cover nothing, at build time. A listed path that passes through an array is a declaration fault, unless a member of the same shape that is not an array holds the next key or leaves it unchecked. Such a path would cover nothing too, because the index of an array item equals no key, and listing the path of the array itself covers every item.
 
 ### @loomcli/plugins/config/variable-name
 
