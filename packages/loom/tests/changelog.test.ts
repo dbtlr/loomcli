@@ -10,7 +10,10 @@
  * - Ordering. Fragments added in three commits render in landing order within each group, breaking
  *   entries first, and a fragment edited in a later commit keeps its first position.
  * - `check`. A breaking fragment without its migration labels, a bare `feature.md`, and a fragment
- *   in a subdirectory each fail `check` with exit 1 and their names.
+ *   in a subdirectory each fail `check` with exit 1 and their names. A fragment holding a control
+ *   character other than tab and line feed, a carriage return, invalid UTF-8, a bidirectional
+ *   control or mark, or a zero-width space fails `check` and `write`, naming its line and the
+ *   first such character as U+XXXX, at both edges of each refused range.
  * - `write`. A cut prepends the section, sets `version` with the rest of `package.json`
  *   byte-identical, deletes the consumed fragments, and leaves `.changes/README.md`. A shallow
  *   clone fails and changes no file. `--dry-run` prints the section and the version and leaves
@@ -255,6 +258,151 @@ test.each(['directory', 'README.md'])('check refuses a directory named %s', asyn
     stderr: `.changes/${name}: expected a fragment file. Keep fragments directly in .changes/.\n`,
     stdout: '',
   });
+});
+
+function codePointName(codePoint: number) {
+  return `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+// The sentence check prints for a fragment whose third line holds the code point.
+function unsafeSentence(codePoint: number) {
+  const name = codePointName(codePoint);
+  if (codePoint === 0x0d) {
+    return `.changes/fix.md: line 3 holds the carriage return U+000D. Save the fragment with LF line endings.\n`;
+  }
+  if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)) {
+    return `.changes/fix.md: line 3 holds the control character ${name}. Remove it, because a fragment accepts no control character but tab and line feed.\n`;
+  }
+  return `.changes/fix.md: line 3 holds the invisible format character ${name}. Remove it.\n`;
+}
+
+test.each(
+  [
+    // C0 controls around tab and line feed, which stay, and the carriage return.
+    0x00, 0x08, 0x0b, 0x0c, 0x0d, 0x0e, 0x1b, 0x1f,
+    // DEL and the C1 controls.
+    0x7f, 0x80, 0x9f,
+    // The bidirectional embedding, override, and isolate controls.
+    0x20_2a, 0x20_2e, 0x20_66, 0x20_69,
+    // The marks and the zero-width space.
+    0x20_0e, 0x20_0f, 0x06_1c, 0x20_0b,
+  ].map((codePoint) => [codePointName(codePoint), codePoint] as const),
+)(
+  'check refuses a fragment holding %s, names its line, and never prints it',
+  async (_name, codePoint) => {
+    const character = String.fromCodePoint(codePoint);
+    const body = `- Fix output.\n\n  Detail ${character}here.\n`;
+    const root = directory({ '.changes/fix.md': body });
+    const result = await run(root, 'check');
+    expect(result).toEqual({ status: 1, stderr: unsafeSentence(codePoint), stdout: '' });
+    expect(result.stderr.slice(0, -1)).not.toContain(character);
+    expect(readFileSync(join(root, '.changes/fix.md'), 'utf8')).toBe(body);
+  },
+);
+
+test.each([
+  [
+    'a last line with no final line feed',
+    `- Fix ${String.fromCodePoint(0x1b)}[31moutput.`,
+    'line 1 holds the control character U+001B. Remove it, because a fragment accepts no control character but tab and line feed.',
+  ],
+  [
+    'only carriage return line endings',
+    `- Fix output.${String.fromCodePoint(0x0d)}- Fix input.${String.fromCodePoint(0x0d)}`,
+    'line 1 holds the carriage return U+000D. Save the fragment with LF line endings.',
+  ],
+])(
+  'check refuses a fragment with %s that holds an unsafe character',
+  async (_label, body, sentence) => {
+    const root = directory({ '.changes/fix.md': body });
+    await expect(run(root, 'check')).resolves.toEqual({
+      status: 1,
+      stderr: `.changes/fix.md: ${sentence}\n`,
+      stdout: '',
+    });
+  },
+);
+
+test('check accepts tab, line feed, and the characters beside each refused range', async () => {
+  const beside = [
+    0x09, 0x20, 0x7e, 0xa0, 0xad, 0x06_1b, 0x06_1d, 0x20_0a, 0x20_0c, 0x20_0d, 0x20_10, 0x20_28,
+    0x20_29, 0x20_2f, 0x20_65, 0x20_6a,
+  ];
+  const text = beside.map((codePoint) => String.fromCodePoint(codePoint)).join('');
+  // A leading byte order mark, an emoji's zero-width joiner, and right-to-left text are content.
+  const byteOrderMark = String.fromCodePoint(0xfe_ff);
+  const zeroWidthJoiner = String.fromCodePoint(0x20_0d);
+  const root = directory({
+    '.changes/fix.md': `${byteOrderMark}- Fix output ${text} and \u{1F469}${zeroWidthJoiner}\u{1F4BB} with سلام.\n`,
+  });
+  await expect(run(root, 'check')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Checked 1 fragment.\n',
+  });
+});
+
+test.each([
+  ['a lone continuation byte', [0x80]],
+  ['a truncated sequence', [0xc3]],
+  ['an overlong encoding', [0xc0, 0xaf]],
+  ['a byte UTF-8 never uses', [0xff]],
+  ['an encoded surrogate', [0xed, 0xa0, 0x80]],
+])('check refuses a fragment whose line holds %s', async (_label, bytes) => {
+  const root = directory();
+  const path = join(root, '.changes/fix.md');
+  writeFileSync(
+    path,
+    Buffer.concat([
+      Buffer.from('- Fix output.\n\n  Detail '),
+      Buffer.from(bytes),
+      Buffer.from(' here.\n'),
+    ]),
+  );
+  await expect(run(root, 'check')).resolves.toEqual({
+    status: 1,
+    stderr: '.changes/fix.md: line 3 is not valid UTF-8. Save the fragment as UTF-8.\n',
+    stdout: '',
+  });
+});
+
+test('check names the first unsafe character of each fragment, by its line, beside other failures', async () => {
+  const root = directory({
+    '.changes/crlf.md': '- Fix output.\r\n- Fix input.\r\n',
+    '.changes/feature.md': '- Add tags.\n',
+    '.changes/mixed.md': `- Fix output.\n- Fix ${String.fromCodePoint(0x20_0b)}input.\n- Fix \u001b[31mcolor.\n`,
+    '.changes/valid.md': '- Fix input.\n',
+  });
+  writeFileSync(
+    join(root, '.changes/bytes.md'),
+    Buffer.concat([
+      Buffer.from('- Fix output.\n- Fix '),
+      Buffer.from([0xff]),
+      Buffer.from(` input ${String.fromCodePoint(0x20_2e)}.\n`),
+    ]),
+  );
+  const result = await run(root, 'check');
+  expect(result.status).toBe(1);
+  expect(result.stdout).toBe('');
+  expect(result.stderr.split('\n').toSorted()).toEqual([
+    '',
+    '.changes/bytes.md: line 2 is not valid UTF-8. Save the fragment as UTF-8.',
+    '.changes/crlf.md: line 1 holds the carriage return U+000D. Save the fragment with LF line endings.',
+    '.changes/feature.md: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.',
+    '.changes/mixed.md: line 2 holds the invisible format character U+200B. Remove it.',
+  ]);
+});
+
+test('write refuses a fragment holding an unsafe character and changes no file', async () => {
+  const root = packageRepository('1.4.7', { '.changes/fix.md': '- Fix \u0007output.\n' });
+  const before = snapshot(root);
+  await expect(run(root, 'write', '--date', '2026-10-07')).resolves.toEqual({
+    status: 1,
+    stderr:
+      '.changes/fix.md: line 1 holds the control character U+0007. Remove it, because a fragment accepts no control character but tab and line feed.\n',
+    stdout: '',
+  });
+  expect(snapshot(root)).toEqual(before);
 });
 
 test('check rejects write options through Loom before reading files', async () => {
