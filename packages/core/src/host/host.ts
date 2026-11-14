@@ -132,19 +132,25 @@ export function sourceRoots(cwd: string): readonly string[] {
   }
 }
 
-/** The working directory one capture read, or the failure its read raised in its place. */
+/**
+ * The working directory one capture read with the ceiling beside it when the handle names one, or
+ * the failure either read raised in its place.
+ */
 export type WorkingDirectory =
-  | { readonly cwd: string }
+  | { readonly cwd: string; readonly ceiling?: string }
   | { readonly failure: WorkingDirectoryError };
 
 /**
  * The one step `run()` and `app.invoke` read the working directory through, once per run: the
- * handle's `cwd()`. A read that throws, as the process's does once another process removed the
- * directory, answers the failure in its place, whose `cause` is the thrown value.
+ * handle's `cwd()`, and then its `ceiling`, which a mock with a `cwd` function answers by calling
+ * the function again. A read that throws, as the process's `cwd()` does once another process
+ * removed the directory, answers the failure in its place, whose `cause` is the thrown value.
  */
 export function captureWorkingDirectory(handle: ProcessHandle): WorkingDirectory {
   try {
-    return { cwd: handle.cwd() };
+    const cwd = handle.cwd();
+    const { ceiling } = handle;
+    return ceiling === undefined ? { cwd } : { ceiling, cwd };
   } catch (error) {
     return { failure: new WorkingDirectoryError({ cause: error }) };
   }
@@ -233,9 +239,14 @@ export function capturedHost(
   own: OwnStreams = {},
 ): HostCapture {
   const { directory, libc, release, spawn: handleSpawn, timeZone, ...copied } = shared;
-  const cwd = 'cwd' in directory ? directory.cwd : undefined;
+  const { ceiling, cwd } = 'cwd' in directory ? directory : { ceiling: undefined, cwd: undefined };
   const scene = { ...run, cwd, env: copied.env, own, spawn: handleSpawn };
-  const facts = { ...run, ...copied, spawn: hostSpawn(scene) };
+  const facts = {
+    ...run,
+    ...copied,
+    ...(ceiling === undefined ? {} : { ceiling }),
+    spawn: hostSpawn(scene),
+  };
   if ('failure' in release) {
     return {
       failure: release.failure,

@@ -53,7 +53,7 @@ function bunProgram(missing: Error[]) {
 /** One toolchain run, with process facts and effects confined to the fixture. */
 export async function run(
   args: string[] = [],
-  options: { cwd?: string; env?: Record<string, string | undefined> } = {},
+  options: { ceiling?: string; cwd?: string; env?: Record<string, string | undefined> } = {},
 ) {
   const manifestPath = pnpmManifestPath();
   const manifest = z
@@ -65,6 +65,7 @@ export async function run(
   const mock = mockProcess({
     arch: process.arch,
     argv: args,
+    ...(options.ceiling === undefined ? {} : { ceiling: options.ceiling }),
     cwd: options.cwd ?? home,
     env: childEnvironment(options.env),
     home,

@@ -94,10 +94,10 @@ function guardedObserver(onProgress: InvokeOptions['onProgress']): GuardedObserv
  * another call copies from its handle.
  */
 function fieldsOf(host: Host): HandleFacts {
-  const { arch, cwd, env, home, platform, program, readSource, tmpdir, uid } = host;
+  const { arch, ceiling, cwd, env, home, platform, program, readSource, tmpdir, uid } = host;
   const captured = {
     arch,
-    directory: { cwd },
+    directory: ceiling === undefined ? { cwd } : { ceiling, cwd },
     env,
     home,
     // The call reads its run's C library only when its own code reads it.

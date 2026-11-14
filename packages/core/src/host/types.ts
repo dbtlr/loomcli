@@ -200,6 +200,11 @@ export interface ProcessHandle {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The working directory, which throws when it cannot be read. */
   cwd(): string;
+  /**
+   * A directory above which the configuration plugin's project walk never looks, or none. The real
+   * process's handle names none, and a mock names its working directory.
+   */
+  readonly ceiling?: string;
   /** The operator's home folder. */
   readonly home: string;
   /** The folder for temporary files. */
@@ -292,6 +297,11 @@ export interface Host {
   program: readonly string[];
   /** The working directory, read when the run captured its host. */
   cwd: string;
+  /**
+   * A directory above which the configuration plugin's project walk never looks, copied from the
+   * handle at entry. Present only when the handle names one; the real process's names none.
+   */
+  ceiling?: string;
   /**
    * The operator's home folder, copied from the handle at entry: its absolute `HOME` unless a
    * `home` was supplied. Environment preparation never moves it.

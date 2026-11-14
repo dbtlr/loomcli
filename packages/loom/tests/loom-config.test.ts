@@ -36,8 +36,8 @@ afterEach(() => {
 });
 
 /** One `loom` run in the directory, off a terminal. */
-async function runLoom(cwd: string, argv: string[]) {
-  const mock = mockProcess({ argv, cwd });
+async function runLoom(cwd: string, argv: string[], ceiling = cwd) {
+  const mock = mockProcess({ argv, ceiling, cwd });
   const status = await loom.run({ process: mock });
   return { status, stderr: mock.stderr.text, stdout: mock.stdout.text };
 }
@@ -214,7 +214,7 @@ test('a broken file above a new application still draws its warning', async () =
   put(directory, 'loom.config.json', '{ "paths": \n');
   const fresh = join(directory, 'jot');
   mkdirSync(fresh);
-  const result = await runLoom(fresh, ['init', '--only', 'changes']);
+  const result = await runLoom(fresh, ['init', '--only', 'changes'], directory);
   expect(result.status).toBe(0);
   expect(result.stderr).toContain('is not valid JSON');
   expect(result.stdout).toContain('Wrote .changes/README.md.\n');

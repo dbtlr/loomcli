@@ -200,12 +200,14 @@ function application({
  */
 async function run({
   argv,
+  ceiling,
   columns,
   cwd,
   declared,
   env,
 }: {
   readonly argv: readonly string[];
+  readonly ceiling?: string;
   readonly columns?: number;
   readonly cwd?: string;
   readonly declared: Declared;
@@ -215,6 +217,7 @@ async function run({
     const mock = mockProcess({
       argv,
       env,
+      ...(ceiling === undefined ? {} : { ceiling }),
       ...(cwd === undefined ? {} : { cwd }),
       ...(columns === undefined ? {} : { terminal: { columns, rows: 24 } }),
     });

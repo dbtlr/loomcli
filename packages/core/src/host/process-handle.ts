@@ -606,6 +606,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
   const {
     arch,
     argv,
+    ceiling,
     cwd,
     env,
     home,
@@ -630,6 +631,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
     get argv() {
       return argv ?? process.argv.slice(2);
     },
+    ...(ceiling === undefined ? {} : { ceiling }),
     cwd: () => workingDirectory(cwd),
     get env() {
       return env ?? process.env;
