@@ -5,7 +5,7 @@ description: Application.globalOption declares shared inputs directly and closes
 status: accepted
 supersedes: ADR-0024
 created: 2026-09-13
-modified: 2026-10-03
+modified: 2026-11-14
 ---
 
 # ADR-0026 - Applications declare global options through a fluent method
@@ -36,3 +36,4 @@ The declaration harness checks automatic types across modules and packed library
 - 2026-09-25: ADR-0034 is accepted. The entry above binds as written.
 - 2026-09-26: [ADR-0044](0044-a-global-option-declares-no-presence-rule.md) supersedes the clause that `globalOption()` takes the same option configuration as `option()`, for `required` and `validateOmitted` alone. A global option declares neither, and `globalOption()` rejects both at compile time and throws for either at the call.
 - 2026-10-03: [ADR-0055](0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), proposed, supersedes the ADR-0003 provisions this record carries through ADR-0024 for the global pre-scan before routing, the commit of routing at the first hyphen token, the mixed-scope short group fault and its `'mixed-scope'` reason, and the rejection of copying the globals into every Command's spelling table. Routing reads option words against the global options alone, an option word no global option declares stops routing, and each Command's table references every global option's one declaration. A plugin's options are global options, so inspection lists them in `globals` with no `scope`. One Application-owned declaration of each global option, no inheritance, no local option on a group, values winning over route names, and the key and spelling collision rules stand. It binds when that record is accepted.
+- 2026-11-14: [ADR-0150](0150-an-application-opts-in-to-an-extended-version-that-prints-the-release-facts-runtime-and-platform.md), proposed, supersedes the provision this record carries from ADR-0003 through ADR-0024 that a group declares no local option, for the options core already accepts on a group, the author's and a lifecycle hook's. Routing reads them as a parent's own options, and a hook's reaches its plugin's middleware; an author's still reaches no action. One Application-owned declaration of each global option, no inheritance, and the collision rules stand. It binds when that record is accepted.

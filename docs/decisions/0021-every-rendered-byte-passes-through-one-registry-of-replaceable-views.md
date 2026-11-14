@@ -4,7 +4,7 @@ title: ADR-0021 - Every rendered byte passes through one registry of replaceable
 description: Core keeps one registry of declared views named by reference, where a view is an identity, the data shape it presents, and its default view function. Core and plugins declare views, applications join with the results lane, and one Application option replaces the function of any view by declared view or by failure class, retiring the separate failures option.
 status: accepted
 created: 2026-09-11
-modified: 2026-10-19
+modified: 2026-11-14
 ---
 
 # ADR-0021 - Every rendered byte passes through one registry of replaceable views

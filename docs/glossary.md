@@ -100,7 +100,7 @@ A Command input declared through `stdin()` that consumes no command-line word an
 _Avoid_: Stdin argument, stdin option, stream parameter
 
 **Local option**:
-An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the request a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so an author cannot declare one on a group; a lifecycle hook can, and that option reaches its plugin's middleware alone.
+An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the request a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so an author's option on a group reaches no action, and routing reads it there as a parent's own option; a lifecycle hook's option on a group reaches its plugin's middleware alone.
 _Avoid_: Command option, scoped option
 
 **Declared name**:
@@ -311,7 +311,7 @@ The read-only snapshot of the routed Command's validated argument, local option,
 _Avoid_: Parsed invocation, parsed input, raw input (which is the pre-validation form)
 
 **Dispatch boundary**:
-The point the middleware chain reaches when it continues past its last middleware: core raises the fault it held, or reads the selected view, builds the providers the routed Command opted in to, and dispatches the action. A takeover never reaches it.
+The point the middleware chain reaches when it continues past its last middleware: core raises the fault it held, or checks the view and media type a middleware assigned, reads the selected view, builds the providers the routed Command opted in to, and dispatches the action. A takeover never reaches it.
 _Avoid_: Terminal step, end of chain, action phase
 
 **Routing**:
@@ -857,7 +857,7 @@ The configuration plugin's `file` setting: a file name or relative path whose la
 _Avoid_: Glob (for the whole setting), wildcard path, file mask
 
 **Middleware**:
-A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, which reads `null` while a global option has a structural fault or was rejected, the spellings of its own plugin's options, and in `ownOptions` the validated values of its plugin's own options, local ones included, which hold even while core holds a fault on another input, a structural or input-source one included, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
+A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, which reads `null` while a global option has a structural fault or was rejected, the spellings of its own plugin's options, and in `ownOptions` the validated values of its plugin's own options, local ones included, which hold even while core holds a fault on another input, a structural or input-source one included, the routed node, the request, the selected view, and the run's media type, which a middleware assigns on a Command that declares no result, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:

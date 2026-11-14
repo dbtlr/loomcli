@@ -4,7 +4,7 @@ title: ADR-0064 - A failure class declares a failure code, and a plugin encodes 
 description: Every failure class declares a static kebab-case code, read like its exit code, and core's defects read internal in both builds. Core builds one plain-data failure form, { code, exitCode, message, hints }, which invoke's outcome and handler carry and a failure encoder writes. A plugin registers one encoder per media type, and a failed run() whose selected view declares that media type writes the encoder's line to stderr in place of the failure view. The formatter registers application/json and application/jsonl. The manifest's failure entry reads the class's code in place of a hand-written name.
 status: accepted
 created: 2026-10-06
-modified: 2026-10-20
+modified: 2026-11-14
 ---
 
 # ADR-0064 - A failure class declares a failure code, and a plugin encodes the failure form by media type
