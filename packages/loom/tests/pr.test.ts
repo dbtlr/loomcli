@@ -665,6 +665,81 @@ test('an initial cut whose section lost its narrative carries no notes and fails
   expect(runResult2.stderr).toContain('requires a narrative');
 });
 
+/**
+ * Checks a release PR whose cut wrote a one-line narrative, which CHANGELOG.md holds at line 5,
+ * and whose author then replaced that narrative by hand with the given bytes.
+ */
+async function editedNarrativeCheck(narrative: Buffer) {
+  const { root } = repository();
+  put(root, '.changes/fix.md', '- Fix output.\n');
+  const base = commit(root);
+  const file = join(temporaryRoot('loom-narrative-'), 'narrative.md');
+  writeFileSync(file, `${narrativeProse}\n`);
+  await expect(
+    run(['release', 'cut', '--date', '2026-09-07', '--narrative', file], { cwd: root }),
+  ).resolves.toMatchObject({ status: 0 });
+  const changelog = readFileSync(join(root, 'CHANGELOG.md'));
+  const written = Buffer.from(`${narrativeProse}\n`);
+  const at = changelog.indexOf(written);
+  writeFileSync(
+    join(root, 'CHANGELOG.md'),
+    Buffer.concat([changelog.subarray(0, at), narrative, changelog.subarray(at + written.length)]),
+  );
+  commit(root);
+  return await releaseCheck(root, base, '0.4.8');
+}
+
+test.each([
+  [
+    'a control character',
+    Buffer.from(`${narrativeProse}\nIt ${String.fromCodePoint(0x1b)}[31mcolors.\n`),
+    'line 6 holds the control character U+001B. Remove it, because a narrative accepts no control character but tab and line feed.',
+  ],
+  [
+    'a carriage return',
+    Buffer.from(`${narrativeProse}\nIt ends with CRLF.\r\n`),
+    'line 6 holds the carriage return U+000D. Save the narrative with LF line endings.',
+  ],
+  [
+    'a bidirectional control',
+    Buffer.from(`${narrativeProse}\nIt ${String.fromCodePoint(0x20_2e)}reorders.\n`),
+    'line 6 holds the invisible format character U+202E. Remove it.',
+  ],
+  [
+    'a zero-width space',
+    Buffer.from(`${narrativeProse}\nIt ${String.fromCodePoint(0x20_0b)}hides.\n`),
+    'line 6 holds the invisible format character U+200B. Remove it.',
+  ],
+  [
+    'bytes that are not UTF-8',
+    Buffer.concat([
+      Buffer.from(`${narrativeProse}\nIt `),
+      Buffer.from([0xff]),
+      Buffer.from(' breaks.\n'),
+    ]),
+    'line 6 is not valid UTF-8. Save the narrative as UTF-8.',
+  ],
+])(
+  'a release PR whose narrative holds %s fails, naming its line in CHANGELOG.md',
+  async (_label, narrative, sentence) => {
+    await expect(editedNarrativeCheck(narrative)).resolves.toEqual({
+      status: 1,
+      stderr: `CHANGELOG.md: ${sentence}\n`,
+      stdout: '',
+    });
+  },
+);
+
+test('a release PR whose narrative holds tabs, separators, joined emoji, and right-to-left text passes', async () => {
+  const separators = `${String.fromCodePoint(0x20_28)} and ${String.fromCodePoint(0x20_29)}`;
+  const prose = `This release\tfixes \u{1F469}${String.fromCodePoint(0x20_0d)}\u{1F4BB} output ${separators} with سلام.\n`;
+  await expect(editedNarrativeCheck(Buffer.from(`${narrativeProse}\n${prose}`))).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
+});
+
 test('the Ubuntu workflow checks metadata as data and reruns admission when a label is removed', () => {
   const workflow: unknown = parse(
     readFileSync(new URL('../../../.github/workflows/pr.yml', import.meta.url), 'utf8'),
