@@ -76,17 +76,18 @@ test.each(files)('%s links to files outside the skill folder by a plain relative
   expect(problems).toEqual([]);
 });
 
-/** The info string of a fence opening line, with how it is indented and fenced, or `undefined`. */
+/** The info string of a fence opening line, as written, with how it is indented and fenced, or `undefined`. */
 function fenceInfo(line: string): { fence: string; indent: string; info: string } | undefined {
   const groups = /^(?<indent>\s*)(?<fence>`{3,}|~{3,})(?<info>.*)$/u.exec(line)?.groups;
   return groups === undefined
     ? undefined
-    : { fence: groups.fence ?? '', indent: groups.indent ?? '', info: groups.info?.trim() ?? '' };
+    : { fence: groups.fence ?? '', indent: groups.indent ?? '', info: groups.info ?? '' };
 }
 
 /**
  * The fences `check:types` would not compile although they hold TypeScript: one that is indented,
- * made of `~`, or whose info string begins with ts, typescript, or tsx but is not exactly `ts`.
+ * made of `~`, or whose info string begins with ts, typescript, or tsx but is not exactly `ts`, as
+ * written, with nothing before it.
  */
 function unreadTypeScriptFences(text: string): string[] {
   const wrong: string[] = [];
@@ -99,8 +100,9 @@ function unreadTypeScriptFences(text: string): string[] {
       }
     } else if (opening !== undefined) {
       open = opening.fence;
-      const typescript = /^(?:typescript|tsx?)(?![a-z0-9])/iu.test(opening.info);
-      const read = opening.indent === '' && opening.fence.startsWith('`') && opening.info === 'ts';
+      const typescript = /^\s*(?:typescript|tsx?)(?![a-z0-9])/iu.test(opening.info);
+      const read =
+        opening.indent === '' && opening.fence.startsWith('`') && /^ts\s*$/u.test(opening.info);
       if (typescript && !read) {
         wrong.push(`${index + 1}: ${line}`);
       }
@@ -110,7 +112,15 @@ function unreadTypeScriptFences(text: string): string[] {
 }
 
 test('a fence check reads the spellings check:types would not compile', () => {
-  const fences = ['```typescript', '```tsx', '```TS', '```ts title=x', '~~~ts', '  ```ts'];
+  const fences = [
+    '```typescript',
+    '```tsx',
+    '```TS',
+    '```ts title=x',
+    '~~~ts',
+    '  ```ts',
+    '``` ts',
+  ];
   for (const fence of fences) {
     expect(
       unreadTypeScriptFences(`${fence}\nconst a = 1;\n${fence.trim().slice(0, 3)}\n`),
