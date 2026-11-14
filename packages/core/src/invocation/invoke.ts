@@ -94,7 +94,8 @@ function guardedObserver(onProgress: InvokeOptions['onProgress']): GuardedObserv
  * another call copies from its handle.
  */
 function fieldsOf(host: Host): HandleFacts {
-  const { arch, ceiling, cwd, env, home, platform, program, readSource, runtime, tmpdir, uid } = host;
+  const { arch, ceiling, cwd, env, home, platform, program, readSource, runtime, tmpdir, uid } =
+    host;
   const captured = {
     arch,
     directory: ceiling === undefined ? { cwd } : { ceiling, cwd },
