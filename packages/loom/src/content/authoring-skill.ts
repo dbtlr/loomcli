@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { frontmatter } from '../helpers/managed.js';
 import { rewriteLinkTargets } from '../helpers/markdown-links.js';
 
 /** The folder of the authoring skill in this repository, from the repository root. */
@@ -12,9 +13,6 @@ const repositoryUrl = 'https://github.com/dbtlr/loomcli';
 
 /** A target that opens with a URL scheme (`https:`, `mailto:`), is protocol-relative, or is absolute. */
 const notRelative = /^(?:[a-z][a-z0-9+.-]*:|\/)/iu;
-
-/** YAML frontmatter at the start of a file: a `---` line, its body, and a closing `---` line. */
-const frontmatter = /^---\r?\n(?:[\s\S]*?\r?\n)?---\r?\n/u;
 
 /**
  * The skill folder `loom init` reads. A built `loom` runs from `dist`, with the folder beside it, and
@@ -65,16 +63,16 @@ function renderSkillLinks(text: string, path: string, version: string): string {
 }
 
 /**
- * A skill file as `loom init` manages it, without its header. `SKILL.md` gets a second blank line
- * after its frontmatter, and any other file a blank first line, so the header lands between two
- * blank lines, as in the changelog skill and the fragment guide.
+ * A skill file as `loom init` manages it, without its header. A file with frontmatter gets exactly
+ * two blank lines after it, and a file without gets a blank first line, so the header lands between
+ * two blank lines, as in the changelog skill and the fragment guide.
  */
 function managedContent(text: string): string {
   const opening = frontmatter.exec(text)?.[0];
   if (opening === undefined) {
     return `\n${text}`;
   }
-  return `${opening}\n${text.slice(opening.length).replace(/^(?:\r?\n)+/u, '\n')}`;
+  return `${opening}\n${text.slice(opening.length).replace(/^(?:\r?\n)*/u, '\n')}`;
 }
 
 /**
@@ -90,4 +88,4 @@ function authoringSkill(version: string): { content: string; path: string }[] {
   });
 }
 
-export { authoringSkill, authoringSkillSource, renderSkillLinks, repositoryUrl };
+export { authoringSkill, authoringSkillSource, managedContent, renderSkillLinks, repositoryUrl };

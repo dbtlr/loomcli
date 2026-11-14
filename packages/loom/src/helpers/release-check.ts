@@ -2,7 +2,9 @@ import { isDeepStrictEqual } from 'node:util';
 
 import { parse } from 'yaml';
 
+import { authoringSkillSource } from '../content/authoring-skill.js';
 import { placedSection, releaseDate, releaseInsertion } from './changelog.js';
+import { frontmatter } from './managed.js';
 import { checkDecisions } from './release-decisions.js';
 import { prepareLockfile } from './release-files.js';
 import { prepareRelease, requireReleaseNotes } from './release.js';
@@ -10,10 +12,7 @@ import { currentVersion, git, gitLine, readLibraries, readRegularFile } from './
 import type { Checkout } from './repository.js';
 
 /** The authoring skill `loom init` ships, whose version a release carries. */
-const authoringSkillPath = 'packages/loom/skills/loom/SKILL.md';
-
-/** YAML frontmatter at the start of a file: a `---` line, its body, and a closing `---` line. */
-const frontmatter = /^---\r?\n(?<yaml>(?:[\s\S]*?\r?\n)?)---(?:\r?\n|$)/u;
+const authoringSkillPath = `${authoringSkillSource}/SKILL.md`;
 
 /** The string `metadata.version` of a skill's frontmatter, or the reason there is none. */
 function skillVersion(text: string): { reason: string } | { version: string } {

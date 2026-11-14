@@ -1,7 +1,9 @@
 /*
- * Finds the link targets of a Markdown text the way the repository's link check reads them
- * (`scripts/check-links.mjs`): inline links, images, and reference definitions, skipping YAML
- * frontmatter, fenced code, and inline code spans. This module rewrites them, so the two must agree.
+ * Finds the link targets of a Markdown text: inline links, images, and reference definitions,
+ * skipping YAML frontmatter, fenced code, and inline code spans. This module is the one reader of
+ * them. `scripts/check-links.mjs` imports it through Node's type stripping, so it holds only
+ * erasable TypeScript and imports nothing, and `loom init` rewrites the targets through it, so the
+ * link check and the rewrite read the same links.
  */
 
 /** The opening of a fenced code block: its fence and the rest of the line. */
@@ -34,7 +36,7 @@ function blankCodeSpans(line: string): string {
 }
 
 /** The lines prose can occupy: frontmatter and fenced code blocks are left out. */
-function proseLines(lines: readonly string[]): ProseLine[] {
+function proseOfLines(lines: readonly string[]): ProseLine[] {
   const prose: ProseLine[] = [];
   let start = 0;
   if (lines[0] === '---') {
@@ -148,7 +150,7 @@ function targetSpans(lines: readonly string[]): TargetSpan[] {
     spans.push(...paragraphTargets(block));
     block = [];
   };
-  for (const entry of proseLines(lines)) {
+  for (const entry of proseOfLines(lines)) {
     const definition = definitionTarget(entry);
     if (entry.blanked.trim() === '') {
       flush();
@@ -160,6 +162,21 @@ function targetSpans(lines: readonly string[]): TargetSpan[] {
   }
   flush();
   return spans;
+}
+
+/** The lines of a Markdown text that prose can occupy, with the 0-based index of each. */
+export function proseLines(text: string): ProseLine[] {
+  return proseOfLines(text.split(/\r?\n/u));
+}
+
+/**
+ * Every link target in one Markdown text, as `{ line, target }` with the 1-based line, in reading
+ * order.
+ */
+export function extractLinks(text: string): { line: number; target: string }[] {
+  return targetSpans(text.split(/\r?\n/u))
+    .toSorted((left, right) => left.index - right.index || left.start - right.start)
+    .map(({ index, target }) => ({ line: index + 1, target }));
 }
 
 /**
@@ -178,3 +195,5 @@ export function rewriteLinkTargets(text: string, rewrite: (target: string) => st
   }
   return lines.join(crlf ? '\r\n' : '\n');
 }
+
+export type { ProseLine };

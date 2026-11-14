@@ -13,8 +13,11 @@ const shellHeader = /^# Managed by loom init\. sha256:(?<checksum>[\da-f]{64})$/
  */
 const shebang = /^#![^\n]*\n/u;
 
-/** YAML frontmatter at the start of a file: a `---` line, its body, and a closing `---` line. */
-const frontmatter = /^---\r?\n(?:[\s\S]*?\r?\n)?---(?:\r?\n|$)/u;
+/**
+ * YAML frontmatter at the start of a file: a `---` line, its body as the `yaml` group, and a
+ * closing `---` line.
+ */
+const frontmatter = /^---\r?\n(?<yaml>(?:[\s\S]*?\r?\n)?)---(?:\r?\n|$)/u;
 
 /** The empty lines at the start of a text. */
 const blankLines = /^(?:\r?\n)*/u;
@@ -95,3 +98,5 @@ export function driftWarning(path: string) {
 export function hasDrifted(file: ManagedFile): boolean {
   return managedChecksum(file.content) !== file.checksum;
 }
+
+export { frontmatter };

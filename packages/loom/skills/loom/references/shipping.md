@@ -71,7 +71,7 @@ gh release create v1.4.0 dist/notes-* dist/SHA256SUMS --notes "$(npx loom change
 - **Nothing checks the words.** Words that route to no Command fail on the operator's install, so run them against a built binary before you release.
 - **It is not fatal.** A failing command prints how to run it again, and the install still succeeds. An operator can skip it with `--skip-post-install`.
 - **Self-update never runs it.** Do work that must follow an update in `afterReplace`.
-- **Keep what it records in a file of your own.** Write it in the directory `applicationDirectory('installation', name, host)` gives, under a name no Loom writer uses, such as `<name>.json`. Self-update leaves that file in place. Never write `install.json` or a plugin's file, such as `service.json`.
+- **Keep what it records in a file of your own.** Call `applicationDirectory('installation', name, host)`, under [the installation record](../../../../../docs/core/installation-record.md). It returns `{ path }` or `{ variable }`. With `path`, write the file under that directory, under a name no Loom writer uses, such as `<name>.json`. With `variable`, the directory cannot be found, so fail and name that variable, which is unset, empty, or not absolute. Self-update leaves that file in place. Never write `install.json` or a plugin's file, such as `service.json`.
 
 ## Update in place
 

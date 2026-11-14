@@ -608,7 +608,7 @@ The near match a plugin's failure view offers as the fix inside the sentence for
 _Avoid_: Did-you-mean (as the term), correction, autocorrect, hint (for the match)
 
 **Translator**:
-A function registered by the application or a plugin, keyed by a foreign error class, that turns a throw from an action, a row source or destination write the action set going, a middleware before its `next()` has settled, or an input source into one of the author's failure classes, or passes. Translators resolve in the order view overrides do, and the first failure returned wins.
+A function registered by the application or a plugin, keyed by a foreign error class, that turns a foreign throw into one of the author's failure classes, or passes. Core offers it each throw from an action or a middleware where the throw leaves the middleware chain, a middleware's own throw while it unwinds after `next()` included, each throw from a row source or destination write the action set going, and each throw from an input source. Translators resolve in the order view overrides do, and the first failure returned wins.
 _Avoid_: Error mapper, catch, handler, adapter
 
 **Issue**:

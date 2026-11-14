@@ -12,7 +12,7 @@ An action does one Command's work. A middleware wraps every invocation that acti
 - A typed value an action reads, such as a pool, a session, or data derived from global options: a [provider](../../../../../docs/core/providers.md) the Command opts in to.
 - Code around every invocation, such as an audit line or a state restore: an `'always'` middleware.
 - Code around an invocation when the operator asks for it, such as `--timing`: a middleware activated by its own option.
-- Ending an invocation in place of the action, as `--help` and `--version` do: a middleware activated by its own option, marked `control: true`, which takes over.
+- Ending an invocation in place of the action, as `--help` and `--version` do: a middleware activated by its own option that takes over by returning without calling `next()`. Core never reads `control: true`, so the mark does not make the middleware take over. Mark the option `control: true` anyway, as you would any option that controls the run rather than feeding the Command's work, so a projection such as the MCP tool listing leaves it out of what the Command needs, under [control options](../../../../../docs/core/commands.md#control-options).
 - Choosing the view a result renders through: a middleware that assigns `view`.
 - Adding an option or a fact to every Command at graph build: an [`onCommandAttach`](../../../../../docs/core/lifecycle-hooks.md) hook.
 - Adding hints to a failure, observing log events, or adding environment variables: [`onFailure`](../../../../../docs/core/lifecycle-hooks.md#failure-hints), [`onLog`](../../../../../docs/core/lifecycle-hooks.md#observing-log-events), or [`onEnvironment`](../../../../../docs/core/plugin-contract.md#environment-preparation).
@@ -26,7 +26,7 @@ An action receives the validated invocation. Declare a validator on the input in
 - **It reads** `args`, `options` (the Command's local options and every global option), `provided`, `host`, `signal`, `stdin`, `passthrough`, `supplied`, `interactive`, `graph`, and `command`. It reads the machine only through `host`; the [`host-bypass`](../../../../../docs/libs/eslint-plugin.md#host-bypass) lint rule reports `process`, `node:os` folders, and `node:child_process`.
 - **Its result is data for a consumer.** Declare `result()` or `rows()` on a Command whose output a script, `--format`, or an MCP tool call reads, and emit it once through `out.results` before the action returns. On such a Command stdout carries the result alone, and `out.print` and `out.render` move to stderr, under [Stdout belongs to the result](../../../../../docs/core/results.md#stdout-belongs-to-the-result). [Results and failures](results-and-failures.md) says when to declare one.
 - **Its messages are about the work.** Progress, notes, and summaries go to `info`, `success`, `warn`, `debug`, and `trace`, which write to stderr, and to `log` for log events. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
-- **Its return value is ignored.** A normal return succeeds unless its output fails or it did not emit a declared result. A failure is a throw: `out.fatal(message)`, or a failure class such as a `FatalError` subclass, whose class decides the [exit code](../../../../../docs/core/failures.md#declared-exit-codes). Never set `process.exitCode` or call `process.exit()`.
+- **Its return value is ignored.** A normal return succeeds unless its output fails, it did not emit a declared result, the run was cancelled, which resolves the cancellation code, such as 130 for Ctrl-C, or a provided value's close throws, under [Closing](../../../../../docs/core/providers.md#closing). A failure is a throw: `out.fatal(message)`, or a failure class such as a `FatalError` subclass, whose class decides the [exit code](../../../../../docs/core/failures.md#declared-exit-codes). Never set `process.exitCode` or call `process.exit()`.
 - **Its catch is final.** An action that catches a failure and returns ends the run with what it produced, under [the ordinary failure path](../../../../../docs/core/failures.md#the-ordinary-failure-path).
 - **It restores what it changes.** Restore raw mode, the cursor, or a child program in a `finally`, and register a synchronous [`onShutdown`](../../../../../docs/core/signals.md#onshutdown) handler so a shutdown that runs out of budget restores it too. Read `signal` in long work. Do not register `process.on` handlers.
 - **It alone runs other Commands.** `invoke` is on the action context, not the middleware context.
@@ -46,7 +46,7 @@ A middleware reads the routed invocation after parsing and validation, under [Mi
 - **Installation order.** The chain runs each activated middleware in the order of the Application's `plugins` list, and the action ends the chain. Code after `await next()` unwinds in reverse order. A plugin listed earlier wraps the plugins after it and can take over before they load.
 - **Activation.** `activate` is `'always'` or a list of the plugin's own option names. A listed option activates the middleware when a token or an input source supplies it, never when only its default applies. An option the plugin's `onCommandAttach` hook declares cannot activate it, so a middleware that reads one declares `'always'`, as the formatter does. [Activation](../../../../../docs/core/plugin-contract.md#activation) states the rule.
 - **Lazy loading.** Core calls `load` only when the chain reaches an activated middleware. Keep the middleware in its own module and load it with `import()`, so an invocation that does not activate it never imports it. An `'always'` middleware loads on every invocation that reaches the chain.
-- **Before the chain.** An unknown command fails before any middleware runs. Every other input fault is held and raised at the dispatch boundary, where it rejects the innermost `next()` and travels outward through every awaiting middleware. Validators run before the chain, even on an invocation a middleware then takes over.
+- **Before the chain.** An unknown command fails before any middleware runs. Every other input fault is held and raised at the dispatch boundary, where it rejects the innermost `next()` and travels outward through every awaiting middleware. Validators run before the chain, even on an invocation a middleware then takes over. A declared default or implied value that its validator rejects fails the run before the chain starts, so not even `--help` can take over, under [Invocation](../../../../../docs/core/invocation.md).
 - **At the dispatch boundary.** Core builds the routed Command's providers after the last middleware continues, and closes them when the action settles, so code after `await next()` runs after every provided value has closed.
 - **Invocation by name.** Each `invoke` call runs the chain again for the Command it names, so an `'always'` middleware also wraps every MCP tool call. What it writes there lands in that call's captured output.
 
@@ -58,11 +58,17 @@ This plugin reports how long a dispatched Command took when the operator supplie
 import { Application, plugin } from "@loomcli/core";
 import type { Middleware, Plugin, PluginOptions } from "@loomcli/core";
 
+// The option controls the run rather than feeding the Command's work.
 const options = {
-  timing: { description: "Report how long the command took.", type: "boolean" },
+  timing: {
+    control: true,
+    description: "Report how long the command took.",
+    type: "boolean",
+  },
 } satisfies PluginOptions;
 
-// In the application, this is the default export of its own module, loaded with import().
+// In the application, this is the default export of its own module.
+// The plugin loads that module with import().
 const middleware: Middleware<typeof timing> = async ({ next, out }) => {
   const started = Date.now();
   const outcome = await next();
@@ -73,7 +79,10 @@ const middleware: Middleware<typeof timing> = async ({ next, out }) => {
 
 function timing(): Plugin<typeof options> {
   return plugin("notes/timing", {
-    middleware: { activate: ["timing"], load: async () => ({ default: middleware }) },
+    middleware: {
+      activate: ["timing"],
+      load: async () => ({ default: middleware }),
+    },
     options,
   });
 }

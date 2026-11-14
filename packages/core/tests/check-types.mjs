@@ -92,7 +92,7 @@ async function writeSkillExamples(folder) {
   for (const file of await markdownUnder(skillFolder)) {
     const blocks = tsBlocks(await readFile(file, 'utf8'));
     for (const [index, block] of blocks.entries()) {
-      const name = `example-${origins.size + 1}.ts`;
+      const name = `example-${String(origins.size + 1).padStart(3, '0')}.ts`;
       await writeFile(join(folder, name), block.code);
       const markdown = relative(root, file);
       origins.set(name, `${markdown}, block ${index + 1} (line ${block.line})`);

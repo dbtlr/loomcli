@@ -7,10 +7,10 @@ import { afterEach, expect, test } from 'vite-plus/test';
 import {
   checkLinks,
   collectAnchors,
-  extractLinks,
   formatBroken,
   slugify,
 } from '../../../scripts/check-links.mjs';
+import { extractLinks } from '../../loom/src/helpers/markdown-links.ts';
 
 /** The temporary documentation trees this file built, removed after each test. */
 const trees: string[] = [];

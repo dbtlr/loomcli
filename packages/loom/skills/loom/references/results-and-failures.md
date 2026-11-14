@@ -23,7 +23,7 @@ Keep these invariants:
 
 ## Fail by throwing a failure class
 
-An action that returns has succeeded and exits 0, whatever it wrote: `out.error` reports and does not fail. To fail, throw. Core reads the exit code from the thrown failure's class, so never set `process.exitCode`.
+Reporting an error does not fail the run: `out.error` writes its message and the run goes on. To fail, throw. Core reads the exit code from the thrown failure's class, so never set `process.exitCode`. An action that returns still fails when it emitted no declared result, when a write to a destination fails, or when a provided value's close throws, and a cancelled run resolves its cancellation code, such as 130 for Ctrl-C.
 
 Choose the base by who must act:
 
@@ -33,15 +33,16 @@ Choose the base by who must act:
 
 Declare one class for each failure a reader must tell apart:
 
-- `static override readonly code` is the [failure code](../../../../../docs/core/failures.md#failure-codes) a machine reader branches on. It is kebab-case; a code outside the grammar throws a `DeclarationError` when the class is constructed. The failure form, `invoke`'s outcome, a failure encoder, and an MCP tool error all carry it.
+- `static override readonly code` is the [failure code](../../../../../docs/core/failures.md#failure-codes) a machine reader branches on. It is kebab-case. Core checks it each time an instance is constructed, not when the class is declared, and a code outside the grammar makes that construction throw a `DeclarationError` in place of the failure. The failure form, `invoke`'s outcome, a failure encoder, and an MCP tool error all carry it.
 - `static override readonly exitCode` is its [declared exit code](../../../../../docs/core/failures.md#declared-exit-codes), from 1 through 125. Use the `EX_*` constants core exports. Annotate the field as `FailureExitCode` (or `code` as `string`) when a subclass of your class declares another value.
 - Facts a view or a script reads are `readonly` fields on the instance, not text to parse.
-- List the classes each Command can raise in the `failures` of its `manifestCommand` value, under [Manifest failures](../../../../../docs/plugins/manifest.md#manifest-failures), so an agent reads what each code means before it runs the Command.
+- List the classes each Command can raise in the `failures` of its `manifestCommand` value, one entry `{ failure: InvalidJsonError, meaning: "The document is not valid JSON." }` for each, with a one-line meaning, under [Manifest failures](../../../../../docs/plugins/manifest.md#manifest-failures), so an agent reads what each code means before it runs the Command.
 
-A `FatalError`'s message is marked text that core does not escape. Escape each raw value you interpolate with `style.escape`, which `@loomcli/core` exports, or override the `FatalError` view to escape the whole message, as [Failure views](../../../../../docs/core/failure-views.md#failure-views) shows. Do one, not both, because text escaped twice no longer displays as written.
+A `FatalError`'s message is marked text that core does not escape. Pass each raw value you interpolate, such as a path the operator supplied, through `escapeControlCharacters`, which `@loomcli/core` exports, so no control character or bidirectional control reaches the terminal, as rule 5 of [Failure message voice](../../../../../docs/core/failures.md#failure-message-voice) requires. Then escape markup once: with `style.escape` on the value, or with a `FatalError` view override that escapes the whole message, as [Failure views](../../../../../docs/core/failure-views.md#failure-views) shows. Do one of the two, not both, because markup escaped twice no longer displays as written.
 
 ```ts
-import { Application, Command, EX_DATAERR, FatalError, translate } from "@loomcli/core";
+import { Application, Command, EX_DATAERR } from "@loomcli/core";
+import { FatalError, translate } from "@loomcli/core";
 import { format } from "@loomcli/plugins/format";
 import { table } from "@loomcli/plugins/table";
 
@@ -55,34 +56,43 @@ export class InvalidJsonError extends FatalError {
   static override readonly exitCode = EX_DATAERR;
 
   constructor(options?: ErrorOptions) {
-    super(
-      "The document is not valid JSON. Correct its syntax, or supply another document.",
-      options,
-    );
+    super("The document is not valid JSON. Correct its syntax.", options);
     this.name = "InvalidJsonError";
   }
+}
+
+// JSON.parse throws a SyntaxError for a malformed document.
+function invalidJson(error: SyntaxError): InvalidJsonError {
+  return new InvalidJsonError({ cause: error });
+}
+
+function entriesOf(document: unknown): Entry[] {
+  if (typeof document !== "object" || document === null) {
+    return [];
+  }
+  return Object.entries(document).map(([key, value]) => ({
+    key,
+    kind: typeof value,
+  }));
 }
 
 export const keys = new Command("keys", {
   description: "List the top-level keys of a JSON document.",
 })
-  .argument("document", { description: "The JSON text to read.", required: true })
+  .argument("document", { description: "The JSON text.", required: true })
   .rows<Entry>({ views: { table: table({ columns: ["key", "kind"] }) } })
   .action(async ({ args, out }) => {
-    // A malformed document throws a SyntaxError here, and the translator below answers it.
+    // A malformed document throws here, and the translator answers it.
     const document: unknown = JSON.parse(args.document);
-    const entries: Entry[] =
-      typeof document === "object" && document !== null
-        ? Object.entries(document).map(([key, value]) => ({ key, kind: typeof value }))
-        : [];
     await out.info("Read the document.");
-    await out.results(entries);
+    await out.results(entriesOf(document));
   });
 
-// format() adds --format json and jsonl, and writes a failed run as JSON when one is selected.
+// format() adds --format json and jsonl.
+// When one is selected, it writes a failed run as JSON too.
 export const app = new Application("doc", {
   plugins: [format()],
-  translators: [translate(SyntaxError, (error) => new InvalidJsonError({ cause: error }))],
+  translators: [translate(SyntaxError, invalidJson)],
 }).command(keys);
 ```
 
@@ -91,7 +101,7 @@ export const app = new Application("doc", {
 A [translator](../../../../../docs/core/failures.md#translators) turns an error a library or the platform throws into one of your failure classes, so no action repeats the catch. Register it under the Application's `translators`; a plugin that wraps a client ships its own.
 
 - The translator receives the instance typed from its key class and returns a failure, or `undefined` to pass the throw on. Pass `{ cause: error }` to keep the original; core never sets `cause` for you.
-- Node's system errors are all `Error` instances told apart by `code`, so key the translation on `Error` and check `error.code` inside.
+- Node's system errors are all `Error` instances told apart by `code`, so key the translation on `Error` and narrow inside it, such as `"code" in error && error.code === "ENOENT"`. The parameter is typed `Error`, which has no `code`, so `error.code` alone does not compile; narrow it, never assert it with `as`.
 - The Application's list is consulted before every plugin's, and at each one the whole prototype chain is walked before the next, so your translation keyed on `Error` answers before a plugin's keyed on `SyntaxError`.
 - A translator sees the error alone. When the sentence must name something only the call site knows, such as which of several files failed, catch at the call site and throw your class there.
 - A throw from an action, a middleware, an input source, a row source, or a write the action awaits reaches the translators. A failure class, a cancellation, and a throw from one of Loom's contracts, such as a validator or a translator, never do.
@@ -104,18 +114,18 @@ The same holds for the rest of your code. A validator that throws, instead of re
 
 `override(FailureClass, view)` under the Application's `views` replaces how a class renders, typed from its instances. The [failure views](../../../../../docs/core/failure-views.md#failure-views) page states the resolution; these are the points an author gets wrong:
 
-- An override for a base class covers every subclass at once, and the Application's overrides win over every plugin's, so `override(UsageError, …)` restyles every exit-2 failure.
+- An override for a base class covers every subclass at once, and the Application's overrides win over every plugin's. So `override(UsageError, …)` restyles every exit-2 failure core raises, and it also replaces the [suggestions](../../../../../docs/plugins/suggestions.md) plugin's views for an unknown command and an unknown option, which then lose their `Did you mean` sentence. It does not reach a class of your own that declares exit code 2 without extending `UsageError`.
 - The view owns its trailing newline, and it prints `context.hints` itself. An override that ignores them drops the lines plugins add, such as a pointer to `--help`.
 - Read `context.invokedBy` before pointing at a command line: under `invoke` and an MCP tool call there is none.
 - A view cannot change the exit code, which is a fact of the class.
-- A defect never reaches an override in a development build. In a distributed build, `override(InternalError, …)` replaces the generic message.
+- A defect never reaches an override in a development build. In a distributed build, `override(InternalError, …)` replaces the generic message for a defect. A declaration fault that reaches a run is a `DeclarationError`, which does not extend `InternalError`, so replace its message with `override(DeclarationError, …)`.
 - Under `run()`, when the selected view declares a media type that a [failure encoder](../../../../../docs/core/failure-views.md#failure-encoders) answers, such as the formatter's `application/json`, the encoder writes the failure form on stderr and no view renders. A script that asked for `--format json` reads JSON on failure too.
 
 ## Write the message in the failure voice
 
 Every operator message says what went wrong and what to do instead. [Failure message voice](../../../../../docs/core/failures.md#failure-message-voice) states the rules Loom's own messages follow; Loom cannot check yours, so apply them yourself:
 
-- Name the specific thing in the first part, such as the path, the file, or the key, and give an action or the accepted form in the second: `Path not found: "user.nme". Run jsonkit keys to list the keys at the root.`
-- Repeat an input's value only when you know it is not a secret, and escape what you repeat.
+- Name the specific thing in the first part, such as the path, the file, or the key, and give an action or the accepted form in the second: `Path not found: "user.nme". Run doc keys to list the keys at the root.`
+- Repeat an input's value only when you know it is not a secret, and pass what you repeat through `escapeControlCharacters`.
 - Quote no text you did not write, such as a cause's message, an engine reason, or a stack. It can leak a path or a value, it changes between runtimes, and it gives the operator no step to take.
 - Give a defect no operator message of your own. The operator cannot fix it, so let core report it.

@@ -25,9 +25,9 @@ This reference covers the `loom` bin: how to run it, when to run each command, w
 - `loom changelog write`: to cut a version or a prerelease from the pending fragments.
 - `loom changelog notes <version>`: to print a version's release notes for its release page.
 
-Three rules hold across the commands:
+Across the commands:
 
-- Name `--target` on every `loom build`. Without it, the build compiles a binary for the host, not a bundle.
+- Name `--target` on every `loom build`. The flag is optional, but without it the build compiles a binary for the host rather than the bundle the scaffold's `bin` and `build` script name, so naming the target keeps a build from changing with the machine it runs on.
 - Follow the loom-changelog skill, at `.agents/skills/loom-changelog/SKILL.md`, for fragments and cuts. The [changelog reference](../../../../../docs/toolchain/changelog.md) holds every rule.
 - Exit code 1 is a failed build, check, or cut, and 2 is a command or option error.
 
@@ -48,8 +48,8 @@ Three rules hold across the commands:
 - **A re-run fills gaps at the configured paths.** Init writes any scaffold file that is missing where the configuration places it. A package that keeps its Application somewhere else sets `paths.application`, `paths.entry`, or `paths.source` first, or limits init with `--only`, or init writes a second application at `src/application.ts`.
 - **Init never changes a `package.json` key.** A re-run does not upgrade dependencies or rewrite scripts. Upgrade the `@loomcli/*` packages together with the package manager, then run `loom init` to refresh the managed files.
 - **Managed files are Loom's.** The fragment guide, `<changes>/README.md`, the changelog skill, this skill at `.agents/skills/loom/`, and `install.sh` carry a header with a checksum. A re-run re-renders each file whose checksum still matches, so an unedited file follows the installed toolchain. Commit them.
-- **Do not edit a managed file.** An edited file has drifted: init warns about it on every run and leaves it alone, and `--force` restores it. To keep your own version, delete its header, and init never writes it again. Put project-specific agent instructions in a file of your own instead, so this skill keeps refreshing.
-- **Stale skill files go.** A file under `.agents/skills/loom/` that carries the header, matches its checksum, and is no longer rendered by the installed `loom` is removed by the next run.
+- **Do not edit a managed file.** An edited file has drifted: each init run that writes its piece warns about it and leaves it alone, and `--force` restores it. To keep your own version, delete its header, and init never writes it again. Put project-specific agent instructions in a file of your own instead, so this skill keeps refreshing.
+- **Stale skill files go.** A file under `.agents/skills/loom/` that carries the header, matches its checksum, and is no longer rendered by the installed `loom` is removed by the next run that writes the skills: a plain `loom init` or `loom init --only skill`. An edited one stays, with a warning, until `--force`.
 - **`--force` never touches a scaffold file.**
 
 ## What the toolchain leaves to you

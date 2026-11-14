@@ -20,7 +20,7 @@ import { expect, test } from 'vite-plus/test';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
-import { extractLinks } from '../../../scripts/check-links.mjs';
+import { extractLinks } from '../src/helpers/markdown-links.js';
 
 /** The skill folder as the repository holds it. */
 const folder = fileURLToPath(new URL('../skills/loom/', import.meta.url));
@@ -76,14 +76,80 @@ test.each(files)('%s links to files outside the skill folder by a plain relative
   expect(problems).toEqual([]);
 });
 
-test.each(files)('%s fences TypeScript as ts', (file) => {
-  const lines = readFileSync(join(folder, file), 'utf8').split('\n');
-  const wrong = lines.flatMap((line, index) =>
-    /^\s*(?:`{3,}|~{3,})\s*(?:typescript|tsx)\b/iu.test(line)
-      ? [`${file}:${index + 1}: ${line}`]
-      : [],
+/** The info string of a fence opening line, with how it is indented and fenced, or `undefined`. */
+function fenceInfo(line: string): { fence: string; indent: string; info: string } | undefined {
+  const groups = /^(?<indent>\s*)(?<fence>`{3,}|~{3,})(?<info>.*)$/u.exec(line)?.groups;
+  return groups === undefined
+    ? undefined
+    : { fence: groups.fence ?? '', indent: groups.indent ?? '', info: groups.info?.trim() ?? '' };
+}
+
+/**
+ * The fences `check:types` would not compile although they hold TypeScript: one that is indented,
+ * made of `~`, or whose info string begins with ts, typescript, or tsx but is not exactly `ts`.
+ */
+function unreadTypeScriptFences(text: string): string[] {
+  const wrong: string[] = [];
+  let open = '';
+  for (const [index, line] of text.split('\n').entries()) {
+    const opening = fenceInfo(line);
+    if (open !== '') {
+      if (new RegExp(`^\\s*${open[0]}{${open.length},}\\s*$`, 'u').test(line)) {
+        open = '';
+      }
+    } else if (opening !== undefined) {
+      open = opening.fence;
+      const typescript = /^(?:typescript|tsx?)(?![a-z0-9])/iu.test(opening.info);
+      const read = opening.indent === '' && opening.fence.startsWith('`') && opening.info === 'ts';
+      if (typescript && !read) {
+        wrong.push(`${index + 1}: ${line}`);
+      }
+    }
+  }
+  return wrong;
+}
+
+test('a fence check reads the spellings check:types would not compile', () => {
+  const fences = ['```typescript', '```tsx', '```TS', '```ts title=x', '~~~ts', '  ```ts'];
+  for (const fence of fences) {
+    expect(
+      unreadTypeScriptFences(`${fence}\nconst a = 1;\n${fence.trim().slice(0, 3)}\n`),
+    ).toHaveLength(1);
+  }
+  expect(unreadTypeScriptFences('```ts\nconst a = 1;\n```\n```json\n{}\n```\n')).toEqual([]);
+});
+
+test.each(files)('%s fences TypeScript as ts, unindented, in backticks', (file) => {
+  const wrong = unreadTypeScriptFences(readFileSync(join(folder, file), 'utf8'));
+  expect(wrong.map((entry) => `${file}:${entry}`)).toEqual([]);
+});
+
+/** The lines inside `ts` blocks of a Markdown text, with their 1-based line numbers. */
+function tsBlockLines(text: string): { line: number; text: string }[] {
+  const found: { line: number; text: string }[] = [];
+  let within = false;
+  for (const [index, line] of text.split('\n').entries()) {
+    if (within) {
+      within = !/^`{3,}\s*$/u.test(line);
+      if (within) {
+        found.push({ line: index + 1, text: line });
+      }
+    } else {
+      within = /^`{3,}ts\s*$/u.test(line);
+    }
+  }
+  return found;
+}
+
+/**
+ * Prettier's default print width is 80. An author who runs it on its defaults over the managed
+ * skill would otherwise reformat the file, and init would report it as drifted.
+ */
+test.each(files)('%s keeps every ts line within 80 characters', (file) => {
+  const long = tsBlockLines(readFileSync(join(folder, file), 'utf8')).filter(
+    ({ text }) => text.length > 80,
   );
-  expect(wrong).toEqual([]);
+  expect(long.map(({ line, text }) => `${file}:${line}: ${text.length} characters`)).toEqual([]);
 });
 
 test('SKILL.md carries the name loom, a description, and a string metadata.version', () => {

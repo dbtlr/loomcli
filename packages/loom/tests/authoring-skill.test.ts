@@ -15,14 +15,20 @@
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { expect, test } from 'vite-plus/test';
 
-import { extractLinks } from '../../../scripts/check-links.mjs';
-import { authoringSkill, renderSkillLinks, repositoryUrl } from '../src/content/authoring-skill.js';
+import {
+  authoringSkill,
+  authoringSkillSource,
+  managedContent,
+  renderSkillLinks,
+  repositoryUrl,
+} from '../src/content/authoring-skill.js';
 import { readManaged, renderManaged } from '../src/helpers/managed.js';
+import { extractLinks } from '../src/helpers/markdown-links.js';
 
 const tag = `${repositoryUrl}/blob/v0.19.0`;
 
@@ -118,6 +124,14 @@ test('SKILL.md and each reference take a header between blank lines', () => {
   }
 });
 
+test('the blank lines after frontmatter do not depend on how many the source has', () => {
+  const rendered = '---\nname: x\n---\n\n\n# Title\n';
+  for (const gap of ['', '\n', '\n\n', '\n\n\n']) {
+    expect(managedContent(`---\nname: x\n---\n${gap}# Title\n`)).toBe(rendered);
+  }
+  expect(managedContent('# Title\n')).toBe('\n# Title\n');
+});
+
 test('init rewrites the links the repository link check reads, no more and no fewer', () => {
   const folder = fileURLToPath(new URL('../skills/loom/', import.meta.url));
   for (const { path } of authoringSkill('0.19.0')) {
@@ -127,7 +141,9 @@ test('init rewrites the links the repository link check reads, no more and no fe
     expect(after.map(({ line }) => line)).toEqual(before.map(({ line }) => line));
     for (const [index, link] of before.entries()) {
       const rendered = after[index]?.target ?? '';
-      const outside = link.target.startsWith('../../../');
+      const outside = !posix
+        .join(authoringSkillSource, posix.dirname(path), link.target.split('#')[0] ?? '')
+        .startsWith(`${authoringSkillSource}/`);
       expect(outside ? rendered.startsWith(`${tag}/`) : rendered === link.target).toBe(true);
     }
   }

@@ -2,6 +2,8 @@
 
 This reference covers how to test a Loom application: the assembly check, a whole run in the test's own process, one function with a built context, and the few cases that need a child process.
 
+The examples import from `bun:test`, the runner a default `loom init` sets up. A package made with `--test-runner vitest` imports `expect` and `test` from `vitest` instead, and uses `vi.fn` where an example uses `mock`.
+
 ## Keep the assembly check
 
 `loom init` writes `src/application.test.ts`, which passes the Application to `assertAssembles` from `@loomcli/testing`. Keep it. It runs `Application.check()`: every build rule, the input-schema converter check, and every plugin's `onGraphBuilt` hook, such as the MCP plugin's tool-name check. A fault there fails CI with its Developer Diagnostic instead of failing an operator's run.
@@ -15,7 +17,7 @@ Most tests run the Application through its own `run()` on a mock process handle:
 
 - **Sealed defaults.** A field the test omits holds a fixed value, not the machine's: `argv` is `[]`, `env` is `{}`, `cwd` is `/loom-test`, which does not exist, `platform` is `linux`, stdin is empty, no stream is a terminal, and no child program can start. `release` is `{ build: 'source' }`, a development build, so a defect writes its Developer Diagnostic; state `release: { build: 'distributed' }` to see what an operator sees.
 - **A supplied field replaces its default whole.** `env: { HOME: home }` is the run's entire environment.
-- **Files.** Give `cwd` as an absolute path to a fixture folder, or to a folder the test makes with `mkdtempSync` and removes after. The default home and temporary folders do not exist, so a run that writes there fails.
+- **Files.** Give `cwd` as an absolute path to a fixture folder, or to a folder the test makes with `mkdtempSync` and removes after. The default home and temporary folders do not exist, so a run that writes there fails. With the configuration plugin installed, its project lookup walks up from `cwd` past the temporary folder to the filesystem root, because the folder is outside the mock's home, `/loom-test/home`, so a stray configuration file above the folder can answer. When the plugin declares a `root` marker, such as `package.json`, put an entry of that name in the folder. Otherwise pass `--no-config` in `argv`. [The configuration plugin](../../../../../docs/plugins/config.md) states the lookup.
 - **Child programs.** `programs` scripts each child program by the exact command the run names, with no `PATH` lookup, so `git` and `/usr/bin/git` are two scripts. A command with no script throws from `host.spawn`, which fails the run. Assert the arguments the script received.
 - **The terminal.** `terminal: { columns, rows }` puts the output streams on a terminal of that size, and `terminal.keys` answers questions, under [Answering questions](../../../../../docs/libs/testing.md#answering-questions).
 - **What stays real.** Clocks, timers, randomness, the network, and the file system. Mask a timestamp or an elapsed time before comparing.
@@ -23,22 +25,27 @@ Most tests run the Application through its own `run()` on a mock process handle:
 - **Typed calls.** `app.invoke(path, values, { process: mock })` runs one Command by name on the mock's facts and returns its outcome: `output` and `messages` as text, and for a failure its `exitCode` and failure `form`. It writes nothing to the mock's streams.
 
 ```ts
+/// <reference types="bun" />
+import { expect, test } from "bun:test";
 import { Application, FatalError } from "@loomcli/core";
 import { mockProcess } from "@loomcli/testing";
-import { expect, test } from "vitest";
+
+const sentence = "The folder is not a git repository. Run revision inside one.";
 
 class NotARepositoryError extends FatalError {
   static override readonly code = "not-a-repository";
 
   constructor() {
-    super("The folder is not a git repository. Run revision inside one.");
+    super(sentence);
     this.name = "NotARepositoryError";
   }
 }
 
 // A real test imports the Application from the application module instead.
-const revision = new Application("revision").action(async ({ host, out, signal }) => {
-  const exit = await host.spawn("git", ["rev-parse", "HEAD"], { signal }).exited;
+const revision = new Application("revision").action(async (context) => {
+  const { host, out, signal } = context;
+  const git = host.spawn("git", ["rev-parse", "HEAD"], { signal });
+  const exit = await git.exited;
   if (exit.kind === "unstarted" || exit.code !== 0) {
     throw new NotARepositoryError();
   }
@@ -61,14 +68,15 @@ test("revision prints the commit git reports, with no git run", async () => {
   expect(mock.stderr.text).toBe("");
 });
 
-test("outside a repository, revision fails with its own sentence and failure code", async () => {
+test("outside a repository, revision fails with its own code", async () => {
   const mock = mockProcess({ programs: { git: () => ({ code: 128 }) } });
   await expect(revision.run({ process: mock })).resolves.toBe(1);
-  expect(mock.stderr.text).toBe("The folder is not a git repository. Run revision inside one.\n");
+  expect(mock.stderr.text).toBe(`${sentence}\n`);
 
   const outside = mockProcess({ programs: { git: () => ({ code: 128 }) } });
   const outcome = await revision.invoke([], {}, { process: outside });
-  expect(outcome.status === "failed" ? outcome.form.code : outcome.status).toBe("not-a-repository");
+  const code = outcome.status === "failed" ? outcome.form.code : undefined;
+  expect(code).toBe("not-a-repository");
 });
 ```
 
@@ -86,30 +94,40 @@ When an action, a middleware, a hook, or a view holds logic worth testing alone,
 
 - **Extract the action.** `actionContext` takes an extracted handler, typed `ActionHandler<typeof command>`. An inline `.action()` handler has no public way to reach it. [Structure](structure.md) shows where the extracted handler lives.
 - **State the inputs whole.** State `args`, `options`, and `provided` exactly as the handler reads them. `options` includes every registered global option, and `provided` is `{}` for a Command with no provider. No default, validator, or input source runs.
-- **Know what an unstated member does.** The semantic lanes, `out.render`, and `out.results` resolve and keep nothing, so state `out: { results }` with your own function to read the result. `next`, `invoke`, `out.text`, and a view's measures throw or reject with a sentence that asks you to state them, and so does a read of `host`, `graph`, `command`, or another fact you did not state. An unstated `style` returns its text unchanged.
+- **Know what an unstated member does.** The semantic lanes, `out.render`, and `out.results` resolve and keep nothing, so state `out: { results }` with your own function to read the result. `next`, `invoke`, `out.text`, and a view's measures throw or reject with a sentence that asks you to state them, and so does a read of `host`, `graph`, `command`, or another fact you did not state. An unstated `style` returns its text unchanged. Under `bun test`, `spyOn` installs nothing on that style, so assign your own `mock` to the style name the function calls, as [Testing one function alone](../../../../../docs/libs/testing.md#testing-one-function-alone) shows.
 - **No core machinery runs.** A thrown error reaches the test as the function threw it: no translator answers it and no failure view renders it. Test translation, failure text, and exit codes through a whole run.
-- **Functions with no builder.** A failure view and a configuration source have no builder, so test them through a whole run. Test an `onCommandAttach` or `onGraphBuilt` hook by installing its plugin on a small Application and reading `inspect()`, or with `assertAssembles`.
+- **Functions with no builder.** A failure view and a configuration source have no builder, so test them through a whole run. An `onLog` hook and a progress observer have no context builder either: call them with values that `logEvent`, `logDestination`, and `progressEvent` build, under [Building the values a hook reads](../../../../../docs/libs/testing.md#building-the-values-a-hook-reads). Test an `onCommandAttach` or `onGraphBuilt` hook by installing its plugin on a small Application and reading `inspect()`, or with `assertAssembles`.
 
 ```ts
+/// <reference types="bun" />
+import { expect, mock, test } from "bun:test";
 import { Command } from "@loomcli/core";
 import type { ActionHandler } from "@loomcli/core";
 import { table } from "@loomcli/plugins/table";
 import { actionContext } from "@loomcli/testing";
-import { expect, test, vi } from "vitest";
 
 interface Entry {
   key: string;
   kind: string;
 }
 
-// In an application, the handler lives in its own module and type-imports the Command.
+type Rows = Iterable<Entry> | AsyncIterable<Entry>;
+
+function entriesOf(document: unknown): Entry[] {
+  if (typeof document !== "object" || document === null) {
+    return [];
+  }
+  return Object.entries(document).map(([key, value]) => ({
+    key,
+    kind: typeof value,
+  }));
+}
+
+// In an application, the handler sits in a module of its own.
+// That module type-imports the Command.
 const listKeys: ActionHandler<typeof keys> = async ({ args, out }) => {
   const document: unknown = JSON.parse(args.document);
-  const entries: Entry[] =
-    typeof document === "object" && document !== null
-      ? Object.entries(document).map(([key, value]) => ({ key, kind: typeof value }))
-      : [];
-  await out.results(entries);
+  await out.results(entriesOf(document));
 };
 
 export const keys = new Command("keys")
@@ -118,7 +136,7 @@ export const keys = new Command("keys")
   .action(listKeys);
 
 test("keys emits one row for each top-level key", async () => {
-  const results = vi.fn(async (_rows: Iterable<Entry> | AsyncIterable<Entry>) => {});
+  const results = mock(async (_rows: Rows) => {});
   const context = actionContext(listKeys, {
     args: { document: '{"a":1}' },
     options: {},
@@ -129,9 +147,14 @@ test("keys emits one row for each top-level key", async () => {
   expect(results).toHaveBeenCalledWith([{ key: "a", kind: "number" }]);
 });
 
-test("a malformed document reaches the test as the SyntaxError, untranslated", async () => {
-  const context = actionContext(listKeys, { args: { document: "{" }, options: {}, provided: {} });
-  await expect(Promise.resolve().then(() => listKeys(context))).rejects.toThrow(SyntaxError);
+test("a malformed document rejects with the raw SyntaxError", async () => {
+  const context = actionContext(listKeys, {
+    args: { document: "{" },
+    options: {},
+    provided: {},
+  });
+  const call = Promise.resolve().then(() => listKeys(context));
+  await expect(call).rejects.toThrow(SyntaxError);
 });
 ```
 
@@ -139,4 +162,4 @@ test("a malformed document reaches the test as the SyntaxError, untranslated", a
 
 A [process test](../../../../../docs/glossary.md#toolchain) starts the application as a child process. Write one only for behavior that only a process has: a signal delivered by the operating system and the exit status the shell sees, a pseudo-terminal, a real shell, the framing of real stdio, or what the built bundle loads in a fresh process. Everything else runs on a mock.
 
-A signal does not need a process. `mock.signals.raise('SIGINT')` reaches the runs on that mock alone, so the run resolves 130, and Ctrl-C in `terminal.keys` raises it at a question. [Cancelling at a named point](../../../../../docs/libs/testing.md#cancelling-at-a-named-point) shows where to raise it.
+A signal does not need a process. `mock.signals.raise('SIGINT')` reaches the runs listening on that mock alone, and such a run resolves 130. Call `run()` without awaiting it, then raise: a raise before any run listens ends the mock instead. A top-level `invoke` never listens on the mock's signals, so pass it an `AbortController`'s signal in its `signal` option, and abort the controller to cancel it. Ctrl-C in `terminal.keys` raises SIGINT at a question. [Cancelling at a named point](../../../../../docs/libs/testing.md#cancelling-at-a-named-point) shows where to raise it.
