@@ -34,26 +34,44 @@ type ResultView = View<never> | RowView<never>; // the erased view a result name
 
 ```ts
 // src/format/attach.ts, the hook of the @loomcli/plugins/format subpath
-import type { CommandAttachHook } from '@loomcli/core';
+import type { AttachedCommand, CommandAttachHook } from '@loomcli/core';
 
 import { formatName } from './names.js';
+import type { FormatSettings } from './plugin.js';
 import { json, jsonl } from './views.js';
 
-export const attachFormat: CommandAttachHook = (command) => {
-  const result = command.result;
-  if (result === null) {
-    return command;
-  }
-  const machine = { json: json(), jsonl: jsonl() };
-  const missing = Object.entries(machine).filter(([name]) => !result.views.includes(name));
-  const reshaped = command.views(Object.fromEntries(missing));
-  const names = reshaped.result?.views ?? [];
-  return reshaped.option('format', {
-    description: `Select the output format, ${result.default} by default.`,
+const groupNames = ['json', 'jsonl'];
+
+function attachToGroup(command: AttachedCommand, short: FormatSettings['short']): AttachedCommand {
+  return command.option('format', {
+    control: true,
+    description: 'Select the output format.',
+    hidden: true,
+    ...(short === undefined ? {} : { short }),
     type: 'string',
-    validate: formatName(names),
+    validate: formatName(groupNames),
   });
-};
+}
+
+export function attachFormat(short: FormatSettings['short']): CommandAttachHook {
+  return (command) => {
+    const result = command.result;
+    if (result === null) {
+      return command.hasAction ? command : attachToGroup(command, short);
+    }
+    const machine = { json: json(), jsonl: jsonl() };
+    const added = Object.entries(machine).filter(([name]) => !result.views.includes(name));
+    const reshaped = command.views(Object.fromEntries(added));
+    const names = [...result.views, ...added.map(([name]) => name)];
+    return reshaped.option('format', {
+      control: true,
+      description: `Select the output format, ${result.default} by default.`,
+      ...(short === undefined ? {} : { short }),
+      type: 'string',
+      validate: formatName(names),
+    });
+  };
+}
 ```
 
 The hook includes the declared default in its description, as specified by the [help restyle](../plugins/help.md#help-and-version-restyle), and leaves the view names to the help page's [accepted values](../plugins/help.md#accepted-values), which read them from the option's input schema.
