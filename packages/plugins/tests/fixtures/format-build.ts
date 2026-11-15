@@ -25,6 +25,20 @@ function fixtureApplication(name: string) {
         .command(count)
         .action(dispatch);
     },
+    /** A group's own option "format", which the hidden option the hook declares on a group meets. */
+    'group-name-collision': () => {
+      const clear = new Command('clear').action(dispatch);
+      const cache = new Command('cache').option('format', { type: 'string' }).command(clear);
+      return new Application('app', { plugins: [format()] }).command(cache);
+    },
+    /** The short spelling -f, which a group's own --force already claims. */
+    'group-short-collision': () => {
+      const clear = new Command('clear').action(dispatch);
+      const cache = new Command('cache')
+        .option('force', { short: 'f', type: 'boolean' })
+        .command(clear);
+      return new Application('app', { plugins: [format({ short: 'f' })] }).command(cache);
+    },
     /** A local option "format" on the Command the hook would otherwise reshape. */
     'local-collision': () => {
       const count = new Command('count')

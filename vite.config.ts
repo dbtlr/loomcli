@@ -296,6 +296,15 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/plugins/src/version/middleware.ts'],
+        rules: {
+          // The version document's key order is its contract: name, version, then the six facts.
+          // The version document is JSON data, which spells an absent fact `null`.
+          'eslint/sort-keys': 'off',
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
         files: ['packages/core/src/output/log.ts'],
         rules: {
           // The log contract spells a missing plugin and a missing stderr `null`, and JSON data holds `null`.

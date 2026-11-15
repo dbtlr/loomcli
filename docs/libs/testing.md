@@ -203,6 +203,7 @@ test('revision prints the commit git reports, with no git run', async () => {
   | `platform`  | `linux`                                                          |
   | `arch`      | `x64`                                                            |
   | `libc`      | `glibc` when `platform` is `linux`, and `undefined` otherwise    |
+  | `runtime`   | `{ name: 'node', version: '24.0.0' }`, whichever runtime runs the test; a supplied `runtime: undefined` leaves the handle with none |
   | `uid`       | `1000`                                                           |
   | `timeZone`  | `UTC`                                                            |
   | `program`   | `['/loom-test/runtime', '/loom-test/app.js']`                    |
@@ -433,6 +434,7 @@ test('--dry-run takes over before the action', async () => {
 - **The middleware.** The default export of the module its plugin's `middleware.load` imports. The test imports that module itself, so no loader runs and no activation is checked.
 - **The inputs.** `options`, `ownOptions`, `spellings`, `request`, and `view`, each typed as the middleware reads it. `null` states the case core hands it in: `options` while a global option has a structural fault or was rejected, `request` while core holds a fault or on a group, and `view` on a Command that declares no view.
 - **An assigned view.** The context keeps the last view the middleware assigns, and a read of `view` returns it, so a test reads `context.view` after the call. No check runs on it, because no dispatch boundary follows.
+- **`mediaType`.** An optional value: unstated, it reads `undefined`, the value core hands a middleware on a Command that declares no result before any assignment. The builder derives nothing from `view`, because it holds no graph, so a test of a middleware that reads the media type on a Command that declares a result states it, such as `mediaType: 'application/json'` beside `view: 'json'`. The context keeps the last media type the middleware assigns, and a read returns it, so a test of the formatter on a group reads `context.mediaType` after the call. No check runs on it, as none runs on `view`.
 - **`next`.** Unstated, it rejects with its sentence. Give a mock its return type, as `vi.fn(async (): Promise<ChainOutcome> => 'dispatched')` does, because inside `vi.fn` a bare `async () => 'dispatched'` widens to `Promise<string>`.
 - **`host`, `graph`, and `command`.** Each throws its sentence when read unstated.
 

@@ -14,6 +14,7 @@ export type VersionOptions = typeof options;
 
 // @public
 export interface VersionSettings {
+    readonly extended?: boolean;
     readonly postfix?: string;
 }
 

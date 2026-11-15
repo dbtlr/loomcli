@@ -341,6 +341,14 @@ function databaseHome(): string {
   });
 }
 
+/** The runtime the process runs on: Bun, a compiled binary included, or Node.js. */
+function processRuntime(): NonNullable<ProcessHandle['runtime']> {
+  const { bun } = process.versions;
+  return bun === undefined
+    ? { name: 'node', version: process.versions.node }
+    : { name: 'bun', version: bun };
+}
+
 /** The folder for temporary files when the environment names none, on Linux and macOS alike. */
 const defaultTmpdir = '/tmp';
 
@@ -623,6 +631,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
   } = fields;
   const uid = 'uid' in fields ? { value: fields.uid } : undefined;
   const libc = 'libc' in fields ? { value: fields.libc } : undefined;
+  const runtime = 'runtime' in fields ? { value: fields.runtime } : undefined;
   let written: ExitCode | undefined = undefined;
   const handle: ProcessHandle = {
     get arch() {
@@ -658,6 +667,9 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
     readSource: readSource ?? readSourceFile,
     get release() {
       return release ?? bakedFacts();
+    },
+    get runtime() {
+      return runtime === undefined ? processRuntime() : runtime.value;
     },
     signals: realSignals(),
     spawn: (command, args, options) => startChild({ args, command, options, own: handle }),

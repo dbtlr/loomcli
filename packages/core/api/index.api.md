@@ -847,6 +847,7 @@ export interface Host {
     raise: (signal: 'SIGINT' | 'SIGQUIT' | 'SIGTSTP') => boolean;
     readSource?: (path: string, cwd: string) => string | undefined;
     release: ReleaseFacts;
+    readonly runtime?: JavaScriptRuntime | undefined;
     spawn: (command: string, args: readonly string[], options?: SpawnOptions) => Child;
     stderr: Writable;
     stdin: Readable;
@@ -993,6 +994,12 @@ export function isRuleIdentity(value: unknown): value is string;
 export function issuePath(issue: StandardSchemaV1.Issue): string | undefined;
 
 // @public
+export interface JavaScriptRuntime {
+    readonly name: 'bun' | 'node';
+    readonly version: string;
+}
+
+// @public
 export type JsonValue = null | boolean | number | string | readonly JsonValue[] | {
     readonly [key: string]: JsonValue;
 };
@@ -1102,6 +1109,8 @@ export interface MiddlewareContext<Options extends PluginOptions = PluginOptions
     readonly graph: CommandGraph;
     readonly host: Host;
     readonly log: Log;
+    get mediaType(): string | undefined;
+    set mediaType(type: string);
     readonly next: () => Promise<ChainOutcome>;
     readonly onResume: OnResume;
     readonly onShutdown: OnShutdown;
@@ -1324,6 +1333,7 @@ export interface ProcessHandle {
     readonly publishEnv?: (name: string, value: string) => void;
     readonly readSource?: (path: string, cwd: string) => string | undefined;
     readonly release: ReleaseFacts;
+    readonly runtime?: JavaScriptRuntime | undefined;
     readonly signals: SignalSource;
     spawn(command: string, args: readonly string[], options: SpawnOptions & {
         readonly cwd: string;

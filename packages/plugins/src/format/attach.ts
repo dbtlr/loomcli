@@ -1,20 +1,43 @@
-import type { CommandAttachHook } from '@loomcli/core';
+import type { AttachedCommand, CommandAttachHook } from '@loomcli/core';
 
 import { formatName } from './names.js';
 import type { FormatSettings } from './plugin.js';
 import { json, jsonl } from './views.js';
 
 /**
+ * The names a group's `--format` accepts: the formatter's own views, whose media types its
+ * middleware states at a group.
+ */
+const groupNames = ['json', 'jsonl'];
+
+/**
+ * The hidden `--format` a group takes. A group declares no result, so the option names the
+ * formatter's two encodings alone, and its middleware states the media type the name's view
+ * declares. It is hidden, because a bare group invocation always fails with the missing
+ * subcommand, so no listing advertises it.
+ */
+function attachToGroup(command: AttachedCommand, short: FormatSettings['short']): AttachedCommand {
+  return command.option('format', {
+    control: true,
+    description: 'Select the output format.',
+    hidden: true,
+    ...(short === undefined ? {} : { short }),
+    type: 'string',
+    validate: formatName(groupNames),
+  });
+}
+
+/**
  * The hook that appends `json` and `jsonl` to a Command's result where its record lacks the key,
  * then declares `--format` over the resulting names, with `short` as its short spelling or none
- * when it is undefined. `format()` has already judged that spelling at its call. A Command with no
- * result is returned unchanged.
+ * when it is undefined, and that declares a hidden `--format` on a group. `format()` has already
+ * judged that spelling at its call. A Command with an action and no result is returned unchanged.
  */
 export function attachFormat(short: FormatSettings['short']): CommandAttachHook {
   return (command) => {
     const result = command.result;
     if (result === null) {
-      return command;
+      return command.hasAction ? command : attachToGroup(command, short);
     }
     const machine = { json: json(), jsonl: jsonl() };
     const added = Object.entries(machine).filter(([name]) => !result.views.includes(name));

@@ -46,7 +46,7 @@ interface FailureHookContext {
   readonly invokedBy: InvokedBy;
   /** The view the result would render through when the run failed, as the failure view reads it. */
   readonly view: string | undefined;
-  /** The media type that view declares. */
+  /** The run's media type when it failed, as the failure view reads it. */
   readonly mediaType: string | undefined;
   /** The contextual style for stderr, which a hook escapes operator-typed text with. */
   readonly style: ContextualStyle;

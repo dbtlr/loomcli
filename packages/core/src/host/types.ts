@@ -186,6 +186,18 @@ export interface Child {
 }
 
 /**
+ * The JavaScript runtime a process runs on: its name and its version.
+ *
+ * @public
+ */
+export interface JavaScriptRuntime {
+  /** `bun` for Bun, a compiled binary included, and `node` for Node.js. */
+  readonly name: 'bun' | 'node';
+  /** The runtime's version, such as `1.3.2`. */
+  readonly version: string;
+}
+
+/**
  * Every process fact a run reads and every process effect it makes. A run binds one at entry and
  * never replaces it, and core copies its facts into the run's host.
  *
@@ -217,6 +229,11 @@ export interface ProcessHandle {
   readonly arch: string;
   /** `glibc` or `musl` on Linux, and `undefined` elsewhere. */
   readonly libc: 'glibc' | 'musl' | undefined;
+  /**
+   * The JavaScript runtime the process runs on, such as `{ name: 'bun', version: '1.3.2' }`. A
+   * hand-built handle may omit it.
+   */
+  readonly runtime?: JavaScriptRuntime | undefined;
   /** The process's user ID, or `undefined` on a runtime with none. */
   readonly uid: number | undefined;
   /** The operator's IANA time zone, such as `America/New_York`. */
@@ -284,6 +301,12 @@ export interface Host {
    * run's first read, because the real process's answer comes from a costly runtime report.
    */
   readonly libc: 'glibc' | 'musl' | undefined;
+  /**
+   * The JavaScript runtime the process runs on, copied from the handle at entry and frozen, or
+   * `undefined` when the handle holds none. Core always sets it on a run's host; it is optional,
+   * as `ceiling` is, so a host a test states whole compiles without it.
+   */
+  readonly runtime?: JavaScriptRuntime | undefined;
   /** The process's user ID, or `undefined` on a runtime with none. */
   uid: number | undefined;
   /** The command-line words after the program, as the operator typed them. */

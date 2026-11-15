@@ -6,6 +6,20 @@
 
 import type { CommandGraph } from '@loomcli/core';
 import { DeclaredView } from '@loomcli/core';
+import type { ReleaseFacts } from '@loomcli/core';
+
+// @public @sealed
+export interface VersionFacts {
+    readonly asset: string | undefined;
+    readonly build: ReleaseFacts['build'];
+    readonly channel: string | undefined;
+    readonly installationMethod: string | undefined;
+    readonly platform: string;
+    readonly runtime: string | undefined;
+}
+
+// @public
+export const versionFacts: DeclaredView<VersionFacts>;
 
 // @public @sealed
 export interface VersionLine {

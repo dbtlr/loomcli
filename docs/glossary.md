@@ -100,7 +100,7 @@ A Command input declared through `stdin()` that consumes no command-line word an
 _Avoid_: Stdin argument, stdin option, stream parameter
 
 **Local option**:
-An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the request a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so a group cannot declare one.
+An option declared on one Command, by its author or by a plugin's lifecycle hook, whose value reaches that Command's action and the request a middleware reads. An author's option is in the action's types; a hook's is present in the value at run time and absent from those types, and a middleware reads either untyped. Local options never inherit along a path, so an author's option on a group reaches no action, and routing reads it there as a parent's own option; a lifecycle hook's option on a group reaches its plugin's middleware alone.
 _Avoid_: Command option, scoped option
 
 **Declared name**:
@@ -311,11 +311,11 @@ The read-only snapshot of the routed Command's validated argument, local option,
 _Avoid_: Parsed invocation, parsed input, raw input (which is the pre-validation form)
 
 **Dispatch boundary**:
-The point the middleware chain reaches when it continues past its last middleware: core raises the fault it held, or reads the selected view, builds the providers the routed Command opted in to, and dispatches the action. A takeover never reaches it.
+The point the middleware chain reaches when it continues past its last middleware: core raises the fault it held, or checks the view and media type a middleware assigned, reads the selected view, builds the providers the routed Command opted in to, and dispatches the action. A takeover never reaches it.
 _Avoid_: Terminal step, end of chain, action phase
 
 **Routing**:
-The invocation phase that reads words from the root downward and selects the Command whose table reads the remaining words. A plain word that names a child descends; an option word is read against the global options and, at a Command with an action and children, that Command's own options, which bind to the Command routing finally reaches, and one none of those declares stops routing at the Command reached. Core once read the global options in a separate pre-scan before routing; the term is retired.
+The invocation phase that reads words from the root downward and selects the Command whose table reads the remaining words. A plain word that names a child descends; an option word is read against the global options and, at a Command with children, that Command's own options, which bind to the Command routing finally reaches, and one none of those declares stops routing at the Command reached. Core once read the global options in a separate pre-scan before routing; the term is retired.
 _Avoid_: Dispatch (for selection), resolution, matching, pre-scan
 
 **Misplaced option**:
@@ -335,7 +335,7 @@ A program a run starts through `host.spawn`, with no shell unless the call names
 _Avoid_: Child process (for what a run starts), subprocess
 
 **Host**:
-The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, the ceiling when the handle names one, environment, platform, architecture, C library, user ID, the standard streams, terminal facts, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, the ceiling when the handle names one, environment, platform, architecture, C library, JavaScript runtime, user ID, the standard streams, terminal facts, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Process handle**:
@@ -514,7 +514,7 @@ A named, unstyled mark from core's inventory with main and compatibility forms. 
 _Avoid_: Icon, symbol, emoji, bullet
 
 **Media type**:
-The type a view declares for the text it writes, such as `application/json` or `application/jsonl`, which a result publishes by view name. Core stores the string and never checks it, and a reader parses a view's output by its media type rather than by its view name. A failed run reads its selected view's media type to find a failure encoder.
+The type a view declares for the text it writes, such as `application/json` or `application/jsonl`, which a result publishes by view name. Core stores the string and never checks it, and a reader parses a view's output by its media type rather than by its view name. A run's media type is its selected view's on a Command that declares a result, and the one a middleware assigned on a Command that declares none; a takeover reads it to choose its encoding, and a failed run reads it to find a failure encoder.
 _Avoid_: Encoding (for the fact), format, content type, encoding name
 
 **Result**:
@@ -596,7 +596,7 @@ One failure as plain data, `{ code, exitCode, message, hints }`: its failure cod
 _Avoid_: Error object, error payload, error JSON, failure document
 
 **Failure encoder**:
-A function a plugin registers for one media type that turns a failure form into text. When a failed `run()`'s selected view declares that media type, core writes the encoder's text to stderr in place of the failure view, and that line is the run's only failure text there, with no incomplete-result line. A run whose failure no encoder writes, such as a cancelled stream or a broken encoder, keeps that line. One media type has one encoder, and core encodes nothing itself.
+A function a plugin registers for one media type that turns a failure form into text. When a failed `run()`'s media type is that one, core writes the encoder's text to stderr in place of the failure view, and that line is the run's only failure text there, with no incomplete-result line. A run whose failure no encoder writes, such as a cancelled stream or a broken encoder, keeps that line. One media type has one encoder, and core encodes nothing itself.
 _Avoid_: Error formatter, JSON failure view, error serializer, failure override
 
 **Hint**:
@@ -857,7 +857,7 @@ The configuration plugin's `file` setting: a file name or relative path whose la
 _Avoid_: Glob (for the whole setting), wildcard path, file mask
 
 **Middleware**:
-A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, which reads `null` while a global option has a structural fault or was rejected, the spellings of its own plugin's options, and in `ownOptions` the validated values of its plugin's own options, local ones included, which hold even while core holds a fault on another input, a structural or input-source one included, the routed node, the request, and the selected view, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
+A plugin's participation in an invocation, wrapping the request after routing, parsing, and validation. It receives every global option's value, which reads `null` while a global option has a structural fault or was rejected, the spellings of its own plugin's options, and in `ownOptions` the validated values of its plugin's own options, local ones included, which hold even while core holds a fault on another input, a structural or input-source one included, the routed node, the request, the selected view, and the run's media type, which a middleware assigns on a Command that declares no result, and it either takes over by returning or continues the chain by calling `next()`; the fault core held is raised at the dispatch boundary, which a takeover never reaches.
 _Avoid_: Hook, interceptor, terminal option, handler (for the chain entry)
 
 **Activation**:

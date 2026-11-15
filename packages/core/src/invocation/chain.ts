@@ -2,6 +2,7 @@ import type { BuiltGraph, DispatchInput, Prepared } from '../commands/command.js
 import { prepareDispatch } from '../commands/command.js';
 import {
   invokeViewCorrection,
+  mediaTypeCorrection,
   nextMisuse,
   viewSelection,
   viewSelectionCorrection,
@@ -57,8 +58,11 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * has. `request` is the routed Command's invocation, parsed and validated ahead of the chain, and
  * `null` while core holds a fault and on a group. `view` names the view the result renders
  * through: it reads as the declaration's default, or the view an invocation by name started from,
- * until a middleware assigns one, and as `null` on a Command that declares none. The last assignment before the dispatch boundary wins, and one
- * made after it changes nothing.
+ * until a middleware assigns one, and as `null` on a Command that declares none. The last
+ * assignment before the dispatch boundary wins, and one made after it changes nothing. `mediaType`
+ * is the run's media type: the selected view's on a Command that declares a result, and the last
+ * one a middleware assigned on a Command that declares none, which a takeover reads to choose its
+ * encoding and a failure encoder answers.
  *
  * @public
  * @sealed
@@ -91,6 +95,14 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   /** The name of the view the result renders through, or `null` on a Command that declares none. */
   get view(): string | null;
   set view(name: string);
+  /**
+   * The run's media type: on a Command that declares a result, the media type the selected view
+   * declares, or `undefined` when it declares none; on one that declares none, the last media type
+   * a middleware assigned before the dispatch boundary, or `undefined`. An assignment on a Command
+   * that declares a result is rejected at the boundary, because there the selected view states it.
+   */
+  get mediaType(): string | undefined;
+  set mediaType(type: string);
   /** The run's host facts. */
   readonly host: Host;
   /** The channel the middleware writes the run's output through. */
@@ -127,9 +139,10 @@ interface ViewAssignment {
 
 /**
  * The run's selection when it failed, which a failure view, an `onFailure` hook, and a failure
- * encoder read: the view the result would render through, and the media type that view declares.
- * Both are `undefined` where no view would render: on a Command with no result, and for a name the
- * result does not hold.
+ * encoder read: the view the result would render through, and the run's media type. `view` is
+ * `undefined` where no view would render: on a Command with no result, and for a name the result
+ * does not hold. `mediaType` is that view's, and on a Command with no result the one a middleware
+ * assigned.
  */
 interface FailureSelection {
   readonly view: string | undefined;
@@ -138,6 +151,12 @@ interface FailureSelection {
 
 /** The selection of a run that reached no Command's result. */
 const noSelection: FailureSelection = Object.freeze({ mediaType: undefined, view: undefined });
+
+/** One assignment of the run's media type and the plugin whose middleware made it. */
+interface MediaTypeAssignment {
+  identity: string;
+  type: string;
+}
 
 /** The view an invocation by name starts from, kept as the caller passed it. */
 interface StartingView {
@@ -153,6 +172,7 @@ interface StartingView {
  */
 class ViewSelection {
   #assigned: ViewAssignment | undefined;
+  #mediaType: MediaTypeAssignment | undefined;
   #reached = false;
   readonly #result: DeclaredResult | undefined;
 
@@ -177,14 +197,28 @@ class ViewSelection {
   }
 
   /**
+   * What `mediaType` reads: the media type of the view `view` reads on a Command that declares a
+   * result, whatever was assigned, and the last assignment on one that declares none.
+   */
+  readMediaType(): string | undefined {
+    const result = this.#result;
+    if (!result) {
+      return this.#mediaType?.type;
+    }
+    const name = this.read() ?? result.default;
+    return result.mediaTypes.get(name) ?? undefined;
+  }
+
+  /**
    * The selection a failure reads: the last assignment, else the starting view, else the default,
    * the rule the boundary applies, read the same before and after dispatch. A name the boundary
-   * would reject selects nothing.
+   * would reject selects nothing. On a Command with no result it is the assigned media type alone.
    */
   atFailure(): FailureSelection {
     const result = this.#result;
     if (!result) {
-      return noSelection;
+      const type = this.#mediaType?.type;
+      return type === undefined ? noSelection : Object.freeze({ mediaType: type, view: undefined });
     }
     const name = this.#assigned === undefined ? result.default : this.#assigned.name;
     if (!result.views.has(name)) {
@@ -204,6 +238,13 @@ class ViewSelection {
     }
   }
 
+  /** The last media type assigned before the boundary wins; one assigned after it changes nothing. */
+  assignMediaType(identity: string, type: string): void {
+    if (!this.#reached) {
+      this.#mediaType = { identity, type };
+    }
+  }
+
   /** The chain reached the dispatch boundary, so this run's view is fixed whatever follows. */
   reach(): void {
     this.#reached = true;
@@ -215,6 +256,19 @@ class ViewSelection {
    * here.
    */
   resolve(path: readonly string[]): string | null {
+    const name = this.#resolveView(path);
+    const stated = this.#mediaType;
+    if (this.#result && stated !== undefined) {
+      throw selectionFault(
+        `${pluginSentence(stated.identity)} assigned media type "${stated.type}" on ${routedSubject(path)}, which declares a result.`,
+        mediaTypeCorrection,
+      );
+    }
+    return name;
+  }
+
+  /** The assigned view, checked against the routed Command's result, or `null` for none. */
+  #resolveView(path: readonly string[]): string | null {
     const assigned = this.#assigned;
     if (assigned === undefined) {
       return null;
@@ -547,6 +601,12 @@ async function runChain(
       graph,
       host: invocation.host,
       log: invocation.logFor(entry.identity),
+      get mediaType(): string | undefined {
+        return selection.readMediaType();
+      },
+      set mediaType(type: string) {
+        selection.assignMediaType(entry.identity, type);
+      },
       next,
       ...invocation.laneHandlers(entry.identity),
       options: prepared.options,

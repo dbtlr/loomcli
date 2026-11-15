@@ -163,6 +163,7 @@ export type {
   HostTerminal,
   InputTerminal,
   OutputTerminal,
+  JavaScriptRuntime,
   ProcessFields,
   ProcessHandle,
   ProcessSignal,

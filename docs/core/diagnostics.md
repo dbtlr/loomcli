@@ -72,7 +72,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/failure-encoder-taken
 
-**Failure encoder taken.** A failed run writes its failure through the one encoder registered for the media type its selected view declares. Two encoders for one media type leave core no way to choose between them.
+**Failure encoder taken.** A failed run writes its failure through the one encoder registered for its media type: the one its selected view declares, or on a Command that declares no result the one a middleware assigned. Two encoders for one media type leave core no way to choose between them.
 
 ### @loomcli/core/foreign-graph
 
@@ -208,7 +208,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/view-selection
 
-**Invalid view selection.** A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render.
+**Invalid view selection.** A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render. A middleware states the run's media type only on a Command that declares no result, because on one that declares a result the selected view states it.
 
 ## @loomcli/plugins
 

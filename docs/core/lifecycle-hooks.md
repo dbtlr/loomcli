@@ -34,32 +34,50 @@ type ResultView = View<never> | RowView<never>; // the erased view a result name
 
 ```ts
 // src/format/attach.ts, the hook of the @loomcli/plugins/format subpath
-import type { CommandAttachHook } from '@loomcli/core';
+import type { AttachedCommand, CommandAttachHook } from '@loomcli/core';
 
 import { formatName } from './names.js';
+import type { FormatSettings } from './plugin.js';
 import { json, jsonl } from './views.js';
 
-export const attachFormat: CommandAttachHook = (command) => {
-  const result = command.result;
-  if (result === null) {
-    return command;
-  }
-  const machine = { json: json(), jsonl: jsonl() };
-  const missing = Object.entries(machine).filter(([name]) => !result.views.includes(name));
-  const reshaped = command.views(Object.fromEntries(missing));
-  const names = reshaped.result?.views ?? [];
-  return reshaped.option('format', {
-    description: `Select the output format, ${result.default} by default.`,
+const groupNames = ['json', 'jsonl'];
+
+function attachToGroup(command: AttachedCommand, short: FormatSettings['short']): AttachedCommand {
+  return command.option('format', {
+    control: true,
+    description: 'Select the output format.',
+    hidden: true,
+    ...(short === undefined ? {} : { short }),
     type: 'string',
-    validate: formatName(names),
+    validate: formatName(groupNames),
   });
-};
+}
+
+export function attachFormat(short: FormatSettings['short']): CommandAttachHook {
+  return (command) => {
+    const result = command.result;
+    if (result === null) {
+      return command.hasAction ? command : attachToGroup(command, short);
+    }
+    const machine = { json: json(), jsonl: jsonl() };
+    const added = Object.entries(machine).filter(([name]) => !result.views.includes(name));
+    const reshaped = command.views(Object.fromEntries(added));
+    const names = [...result.views, ...added.map(([name]) => name)];
+    return reshaped.option('format', {
+      control: true,
+      description: `Select the output format, ${result.default} by default.`,
+      ...(short === undefined ? {} : { short }),
+      type: 'string',
+      validate: formatName(names),
+    });
+  };
+}
 ```
 
 The hook includes the declared default in its description, as specified by the [help restyle](../plugins/help.md#help-and-version-restyle), and leaves the view names to the help page's [accepted values](../plugins/help.md#accepted-values), which read them from the option's input schema.
 
 - **When.** Graph build, once per Command, the root first and then each child depth first in authoring order; for each Command, every installed plugin's hook in installation order, each receiving what the previous returned. The author's result record passed the rules under [Result declaration errors](results.md#result-declaration-errors) at its own calls and at attach, so `result` is exact, and build runs those rules over what the hooks returned. A hook is synchronous and costs one call per Command on every build.
-- **What it receives.** The declaration unlocked, with its types erased: the facts `inspect()` publishes, including the extension values, and the four calls above. Each call returns a new value whose facts include what the call added, so `result.views` inside the hook lists the names the hook's own earlier calls appended. `extensions` is the record `inspect()` would publish for the Command at that hook: the author's layers, then every value an earlier hook or this hook's earlier `extend()` calls added, each validated and frozen. `readExtension` reads it through a Command-target descriptor, as it reads a `CommandNode`. The author's layers were validated at the calls that declared them, so a hook never reads an unvalidated value, and an invalid value the author declared has thrown before any hook runs. A value passed to `extend()` is validated at the call: every rule under [Plugin declaration errors](plugin-contract.md#plugin-declaration-errors) that applies to a declaration's `extensions` applies there too, and it throws its `DeclarationError` from the call, which reports as itself. A hook that catches the throw continues, and the rejected value is not added. Only the value a hook returns carries its `extend()` values into the build, so a descriptor used in a call that threw, or in a value the hook discarded, registers nothing. Build stores the output validated at the call and runs no schema twice. The root arrives through the same surface with `name` `null`; `option()` on it declares a root-local option, and nothing declares a global. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape; a plugin attaches a Command to the root through its definition's [`commands`](plugin-contract.md#plugin-commands) instead.
+- **What it receives.** The declaration unlocked, with its types erased: the facts `inspect()` publishes, including the extension values, and the four calls above. Each call returns a new value whose facts include what the call added, so `result.views` inside the hook lists the names the hook's own earlier calls appended. `extensions` is the record `inspect()` would publish for the Command at that hook: the author's layers, then every value an earlier hook or this hook's earlier `extend()` calls added, each validated and frozen. `readExtension` reads it through a Command-target descriptor, as it reads a `CommandNode`. The author's layers were validated at the calls that declared them, so a hook never reads an unvalidated value, and an invalid value the author declared has thrown before any hook runs. A value passed to `extend()` is validated at the call: every rule under [Plugin declaration errors](plugin-contract.md#plugin-declaration-errors) that applies to a declaration's `extensions` applies there too, and it throws its `DeclarationError` from the call, which reports as itself. A hook that catches the throw continues, and the rejected value is not added. Only the value a hook returns carries its `extend()` values into the build, so a descriptor used in a call that threw, or in a value the hook discarded, registers nothing. Build stores the output validated at the call and runs no schema twice. The root arrives through the same surface with `name` `null`; `option()` on it declares a root-local option, and nothing declares a global. On a group, `option()` declares an option that reaches the plugin's own middleware alone, under [Nested Commands and groups](commands.md#nested-commands-and-groups), as the formatter's hidden `--format` on a group does. `result()`, `rows()`, `alias()`, `command()`, and `action()` are not published, because each changes what the action was compiled against or the graph's shape; a plugin attaches a Command to the root through its definition's [`commands`](plugin-contract.md#plugin-commands) instead.
 - **What it returns.** The value it received or one derived from it by those calls. A hook that throws is a build fault, under [When author code fails](#when-author-code-fails). A returned value the hook's type rejects gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md).
 - **Types.** Nothing a hook adds reaches the action's types: a hook-declared option is in `options` at run time and absent from the typed `options`, and a middleware reads it through `request`, which is untyped for that reason. A rule the types reject for an author is reached by a hook's erased call and reported at build; a JavaScript author's value that bypasses the types gets no rule.
 - **Rules.** A hook's calls are exempt from the four closures `action()` applies, to arguments, options, aliases, and children, and from nothing else. An input a hook declares whose key or spelling the Command, the Application's globals, another plugin's options, or another plugin's hook already use is the hook-collision error, naming the plugin and the Command; the rule reads across kinds, so a hook-declared argument collides with an option and a hook-declared option collides with an argument. `arguments` and `options` show the Command's own names, so a hook sees that case before it causes it, and the other three surface at build. Hooks compose in sequence, not first-in-wins: a later hook sees and can replace what an earlier one added, `views()` by name included, except that a value of a [collecting extension](extensions.md#collecting-extensions) joins the values before it and replaces none of them.

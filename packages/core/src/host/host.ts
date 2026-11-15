@@ -75,6 +75,11 @@ function suppliedTerminal(supplied: OutputTerminal): OutputTerminal {
   });
 }
 
+/** A copy of the handle's runtime that the run cannot change, or `undefined` when it holds none. */
+function frozenRuntime(runtime: ProcessHandle['runtime']): Host['runtime'] {
+  return runtime === undefined ? undefined : Object.freeze({ ...runtime });
+}
+
 /** A read that runs once, on its first call, and answers that value from then on. */
 function once<Value>(read: () => Value): () => Value {
   let held: { value: Value } | undefined = undefined;
@@ -191,6 +196,7 @@ export interface HandleFacts {
   readonly program: readonly string[];
   readonly readSource?: NonNullable<Host['readSource']>;
   readonly release: CapturedRelease;
+  readonly runtime: Host['runtime'];
   /** Starts a child through the run's handle, once core filled its place and mapped its streams. */
   readonly spawn: ProcessHandle['spawn'];
   /** Reads the time zone once, on the run's first read of `host.timeZone`, which can be costly. */
@@ -216,6 +222,7 @@ export function handleFacts(application: string, handle: ProcessHandle): HandleF
     platform,
     program: Object.freeze([...handle.program]),
     release: handleRelease(handle, { application, env, home, platform }),
+    runtime: frozenRuntime(handle.runtime),
     spawn: handle.spawn.bind(handle),
     timeZone: once(() => handle.timeZone),
     tmpdir: handle.tmpdir,

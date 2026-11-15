@@ -19,10 +19,17 @@
  */
 import { Readable, Writable } from 'node:stream';
 
-import { afterEach, expect, test, vi } from 'vite-plus/test';
+import { afterEach, expect, expectTypeOf, test, vi } from 'vite-plus/test';
 
 import { Application, Command, processHandle, WorkingDirectoryError } from '../src/index.js';
-import type { ExitCode, Host, ProcessHandle, ProcessSignal, SignalSource } from '../src/index.js';
+import type {
+  ExitCode,
+  Host,
+  JavaScriptRuntime,
+  ProcessHandle,
+  ProcessSignal,
+  SignalSource,
+} from '../src/index.js';
 
 /** A stream that keeps what a run writes to it. */
 function sink(): { stream: Writable; text: () => string } {
@@ -322,6 +329,49 @@ test('the host copies arch, libc, and uid from the handle, in run() and app.invo
     { arch: 'riscv64', libc: 'glibc', uid: 0 },
     { arch: 'arm64', libc: undefined, uid: undefined },
   ]);
+});
+
+test('the host copies a frozen runtime from the handle, in run() and app.invoke alike, and holds none for a handle without one', async () => {
+  const read: Host['runtime'][] = [];
+  const app = new Application('notes').action(({ host }) => {
+    read.push(host.runtime);
+  });
+  const { handle } = handBuilt({ runtime: { name: 'bun', version: '1.3.2' } });
+  await app.run({ process: handle });
+  await app.invoke([], {}, { process: handle });
+  await app.run({ process: handBuilt().handle });
+  expect(read).toEqual([
+    { name: 'bun', version: '1.3.2' },
+    { name: 'bun', version: '1.3.2' },
+    undefined,
+  ]);
+  expect(Object.isFrozen(read[0])).toBe(true);
+});
+
+test('core sets the host runtime member even when the handle holds none, and a host stated whole may omit it', async () => {
+  const members: boolean[] = [];
+  const app = new Application('notes').action(({ host }) => {
+    members.push(Object.hasOwn(host, 'runtime'));
+  });
+  await app.run({ process: handBuilt().handle });
+  expect(members).toEqual([true]);
+  expectTypeOf<Pick<Host, 'runtime'>>().toEqualTypeOf<{
+    readonly runtime?: JavaScriptRuntime | undefined;
+  }>();
+});
+
+test('processHandle reads the runtime it runs on unless it was given one, and a stated undefined gives none', () => {
+  const bun = process.versions.bun;
+  expect(processHandle().runtime).toEqual(
+    bun === undefined
+      ? { name: 'node', version: process.versions.node }
+      : { name: 'bun', version: bun },
+  );
+  expect(processHandle({ runtime: { name: 'bun', version: '1.3.2' } }).runtime).toEqual({
+    name: 'bun',
+    version: '1.3.2',
+  });
+  expect(processHandle({ runtime: undefined }).runtime).toBeUndefined();
 });
 
 test("processHandle reads the process's own architecture and user unless it was given them", async () => {
