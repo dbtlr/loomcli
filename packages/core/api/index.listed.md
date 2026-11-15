@@ -124,12 +124,13 @@ type ArityBinding = {
     env?: never;
     envDelimiter?: never;
     envAllowEmpty?: never;
-} | {
+    lastWins?: never;
+} | ({
     multiple?: false;
     env?: never;
     envDelimiter?: never;
     envAllowEmpty?: never;
-} | {
+} & LastWins) | ({
     multiple?: false;
     env: string | readonly [
         string,
@@ -137,7 +138,7 @@ type ArityBinding = {
     ];
     envDelimiter: string;
     envAllowEmpty?: never;
-};
+} & LastWins);
 
 type ArityString = (Presence | ConditionalPresence) & ArityBinding & {
     arity: number;
@@ -147,7 +148,7 @@ type ArityString = (Presence | ConditionalPresence) & ArityBinding & {
 
 export type AttachmentConstraint<Globals, Child> = Extract<keyof Globals, LocalKeys<Child>> extends never ? unknown : never;
 
-export type BackgroundOption = Described & Listed & Controlled & OptionExtensions & {
+export type BackgroundOption = Described & Listed & Controlled & OptionExtensions & LastWins & {
     type: 'string';
     background: true;
     aliases?: readonly string[];
@@ -183,6 +184,7 @@ type BooleanFacts = Described & Listed & Controlled & OptionExtensions & {
     validateOmitted?: never;
     implied?: never;
     arity?: never;
+    lastWins?: never;
 };
 
 export declare class CommandBuilder<Args, Options, Globals, State extends CommandMethod = CommandMethod, Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}> {
@@ -373,6 +375,10 @@ type IsUnion<Member, Whole = Member> = Member extends unknown ? [
 
 type KeysOf<Type> = Type extends unknown ? keyof Type : never;
 
+interface LastWins {
+    lastWins?: boolean;
+}
+
 interface Listed {
     hidden?: boolean;
     deprecated?: string;
@@ -402,7 +408,7 @@ type MissingValueForm = 'attached' | 'separate';
 
 type Multiplicity = ListBinding | ({
     multiple?: false;
-} & StringBinding);
+} & StringBinding & LastWins);
 
 export type NameConstraint<Name extends string, Whole extends string = Name> = {} extends Record<Name, unknown> ? LiteralNameFault : Name extends Whole ? [
     Whole
@@ -606,6 +612,7 @@ interface StringOptionNode {
     readonly requiredWhen: 'non-interactive' | null;
     readonly multiple: boolean;
     readonly arity: number | null;
+    readonly lastWins: boolean;
     readonly validated: boolean;
     readonly validateOmitted: boolean;
     readonly schema: InputSchema;
