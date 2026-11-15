@@ -92,14 +92,15 @@ interface ConfigurationSettings<
   /**
    * Fail the run, instead of dropping, for a value the schema rejects, an unknown key, or a linked
    * option's value: `true` for the whole file, or the dotted key paths at or under which one fails.
-   * Off by default.
+   * Either also fails the run, instead of warning, for a file the variable names or the lookup finds
+   * that cannot be used. Off by default.
    *
    * @example
    * ```ts
    * import { configuration } from '@loomcli/plugins/config';
    * import { z } from 'zod';
    *
-   * // A service whose delivery section must be right fails on a bad value, and drops any other.
+   * // A service whose delivery section must be right fails on a bad value there or a broken file, and drops any other value.
    * export const config = configuration({
    *   schema: z.object({ delivery: z.object({ retries: z.number().optional() }).optional() }),
    *   strict: ['delivery'],

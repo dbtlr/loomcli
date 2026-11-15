@@ -51,7 +51,8 @@ interface ConfigurationSettings<Schema extends StandardSchemaV1, Directory exten
   /**
    * Fail the run, instead of dropping, for a value the schema rejects, an unknown key, or a linked
    * option's value: true for the whole file, or the dotted key paths at or under which one fails.
-   * Off by default.
+   * Either also fails the run, instead of warning, for a file the variable names or the lookup finds
+   * that cannot be used. Off by default.
    */
   readonly strict?: boolean | readonly [string, ...string[]];
 }

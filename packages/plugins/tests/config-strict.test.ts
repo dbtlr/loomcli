@@ -712,7 +712,7 @@ test('the file problem comes before a linked global option, which the problem ma
   ]);
 });
 
-/** What one run over a file's raw text came to, with the settings a broken-file case varies. */
+/** The settings a broken-file case varies: the file's raw text, its pattern and name, and `strict`. */
 interface BrokenCase {
   /** The file's text, or `null` for a directory in its place. */
   readonly text: string | null;
@@ -921,6 +921,44 @@ test('the broken-file failure is an InputError with one problem on --config and 
         spelling: 'config',
       },
     ]);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test('a broken YAML file in the user folder fails the run under strict, with its own clause and fix', async () => {
+  const config = configuration({ file: '.app.yaml', schema: closed, strict: true });
+  const root = mkdtempSync(join(tmpdir(), 'loom-strict-'));
+  try {
+    const work = join(root, 'work');
+    const folder = join(root, 'xdg', 'app');
+    mkdirSync(work);
+    mkdirSync(folder, { recursive: true });
+    const app = new Application('app', { plugins: [config.plugin], uses: [config.values] }).action(
+      ({ out }) => out.print('ran'),
+    );
+    const runIn = async (text: string) => {
+      writeFileSync(join(folder, 'config.yaml'), text);
+      const mock = mockProcess({
+        argv: [],
+        ceiling: root,
+        cwd: work,
+        env: { HOME: join(root, 'home'), XDG_CONFIG_HOME: join(root, 'xdg') },
+      });
+      await app.run({ process: mock });
+      return { status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
+    };
+    const shown = join(folder, 'config.yaml');
+    await expect(runIn('- 1\n')).resolves.toEqual({
+      status: 2,
+      stderr: `app: Configuration file ${shown} does not hold a YAML mapping. Write its settings as one YAML mapping, or remove it.\n`,
+      stdout: '',
+    });
+    const broken = await runIn('a: [\n');
+    expect(broken.status).toBe(2);
+    expect(broken.stderr).toMatch(
+      /is not valid YAML at line \d+, column \d+\. Correct its syntax, or remove it\.\n$/u,
+    );
   } finally {
     rmSync(root, { force: true, recursive: true });
   }

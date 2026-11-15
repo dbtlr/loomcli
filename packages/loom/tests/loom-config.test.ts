@@ -271,4 +271,22 @@ test('a path the schema rejects fails every command that reads the file with cod
   await expect(runLoom(directory, ['init', '--only', 'application'])).resolves.toEqual(
     rejectedChanges('init'),
   );
+  await expect(runLoom(directory, ['changelog', 'notes', '1.0.0'])).resolves.toEqual(
+    rejectedChanges('changelog notes'),
+  );
+  await expect(runLoom(directory, ['build', '--target', 'node'])).resolves.toEqual(
+    rejectedChanges('build'),
+  );
+});
+
+test('an unknown key stays ignored, because the schema publishes no JSON Schema', async () => {
+  const directory = configuredPackage(
+    { pathz: { changes: 'notes' } },
+    { '.changes/fix.md': '- Fix output.\n' },
+  );
+  await expect(runLoom(directory, ['changelog', 'check'])).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Checked 1 fragment.\n',
+  });
 });

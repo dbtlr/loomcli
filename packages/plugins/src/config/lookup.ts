@@ -319,6 +319,11 @@ async function presentFiles(files: readonly ConfigFile[]): Promise<ConfigFile[]>
   return present;
 }
 
+/** The file as a warning shows it: escaped for the terminal, and kept on one line. */
+function warned(file: ConfigFile, style: ContextualStyle): string {
+  return nowrap(style.escape(file.shown));
+}
+
 /** The one warning about the later present candidates a directory skips unread, when there are any. */
 async function warnSkipped(
   found: ConfigFile,
@@ -329,19 +334,14 @@ async function warnSkipped(
   if (first === undefined) {
     return;
   }
-  const names = skipped.map((file) => nowrap(style.escape(file.shown))).join(', ');
+  const names = skipped.map((file) => warned(file, style)).join(', ');
   await out.warn(
-    `Skipped ${names}: ${nowrap(style.escape(found.shown))} matches the same pattern first. Keep one of the files, and remove the others.`,
+    `Skipped ${names}: ${warned(found, style)} matches the same pattern first. Keep one of the files, and remove the others.`,
   );
 }
 
 /** How a step of the lookup ended: with a file, or with no configuration and no later step. */
 type Outcome = { readonly kind: 'ended' } | { readonly kind: 'file'; readonly usable: UsableFile };
-
-/** The file as a warning shows it: escaped for the terminal, and kept on one line. */
-function warned(file: ConfigFile, style: ContextualStyle): string {
-  return nowrap(style.escape(file.shown));
-}
 
 /** The warning text for a clause: the file's fault, and that the run then reads no configuration. */
 function skippedSentence(shown: string, { at, clause }: Unusable, fix: string): string {
@@ -497,7 +497,7 @@ async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise
       : filesIn(step.directory, step.candidates, { host: lookup.host, walked: step.walked });
   if (first !== undefined) {
     await out.info(
-      `Found no configuration file. Create ${nowrap(style.escape(first.shown))} to configure ${lookup.app}.`,
+      `Found no configuration file. Create ${warned(first, style)} to configure ${lookup.app}.`,
     );
   }
 }
