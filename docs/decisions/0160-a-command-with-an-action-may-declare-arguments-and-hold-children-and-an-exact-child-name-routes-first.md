@@ -46,7 +46,7 @@ The contract is in [Application declarations](../core/application.md), [Nested C
 
 ## Consequences
 
-This is a feature. An application whose root declares arguments can install the plugins that bring Commands, and the textstat example installs completion. A word that is a child's name now routes on such a Command, so an operator passes it as an argument after `--`, which help and the missing-subcommand failure say. A child added in a later release shadows that word as an argument, which is the cost ADR-0004 named, and the release's changelog says when a Command it adds shadows an argument.
+This is a feature. An application whose root declares arguments can install the plugins that bring Commands, and the textstat example installs completion. A word that is a child's name now routes on such a Command, so on a Command without the passthrough mode an operator passes it as an argument after `--`, which help and the missing-subcommand failure say. A child added in a later release shadows that word as an argument, which is the cost ADR-0004 named, and the release's changelog says when a Command it adds shadows an argument.
 
 The rule identity `@loomcli/core/arguments-beside-children` is retired, so code that matches it no longer meets it. Its diagnostics anchor is removed.
 
