@@ -17,12 +17,24 @@ test('a named tail requires the mode, but an empty list is harmless', async () =
     exitCode: 2,
     failure: {
       extra: ['tail'],
-      message: 'Root Command declares no passthrough. Remove passthrough from the values.',
+      message: 'The root Command declares no passthrough. Remove passthrough from the values.',
       name: 'UnexpectedArgumentError',
     },
     status: 'failed',
   });
   await expect(app.invoke([], { passthrough: [] })).resolves.toMatchObject({ status: 'completed' });
+});
+
+test('a named tail on a nested Command without the mode names the Command by its last name', async () => {
+  const app = new Application('kit').command(
+    new Command('store').command(new Command('get').action(() => {})),
+  );
+  await expect(app.invoke(['store', 'get'], { passthrough: ['tail'] })).resolves.toMatchObject({
+    failure: {
+      message: 'Command "get" declares no passthrough. Remove passthrough from the values.',
+    },
+    status: 'failed',
+  });
 });
 
 test('the cursor after the delimiter fills the next argument', () => {
@@ -67,6 +79,33 @@ test.each([
   ).toThrow(`Argument "dest" ${reason} and follows variadic argument "src" on Command "copy".`);
 });
 
+test('an optional argument after a variadic and a required one fails at the argument() call', () => {
+  const message = 'Argument "e" is optional and follows variadic argument "s"';
+  expect(() =>
+    new Command('c')
+      .argument('s', { variadic: true })
+      .argument('d', { required: true })
+      .argument('e', {}),
+  ).toThrow(message);
+  expect(() =>
+    new Application('c')
+      .argument('s', { variadic: true })
+      .argument('d', { required: true })
+      .argument('e', {}),
+  ).toThrow(message);
+});
+
+test.each([
+  [['x', 'a', 'b', 'dest'], '{"head":"x","src":["a","b"],"dest":"dest"}\n'],
+  [['x', 'a', '--', 'b', 'dest'], '{"head":"x","src":["a","b"],"dest":"dest"}\n'],
+  [['x', '--', 'a', 'b', 'dest'], '{"head":"x","src":["a","b"],"dest":"dest"}\n'],
+  [['x', 'dest'], '{"head":"x","src":[],"dest":"dest"}\n'],
+])('the arguments before a variadic fill from the start: %j', async (words, output) => {
+  await expect(
+    invoke(new URL('fixtures/passthrough-mode.mjs', import.meta.url), ['headcopy', ...words]),
+  ).resolves.toMatchObject({ status: 0, stdout: output });
+});
+
 test.each([false, 'non-interactive'] as const)(
   'a variadic with presence %s permits a required destination',
   (required) => {
@@ -96,6 +135,24 @@ test('a group cannot declare passthrough, at attach or root build', () => {
   ).toThrow('@loomcli/core/command-without-action');
   expect(() => new Application('app').passthrough().command(leaf()).inspect()).toThrow(
     '@loomcli/core/command-without-action',
+  );
+});
+
+test.each([
+  [undefined, '.passthrough()'],
+  [{ description: 'x' }, ".passthrough({ description: 'x' })"],
+])('a group passthrough fault echoes only what the author wrote: %j', (config, call) => {
+  const fault = () =>
+    new Application('app').command(new Command('group').passthrough(config).command(leaf()));
+  expect(fault).toThrow(
+    expect.objectContaining({
+      correction: 'Declare passthrough on the Command that reads it, or register an action.',
+      message: expect.stringContaining(call),
+      sentence: 'Command "group" declares passthrough but registers no action to receive it.',
+    }),
+  );
+  expect(fault).toThrow(
+    expect.objectContaining({ message: expect.not.stringContaining('undefined') }),
   );
 });
 

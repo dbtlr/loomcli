@@ -532,6 +532,30 @@ export function undeclaredArgument(
 }
 
 /**
+ * A named tail, in an invocation by name, on a Command that declares no passthrough mode: `extra`
+ * holds the words and `accepted` the number of arguments the Command declares.
+ */
+export function declaredNoPassthrough(
+  command: readonly string[],
+  accepted: number,
+  words: readonly string[],
+): UnexpectedArgumentError {
+  const failure = new UnexpectedArgumentError(command, accepted, words);
+  failure.message = `${routedSentence(command)} declares no passthrough. Remove passthrough from the values.`;
+  return failure;
+}
+
+/**
+ * An unknown option word on a Command whose bare words fill arguments: the sentence offers the
+ * delimiter as the way to pass the word as an argument.
+ */
+export function unknownOptionBeforeArguments(spelling: string): UnknownOptionError {
+  const failure = new UnknownOptionError(spelling);
+  failure.message = `Unknown option ${quoted(spelling)}. Supply a declared option, or pass it as an argument after "--".`;
+  return failure;
+}
+
+/**
  * Where a missing value should have been: the words ran out, or the next word was an option word or
  * the bare `--`, which is never a separate value, so the sentence names the attached form too.
  */

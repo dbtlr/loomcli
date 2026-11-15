@@ -78,7 +78,11 @@ export interface InvocationValues {
   readonly options?: Readonly<
     Record<string, string | number | boolean | readonly (string | number)[] | undefined>
   >;
-  /** The words that follow the `--` separator. */
+  /**
+   * The words a command line would give after the `--` separator. They reach a Command that
+   * declares the passthrough mode as its `passthrough`, and are refused, when not empty, on a
+   * Command without it.
+   */
   readonly passthrough?: readonly string[];
 }
 

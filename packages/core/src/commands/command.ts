@@ -704,6 +704,11 @@ function claimsStdin(input: InputDeclaration): boolean {
   return input.config.type === 'content' && input.config.stdin === true;
 }
 
+/** The arguments an author wrote to a `passthrough()` call: none for a bare call. */
+function passthroughArguments(config: { description: string | undefined }): [] | [object] {
+  return config.description === undefined ? [] : [{ description: config.description }];
+}
+
 /** A stdin call's finding carries authored settings without internal ordering metadata. */
 export function stdinFinding(path: readonly string[], config: StdinConfig): Finding {
   const supplied = {
@@ -1172,7 +1177,12 @@ function checkGroup(state: Declared, place: FinishedPlace): void {
     throw new DeclarationError(commandWithoutAction, {
       correction: 'Declare passthrough on the Command that reads it, or register an action.',
       findings: [
-        { arguments: [state.passthrough], call: 'passthrough', mark: '0', path: place.path },
+        {
+          arguments: passthroughArguments(state.passthrough),
+          call: 'passthrough',
+          mark: '0',
+          path: place.path,
+        },
       ],
       sentence: `${commandSentence(name)} declares passthrough but registers no action to receive it.`,
     });
@@ -1336,7 +1346,8 @@ function invalidTrailingArgument(config: InputDeclaration['config']): string | u
 }
 
 /**
- * A variadic slot ends the positional list, so nothing may follow it. The other slots order in
+ * A variadic slot ends the optional positional list: only required scalar non-content arguments
+ * may follow it, and they take words from the end. The other slots order in
  * three tiers: required, then required only when input is not interactive, then optional. A slot
  * never follows one of a later tier, so a required slot never follows a conditional or optional
  * one, and a conditional slot never follows an optional one. Slots of one tier may follow each
@@ -2271,6 +2282,22 @@ export function buildGraph<Args, Options, Globals>(
   return { extensions, globals: context.globals, root: buildCommand(root, context) };
 }
 
+/** A required source reaches this accessor only after preparation accepted its presence. */
+export function requiredStdin(source: Content | undefined): Content {
+  if (source === undefined) {
+    throw new Error('Required stdin was not prepared.');
+  }
+  return source;
+}
+
+/** The `stdin` member of the context: the source as prepared, which a required one always has. */
+export function stdinMember(
+  state: { readonly stdin?: StdinConfig | undefined },
+  source: Content | undefined,
+): { readonly stdin: Content | undefined } {
+  return { stdin: state.stdin?.required === true ? requiredStdin(source) : source };
+}
+
 export function declareStdin<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   config: StdinConfig,
@@ -2333,7 +2360,11 @@ export class CommandBuilder<
     nodes.set(this, nodeHandle(name, state));
   }
 
-  /** Declares the untouched tail after the first bare delimiter. */
+  /**
+   * Declares the untouched tail after the first bare delimiter.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#passthrough
+   */
   passthrough(
     config: { description?: string } = {},
   ): Command<
@@ -2395,7 +2426,10 @@ export class CommandBuilder<
       Provided
     >(this.#name, state, {
       provided: this.#providedBind,
-      stdin: (source, passthrough) => ({ ...this.#stdinBind(source, passthrough), stdin: source }),
+      stdin: (source, passthrough) => ({
+        ...this.#stdinBind(source, passthrough),
+        ...stdinMember(state, source),
+      }),
     });
   }
 

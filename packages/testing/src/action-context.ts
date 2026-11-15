@@ -29,7 +29,10 @@ type ActionValues<
   Stdin extends StdinContext & { passthrough?: string[] },
   Provided,
 > = Pick<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided'> &
-  Stdin &
+  // Passthrough is optional when the handler's Command declares the mode.
+  ('passthrough' extends keyof Stdin
+    ? Omit<Stdin, 'passthrough'> & { passthrough?: string[] }
+    : Stdin) &
   OptionalMembers<
     Omit<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided' | 'stdin'>
   >;
@@ -70,6 +73,10 @@ function actionContext<
 ): Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin {
   // The context types host and passthrough as assignable, so an assignment replaces the stated one.
   let { host, passthrough } = values;
+  // Last resort: no typed path exists from the stated values to the handler's context.
+  // The values leave passthrough optional, where a handler whose Command has the mode reads it.
+  // It holds because the context below always carries passthrough, as a throwing getter when unstated.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return {
     ...values,
     cancel: values.cancel ?? nothing,
@@ -105,7 +112,7 @@ function actionContext<
     get supplied() {
       return values.supplied ?? unstated('actionContext', 'supplied');
     },
-  };
+  } as Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin;
 }
 
 export { actionContext };

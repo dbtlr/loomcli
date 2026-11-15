@@ -86,6 +86,12 @@ test.each([
   await expect(run(['help', ...words])).resolves.toEqual(expected);
 });
 
+test('a word after a bare delimiter is one more word of the help Command', async () => {
+  const expected = await run(['add', '--help']);
+  expect(expected.status).toBe(0);
+  await expect(run(['help', '--', 'add'])).resolves.toEqual(expected);
+});
+
 test('the root page lists the help Command first', async () => {
   const { stdout } = await run(['--help']);
   expect(stdout).toContain(

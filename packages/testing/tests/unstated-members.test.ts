@@ -20,6 +20,9 @@ const get = new Command('get')
 /** Reads nothing; each test reads the members the rule under test fills. */
 const getValue: ActionHandler<typeof get> = () => {};
 
+const forward = new Command('forward').passthrough();
+const forwardValue: ActionHandler<typeof forward> = () => {};
+
 /** A context with only the inputs stated. */
 function bare() {
   return actionContext(getValue, { args: { path: 'name' }, options: {}, provided: {} });
@@ -191,6 +194,13 @@ describe('an unstated member', () => {
         new Error(`${builder} has no ${member}. Add ${member} to its values.`),
       );
     });
+  });
+
+  it('of passthrough throws its sentence on a handler whose Command declares the mode', () => {
+    const context = actionContext(forwardValue, { args: {}, options: {}, provided: {} });
+    expect(() => context.passthrough).toThrow(
+      new Error('actionContext has no passthrough. Add passthrough to its values.'),
+    );
   });
 
   it('of a provider context is inert: log, signal, and onShutdown', () => {

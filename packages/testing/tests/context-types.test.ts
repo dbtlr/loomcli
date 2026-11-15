@@ -62,6 +62,9 @@ const getValue: ActionHandler<typeof get> = async ({ args, out }) => {
   await out.print(args.path);
 };
 
+const forward = new Command('forward').passthrough();
+const forwardValue: ActionHandler<typeof forward> = () => {};
+
 /** The context the handler takes, which the builder returns. */
 type GetContext = Parameters<typeof getValue>[0];
 
@@ -98,6 +101,14 @@ describe('the builders infer from the function alone', () => {
       GetContext['provided']
     > = stated;
     expectTypeOf(actionContext(getValue, values)).toEqualTypeOf<GetContext>();
+  });
+
+  it('actionContext states passthrough as optional for a Command with the mode, absent without', () => {
+    const unstated = actionContext(forwardValue, { args: {}, options: {}, provided: {} });
+    expectTypeOf<(typeof unstated)['passthrough']>().toEqualTypeOf<string[]>();
+    actionContext(forwardValue, { args: {}, options: {}, passthrough: ['a'], provided: {} });
+    const context = actionContext(getValue, stated);
+    expectTypeOf(context).not.toHaveProperty('passthrough');
   });
 
   it('actionContext rejects values that miss a required input', () => {

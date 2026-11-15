@@ -1,8 +1,8 @@
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from '../commands/command.js';
 import {
-  UnexpectedArgumentError,
   undeclaredArgument,
   UnknownCommandError,
+  declaredNoPassthrough,
   unknownOptionName,
 } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
@@ -297,13 +297,7 @@ function lowerArguments(read: Reading, entries: NamedCall['args']): void {
 /** A named tail on a Command without the mode ranks after every other unknown name. */
 function checkPassthrough(read: Reading, passthrough: readonly string[]): void {
   if (read.command.passthrough === undefined && passthrough.length > 0) {
-    const failure = new UnexpectedArgumentError(
-      read.path,
-      read.command.arguments.length,
-      passthrough,
-    );
-    failure.message = `${read.path.length === 0 ? 'Root Command' : `Command "${read.path.join(' ')}"`} declares no passthrough. Remove passthrough from the values.`;
-    read.fault ??= failure;
+    read.fault ??= declaredNoPassthrough(read.path, read.command.arguments.length, passthrough);
   }
 }
 

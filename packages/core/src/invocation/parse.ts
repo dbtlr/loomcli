@@ -4,10 +4,10 @@ import {
   MissingValueError,
   RepeatedOptionError,
   UnexpectedArgumentError,
-  quoted,
   UnexpectedValueError,
   UnknownCommandError,
   UnknownOptionError,
+  unknownOptionBeforeArguments,
 } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import { emptyValues, isSupplied } from '../inputs/options.js';
@@ -356,11 +356,9 @@ function stamp(state: ReadState): void {
 
 /** The unknown spelling's correction follows the routed Command's argument mode. */
 function unknownOption(command: BuiltCommand, spelling: string): UnknownOptionError {
-  const failure = new UnknownOptionError(spelling);
-  if (command.arguments.length > 0 && command.passthrough === undefined) {
-    failure.message = `Unknown option ${quoted(spelling)}. Supply a declared option, or pass it as an argument after "--".`;
-  }
-  return failure;
+  return command.arguments.length > 0 && command.passthrough === undefined
+    ? unknownOptionBeforeArguments(spelling)
+    : new UnknownOptionError(spelling);
 }
 
 /** Holds a fault unless one read earlier is held already. */

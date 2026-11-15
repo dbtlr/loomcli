@@ -12,6 +12,12 @@ export async function run(words) {
       .argument('src', { required: true, variadic: true })
       .argument('dest', { required: true })
       .action(({ args, out }) => out.print(JSON.stringify(args)));
+  } else if (kind === 'headcopy') {
+    app = new Application('headcopy')
+      .argument('head', { required: true })
+      .argument('src', { variadic: true })
+      .argument('dest', { required: true })
+      .action(({ args, out }) => out.print(JSON.stringify(args)));
   } else if (kind === 'wrapper') {
     app = new Application('wrapper')
       .argument('path', {})

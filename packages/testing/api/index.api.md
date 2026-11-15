@@ -36,7 +36,9 @@ export function actionContext<Args, Options, Result, Stdin extends StdinContext 
 // @public
 export type ActionValues<Args, Options, Result, Stdin extends StdinContext & {
     passthrough?: string[];
-}, Provided> = Pick<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided'> & Stdin & OptionalMembers<Omit<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided' | 'stdin'>>;
+}, Provided> = Pick<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided'> & ('passthrough' extends keyof Stdin ? Omit<Stdin, 'passthrough'> & {
+    passthrough?: string[];
+} : Stdin) & OptionalMembers<Omit<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided' | 'stdin'>>;
 
 // @public
 export function assertAssembles(application: Pick<Application, 'check'>): void;

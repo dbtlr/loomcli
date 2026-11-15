@@ -2,6 +2,7 @@ import type { Writable } from 'node:stream';
 
 import {
   declareStdin,
+  stdinMember,
   attachToRoot,
   childNode,
   buildGraph,
@@ -400,7 +401,11 @@ class ApplicationBuilder<
     return this.#name;
   }
 
-  /** Declares the root Command's untouched tail after the first bare delimiter. */
+  /**
+   * Declares the root Command's untouched tail after the first bare delimiter.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#passthrough
+   */
   passthrough(
     config: { description?: string } = {},
   ): Application<
@@ -497,7 +502,7 @@ class ApplicationBuilder<
         provided: this.#providedBind,
         stdin: (source, passthrough) => ({
           ...this.#stdinBind(source, passthrough),
-          stdin: source,
+          ...stdinMember(root, source),
         }),
       },
     );
