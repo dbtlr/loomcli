@@ -263,7 +263,7 @@ The misplaced-option error is `MisplacedOptionError` under [Failure classes](fai
 | `-r get a.b` with `-r` local to `get` and `keys`   | `Option "-r" belongs to commands get, keys. Supply it after the command name.`             |
 | `-r get a.b` with `-r` declared nowhere            | `Unknown option "-r". Supply a declared option; prefix a hyphenated path with "./".`       |
 | `-r get a.b` with `-r` local to the root and to `get` | None: `get` runs with its own `raw` set                                                 |
-| `--verbose get a.b` with `--verbose` local to the root alone | `Unknown option "--verbose". Supply a declared option; prefix a hyphenated path with "./".` |
+| `--verbose get a.b` with `--verbose` local to the root alone | `Unknown option "--verbose". Supply a declared option, or pass it as an argument after "--".` |
 | `-n x get a.b` with a string `-n` on the root and a Boolean `-n` on `get` | `Option "-n" belongs to command "get". Supply it after "get".`        |
 | `-v get a.b` with a Boolean `-v` on the root and a counted `-v` on `get` | `Option "-v" belongs to command "get". Supply it after "get".`        |
 | `--backup get a.b` with `--backup` implying a value on the root and taking the next word on `get` | `Option "--backup" belongs to command "get". Supply it after "get".` |

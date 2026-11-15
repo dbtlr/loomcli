@@ -48,7 +48,7 @@ textstat: Option "--format": Supply one of table, json, jsonl.
 $ textstat --format json --metric nope one.txt
 {"error":{"code":"invalid-input","exitCode":2,"message":"Option \"--metric\": Expected one of: bytes, words, lines.","hints":["Run \"textstat --help\" to see the usage."]}}
 $ jsonkit get --format json user.name -f doc.json
-jsonkit: Unknown option "--format". Supply a declared option; prefix a hyphenated path with "./".
+jsonkit: Unknown option "--format". Supply a declared option, or pass it as an argument after "--".
 Run "jsonkit get --explain" to explain this command.
 ```
 
