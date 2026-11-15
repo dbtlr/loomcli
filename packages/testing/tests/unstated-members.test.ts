@@ -179,7 +179,7 @@ describe('an unstated member', () => {
       viewContext: viewContext(plainView, {}),
     };
     const facts = [
-      ['actionContext', ['command', 'graph', 'host', 'interactive', 'passthrough', 'supplied']],
+      ['actionContext', ['command', 'graph', 'host', 'interactive', 'supplied']],
       ['middlewareContext', ['command', 'graph', 'host']],
       ['failureHookContext', ['command', 'graph']],
       ['providerContext', ['host']],
@@ -196,11 +196,14 @@ describe('an unstated member', () => {
     });
   });
 
-  it('of passthrough throws its sentence on a handler whose Command declares the mode', () => {
+  it('of passthrough reads an empty tail on a handler whose Command declares the mode', () => {
     const context = actionContext(forwardValue, { args: {}, options: {}, provided: {} });
-    expect(() => context.passthrough).toThrow(
-      new Error('actionContext has no passthrough. Add passthrough to its values.'),
-    );
+    expect(context.passthrough).toEqual([]);
+  });
+
+  it('of passthrough reads an empty tail on a handler whose Command takes none', () => {
+    // A question's validation reads passthrough from any action context, so a read must not throw.
+    expect(Reflect.get(bare(), 'passthrough')).toEqual([]);
   });
 
   it('of a provider context is inert: log, signal, and onShutdown', () => {
