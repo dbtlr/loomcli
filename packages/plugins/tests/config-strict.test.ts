@@ -712,7 +712,10 @@ test('the file problem comes before a linked global option, which the problem ma
   ]);
 });
 
-/** The settings a broken-file case varies: the file's raw text, its pattern and name, and `strict`. */
+/**
+ * The settings a broken-file case varies: the file's raw text, its pattern and name, the variable
+ * that names it, the files beside it, and `strict`.
+ */
 interface BrokenCase {
   /** The file's text, or `null` for a directory in its place. */
   readonly text: string | null;

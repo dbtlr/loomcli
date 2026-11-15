@@ -1,8 +1,9 @@
 /*
  * Acceptance plan for the configuration file (docs/toolchain/build.md#the-configuration-file), as
  * `loom init` and `loom changelog check` read it. Each case runs in-process on a mock process,
- * under ADR-0103; `build.test.ts` and `changelog.test.ts` prove `loom build` and `loom changelog
- * write`.
+ * under ADR-0103; `build.test.ts` and `changelog.test.ts` prove what `loom build` and `loom
+ * changelog write` do with the paths, and this file proves that every command fails on a wrong
+ * file.
  *
  * - `paths.source` moves the application module, the entry, and the test, and the scaffold's
  *   `tsconfig.json` `include`, the linter's file globs, and the `check` script's lint target name
@@ -15,7 +16,8 @@
  * - A new application uses conventions whatever the configuration holds, a file `--config` names
  *   included. A broken file above it fails the scaffold, and `--no-config` scaffolds past it.
  * - The bin reads the file under `strict: true` (ADR-0158): a file that does not parse, and a value
- *   the schema rejects, fail the command with code 2 instead of running on conventions.
+ *   the schema rejects, fail the command with code 2 instead of running on conventions, and a
+ *   takeover such as `--help` reads no file. An unknown key stays ignored.
  */
 import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -244,6 +246,8 @@ test('a file that does not parse fails changelog check and write, where they rea
   await expect(runLoom(directory, ['changelog', 'write', '--dry-run'])).resolves.toEqual(
     brokenFailure('changelog write'),
   );
+  const help = await runLoom(directory, ['build', '--help']);
+  expect(help.status).toBe(0);
   await expect(runLoom(directory, ['changelog', 'check', '--no-config'])).resolves.toEqual({
     status: 0,
     stderr: '',
@@ -270,6 +274,9 @@ test('a path the schema rejects fails every command that reads the file with cod
   );
   await expect(runLoom(directory, ['init', '--only', 'application'])).resolves.toEqual(
     rejectedChanges('init'),
+  );
+  await expect(runLoom(directory, ['changelog', 'write', '--dry-run'])).resolves.toEqual(
+    rejectedChanges('changelog write'),
   );
   await expect(runLoom(directory, ['changelog', 'notes', '1.0.0'])).resolves.toEqual(
     rejectedChanges('changelog notes'),
