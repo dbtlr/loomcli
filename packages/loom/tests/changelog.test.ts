@@ -771,9 +771,9 @@ test.each([['check'], ['write', '--dry-run']])(
   async (...mode: string[]) => {
     const root = packageRepository('1.4.7', { '.changes/fix.md': '- Fix output.\n' });
     const result = await run(root, ...mode, '--', '--date', '2026-10-07');
-    expect(result.status).toBe(1);
+    expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Arguments after -- are not supported.');
+    expect(result.stderr).toContain('accepts no arguments. Remove the supplied values.');
   },
 );
 

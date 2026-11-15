@@ -22,11 +22,17 @@ import { unstatedStyle } from './unstated-style.js';
  *
  * @public
  */
-type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> = Pick<
-  ActionContext<Args, Options, Result, Provided>,
-  'args' | 'options' | 'provided'
-> &
-  Stdin &
+type ActionValues<
+  Args,
+  Options,
+  Result,
+  Stdin extends StdinContext & { passthrough?: string[] },
+  Provided,
+> = Pick<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided'> &
+  // Passthrough is optional when the handler's Command declares the mode.
+  ('passthrough' extends keyof Stdin
+    ? Omit<Stdin, 'passthrough'> & { passthrough?: string[] }
+    : Stdin) &
   OptionalMembers<
     Omit<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided' | 'stdin'>
   >;
@@ -55,12 +61,22 @@ type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> =
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/testing.md#actioncontext
  * @public
  */
-function actionContext<Args, Options, Result, Stdin extends StdinContext, Provided>(
+function actionContext<
+  Args,
+  Options,
+  Result,
+  Stdin extends StdinContext & { passthrough?: string[] },
+  Provided,
+>(
   handler: Action<Args, Options, Result, Stdin, Provided>,
   values: NoInfer<ActionValues<Args, Options, Result, Stdin, Provided>>,
 ): Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin {
   // The context types host and passthrough as assignable, so an assignment replaces the stated one.
   let { host, passthrough } = values;
+  // Last resort: no typed path exists from the stated values to the handler's context.
+  // The values leave passthrough optional, where a handler whose Command has the mode reads it.
+  // It holds because the context below always carries passthrough, read as [] when unstated.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return {
     ...values,
     cancel: values.cancel ?? nothing,
@@ -86,7 +102,7 @@ function actionContext<Args, Options, Result, Stdin extends StdinContext, Provid
     onSuspend: values.onSuspend ?? registersNothing,
     out: outWith(values.out, 'actionContext'),
     get passthrough() {
-      return passthrough ?? unstated('actionContext', 'passthrough');
+      return passthrough ?? [];
     },
     set passthrough(value) {
       passthrough = value;
@@ -96,7 +112,7 @@ function actionContext<Args, Options, Result, Stdin extends StdinContext, Provid
     get supplied() {
       return values.supplied ?? unstated('actionContext', 'supplied');
     },
-  };
+  } as Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin;
 }
 
 export { actionContext };

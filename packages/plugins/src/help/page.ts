@@ -150,6 +150,7 @@ function usageForms({ children, command, graph }: UsageSubject, writer: UsageWri
       ...requiredOptions(command).map((option) => optionForm(option, writer)),
       // `[options]` is always present, because the help option is one.
       writer.word('[options]'),
+      ...(command.passthrough ? [writer.word('[-- <args>...]')] : []),
     ];
     forms.push(`${path} ${parts.join(' ')}`);
   }
@@ -238,6 +239,12 @@ function args(command: CommandNode, context: ViewContext): string[] {
       context,
     ),
   }));
+  if (command.passthrough) {
+    rows.push({
+      left: `-- ${context.style.dim.italic('<args>...')}`,
+      right: rightCell({ description: command.passthrough.description }, [], context),
+    });
+  }
   return isEmpty(rows) ? [] : [context.style.dim('ARGUMENTS'), ...column(rows, context)];
 }
 

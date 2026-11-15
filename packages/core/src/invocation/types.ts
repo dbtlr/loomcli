@@ -78,7 +78,11 @@ export interface InvocationValues {
   readonly options?: Readonly<
     Record<string, string | number | boolean | readonly (string | number)[] | undefined>
   >;
-  /** The words that follow the `--` separator. */
+  /**
+   * The words a command line would give after the `--` separator. They reach a Command that
+   * declares the passthrough mode as its `passthrough`, and are refused, when not empty, on a
+   * Command without it.
+   */
   readonly passthrough?: readonly string[];
 }
 
@@ -170,8 +174,6 @@ export interface ActionContext<Args, Options = {}, Result = unknown, Provided = 
   readonly graph: CommandGraph;
   /** The routed node inside `graph`. */
   readonly command: CommandNode;
-  /** The words after the `--` separator. */
-  passthrough: string[];
   /** The channel the action emits its result and writes its output through. */
   out: Out<Result>;
   /** The run's host facts. */

@@ -26,12 +26,17 @@ declare class ApplicationBuilder<Args, Options, Globals, State extends Applicati
     readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
     readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
     get name(): string;
+    passthrough(config?: {
+        description?: string;
+    }): Application<Args, Options, Globals, Exclude<State, 'passthrough'>, Plugins, Result, Stdin & {
+        passthrough: string[];
+    }, Provided, Requires>;
     stdin(config: StdinConfig & {
         required: true;
-    }): Application<Args, Options, Globals, State, Plugins, Result, {
+    }): Application<Args, Options, Globals, State, Plugins, Result, Omit<Stdin, 'stdin'> & {
         readonly stdin: Content;
     }, Provided, Requires>;
-    stdin(config: StdinConfig): Application<Args, Options, Globals, State, Plugins, Result, StdinContext, Provided, Requires>;
+    stdin(config: StdinConfig): Application<Args, Options, Globals, State, Plugins, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided, Requires>;
     argument<const Name extends string, const Config extends ArgumentConfig>(name: Name, config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>> & NoInfer<ArgumentKeyConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Application<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>, Plugins, Result, Stdin, Provided, Requires>;
     option<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & Unmarked & NameConstraint<Name> & GlobalNameConstraint<Name, Globals> & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
     exclusive(...names: [
@@ -156,12 +161,17 @@ export declare class CommandBuilder<Args, Options, Globals, State extends Comman
     #private;
     readonly [commandValue]: true;
     readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
+    passthrough(config?: {
+        description?: string;
+    }): Command<Args, Options, Globals, Exclude<State, 'passthrough'>, Result, Stdin & {
+        passthrough: string[];
+    }, Provided>;
     stdin(config: StdinConfig & {
         required: true;
-    }): Command<Args, Options, Globals, State, Result, {
+    }): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & {
         readonly stdin: Content;
     }, Provided>;
-    stdin(config: StdinConfig): Command<Args, Options, Globals, State, Result, StdinContext, Provided>;
+    stdin(config: StdinConfig): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided>;
     argument<const Name extends string, const Config extends ArgumentConfig>(name: Name, config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>> & NoInfer<ArgumentKeyConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>, Result, Stdin, Provided>;
     option<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & Unmarked & NameConstraint<Name> & GlobalNameConstraint<Name, Globals> & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result, Stdin, Provided>;
     exclusive(...names: [

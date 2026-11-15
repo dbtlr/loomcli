@@ -121,7 +121,7 @@ function editor<
 ): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
 ```
 
-Each signature above takes the whole action context, and any action context fits. The parameter the package declares is `PromptContext<Options, Args>`, the slice of the action context a question reads, which the root export holds so a helper that asks several questions can name the context it passes on:
+Each signature above takes the whole action context, and any action context fits, a Command's without the [passthrough mode](../core/options.md#passthrough) included, because the slice reads `passthrough` as optional. The parameter the package declares is `PromptContext<Options, Args>`, the slice of the action context a question reads, which the root export holds so a helper that asks several questions can name the context it passes on:
 
 ```ts
 import { select, text, type PromptContext } from '@loomcli/prompts';

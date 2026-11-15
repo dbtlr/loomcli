@@ -134,7 +134,7 @@ test('a fault on a local option leaves options set', async () => {
   await expect(validated(['--level', 'warn', 'get', 'a.b', '--nope'])).resolves.toEqual({
     status: 2,
     stderr:
-      'app: Unknown option "--nope". Supply a declared option; prefix a hyphenated path with "./".\n',
+      'app: Unknown option "--nope". Supply a declared option, or pass it as an argument after "--".\n',
     stdout: `observed:${values}\nresolved:2\n`,
   });
   await expect(validated(['--level', 'warn', 'get'])).resolves.toEqual({

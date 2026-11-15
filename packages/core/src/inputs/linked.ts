@@ -22,8 +22,8 @@ type LinkedValue<Value> = [Value] extends [readonly (infer Element)[]] ? Element
  */
 type LinkedValueContext<Args, Options> = Pick<
   ActionContext<Args, Options>,
-  'args' | 'options' | 'graph' | 'command' | 'host' | 'passthrough' | 'supplied'
->;
+  'args' | 'options' | 'graph' | 'command' | 'host' | 'supplied'
+> & { readonly passthrough?: readonly string[] };
 /**
  * The input a question links and its message: a local option by `option`, or an argument by
  * `argument`, never both.

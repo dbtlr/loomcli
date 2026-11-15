@@ -2,7 +2,7 @@ import type { Writable } from 'node:stream';
 
 import {
   declareStdin,
-  requiredStdinContext,
+  stdinMember,
   attachToRoot,
   childNode,
   buildGraph,
@@ -356,7 +356,8 @@ class ApplicationBuilder<
    */
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
 
-  readonly #stdinBind: (source: Content | undefined) => Stdin;
+  /** Composes the declared stdin and passthrough fragments of the action context. */
+  readonly #stdinBind: (source: Content | undefined, passthrough: string[]) => Stdin;
   /** Reads the values core built for the root's opt-ins as the type the Application's `uses` names. */
   readonly #providedBind: (values: BuiltValues) => Provided;
   readonly #name: string;
@@ -383,7 +384,7 @@ class ApplicationBuilder<
       root: CommandState<Args, Options, Globals>;
     },
     binds: {
-      stdin: (source: Content | undefined) => Stdin;
+      stdin: (source: Content | undefined, passthrough: string[]) => Stdin;
       provided: (values: BuiltValues) => Provided;
     },
   ) {
@@ -401,6 +402,38 @@ class ApplicationBuilder<
   }
 
   /**
+   * Declares the root Command's untouched tail after the first bare delimiter.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#passthrough
+   */
+  passthrough(
+    config: { description?: string } = {},
+  ): Application<
+    Args,
+    Options,
+    Globals,
+    Exclude<State, 'passthrough'>,
+    Plugins,
+    Result,
+    Stdin & { passthrough: string[] },
+    Provided,
+    Requires
+  > {
+    return new ApplicationBuilder(
+      this.#name,
+      {
+        config: this.#config,
+        globals: this.#globals,
+        root: { ...this.#root, passthrough: { description: config.description } },
+      },
+      {
+        provided: this.#providedBind,
+        stdin: (source, passthrough) => ({ ...this.#stdinBind(source, passthrough), passthrough }),
+      },
+    );
+  }
+
+  /**
    * Declares the root's stdin as required, so the action reads it as a `Content` that is always
    * present.
    *
@@ -415,7 +448,7 @@ class ApplicationBuilder<
     State,
     Plugins,
     Result,
-    { readonly stdin: Content },
+    Omit<Stdin, 'stdin'> & { readonly stdin: Content },
     Provided,
     Requires
   >;
@@ -427,10 +460,30 @@ class ApplicationBuilder<
    */
   stdin(
     config: StdinConfig,
-  ): Application<Args, Options, Globals, State, Plugins, Result, StdinContext, Provided, Requires>;
+  ): Application<
+    Args,
+    Options,
+    Globals,
+    State,
+    Plugins,
+    Result,
+    Omit<Stdin, 'stdin'> & StdinContext,
+    Provided,
+    Requires
+  >;
   stdin(
     config: StdinConfig,
-  ): Application<Args, Options, Globals, State, Plugins, Result, StdinContext, Provided, Requires> {
+  ): Application<
+    Args,
+    Options,
+    Globals,
+    State,
+    Plugins,
+    Result,
+    Omit<Stdin, 'stdin'> & StdinContext,
+    Provided,
+    Requires
+  > {
     const root = declareStdin(this.#root, config);
     return new ApplicationBuilder<
       Args,
@@ -439,7 +492,7 @@ class ApplicationBuilder<
       State,
       Plugins,
       Result,
-      StdinContext,
+      Omit<Stdin, 'stdin'> & StdinContext,
       Provided,
       Requires
     >(
@@ -447,7 +500,10 @@ class ApplicationBuilder<
       { config: this.#config, globals: this.#globals, root },
       {
         provided: this.#providedBind,
-        stdin: root.stdin?.required ? requiredStdinContext : (source) => ({ stdin: source }),
+        stdin: (source, passthrough) => ({
+          ...this.#stdinBind(source, passthrough),
+          ...stdinMember(root, source),
+        }),
       },
     );
   }

@@ -13,6 +13,7 @@ const app = new Application('textstat')
   .argument('files', { required: true, variadic: true })
   .option('metric', { short: 'm', type: 'string' })
   .option('total', { short: 't', type: 'boolean' })
+  .passthrough({ description: 'Words the report repeats unchanged.' })
   .action(({ args, options, passthrough, out }) => {
     const metric: string | undefined = options.metric;
     const total: boolean = options.total;
@@ -100,7 +101,7 @@ The declared validator checks one value under [ADR-0036](../decisions/0036-each-
 
 `required: true` means at least one occurrence. A multiple option's action value is never `undefined`: no occurrence is an accurate empty list, and it calls no validator. `required: true` is the structural at-least-one check, and it is read before validation. `required: 'non-interactive'` applies the same check only when the run is not [interactive](interaction.md). A rule over the whole list, such as uniqueness, a maximum count, or a transform of the array into another shape, is the action's, because the values are uniform and the action receives them all. A default is a `string[]`, or an array of the validator's input type when the declaration validates, and each of its values passes through the validator like a supplied one.
 
-Global options declare `multiple` under the same rules. Every occurrence before the passthrough delimiter is collected, whether routing or the routed Command's table reads it, so a repeated global is collected rather than rejected.
+Global options declare `multiple` under the same rules. Every occurrence before the first bare `--` is collected, whether routing or the routed Command's table reads it, so a repeated global is collected rather than rejected.
 
 | Rejected declaration or input                              | Diagnostic                                                                                                | Rule |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ---- |
@@ -136,7 +137,7 @@ const app = new Application('fetchit')
 `type: 'count'` declares a counted option. Each occurrence adds one, and the action reads the total as a `number`, so `fetchit -vvv`, `fetchit -v -v -v`, and `fetchit --verbose -vv` each read `3`, and `fetchit` alone reads `0`. [ADR-0057](../decisions/0057-a-counted-option-counts-its-occurrences-and-an-implied-value-fills-a-bare-spelling.md) records the decision.
 
 - **No value.** A counted option takes no value, as a Boolean option takes none. `--verbose=3` and `-v=3` fail with the unexpected-value error `Counted option "--verbose" does not accept a value. Repeat "--verbose" to raise its count.`, which names the spelling typed. A following plain word such as `3` stays a positional input, and `-v3` reports `Unknown option "-3"`, as `-t5` does for a Boolean letter.
-- **Every occurrence counts.** Occurrences count across every spelling of the option, its short alias and its [aliases](#option-aliases) included, and across words, so `-vv --verbose` reads `3`. The once-per-invocation rule never applies to a counted option, and a repeated counted letter in a [short group](#short-groups) is no repeat. A global counted option counts every occurrence before the passthrough delimiter, whether routing or the routed Command's table reads it, so occurrences before and after the Command name add together.
+- **Every occurrence counts.** Occurrences count across every spelling of the option, its short alias and its [aliases](#option-aliases) included, and across words, so `-vv --verbose` reads `3`. The once-per-invocation rule never applies to a counted option, and a repeated counted letter in a [short group](#short-groups) is no repeat. A global counted option counts every occurrence before the first bare `--`, whether routing or the routed Command's table reads it, so occurrences before and after the Command name add together.
 - **Absence.** No occurrence means the option was not supplied, and the action reads `0` unless an [input source](input-sources.md) fills it. A count needs no declared absence and has no upper limit, so a counted option declares no `validate`, `default`, `required`, `validateOmitted`, `multiple`, `polarity`, or `implied`. TypeScript rejects each at the `option()` call, and core adds no rule for a value that bypasses the types. An action that wants a cap clamps the count itself, as `Math.min` does above.
 - **Input sources.** An [environment binding](input-sources.md) fills a count from a variable that holds one or more ASCII decimal digits, such as `0`, `3`, or `12`, and the configuration source fills it with a whole number of 0 or more. A source fills the count only when no occurrence supplied it, so with `env: 'VERBOSE'` on the declaration, `VERBOSE=2 fetchit -v` reads `1` and `VERBOSE=2 fetchit` reads `2`.
 - **Every option.** `type: 'count'` applies to a local option, a global option, an option a plugin declares, and an option a lifecycle hook declares, under the same rules, because they are one kind of option.
@@ -267,6 +268,24 @@ An extension might bind a configuration source, so uncertain groups remain runti
 
 ## Passthrough
 
-The first bare `--` ends core parsing. Every following token reaches the action in `passthrough: string[]`, with order, values, and token boundaries intact. The delimiter is excluded. Later `--` tokens are ordinary passthrough values.
+The first bare `--` ends routing and option parsing on every Command. The delimiter itself is no word of the Command, and no word after it is read as an option, a global option's included. What the words after it become depends on whether the routed Command declares the passthrough mode. [ADR-0159](../decisions/0159-passthrough-is-a-mode-a-command-declares-and-required-arguments-may-follow-a-variadic.md) records the decision.
 
-Passthrough is always available and is empty when no tail exists. It does not satisfy required positional arguments. Core does not parse it as options or arguments, validate it, or transform it. Parsing leaves `host.argv` intact.
+```ts
+import { Command } from '@loomcli/core';
+
+// rm -- -draft.txt removes the file named -draft.txt.
+export const rm = new Command('rm')
+  .argument('file', { required: true })
+  .action(({ args, out }) => out.print(`Removed ${args.file}.`));
+
+// exec node -- --version prints node --version.
+export const exec = new Command('exec')
+  .argument('program', { required: true })
+  .passthrough({ description: 'The arguments the program receives.' })
+  .action(({ args, passthrough, out }) => out.print([args.program, ...passthrough].join(' ')));
+```
+
+- **Without the mode.** A Command that does not declare passthrough reads every word after the first bare `--` as a plain word. Each one fills the routed Command's next unfilled argument, after the plain words before the `--`, under the fill rule of [Application declarations](application.md), and a later `--` is an ordinary word. A word with no argument left to fill is the unexpected-argument error, with exit 2, and on a Command with children, which takes no arguments, every such word is. So `rm -- -draft.txt` fills `file` with `-draft.txt`. The action context has no `passthrough` member, so an action that reads one fails to compile.
+- **Declaring the mode.** `.passthrough(config?)` turns the mode on. `config` takes one optional key, `description`, the core fact help and the [manifest](../plugins/manifest.md) print for the words. A Command declares the mode at most once, and the types close the call at `action()`, as they close `argument()`. Only a Command with an action declares it: on a group it is [`@loomcli/core/command-without-action`](diagnostics.md#loomclicorecommand-without-action), at attach and, for the root, at build. Nothing inherits the mode, so each Command that forwards words declares its own.
+- **With the mode.** Every word after the first bare `--` reaches the action in `passthrough: string[]`, with its order, values, and word boundaries intact. A later `--` is an ordinary passthrough word. No such word fills an argument, so a required argument the words before the `--` leave out is still missing. Core never parses, validates, or transforms a passthrough word, and `passthrough` is `[]` when no word follows the `--`.
+- **Readers.** The [validation context](validation.md#validation-context) and the middleware [`request`](middleware.md) carry `passthrough` on every Command, `[]` on one without the mode. Parsing leaves `host.argv` intact.

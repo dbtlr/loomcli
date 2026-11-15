@@ -21,9 +21,10 @@ async function runFixture(words, fixtureOptions = {}) {
     const get = new Command('get')
       .argument('path', { required: true })
       .option('raw', { short: 'r', type: 'boolean' })
+      .passthrough()
       .action(report('get'));
 
-    const keys = new Command('keys').action(report('keys'));
+    const keys = new Command('keys').passthrough().action(report('keys'));
 
     const app = new Application('jsonkit')
       .globalOption('file', { short: 'f', type: 'string' })
@@ -32,6 +33,7 @@ async function runFixture(words, fixtureOptions = {}) {
       .option('pretty', { short: 'p', type: 'boolean' })
       .command(get)
       .command(keys)
+      .passthrough()
       .action(report('root'));
 
     await app.run({ process: createProcess({ argv: words.slice(1) }) });

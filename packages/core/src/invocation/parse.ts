@@ -7,6 +7,7 @@ import {
   UnexpectedValueError,
   UnknownCommandError,
   UnknownOptionError,
+  unknownOptionBeforeArguments,
 } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import { emptyValues, isSupplied } from '../inputs/options.js';
@@ -353,6 +354,13 @@ function stamp(state: ReadState): void {
   state.read += 1;
 }
 
+/** The unknown spelling's correction follows the routed Command's argument mode. */
+function unknownOption(command: BuiltCommand, spelling: string): UnknownOptionError {
+  return command.arguments.length > 0 && command.passthrough === undefined
+    ? unknownOptionBeforeArguments(spelling)
+    : new UnknownOptionError(spelling);
+}
+
 /** Holds a fault unless one read earlier is held already. */
 function keep(state: ReadState, fault: HeldFault): void {
   if (state.fault === undefined || fault.at < state.fault.at) {
@@ -384,7 +392,7 @@ function unplaced(state: ReadState, spelling: string): LoomError {
   const commands = declarers(state.command, state.path, spelling);
   return commands.length > 0
     ? new MisplacedOptionError(spelling, commands)
-    : new UnknownOptionError(spelling);
+    : unknownOption(state.command, spelling);
 }
 
 /** Holds a fault unless an earlier word already holds one, and notes a fault on a global option. */
@@ -612,12 +620,12 @@ function candidatesOf(command: BuiltCommand): string[] {
 }
 
 /**
- * The slot the positional at one index fills: the slot at that index, else a variadic last slot,
- * which accepts every later positional, else none. Binding and `locate` read positions through it.
+ * The slot at a word position, stopping at a variadic that accepts every later word.
+ * Trailing arguments bind separately from the end; locate always offers the variadic.
  */
 function argumentSlot(slots: readonly ArgumentSlot[], position: number): ArgumentSlot | undefined {
-  const last = slots.at(-1);
-  return slots[position] ?? (last?.variadic ? last : undefined);
+  const variadic = slots.findIndex((slot) => slot.variadic);
+  return variadic !== -1 && position >= variadic ? slots[variadic] : slots[position];
 }
 
 /**
@@ -724,7 +732,18 @@ function readCommandWord(state: ReadState, word: string, next: string | undefine
   return reading.takesNext ? 1 : 0;
 }
 
-/** The routed Command's words from where routing ended, up to the first bare `--`. */
+/** Delimited words bypass option parsing; only a declared mode retains them as a tail. */
+function readTail(state: ReadState, words: string[]): string[] {
+  if (state.command.passthrough !== undefined) {
+    return words;
+  }
+  for (const word of words) {
+    positional(state, word);
+  }
+  return [];
+}
+
+/** The routed Command's words, with delimited words read according to its mode. */
 function readCommandWords(
   routing: Routing,
   state: ReadState,
@@ -734,7 +753,7 @@ function readCommandWords(
   for (let index = start; index < words.length; index += 1) {
     const word = words[index] ?? '';
     if (word === '--') {
-      return { delimited: true, passthrough: words.slice(index + 1) };
+      return { delimited: true, passthrough: readTail(state, words.slice(index + 1)) };
     }
     index += readCommandWord(state, word, words[index + 1]);
   }
@@ -889,6 +908,27 @@ function bindWord(
   }
 }
 
+/** Reserve required arguments after a variadic from the end before binding the prefix. */
+function bindTrailingArguments(
+  values: Map<InputDeclaration, string | string[]>,
+  slots: readonly ArgumentSlot[],
+  words: { positionals: readonly string[]; variadic: number },
+): number {
+  const { positionals, variadic } = words;
+  let end = positionals.length;
+  if (variadic === -1) {
+    return end;
+  }
+  for (let index = slots.length - 1; index > variadic && end > 0; index -= 1) {
+    const slot = slots[index];
+    const word = positionals[--end];
+    if (slot && word !== undefined) {
+      bindWord(values, slot, word);
+    }
+  }
+  return end;
+}
+
 /**
  * The words each positional slot received. Parsing already held the first positional no slot
  * accepts, so every positional here has a slot. An omitted required argument binds nothing and
@@ -898,9 +938,13 @@ function bindWord(
  */
 function bindArguments(command: BuiltCommand, positionals: readonly string[]): BoundArguments {
   const values = new Map<InputDeclaration, string | string[]>();
-  for (const [position, word] of positionals.entries()) {
-    const slot = argumentSlot(command.arguments, position);
-    if (slot) {
+  const slots = command.arguments;
+  const variadic = slots.findIndex((slot) => slot.variadic);
+  const end = bindTrailingArguments(values, slots, { positionals, variadic });
+  for (let position = 0; position < end; position += 1) {
+    const slot = argumentSlot(slots, position);
+    const word = positionals[position];
+    if (slot && word !== undefined) {
       bindWord(values, slot, word);
     }
   }

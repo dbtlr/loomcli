@@ -41,6 +41,7 @@ async function runFixture(words, fixtureOptions = {}) {
             type: 'string',
           })
           .option('total', { description: 'The total option.', short: 't', type: 'boolean' })
+          .passthrough()
           .action(report);
         break;
       }
@@ -53,6 +54,7 @@ async function runFixture(words, fixtureOptions = {}) {
             type: 'string',
             validate: z.string().transform((value) => value.toUpperCase()),
           })
+          .passthrough()
           .action(report);
         break;
       }
@@ -65,6 +67,7 @@ async function runFixture(words, fixtureOptions = {}) {
             type: 'string',
             validate: fieldName,
           })
+          .passthrough()
           .action(report);
         break;
       }
@@ -76,6 +79,7 @@ async function runFixture(words, fixtureOptions = {}) {
             multiple: true,
             type: 'string',
           })
+          .passthrough()
           .action(report);
         break;
       }
@@ -88,6 +92,7 @@ async function runFixture(words, fixtureOptions = {}) {
             type: 'string',
             validate: counting(fieldName),
           })
+          .passthrough()
           .action(({ options, out }) => out.print(JSON.stringify({ calls, options })));
         break;
       }
@@ -105,6 +110,7 @@ async function runFixture(words, fixtureOptions = {}) {
               },
             },
           })
+          .passthrough()
           .action(report);
         break;
       }
@@ -125,6 +131,7 @@ async function runFixture(words, fixtureOptions = {}) {
               },
             },
           })
+          .passthrough()
           .action(report);
         break;
       }
@@ -137,6 +144,7 @@ async function runFixture(words, fixtureOptions = {}) {
             type: 'string',
             validate: fieldName,
           })
+          .passthrough()
           .action(report);
         break;
       }
@@ -158,6 +166,7 @@ async function runFixture(words, fixtureOptions = {}) {
               },
             }),
           })
+          .passthrough()
           .action(report);
         break;
       }
@@ -186,6 +195,7 @@ async function runFixture(words, fixtureOptions = {}) {
               },
             },
           })
+          .passthrough()
           .action(({ out }) => out.print(JSON.stringify(seen)));
         break;
       }
@@ -198,12 +208,14 @@ async function runFixture(words, fixtureOptions = {}) {
             short: 'F',
             type: 'string',
           })
+          .passthrough()
           .action(report);
         break;
       }
       case 'global': {
         const show = new Command('show', { description: 'The show command.' })
           .option('local', { description: 'The local option.', type: 'boolean' })
+          .passthrough()
           .action(report);
         app = new Application('multiple', development)
           .globalOption('field', {
@@ -213,6 +225,7 @@ async function runFixture(words, fixtureOptions = {}) {
             type: 'string',
           })
           .command(show)
+          .passthrough()
           .action(report);
         break;
       }

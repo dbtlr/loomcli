@@ -160,7 +160,7 @@ import {
   optionalArgumentLast,
   portableName,
   siblingNameTaken,
-  variadicArgumentLast,
+  argumentAfterVariadic,
 } from './rules.js';
 import type { GlobalNameConstraint, NameConstraint } from './types.js';
 
@@ -218,6 +218,7 @@ export interface RoutedChild {
  * it, and `routes` adds the aliases, so routing alone resolves them.
  */
 export interface BuiltCommand {
+  passthrough: { description: string | undefined } | undefined;
   optionGroups: readonly OptionGroup[];
   stdin: (StdinConfig & { readonly position: number }) | undefined;
   aliases: readonly string[];
@@ -278,6 +279,7 @@ export type CommandMethod =
   | 'requiredTogether'
   | 'result'
   | 'rows'
+  | 'passthrough'
   | 'stdin';
 
 /** One Command declares arguments or attaches children, so the first call removes the other. */
@@ -473,6 +475,7 @@ export interface CommandFacts {
  * them, so one declaration call has one implementation.
  */
 export interface CommandState<Args, Options, Globals> {
+  passthrough?: { description: string | undefined };
   optionGroups: readonly OptionGroup[];
   stdin?: StdinConfig & { readonly position: number };
   /**
@@ -480,7 +483,15 @@ export interface CommandState<Args, Options, Globals> {
    * result, so a handler typed from its own declaration stores here and the channel that carries
    * the result is built for it at dispatch.
    */
-  action: Action<Args, Globals & Options, OpenResult, StdinContext, BuiltValues> | undefined;
+  action:
+    | Action<
+        Args,
+        Globals & Options,
+        OpenResult,
+        StdinContext & { passthrough?: string[] },
+        BuiltValues
+      >
+    | undefined;
   aliases: readonly string[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
   children: readonly AttachedChild[];
@@ -512,6 +523,7 @@ export type Declared = Pick<
   | 'name'
   | 'records'
   | 'results'
+  | 'passthrough'
   | 'stdin'
   | 'optionGroups'
 >;
@@ -692,6 +704,11 @@ function claimsStdin(input: InputDeclaration): boolean {
   return input.config.type === 'content' && input.config.stdin === true;
 }
 
+/** The arguments an author wrote to a `passthrough()` call: none for a bare call. */
+function passthroughArguments(config: { description: string | undefined }): [] | [object] {
+  return config.description === undefined ? [] : [{ description: config.description }];
+}
+
 /** A stdin call's finding carries authored settings without internal ordering metadata. */
 export function stdinFinding(path: readonly string[], config: StdinConfig): Finding {
   const supplied = {
@@ -782,7 +799,7 @@ function checkArgument(state: Declared, input: ArgumentInput): void {
   if (child) {
     throw placementFault(command, input, child);
   }
-  const previous = declared.at(-1);
+  const previous = declared.find((entry) => entry.config.variadic === true) ?? declared.at(-1);
   if (previous) {
     checkSlotOrder(slotOf(previous), slotOf(input), command);
   }
@@ -982,13 +999,15 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
   state: CommandState<Args, Options, Globals>,
   handler: Action<Args, Globals & Options, Result, Stdin, Provided>,
   binds: {
-    stdin: (source: Content | undefined) => Stdin;
+    stdin: (source: Content | undefined, passthrough: string[]) => Stdin;
     provided: (values: BuiltValues) => Provided;
   },
 ): CommandState<Args, Options, Globals> {
   // The graph and the routed node stay getters, because a spread would build the graph on every run.
   const stored = (
-    context: ActionContext<Args, Globals & Options, OpenResult, BuiltValues>,
+    context: ActionContext<Args, Globals & Options, OpenResult, BuiltValues> & {
+      passthrough?: string[];
+    },
   ): unknown =>
     handler({
       args: context.args,
@@ -1008,10 +1027,9 @@ export function declareAction<Args, Options, Globals, Result, Stdin extends Stdi
       onSuspend: context.onSuspend,
       options: context.options,
       out: declaredChannel(context.out),
-      passthrough: context.passthrough,
       provided: binds.provided(context.provided),
       signal: context.signal,
-      ...binds.stdin(context.stdin),
+      ...binds.stdin(context.stdin, context.passthrough ?? []),
       style: context.style,
       supplied: context.supplied,
     });
@@ -1153,6 +1171,20 @@ function checkGroup(state: Declared, place: FinishedPlace): void {
       findings:
         placement === undefined ? [] : [{ ...placement, note: 'no action and no children' }],
       sentence: `${commandSentence(name)} has no action.`,
+    });
+  }
+  if (state.passthrough !== undefined) {
+    throw new DeclarationError(commandWithoutAction, {
+      correction: 'Declare passthrough on the Command that reads it, or register an action.',
+      findings: [
+        {
+          arguments: passthroughArguments(state.passthrough),
+          call: 'passthrough',
+          mark: '0',
+          path: place.path,
+        },
+      ],
+      sentence: `${commandSentence(name)} declares passthrough but registers no action to receive it.`,
     });
   }
   if (state.stdin !== undefined) {
@@ -1299,12 +1331,27 @@ export function checkDeclaredOptions(state: Declared, table: GlobalTable): void 
   checkAttachedOptions(table, place, state.children);
 }
 
+/** Why an argument cannot reserve exactly one word after a variadic. */
+function invalidTrailingArgument(config: InputDeclaration['config']): string | undefined {
+  if ('variadic' in config && config.variadic) {
+    return 'is variadic';
+  }
+  if (config.type === 'content') {
+    return 'is a content argument';
+  }
+  if (config.required === 'non-interactive') {
+    return 'is required only when input is not interactive';
+  }
+  return config.required === true ? undefined : 'is optional';
+}
+
 /**
- * A variadic slot ends the positional list, so nothing may follow it. The other slots order in
- * three tiers: required, then required only when input is not interactive, then optional. A slot
- * never follows one of a later tier, so a required slot never follows a conditional or optional
- * one, and a conditional slot never follows an optional one. Slots of one tier may follow each
- * other, and bare words fill them left to right.
+ * Orders the slots up to and including a variadic one in three tiers: required, then required only
+ * when input is not interactive, then optional. A slot never follows one of a later tier, so a
+ * required slot never follows a conditional or optional one, and a conditional slot never follows
+ * an optional one. Slots of one tier may follow each other, and bare words fill them left to right.
+ * Only required scalar arguments that are not content arguments may follow a variadic slot, and
+ * they take their words from the end of the line, so this order does not apply to them.
  */
 function checkSlotOrder(
   slot: ArgumentSlot,
@@ -1314,11 +1361,15 @@ function checkSlotOrder(
   const { path, subject } = command;
   const after = inputFinding(path, next.input, 'the argument after it');
   if (slot.variadic) {
-    throw new DeclarationError(variadicArgumentLast, {
-      correction: 'Declare the variadic argument last.',
-      findings: [inputFinding(path, slot.input, 'the variadic argument'), after],
-      sentence: `Argument "${slot.input.name}" is variadic and precedes argument "${next.input.name}" on ${subject}.`,
-    });
+    const reason = invalidTrailingArgument(next.input.config);
+    if (reason) {
+      throw new DeclarationError(argumentAfterVariadic, {
+        correction: 'Declare only required scalar arguments after a variadic argument.',
+        findings: [inputFinding(path, slot.input, 'the variadic argument'), after],
+        sentence: `Argument "${next.input.name}" ${reason} and follows variadic argument "${slot.input.name}" on ${subject}.`,
+      });
+    }
+    return;
   }
   if (slot.input.config.required === 'non-interactive' && needsValue(next)) {
     throw new DeclarationError(optionalArgumentLast, {
@@ -1364,7 +1415,7 @@ function collectArguments(state: Declared, command: CommandPlace): ArgumentSlot[
     slots.push(slotOf(input));
   }
   for (let index = 0; index + 1 < slots.length; index += 1) {
-    const slot = slots[index];
+    const slot = slots.slice(0, index + 1).find((entry) => entry.variadic) ?? slots[index];
     const next = slots[index + 1];
     if (slot && next) {
       checkSlotOrder(slot, next, judged);
@@ -2001,7 +2052,13 @@ function checkAttachedInputs(
 /** Binds one Command's declarations to its action, so an action reads only validated values. */
 function bindDispatch<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
-  action: Action<Args, Globals & Options, OpenResult, StdinContext, BuiltValues>,
+  action: Action<
+    Args,
+    Globals & Options,
+    OpenResult,
+    StdinContext & { passthrough?: string[] },
+    BuiltValues
+  >,
   globals: BuiltGlobals,
 ) {
   return ({
@@ -2183,6 +2240,7 @@ export function buildCommand<Args, Options, Globals>(
     inputs: hooked.inputs,
     name,
     optionGroups: hooked.optionGroups,
+    passthrough: state.passthrough,
     placement: context.placement,
     result,
     routes,
@@ -2224,11 +2282,19 @@ export function buildGraph<Args, Options, Globals>(
 }
 
 /** A required source reaches this accessor only after preparation accepted its presence. */
-export function requiredStdinContext(source: Content | undefined): { readonly stdin: Content } {
+export function requiredStdin(source: Content | undefined): Content {
   if (source === undefined) {
     throw new Error('Required stdin was not prepared.');
   }
-  return { stdin: source };
+  return source;
+}
+
+/** The `stdin` member of the context: the source as prepared, which a required one always has. */
+export function stdinMember(
+  state: { readonly stdin?: StdinConfig | undefined },
+  source: Content | undefined,
+): { readonly stdin: Content | undefined } {
+  return { stdin: state.stdin?.required === true ? requiredStdin(source) : source };
 }
 
 export function declareStdin<Args, Options, Globals>(
@@ -2273,7 +2339,8 @@ export class CommandBuilder<
 
   readonly #name: string;
   readonly #state: CommandState<Args, Options, Globals>;
-  readonly #stdinBind: (source: Content | undefined) => Stdin;
+  /** Composes the declared stdin and passthrough fragments of the action context. */
+  readonly #stdinBind: (source: Content | undefined, passthrough: string[]) => Stdin;
   /** Reads the values core built for the Command's opt-ins as the type its `uses` names. */
   readonly #providedBind: (values: BuiltValues) => Provided;
 
@@ -2281,7 +2348,7 @@ export class CommandBuilder<
     name: string,
     state: CommandState<Args, Options, Globals>,
     binds: {
-      stdin: (source: Content | undefined) => Stdin;
+      stdin: (source: Content | undefined, passthrough: string[]) => Stdin;
       provided: (values: BuiltValues) => Provided;
     },
   ) {
@@ -2293,6 +2360,32 @@ export class CommandBuilder<
   }
 
   /**
+   * Declares the untouched tail after the first bare delimiter.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#passthrough
+   */
+  passthrough(
+    config: { description?: string } = {},
+  ): Command<
+    Args,
+    Options,
+    Globals,
+    Exclude<State, 'passthrough'>,
+    Result,
+    Stdin & { passthrough: string[] },
+    Provided
+  > {
+    return new CommandBuilder(
+      this.#name,
+      { ...this.#state, passthrough: { description: config.description } },
+      {
+        provided: this.#providedBind,
+        stdin: (source, passthrough) => ({ ...this.#stdinBind(source, passthrough), passthrough }),
+      },
+    );
+  }
+
+  /**
    * Declares the Command's stdin as required, so the action reads it as a `Content` that is always
    * present.
    *
@@ -2300,7 +2393,15 @@ export class CommandBuilder<
    */
   stdin(
     config: StdinConfig & { required: true },
-  ): Command<Args, Options, Globals, State, Result, { readonly stdin: Content }, Provided>;
+  ): Command<
+    Args,
+    Options,
+    Globals,
+    State,
+    Result,
+    Omit<Stdin, 'stdin'> & { readonly stdin: Content },
+    Provided
+  >;
   /**
    * Declares the Command's stdin as optional, so the action's `stdin` is absent when the operator
    * supplies none.
@@ -2309,19 +2410,26 @@ export class CommandBuilder<
    */
   stdin(
     config: StdinConfig,
-  ): Command<Args, Options, Globals, State, Result, StdinContext, Provided>;
+  ): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided>;
   stdin(
     config: StdinConfig,
-  ): Command<Args, Options, Globals, State, Result, StdinContext, Provided> {
+  ): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided> {
     const state = declareStdin(this.#state, config);
-    return new CommandBuilder<Args, Options, Globals, State, Result, StdinContext, Provided>(
-      this.#name,
-      state,
-      {
-        provided: this.#providedBind,
-        stdin: state.stdin?.required ? requiredStdinContext : (source) => ({ stdin: source }),
-      },
-    );
+    return new CommandBuilder<
+      Args,
+      Options,
+      Globals,
+      State,
+      Result,
+      Omit<Stdin, 'stdin'> & StdinContext,
+      Provided
+    >(this.#name, state, {
+      provided: this.#providedBind,
+      stdin: (source, passthrough) => ({
+        ...this.#stdinBind(source, passthrough),
+        ...stdinMember(state, source),
+      }),
+    });
   }
 
   /**

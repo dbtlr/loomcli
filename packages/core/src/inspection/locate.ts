@@ -92,7 +92,7 @@ function awaitedValue(scope: Scope, awaiting: AwaitingValue, last: string): Word
 /** A plain word names a child until routing ends, and fills the next positional after. */
 function plainWord(scope: Scope, last: string): WordPosition {
   const { command, earlier } = scope;
-  if (!earlier.committed && earlier.command.children.size > 0) {
+  if (!earlier.delimited && !earlier.committed && earlier.command.children.size > 0) {
     return { command, kind: 'command', prefix: last };
   }
   const slot = argumentSlot(earlier.command.arguments, earlier.positionals.length);
@@ -152,7 +152,9 @@ function optionWord(scope: Scope, last: string): WordPosition {
 function lastWord(scope: Scope, last: string): WordPosition {
   const { command, earlier } = scope;
   if (earlier.delimited) {
-    return { command, kind: 'passthrough', prefix: last };
+    return command.passthrough
+      ? { command, kind: 'passthrough', prefix: last }
+      : plainWord(scope, last);
   }
   if (earlier.awaiting) {
     return awaitedValue(scope, earlier.awaiting, last);

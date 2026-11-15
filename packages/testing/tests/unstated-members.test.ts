@@ -20,6 +20,9 @@ const get = new Command('get')
 /** Reads nothing; each test reads the members the rule under test fills. */
 const getValue: ActionHandler<typeof get> = () => {};
 
+const forward = new Command('forward').passthrough();
+const forwardValue: ActionHandler<typeof forward> = () => {};
+
 /** A context with only the inputs stated. */
 function bare() {
   return actionContext(getValue, { args: { path: 'name' }, options: {}, provided: {} });
@@ -176,7 +179,7 @@ describe('an unstated member', () => {
       viewContext: viewContext(plainView, {}),
     };
     const facts = [
-      ['actionContext', ['command', 'graph', 'host', 'interactive', 'passthrough', 'supplied']],
+      ['actionContext', ['command', 'graph', 'host', 'interactive', 'supplied']],
       ['middlewareContext', ['command', 'graph', 'host']],
       ['failureHookContext', ['command', 'graph']],
       ['providerContext', ['host']],
@@ -191,6 +194,16 @@ describe('an unstated member', () => {
         new Error(`${builder} has no ${member}. Add ${member} to its values.`),
       );
     });
+  });
+
+  it('of passthrough reads an empty tail on a handler whose Command declares the mode', () => {
+    const context = actionContext(forwardValue, { args: {}, options: {}, provided: {} });
+    expect(context.passthrough).toEqual([]);
+  });
+
+  it('of passthrough reads an empty tail on a handler whose Command takes none', () => {
+    // A question's validation reads passthrough from any action context, so a read must not throw.
+    expect(Reflect.get(bare(), 'passthrough')).toEqual([]);
   });
 
   it('of a provider context is inert: log, signal, and onShutdown', () => {

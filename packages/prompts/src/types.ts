@@ -12,7 +12,6 @@ import type { ActionContext, Out, StandardSchemaV1 } from '@loomcli/core';
 type PromptContext<Options, Args = unknown> = Pick<
   ActionContext<Args, Options>,
   | 'args'
-  | 'passthrough'
   | 'options'
   | 'interactive'
   | 'supplied'
@@ -24,7 +23,10 @@ type PromptContext<Options, Args = unknown> = Pick<
   | 'onShutdown'
   | 'onSuspend'
   | 'onResume'
-> & { readonly out: Pick<Out, 'draw' | 'region' | 'lendTerminal'> };
+> & {
+  readonly passthrough?: readonly string[];
+  readonly out: Pick<Out, 'draw' | 'region' | 'lendTerminal'>;
+};
 
 /**
  * The name of an option or argument a question links: a string key of the Command's options or

@@ -10,10 +10,9 @@ export const checkPr: ActionHandler<typeof prCheck> = async ({
   onShutdown,
   options,
   out,
-  passthrough,
   signal,
 }) => {
-  await report({ out, passthrough, signal }, async () => {
+  await report({ out, signal }, async () => {
     await checkPullRequest(
       { host, onShutdown, root: host.cwd, signal },
       {

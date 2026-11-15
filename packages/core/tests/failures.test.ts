@@ -315,7 +315,7 @@ test.each([
   [
     'an unknown option',
     ['get', 'x', `--a${rightToLeft}b`],
-    `failures: Unknown option "--a${rightToLeftEscape}b". Supply a declared option; prefix a hyphenated path with "./".\n`,
+    `failures: Unknown option "--a${rightToLeftEscape}b". Supply a declared option, or pass it as an argument after "--".\n`,
   ],
   [
     'a letter of a short group',
@@ -357,7 +357,7 @@ test('a failure keeps the raw token while its sentence escapes it', async () => 
     spelling: `-${rightToLeft}`,
   });
   await expect(reported(['get', 'x', `--a${rightToLeft}`])).resolves.toMatchObject({
-    message: `Unknown option "--a${rightToLeftEscape}". Supply a declared option; prefix a hyphenated path with "./".`,
+    message: `Unknown option "--a${rightToLeftEscape}". Supply a declared option, or pass it as an argument after "--".`,
     name: 'UnknownOptionError',
     spelling: `--a${rightToLeft}`,
   });

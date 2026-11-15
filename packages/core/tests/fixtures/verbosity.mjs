@@ -197,6 +197,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         new Command('get', { description: 'Fetch one URL.' })
           .option('field', { description: 'A field to keep.', short: 'F', type: 'string' })
           .argument('url', { description: 'The URL to fetch.' })
+          .passthrough()
           .action(actions[variant] ?? everyLane),
       )
       .command(

@@ -170,6 +170,7 @@ const getDocument = {
   configuration: null,
   command: {
     stdin: null,
+    passthrough: null,
     name: 'get',
     path: ['get'],
     description: 'Read one value.',
@@ -572,6 +573,7 @@ test('a Command entry carries stdin: null without a stdin declaration, and the d
   const raw = z.object({ command: z.record(z.string(), z.unknown()) }).parse(JSON.parse(text));
   expect(Object.keys(raw.command)).toEqual([
     'stdin',
+    'passthrough',
     'name',
     'path',
     'description',
@@ -692,12 +694,11 @@ test('an unknown Command still fails in routing, and an earlier takeover wins', 
   });
 });
 
-test('a --manifest token after the passthrough delimiter is not read as the option', async () => {
-  await expect(run('app', ['get', 'x', '--', '--manifest'])).resolves.toEqual({
-    status: 0,
-    stderr: '',
-    stdout: 'dispatched\n',
-  });
+test('a --manifest token after -- is an unexpected argument, never the option', async () => {
+  const result = await run('app', ['get', 'x', '--', '--manifest']);
+  expect(result.status).toBe(2);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain('Command "get" accepts 1 argument. Remove the extra values.');
 });
 
 /** One unencodable input's report in each build, so a test compares both at once. */

@@ -11,11 +11,10 @@ export const checkChangelog: ActionHandler<typeof changelogCheck> = async ({
   host,
   onShutdown,
   out,
-  passthrough,
   provided,
   signal,
 }) => {
-  await report({ out, passthrough, signal }, async () => {
+  await report({ out, signal }, async () => {
     const root = packageDirectory(host.cwd);
     const { changes } = changelogFiles(root, packagePaths(root, provided.config));
     const fragments = await readFragments({ host, onShutdown, root, signal }, undefined, changes);

@@ -651,8 +651,8 @@ async function runInit(
  * a terminal for the tooling nothing else decides.
  */
 export const initPackage: ActionHandler<typeof init> = async (context) => {
-  const { host, onShutdown, options, out, passthrough, provided, signal, supplied } = context;
-  await report({ out, passthrough, signal }, async () => {
+  const { host, onShutdown, options, out, provided, signal, supplied } = context;
+  await report({ out, signal }, async () => {
     const place = await chosenPlace(context, host.cwd);
     checkManifest(place, options.only);
     // A new application uses every convention: the file the lookup finds describes the package above it.

@@ -233,6 +233,8 @@ type OptionNode =
 interface CommandNode {
   /** The relationships declared over the local options, in declaration order. */
   readonly optionGroups: readonly OptionGroup[];
+  /** The Command's passthrough declaration, or null when the mode is off. */
+  readonly passthrough: Readonly<{ description: string | undefined }> | null;
   /** The Command's declared stdin, present only when the Command declares one. */
   readonly stdin?: Readonly<{ description: string | undefined; required: boolean }>;
   /** The Command's own name, and `null` for the root. */
@@ -626,6 +628,7 @@ function commandNode(
   };
   const node: CommandNode = {
     optionGroups: Object.freeze([...command.optionGroups]),
+    passthrough: command.passthrough ? Object.freeze({ ...command.passthrough }) : null,
     ...(command.stdin !== undefined
       ? {
           stdin: Object.freeze({

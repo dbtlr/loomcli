@@ -11,6 +11,7 @@ function serviceGraphApplication(words: readonly string[]) {
       new Command('serve', { description: 'Serve the notes.' })
         .option('port', { description: 'The port to serve on.', type: 'string' })
         .option('verbose', { description: 'Write more.', type: 'boolean' })
+        .passthrough()
         .action(({ out }) => out.print('serving')),
     )
     .command(

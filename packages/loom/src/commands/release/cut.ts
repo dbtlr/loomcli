@@ -163,10 +163,9 @@ export const cutRelease: ActionHandler<typeof releaseCut> = async ({
   onShutdown,
   options,
   out,
-  passthrough,
   signal,
 }) => {
-  await report({ out, passthrough, signal }, async () => {
+  await report({ out, signal }, async () => {
     const checkout = { host, onShutdown, root: host.cwd, signal };
     const release = await prepare(checkout, options);
     if (!options['dry-run']) {

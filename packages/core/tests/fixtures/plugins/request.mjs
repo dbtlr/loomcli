@@ -225,6 +225,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         })
         .option('depth', { description: 'The depth option.', type: 'string', validate: digits })
         .option('raw', { description: 'The raw option.', type: 'boolean' })
+        .passthrough()
         .action(({ args, options, out, passthrough }) =>
           out.print(`get:${JSON.stringify({ args, options, passthrough })}`),
         );

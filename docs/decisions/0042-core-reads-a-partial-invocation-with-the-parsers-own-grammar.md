@@ -4,7 +4,7 @@ title: ADR-0042 - Core reads a partial invocation with the parser's own grammar
 description: Core exports locate(graph, words), a pure function that reads the words of an unfinished invocation against the graph and reports where the last word sits. The parser and locate share one implementation of the token grammar, so completion never keeps a second copy of it.
 status: accepted
 created: 2026-09-26
-modified: 2026-10-19
+modified: 2026-11-15
 ---
 
 # ADR-0042 - Core reads a partial invocation with the parser's own grammar
@@ -43,3 +43,4 @@ Accepted 2026-09-27 with the implementation. `locate` reads words through the pa
 - 2026-09-27: The last word goes through the parser's rules too. Whether a token is an option token, how a long token splits at its first `=`, and whether a bare word names a child are each one function that the parser and `locate` both call.
 - 2026-10-03: [ADR-0055](0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md), proposed, changes the grammar this record has `locate` share, and `locate` follows it. Routing reads the global options alone and stops at an option word no global option declares, the routed Command's one table replaces the pre-scan and the first-hyphen commit, short groups follow `getopt` with attached values, and `-`, `-5`, and every other word that is not an option word are plain words. A last word that is a short group reaching a value letter with characters after it reads as that option's value. One grammar for the parser and completion is unchanged. It binds when that record is accepted.
 - 2026-10-19: [ADR-0090](0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md), proposed, adds `counts` to the `option` position: how many times the earlier words gave each counted option, so completion stops offering a verbose-marked or quiet-marked option once a further occurrence adds nothing. The reader and its grammar are unchanged. It binds when that record is accepted.
+- 2026-11-15: [ADR-0159](0159-passthrough-is-a-mode-a-command-declares-and-required-arguments-may-follow-a-variadic.md), proposed, narrows the `passthrough` position to a Command that declares passthrough. On a Command without the mode, a word after the first bare `--` is a plain word of the routed Command, so `locate` reads it as an argument position, or `none` when no argument is left to fill. With required arguments after a variadic one, a word past the arguments before the variadic reads as the variadic, never as an argument after it, because a later word may still be another of the variadic's values (LM-382). It binds when that record is accepted.

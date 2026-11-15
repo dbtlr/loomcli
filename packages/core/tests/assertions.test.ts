@@ -18,7 +18,9 @@ const packages = new URL('../../', import.meta.url);
  * `providers.ts` returns the provider value as the type its declaration's annotation states, and
  * reads the values core built for a `uses` list, which reach it from openers as unknown, as the
  * record that list's type names. The testing package's `unstated-style.ts` types the proxy an
- * unstated style is as core's `ContextualStyle`, whose brand core does not export.
+ * unstated style is as core's `ContextualStyle`, whose brand core does not export. The testing package's `action-context.ts` returns a context that
+ * always carries `passthrough`, as the type of a handler whose Command declares the mode, whose stated
+ * values leave it optional.
  */
 const allowed = {
   'core/src/commands/command.ts': 1,
@@ -31,6 +33,7 @@ const allowed = {
   'core/src/style/style.ts': 1,
   'plugins/src/config/plugin.ts': 1,
   'plugins/src/mcp/serve.ts': 1,
+  'testing/src/action-context.ts': 1,
   'testing/src/unstated-style.ts': 1,
 };
 

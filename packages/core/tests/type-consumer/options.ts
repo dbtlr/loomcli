@@ -13,6 +13,7 @@ new Application('options')
   .argument('files', { required: true, variadic: true })
   .option('total', total)
   .option('color', color)
+  .passthrough()
   .action(({ args, options, passthrough }) => {
     const files: string[] = args.files;
     const selectedMetric: string | undefined = options.metric;
@@ -42,7 +43,7 @@ new Application('options')
     };
   });
 
-new Application('independent').action(({ options, passthrough }) => {
+new Application('independent').passthrough().action(({ options, passthrough }) => {
   const tail: string[] = passthrough;
   // @ts-expect-error TS2339: Options from another application cannot leak here.
   options.metric;
@@ -68,6 +69,7 @@ const colour = { aliases: ['colour'], polarity: 'both', type: 'boolean' } satisf
 new Application('aliases')
   .option('min-bytes', renamed)
   .option('color', colour)
+  .passthrough()
   .action(({ options }) => {
     const threshold: string | undefined = options['min-bytes'];
     // @ts-expect-error TS2339: Aliases are not handler keys.
