@@ -17,8 +17,13 @@
  * - Sources. The last occurrence beats a bound variable and a configuration value.
  * - Placement. A global last-wins option takes its last occurrence before and after the Command
  *   name, and never a word after the bare `--`.
+ * - The background mark. A marked last-wins option runs with its last occurrence, and the run's
+ *   background choice follows that occurrence, so a replaced `light` never settles the background
+ *   when the last occurrence names neither `dark` nor `light`.
+ * - Inspection. A string option's node publishes `lastWins`, `false` unless declared `true`, and a
+ *   content option's node carries none. `locate` reads a later occurrence as it reads the first.
  */
-import { Application, Command, extension, plugin, validationContext } from '@loomcli/core';
+import { Application, Command, extension, locate, plugin, validationContext } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
@@ -238,4 +243,79 @@ test('a global last-wins option takes its last occurrence at any placement befor
   await expect(
     run(application, ['-e', 'vim', 'draft', '--', '--editor', 'nano']),
   ).resolves.toMatchObject({ seen: [{ editor: 'vim', rest: ['--editor', 'nano'] }] });
+});
+
+test('the graph publishes lastWins on a string option, false unless declared true, and none on content', () => {
+  const graph = new Application('app')
+    .option('editor', { lastWins: true, type: 'string' })
+    .option('resize', { arity: 2, lastWins: true, type: 'string' })
+    .option('name', { type: 'string' })
+    .option('body', { type: 'content' })
+    .action(() => {})
+    .inspect();
+  const [editor, resize, name, body] = graph.root.options;
+  const published = [editor, resize, name].map(
+    (option) => option?.type === 'string' && option.lastWins,
+  );
+  expect(published).toEqual([true, true, false]);
+  expect(body !== undefined && Object.hasOwn(body, 'lastWins')).toBe(false);
+});
+
+test('locate reads a later occurrence of a last-wins option as it reads the first', () => {
+  const graph = new Application('app')
+    .option('editor', { lastWins: true, short: 'e', type: 'string' })
+    .option('to', { type: 'string' })
+    .argument('file', {})
+    .action(() => {})
+    .inspect();
+  const [editor] = graph.root.options;
+  expect(locate(graph, ['--editor', 'vim', '--editor='])).toMatchObject({
+    kind: 'value',
+    option: editor,
+    prefix: '',
+  });
+  expect(locate(graph, ['--editor', 'vim', '-e', 'na'])).toMatchObject({
+    kind: 'value',
+    option: editor,
+    prefix: 'na',
+  });
+  expect(locate(graph, ['--editor', 'vim', '--editor', 'nano', 'f'])).toMatchObject({
+    kind: 'argument',
+    prefix: 'f',
+  });
+  // A scalar option without the setting still faults on its repeat.
+  expect(locate(graph, ['--to', 'x', '--to='])).toEqual({ kind: 'none' });
+});
+
+test("a marked last-wins option's background choice follows the occurrence that won", async () => {
+  const tones = z.enum(['dark', 'light', 'auto']);
+  const application = new Application('app')
+    .globalOption('background', {
+      background: true,
+      lastWins: true,
+      type: 'string',
+      validate: tones,
+    })
+    .action(({ host, options }) => {
+      seen.push([options.background, host.terminal.background]);
+    });
+  const runOn = async (argv: string[]) => {
+    seen.length = 0;
+    const mock = mockProcess({ argv, terminal: { background: 'dark', columns: 80, rows: 24 } });
+    const status = await application.run({ process: mock });
+    return { seen: [...seen], status, stderr: mock.stderr.text };
+  };
+  await expect(runOn(['--background=dark', '--background=light'])).resolves.toEqual({
+    seen: [['light', 'light']],
+    status: 0,
+    stderr: '',
+  });
+  // The replaced light decides nothing, so the stated terminal background settles the run.
+  await expect(runOn(['--background=light', '--background=auto'])).resolves.toEqual({
+    seen: [['auto', 'dark']],
+    status: 0,
+    stderr: '',
+  });
+  // A dangling last spelling supplies nothing and replaces nothing, so the parse fails it.
+  await expect(runOn(['--background=light', '--background'])).resolves.toMatchObject({ status: 2 });
 });

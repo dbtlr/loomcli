@@ -79,16 +79,6 @@ interface LastWins {
    * or an alias that puts a default first yields to the operator's later value. Omitted or `false`,
    * a second occurrence is the repeated-option error.
    *
-   * @example
-   * ```ts
-   * import { Application } from '@loomcli/core';
-   *
-   * // With alias draft='mailer --editor vim', "draft --editor nano" runs with nano.
-   * new Application('mailer')
-   *   .option('editor', { lastWins: true, short: 'e', type: 'string' })
-   *   .action(({ options, out }) => out.print(options.editor ?? 'no editor'));
-   * ```
-   *
    * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#last-occurrence-wins
    */
   lastWins?: boolean;

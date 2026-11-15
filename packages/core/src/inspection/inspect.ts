@@ -110,6 +110,8 @@ interface ArgumentNode {
  * `envAllowEmpty` is `true` when its binding declares the key `true`, under which a defined empty
  * variable supplies the option. A string option's `arity` is the declared count of words each
  * occurrence takes, or `null` when it declares none; its default is then a tuple, or a list of them.
+ * A string option's `lastWins` is `true` when its declaration says `true`, under which a later
+ * occurrence on the command line replaces an earlier one; a content option's node carries none.
  * `aliases` holds the declared aliases as bare names in declaration order. An alias is
  * unadvertised, so the spellings above are the ones the declared name derives and no listing reads
  * `aliases`; parsing and `locate` read the table, which holds every alias's spellings.
@@ -147,6 +149,11 @@ interface StringOptionNode {
    * declares no arity.
    */
   readonly arity: number | null;
+  /**
+   * Whether a later occurrence on the command line replaces an earlier one instead of failing as
+   * a repeat. `false` unless the declaration says `true`.
+   */
+  readonly lastWins: boolean;
   /** Whether the option has a validator. A content option counts as validated. */
   readonly validated: boolean;
   /** Whether an omitted value is still sent to the validator. */
@@ -186,7 +193,7 @@ interface StringOptionNode {
  */
 type OptionNode =
   | StringOptionNode
-  | (Omit<StringOptionNode, 'type' | 'arity' | 'background' | 'envAllowEmpty'> & {
+  | (Omit<StringOptionNode, 'type' | 'arity' | 'background' | 'envAllowEmpty' | 'lastWins'> & {
       readonly type: 'content';
       readonly stdin: boolean;
       readonly min: number | undefined;
@@ -556,6 +563,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
             arity: config.arity ?? null,
             background: config.background === true,
             envAllowEmpty: config.envAllowEmpty === true,
+            lastWins: config.lastWins === true,
             type: 'string',
           });
     }

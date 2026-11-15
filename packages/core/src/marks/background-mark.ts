@@ -65,20 +65,29 @@ function occurrence(
   return { next: index + 1, value: undefined };
 }
 
+/** Whether the marked option declares `lastWins: true`, read from any of its spellings. */
+function replacesEarlier(spellings: ReadonlyMap<string, OptionSpelling>): boolean {
+  return [...spellings.values()].some((option) => option.type === 'string' && option.lastWins);
+}
+
 /**
  * The run's background choice from argv alone: among the words before the first bare `--`, the
  * last occurrence of a marked spelling, read against `spellings`, the marked option's long
- * spellings, whose value is `dark` or `light`.
+ * spellings, whose value is `dark` or `light`. On a last-wins option the choice follows the last
+ * occurrence that supplies a value, the one the parse keeps, so it answers nothing when that value
+ * is neither, and a replaced value never settles the background.
  */
 function backgroundChoice(
   argv: readonly string[],
   spellings: ReadonlyMap<string, OptionSpelling>,
 ): Background | undefined {
+  const follows = replacesEarlier(spellings);
   let choice: Background | undefined = undefined;
   let index = 0;
   while (index < argv.length && argv[index] !== '--') {
     const read = occurrence(argv, index, spellings);
-    choice = named(read.value) ?? choice;
+    choice =
+      follows && read.value !== undefined ? named(read.value) : (named(read.value) ?? choice);
     index = read.next;
   }
   return choice;
