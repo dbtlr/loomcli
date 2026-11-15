@@ -208,6 +208,32 @@ test("a short spelling another plugin's option holds is the hook-collision error
   });
 });
 
+test("a group's own option named format is the hook-collision error, on a run that names no format", async () => {
+  await expect(buildFault('group-name-collision')).resolves.toMatchObject({
+    rule: '@loomcli/core/option-declared-twice',
+    sentence:
+      'Plugin "@loomcli/plugins/format" declares option "format" on Command "cache", which is already declared as a local option.',
+  });
+  await expect(buildRun(['group-name-collision', 'cache', 'clear'])).resolves.toEqual({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+    stdout: '',
+  });
+});
+
+test("a short spelling a group's own option holds is the hook-collision error, on a run that names no format", async () => {
+  await expect(buildFault('group-short-collision')).resolves.toMatchObject({
+    rule: '@loomcli/core/spelling-taken',
+    sentence:
+      'Plugin "@loomcli/plugins/format" declares option "format" with spelling "-f" on Command "cache", which "--force" already uses.',
+  });
+  await expect(buildRun(['group-short-collision', 'cache', 'clear'])).resolves.toEqual({
+    status: 1,
+    stderr: 'app: Something went wrong.\n',
+    stdout: '',
+  });
+});
+
 /** The fault a `format()` call throws for settings given as JSON, or `"returned"` when it returns. */
 async function callFault(settings: unknown): Promise<Record<string, unknown> | 'returned'> {
   const result = await settingsRun(settings === undefined ? [] : [JSON.stringify(settings)]);
