@@ -23,6 +23,25 @@ function serviceGraphApplication(words: readonly string[]) {
     );
 }
 
+/**
+ * An application whose root declares an argument and an action beside the group `cache`, so a
+ * word that names no child fills the argument and a word that names the group routes into it.
+ */
+function mixedRootApplication(words: readonly string[]) {
+  return new Application('notes', {
+    plugins: [service({ label: 'com.acme.notes', run: [...words] })],
+  })
+    .argument('files', { variadic: true })
+    .command(
+      new Command('cache', { description: 'Manage the cache.' }).command(
+        new Command('clear', { description: 'Clear the cache.' }).action(({ out }) =>
+          out.print('cleared'),
+        ),
+      ),
+    )
+    .action(({ out }) => out.print('counting'));
+}
+
 /** One fault as a line: its rule, its sentence, and its correction. */
 function faultLine(fault: DeclarationError): string {
   const correction = fault.correction === undefined ? [] : [fault.correction].flat();
@@ -48,4 +67,4 @@ function inspected(words: readonly string[]): string {
   }
 }
 
-export { checked, inspected, serviceGraphApplication };
+export { checked, inspected, mixedRootApplication, serviceGraphApplication };

@@ -56,10 +56,18 @@ function offering(candidates: readonly string[], kind: 'command' | 'subcommand')
  * The sentence for a group routed without a subcommand. The root has no name to repeat, and the
  * default text already opens with the application name, so the root's sentence names no Command.
  */
-function nonCallableMessage(command: readonly string[], candidates: readonly string[]): string {
-  return command.length === 0
-    ? `A command is required.${offering(candidates, 'command')}`
-    : `${routedSentence(command)} requires a subcommand.${offering(candidates, 'subcommand')}`;
+function nonCallableMessage(
+  command: readonly string[],
+  candidates: readonly string[],
+  argument: string | undefined,
+): string {
+  const sentence =
+    command.length === 0
+      ? `A command is required.${offering(candidates, 'command')}`
+      : `${routedSentence(command)} requires a subcommand.${offering(candidates, 'subcommand')}`;
+  return argument === undefined
+    ? sentence
+    : `${sentence} To pass ${quoted(argument)} as an argument, write -- before it.`;
 }
 
 /**
@@ -383,16 +391,19 @@ export class UnknownCommandError extends UsageError {
 }
 
 /**
- * A group answers no invocation of its own, so the routed path names no callable Command.
+ * A group answers no invocation of its own, so the routed path names no callable Command. When the
+ * word that routed into the group could also have been its parent's argument, the message ends with
+ * the `--` that passes it as one, and `argument` holds the word.
  *
  * @example
  * ```ts
  * import { NonCallableCommandError } from '@loomcli/core';
  *
- * const failure = new NonCallableCommandError(['remote'], ['add', 'remove']);
+ * const failure = new NonCallableCommandError(['remote'], ['add', 'remove'], 'remote');
  *
  * console.log(failure.command); // ['remote']
  * console.log(failure.candidates); // ['add', 'remove']
+ * console.log(failure.argument); // 'remote'
  * console.log(failure.exitCode); // 2
  * ```
  *
@@ -410,8 +421,16 @@ export class NonCallableCommandError extends UsageError {
   /** The subcommand names the message offers. It is empty when every child is hidden or deprecated. */
   readonly candidates: readonly string[];
 
-  constructor(command: readonly string[], candidates: readonly string[]) {
-    super(nonCallableMessage(command, candidates));
+  /**
+   * The word the operator typed to route into the group, alias or canonical name, when the parent
+   * declares arguments and no passthrough mode so the word could have been an argument. It is
+   * `undefined` on every other run, an invocation by name included.
+   */
+  readonly argument: string | undefined;
+
+  constructor(command: readonly string[], candidates: readonly string[], argument?: string) {
+    super(nonCallableMessage(command, candidates, argument));
+    this.argument = argument;
     this.candidates = candidates;
     this.command = command;
     this.name = 'NonCallableCommandError';

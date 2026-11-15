@@ -20,13 +20,6 @@ const declaredName = registerRule('@loomcli/core/declared-name', {
   headline: 'Invalid declared name',
 });
 
-/** One Command that declares arguments and attaches children. */
-const argumentsBesideChildren = registerRule('@loomcli/core/arguments-beside-children', {
-  explanation:
-    "A Command's first bare token either names a child or fills an argument, so a Command that holds both cannot tell which one an operator meant.",
-  headline: 'Arguments beside children',
-});
-
 /** Two arguments with one name on one Command. */
 const argumentDeclaredTwice = registerRule('@loomcli/core/argument-declared-twice', {
   explanation:
@@ -65,13 +58,12 @@ const commandAttachedTwice = registerRule('@loomcli/core/command-attached-twice'
 /** A Command with neither an action nor children. */
 const commandWithoutAction = registerRule('@loomcli/core/command-without-action', {
   explanation:
-    "Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run.",
+    "Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run. A group that declares an argument, stdin, or the passthrough mode has the same fault, because those declarations reach no action.",
   headline: 'Nothing to run',
 });
 
 export {
   argumentDeclaredTwice,
-  argumentsBesideChildren,
   commandAttachedTwice,
   commandWithoutAction,
   declaredName,

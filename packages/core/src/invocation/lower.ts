@@ -331,6 +331,7 @@ function lowerInvocation(
   return {
     args,
     command,
+    escapable: undefined,
     excluded: read.excluded,
     fault: read.fault,
     // A value no token spells is an input problem, never a faulted occurrence.

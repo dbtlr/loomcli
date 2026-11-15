@@ -14,9 +14,9 @@ interface AdaptiveSides {
 
 export type AfterAction = never;
 
-export type AfterArgument<State> = Exclude<State, 'command'>;
+export type AfterArgument<State> = State;
 
-export type AfterCommand<State> = Exclude<State, 'argument'>;
+export type AfterCommand<State> = State;
 
 export type AfterResult<State> = Exclude<State, 'result' | 'rows'>;
 

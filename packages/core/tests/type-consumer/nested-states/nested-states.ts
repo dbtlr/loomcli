@@ -9,10 +9,9 @@ const openAfterChild = group.option('verbose', { type: 'boolean' }).command(leaf
 const answered = openAfterChild.action(({ options, out }) => out.print(options.file));
 const withArgument = new Command('get').argument('path', { required: true });
 
-// @ts-expect-error TS2339: A Command with children declares no arguments.
-group.argument;
-// @ts-expect-error TS2339: A Command with arguments attaches no children.
-withArgument.command;
+// A Command with an action may declare arguments and hold children, in either order.
+group.argument('path', { required: true }).action(() => {});
+withArgument.command(leaf).action(() => {});
 // @ts-expect-error TS2339: A Command that registered its action attaches no more children.
 answered.command;
 // @ts-expect-error TS2339: A Command that registered its action declares no more options.

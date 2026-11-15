@@ -182,6 +182,49 @@ function framed(lines: readonly string[], directive: number): string {
   return [...lines, `:${directive}`].map((line) => `${line}\n`).join('');
 }
 
+/** A root that reads files and holds `completion`, whose argument may close its set of values. */
+function reader(values?: readonly string[]) {
+  const files =
+    values === undefined
+      ? new Application('textstat').argument('files', { variadic: true })
+      : new Application('textstat').argument('files', {
+          validate: shaped({ enum: [...values] }),
+          variadic: true,
+        });
+  return files
+    .command(
+      new Command('completion', { description: 'Print a script.' }).command(
+        new Command('bash').action(() => {}),
+      ),
+    )
+    .action(() => {})
+    .inspect();
+}
+
+describe('a Command that declares arguments beside its children', () => {
+  it('offers the children with directive 0 when the argument has no closed set', () => {
+    const graph = reader();
+    expect(answer(graph, locate(graph, ['co']))).toBe(framed(['completion\tPrint a script.'], 0));
+    expect(answer(graph, locate(graph, ['a']))).toBe(framed([], 0));
+    expect(answer(graph, locate(graph, ['']))).toBe(framed(['completion\tPrint a script.'], 0));
+  });
+
+  it('offers the children, then the closed set the argument offers, under directive 4', () => {
+    const graph = reader(['codes', 'notes']);
+    expect(answer(graph, locate(graph, ['co']))).toBe(
+      framed(['completion\tPrint a script.', 'codes'], 4),
+    );
+    expect(answer(graph, locate(graph, ['n']))).toBe(framed(['notes'], 4));
+    expect(answer(graph, locate(graph, ['x']))).toBe(framed([], 4));
+  });
+
+  it('offers no child after a word has filled the argument, and none after --', () => {
+    const graph = reader();
+    expect(answer(graph, locate(graph, ['a.txt', 'co']))).toBe(framed([], 0));
+    expect(answer(graph, locate(graph, ['--', 'co']))).toBe(framed([], 0));
+  });
+});
+
 describe('the answer', () => {
   it('a Command position offers visible canonical children with descriptions reduced to display text', async () => {
     await expect(complete('')).resolves.toBe(
@@ -430,7 +473,7 @@ describe('the answer', () => {
         { ...one, description: '\t', name: 'five' },
       ],
     };
-    expect(answer(graph, { command: root, kind: 'command', prefix: '' })).toBe(
+    expect(answer(graph, { argument: null, command: root, kind: 'command', prefix: '' })).toBe(
       framed(
         ['one\tLine one. Line two.', 'two\tTwo. More.', 'three', 'four\tFour. Four more.', 'five'],
         4,

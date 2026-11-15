@@ -1,6 +1,7 @@
 import { explain } from '@loom/explain';
 import { explainCommand } from '@loom/explain/extension';
 import { Application, FatalError, override } from '@loomcli/core';
+import { completion } from '@loomcli/plugins/completion';
 import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { format } from '@loomcli/plugins/format';
@@ -75,6 +76,7 @@ export const textstat = new Application('textstat', {
     logging(),
     loomTheme(),
     explain(),
+    completion(),
   ],
   version: Package.version,
   views: [override(FatalError, fatalError)],

@@ -1162,7 +1162,8 @@ export type Modifier = (typeof modifiers)[number];
 
 // @public @sealed
 export class NonCallableCommandError extends UsageError {
-    constructor(command: readonly string[], candidates: readonly string[]);
+    constructor(command: readonly string[], candidates: readonly string[], argument?: string);
+    readonly argument: string | undefined;
     readonly candidates: readonly string[];
     static readonly code: string;
     readonly command: readonly string[];
@@ -1882,6 +1883,7 @@ export function width(text: string): number;
 export type WordPosition = {
     readonly kind: 'command';
     readonly command: CommandNode;
+    readonly argument: ArgumentNode | null;
     readonly prefix: string;
 } | {
     readonly kind: 'option';

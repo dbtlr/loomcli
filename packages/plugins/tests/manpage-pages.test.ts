@@ -334,6 +334,23 @@ describe('sections', () => {
     );
   });
 
+  it('a root with arguments and a visible child ends ARGUMENTS with a -- entry', () => {
+    const reader = new Application('reader', { plugins: [manpage()] })
+      .argument('files', { description: 'The files.', variadic: true })
+      .action(noop);
+    expect(pagesOf(reader).get('reader.1')).toContain(
+      [
+        '.SH "ARGUMENTS"',
+        '.TP',
+        String.raw`\fIfiles\fR`,
+        'The files.',
+        '.TP',
+        String.raw`\-\-`,
+        'Read every later word as an argument, even a command name.',
+      ].join('\n'),
+    );
+  });
+
   it('an argument is italic, and a page under a group names the root and its parent', () => {
     const pages = pagesOf(kit);
     expect(pages.get('kit-show.1')).toContain(

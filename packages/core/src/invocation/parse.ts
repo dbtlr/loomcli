@@ -333,6 +333,11 @@ interface ReadState {
   at: number;
   awaiting: AwaitingValue | undefined;
   command: BuiltCommand;
+  /**
+   * The word the operator typed to route into the Command reached, when the Command it left
+   * declares arguments and no passthrough mode, so the word could have been that Command's argument.
+   */
+  escapable: string | undefined;
   fault: HeldFault | undefined;
   faulted: Set<string>;
   globalFault: boolean;
@@ -629,9 +634,10 @@ function argumentSlot(slots: readonly ArgumentSlot[], position: number): Argumen
 }
 
 /**
- * Whether routing reads a Command's own options: it has children, a group included. A Command with
- * children takes no arguments, so a plain word after its own option can only name a child, and its
- * own declaration says whether the next word is that option's value.
+ * Whether routing reads a Command's own options: it has children, a group included. Its own
+ * declaration says whether the next word is that option's value, so a plain word after the option
+ * is its value, a child's name, or, on a Command that declares arguments, its first argument. An
+ * option read here binds to the Command routing finally reaches.
  */
 function readsOwnOptions(command: BuiltCommand): boolean {
   return command.children.size > 0;
@@ -664,25 +670,36 @@ function routeOption(routing: Routing, state: ReadState, index: number): number 
 }
 
 /**
- * A plain word under routing names a child or an alias and descends, and an unknown child is the
- * one fault raised here. Under a Command with no children it ends routing as that Command's first
- * argument. `walked` hears the path as each name routes, so an unknown Command leaves its caller
+ * A plain word under routing that is exactly a child's name or alias descends, and an unknown child
+ * is the one fault raised here. A plain word that names no child ends routing as the first argument
+ * of a Command that declares arguments, and so does any plain word under a Command with no
+ * children. `walked` hears the path as each name routes, so an unknown Command leaves its caller
  * holding the partial path.
  */
 function descend(routing: Routing, state: ReadState, word: string): number {
   const { command } = state;
-  if (command.children.size === 0) {
-    return 0;
-  }
   const child = command.routes.get(word);
   if (!child) {
-    throw new UnknownCommandError(word, candidatesOf(command));
+    return endAtWord(command, word);
   }
   // An alias routes like the canonical name, and the path it walks reports that name alone.
+  state.escapable =
+    command.arguments.length > 0 && command.passthrough === undefined ? word : undefined;
   state.command = child.command;
   state.path.push(child.name);
   routing.walked?.(Object.freeze([...state.path]));
   return 1;
+}
+
+/**
+ * Where a plain word names no child, routing ends at it, unless the Command has children and
+ * declares no argument for the word to fill: that is the unknown-command error.
+ */
+function endAtWord(command: BuiltCommand, word: string): number {
+  if (command.children.size === 0 || command.arguments.length > 0) {
+    return 0;
+  }
+  throw new UnknownCommandError(word, candidatesOf(command));
 }
 
 /** One word routing reads: how many words it took, or `0` where routing ends. */
@@ -767,6 +784,7 @@ interface WordsRead {
   /** Whether the routed Command read a word, so no later plain word names a child. */
   committed: boolean;
   delimited: boolean;
+  escapable: string | undefined;
   fault: HeldFault | undefined;
   faulted: ReadonlySet<string>;
   globalFault: boolean;
@@ -829,6 +847,7 @@ function readWords(
     at: 0,
     awaiting: undefined,
     command: graph.root,
+    escapable: undefined,
     fault: undefined,
     faulted: new Set(),
     globalFault: false,
@@ -868,6 +887,11 @@ interface ParsedInvocation {
   /** What each argument slot received; an omitted argument binds nothing. */
   args: BoundArguments;
   command: BuiltCommand;
+  /**
+   * The word the operator typed to route into `command`, when it could also have been the parent's
+   * argument. An invocation by name has no typed word, so it is `undefined` there.
+   */
+  escapable: string | undefined;
   /**
    * The declared names of the options an invocation by name excludes: the input-source stage reads
    * nothing for them. Argv words leave it empty.
@@ -978,6 +1002,7 @@ function parseInvocation(
   return {
     args: bindArguments(command, positionals),
     command,
+    escapable: read.escapable,
     excluded: new Set(),
     fault: fault && heldFailure(read, fault),
     faulted: awaiting ? new Set([...read.faulted, awaiting.name]) : read.faulted,

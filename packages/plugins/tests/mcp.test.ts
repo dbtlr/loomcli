@@ -45,7 +45,7 @@
  *   their diagnostics in both builds, a property derived for each kind of input with a `null`
  *   schema, an array property for a multiple option, a mapped `json` view under another key chosen
  *   for `structuredContent`, a view under `application/json` whose text does not parse answering
- *   text alone, and the install refused on a root that declares arguments.
+ *   text alone, and the install accepted on a root that declares arguments.
  * - Packed consumers. `check:packed` installs the packed pack, imports `@loomcli/plugins/mcp` and
  *   `@loomcli/plugins/mcp/extension`, compiles against their declarations, finds no `@loom/mcp`
  *   among the tarball's dependencies or in any of its built files, and serves an MCP session from a
@@ -851,11 +851,8 @@ describe('build faults', () => {
     },
   );
 
-  it('an application whose root declares arguments cannot install the plugin', async () => {
-    expect(inspectScenario('root-arguments')).toEqual({
-      stdout:
-        'thrown:1:@loomcli/core/arguments-beside-children: The root Command declares argument "files" and attaches child "mcp". Move the argument into a child Command or remove the children.\n',
-    });
+  it('an application whose root declares arguments can install the plugin', async () => {
+    expect(inspectScenario('root-arguments')).toEqual({ stdout: 'inspected\n' });
   });
 });
 

@@ -96,7 +96,7 @@ GLOBAL OPTIONS
   -q, --quiet       Hide info and success messages.
 ```
 
-textstat is one root Command with a variadic argument, four local options, of which `--timing` is hidden and `--min-bytes` carries the [alias](../core/options.md#option-aliases) `--minimum` that no page lists, `--min-bytes` and `--total` each bind a variable and a configuration key, a fifth local option `--format` that the [formatter](format.md) declared on it because it declares a result, and no children, so its page folds the globals into OPTIONS. The restyled `textstat --help` has this text with color and modifiers disabled:
+textstat is one root Command with a variadic argument, four local options, of which `--timing` is hidden and `--min-bytes` carries the [alias](../core/options.md#option-aliases) `--minimum` that no page lists, `--min-bytes` and `--total` each bind a variable and a configuration key, a fifth local option `--format` that the [formatter](format.md) declared on it because it declares a result, and one child group, `completion`, which the completion plugin attaches, so its page lists the globals under GLOBAL OPTIONS and ends the ARGUMENTS block with the `--` row. The restyled `textstat --help` has this text with color and modifiers disabled:
 
 ```text
 textstat · Count bytes, words, or lines across text sources.
@@ -105,9 +105,14 @@ textstat · Count bytes, words, or lines across text sources.
 
 USAGE
   textstat [files...] [options]
+  textstat <command> [options]
+
+COMMANDS
+  completion <command>  Print or install a shell completion script.
 
 ARGUMENTS
   files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)
+  --     Read every later word as an argument, even a command name.
 
 COUNTING
   MEASURE
@@ -119,6 +124,8 @@ COUNTING
 
 OPTIONS
   -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.
+
+GLOBAL OPTIONS
   -h, --help             Show this help.
   -V, --version          Print the version.
   -M, --manifest         Print this command's manifest as JSON.
@@ -129,6 +136,8 @@ OPTIONS
 EXAMPLES
   $ textstat one.txt two.txt
   $ textstat --metric words --total *.md
+
+Run textstat <command> --help for command details.
 ```
 
 `textstat -h` prints the compact page, without the details and EXAMPLES blocks, and it points to the extended page because those blocks hold something:
@@ -138,9 +147,14 @@ textstat · Count bytes, words, or lines across text sources.
 
 USAGE
   textstat [files...] [options]
+  textstat <command> [options]
+
+COMMANDS
+  completion <command>  Print or install a shell completion script.
 
 ARGUMENTS
   files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)
+  --     Read every later word as an argument, even a command name.
 
 COUNTING
   MEASURE
@@ -152,6 +166,8 @@ COUNTING
 
 OPTIONS
   -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.
+
+GLOBAL OPTIONS
   -h, --help             Show this help.
   -V, --version          Print the version.
   -M, --manifest         Print this command's manifest as JSON.
@@ -159,6 +175,7 @@ OPTIONS
       --no-config        Read no configuration file.
   -e, --explain          Explain the selected command and exit.
 
+Run textstat <command> -h for command details.
 Run textstat --help for details and examples.
 ```
 

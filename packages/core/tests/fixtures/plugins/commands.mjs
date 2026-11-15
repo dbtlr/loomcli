@@ -114,7 +114,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       'root-arguments': () =>
         new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] })
           .argument('files', { variadic: true })
-          .action(({ out }) => out.print('ran:root')),
+          .action(({ args, out }) => out.print(`ran:root:${args.files.join('+')}`)),
       'same-value-at-root': () =>
         new Application('app', { plugins: [attaching('@acme/doctor', [doctor])] }).command(doctor),
       // Two plugins list one Command value, which the root would then attach twice.
