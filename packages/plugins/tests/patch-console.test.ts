@@ -13,6 +13,9 @@
  *   whose stderr is not a terminal. Several regions make one span.
  * - When it restores. The console comes back at the last region's close, at the run's end when a
  *   region was left open, and when the action fails.
+ * - At the process's end. A `console.error` followed by the process's exit event while a frame is
+ *   drawn prints the message above the frame in that step, and the console is back after it. A mock
+ *   never calls its `exit` listeners, so the test calls the one core adds to the mock's signal source.
  * - What it puts back. A member another library replaced meanwhile keeps that library's function,
  *   and a replacement still held after the restore calls the member it replaced.
  * - One holder. A second run whose span opens while the first holds the console patches nothing,
@@ -23,7 +26,7 @@ import type { Region } from '@loomcli/core';
 import { patchConsole } from '@loomcli/plugins/patch-console';
 import { mockProcess } from '@loomcli/testing';
 import type { MockProcess } from '@loomcli/testing';
-import { afterEach, beforeEach, expect, test } from 'vite-plus/test';
+import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test';
 
 const literal = { render: (value: string) => value };
 
@@ -99,6 +102,39 @@ test('log, info, and debug write to the run stdout, and warn and error to its st
   expect(mock.stderr.text).toContain('warned\n');
   expect(mock.stderr.text).toContain('errored\nframe');
   expect(untouched()).toBe(true);
+});
+
+/**
+ * The process's `exit` event on a mock: calls every `exit` listener core added to the mock's signal
+ * source and has not removed, with `code`.
+ */
+function exitEvent(mock: MockProcess): (code: number) => void {
+  const on = vi.spyOn(mock.signals, 'on');
+  const off = vi.spyOn(mock.signals, 'off');
+  return (code) => {
+    const removed = new Set(off.mock.calls.map(([, listener]) => listener));
+    for (const [event, listener] of on.mock.calls) {
+      if (event === 'exit' && !removed.has(listener)) {
+        listener(code);
+      }
+    }
+  };
+}
+
+test('a console.error followed by the exit event while a frame is drawn prints above the frame, and the console is back', async () => {
+  const mock = onTerminal();
+  const exit = exitEvent(mock);
+  const atExit: [boolean, boolean, boolean][] = [];
+  const app = drawing(() => {
+    console.error('The migration lock is held.');
+    exit(1);
+    const { text } = mock.stderr;
+    const message = text.indexOf('The migration lock is held.\n');
+    // The message lands above the frame, which is drawn again below it before the cursor shows.
+    atExit.push([message !== -1, text.slice(message).endsWith('frame\u001B[?25h'), untouched()]);
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(atExit).toEqual([[true, true, true]]);
 });
 
 test('with stdout on the terminal too, a console.log lands on stdout and the frame is drawn again', async () => {

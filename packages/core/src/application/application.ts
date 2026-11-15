@@ -1089,7 +1089,7 @@ class ApplicationBuilder<
         // The run takes its place in its lane before its first await, so a signal from now reaches it.
         const bracket = door.bracket(controller, {
           flush: () => {
-            output?.flushTerminal();
+            output?.flushQueue();
           },
           timeout: this.#config.shutdown,
         });

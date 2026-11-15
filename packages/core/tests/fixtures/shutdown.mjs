@@ -109,6 +109,12 @@ const scenarios = {
       register(writing('handler'));
       process.exit(3);
     }),
+  /** A message queued through `out` just before `process.exit()` mid-action, which the exit event writes. */
+  'exit-message': () =>
+    new Application('app').action(({ out }) => {
+      void out.error('EXIT-MESSAGE');
+      process.exit(1);
+    }),
   /** An action that ignores its signal: only the budget ends the process. */
   ignoring: () =>
     new Application('app', { shutdown }).action(async ({ onShutdown: register }) => {
