@@ -4,7 +4,7 @@ title: ADR-0073 - The self-update plugin replaces a script-installed binary with
 description: The self-update plugin contributes self-update [<version>] [--channel <name>] [--check]. It replaces only a release binary whose installation record reads the method script and whose bytes still match the recorded digest. It resolves the newest release on the binary's release channel, never downgrades unless a version is named, verifies the release asset against SHA256SUMS over HTTPS alone, renames it over the binary, rewrites install.json, and then calls the application's afterReplace hook. It keeps no copy of the binary it replaced. The release lane is renamed the release channel, and host.release.lane becomes host.release.channel.
 status: accepted
 created: 2026-10-12
-modified: 2026-10-13
+modified: 2026-11-15
 ---
 
 # ADR-0073 - The self-update plugin replaces a script-installed binary with a verified release
@@ -58,3 +58,4 @@ Accepted in 0.11.0.
 
 - 2026-10-12: Proposed with the self-update contract.
 - 2026-10-14: [ADR-0080](0080-the-self-update-plugin-tells-an-interactive-operator-about-a-newer-release-from-a-daily-cache.md), proposed, adds update notices to the plugin, replacing the clause above that leaves them out: a middleware with `'always'` activation and the hidden `--refresh-notice` option on the Command join its contribution. It binds when that record is accepted.
+- 2026-11-15: [ADR-0160](0160-a-command-with-an-action-may-declare-arguments-and-hold-children-and-an-exact-child-name-routes-first.md), proposed, withdraws this record's sentence that an application whose root declares arguments cannot install the self-update plugin. A Command with an action, the root included, may declare arguments and hold children, so such a root holds the plugin's Commands like any children. It binds when that record is accepted.
