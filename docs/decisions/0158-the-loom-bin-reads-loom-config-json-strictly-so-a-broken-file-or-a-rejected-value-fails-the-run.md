@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0158 - The loom bin reads loom.config.json strictly, so a broken file or a rejected value fails the run
-description: The loom bin installs the configuration plugin with strict set to true. A loom.config.json that the lookup finds and cannot use, and a value its schema rejects, fail every loom command that reads the file with code 2, instead of warning or dropping while the command runs on conventions. --no-config still runs on conventions. It supersedes ADR-0130's clauses that a rejected value is dropped and its convention applies, and that a broken file warns once and the run uses conventions.
+description: The loom bin installs the configuration plugin with strict set to true. A loom.config.json that the lookup finds and cannot use, and a value its schema rejects, fail every loom command that reads the file with code 2, instead of warning or dropping while the command runs on conventions. --no-config still runs on conventions. It supersedes ADR-0130's clauses that a rejected value is dropped and its convention applies, and that a broken file warns once and the run uses conventions, and ADR-0131's clause that a rejected post-install command is dropped.
 status: proposed
 created: 2026-11-15
 modified: 2026-11-15
@@ -27,7 +27,7 @@ Heimdall found the case while moving onto `loom changelog`. Its `loom.config.jso
 - **A broken file fails the run.** A `loom.config.json` the lookup finds that cannot be read or does not parse, or whose top level is not a JSON object, fails the run with code 2, under the configuration plugin's [strict setting](../plugins/config.md#the-strict-setting). The failure names the file and the fix, such as `loom: Configuration file loom.config.json is not valid JSON at line 3, column 5. Correct its syntax, or remove it.`
 - **A rejected value fails the run.** A value the file's schema rejects, such as an empty `paths.changes` or a `postInstall.command` that is not a non-empty list of strings, fails the run with code 2, and one failure names every such value with its path and the schema's message. `sharedVersion` passes through the schema as written, so `loom changelog write` still validates it itself, as [ADR-0132](0132-a-packages-changelog-cut-may-choose-its-version-cut-a-prerelease-and-set-a-shared-version.md) states.
 - **Unknown keys stay ignored.** The file's schema is valibot's and publishes no JSON Schema, so the plugin learns of no unknown key and no unknown key fails a run, as ADR-0155 states for such a schema.
-- **Which commands.** The commands that read the file fail: `build`, `init`, `changelog check`, `changelog write`, and `changelog notes`. A command that reads no configuration, such as `loom pr check`, never reads the file and is unaffected.
+- **Which commands.** The commands that read the file fail: `build`, `init`, `changelog check`, `changelog write`, and `changelog notes`. A command that reads no configuration, such as `loom pr check`, never reads the file and is unaffected, and so is a takeover such as `loom build --help`, which reads no configuration.
 - **What stays.** A missing file is no fault, and every key is still optional. `--no-config` reads no file, so a run under it uses conventions whatever the file holds. `--config <path>` already fails the run for a missing or broken file, and now fails it for a rejected value too.
 - **`init` in a new application.** `init` that scaffolds a new application still ignores the configuration, but the lookup still reads the package file above the new directory, so a broken or rejected file there fails the scaffold. The operator corrects that file, or runs `init` with `--no-config`.
 
@@ -45,7 +45,7 @@ The [configuration file](../toolchain/build.md#the-configuration-file) page and 
 
 A package whose `loom.config.json` is broken, or holds a value the schema rejects, now fails every `loom` command that reads it, where it ran on conventions before. That is breaking for such a package, and its fragment carries a Migration section. A package with no file, or a valid one, runs as before. The release workflow runs the published `loom` pinned under [ADR-0075](0075-the-release-workflow-runs-a-pinned-published-loom-cli.md), so this repository's release side picks the rule up only after a release and a reviewed pin move.
 
-ADR-0130's clauses that a value the schema rejects is dropped and its convention applies, and that a broken file warns once and the run uses conventions, are superseded, and so is its consequence that `init` in a package whose file does not parse writes the missing pieces after the warning. ADR-0130 carries a dated entry.
+ADR-0130's clauses that a value the schema rejects is dropped and its convention applies, under **The file** and **The paths**, and that a broken file warns once and the run uses conventions, under **The file** and **A new application uses conventions**, are superseded, and so is its consequence that `init` in a package whose file does not parse writes the missing pieces after the warning. Its 2026-11-01 entry's note that `sharedVersion` is the one key whose rejected value does not fall back no longer holds: no rejected value falls back. [ADR-0131](0131-the-post-install-declaration-moves-from-the-application-into-loom-config-json.md)'s clause under **A key of the file** that a `command` the schema rejects is dropped and named at `-v`, leaving the script with no post-install command, is superseded too: it fails the run. ADR-0130 and ADR-0131 carry dated entries.
 
 ## Status
 
@@ -53,4 +53,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 
 ## Changelog
 
-- 2026-11-15: Proposed with the strict read of `loom.config.json` (LM-524). It supersedes ADR-0130's drop clause, its broken-file clause, and its consequence for `init` in a package whose file does not parse. ADR-0130 carries a dated entry.
+- 2026-11-15: Proposed with the strict read of `loom.config.json` (LM-524). It supersedes ADR-0130's drop clauses, its broken-file clauses, and its consequence for `init` in a package whose file does not parse, and ADR-0131's drop clause for a rejected post-install command. ADR-0130 and ADR-0131 carry dated entries.
