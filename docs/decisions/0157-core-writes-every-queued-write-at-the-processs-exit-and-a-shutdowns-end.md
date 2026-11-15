@@ -38,6 +38,7 @@ The patch-console plugin of [ADR-0151](0151-the-patch-console-plugin-routes-cons
 ## Consequences
 
 - An application, with the patch-console plugin or without it, prints a message it queued just before the process ends, where it printed nothing before.
+- The bytes the step hands to a stream are still the runtime's to deliver, so the patched console matches the unpatched one at `process.exit()` on Node alone. On Node a `console.log` larger than a pipe's buffer, followed at once by `process.exit()`, is cut short on a stdout pipe with the plugin and without it. On Bun, with stdout a pipe, a write still queued at `process.exit()` that is larger than the pipe's buffer is cut short, where Bun's own console writes the pipe in full, so there a long routed text can print less than the unpatched console prints.
 - ADR-0106's terminal users clause writes only the region frames still queued at a shutdown's end; this record widens it to every queued write and has the process's `exit` event write the same. ADR-0106 carries a dated entry.
 - A `mockProcess` never calls its `exit` listeners, so a test of the exit event in its own process calls the listener core adds to the mock's signal source, as core's shutdown tests read the listeners it adds; `@loomcli/testing` gains nothing.
 
