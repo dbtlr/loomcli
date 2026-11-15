@@ -42,7 +42,7 @@ function walkList(items: readonly unknown[], { leaves, path }: Position, walk: W
   if (leaves.some(isAny) || !leaves.some(isArrayShape)) {
     return;
   }
-  const origins = walk.origins.get(items);
+  const origins = walk.origins.get(items)?.positions;
   items.forEach((item, position) => {
     const index = origins?.[position] ?? position;
     const shapes = itemShapes(leaves, index, walk.root);

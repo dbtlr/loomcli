@@ -148,6 +148,8 @@ function removalsOf(
 /**
  * A path with each array item's index as its position in the file as read, by `origins`. The walk
  * follows the path through the round's file, and a step past the values the file holds stays as it is.
+ * An index at or past the end of an array that lost an item in an earlier round names no item of the
+ * file as read, so the path ends at the array.
  */
 function readPositions(file: unknown, path: readonly Step[], origins: Origins): Step[] {
   const [step, ...rest] = path;
@@ -155,7 +157,11 @@ function readPositions(file: unknown, path: readonly Step[], origins: Origins): 
     return [];
   }
   if (Array.isArray(file) && typeof step === 'number') {
-    return [origins.get(file)?.[step] ?? step, ...readPositions(file[step], rest, origins)];
+    const origin = origins.get(file);
+    if (origin?.shortened === true && step >= file.length) {
+      return [];
+    }
+    return [origin?.positions[step] ?? step, ...readPositions(file[step], rest, origins)];
   }
   const next =
     isRecord(file) && typeof step === 'string' && Object.hasOwn(file, step)
@@ -181,7 +187,8 @@ function pathKey(path: readonly Step[]): string {
 /**
  * What one pruning holds: the paths it removes, and the copy in progress of each node on the path
  * being copied, keyed by the original, so a node that is its own ancestor reuses that copy. `origins`
- * records, for each array copy, the position every kept item held in the file as read, across rounds.
+ * records, for each array copy, the position every kept item held in the file as read, across rounds,
+ * and whether any round removed one of its items.
  */
 interface Pruning {
   readonly doomed: ReadonlySet<string>;
@@ -189,8 +196,17 @@ interface Pruning {
   readonly origins: Origins;
 }
 
-/** The position in the file as read of each item of an array the drop rule copied. */
-type Origins = WeakMap<readonly unknown[], readonly number[]>;
+/**
+ * Where an array the drop rule copied came from: the position in the file as read of each item it
+ * keeps, and whether a round removed any of its items.
+ */
+interface Origin {
+  readonly positions: readonly number[];
+  readonly shortened: boolean;
+}
+
+/** The origin of each array the drop rule copied. */
+type Origins = WeakMap<readonly unknown[], Origin>;
 
 /** The array copied without the items a removal names, each pruned at its own path. */
 function prunedList(node: readonly unknown[], path: readonly Step[], pruning: Pruning): unknown[] {
@@ -202,11 +218,14 @@ function prunedList(node: readonly unknown[], path: readonly Step[], pruning: Pr
     const at = [...path, index];
     if (!pruning.doomed.has(pathKey(at))) {
       copy.push(prunedNode(item, at, pruning));
-      kept.push(before?.[index] ?? index);
+      kept.push(before?.positions[index] ?? index);
     }
   });
   pruning.ancestors.delete(node);
-  pruning.origins.set(copy, kept);
+  pruning.origins.set(copy, {
+    positions: kept,
+    shortened: kept.length < node.length || before?.shortened === true,
+  });
   return copy;
 }
 

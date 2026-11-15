@@ -7,6 +7,7 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { mockProcess } from '@loomcli/testing';
+import { number, object, optional, string, tuple } from 'valibot';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
@@ -151,6 +152,36 @@ test('nested arrays name each level by its position in the file as read', async 
     'Configuration value groups[1].items[1] in .app.json: Bad. Correct the value, or remove it.',
     'Configuration value groups[2].items[0] in .app.json: Bad. Correct the value, or remove it.',
   ]);
+});
+
+/** A pair, which valibot reports item by item, so a missing second item has its own path. */
+const rangeSchema = object({
+  range: optional(tuple([number(), number()])),
+  stateDir: optional(string()),
+});
+const missing = 'Invalid type: Expected number but received undefined';
+
+test('an item past the end of an array that lost an item in an earlier round names the array', async () => {
+  // Round one drops range[0], and round two finds the pair one item short.
+  // Its issue for item 1 then names no item of the file as read.
+  const result = await ran(rangeSchema, { range: ['10', 20] }, ['range']);
+  const lines = [
+    'Configuration value range[0] in .app.json: Invalid type: Expected number but received "10". Correct the value, or remove it.',
+    `Configuration value range in .app.json: ${missing}. Correct the value, or remove it.`,
+  ];
+  expect(result.status).toBe(2);
+  expect(result.stderr).toBe(`app: ${lines.join('\napp: ')}\n`);
+  expect(result.issues).toEqual(lines);
+});
+
+test('an item past the end of an array that lost no item keeps its index', async () => {
+  const result = await ran(rangeSchema, { range: [10] }, ['range']);
+  const lines = [
+    `Configuration value range[1] in .app.json: ${missing}. Correct the value, or remove it.`,
+  ];
+  expect(result.status).toBe(2);
+  expect(result.stderr).toBe(`app: ${lines.join('\napp: ')}\n`);
+  expect(result.issues).toEqual(lines);
 });
 
 test('a file that drops in one round, or drops nothing from an array, prints as before', async () => {
