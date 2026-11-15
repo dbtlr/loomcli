@@ -54,7 +54,7 @@ interface SourceContext<Options extends PluginOptions = PluginOptions> {
   readonly log: Log; // see Logging
 }
 interface SourceAnswer {
-  readonly value: string | boolean | number | readonly string[]; // a number for a counted option
+  readonly value: string | boolean | number | readonly string[] | readonly (readonly string[])[]; // a number for a counted option, a tuple or a list of tuples for an arity option
   readonly label: string;
   readonly directory?: string; // the absolute directory of the file the value came from
   readonly strict?: boolean; // true: a value the option's validator rejects fails the run instead of falling back
