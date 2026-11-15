@@ -91,7 +91,8 @@ export type LoomConfig = InferOutput<typeof loomConfigSchema>;
  * reads `loom.config.json` from the working directory up to the package directory and never above
  * it, so a package in a monorepo never reads the root's file as its own. It reads under
  * `strict: true`, under ADR-0158: a file that cannot be used, and a value the schema rejects, fail
- * the command with code 2, so a CI run never passes on conventions the package did not choose.
+ * the command with code 2, so neither leaves a CI run on conventions. An unknown key, such as a
+ * misspelled one, is still ignored.
  */
 export const { plugin: loomConfigPlugin, values: loomConfig } = configuration({
   file: 'loom.config.json',
