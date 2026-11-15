@@ -20,11 +20,13 @@
  * - The background mark. A marked last-wins option runs with its last occurrence, and the run's
  *   background choice follows that occurrence, so a replaced `light` never settles the background
  *   when the last occurrence names neither `dark` nor `light`.
+ * - Middleware. A plugin's last-wins option records the spelling of the occurrence that won, and an
+ *   option with any faulted occurrence is absent from `ownOptions`.
  * - Inspection. A string option's node publishes `lastWins`, `false` unless declared `true`, and a
  *   content option's node carries none. `locate` reads a later occurrence as it reads the first.
  */
 import { Application, Command, extension, locate, plugin, validationContext } from '@loomcli/core';
-import type { StandardSchemaV1 } from '@loomcli/core';
+import type { MiddlewareContext, StandardSchemaV1 } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
@@ -318,4 +320,33 @@ test("a marked last-wins option's background choice follows the occurrence that 
   });
   // A dangling last spelling supplies nothing and replaces nothing, so the parse fails it.
   await expect(runOn(['--background=light', '--background'])).resolves.toMatchObject({ status: 2 });
+});
+
+test("a plugin's last-wins option records the winning spelling, and a faulted occurrence leaves ownOptions without it", async () => {
+  const read: unknown[] = [];
+  const formatter = plugin('@fixture/fmt', {
+    middleware: {
+      activate: 'always',
+      load: () =>
+        Promise.resolve({
+          default: async ({ next, ownOptions, spellings }: MiddlewareContext) => {
+            read.push([ownOptions.fmt, spellings.fmt]);
+            await next();
+          },
+        }),
+    },
+    options: { fmt: { lastWins: true, short: 'f', type: 'string' } },
+  });
+  const application = new Application('app', { plugins: [formatter] }).action(() => {});
+  await expect(run(application, ['--fmt', 'json', '-f', 'text'])).resolves.toMatchObject({
+    status: 0,
+  });
+  expect(read).toEqual([['text', '-f']]);
+  read.length = 0;
+  // The faulted occurrence records no spelling, so the earlier occurrence's -f stands.
+  await expect(run(application, ['-f', 'json', '--fmt'])).resolves.toMatchObject({
+    status: 2,
+    stderr: 'app: Option "--fmt" requires a value. Supply a value after "--fmt".\n',
+  });
+  expect(read).toEqual([[undefined, '-f']]);
 });
