@@ -1,4 +1,5 @@
 import { Application, Command, locate } from '@loomcli/core';
+import { completion } from '@loomcli/plugins/completion';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { prose } from '@loomcli/plugins/prose';
@@ -15,8 +16,8 @@ import { expect, test } from 'vite-plus/test';
  * - A child's own `--format` before its name takes the occurrence.
  * - The option is hidden: the root's help page lists no `--format`, and `inspect()` publishes it
  *   with `hidden: true`.
- * - Completion completes past it: `notes --format <Tab>` offers its values, and
- *   `notes --format json <Tab>` the root's children.
+ * - Completion completes past it: `notes --format <Tab>` offers exactly `json` and `jsonl`, through
+ *   the completion plugin's own answer, and `notes --format json <Tab>` the root's children.
  */
 
 /** `notes`: a group root over `list`, with a result, `plain`, with none, and `export`, with its own `--format`. */
@@ -107,4 +108,15 @@ test('completion completes past the hidden --format at a group', () => {
     command: { path: [] },
     kind: 'command',
   });
+});
+
+test('completion offers exactly json and jsonl after --format at a group', async () => {
+  const app = new Application('notes', { plugins: [format(), completion()] }).command(
+    new Command('list')
+      .result<string>({ views: { text: prose() } })
+      .action(({ out }) => out.results('a')),
+  );
+  const mock = mockProcess({ argv: ['completion', '__complete', '--', '--format', ''] });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(mock.stdout.text).toBe('json\njsonl\n:4\n');
 });
