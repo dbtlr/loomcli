@@ -3,6 +3,7 @@ import { UsageError } from '../failures/errors.js';
 import {
   argumentSlot,
   isOptionWord,
+  noWords,
   readOptionWord,
   readWords,
   refusesValue,
@@ -93,7 +94,10 @@ function valueOf(scope: Scope, name: string, word: { lead: string; prefix: strin
   return { command, kind: 'value', lead: word.lead, option, prefix: word.prefix };
 }
 
-/** The word after a string option that ended the earlier words is that option's value. */
+/**
+ * The word after a string option that ended the earlier words is that option's value, and so is
+ * each word after an arity option's spelling until its count is met.
+ */
 function awaitedValue(scope: Scope, awaiting: AwaitingValue, last: string): WordPosition {
   return refusesValue(last) ? none : valueOf(scope, awaiting.name, { lead: '', prefix: last });
 }
@@ -122,7 +126,7 @@ function plainWord(scope: Scope, last: string): WordPosition {
 function carriedValue(scope: Scope, last: string): WordPosition | undefined {
   const { earlier } = scope;
   const context = { table: earlier.command.table, values: earlier.values };
-  const { occurrences } = readOptionWord(context, last, undefined);
+  const { occurrences } = readOptionWord(context, last, noWords);
   for (const occurrence of occurrences) {
     if (occurrence.kind !== 'value' && occurrence.kind !== 'awaiting') {
       return none;

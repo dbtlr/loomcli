@@ -266,6 +266,29 @@ function usage() {
     .action(dispatch);
 }
 
+/** Options that take several words per occurrence: required, multiple, bound, and defaulted. */
+function arity() {
+  const draw = new Command('draw', { description: 'Draw one shape.' })
+    .option('point', { arity: 2, description: 'A corner.', required: true, type: 'string' })
+    .option('edge', { arity: 2, multiple: true, required: true, type: 'string' })
+    .option('size', {
+      arity: 2,
+      default: ['800', '600'],
+      env: 'BOX_SIZE',
+      envDelimiter: 'x',
+      type: 'string',
+    })
+    .option('mark', { arity: 3, default: [['1', '2', '3']], multiple: true, type: 'string' })
+    .action(dispatch);
+  return new Application('app', {
+    description: 'Draw shapes.',
+    plugins,
+    version: '1.2.0',
+  })
+    .command(draw)
+    .action(dispatch);
+}
+
 /** A root with no description, prose across three line terminators, and two examples. */
 function prose() {
   return new Application('app', {
@@ -479,6 +502,7 @@ function listBindings() {
 }
 
 const scenarios = {
+  arity,
   bindings,
   'branded-line': () =>
     branded([

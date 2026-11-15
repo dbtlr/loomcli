@@ -581,7 +581,44 @@ export function unknownOptionBeforeArguments(spelling: string): UnknownOptionErr
 type MissingValueForm = 'attached' | 'separate';
 
 /**
- * An option that takes a value was supplied without one.
+ * How short an arity option's occurrence fell: its count, how many words it took, and the spelling
+ * of the option word that ended it, absent where the end of the line or a bare `--` did.
+ *
+ * @public
+ */
+export interface MissingArity {
+  /** The declared count of words the occurrence takes. */
+  readonly arity: number;
+  /** How many words the occurrence took before it ended. */
+  readonly received: number;
+  /**
+   * The spelling of the option word that ended the occurrence: the part of a long word before its
+   * first `=`, or the first letter of a short group, so an attached value never prints.
+   */
+  readonly refused?: string | undefined;
+}
+
+/** The sentence of a missing value: one word, or an arity option's count. */
+function missingValueMessage(
+  spelling: string,
+  form: MissingValueForm,
+  shortfall: MissingArity | undefined,
+): string {
+  if (shortfall !== undefined) {
+    const count = `${String(shortfall.arity)} values`;
+    return shortfall.refused === undefined
+      ? `Option ${quoted(spelling)} requires ${count} and received ${String(shortfall.received)}. Supply ${count} after ${quoted(spelling)}.`
+      : `Option ${quoted(spelling)} requires ${count}, and ${quoted(shortfall.refused)} reads as an option. Supply ${count} after ${quoted(spelling)}; a value that reads as an option cannot be one of them.`;
+  }
+  return form === 'attached'
+    ? `Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}, or attach one that starts with a hyphen as ${quoted(`${spelling}=<value>`)}.`
+    : `Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}.`;
+}
+
+/**
+ * An option that takes a value was supplied without one, or an arity option's occurrence ended
+ * before it took its count of words. An arity option's sentence names the count, and the option
+ * word that ended the occurrence when one did.
  *
  * @example
  * ```ts
@@ -590,7 +627,12 @@ type MissingValueForm = 'attached' | 'separate';
  * const failure = new MissingValueError('--file');
  *
  * console.log(failure.spelling); // --file
+ * console.log(failure.arity); // null
  * console.log(failure.exitCode); // 2
+ *
+ * const shortfall = new MissingValueError('--point', 'separate', { arity: 2, received: 1 });
+ *
+ * console.log(shortfall.arity); // 2
  * ```
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/failures.md
@@ -604,22 +646,25 @@ export class MissingValueError extends UsageError {
 
   /** The spelling the operator typed. */
   readonly spelling: string;
+  /** The declared count of words the option takes, or `null` for an option without an arity. */
+  readonly arity: number | null;
 
-  constructor(spelling: string, form: MissingValueForm = 'separate') {
-    super(
-      form === 'attached'
-        ? `Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}, or attach one that starts with a hyphen as ${quoted(`${spelling}=<value>`)}.`
-        : `Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}.`,
-    );
+  constructor(spelling: string, form: MissingValueForm = 'separate', shortfall?: MissingArity) {
+    super(missingValueMessage(spelling, form, shortfall));
     this.name = 'MissingValueError';
     this.spelling = spelling;
+    // The contract reads an option without an arity as null, as the inspected graph does.
+    // oxlint-disable-next-line unicorn/no-null
+    this.arity = shortfall?.arity ?? null;
   }
 }
 
 /**
- * A Boolean or counted spelling takes no value, so the token carried one the declaration cannot
- * accept. A counted option's sentence tells the operator to repeat the spelling instead, and `kind`
- * chooses the sentence alone.
+ * A spelling took a value the declaration cannot accept in its own word: a Boolean or counted
+ * spelling takes no value, and an arity option takes its values as separate words, never one
+ * attached after `=` or to a short letter. A counted option's sentence tells the operator to repeat
+ * the spelling instead, an arity option's to supply each word apart, and `kind` chooses the sentence
+ * alone.
  *
  * @example
  * ```ts
@@ -646,15 +691,30 @@ export class UnexpectedValueError extends UsageError {
   /** The value the token attached to the spelling. */
   readonly value: string;
 
-  constructor(spelling: string, value: string, kind: 'boolean' | 'count' = 'boolean') {
-    super(
-      kind === 'count'
-        ? `Counted option ${quoted(spelling)} does not accept a value. Repeat ${quoted(spelling)} to raise its count.`
-        : `Boolean option ${quoted(spelling)} does not accept a value. Supply the flag alone.`,
-    );
+  constructor(spelling: string, value: string, kind: 'arity' | 'boolean' | 'count' = 'boolean') {
+    super(unexpectedValueMessage(spelling, kind));
     this.name = 'UnexpectedValueError';
     this.spelling = spelling;
     this.value = value;
+  }
+}
+
+/** The sentence of a value attached to a spelling that takes none in its own word. */
+function unexpectedValueMessage(spelling: string, kind: 'arity' | 'boolean' | 'count'): string {
+  switch (kind) {
+    case 'arity': {
+      return `Option ${quoted(spelling)} takes its values as separate words. Supply each one after ${quoted(spelling)} as its own word.`;
+    }
+    case 'count': {
+      return `Counted option ${quoted(spelling)} does not accept a value. Repeat ${quoted(spelling)} to raise its count.`;
+    }
+    case 'boolean': {
+      return `Boolean option ${quoted(spelling)} does not accept a value. Supply the flag alone.`;
+    }
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
   }
 }
 

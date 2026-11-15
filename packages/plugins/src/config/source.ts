@@ -34,7 +34,7 @@ type Issue = Extract<InputProblem, { reason: 'invalid' }>['issues'][number];
 
 /** A value read at a request's path: one the option takes, or the issues that say why not. */
 type Shaped =
-  | { kind: 'value'; value: string | boolean | number | readonly string[] }
+  | { kind: 'value'; value: SourceAnswer['value'] }
   | { kind: 'wrong'; issues: readonly Issue[] };
 
 /**
@@ -106,6 +106,41 @@ function shapeList(value: readonly unknown[]): Shaped {
   return first === undefined ? { kind: 'value', value: items } : { issues, kind: 'wrong' };
 }
 
+type StringNode = Extract<OptionNode, { type: 'string' }>;
+
+/**
+ * One occurrence of an option with an arity from an array of exactly that many items, each read by
+ * the string rule, or `undefined` for any other array.
+ */
+function shapeTuple(value: unknown, arity: number): string[] | undefined {
+  if (!Array.isArray(value) || value.length !== arity) {
+    return undefined;
+  }
+  const words = value.map(textOf);
+  return words.every((word) => word !== undefined) ? words : undefined;
+}
+
+/**
+ * The value an option with an arity takes: a tuple of its count of words, or, on a multiple option,
+ * a list of such tuples. Any other value is one issue that names the whole shape.
+ */
+function shapeArity(request: StringNode, value: unknown, arity: number): Shaped {
+  if (request.multiple) {
+    const tuples = Array.isArray(value) ? value.map((item) => shapeTuple(item, arity)) : undefined;
+    const held = tuples?.filter((tuple) => tuple !== undefined);
+    return held !== undefined && held.length === tuples?.length
+      ? { kind: 'value', value: held }
+      : {
+          issues: [{ message: `Use an array of arrays, each of ${arity} strings or numbers.` }],
+          kind: 'wrong',
+        };
+  }
+  const tuple = shapeTuple(value, arity);
+  return tuple === undefined
+    ? { issues: [{ message: `Use an array of ${arity} strings or numbers.` }], kind: 'wrong' }
+    : { kind: 'value', value: tuple };
+}
+
 /** The fewest occurrences a count holds, which a configured count may not go below. */
 const fewestOccurrences = 0;
 
@@ -119,6 +154,25 @@ function countOf(value: unknown): number | undefined {
   return typeof count === 'number' && Number.isInteger(count) && count >= fewestOccurrences
     ? count
     : undefined;
+}
+
+/** The raw value a string or content option takes from one value, by its arity and multiplicity. */
+function shapeStrings(
+  request: Exclude<OptionNode, { type: 'boolean' | 'count' }>,
+  value: unknown,
+): Shaped {
+  if (request.type === 'string' && request.arity !== null) {
+    return shapeArity(request, value, request.arity);
+  }
+  if (request.multiple) {
+    return Array.isArray(value)
+      ? shapeList(value)
+      : { issues: [{ message: 'Use an array of strings or numbers.' }], kind: 'wrong' };
+  }
+  const text = textOf(value);
+  return text === undefined
+    ? { issues: [{ message: 'Use a string or a number.' }], kind: 'wrong' }
+    : { kind: 'value', value: text };
 }
 
 /**
@@ -137,15 +191,7 @@ function shape(request: OptionNode, value: unknown): Shaped {
       ? { issues: [{ message: 'Use a whole number of 0 or more.' }], kind: 'wrong' }
       : { kind: 'value', value: count };
   }
-  if (request.multiple) {
-    return Array.isArray(value)
-      ? shapeList(value)
-      : { issues: [{ message: 'Use an array of strings or numbers.' }], kind: 'wrong' };
-  }
-  const text = textOf(value);
-  return text === undefined
-    ? { issues: [{ message: 'Use a string or a number.' }], kind: 'wrong' }
-    : { kind: 'value', value: text };
+  return shapeStrings(request, value);
 }
 
 /** How the run received its inputs, which decides how a line names its option. */

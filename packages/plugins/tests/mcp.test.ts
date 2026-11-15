@@ -200,6 +200,13 @@ describe('the listing', () => {
     expect(kinds.inputSchema).toEqual({
       additionalProperties: false,
       properties: {
+        box: {
+          description: 'A box.',
+          items: { type: 'string' },
+          maxItems: 2,
+          minItems: 2,
+          type: 'array',
+        },
         file: { description: 'The document.', type: 'string' },
         first: { description: 'One open word.', type: 'string' },
         flag: { description: 'A flag.', type: 'boolean' },
@@ -211,6 +218,12 @@ describe('the listing', () => {
         },
         level: { description: 'A count.', minimum: 0, type: 'integer' },
         name: { default: 'anon', description: 'An open string.', type: 'string' },
+        point: {
+          description: 'A point.',
+          items: { items: { type: 'integer' }, maxItems: 2, minItems: 2, type: 'array' },
+          minItems: 1,
+          type: 'array',
+        },
         rest: { description: 'More open words.', items: { type: 'string' }, type: 'array' },
         size: {
           description: 'A size.',
@@ -222,7 +235,7 @@ describe('the listing', () => {
         unset: { description: 'No default to publish.', type: 'string' },
         verbose: { description: 'Say more.', minimum: 0, type: 'integer' },
       },
-      required: ['first', 'tag', 'topic'],
+      required: ['first', 'tag', 'topic', 'point'],
       type: 'object',
     });
   });
@@ -303,6 +316,20 @@ describe('a completed call', () => {
           type: 'text',
         },
       ],
+      isError: false,
+    });
+  });
+
+  it('a call supplies a tuple for an arity option, one occurrence each', async () => {
+    await expect(
+      resultOf('calls', 'draw', {
+        point: [
+          ['3', '4'],
+          [5, 6],
+        ],
+      }),
+    ).resolves.toEqual({
+      content: [{ text: '[["3","4"],["5","6"]]\n', type: 'text' }],
       isError: false,
     });
   });

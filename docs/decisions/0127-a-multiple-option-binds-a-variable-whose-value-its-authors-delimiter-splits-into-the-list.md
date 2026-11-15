@@ -44,3 +44,4 @@ Accepted in 0.17.0.
 ## Changelog
 
 - 2026-10-30: Proposed with the contract. It narrows ADR-0032's environment binding clause that a multiple string option cannot bind, and ADR-0081's prohibition on a multiple content option binding, and withdraws ADR-0032's rejection of a list grammar for multiple options in the environment, for a delimiter the author declares. ADR-0032, ADR-0081, and ADR-0124 carry dated entries.
+- 2026-11-15: [ADR-0161](0161-a-string-option-may-declare-an-arity-and-each-occurrence-takes-that-many-separate-words.md), proposed, lets a scalar arity option bind `env` beside `envDelimiter`, whose variable splits into exactly the declared count of items, and rejects a binding on a multiple arity option. It binds when accepted; every other clause remains unchanged.

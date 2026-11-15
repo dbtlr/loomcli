@@ -43,3 +43,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 
 - 2026-11-15: Proposed with the routing rule (LM-391), which ADR-0150 first carried and which moves here whole. It supersedes part of ADR-0004, ADR-0026, and ADR-0055, which carry dated entries.
 - 2026-11-15: [ADR-0160](0160-a-command-with-an-action-may-declare-arguments-and-hold-children-and-an-exact-child-name-routes-first.md), proposed, narrows this record's sentence that arguments and children stay exclusive to groups. A Command with an action may declare arguments and hold children. It binds when that record is accepted.
+- 2026-11-15: [ADR-0161](0161-a-string-option-may-declare-an-arity-and-each-occurrence-takes-that-many-separate-words.md), proposed, reads a group's own arity option with its words, and binds it only to an option of the same arity, because an arity count joins the value class. It binds when accepted; every other clause remains unchanged.

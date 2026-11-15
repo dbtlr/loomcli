@@ -12,10 +12,17 @@ import { escapeControlCharacters } from '../support/controls.js';
 import { defineEntry } from '../support/plain.js';
 import type { Content } from './content.js';
 import { prepareContent } from './content.js';
-import { schemaOptions } from './context.js';
+import { holdsTuples, schemaOptions } from './context.js';
 import { absentBooleans, groupReports } from './option-groups.js';
 import type { OptionGroup } from './option-groups.js';
-import { booleanValue, copyValues, reportedOf, spellingsOf, withdrawFill } from './options.js';
+import {
+  arityOf,
+  booleanValue,
+  copyValues,
+  reportedOf,
+  spellingsOf,
+  withdrawFill,
+} from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
 import { invalidDefault, invalidImplied } from './rules.js';
 import type {
@@ -332,6 +339,19 @@ function suppliedName(input: InputDeclaration, spelling: string, origin?: string
 }
 
 /**
+ * What the fix clause of a missing option asks for: a value, at least one of a collected option's,
+ * an arity option's count of values, or at least one set of them on a multiple arity option. Core's
+ * report and `missingInputError` read the clause here, so the two never drift.
+ */
+export function missingValues(collected: boolean, arity: number | undefined): string {
+  if (arity === undefined) {
+    return collected ? 'at least one value' : 'a value';
+  }
+  const count = `${String(arity)} values`;
+  return collected ? `at least one set of ${count}` : count;
+}
+
+/**
  * The default sentence for an omitted required input. An argument and an option keep the wording
  * each phase used before omission became one problem, and a collected input asks for one value
  * more than a scalar does.
@@ -344,7 +364,7 @@ function missingMessage(
   const { collected, origin } = facts;
   return input.kind === 'argument'
     ? `Argument "${spelling}" requires ${collected ? 'at least one value' : 'a value'}${input.config.required === 'non-interactive' ? ' when input is not interactive' : ''}. Supply a value for "${spelling}".`
-    : `${suppliedName(input, spelling, origin)} is required${input.config.required === 'non-interactive' ? ' when input is not interactive' : ''}. Supply ${collected ? 'at least one value' : 'a value'}.`;
+    : `${suppliedName(input, spelling, origin)} is required${input.config.required === 'non-interactive' ? ' when input is not interactive' : ''}. Supply ${missingValues(collected, arityOf(input.config))}.`;
 }
 
 /**
@@ -364,14 +384,37 @@ export function validatesOmission(input: InputDeclaration) {
   return 'validateOmitted' in config && config.validateOmitted;
 }
 
-/** One accessor for a supplied option value, so the collected and single shapes read alike. */
-function suppliedOption(options: OptionValues, name: string, collected: boolean) {
+/**
+ * One accessor for a supplied option value, so the collected, single, and arity shapes read alike:
+ * an arity option's one tuple, or a multiple one's list of tuples.
+ */
+function suppliedOption(
+  options: OptionValues,
+  input: OptionInput,
+  collected: boolean,
+): string | string[] | string[][] | undefined {
+  const { name } = input;
+  if (arityOf(input.config) !== undefined) {
+    const tuples = options.tuples.get(name);
+    return collected ? tuples : tuples?.[0];
+  }
+  return wordsOf(options, name, collected);
+}
+
+/** A one-word option's supplied value: its one word, or a multiple option's list of them. */
+function wordsOf(options: OptionValues, name: string, collected: boolean) {
   return collected ? options.lists.get(name) : options.strings.get(name);
 }
 
-/** The copy a collected value is handed out as, because the parser's array is the action's. */
-function copied(value: string | string[] | undefined) {
-  return Array.isArray(value) ? [...value] : value;
+/**
+ * The copy a collected value is handed out as, a list of tuples copied at both depths, because the
+ * parser's arrays are the action's.
+ */
+function copied(value: string | string[] | string[][] | undefined) {
+  if (value === undefined || typeof value === 'string') {
+    return value;
+  }
+  return holdsTuples(value) ? value.map((words) => [...words]) : [...value];
 }
 
 /**
@@ -470,10 +513,101 @@ function impliedPositions(
     : { output: read.declaredValues.implied.get(input), positions };
 }
 
+/** The outputs and the issues of one list of values, each passed through the validator alone. */
+interface EachValidated {
+  readonly issues: StandardSchemaV1.Issue[];
+  readonly outputs: unknown[];
+}
+
+/**
+ * Each value of one list through the validator in order. Each issue reads at its value's position
+ * after `prefix` and before its own path. A position a bare spelling filled reuses the implied
+ * value's prepared output, and a cancelled run starts no further call.
+ */
+async function validateEach(
+  input: InputDeclaration,
+  values: readonly unknown[],
+  call: {
+    context: () => ValidationContext;
+    site: InputSite | undefined;
+    signal?: AbortSignal | undefined;
+    implied?: ImpliedPositions | undefined;
+    prefix: readonly PropertyKey[];
+  },
+): Promise<EachValidated> {
+  const { context, implied, prefix, signal, site } = call;
+  const outputs: unknown[] = [];
+  const issues: StandardSchemaV1.Issue[] = [];
+  for (const [position, value] of values.entries()) {
+    if (signal?.aborted) {
+      // A cancelled run starts no further call; the run resolves its cancellation code instead.
+      break;
+    }
+    // A bare occurrence holds the implied value, whose output was prepared before any token.
+    const result =
+      implied?.positions.includes(position) === true
+        ? { value: freshDeclaredValue(implied.output) }
+        : await validate(input, value, { context: context(), site });
+    if (result.issues === undefined) {
+      outputs.push(result.value);
+    } else {
+      // The issue keeps its own fields, and only its path gains the value's position.
+      for (const issue of reported(result.issues)) {
+        issues.push({ ...issue, path: [...prefix, position, ...(issue.path ?? [])] });
+      }
+    }
+  }
+  return { issues, outputs };
+}
+
+/**
+ * The raw value of one input that collects, checked to be the array the parser, the input sources,
+ * and a default the types shape only ever supply.
+ */
+function arrayOf(input: InputDeclaration, raw: unknown): readonly unknown[] {
+  if (!Array.isArray(raw)) {
+    throw new TypeError(
+      `${declarationSubject(input)} reached validation without an array of values.`,
+    );
+  }
+  return raw;
+}
+
+/**
+ * An arity option's words through the validator, one call per word in supplied order. Each issue
+ * reads at the word's position, after its occurrence's position on a multiple option, so the
+ * action receives a tuple of outputs, or a list of them.
+ */
+async function validateWords(
+  input: InputDeclaration,
+  raw: unknown,
+  call: {
+    context: () => ValidationContext;
+    site: InputSite | undefined;
+    signal?: AbortSignal | undefined;
+  },
+): Promise<StandardSchemaV1.Result<unknown>> {
+  const multiple = collects(input);
+  const tuples = multiple ? arrayOf(input, raw) : [raw];
+  const outputs: unknown[] = [];
+  const issues: StandardSchemaV1.Issue[] = [];
+  for (const [occurrence, tuple] of tuples.entries()) {
+    const prefix = multiple ? [occurrence] : [];
+    const each = await validateEach(input, arrayOf(input, tuple), { ...call, prefix });
+    outputs.push(each.outputs);
+    issues.push(...each.issues);
+  }
+  if (issues.length > 0) {
+    return { issues };
+  }
+  return { value: multiple ? outputs : outputs[0] };
+}
+
 /**
  * One validation of a declared value. A multiple option or a variadic argument passes each of its
  * values through the validator in order, and each issue reads at its value's position before its
- * own path, so the action receives the array of outputs. Every other input passes its value once.
+ * own path, so the action receives the array of outputs. An arity option passes each word alike.
+ * Every other input passes its value once.
  * A bare spelling's implied value never meets the validator here: its output was prepared before
  * any token, so a scalar that a bare spelling supplied, and each bare occurrence in a multiple
  * option's list, reuse a copy of that output in place. Each call reads a fresh context whose
@@ -495,36 +629,24 @@ async function validateDeclared(
     // A bare spelling supplied the implied value, whose output was prepared before any token.
     return { value: freshDeclaredValue(implied.output) };
   }
-  if (!collects(input) || input.config.validate === undefined) {
+  if (input.config.validate === undefined) {
     return validate(input, raw, { context: context(), site });
   }
-  if (!Array.isArray(raw)) {
-    // The parser, the input sources, and a default the types shape only ever supply an array here.
-    throw new TypeError(
-      `${declarationSubject(input)} reached validation without an array of values.`,
-    );
+  if (input.kind === 'option' && arityOf(input.config) !== undefined) {
+    return validateWords(input, raw, { context, signal, site });
   }
-  const outputs: unknown[] = [];
-  const issues: StandardSchemaV1.Issue[] = [];
-  for (const [position, value] of raw.entries()) {
-    if (signal?.aborted) {
-      // A cancelled run starts no further call; the run resolves its cancellation code instead.
-      break;
-    }
-    // A bare occurrence holds the implied value, whose output was prepared before any token.
-    const result =
-      implied?.positions.includes(position) === true
-        ? { value: freshDeclaredValue(implied.output) }
-        : await validate(input, value, { context: context(), site });
-    if (result.issues === undefined) {
-      outputs.push(result.value);
-    } else {
-      // The issue keeps its own fields, and only its path gains the value's position.
-      for (const issue of reported(result.issues)) {
-        issues.push({ ...issue, path: [position, ...(issue.path ?? [])] });
-      }
-    }
+  if (!collects(input)) {
+    return validate(input, raw, { context: context(), site });
   }
+  // The parser, the input sources, and a default the types shape only ever supply an array here.
+  const values = arrayOf(input, raw);
+  const { issues, outputs } = await validateEach(input, values, {
+    context,
+    implied,
+    prefix: [],
+    signal,
+    site,
+  });
   return issues.length === 0 ? { value: outputs } : { issues };
 }
 
@@ -678,13 +800,23 @@ function impliedOf(input: InputDeclaration): string | undefined {
  * An array default or implied output reaches the action as its own mutable copy, so an action that
  * mutates its array rewrites neither the declaration nor the next invocation. One prepared declared
  * value serves every invocation of a run, and an unvalidated default is the value the author
- * declared, so each read copies it. The copy keeps a hole where the value has one, as the graph's
- * does. Every other output passes through unchanged.
+ * declared, so each read copies it. A multiple arity option's list of tuples is copied at both
+ * depths, under `nested`. The copy keeps a hole where the value has one, as the graph's does. Every
+ * other output passes through unchanged.
  */
-function freshDeclaredValue(value: unknown) {
-  // A spread reads a hole as `undefined`, and `slice` keeps it.
+function freshDeclaredValue(value: unknown, nested = false): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  const elements: readonly unknown[] = value;
+  // A spread reads a hole as `undefined`, and `slice` and `map` keep it.
   // oxlint-disable-next-line unicorn/prefer-spread
-  return Array.isArray(value) ? value.slice() : value;
+  return nested ? elements.map((element) => freshDeclaredValue(element)) : elements.slice();
+}
+
+/** Whether an input's value is a list of tuples, which a fresh copy copies at both depths. */
+function holdsTupleList(input: InputDeclaration): boolean {
+  return input.kind === 'option' && collects(input) && arityOf(input.config) !== undefined;
 }
 
 /**
@@ -715,8 +847,7 @@ export function suppliedInputs(
       defineEntry(
         options,
         input.name,
-        copied(suppliedOption(supplied.options, input.name, collected)) ??
-          (collected ? [] : undefined),
+        copied(suppliedOption(supplied.options, input, collected)) ?? (collected ? [] : undefined),
       );
     }
   }
@@ -732,11 +863,17 @@ export function suppliedInputs(
 }
 
 /**
- * The one issue a variable outside its option's grammar reports: the Boolean grammar, or the count
- * grammar of ASCII decimal digits.
+ * The one issue a variable outside its option's grammar reports: the Boolean grammar, the count
+ * grammar of ASCII decimal digits, or an arity option's count of items its delimiter separates.
  */
 function grammarIssues(input: OptionInput): readonly StandardSchemaV1.Issue[] {
-  return input.config.type === 'count'
+  const { config } = input;
+  const arity = arityOf(config);
+  if (arity !== undefined) {
+    const delimiter = config.type === 'string' ? (config.envDelimiter ?? '') : '';
+    return [{ message: `Use ${String(arity)} values separated by ${quoted(delimiter)}.` }];
+  }
+  return config.type === 'count'
     ? [{ message: 'Use a whole number of 0 or more.' }]
     : [{ message: 'Use true, false, yes, no, y, n, on, off, 1, or 0.' }];
 }
@@ -961,7 +1098,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       // An absence rule reads the context a supplied value reads, and reports input issues.
       await accept(entry, undefined, { origin: undefined, spelling });
     } else {
-      values.set(input, freshDeclaredValue(defaults.get(input)));
+      values.set(input, freshDeclaredValue(defaults.get(input), holdsTupleList(input)));
     }
   };
   /** One declaration's outcome: what an earlier pass settled, or this pass's own. */
@@ -999,18 +1136,23 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       const raw =
         input.kind === 'argument'
           ? supplied.args.get(input)
-          : suppliedOption(supplied.options, input.name, collected);
+          : suppliedOption(supplied.options, input, collected);
       if (input.config.type === 'content') {
         const { config } = input;
+        // A content option takes one word per occurrence, so it holds no tuple.
+        const words =
+          input.kind === 'argument'
+            ? supplied.args.get(input)
+            : wordsOf(supplied.options, input.name, collected);
         // A relative path a configuration file holds reads against that file's directory.
-        const prepare = async (from: typeof raw) =>
+        const prepare = async (from: typeof words) =>
           prepareContent(from, config, {
             collected,
             host: hostFor(entry),
             named: invocation.named !== undefined,
             signal: invocation.signal,
           });
-        const prepared = await prepare(raw);
+        const prepared = await prepare(words);
         // A configuration path its content option cannot read falls back, as if no tier had supplied it.
         const result =
           prepared.issues !== undefined &&

@@ -130,6 +130,15 @@ function listing() {
       type: 'string',
       validate: shaped({ $schema: dialect, enum: ['s', 'm'], type: 'string' }),
     })
+    .option('box', { arity: 2, description: 'A box.', type: 'string' })
+    .option('point', {
+      arity: 2,
+      description: 'A point.',
+      multiple: true,
+      required: true,
+      type: 'string',
+      validate: shaped({ type: 'integer' }),
+    })
     .option('unset', {
       default: undefined,
       description: 'No default to publish.',
@@ -230,6 +239,9 @@ function calls(env: Record<string, string | undefined> = {}) {
         }),
       ),
     );
+  const draw = new Command('draw', { description: 'Draw points.', ...opted })
+    .option('point', { arity: 2, multiple: true, type: 'string' })
+    .action(({ options, out }) => out.print(JSON.stringify(options.point)));
   const members = new Command('members', { description: 'List the members.', ...opted })
     .rows<{ key: string }>({
       views: {
@@ -282,6 +294,7 @@ function calls(env: Record<string, string | undefined> = {}) {
   })
     .globalOption('file', { description: 'The document.', type: 'string' })
     .command(echo)
+    .command(draw)
     .command(members)
     .command(lines)
     .command(lies)

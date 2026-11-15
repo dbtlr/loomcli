@@ -60,7 +60,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/env-delimiter
 
-**Empty environment delimiter.** A multiple option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.
+**Empty environment delimiter.** A multiple option's or a scalar arity option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.
 
 ### @loomcli/core/extension-output
 
@@ -121,6 +121,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 ### @loomcli/core/next-misuse
 
 **next() misused.** next() continues the middleware chain once, while the middleware that received it runs. A second call, or a call after the middleware returned, has no chain left to continue.
+
+### @loomcli/core/option-arity
+
+**Invalid option arity.** An option with an arity takes exactly that many words per occurrence and gives the action a tuple of them. A count below 2 is the single word an option without arity already takes, and a count that is not whole names no number of words.
 
 ### @loomcli/core/option-declared-twice
 

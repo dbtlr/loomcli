@@ -95,7 +95,7 @@ function entryAt(document: z.infer<typeof printedSchema>, names: readonly string
 }
 
 const tokens =
-  "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
+  "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument, and each word of an arity option, satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
 
 const exitCodes = {
   '0': 'Successful execution and core output',
@@ -145,6 +145,7 @@ const globals = [
     required: false,
     requiredWhen: null,
     multiple: false,
+    arity: null,
     schema: null,
     env: [],
     envDelimiter: null,
@@ -222,6 +223,7 @@ const getDocument = {
         required: false,
         requiredWhen: null,
         multiple: false,
+        arity: null,
         schema: {
           $schema: 'https://json-schema.org/draft/2020-12/schema',
           type: 'string',
@@ -245,6 +247,7 @@ const getDocument = {
         required: false,
         requiredWhen: null,
         multiple: true,
+        arity: null,
         schema: null,
         env: ['APP_TAGS'],
         envDelimiter: ',',
@@ -277,6 +280,7 @@ const getDocument = {
         required: false,
         requiredWhen: null,
         multiple: false,
+        arity: null,
         schema: null,
         env: [],
         envDelimiter: null,
@@ -296,6 +300,7 @@ const getDocument = {
         required: false,
         requiredWhen: null,
         multiple: false,
+        arity: null,
         schema: { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'string' },
         env: [],
         envDelimiter: null,
@@ -431,6 +436,7 @@ test('a result reads kind, views, default, and media types in order, and the for
       deprecated: null,
       description: 'Select the output format, text by default.',
       envDelimiter: null,
+      arity: null,
       envAllowEmpty: false,
       env: [],
       implied: null,
@@ -483,6 +489,24 @@ test('a line break in a description or a deprecation message prints as one space
   });
 });
 
+test('a string option entry carries its arity after multiple, null without one', async () => {
+  const result = await run('arity', ['--manifest']);
+  const options = entryAt(printedSchema.parse(JSON.parse(result.stdout)), []).options;
+  expect(options).toMatchObject([
+    {
+      arity: 2,
+      default: { value: ['800', '600'] },
+      envDelimiter: 'x',
+      multiple: false,
+      name: 'size',
+    },
+    { arity: 2, multiple: true, name: 'point' },
+    { arity: null, name: 'name' },
+  ]);
+  const keys = Object.keys(z.array(z.record(z.string(), z.unknown())).parse(options)[0] ?? {});
+  expect(keys.indexOf('arity')).toBe(keys.indexOf('multiple') + 1);
+});
+
 test('a hidden Command routed to directly prints its own slice, and a group prints its children', async () => {
   expect(entryAt(await documentOf(['secret', '--manifest']), [])).toMatchObject({
     description: 'A hidden command.',
@@ -511,6 +535,7 @@ test('marker characters print exactly, C1 controls escape up to U+009F, and U+00
       required: false,
       requiredWhen: null,
       multiple: false,
+      arity: null,
       schema: null,
       env: [],
       envDelimiter: null,

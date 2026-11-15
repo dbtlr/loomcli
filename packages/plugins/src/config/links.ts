@@ -18,6 +18,7 @@ const noMembers = 0;
 
 /** The kind of value an option takes, by its type: the JSON types a shape may hold for it. */
 const takenTypes = {
+  arity: new Set(['array']),
   boolean: new Set(['boolean']),
   count: new Set(['integer', 'number']),
   multiple: new Set(['array']),
@@ -147,6 +148,9 @@ function takenBy(option: OptionNode): keyof typeof takenTypes {
   if (option.type === 'boolean' || option.type === 'count') {
     return option.type;
   }
+  if (option.type === 'string' && option.arity !== null) {
+    return 'arity';
+  }
   return option.multiple ? 'multiple' : 'string';
 }
 
@@ -246,7 +250,7 @@ function faultOf(link: Linked, shape: Shape): DeclarationError | undefined {
     ? undefined
     : new DeclarationError(configLinkType, {
         correction:
-          'Link a key that holds a value the option takes: a string or a number for a string option, a Boolean for a Boolean option, a whole number for a counted option, or an array for a multiple option.',
+          'Link a key that holds a value the option takes: a string or a number for a string option, a Boolean for a Boolean option, a whole number for a counted option, or an array for a multiple or arity option.',
         findings,
         sentence: `${subject} links to ${link.path}, which holds ${describe(reached.leaves)}.`,
       });

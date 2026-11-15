@@ -11,6 +11,7 @@ import { argumentAccepts, optionAccepts } from '../help/accepted.js';
 import {
   argumentFacts,
   delimiterLiteral,
+  splitNoun,
   deprecatedFacts,
   isEmpty,
   optionCellParts,
@@ -239,7 +240,8 @@ function optionTag(option: OptionNode): string {
     return spellings;
   }
   const { after, before, placeholder, separator } = parts.value;
-  return `${spellings}${escapeText(`${separator}${before}`)}${inFont(placeholder, 'italic')}${escapeText(after)}`;
+  const word = `${escapeText(before)}${inFont(placeholder, 'italic')}${escapeText(after)}`;
+  return `${spellings}${escapeText(separator)}${Array.from({ length: parts.words }, () => word).join(' ')}`;
 }
 
 /**
@@ -260,7 +262,7 @@ function bindings(option: OptionNode): string[] {
       ? []
       : [
           `Environment: ${option.env.map((name) => inFont(name, 'bold')).join(', ')}${
-            delimiter === undefined ? '' : ` (a list separated by ${delimiter})`
+            delimiter === undefined ? '' : ` (${splitNoun(option)} separated by ${delimiter})`
           }`,
         ]),
     ...(path === undefined ? [] : [`Configuration: ${inFont(path, 'bold')}`]),
@@ -288,7 +290,8 @@ function environment({ optionSections }: Subject): string[] {
   const lines = listed(optionSections).flatMap((option) =>
     option.env.flatMap((name) => {
       const delimiter = listDelimiter(option);
-      const list = delimiter === undefined ? '' : ` as a list separated by ${delimiter}`;
+      const list =
+        delimiter === undefined ? '' : ` as ${splitNoun(option)} separated by ${delimiter}`;
       const empty =
         option.type === 'string' && option.envAllowEmpty ? ', even with an empty value' : '';
       return entry(

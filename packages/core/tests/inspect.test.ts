@@ -51,6 +51,7 @@ test('inspects a graph of globals, a root action, and three children', async () 
     globals: [
       {
         ...owned,
+        arity: null,
         background: false,
         default: none,
         description: none,
@@ -130,6 +131,7 @@ test('inspects a graph of globals, a root action, and three children', async () 
           options: [
             {
               ...owned,
+              arity: null,
               background: false,
               default: none,
               description: none,
@@ -179,6 +181,7 @@ test('reports the version and every declared description, and the root reports t
     globals: [
       {
         ...owned,
+        arity: null,
         background: false,
         default: none,
         description: 'The document to read.',
@@ -265,6 +268,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
     globals: [
       {
         ...owned,
+        arity: null,
         background: false,
         default: none,
         deprecated: 'Use --path instead.',
@@ -309,6 +313,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
           options: [
             {
               ...owned,
+              arity: null,
               background: false,
               default: none,
               deprecated: 'Use --plain instead.',
@@ -465,6 +470,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
     },
     {
       ...owned,
+      arity: null,
       background: false,
       default: none,
       description: none,
@@ -502,6 +508,7 @@ test('reads each spelling role from the table, including a name that begins with
     },
     {
       ...owned,
+      arity: null,
       background: false,
       default: none,
       description: none,
@@ -526,6 +533,7 @@ test('wraps a declared default and leaves an undeclared one undefined', async ()
   expect(root.options).toEqual([
     {
       ...owned,
+      arity: null,
       background: false,
       default: { value: '1' },
       description: none,
@@ -544,6 +552,7 @@ test('wraps a declared default and leaves an undeclared one undefined', async ()
     },
     {
       ...owned,
+      arity: null,
       background: false,
       default: { value: none },
       description: none,
@@ -562,6 +571,7 @@ test('wraps a declared default and leaves an undeclared one undefined', async ()
     },
     {
       ...owned,
+      arity: null,
       background: false,
       default: none,
       description: none,
@@ -598,6 +608,7 @@ test('reports the option and the argument that validate their own omission', asy
   expect(root.options).toEqual([
     {
       ...owned,
+      arity: null,
       background: false,
       default: none,
       description: none,
@@ -616,6 +627,7 @@ test('reports the option and the argument that validate their own omission', asy
     },
     {
       ...owned,
+      arity: null,
       background: false,
       default: none,
       description: none,

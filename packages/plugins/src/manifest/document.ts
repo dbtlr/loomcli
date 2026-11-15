@@ -87,6 +87,8 @@ type ManifestOption =
       readonly required: boolean;
       readonly requiredWhen: 'non-interactive' | null;
       readonly multiple: boolean;
+      /** The count of words an occurrence takes, `null` without one; a content option carries none. */
+      readonly arity?: number | null;
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
       readonly envDelimiter: string | null;
@@ -128,7 +130,7 @@ type ManifestOption =
 
 /** The token rule, stated once so no entry repeats it. */
 const tokens =
-  "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
+  "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument, and each word of an arity option, satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
 
 /** The Meaning column of core's Invocation table, with its code formatting removed. */
 const coreExitCodes: Readonly<Record<string, string>> = {
@@ -215,6 +217,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         required: node.required,
         requiredWhen: node.requiredWhen,
         multiple: node.multiple,
+        ...(node.type === 'string' ? { arity: node.arity } : {}),
         schema: node.schema,
         env: node.env,
         envDelimiter: node.envDelimiter,

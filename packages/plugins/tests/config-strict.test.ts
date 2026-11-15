@@ -43,6 +43,7 @@ const closed = z.object({
     .optional(),
   flag: z.unknown().optional(),
   sessions: z.object({ sources: z.array(z.object({ harness: z.string() })).optional() }).optional(),
+  size: z.unknown().optional(),
   stateDir: z.string().optional(),
 });
 
@@ -82,6 +83,7 @@ function build(settings: Pick<Case, 'schema' | 'strict'>, provided: boolean) {
       validate: url({ protocols: ['https'] }),
     })
     .option('flag', { extensions: [configInput({ path: 'flag' })], type: 'boolean' })
+    .option('size', { arity: 2, extensions: [configInput({ path: 'size' })], type: 'string' })
     .option('state', { extensions: [configInput({ path: 'stateDir' })], type: 'string' })
     .action(({ options, out }) => out.print(JSON.stringify(options)));
 }
@@ -382,6 +384,21 @@ test('a linked option holding a value it cannot take fails the run when strict c
   const other = await ran({ argv: ['-L'], file, strict: ['delivery'] });
   expect(other.status).toBe(0);
   expect(other.stderr).toBe(dropped.stderr);
+});
+
+test('an arity option holding an array of another length fails the run when strict covers it', async () => {
+  const file = { size: [1, 2, 3] };
+  const dropped = await ran({ argv: ['-L'], file });
+  expect(dropped.status).toBe(0);
+  expect(dropped.stderr).toBe(
+    '› Ignored option "--size" from size in .app.json: Use an array of 2 strings or numbers.\n',
+  );
+  await expect(ran({ file, strict: true })).resolves.toEqual({
+    status: 2,
+    stderr:
+      'app: Option "--size" (from size in .app.json): Use an array of 2 strings or numbers.\n',
+    stdout: '',
+  });
 });
 
 test('a linked option whose validator rejects its value fails the run when strict covers it', async () => {

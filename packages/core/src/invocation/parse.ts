@@ -31,33 +31,63 @@ function refusesValue(word: string): boolean {
 /**
  * One occurrence an option word holds, read against one table before it touches a value. `lead`
  * marks a value the word itself carries, after `=` or a short value letter, and holds the part of
- * the word before it.
+ * the word before it. `received` counts the words an arity option's occurrence took before it
+ * ended short, and `refused` is the spelling of the option word that ended it.
  */
 type Occurrence =
   | {
       kind: 'value';
       option: TableSpelling;
       spelling: string;
-      /** A string, a Boolean's own value, or the `1` one occurrence of a counted option adds. */
-      value: string | boolean | number;
+      /**
+       * A string, an arity option's words, a Boolean's own value, or the `1` one occurrence of a
+       * counted option adds.
+       */
+      value: string | string[] | boolean | number;
       lead?: string;
       /** A bare spelling of a string option with an implied value, which supplied that value. */
       implied?: true;
     }
   | { kind: 'unknown'; spelling: string }
   | { kind: 'misplaced'; spelling: string }
-  | { kind: 'unexpected'; option: ValuelessSpelling; spelling: string; value: string }
+  | { kind: 'unexpected'; option: RefusingSpelling; spelling: string; value: string }
   | { kind: 'repeated'; option: TableSpelling; spelling: string }
-  | { kind: 'missing'; option: TableSpelling; spelling: string }
-  | { kind: 'awaiting'; option: TableSpelling; spelling: string };
+  | {
+      kind: 'missing';
+      option: TableSpelling;
+      spelling: string;
+      received?: number;
+      refused?: string;
+    }
+  | { kind: 'awaiting'; option: TableSpelling; spelling: string; received: number };
 
-/** A spelling of an option that takes no value: a Boolean option or a counted option. */
-type ValuelessSpelling = TableSpelling & { type: 'boolean' | 'count' };
+/**
+ * A spelling that refuses a value in its own word: a Boolean or counted option, which takes none,
+ * and an arity option, which takes its words separately.
+ */
+type RefusingSpelling = TableSpelling & ({ type: 'boolean' | 'count' } | { valueClass: 'arity' });
 
-/** What one option word holds, in order, and whether its last occurrence took the next word. */
+/** What one option word holds, in order, and how many later words its last occurrence took. */
 interface WordReading {
   occurrences: readonly Occurrence[];
-  takesNext: boolean;
+  taken: number;
+}
+
+/**
+ * The words after the one being read, from `start` in `words`, which an occurrence may take as its
+ * values. The reader indexes them in place, so reading one option word copies no word list.
+ */
+interface Following {
+  start: number;
+  words: readonly string[];
+}
+
+/** No words after the one being read, as for the last word `locate` reads. */
+const noWords: Following = { start: 0, words: [] };
+
+/** The word at one offset among the following words, or `undefined` past their end. */
+function wordAt(following: Following, offset: number): string | undefined {
+  return following.words[following.start + offset];
 }
 
 /**
@@ -98,6 +128,9 @@ function bareValue(
   spelling: string,
 ): (Occurrence & { kind: 'value' }) | undefined {
   switch (option.valueClass) {
+    case 'arity': {
+      return undefined;
+    }
     case 'boolean': {
       return { kind: 'value', option, spelling, value: option.value };
     }
@@ -118,72 +151,139 @@ function bareValue(
 }
 
 /**
- * A repeated occurrence supplies nothing, and a string option still takes the value its form
- * names, so the words after it read as they would have.
+ * A repeated occurrence supplies nothing, and a string option still takes the words its form names,
+ * so the words after it read as they would have.
  */
-function repeated(option: TableSpelling, spelling: string, takesNext: boolean): WordReading {
-  return { occurrences: [{ kind: 'repeated', option, spelling }], takesNext };
-}
-
-/** Whether a string option with no value in its own word takes the next word as its value. */
-function takesSeparate(next: string | undefined): boolean {
-  return next !== undefined && !refusesValue(next);
+function repeated(option: TableSpelling, spelling: string, taken: number): WordReading {
+  return { occurrences: [{ kind: 'repeated', option, spelling }], taken };
 }
 
 /**
- * A string option whose value is the next word: that word, unless the words ran out or it is a word
- * the grammar never consumes as a value.
+ * How many later words a repeated occurrence takes: none when its own word carries a value, the
+ * next word for a string option that takes one, and an arity option's words up to its count or the
+ * first word that refuses a value.
  */
-function separateValue(
-  option: TableSpelling,
+function repeatTaken(option: TableSpelling, attached: boolean, following: Following): number {
+  if (attached) {
+    return 0;
+  }
+  if (option.valueClass === 'arity') {
+    return arityWords(option.arity, following).length;
+  }
+  const next = wordAt(following, 0);
+  return option.valueClass === 'separate' && next !== undefined && !refusesValue(next) ? 1 : 0;
+}
+
+/**
+ * The words one arity occurrence takes: the following words up to its count, ending early at a
+ * word the grammar never reads as a value or at the end of the line.
+ */
+function arityWords(arity: number, following: Following): string[] {
+  const words: string[] = [];
+  for (
+    let next = wordAt(following, 0);
+    words.length < arity;
+    next = wordAt(following, words.length)
+  ) {
+    if (next === undefined || refusesValue(next)) {
+      break;
+    }
+    words.push(next);
+  }
+  return words;
+}
+
+/**
+ * The spelling an option word is named by when it ends an arity occurrence short: the part of a
+ * long word before its first `=`, and the first letter of a short group, as an unknown option is
+ * named, so a value attached to it never prints.
+ */
+function refusedSpelling(word: string): string {
+  if (word.startsWith('--')) {
+    const equals = word.indexOf('=');
+    return equals === -1 ? word : word.slice(0, equals);
+  }
+  return word.slice(0, 2);
+}
+
+/**
+ * An arity option's occurrence: its count of following words. The end of the line before the count
+ * leaves it awaiting the rest, and a word that refuses a value is the missing value, which names
+ * that word's spelling unless it is the bare `--`. Either way it takes the words it read.
+ */
+function arityValue(
+  option: TableSpelling & { valueClass: 'arity' },
   spelling: string,
-  next: string | undefined,
+  following: Following,
 ): WordReading {
+  const words = arityWords(option.arity, following);
+  const taken = words.length;
+  if (taken === option.arity) {
+    return { occurrences: [{ kind: 'value', option, spelling, value: words }], taken };
+  }
+  const ended = wordAt(following, taken);
+  if (ended === undefined) {
+    return { occurrences: [{ kind: 'awaiting', option, received: taken, spelling }], taken };
+  }
+  const missing: Occurrence =
+    ended === '--'
+      ? { kind: 'missing', option, received: taken, spelling }
+      : { kind: 'missing', option, received: taken, refused: refusedSpelling(ended), spelling };
+  return { occurrences: [missing], taken };
+}
+
+/**
+ * A string option whose value is in the following words: an arity option's count of them, or the
+ * next word, unless the words ran out or it is a word the grammar never consumes as a value.
+ */
+function separateValue(option: TableSpelling, spelling: string, following: Following): WordReading {
+  if (option.valueClass === 'arity') {
+    return arityValue(option, spelling, following);
+  }
+  const next = wordAt(following, 0);
   if (next === undefined) {
-    return { occurrences: [{ kind: 'awaiting', option, spelling }], takesNext: false };
+    return { occurrences: [{ kind: 'awaiting', option, received: 0, spelling }], taken: 0 };
   }
   if (refusesValue(next)) {
-    return { occurrences: [{ kind: 'missing', option, spelling }], takesNext: false };
+    return { occurrences: [{ kind: 'missing', option, spelling }], taken: 0 };
   }
-  return { occurrences: [{ kind: 'value', option, spelling, value: next }], takesNext: true };
+  return { occurrences: [{ kind: 'value', option, spelling, value: next }], taken: 1 };
 }
 
 /** A word that starts with `--`, split at its first `=` into the spelling and the value it carries. */
-function readLong(context: WordContext, word: string, next: string | undefined): WordReading {
+function readLong(context: WordContext, word: string, following: Following): WordReading {
   const equals = word.indexOf('=');
   const spelling = equals === -1 ? word : word.slice(0, equals);
   const inline = equals === -1 ? undefined : word.slice(equals + 1);
   const option = context.table.get(spelling);
   if (!option) {
-    return { occurrences: [{ kind: 'unknown', spelling }], takesNext: false };
+    return { occurrences: [{ kind: 'unknown', spelling }], taken: 0 };
   }
   if (repeats(context, option)) {
-    const separate =
-      option.valueClass === 'separate' && inline === undefined && takesSeparate(next);
-    return repeated(option, spelling, separate);
+    return repeated(option, spelling, repeatTaken(option, inline !== undefined, following));
   }
-  return longValue({ inline, option, spelling }, next);
+  return longValue({ inline, option, spelling }, following);
 }
 
 /**
  * The value a declared long spelling supplies: a Boolean's own value or one occurrence of a count,
- * neither of which takes `=`, or a string option's value after `=`, else its implied value, else
- * the next word.
+ * neither of which takes `=`, or a string option's value after `=`, which an arity option refuses,
+ * else its implied value, else the following words.
  */
 function longValue(
   long: { inline: string | undefined; option: TableSpelling; spelling: string },
-  next: string | undefined,
+  following: Following,
 ): WordReading {
   const { inline, option, spelling } = long;
   if (inline === undefined) {
     const bare = bareValue(option, spelling);
-    return bare ? { occurrences: [bare], takesNext: false } : separateValue(option, spelling, next);
+    return bare ? { occurrences: [bare], taken: 0 } : separateValue(option, spelling, following);
   }
   const occurrence: Occurrence =
-    option.type === 'string'
+    option.type === 'string' && option.valueClass !== 'arity'
       ? { kind: 'value', lead: `${spelling}=`, option, spelling, value: inline }
       : { kind: 'unexpected', option, spelling, value: inline };
-  return { occurrences: [occurrence], takesNext: false };
+  return { occurrences: [occurrence], taken: 0 };
 }
 
 /**
@@ -192,8 +292,8 @@ function longValue(
  */
 interface Group {
   context: WordContext;
+  following: Following;
   letters: readonly string[];
-  next: string | undefined;
   set: Set<string>;
   word: string;
 }
@@ -207,17 +307,21 @@ interface LetterReading extends WordReading {
  * A Boolean letter is set, and a counted letter adds one, and the walk continues; a `=` after
  * either is a value it cannot take.
  */
-function valuelessLetter(option: ValuelessSpelling, spelling: string, rest: string): LetterReading {
+function valuelessLetter(
+  option: TableSpelling & { type: 'boolean' | 'count' },
+  spelling: string,
+  rest: string,
+): LetterReading {
   const occurrence: Occurrence = rest.startsWith('=')
     ? { kind: 'unexpected', option, spelling, value: rest.slice(1) }
     : { kind: 'value', option, spelling, value: option.type === 'boolean' ? option.value : 1 };
-  return { ends: occurrence.kind !== 'value', occurrences: [occurrence], takesNext: false };
+  return { ends: occurrence.kind !== 'value', occurrences: [occurrence], taken: 0 };
 }
 
 /**
- * A value letter ends the group: the rest of the word is its value, with one leading `=` stripped.
- * When nothing remains, a letter with an implied value supplies it, and any other takes the next
- * word as its value.
+ * A value letter ends the group: the rest of the word is its value, with one leading `=` stripped,
+ * which an arity letter refuses. When nothing remains, a letter with an implied value supplies it,
+ * and any other takes the following words as its value.
  */
 function valueLetter(
   group: Group,
@@ -228,15 +332,18 @@ function valueLetter(
   if (rest === '') {
     const bare = bareValue(option, spelling);
     return bare
-      ? { ends: true, occurrences: [bare], takesNext: false }
-      : { ends: true, ...separateValue(option, spelling, group.next) };
+      ? { ends: true, occurrences: [bare], taken: 0 }
+      : { ends: true, ...separateValue(option, spelling, group.following) };
   }
   const value = rest.startsWith('=') ? rest.slice(1) : rest;
+  if (option.valueClass === 'arity') {
+    return { ends: true, occurrences: [{ kind: 'unexpected', option, spelling, value }], taken: 0 };
+  }
   const lead = group.word.slice(0, group.word.length - value.length);
   return {
     ends: true,
     occurrences: [{ kind: 'value', lead, option, spelling, value }],
-    takesNext: false,
+    taken: 0,
   };
 }
 
@@ -254,11 +361,13 @@ function readLetter(group: Group, index: number): LetterReading {
   const option = group.context.table.get(spelling);
   const rest = group.letters.slice(index + 1).join('');
   if (!option) {
-    return { ends: true, occurrences: [{ kind: 'unknown', spelling }], takesNext: false };
+    return { ends: true, occurrences: [{ kind: 'unknown', spelling }], taken: 0 };
   }
   if (repeatsInGroup(group, option)) {
-    const takesNext = option.valueClass === 'separate' && rest === '' && takesSeparate(group.next);
-    return { ends: true, ...repeated(option, spelling, takesNext) };
+    return {
+      ends: true,
+      ...repeated(option, spelling, repeatTaken(option, rest !== '', group.following)),
+    };
   }
   group.set.add(option.name);
   return option.type === 'string'
@@ -271,23 +380,25 @@ function readLetter(group: Group, index: number): LetterReading {
  * letter or at the first letter that faults, a repeated one included, so the characters after it
  * are never read as letters.
  */
-function readGroup(context: WordContext, word: string, next: string | undefined): WordReading {
+function readGroup(context: WordContext, word: string, following: Following): WordReading {
   const letters = word.slice(1).match(/./gsu) ?? [];
-  const group: Group = { context, letters, next, set: new Set(), word };
+  const group: Group = { context, following, letters, set: new Set(), word };
   const occurrences: Occurrence[] = [];
   for (const index of group.letters.keys()) {
     const letter = readLetter(group, index);
     occurrences.push(...letter.occurrences);
     if (letter.ends) {
-      return { occurrences, takesNext: letter.takesNext };
+      return { occurrences, taken: letter.taken };
     }
   }
-  return { occurrences, takesNext: false };
+  return { occurrences, taken: 0 };
 }
 
-/** One option word read against one table, with the word after it as its possible value. */
-function readOptionWord(context: WordContext, word: string, next: string | undefined): WordReading {
-  return word.startsWith('--') ? readLong(context, word, next) : readGroup(context, word, next);
+/** One option word read against one table, with the words after it as its possible values. */
+function readOptionWord(context: WordContext, word: string, following: Following): WordReading {
+  return word.startsWith('--')
+    ? readLong(context, word, following)
+    : readGroup(context, word, following);
 }
 
 /**
@@ -315,10 +426,15 @@ function isOwnOccurrence(occurrence: Occurrence): occurrence is DeclaredOccurren
   return 'option' in occurrence && occurrence.kind !== 'awaiting' && !occurrence.option.global;
 }
 
-/** A string option the last word left waiting for its value. */
+/**
+ * A string option the last word left waiting for its value, with an arity option's count and the
+ * words it took before the line ended.
+ */
 interface AwaitingValue {
+  arity: number | undefined;
   global: boolean;
   name: string;
+  received: number;
   spelling: string;
 }
 
@@ -419,6 +535,10 @@ function write(values: OptionValues, occurrence: Occurrence & { kind: 'value' })
     values.booleans.set(name, value);
   } else if (typeof value === 'number') {
     values.counts.set(name, (values.counts.get(name) ?? 0) + value);
+  } else if (Array.isArray(value)) {
+    // An arity option's occurrence adds its tuple, the one a scalar holds or the next of a list.
+    const tuples = collects(option) ? (values.tuples.get(name) ?? []) : [];
+    values.tuples.set(name, [...tuples, [...value]]);
   } else {
     const position = writeString(values, option, value);
     if (occurrence.implied) {
@@ -513,7 +633,13 @@ function applyOccurrence(state: ReadState, occurrence: Occurrence): boolean {
   }
   const { option, spelling } = occurrence;
   if (occurrence.kind === 'awaiting') {
-    state.awaiting = { global: option.global, name: option.name, spelling };
+    state.awaiting = {
+      arity: option.valueClass === 'arity' ? option.arity : undefined,
+      global: option.global,
+      name: option.name,
+      received: occurrence.received,
+      spelling,
+    };
     return false;
   }
   state.faulted.add(option.name);
@@ -524,13 +650,26 @@ function applyOccurrence(state: ReadState, occurrence: Occurrence): boolean {
 function optionFault(
   occurrence: Occurrence & { kind: 'missing' | 'repeated' | 'unexpected' },
 ): LoomError {
-  const { spelling } = occurrence;
+  const { option, spelling } = occurrence;
   if (occurrence.kind === 'unexpected') {
-    return new UnexpectedValueError(spelling, occurrence.value, occurrence.option.type);
+    const kind = option.type === 'string' ? 'arity' : option.type;
+    return new UnexpectedValueError(spelling, occurrence.value, kind);
   }
-  return occurrence.kind === 'repeated'
-    ? new RepeatedOptionError(spelling)
-    : new MissingValueError(spelling, 'attached');
+  if (occurrence.kind === 'repeated') {
+    return new RepeatedOptionError(spelling);
+  }
+  if (option.valueClass !== 'arity') {
+    return new MissingValueError(spelling, 'attached');
+  }
+  const { received = 0, refused } = occurrence;
+  return new MissingValueError(spelling, 'separate', { arity: option.arity, received, refused });
+}
+
+/** Whether two declarations of one spelling read words alike: one value class, one arity count. */
+function sameClass(left: TableSpelling, right: TableSpelling): boolean {
+  return left.valueClass === 'arity' && right.valueClass === 'arity'
+    ? left.arity === right.arity
+    : left.valueClass === right.valueClass;
 }
 
 /** Applies a word's occurrences in order, up to the first that faults. A faulted one supplies nothing. */
@@ -550,9 +689,10 @@ function apply(state: ReadState, reading: WordReading): void {
 /**
  * The occurrence routing read against a parent's own option, bound to the routed Command's
  * declaration of the same spelling. A Command without it reports the spelling as it reports any its
- * table lacks, and a declaration of another value class is misplaced, because the parent's
- * declaration already decided whether the next word was the value, and the words are never read
- * again. A declaration of the same class keeps the fault the parent's declaration found, if any.
+ * table lacks, and a declaration of another value class, another arity count included, is
+ * misplaced, because the parent's declaration already decided which words were the value, and the
+ * words are never read again. A declaration of the same class keeps the fault the parent's
+ * declaration found, if any.
  */
 function rebound(state: ReadState, pending: DeclaredOccurrence): Occurrence {
   const { spelling } = pending;
@@ -560,7 +700,7 @@ function rebound(state: ReadState, pending: DeclaredOccurrence): Occurrence {
   if (!option) {
     return { kind: 'unknown', spelling };
   }
-  if (option.valueClass !== pending.option.valueClass) {
+  if (!sameClass(option, pending.option)) {
     return { kind: 'misplaced', spelling };
   }
   return pending.kind === 'value'
@@ -570,9 +710,9 @@ function rebound(state: ReadState, pending: DeclaredOccurrence): Occurrence {
 
 /**
  * A fault routing held back, bound to the routed Command's declaration of the same class, which
- * keeps it. A value after a spelling that takes none reaches here only with a Boolean or counted
- * option, because a class mismatch is misplaced before this binds; the string branch exists only so
- * the bound occurrence stays typed, and no invocation reaches it.
+ * keeps it. A value attached to a spelling that refuses one reaches here only with a Boolean,
+ * counted, or arity option, because a class mismatch is misplaced before this binds; the misplaced
+ * branch exists only so the bound occurrence stays typed, and no invocation reaches it.
  */
 function boundFault(
   pending: DeclaredOccurrence & { kind: 'missing' | 'repeated' | 'unexpected' },
@@ -581,9 +721,9 @@ function boundFault(
   if (pending.kind !== 'unexpected') {
     return { ...pending, option };
   }
-  return option.type === 'string'
-    ? { kind: 'misplaced', spelling: pending.spelling }
-    : { ...pending, option };
+  return option.type !== 'string' || option.valueClass === 'arity'
+    ? { ...pending, option }
+    : { kind: 'misplaced', spelling: pending.spelling };
 }
 
 /** A value routing held back, bound to the routed Command's declaration of the same class. */
@@ -661,12 +801,13 @@ function routeOption(routing: Routing, state: ReadState, index: number): number 
   const { command } = state;
   const table = readsOwnOptions(command) ? command.table : graph.globals.table;
   const context = { table, values: state.values };
-  const reading = readOptionWord(context, words[index] ?? '', words[index + 1]);
+  const following = { start: index + 1, words };
+  const reading = readOptionWord(context, words[index] ?? '', following);
   if (reading.occurrences.some((occurrence) => occurrence.kind === 'unknown')) {
     return 0;
   }
   apply(state, reading);
-  return reading.takesNext ? 2 : 1;
+  return 1 + reading.taken;
 }
 
 /**
@@ -739,14 +880,15 @@ function positional(state: ReadState, word: string): void {
 }
 
 /** One word of the routed Command, read against its table. Answers how many later words it took. */
-function readCommandWord(state: ReadState, word: string, next: string | undefined): number {
+function readCommandWord(state: ReadState, word: string, following: Following): number {
   if (!isOptionWord(word)) {
     positional(state, word);
     return 0;
   }
-  const reading = readOptionWord({ table: state.command.table, values: state.values }, word, next);
+  const context = { table: state.command.table, values: state.values };
+  const reading = readOptionWord(context, word, following);
   apply(state, reading);
-  return reading.takesNext ? 1 : 0;
+  return reading.taken;
 }
 
 /** Delimited words bypass option parsing; only a declared mode retains them as a tail. */
@@ -772,7 +914,7 @@ function readCommandWords(
     if (word === '--') {
       return { delimited: true, passthrough: readTail(state, words.slice(index + 1)) };
     }
-    index += readCommandWord(state, word, words[index + 1]);
+    index += readCommandWord(state, word, { start: index + 1, words });
   }
   return { delimited: false, passthrough: [] };
 }
@@ -986,6 +1128,14 @@ function heldFailure(read: WordsRead, fault: HeldFault): LoomError {
       );
 }
 
+/** The missing value of a string option the end of the words left waiting, by its count. */
+function awaitedFailure(awaiting: AwaitingValue): MissingValueError {
+  const { arity, received, spelling } = awaiting;
+  return arity === undefined
+    ? new MissingValueError(spelling)
+    : new MissingValueError(spelling, 'separate', { arity, received });
+}
+
 /**
  * Parses a complete invocation, where a string option still waiting for its value at the end of
  * the words is a missing value.
@@ -997,7 +1147,7 @@ function parseInvocation(
 ): ParsedInvocation {
   const read = readWords(graph, argv, { walked });
   const { awaiting, command, passthrough, path, positionals, values } = read;
-  const missing = awaiting && { at: read.read, error: new MissingValueError(awaiting.spelling) };
+  const missing = awaiting && { at: read.read, error: awaitedFailure(awaiting) };
   const fault = read.fault ?? missing;
   return {
     args: bindArguments(command, positionals),
@@ -1019,6 +1169,7 @@ export {
   argumentSlot,
   candidatesOf,
   isOptionWord,
+  noWords,
   parseInvocation,
   readOptionWord,
   readWords,

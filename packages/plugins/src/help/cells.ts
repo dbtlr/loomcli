@@ -74,9 +74,28 @@ function valueParts(option: StringOption, long: boolean): ValueParts {
   return { after: '>]', before: long ? '[=<' : '[<', placeholder: word, separator: '' };
 }
 
-/** The value parts as one string, such as `<path>` or `[=<control>]`. */
-function valueText(parts: ValueParts): string {
-  return `${parts.before}${parts.placeholder}${parts.after}`;
+/** The words one occurrence of a string option takes when it declares no arity. */
+const singleWord = 1;
+
+/**
+ * The value parts as one string, such as `<path>` or `[=<control>]`. An option with an arity prints
+ * its placeholder once per word, so `<point> <point>`.
+ */
+function valueText(parts: ValueParts, words = singleWord): string {
+  return Array.from(
+    { length: words },
+    () => `${parts.before}${parts.placeholder}${parts.after}`,
+  ).join(' ');
+}
+
+/** The declared arity of a string or content option: `undefined` without one, and always for content. */
+function arityOf(option: StringOption): number | undefined {
+  return option.type === 'string' ? (option.arity ?? undefined) : undefined;
+}
+
+/** The words one occurrence of a string option takes: its arity, or one. */
+function wordCount(option: StringOption): number {
+  return arityOf(option) ?? singleWord;
 }
 
 /**
@@ -90,6 +109,7 @@ interface OptionCellParts {
   readonly short: string | null;
   readonly long: string | null;
   readonly value: ValueParts | undefined;
+  readonly words: number;
   readonly trailingEllipsis: boolean;
 }
 
@@ -103,6 +123,7 @@ function optionCellParts(option: OptionNode): OptionCellParts {
       option.type === 'string' || option.type === 'content'
         ? valueParts(option, option.long !== null)
         : undefined,
+    words: option.type === 'string' ? wordCount(option) : singleWord,
   };
 }
 
@@ -131,7 +152,7 @@ function optionCell(option: OptionNode, context: ViewContext): string {
   if (parts.value === undefined) {
     return cell;
   }
-  return `${cell}${parts.value.separator}${style.dim.italic(style.escape(valueText(parts.value)))}`;
+  return `${cell}${parts.value.separator}${style.dim.italic(style.escape(valueText(parts.value, parts.words)))}`;
 }
 
 /**
@@ -153,7 +174,12 @@ function optionForm(option: StringOption, writer: UsageWriter): string {
   const long = longSpelling(option);
   const spelling = long ?? option.short ?? '';
   const value = valueParts(option, long !== null);
-  return `${writer.spelling(spelling)}${value.separator}${writer.word(`${valueText(value)}${option.multiple ? '...' : ''}`)}`;
+  const text = valueText(value, wordCount(option));
+  if (arityOf(option) !== undefined && option.multiple) {
+    // The `...` repeats the whole occurrence, so docopt's grouping holds its spelling and words.
+    return `${writer.word('(')}${writer.spelling(spelling)}${value.separator}${writer.word(text)}${writer.word(')...')}`;
+  }
+  return `${writer.spelling(spelling)}${value.separator}${writer.word(`${text}${option.multiple ? '...' : ''}`)}`;
 }
 
 /** How the action form names one argument: required or optional, and variadic or scalar. */
@@ -247,6 +273,7 @@ function renderDefault(value: unknown): string {
  */
 interface Fact {
   readonly delimiter?: string;
+  readonly noun?: string;
   readonly names?: readonly string[];
   readonly text: string;
   readonly tone: 'dim' | 'warning';
@@ -312,7 +339,7 @@ function styledFact(fact: Fact, context: ViewContext): string {
   const list =
     fact.delimiter === undefined
       ? ''
-      : `${tone(' as a list separated by ')}${whole(fact.delimiter)}`;
+      : `${tone(` as ${fact.noun ?? 'a list'} separated by `)}${whole(fact.delimiter)}`;
   return `${tone(style.escape(`${fact.text} `))}${fact.names.map(whole).join(tone(' '))}${list}`;
 }
 
@@ -332,11 +359,26 @@ function dimFact(text: string): Fact {
   return { text, tone: 'dim' };
 }
 
-/** A dim fact that prints a label, then names help keeps whole, then a list's delimiter. */
-function bindingFact(label: string, names: readonly string[], delimiter?: string): Fact {
-  return delimiter === undefined
+/**
+ * What a variable's value splits into: a list for a multiple option, and exactly its arity of
+ * values for a scalar arity option, as in `2 values`.
+ */
+function splitNoun(option: OptionNode): string {
+  return option.type === 'string' && option.arity !== null ? `${option.arity} values` : 'a list';
+}
+
+/**
+ * A dim fact that prints a label, then names help keeps whole, then the delimiter and what it
+ * splits the variable into.
+ */
+function bindingFact(
+  label: string,
+  names: readonly string[],
+  split?: { readonly delimiter: string; readonly noun: string },
+): Fact {
+  return split === undefined
     ? { names, text: label, tone: 'dim' }
-    : { delimiter, names, text: label, tone: 'dim' };
+    : { ...split, names, text: label, tone: 'dim' };
 }
 
 /** The fact one declared default contributes, which an explicit `undefined` default does not. */
@@ -432,8 +474,10 @@ function bindingFacts(option: OptionNode): Fact[] {
     return [];
   }
   const path = readExtension(option, configInput)?.path;
+  const delimiter = delimiterLiteral(option);
+  const split = delimiter === undefined ? undefined : { delimiter, noun: splitNoun(option) };
   return [
-    ...(isEmpty(option.env) ? [] : [bindingFact('env:', option.env, delimiterLiteral(option))]),
+    ...(isEmpty(option.env) ? [] : [bindingFact('env:', option.env, split)]),
     ...(path === undefined ? [] : [bindingFact('config:', [path])]),
   ];
 }
@@ -565,6 +609,7 @@ export {
   argumentForm,
   column,
   delimiterLiteral,
+  splitNoun,
   deprecatedFacts,
   isEmpty,
   oneLine,

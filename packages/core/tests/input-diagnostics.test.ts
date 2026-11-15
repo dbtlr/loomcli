@@ -90,6 +90,11 @@ const cases: Record<string, RuleParts> = {
     rule: 'spelling-taken',
     sentence: 'Option spelling "--no-color" is used by both "color" and "no-color".',
   },
+  'option-arity': {
+    correction: 'Declare a whole number of 2 or more, or remove arity.',
+    rule: 'option-arity',
+    sentence: 'Option "point" declares arity 1.',
+  },
   'option-name': {
     correction: declaredName,
     rule: 'declared-name',
@@ -155,6 +160,12 @@ test('an empty delimiter marks the envDelimiter of the option that declared it',
       "option('fields', { env: 'FIELDS', envDelimiter: '', multiple: true, type: 'string' })",
       "envDelimiter: ''",
     ).join('\n'),
+  );
+});
+
+test('an arity below 2 marks the arity of the option that declared it', async () => {
+  expect(findingsOf(await thrown('option-arity'))).toContain(
+    onCommand(['get'], "option('point', { arity: 1, type: 'string' })", 'arity: 1').join('\n'),
   );
 });
 

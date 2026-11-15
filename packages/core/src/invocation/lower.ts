@@ -161,6 +161,63 @@ function stringIssue(option: TableSpelling & { type: 'string' }): string {
 }
 
 /**
+ * The issue an arity option reports for a value no tuple spells: a tuple of its count, or on a
+ * multiple option a list of such tuples.
+ */
+function arityIssue(option: TableSpelling & { valueClass: 'arity' }): string {
+  const tuple = `a list of ${String(option.arity)} strings or numbers`;
+  return option.multiple ? `Use ${tuple}, or a list of such lists.` : `Use ${tuple}.`;
+}
+
+/** One tuple's words, or none when the value is not a list of exactly `arity` tokens. */
+function tupleTokens(arity: number, value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.length !== arity) {
+    return undefined;
+  }
+  return tokensOf(value);
+}
+
+/** Each element of a list as one tuple, or none when an element is not a tuple of `arity` tokens. */
+function tupleList(arity: number, elements: readonly unknown[]): string[][] | undefined {
+  const tuples: string[][] = [];
+  for (const element of elements) {
+    const tuple = tupleTokens(arity, element);
+    if (tuple === undefined) {
+      return undefined;
+    }
+    tuples.push(tuple);
+  }
+  return tuples;
+}
+
+/**
+ * The tuples one arity option's value gives, one occurrence each: the one tuple a scalar option
+ * takes, and on a multiple option a list of tuples, where a single tuple is one occurrence and an
+ * empty list none.
+ */
+function tuplesOf(
+  option: TableSpelling & { valueClass: 'arity' },
+  value: unknown,
+): string[][] | undefined {
+  const single = tupleTokens(option.arity, value);
+  if (single !== undefined) {
+    return [single];
+  }
+  return option.multiple && Array.isArray(value) ? tupleList(option.arity, value) : undefined;
+}
+
+/** An arity option's value lowered to one occurrence per tuple, each holding the tuple's words. */
+function arityOccurrences(
+  option: TableSpelling & { valueClass: 'arity' },
+  value: unknown,
+): Lowering<Lowered[]> {
+  const tuples = tuplesOf(option, value);
+  return tuples === undefined
+    ? { issue: arityIssue(option) }
+    : { occurrences: tuples.map((tuple) => ({ option, value: tuple })) };
+}
+
+/**
  * A string option's value: one token, or one per element on a multiple option, and `true` on an
  * option with an implied value, which is the bare spelling that supplies it.
  */
@@ -193,6 +250,9 @@ function optionOccurrences(entries: readonly TableSpelling[], value: unknown): L
     case 'implied':
     case 'separate': {
       return stringOccurrences(option, value);
+    }
+    case 'arity': {
+      return arityOccurrences(option, value);
     }
     default: {
       const exhaustive: never = option;

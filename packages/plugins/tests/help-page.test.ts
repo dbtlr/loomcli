@@ -575,3 +575,24 @@ test('a root with arguments whose only child is hidden has no -- row', async () 
   expect(hiddenPage.stdout).toContain('  files  The files to count.');
   expect(hiddenPage.stdout).not.toContain('even a command name');
 });
+
+test('an arity option prints its placeholder once per word, in its row and in the action form', async () => {
+  await expect(run('arity', ['draw', '--help'])).resolves.toEqual(
+    page(
+      'app draw · Draw one shape.',
+      '',
+      'USAGE',
+      '  app draw --point <point> <point> (--edge <edge> <edge>)... [options]',
+      '',
+      'OPTIONS',
+      '      --point <point> <point>      A corner.  (required)',
+      '      --edge <edge> <edge>         (required, repeatable)',
+      '      --size <size> <size>         (default: 800 600, env: BOX_SIZE as 2 values separated by "x")',
+      '      --mark <mark> <mark> <mark>  (repeatable, default: [["1","2","3"]])',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help     Show this help.',
+      '  -V, --version  Print the version.',
+    ),
+  );
+});

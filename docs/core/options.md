@@ -1,10 +1,10 @@
 ---
-description: "Local options: string, boolean, and counted options, short groups, repeated values, implied values, aliases, declared option groups, and passthrough."
+description: "Local options: string, boolean, and counted options, short groups, repeated values, option value arity, implied values, aliases, declared option groups, and passthrough."
 ---
 
 # Local options
 
-This page states how an author declares local options: string, Boolean, and counted options, short groups, repeated and implied values, aliases, option groups, and passthrough. An author uses it to shape the options a Command accepts.
+This page states how an author declares local options: string, Boolean, and counted options, short groups, repeated values, value arity, implied values, aliases, option groups, and passthrough. An author uses it to shape the options a Command accepts.
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -52,7 +52,7 @@ The parser preserves empty values. After parsing, value inputs pass through thei
 
 ## Short groups
 
-A short group is one option word that holds short aliases after a single hyphen, read under the POSIX `getopt` rule. Each character after the hyphen is one code point and must be a declared letter. A Boolean letter is set, and the walk continues to the next character; a `=` after it is the unexpected-value error that Boolean option reports. A counted letter adds one to its count and the walk continues the same way, so a repeated counted letter is no repeat and a `=` after it is the unexpected-value error. A value letter ends the group: the rest of the word is its value, with one leading `=` stripped, or the next word is its value when nothing remains. A letter whose string option declares an [implied value](#implied-values) is a value letter that never takes the next word: the rest of the word is its value, with one leading `=` stripped, and when nothing remains it supplies its implied value. The walk stops at the first letter that faults, because core cannot know whether that letter takes a value: the characters after it are not read and supply nothing, so `-xh` reports `Unknown option "-x"` rather than rendering help, and the misplaced `-Fhello` never reads `hello` as letters.
+A short group is one option word that holds short aliases after a single hyphen, read under the POSIX `getopt` rule. Each character after the hyphen is one code point and must be a declared letter. A Boolean letter is set, and the walk continues to the next character; a `=` after it is the unexpected-value error that Boolean option reports. A counted letter adds one to its count and the walk continues the same way, so a repeated counted letter is no repeat and a `=` after it is the unexpected-value error. A value letter ends the group: the rest of the word is its value, with one leading `=` stripped, or the next word is its value when nothing remains. A letter whose string option declares an [implied value](#implied-values) is a value letter that never takes the next word: the rest of the word is its value, with one leading `=` stripped, and when nothing remains it supplies its implied value. A letter whose option declares an [arity](#option-value-arity) is a value letter that takes its count of following words when nothing remains, and refuses anything attached. The walk stops at the first letter that faults, because core cannot know whether that letter takes a value: the characters after it are not read and supply nothing, so `-xh` reports `Unknown option "-x"` rather than rendering help, and the misplaced `-Fhello` never reads `hello` as letters.
 
 | Form, with Boolean `t`, string `m`, counted `v`, and `b` implying `simple` | Result                                        |
 | -------------------------------------------------------------------------- | --------------------------------------------- |
@@ -108,6 +108,48 @@ Global options declare `multiple` under the same rules. Every occurrence before 
 | A required multiple option with no occurrence              | `Option "--field" is required. Supply at least one value.`                                                |      |
 
 The diagnostic is a validation-phase issue with exit code 2 and ranks with the other required inputs. TypeScript rejects `multiple` on a Boolean or counted option, a default of the wrong shape, and a validator whose input type does not accept `string`, at the `option()` call.
+
+## Option value arity
+
+A string option declares `arity`, a whole number of 2 or more, to take that many separate words per occurrence. A local option and a global option declare it alike.
+
+```ts
+import { Application } from '@loomcli/core';
+import { integer } from '@loomcli/validators';
+
+const app = new Application('draw')
+  .option('point', { arity: 2, multiple: true, short: 'p', type: 'string', validate: integer() })
+  .option('resize', { arity: 2, type: 'string', validate: integer() })
+  .action(({ options, out }) => {
+    const points: [number, number][] = options.point;
+    const size: [number, number] | undefined = options.resize;
+    return out.print(JSON.stringify({ points, size }));
+  });
+```
+
+Each occurrence takes exactly its count of words after its spelling, so `--resize 800 600` gives `[800, 600]`. The words are the separate words after the spelling: a long spelling, a short letter, or a letter that ends a short group with nothing attached, so `-vp 3 4` sets `v` and gives `p` `['3', '4']`. `-5` and `-` are plain words, so an occurrence takes them. [ADR-0161](../decisions/0161-a-string-option-may-declare-an-arity-and-each-occurrence-takes-that-many-separate-words.md) records the decision.
+
+| Declaration and input                   | Action value or failure                                       |
+| --------------------------------------- | ------------------------------------------------------------- |
+| `arity: 2`, `--point 3 4`               | `['3', '4']`, or the tuple of the validator's outputs          |
+| `arity: 2, multiple: true`, two occurrences | A list of tuples, one per occurrence, in supplied order    |
+| A scalar arity option omitted           | `undefined`, unless it is required or declares a default      |
+| A multiple arity option omitted         | `[]`; the validator is not called                             |
+| `--point=3 4`, `-p3 4`, `-p=3 4`        | Unexpected-value error                                         |
+| `--point 3` at the end, `--point 3 -- x` | Missing-value error that names the count                     |
+| `--rename a --old`                      | Missing-value error that names `--old`                         |
+
+The action reads a tuple of the validator's outputs, one per word, in supplied order. With a literal arity the type is a tuple of that length, so `{ arity: 2, validate: integer() }` reads `[number, number]`, and with an arity typed as `number` it is an array of the output. With `multiple: true` each occurrence adds one tuple, so the value is a list of tuples. A default is a tuple, or a list of tuples on a multiple option, in the validator's input type, and its words pass the same validator. `required: true` means at least one occurrence, and `required: 'non-interactive'` applies the same check only when input is not [interactive](interaction.md). The fix clause names the count: `Option "--point" is required. Supply 2 values.`, and on a multiple option `Supply at least one set of 2 values.` Shaping the tuple into another value, such as `{ x, y }`, is the action's, as a rule over a multiple option's whole list is.
+
+The declared validator checks one word under [ADR-0036](../decisions/0036-each-value-passes-the-same-validator.md). Core runs it on each word of each occurrence, in supplied order, and reports each issue at the word's position, counted from 0: `Option "--resize" at 1: Use an integer.` On a multiple option the position names the occurrence, then the word: `Option "--point" at 2.1: Use an integer.` The [supplied record](validation.md#validation-context) holds the raw words in the same shape, a tuple of strings or a list of them.
+
+An attached value is never one of the words. A long spelling with `=` and a short letter with the rest of its word each carry a value, which an arity option refuses, so `--point=3 4` is the unexpected-value error with exit code 2: `Option "--point" takes its values as separate words. Supply each one after "--point" as its own word.`
+
+An option word or a bare `--` ends an occurrence, as does the end of the line. When either comes before the count is met, the occurrence is the missing-value error with exit code 2. At the end of the line or a bare `--` it reads `Option "--point" requires 2 values and received 1. Supply 2 values after "--point".` At an option word it names that word's spelling, the part of a long word before its first `=` or the first letter of a short group, so an attached value such as the secret in `--token=s3cret` never prints and `-old` prints as `-o`: `Option "--rename" requires 2 values, and "--old" reads as an option. Supply 2 values after "--rename"; a value that reads as an option cannot be one of them.` The words the occurrence took supply nothing, and the word that ended it is read as it would have been. An option word or a bare `--` can never be one of an arity option's values on a command line; such a value reaches the option through its [environment variable](input-sources.md#environment-bindings), the configuration source, or an [invocation by name](invocation.md#invocation-by-name).
+
+A scalar arity option supplied twice is the repeated-option error, as any scalar option is, and the repeated occurrence still takes the words its count names, up to a word that refuses a value, so the words after it read as they would have. An occurrence never takes the first bare `--` or a word after it.
+
+The types reject `arity` beside `implied` and `validateOmitted`, on a Boolean, counted, content, or background option, beside `env` on a multiple option, and beside `envAllowEmpty`. A scalar arity option binds `env` beside `envDelimiter`, whose items fill the words, as [Environment bindings](input-sources.md#environment-bindings) states. No question kind answers a tuple, so a question cannot link an arity option, as [Interaction](interaction.md) states. An arity that is not a whole number of 2 or more is a declaration error, [`@loomcli/core/option-arity`](diagnostics.md#loomclicoreoption-arity).
 
 ## Boolean polarity
 
@@ -196,7 +238,7 @@ const app = new Application('textstat')
 
 A declaration rejects duplicate option keys and spelling collisions, including generated negative forms, short aliases, and option aliases, and an invalid option name or alias. Each throws from the call that declares the option, or from the attach that first brings two colliding options into one Application, as [Declaration faults](declaration-faults.md) states. TypeScript rejects an invalid type, polarity, implied value, or short-only combination at the call. The call that declares an input, `argument()`, `option()`, `globalOption()`, an input a lifecycle hook declares, and `plugin()` for each option it declares, keeps its own copy of the config object's keys, so a key the author adds to or replaces on that object later changes nothing the declaration holds. A fault judged before the config is read, such as an invalid name on `argument()`, `option()`, `globalOption()`, or `new Command()`, prints the config or options elided.
 
-Each option that is neither multiple nor counted can occur only once per invocation. Repetition fails across every accepted spelling, including `--metric words -m bytes`, `--total -t`, `-tt`, `--total --no-total`, and `--backup -b=numbered` for a string option with an implied value. A `multiple` option collects its repetitions instead, as [Repeated string values](#repeated-string-values) describes, and a counted option counts them, as [Counted options](#counted-options) describes. An unknown or misplaced option, a missing value, or a value after a Boolean or counted option also prevents dispatch. Diagnostics identify the affected option and give a correction. A declaration error that `run()` reports returns code 1; invocation errors return code 2. A declaration diagnostic names the declaration, as in `Option "field"`, because the author edits the declaration to fix it. An input diagnostic names the supplied spelling, as in `Option "--field"`, because the operator changes that token. An argument declares and reads under one name, so its diagnostics use it throughout. A broken validator is a fault in the declaration, so it names the declaration even when a supplied value reached it. Command names, child attachment, and collisions between a global and a local option have their own rules, described in [Commands and global options](commands.md).
+Each option that is neither multiple nor counted can occur only once per invocation. Repetition fails across every accepted spelling, including `--metric words -m bytes`, `--total -t`, `-tt`, `--total --no-total`, and `--backup -b=numbered` for a string option with an implied value. A `multiple` option collects its repetitions instead, as [Repeated string values](#repeated-string-values) describes, and a counted option counts them, as [Counted options](#counted-options) describes. An unknown or misplaced option, a missing value, a value after a Boolean or counted option, or a value attached to an [arity option](#option-value-arity) also prevents dispatch. Diagnostics identify the affected option and give a correction. A declaration error that `run()` reports returns code 1; invocation errors return code 2. A declaration diagnostic names the declaration, as in `Option "field"`, because the author edits the declaration to fix it. An input diagnostic names the supplied spelling, as in `Option "--field"`, because the operator changes that token. An argument declares and reads under one name, so its diagnostics use it throughout. A broken validator is a fault in the declaration, so it names the declaration even when a supplied value reached it. Command names, child attachment, and collisions between a global and a local option have their own rules, described in [Commands and global options](commands.md).
 
 ### Input declaration errors
 
@@ -207,6 +249,7 @@ Each rule below is a `DeclarationError` with code 1 that throws at the moment [D
 - **Keys.** Two options of one scope never share a key. The scope reads `the root Command`, `the global options`, or `plugin "@loomcli/log"`: [`@loomcli/core/option-declared-twice`](diagnostics.md#loomclicoreoption-declared-twice).
 - **An option a plugin declares.** Its key and spelling stay apart from every other global option and every local option. A key reports under [`@loomcli/core/option-declared-twice`](diagnostics.md#loomclicoreoption-declared-twice) and a spelling under [`@loomcli/core/spelling-taken`](diagnostics.md#loomclicorespelling-taken), the rules of a collision between the application's own options, and the sentence names the plugin. The rules of [Plugin declaration errors](plugin-contract.md#plugin-declaration-errors) give each pairing.
 - **A default.** A default passes its validator: [`@loomcli/core/invalid-default`](diagnostics.md#loomclicoreinvalid-default). `run()` raises the fault before it reads a token.
+- **An arity.** A string option's `arity` is a whole number of 2 or more, so `{ arity: 1 }` throws `Option "point" declares arity 1.` with the correction `Declare a whole number of 2 or more, or remove arity.`, and its finding marks `arity`: [`@loomcli/core/option-arity`](diagnostics.md#loomclicoreoption-arity).
 - **An implied value.** An implied value passes its validator: [`@loomcli/core/invalid-implied`](diagnostics.md#loomclicoreinvalid-implied). `run()` raises the fault before it reads a token, whether or not the invocation holds a bare spelling.
 - **A converter.** In a [development build](release-facts.md#development-builds), a validator's JSON Schema converter returns a plain object: [`@loomcli/core/schema-converter-failed`](diagnostics.md#loomclicoreschema-converter-failed). A converter that throws, or that answers with anything but a plain object, is the fault.
 

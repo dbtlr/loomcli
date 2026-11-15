@@ -2,7 +2,7 @@ import { declaredName } from '../commands/rules.js';
 import { siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import { DeclarationError, quoted } from '../failures/errors.js';
-import { envDelimiterEmpty, optionDeclaredTwice, spellingTaken } from './rules.js';
+import { envDelimiterEmpty, optionArity, optionDeclaredTwice, spellingTaken } from './rules.js';
 import type { OptionConfig } from './types.js';
 
 export interface OptionDeclaration {
@@ -16,6 +16,11 @@ export interface OptionValues {
   booleans: Map<string, boolean>;
   /** How many times each counted option was supplied, or the count an input source filled. */
   counts: Map<string, number>;
+  /**
+   * The words of each occurrence of an arity option, one tuple per occurrence, in supplied order. A
+   * scalar arity option holds one tuple.
+   */
+  tuples: Map<string, string[][]>;
   /** The spelling of the token that supplied each parsed option, which no input source writes. */
   spellings: Map<string, string>;
   /**
@@ -27,8 +32,8 @@ export interface OptionValues {
 }
 
 /**
- * Every parsed value lands in one of these maps; `lists` holds the repeated string options and
- * `counts` the counted ones.
+ * Every parsed value lands in one of these maps; `lists` holds the repeated string options,
+ * `tuples` the arity options, and `counts` the counted ones.
  */
 export function emptyValues(): OptionValues {
   return {
@@ -38,6 +43,7 @@ export function emptyValues(): OptionValues {
     lists: new Map(),
     spellings: new Map(),
     strings: new Map(),
+    tuples: new Map(),
   };
 }
 
@@ -50,15 +56,17 @@ export type SpellingOrigin =
   | { role: 'alias'; index: number };
 
 /**
- * How one option reads words: its kind, and its value class, of which there are four: a Boolean
- * option, a counted option, a string option with an implied value, which never takes the next word
- * and supplies `implied` when its spelling is bare, and a string option that takes the next word as
- * its value when nothing is attached. Compiling the table derives the class once, and the parser, a
- * rebound occurrence, and `locate` read that one fact.
+ * How one option reads words: its kind, and its value class: a Boolean option, a counted option, a
+ * string option with an implied value, which never takes the next word and supplies `implied` when
+ * its spelling is bare, a string option that takes the next word as its value when nothing is
+ * attached, and, for each arity count, a string option that takes that many separate words and
+ * refuses an attached value. Compiling the table derives the class once, and the parser, a rebound
+ * occurrence, and `locate` read that one fact.
  */
 type OptionForm =
   | { type: 'string'; valueClass: 'separate'; name: string; multiple: boolean }
   | { type: 'string'; valueClass: 'implied'; name: string; multiple: boolean; implied: string }
+  | { type: 'string'; valueClass: 'arity'; name: string; multiple: boolean; arity: number }
   | { type: 'boolean'; valueClass: 'boolean'; name: string; value: boolean }
   | { type: 'count'; valueClass: 'count'; name: string };
 
@@ -195,7 +203,7 @@ function checkAliases(config: OptionConfig, siteOf: () => InputSite, name: strin
   }
 }
 
-/** A multiple option's delimiter separates its variable's items, so it holds a character. */
+/** A multiple option's or a scalar arity option's delimiter separates its variable's items, so it holds a character. */
 function checkEnvDelimiter(config: OptionConfig, siteOf: () => InputSite, name: string): void {
   if ((config.type === 'string' || config.type === 'content') && config.envDelimiter === '') {
     const site = siteOf();
@@ -203,6 +211,27 @@ function checkEnvDelimiter(config: OptionConfig, siteOf: () => InputSite, name: 
       correction: 'Name the string that separates the items, such as ",".',
       findings: [siteFinding(site, `${site.at}.envDelimiter`)],
       sentence: `Option ${quoted(name)} declares an empty envDelimiter.`,
+    });
+  }
+}
+
+/**
+ * The declared count of words each occurrence of an option takes, or `undefined` for an option
+ * without an arity. Only a string option declares one.
+ */
+export function arityOf(config: OptionConfig): number | undefined {
+  return config.type === 'string' ? config.arity : undefined;
+}
+
+/** An arity names how many words an occurrence takes, so it is a whole number of 2 or more. */
+function checkArity(config: OptionConfig, siteOf: () => InputSite, name: string): void {
+  const arity = arityOf(config);
+  if (arity !== undefined && !(Number.isInteger(arity) && arity >= 2)) {
+    const site = siteOf();
+    throw new DeclarationError(optionArity, {
+      correction: 'Declare a whole number of 2 or more, or remove arity.',
+      findings: [siteFinding(site, `${site.at}.arity`)],
+      sentence: `Option ${quoted(name)} declares arity ${String(arity)}.`,
     });
   }
 }
@@ -328,6 +357,10 @@ function positiveForm(name: string, config: OptionConfig): OptionForm {
     case 'content':
     case 'string': {
       const multiple = config.multiple === true;
+      const arity = arityOf(config);
+      if (arity !== undefined) {
+        return { arity, multiple, name, type: 'string', valueClass: 'arity' };
+      }
       return config.implied === undefined
         ? { multiple, name, type: 'string', valueClass: 'separate' }
         : { implied: config.implied, multiple, name, type: 'string', valueClass: 'implied' };
@@ -376,6 +409,7 @@ function addOption<Declaration extends OptionDeclaration>(
   checkOptionName(name, siteOf);
   checkAliases(config, siteOf, name);
   checkEnvDelimiter(config, siteOf, name);
+  checkArity(config, siteOf, name);
   const first = names.get(name);
   if (first) {
     const earlier = scope.siteOf(first);
@@ -463,6 +497,7 @@ export function isSupplied(values: OptionValues, name: string): boolean {
   return (
     values.strings.has(name) ||
     values.lists.has(name) ||
+    values.tuples.has(name) ||
     values.booleans.has(name) ||
     values.counts.has(name)
   );
@@ -474,6 +509,7 @@ export function withdrawFill(values: OptionValues, name: string): void {
   values.counts.delete(name);
   values.lists.delete(name);
   values.strings.delete(name);
+  values.tuples.delete(name);
 }
 
 /** One run's own copy of parsed values, which the input-source stage fills without touching argv's. */
@@ -485,6 +521,9 @@ export function copyValues(values: OptionValues): OptionValues {
     lists: new Map([...values.lists].map(([name, list]) => [name, [...list]])),
     spellings: new Map(values.spellings),
     strings: new Map(values.strings),
+    tuples: new Map(
+      [...values.tuples].map(([name, list]) => [name, list.map((words) => [...words])]),
+    ),
   };
 }
 
@@ -497,5 +536,6 @@ export function mergeValues(globals: OptionValues, locals: OptionValues): Option
     lists: new Map([...globals.lists, ...locals.lists]),
     spellings: new Map([...globals.spellings, ...locals.spellings]),
     strings: new Map([...globals.strings, ...locals.strings]),
+    tuples: new Map([...globals.tuples, ...locals.tuples]),
   };
 }

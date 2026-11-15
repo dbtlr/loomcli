@@ -10,7 +10,9 @@ import type { NamedCall } from './lower.js';
 import type { InvocationValues, InvokeOptions } from './types.js';
 
 /** The entries of one `args` or `options` record, a key whose value is `undefined` left out. */
-function definedEntries(record: InvocationValues['args']): (readonly [string, unknown])[] {
+function definedEntries(
+  record: InvocationValues['args'] | InvocationValues['options'],
+): (readonly [string, unknown])[] {
   return record === undefined
     ? []
     : Object.entries(record).filter(([, value]) => value !== undefined);
