@@ -1346,13 +1346,12 @@ function invalidTrailingArgument(config: InputDeclaration['config']): string | u
 }
 
 /**
- * A variadic slot ends the optional positional list: only required scalar non-content arguments
- * may follow it, and they take words from the end. The other slots order in
- * three tiers: required, then required only when input is not interactive, then optional. A slot
- * never follows one of a later tier, so a required slot never follows a conditional or optional
- * one, and a conditional slot never follows an optional one. Slots of one tier may follow each
- * other, and bare words fill them left to right. This orders only the prefix through the variadic;
- * required scalar arguments after it reserve words from the end instead.
+ * Orders the slots up to and including a variadic one in three tiers: required, then required only
+ * when input is not interactive, then optional. A slot never follows one of a later tier, so a
+ * required slot never follows a conditional or optional one, and a conditional slot never follows
+ * an optional one. Slots of one tier may follow each other, and bare words fill them left to right.
+ * Only required scalar arguments that are not content arguments may follow a variadic slot, and
+ * they take their words from the end of the line, so this order does not apply to them.
  */
 function checkSlotOrder(
   slot: ArgumentSlot,
