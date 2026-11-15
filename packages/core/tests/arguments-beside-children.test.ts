@@ -132,3 +132,40 @@ test('locate holds a null argument at a command position of a Command that decla
   const position = locate(new Application('kit').command(completion()).inspect(), ['c']);
   expect(position).toMatchObject({ argument: null, kind: 'command' });
 });
+
+test('a group reached from a group, below a root that declares arguments, has no -- sentence', async () => {
+  const app = new Application('textstat')
+    .argument('files', { variadic: true })
+    .command(
+      new Command('cache').command(
+        new Command('inner').command(new Command('x').action(({ out }) => out.print('x'))),
+      ),
+    )
+    .action(() => undefined);
+  const result = await printed(app, ['cache', 'inner']);
+  expect(result.code).toBe(2);
+  expect(result.stderr).toBe('textstat: Command "inner" requires a subcommand. Use one of: x.\n');
+});
+
+/** Attaches a group that declares an argument, which the attach call refuses. */
+function attachGroupWithArgument() {
+  return new Application('app').command(
+    new Command('cache')
+      .argument('key', { description: 'k' })
+      .command(new Command('x').action(() => undefined)),
+  );
+}
+
+test("a group's argument fault marks the group's first argument call", () => {
+  expect(attachGroupWithArgument).toThrow(
+    expect.objectContaining({
+      message: expect.stringContaining(
+        [
+          "    new Command('cache')",
+          "      .argument('key', { description: 'k' })",
+          '                ^^^^^ the first argument',
+        ].join('\n'),
+      ),
+    }),
+  );
+});

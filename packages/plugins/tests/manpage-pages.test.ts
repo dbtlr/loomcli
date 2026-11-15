@@ -334,6 +334,16 @@ describe('sections', () => {
     );
   });
 
+  it('a root with arguments whose only own child is hidden has no -- entry', () => {
+    const reader = new Application('reader')
+      .argument('files', { description: 'The files.', variadic: true })
+      .command(new Command('internal', { hidden: true }).action(noop))
+      .action(noop);
+    const hiddenPage = pagesOf(reader).get('reader.1');
+    expect(hiddenPage).toContain('The files.');
+    expect(hiddenPage).not.toContain('even a command name');
+  });
+
   it('a root with arguments and a visible child ends ARGUMENTS with a -- entry', () => {
     const reader = new Application('reader', { plugins: [manpage()] })
       .argument('files', { description: 'The files.', variadic: true })
