@@ -104,6 +104,7 @@ export type { FailureEncoder, FailureEncoding } from './failures/encoders.js';
 export type { FailureForm } from './failures/form.js';
 export type { FailureHook, FailureHookContext } from './plugins/hints.js';
 export type { EnvironmentContext, EnvironmentHook } from './plugins/prepare-environment.js';
+export type { LiveRegionsHook, LiveRegionsHookContext } from './output/live-regions.js';
 export type {
   JsonValue,
   Log,

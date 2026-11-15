@@ -582,6 +582,7 @@ test('an unset region defaults to us-east-1', async () => {
 - **A failure view.** It reads a `FailureViewContext`, which `viewContext` does not build.
 - **A configuration source.** Its resolver reads a `SourceContext`, which no builder builds.
 - **`onCommandAttach` and `onGraphBuilt`.** They read the graph an Application builds, so a test installs the plugin on a small Application and reads `application.inspect()`, or checks that it assembles with [`assertAssembles`](#assertassembles).
+- **`onLiveRegions`.** Core calls it at the writes of a run's live regions, and its `out` is the run's own, so a test installs the plugin on a small Application, runs it on a `mockProcess` whose stderr is on its terminal, and reads the mock's streams, as the [patch-console plugin](../plugins/patch-console.md#testing)'s tests do.
 
 ## Building the values a hook reads
 

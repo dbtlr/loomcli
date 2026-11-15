@@ -16,6 +16,8 @@ import { Handed } from '../support/handed.js';
 import { handled } from '../support/thenable.js';
 import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
+import { LiveRegionSpan } from './live-regions.js';
+import type { LiveRegionsHook } from './live-regions.js';
 import type { LogDestination } from './log.js';
 import { ProgressLedger } from './progress-events.js';
 import { endsWithLineBreak, Regions, Screen } from './region.js';
@@ -123,11 +125,68 @@ interface Reservation {
 }
 
 /**
- * How a destination sends one text write once it reaches the stream: a terminal stderr erases the
- * live regions before it and draws them after it, and a terminal stdout does the same while a
- * region is open.
+ * One piece of a write as its turn hands it to a stream: the destination it goes to, its bytes, and
+ * whether a failure is only recorded, as for the erase and redraw a stdout write sends to stderr.
  */
-type Passage = (text: string, send: (text: string) => Promise<void>) => Promise<void>;
+interface Part {
+  readonly destination: Destination;
+  readonly text: string;
+  readonly quiet: boolean;
+}
+
+/**
+ * How a destination sends one text write once it reaches the stream, as the parts its turn hands to
+ * the streams, produced in the call: a terminal stderr erases the live regions before it and draws
+ * them after it, and a terminal stdout does the same while a region is open.
+ */
+type Passage = (text: string) => Part[];
+
+/**
+ * One write queued on a destination and not yet handed to its stream. `order` places it in the
+ * run's order: the ticket it was queued at, and a sequence's piece's place among that sequence's
+ * pieces. `start` produces its parts as its turn writes them, which an end calls in its place, and
+ * once it started, `parts` holds the parts not yet handed to a stream.
+ */
+interface Queued {
+  readonly order: readonly [number, number];
+  readonly start: () => Part[];
+  /** Whether it is a composition, whose write the live-region span observes. */
+  readonly composed: boolean;
+  parts: Part[];
+}
+
+/** Whether one queued write comes before another in the run's order, for a sort. */
+function byOrder(first: Queued, second: Queued): number {
+  return first.order[0] - second.order[0] || first.order[1] - second.order[1];
+}
+
+/** A source of increasing numbers, which orders the writes of the destinations that share it. */
+function tickets(): () => number {
+  let next = 0;
+  return () => {
+    next += 1;
+    return next;
+  };
+}
+
+/**
+ * Hands each part to its stream at once, outside every queue, with adjacent parts for one stream
+ * joined into one write.
+ */
+function writeNow(parts: readonly Part[]): void {
+  const writes: { destination: Destination; text: string }[] = [];
+  for (const { destination, text } of parts) {
+    const last = writes.at(-1);
+    if (last?.destination === destination) {
+      last.text += text;
+    } else {
+      writes.push({ destination, text });
+    }
+  }
+  for (const { destination, text } of writes) {
+    destination.writeNow(text);
+  }
+}
 
 /**
  * The turn the destinations on one terminal take to send. One send, with the region erase and
@@ -156,14 +215,22 @@ class Destination {
   order: { shared: Destination; joins: () => boolean } | undefined = undefined;
   /** The turn this destination's sends take with the other destination on the same terminal. */
   turn: Turn | undefined = undefined;
+  /**
+   * What observes each composition this destination writes, called synchronously right before its
+   * bytes reach the stream and right after, which the run's live-region span reads.
+   */
+  around: { before: () => void; after: () => void } | undefined = undefined;
   /** How many sequences hold a place in this destination's order and have not closed. */
   #sequences = 0;
-  /** The compositions queued and not yet sent, which a flush writes at once. */
-  readonly #composed = new Set<{ produce: () => string }>();
+  /** The writes queued and not yet begun, in the order they were queued, which an end writes at once. */
+  readonly #queued = new Set<Queued>();
+  /** The writes whose turn has begun and whose parts have not all reached a stream. */
+  readonly #started = new Set<Queued>();
 
   constructor(
     readonly stream: Writable,
     private readonly closing?: Closing,
+    private readonly ticket: () => number = tickets(),
   ) {
     stream.on('error', this.onError);
   }
@@ -189,9 +256,10 @@ class Destination {
    * destination's order, behind that one's too, which then waits for it in turn.
    */
   write(text: string): Promise<void> {
+    const queued = this.queue([this.ticket(), 0], () => this.parts(text));
     const order = this.joined();
     const previous = order === undefined ? this.tail : Promise.all([this.tail, order.tail]);
-    const pending = previous.then(() => this.accept(text));
+    const pending = previous.then(() => this.accept(queued));
     // Keep the returned rejection observable, while accounting for calls without await.
     this.tail = pending.catch(this.onError);
     if (order !== undefined) {
@@ -214,14 +282,76 @@ class Destination {
     return order.joins() ? order.shared : undefined;
   }
 
-  /** One text queued behind whatever preceded it, on a destination that has not failed. */
-  private accept(text: string): Promise<void> {
+  /** One write held from its call until its turn, or until an end writes it in its place. */
+  private queue(order: readonly [number, number], start: () => Part[], composed = false): Queued {
+    const queued: Queued = { composed, order, parts: [], start };
+    this.#queued.add(queued);
+    return queued;
+  }
+
+  /** The parts one text write hands to the streams at its turn. */
+  private parts(text: string): Part[] {
+    return this.passage ? this.passage(text) : [{ destination: this, quiet: false, text }];
+  }
+
+  /**
+   * One write at its place in the order, on a destination that has not failed. A write an end has
+   * already written sends nothing and resolves.
+   */
+  private accept(queued: Queued): Promise<void> {
+    if (!this.#queued.has(queued)) {
+      return Promise.resolve();
+    }
     if (this.state.kind !== 'ok') {
+      this.#queued.delete(queued);
       throw refusal(this.state);
     }
-    return this.send(() =>
-      this.passage ? this.passage(text, (sent) => this.writeText(sent)) : this.writeText(text),
-    );
+    return this.send(() => this.begin(queued));
+  }
+
+  /**
+   * Hands one write's parts to their streams at its turn, unless an end wrote it meanwhile. A
+   * composition's bytes reach the stream between the span's two observations, in the call.
+   */
+  private begin(queued: Queued): Promise<void> {
+    if (!this.#queued.delete(queued)) {
+      return Promise.resolve();
+    }
+    queued.parts = queued.start();
+    if (queued.composed) {
+      this.around?.before();
+    }
+    this.#started.add(queued);
+    const sent = this.sendParts(queued).finally(() => {
+      this.#started.delete(queued);
+    });
+    if (queued.composed) {
+      this.around?.after();
+    }
+    return sent;
+  }
+
+  /**
+   * Hands each part not yet sent to its stream in turn. A quiet part's failure is recorded on its
+   * destination, and a failure of the write's own part rejects the write once the quiet parts after
+   * it have been sent.
+   */
+  private async sendParts(queued: Queued): Promise<void> {
+    let failure: { error: unknown } | undefined = undefined;
+    for (let part = queued.parts.shift(); part !== undefined; part = queued.parts.shift()) {
+      if (part.quiet) {
+        await part.destination.sendQuietly(part.text);
+      } else if (failure === undefined) {
+        try {
+          await part.destination.writeText(part.text);
+        } catch (error) {
+          failure = { error };
+        }
+      }
+    }
+    if (failure !== undefined) {
+      throw failure.error;
+    }
   }
 
   /** Sends now, or once the terminal's turn reaches it when another destination shares the screen. */
@@ -239,43 +369,58 @@ class Destination {
   /**
    * Text composed once it reaches the stream, so it reads the state every earlier write left, and
    * sent as it is, outside the passage. Nothing is sent for the empty string. A composition still
-   * queued when `flushComposed` runs is written there instead, and sends nothing when its turn comes.
+   * queued when `flushComposed` or an end runs is written there instead, and sends nothing when its
+   * turn comes.
    */
   compose(produce: () => string): Promise<void> {
-    const queued = { produce };
-    this.#composed.add(queued);
-    return this.run(() => {
-      if (!this.#composed.has(queued)) {
-        return Promise.resolve();
-      }
-      if (this.state.kind !== 'ok') {
-        this.#composed.delete(queued);
-        throw refusal(this.state);
-      }
-      return this.send(() => {
-        if (!this.#composed.delete(queued)) {
-          return Promise.resolve();
-        }
+    const queued = this.queue(
+      [this.ticket(), 0],
+      () => {
         const text = produce();
-        return text === '' ? Promise.resolve() : this.writeText(text);
-      });
-    });
+        return text === '' ? [] : [{ destination: this, quiet: false, text }];
+      },
+      true,
+    );
+    return this.run(() => this.accept(queued));
   }
 
   /**
    * Writes every composition still queued straight to the stream, in the order it was queued, and
-   * then `after`, synchronously. A write that fails is dropped: this is a best-effort write the
-   * process makes on its way out.
+   * then `after`, synchronously, as a suspend does before the process stops. Every other write
+   * keeps its turn.
    */
   flushComposed(after: () => string): void {
-    const queued = [...this.#composed];
-    this.#composed.clear();
-    const text = queued.map(({ produce }) => produce()).join('') + after();
-    if (text === '' || this.state.kind !== 'ok' || this.stream.destroyed) {
-      return;
+    const composed = [...this.#queued].filter((queued) => queued.composed);
+    for (const queued of composed) {
+      this.#queued.delete(queued);
     }
+    const parts = composed.flatMap((queued) => queued.start());
+    this.around?.before();
+    this.writeNow(parts.map(({ text }) => text).join('') + after());
+    this.around?.after();
+  }
+
+  /**
+   * Takes every write not yet handed to a stream, for an end to write at once in their place: the
+   * writes whose turn has begun, whose parts not yet sent the end takes from them, and the writes
+   * still queued, which send nothing when their turn comes.
+   */
+  takeQueued(): { readonly started: readonly Queued[]; readonly queued: readonly Queued[] } {
+    const queued = [...this.#queued];
+    this.#queued.clear();
+    return { queued, started: [...this.#started] };
+  }
+
+  /**
+   * Hands text to the stream at once, outside the queue. A stream that failed or closed receives
+   * nothing, and a write that fails is dropped: this is a best-effort write the process makes on its
+   * way out.
+   */
+  writeNow(text: string): void {
     try {
-      this.stream.write(text, () => undefined);
+      if (text !== '' && this.state.kind === 'ok' && !this.stream.destroyed) {
+        this.stream.write(text, () => undefined);
+      }
     } catch {
       // A terminal that has hung up drops the write.
     }
@@ -301,6 +446,9 @@ class Destination {
    */
   reserve(): Reservation {
     const previous = this.tail;
+    // The pieces take the reservation's place in the run's order, whenever their source yields them.
+    const place = this.ticket();
+    let pieceCount = 0;
     let open: (pieces: Promise<void>) => void = unopened;
     const gate = new Promise<void>((resolve) => {
       open = resolve;
@@ -316,7 +464,9 @@ class Destination {
         open(pieces);
       },
       write: (text) => {
-        const pending = pieces.then(() => this.accept(text));
+        pieceCount += 1;
+        const queued = this.queue([place, pieceCount], () => this.parts(text));
+        const pending = pieces.then(() => this.accept(queued));
         pieces = pending.catch(this.onError);
         return pending;
       },
@@ -437,6 +587,8 @@ interface Target {
 
 export class Output {
   private readonly destinations = new Map<Writable, Destination>();
+  // Orders the writes of both destinations, so an end writes them in the order they were queued.
+  private readonly ticket = tickets();
   // Every failure an output call raised: a view's, a source's that stopped a sequence, and a second result.
   private readonly raised = new Set<unknown>();
   // Every output call that rejected with a failure core raised, which the run reads for one no code observed.
@@ -467,6 +619,8 @@ export class Output {
   private readonly screen: Screen;
   // The live regions this run opened.
   private readonly regions: Regions;
+  // The span of drawn regions the installed onLiveRegions hooks observe, once the run hands them over.
+  private span: LiveRegionSpan | undefined = undefined;
   // Closes every region at once when the run's signal aborts.
   private readonly onCancel = (): void => {
     this.regions.closeAll('cancellation');
@@ -761,6 +915,19 @@ export class Output {
     };
   }
 
+  /**
+   * The installed `onLiveRegions` hooks, in installation order, which this run calls at the first
+   * frame its regions hold and at the write after which none holds one.
+   */
+  useLiveRegionsHooks(hooks: readonly LiveRegionsHook[]): void {
+    this.span = hooks.length === 0 ? undefined : new LiveRegionSpan(hooks, this.out);
+  }
+
+  /** The first value an `onLiveRegions` hook threw in this run, which the run reports once. */
+  get liveRegionsThrow(): { readonly value: unknown } | undefined {
+    return this.span?.thrown;
+  }
+
   /** The registry one invocation resolves through, republished as each contributor is read. */
   useViews(registry: ViewRegistry): void {
     this.registry = registry;
@@ -782,15 +949,29 @@ export class Output {
   }
 
   /**
-   * Writes every region frame still in stderr's write queue straight to the terminal and shows the
-   * cursor, synchronously, which a shutdown does at its end. Only a terminal stderr holds regions.
+   * Writes every write still queued on the run's stdout and stderr straight to its stream, in the
+   * order the writes were queued and each as its turn would have written it, then, on a terminal
+   * stderr, ends every lend and shows the cursor, synchronously, which the process's end does. A
+   * write whose turn has begun goes first, with only the parts it has not yet sent. No hook is
+   * called while it writes, so a first frame among the writes opens no span.
    */
-  flushTerminal(): void {
+  flushQueue(): void {
+    const taken = [...this.destinations.values()].map((destination) => destination.takeQueued());
+    const started = taken.flatMap((writes) => writes.started);
+    started.sort(byOrder);
+    const queued = taken.flatMap((writes) => writes.queued);
+    queued.sort(byOrder);
+    const parts = [
+      ...started.flatMap((write) => write.parts.splice(0)),
+      ...queued.flatMap((write) => write.start()),
+    ];
     if (this.host.terminal.stderr.isTTY) {
-      this.destination(this.host.stderr).flushComposed(
-        () => this.screen.finishLends() + this.cursorShown(),
-      );
+      const restored = this.screen.finishLends() + this.cursorShown();
+      parts.push({ destination: this.destination(this.host.stderr), quiet: true, text: restored });
     }
+    writeNow(parts);
+    // The process is ending, so a span still open closes after those bytes.
+    this.span?.finish();
   }
 
   /**
@@ -849,9 +1030,18 @@ export class Output {
       return;
     }
     const errors = this.destination(stderr);
-    errors.passage = (text, send) => {
+    // Only a terminal stderr holds a frame, and every write that changes one is a composition there.
+    errors.around = {
+      after: () => {
+        this.span?.after(this.screen.holdsFrame);
+      },
+      before: () => {
+        this.span?.before(this.screen.holdsFrame);
+      },
+    };
+    errors.passage = (text) => {
       const { after, before } = this.screen.around(text);
-      return send(before + text + after);
+      return [{ destination: errors, quiet: false, text: before + text + after }];
     };
     if (!terminal.stdout.isTTY || stdout === stderr) {
       return;
@@ -861,19 +1051,17 @@ export class Output {
     errors.turn = turn;
     output.turn = turn;
     output.order = { joins: () => this.screen.holding, shared: errors };
-    output.passage = async (text, send) => {
+    output.passage = (text) => {
       if (!this.screen.holding) {
         this.screen.note(text);
-        return send(text);
+        return [{ destination: output, quiet: false, text }];
       }
       const { after, before } = this.screen.around(text);
-      await errors.sendQuietly(before);
-      try {
-        await send(text);
-      } finally {
-        await errors.sendQuietly(after);
-      }
-      return undefined;
+      return [
+        { destination: errors, quiet: true, text: before },
+        { destination: output, quiet: false, text },
+        { destination: errors, quiet: true, text: after },
+      ];
     };
   }
 
@@ -1168,7 +1356,7 @@ export class Output {
     if (!destination) {
       const { stderr, stdout } = this.host;
       const ends = stream === stdout && stream !== stderr;
-      destination = new Destination(stream, ends ? this.closing : undefined);
+      destination = new Destination(stream, ends ? this.closing : undefined, this.ticket);
       this.destinations.set(stream, destination);
     }
     return destination;
@@ -1200,7 +1388,12 @@ export class Output {
     return { kind: 'ok' };
   }
 
+  /**
+   * Ends the run's output. A span still open, because a region's closing write never reached a
+   * stderr that failed, closes here, so no span outlives its run.
+   */
   dispose(): void {
+    this.span?.finish();
     this.signal.removeEventListener('abort', this.onCancel);
     for (const destination of this.destinations.values()) {
       destination.dispose();

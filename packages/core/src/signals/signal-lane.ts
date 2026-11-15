@@ -91,7 +91,10 @@ type OnResume = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 interface LaneRun {
   /** Aborts the run with the signal as its source. A run already cancelled keeps its reason. */
   readonly cancel: (event: { readonly signal: EndingSignal }) => void;
-  /** Writes every region frame still queued straight to the run's terminal and shows the cursor. */
+  /**
+   * Writes every write still queued on the run's stdout and stderr straight to its stream, in the
+   * order queued, and shows the cursor on a terminal.
+   */
   readonly flush: () => void;
   /** Whether the run keeps its lane listening: a `run()`, or a call whose outermost run is one. */
   readonly listens: boolean;
@@ -291,7 +294,7 @@ function cancelRun(run: LaneRun, signal: EndingSignal): void {
   }
 }
 
-/** Flushes a run's terminal, when the run has the member that does it. */
+/** Flushes a run's queued writes, when the run has the member that does it. */
 function flushRun(run: LaneRun): void {
   if (typeof run.flush === 'function') {
     run.flush();
@@ -355,11 +358,11 @@ class SignalLane implements SharedLane {
   /**
    * The process's own end, which can come before a shutdown's: an entry that calls
    * `process.exit()` with the code a run resolved inside the shutdown ends the process before the
-   * shutdown's next turn. Its terminals are restored here as the shutdown's end would, then every
-   * pending handler runs.
+   * shutdown's next turn. Its runs' queued writes are written and its terminals restored here as
+   * the shutdown's end would, then every pending handler runs.
    */
   readonly #onExit = (code: number): void => {
-    this.#flushTerminals();
+    this.#flushQueues();
     this.#callShutdownHandlers({ cause: 'exit', code });
   };
 
@@ -587,7 +590,7 @@ class SignalLane implements SharedLane {
   }
 
   /**
-   * Ends the shutdown under way: every live run's queued region frames reach its terminal, every
+   * Ends the shutdown under way: every live run's queued writes reach its streams, every
    * pending handler is called synchronously, newest first, core's listeners go, and the signal is
    * re-raised on the source, whose default action ends the process. Nothing is awaited.
    */
@@ -598,7 +601,7 @@ class SignalLane implements SharedLane {
     }
     shutdown.ending = true;
     stopTimers(shutdown);
-    this.#flushTerminals();
+    this.#flushQueues();
     this.#cutOff();
     this.#callShutdownHandlers({ cause: signal, code: signalCodes[signal] });
     this.#shutdown = undefined;
@@ -616,10 +619,10 @@ class SignalLane implements SharedLane {
   }
 
   /**
-   * Writes the queued region frames of every live run, and of every run that resolved during the
-   * shutdown under way, straight to its terminal and shows the cursor, once per run.
+   * Writes the queued writes of every live run, and of every run that resolved during the shutdown
+   * under way, straight to its streams and shows the cursor on its terminal, once per run.
    */
-  #flushTerminals(): void {
+  #flushQueues(): void {
     const unwound = this.#shutdown?.unwound ?? [];
     for (const place of [...unwound, ...this.#places]) {
       if (!place.flushed) {

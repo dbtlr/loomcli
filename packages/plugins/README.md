@@ -40,6 +40,7 @@ Each entry links to its reference page.
 - `@loomcli/plugins/color`: `--color`, so an operator turns color on or off. [Color](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/color.md)
 - `@loomcli/plugins/verbose`: `-v` and `-q`, which raise and lower the run's verbosity. [Verbose](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/verbose.md)
 - `@loomcli/plugins/background`: an option that states the terminal's background. [Background](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/background.md)
+- `@loomcli/plugins/patch-console`: `console` writes kept above a live region while one is drawn. [Patch console](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/patch-console.md)
 
 ### Inputs
 

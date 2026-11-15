@@ -29,6 +29,7 @@ import type { InputDeclaration, OptionInput } from '../inputs/validation.js';
 import type { CommandGraph, OptionNode } from '../inspection/inspect.js';
 import type { MiddlewareContext } from '../invocation/chain.js';
 import { coreViews } from '../output/lanes.js';
+import type { LiveRegionsHook } from '../output/live-regions.js';
 import type { Log, LogHook } from '../output/log.js';
 import type { Out } from '../output/types.js';
 import { buildViews, viewIdentities } from '../output/view.js';
@@ -97,6 +98,7 @@ interface DeclaredPlugin {
   onGraphBuilt?: GraphBuiltHook | undefined;
   onFailure?: FailureHook | undefined;
   onLog?: LogHook | undefined;
+  onLiveRegions?: LiveRegionsHook | undefined;
   onEnvironment?: EnvironmentHook | undefined;
   extensions?: readonly AnyExtension[] | undefined;
   views?: readonly ViewContribution[] | undefined;
@@ -252,10 +254,12 @@ type SourceResolver<Contributor extends Plugin | ((...args: never[]) => Plugin)>
  * Everything a plugin declares. `plugin()` checks every rule the definition carries on its own, and
  * creating and installing the value runs none of its code: `onCommandAttach` runs at graph build,
  * `onGraphBuilt` runs once the graph is built and frozen, `onFailure` runs when a run from `run()`
- * or `invoke()` renders a failure, `onLog` runs when a run logs an event, `onEnvironment` prepares
- * additions before input validation, the middleware runs inside an invocation, the configuration
- * source runs in the input-source stage when an unfilled option carries its binding, and a
- * translator runs when a foreign throw its key matches leaves the application's work.
+ * or `invoke()` renders a failure, `onLog` runs when a run logs an event, `onLiveRegions` runs when
+ * a run's first live region draws a frame and when the last frame leaves the stack,
+ * `onEnvironment` prepares additions before input validation, the middleware runs inside an
+ * invocation, the configuration source runs in the input-source stage when an unfilled option
+ * carries its binding, and a translator runs when a foreign throw its key matches leaves the
+ * application's work.
  *
  * @public
  */
@@ -296,6 +300,11 @@ interface PluginDefinition<
   onFailure?: FailureHook;
   /** Called with each event a run logs, to observe it. */
   onLog?: LogHook;
+  /**
+   * Called with `'drawn'` when a run's first live region draws a frame, and with `'closed'` when
+   * the last frame leaves the stack, in stderr's write order, to observe them.
+   */
+  onLiveRegions?: LiveRegionsHook;
   /** Called before input validation to add environment variables the environment lacks. */
   onEnvironment?: EnvironmentHook;
   /** The extensions the plugin defines, which declarations carry values of. */
@@ -330,11 +339,11 @@ interface PluginDefinition<
  * One plugin: an identity and the contributions it carries. Creating and installing the value runs
  * none of its code: `onCommandAttach` and `onGraphBuilt` run at graph build, `onFailure` runs when
  * a run from `run()` or `invoke()` renders a failure, `onLog` runs when a run logs an event,
- * `onEnvironment` prepares additions before input validation, and the middleware runs inside an
- * invocation, so an installed plugin an invocation never reaches costs that invocation its hooks
- * alone. The definition is read once,
- * after the identity, and every rule that one definition carries on its own throws here, before
- * the value exists.
+ * `onLiveRegions` runs when a run's first live region draws a frame and when the last frame leaves
+ * the stack, `onEnvironment` prepares additions before input validation, and the middleware runs
+ * inside an invocation, so an installed plugin an invocation never reaches costs that invocation
+ * its hooks alone. The definition is read once, after the identity, and every rule that one
+ * definition carries on its own throws here, before the value exists.
  *
  * @example
  * ```ts
@@ -685,6 +694,8 @@ interface BuiltPlugin {
   onFailure: FailureHook | undefined;
   /** The hook core calls for each log event of a run, or nothing. */
   onLog: LogHook | undefined;
+  /** The hook core calls when a run's live regions first hold a frame and when none does, or nothing. */
+  onLiveRegions: LiveRegionsHook | undefined;
   /** Prepares additions once per captured environment, before any declared value validates. */
   onEnvironment: EnvironmentHook | undefined;
   /** The plugin's own `views` list, which the Application reads again. */
@@ -760,6 +771,7 @@ function readPlugin(identity: string, declaration: DeclaredPlugin): BuiltPlugin 
     onEnvironment: declaration.onEnvironment,
     onFailure: declaration.onFailure,
     onGraphBuilt: declaration.onGraphBuilt,
+    onLiveRegions: declaration.onLiveRegions,
     onLog: declaration.onLog,
     records: build.records,
     source,

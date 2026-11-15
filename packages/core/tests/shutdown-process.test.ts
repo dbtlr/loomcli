@@ -17,7 +17,8 @@
  * - Order. Handlers from the action, its middleware, and the process run once, newest first, after
  *   the run unwound, and core's listeners are held only while asked.
  * - The process's own end. `process.exit()` and an uncaught exception mid-action call the pending
- *   handler with `exit` and the status.
+ *   handler with `exit` and the status, and a message queued through `out` just before
+ *   `process.exit()` prints.
  * - Two copies of core listen once and call each handler once.
  * - Suspend and resume. SIGTSTP calls the suspend handlers newest first and stops the process, and
  *   the SIGCONT that follows calls the resume handlers in registration order.
@@ -339,6 +340,14 @@ test('process.exit() mid-action calls the pending handler with exit and the stat
     status: 3,
     stderr: '',
     stdout: 'before:0,0,0,0,0\nhandler:exit:3\n',
+  });
+});
+
+test('a message queued through out just before process.exit() mid-action prints on stderr', () => {
+  expect(invoke(fixtureUrl, ['exit-message'])).toEqual({
+    status: 1,
+    stderr: '✘ EXIT-MESSAGE\n',
+    stdout: 'before:0,0,0,0,0\n',
   });
 });
 

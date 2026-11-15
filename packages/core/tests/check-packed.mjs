@@ -806,6 +806,13 @@ try {
     const quiet = run(runtimes.get(name), [verbosity, '-q'], temporary);
     assert.equal(quiet.output, '', `${name}: packed -q`);
   }
+  // The packed patch-console plugin routes a console.log made while a frame is drawn, then puts it back.
+  const patching = join(temporary, 'dist/patch-console.js');
+  for (const name of selected) {
+    const routed = run(runtimes.get(name), [patching], temporary);
+    assert.equal(routed.status, 0, routed.output);
+    assert.equal(routed.output, '0 true routed\n', `${name}: packed patch-console run`);
+  }
   // The packed logging plugin appends one record to the file under the state directory it is given.
   const logged = join(temporary, 'dist/logging.js');
   for (const name of selected) {
@@ -1035,7 +1042,7 @@ try {
     await checkScaffold(temporary, scaffold);
   }
   process.stdout.write(
-    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, @loomcli/testing, @loomcli/eslint-plugin, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the seven tarballs with publint and the declarations of the six libraries with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, declared option groups with structured failures, dotenv values in argv and named runs, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a run on a mock process, a color choice, a background choice, a verbosity, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, ${scaffolds.length} scaffolds the loom bin wrote that passed their own check script and, with oxlint and with ESLint, failed on an undescribed option, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
+    `Packed @loomcli/core, @loomcli/plugins, @loomcli/validators, @loomcli/prompts, @loomcli/testing, @loomcli/eslint-plugin, and @loomcli/loom ${version}: ${selected.join(' and ')} linted the seven tarballs with publint and the declarations of the six libraries with attw, ran the installed tarballs, and printed ${invocations.length} expected outputs, the action line, the overridden help page in both variants, the overridden version line, the collected manifest values, the manifest document, the validated and rejected options, a supplied linked prompt, declared option groups with structured failures, dotenv values in argv and named runs, the configured word from the named TOML file and the home YAML file, the three completion scripts, an MCP session from a pack that lists no protocol dependency, a suggestion, a run on a mock process, a color choice, a background choice, a verbosity, a console line the patch-console plugin routed, a log record appended under the state directory, a self-update refusal, a service refusal, a skills refusal, the generated man pages, the installation, log, and cache directories applicationDirectory resolves, the loom bin checking a package's fragments, ${scaffolds.length} scaffolds the loom bin wrote that passed their own check script and, with oxlint and with ESLint, failed on an undescribed option, Markdown Details imported as text and rendered from a packed loom bundle, a fixture the loom bin bundled that reads distributed while its source reads source, and a fixture Bun and Rolldown bundled with no define that measures text and reads source.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });
