@@ -565,3 +565,13 @@ test('the passthrough mode keeps its own row, and a child page or a childless ro
   const childlessPage = await runOnMock(childless, { argv: ['--help'] });
   expect(childlessPage.stdout).not.toContain('even a command name');
 });
+
+test('a root with arguments whose only child is hidden has no -- row', async () => {
+  const hiddenOnly = new Application('textstat', { plugins: [help()] })
+    .argument('files', { description: 'The files to count.', variadic: true })
+    .command(new Command('internal', { hidden: true }).action(() => undefined))
+    .action(() => undefined);
+  const hiddenPage = await runOnMock(hiddenOnly, { argv: ['--help'] });
+  expect(hiddenPage.stdout).toContain('  files  The files to count.');
+  expect(hiddenPage.stdout).not.toContain('even a command name');
+});

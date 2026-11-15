@@ -452,8 +452,8 @@ function groupSentences(command: CommandNode, context: ViewContext): string[] {
  */
 function renderPage({ command, graph, variant }: HelpPage, context: ViewContext): string {
   const path = pathOf(graph, command);
-  // One reading of the visible children answers three questions.
-  // They are the children usage form, the Command sections, and the child hint.
+  // One reading of the visible children answers four questions.
+  // They are the children usage form, the Command sections, the ARGUMENTS `--` row, and the child hint.
   const children = visible(command.children);
   const detailLines = details(command, context);
   const listed = examples(graph, command, context);
