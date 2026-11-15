@@ -93,7 +93,7 @@ The folder's `notes/` subfolder is the skill `notes`. A source run and a test re
   - `update`, `Bring installed skills up to date with this version.`, with no options.
   - `uninstall`, `Remove the skills from your coding agents.`, with `--agent`, `The agents to remove the skills from: claude or agents. Both when left out.`, validated the same way.
 
-  An `--agent` value outside the set is core's usage error for that input, with exit 2. `--directory` without `--project` is an `InputError` the action throws, `Option "--directory" needs --project. Add --project, or leave out --directory.`, with exit 2. `--force` with `--project` has no effect, because a project install always replaces. No child declares a result. A root that declares arguments cannot hold children, so such an application cannot install the plugin, and an application installs it once, because a second `skills` collides under [Plugin Commands](../core/plugin-contract.md#plugin-commands).
+  An `--agent` value outside the set is core's usage error for that input, with exit 2. `--directory` without `--project` is an `InputError` the action throws, `Option "--directory" needs --project. Add --project, or leave out --directory.`, with exit 2. `--force` with `--project` has no effect, because a project install always replaces. No child declares a result. A root that declares arguments holds the plugin's Commands like any children, so such an application can install the plugin, and an application installs it once, because a second `skills` collides under [Plugin Commands](../core/plugin-contract.md#plugin-commands).
 - **Agent targets.** `claude` and `agents`, in that order, which every child follows. A child with no `--agent` acts on both.
 
   | Target | Global folder | Project folder |

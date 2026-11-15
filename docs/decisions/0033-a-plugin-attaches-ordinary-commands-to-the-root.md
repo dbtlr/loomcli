@@ -4,7 +4,7 @@ title: ADR-0033 - A plugin attaches ordinary Commands to the root
 description: A plugin definition may list Commands, which attach to the root in installation order before the application's own Commands. A plugin Command is an ordinary Command attached from a different point, so every Command rule applies to it unchanged and no projection or invocation stage treats it differently.
 status: accepted
 created: 2026-09-25
-modified: 2026-10-05
+modified: 2026-11-15
 ---
 
 # ADR-0033 - A plugin attaches ordinary Commands to the root
@@ -42,3 +42,4 @@ Accepted 2026-09-25 with the implementation. Core reads each plugin's `commands`
 - 2026-09-25: ADR-0034 is accepted. The entry above binds as written.
 - 2026-09-26: [ADR-0041](0041-every-action-reads-the-frozen-graph-and-its-routed-command.md), proposed, widens what every action receives with `graph` and `command`, the frozen graph and routed node a middleware reads. The rule above that a plugin Command's action receives what every action receives is unchanged, so a plugin Command's action reads them as any action does. It binds when that record is accepted.
 - 2026-10-05: [ADR-0058](0058-help-owns-ordered-sections-with-at-most-two-heading-levels.md), proposed, lets a page's authored help section order place another section before a plugin Command's section. It narrows the consequence that plugin-attached Commands lead the root help page's rows. Attachment order, member order within a section, and the manifest's child order retain this record's rules. No projection distinguishes a plugin Command, and no plugin-specific section is introduced. It binds when that record is accepted.
+- 2026-11-15: [ADR-0160](0160-a-command-with-an-action-may-declare-arguments-and-hold-children-and-an-exact-child-name-routes-first.md), proposed, withdraws this record's sentence that an application whose root declares arguments cannot install a plugin that brings Commands, along with the arguments-beside-children rule in its list of Command rules. A plugin's Commands join a root that declares arguments like any other children. It binds when that record is accepted.

@@ -42,7 +42,7 @@ The operation that places a finished Command under a parent: `command()` on a Co
 _Avoid_: Mount, register, add
 
 **Group**:
-A Command that has children and registers no action. Routing passes through a group to one of its children and never dispatches the group itself.
+A Command that has children and registers no action. Routing passes through a group to one of its children and never dispatches the group itself. A group declares no arguments, stdin, or passthrough mode, because it has no action to receive them.
 _Avoid_: Namespace, container command, folder
 
 **Declaration**:
@@ -315,7 +315,7 @@ The point the middleware chain reaches when it continues past its last middlewar
 _Avoid_: Terminal step, end of chain, action phase
 
 **Routing**:
-The invocation phase that reads words from the root downward and selects the Command whose table reads the remaining words. A plain word that names a child descends; an option word is read against the global options and, at a Command with children, that Command's own options, which bind to the Command routing finally reaches, and one none of those declares stops routing at the Command reached. Core once read the global options in a separate pre-scan before routing; the term is retired.
+The invocation phase that reads words from the root downward and selects the Command whose table reads the remaining words. A plain word that is exactly a child's name or alias descends; a plain word that names no child ends routing as the Command's first argument when the Command declares one, and is an unknown-command error otherwise; an option word is read against the global options and, at a Command with children, that Command's own options, which bind to the Command routing finally reaches, and one none of those declares stops routing at the Command reached. Core once read the global options in a separate pre-scan before routing; the term is retired.
 _Avoid_: Dispatch (for selection), resolution, matching, pre-scan
 
 **Misplaced option**:
