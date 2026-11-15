@@ -89,6 +89,8 @@ type ManifestOption =
       readonly multiple: boolean;
       /** The count of words an occurrence takes, `null` without one; a content option carries none. */
       readonly arity?: number | null;
+      /** Whether a later occurrence replaces an earlier one; a content option carries none. */
+      readonly lastWins?: boolean;
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
       readonly envDelimiter: string | null;
@@ -217,7 +219,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         required: node.required,
         requiredWhen: node.requiredWhen,
         multiple: node.multiple,
-        ...(node.type === 'string' ? { arity: node.arity } : {}),
+        ...(node.type === 'string' ? { arity: node.arity, lastWins: node.lastWins } : {}),
         schema: node.schema,
         env: node.env,
         envDelimiter: node.envDelimiter,

@@ -390,6 +390,23 @@ describe('the answer', () => {
     expect(at('--edge', 'a', 'b', '--')).toBe(framed(['--point', '--edge'], 4));
   });
 
+  it('a last-wins option is offered again after the earlier words supplied it, because another occurrence replaces its value', () => {
+    const graph = new Application('kit')
+      .option('editor', {
+        lastWins: true,
+        type: 'string',
+        validate: shaped({ enum: ['vim', 'nano'], type: 'string' }),
+      })
+      .option('resize', { arity: 2, lastWins: true, type: 'string' })
+      .option('to', { type: 'string' })
+      .action(() => {})
+      .inspect();
+    const at = (...words: string[]) => answer(graph, locate(graph, words));
+    expect(at('--editor', 'vim', '--')).toBe(framed(['--editor', '--resize', '--to'], 4));
+    expect(at('--editor', 'vim', '--editor', '')).toBe(framed(['vim', 'nano'], 4));
+    expect(at('--resize', '1', '2', '--to', 'x', '--')).toBe(framed(['--editor', '--resize'], 4));
+  });
+
   it('a counted option is offered again, because another occurrence adds to its count', async () => {
     await expect(complete('backups', '-v', '--v')).resolves.toBe(
       framed(['--verbose\tSay more.'], 4),

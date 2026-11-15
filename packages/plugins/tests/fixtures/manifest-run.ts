@@ -162,6 +162,7 @@ async function run(args: string[] = [], env: Record<string, string | undefined> 
     function: () => defaulted(() => 'ten'),
     'global-nan': () => placed('global', Number.NaN),
     infinity: () => defaulted(Number.POSITIVE_INFINITY),
+    'last-wins': lastWins,
     map: () => defaulted(new Map()),
     multiline,
     nan: () => defaulted(Number.NaN),
@@ -282,6 +283,16 @@ function multiline() {
     .action(dispatch);
   return new Application('app', { description: 'Do the\nwork.', plugins: [manifest()] })
     .command(fetch)
+    .action(dispatch);
+}
+
+/** A last-wins string option and a last-wins arity option, beside one without the setting and a content option. */
+function lastWins() {
+  return new Application('app', { description: 'Mail.', plugins: [manifest()] })
+    .option('editor', { lastWins: true, type: 'string' })
+    .option('resize', { arity: 2, lastWins: true, type: 'string' })
+    .option('name', { type: 'string' })
+    .option('body', { type: 'content' })
     .action(dispatch);
 }
 

@@ -20,7 +20,8 @@ const quietest = 1;
 /**
  * Whether one more occurrence of an option, after `given` earlier ones, adds anything. A counted
  * option adds one, until a verbose-marked count reaches 2 or a quiet-marked count reaches 1. A
- * multiple string option collects another value. Any other option adds only its first occurrence.
+ * multiple string option collects another value, and a last-wins string option replaces its value.
+ * Any other option adds only its first occurrence.
  */
 function addsOccurrence(option: OptionNode, given: number): boolean {
   switch (option.type) {
@@ -30,9 +31,11 @@ function addsOccurrence(option: OptionNode, given: number): boolean {
       }
       return option.quiet ? given < quietest : true;
     }
-    case 'content':
-    case 'string': {
+    case 'content': {
       return option.multiple || given === noOccurrence;
+    }
+    case 'string': {
+      return option.multiple || option.lastWins || given === noOccurrence;
     }
     case 'boolean': {
       return given === noOccurrence;
