@@ -153,7 +153,6 @@ import type {
 import { buildGlobals, checkLocalOptions, frozenValues } from './globals.js';
 import {
   argumentDeclaredTwice,
-  argumentsBesideChildren,
   commandAttachedTwice,
   commandWithoutAction,
   declaredName,
@@ -282,11 +281,11 @@ export type CommandMethod =
   | 'passthrough'
   | 'stdin';
 
-/** One Command declares arguments or attaches children, so the first call removes the other. */
-export type AfterArgument<State> = Exclude<State, 'command'>;
+/** A Command with an action may declare arguments and hold children, so `argument()` removes nothing. */
+export type AfterArgument<State> = State;
 
-/** The same rule read from the other side. */
-export type AfterCommand<State> = Exclude<State, 'argument'>;
+/** The same rule read from the other side: `command()` removes nothing. */
+export type AfterCommand<State> = State;
 
 /** One Command declares one result, so either call removes both. */
 export type AfterResult<State> = Exclude<State, 'result' | 'rows'>;
@@ -644,22 +643,6 @@ function localScope(name: string | null, path: readonly string[]): CompileScope<
   return { siteOf: (input) => inputSite(name, path, input), subject: commandSubject(name) };
 }
 
-/** One Command declares arguments or attaches children, whichever call came second. */
-function placementFault(
-  parent: { name: string | null; path: readonly string[] },
-  argument: InputDeclaration,
-  child: AttachedChild,
-): DeclarationError {
-  return new DeclarationError(argumentsBesideChildren, {
-    correction: 'Move the argument into a child Command or remove the children.',
-    findings: [
-      inputFinding(parent.path, argument, 'the argument'),
-      { ...child.placement, note: 'the child' },
-    ],
-    sentence: `${commandSentence(parent.name)} declares argument "${argument.name}" and attaches child "${child.name}".`,
-  });
-}
-
 /** The options one declaration list holds, in declaration order. */
 function optionsOf(inputs: readonly InputDeclaration[]): OptionInput[] {
   return inputs.filter((input): input is OptionInput => input.kind === 'option');
@@ -783,22 +766,13 @@ function recordInput(
   return { descriptors, records: new Map([...state.records, [input, record]]) };
 }
 
-/**
- * Every rule one argument answers at its own call: its name, a repeated name, children beside it,
- * and its place after the arguments before it. The types keep a named Command's own `argument()`
- * and `command()` apart, so a child beside an argument reaches this call at the root, where a
- * plugin's Commands attached before the author declared the argument.
- */
+/** Every rule one argument answers at its own call: its name, a repeated name, and its place after the arguments before it. */
 function checkArgument(state: Declared, input: ArgumentInput): void {
   const { name } = state;
   const path = pathOf(name);
   const command = { name, path, subject: commandSubject(name) };
   const declared = state.inputs.filter((entry) => entry.kind === 'argument');
   checkArgumentName(command, declared, input);
-  const child = state.children[0];
-  if (child) {
-    throw placementFault(command, input, child);
-  }
   const previous = declared.find((entry) => entry.config.variadic === true) ?? declared.at(-1);
   if (previous) {
     checkSlotOrder(slotOf(previous), slotOf(input), command);
@@ -1159,8 +1133,8 @@ interface FinishedPlace {
 
 /**
  * A Command without an action is a group, and routing sends an invocation on to one of its
- * children. A group with no children receives an invocation no handler can answer, and stdin on a
- * group reaches no handler either.
+ * children. A group with no children receives an invocation no handler can answer, and arguments,
+ * passthrough, or stdin on a group reach no handler either.
  */
 function checkGroup(state: Declared, place: FinishedPlace): void {
   const { name } = state;
@@ -1171,6 +1145,14 @@ function checkGroup(state: Declared, place: FinishedPlace): void {
       findings:
         placement === undefined ? [] : [{ ...placement, note: 'no action and no children' }],
       sentence: `${commandSentence(name)} has no action.`,
+    });
+  }
+  const argument = state.inputs.find((input) => input.kind === 'argument');
+  if (argument !== undefined) {
+    throw new DeclarationError(commandWithoutAction, {
+      correction: 'Declare the arguments on the Command that reads them, or register an action.',
+      findings: [inputFinding(place.path, argument, 'the first argument')],
+      sentence: `${commandSentence(name)} declares arguments but registers no action to receive them.`,
     });
   }
   if (state.passthrough !== undefined) {
@@ -2142,17 +2124,6 @@ function checkInputFacts(
   }
 }
 
-/** One Command declares arguments or attaches children, whichever declaration made each of them. */
-function checkArgumentPlacement(
-  command: CommandPlace,
-  slot: ArgumentSlot | undefined,
-  child: AttachedChild | undefined,
-): void {
-  if (slot && child) {
-    throw placementFault(command, slot.input, child);
-  }
-}
-
 /**
  * Compiles one declaration for dispatch against the shared globals table. Every authored rule threw
  * at the call or the attach that first held its data, so what can still fail here is the root's
@@ -2205,7 +2176,6 @@ export function buildCommand<Args, Options, Globals>(
   // Every value was validated once, the author's at each call and each hook's at its `extend()`.
   const extensions = publishStore(progress.extensions);
   const slots = hookInputs.length > 0 ? collectArguments(hooked, place) : declaredSlots;
-  checkArgumentPlacement(place, slots[0], state.children[0]);
   const result = checkFinished(hooked, hasAction, { path: context.path });
   const options = checkCompiledOptions(hooked.inputs, globals, localScope(name, context.path));
   const table: SpellingTable = new Map([...tableEntries(options, false), ...globals.table]);
@@ -2957,7 +2927,10 @@ function parseLocal(routed: ParsedInvocation): LocalPhase {
     return { fault, kind: 'held' };
   }
   if (!dispatch) {
-    return { fault: new NonCallableCommandError(path, candidatesOf(command)), kind: 'held' };
+    return {
+      fault: new NonCallableCommandError(path, candidatesOf(command), routed.escapable),
+      kind: 'held',
+    };
   }
   return {
     args: routed.args,

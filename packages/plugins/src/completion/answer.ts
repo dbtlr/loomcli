@@ -137,11 +137,24 @@ function valueOffers(schema: Schema | null, lead: string, prefix: string): Offer
   return { directive: filesOff, offers };
 }
 
+/**
+ * The children's names, then the values the word's other reading as the Command's first argument
+ * offers. An argument with no closed set leaves the shell its file names, which the directive says.
+ */
+function commandOffers(position: Extract<WordPosition, { kind: 'command' }>): Offers {
+  const children = childOffers(position.command);
+  if (position.argument === null) {
+    return { directive: filesOff, offers: children };
+  }
+  const values = valueOffers(position.argument.schema, '', position.prefix);
+  return { directive: values.directive, offers: [...children, ...values.offers] };
+}
+
 /** What one position offers before the prefix filter and the exactness rule apply. */
 function offersAt(graph: CommandGraph, position: WordPosition): Offers {
   switch (position.kind) {
     case 'command': {
-      return { directive: filesOff, offers: childOffers(position.command) };
+      return commandOffers(position);
     }
     case 'option': {
       return { directive: filesOff, offers: optionOffers(graph, position) };

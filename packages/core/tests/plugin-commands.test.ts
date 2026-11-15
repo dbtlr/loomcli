@@ -9,8 +9,8 @@ import { expect, test } from 'vite-plus/test';
  * another plugin's hook and from its own, and a declaration error when the application attaches a
  * Command with the same name, when two installed plugins attach one name, when an alias repeats a
  * sibling's name, when the application also attaches the plugin's Command value at the root or
- * under another Command, when a plugin Command's local option repeats a global option's
- * key, and when the root declares arguments. Each case runs under Node and Bun.
+ * under another Command, and when a plugin Command's local option repeats a global option's
+ * key. A root that declares arguments holds the plugin Commands too. Each case runs under Node and Bun.
  */
 
 import { invoke as invokeFixture } from './run-fixture.ts';
@@ -97,10 +97,6 @@ const rejected = [
     'global-collision',
     'Option "quiet" is declared as a global option and as a local option on Command "doctor". Rename the local option.',
   ],
-  [
-    'root-arguments',
-    'The root Command declares argument "files" and attaches child "doctor". Move the argument into a child Command or remove the children.',
-  ],
   ['plugin-unfinished', 'Command "doctor" has no action. Register an action.'],
   [
     'plugin-repeated-name',
@@ -114,6 +110,19 @@ test.each(rejected)(
     await expect(inspect(scenario)).resolves.toBe(`thrown:1: ${message}\n`);
   },
 );
+
+test('a root that declares arguments holds the plugin Commands', async () => {
+  await expect(inspect('root-arguments')).resolves.toBe('["doctor"]\n');
+});
+
+test.each([
+  [['doctor'], 'ran:doctor\nresolved:0\n'],
+  [['a.txt', 'doctor'], 'ran:root:a.txt+doctor\nresolved:0\n'],
+  [['--', 'doctor'], 'ran:root:doctor\nresolved:0\n'],
+  [['notes.txt'], 'ran:root:notes.txt\nresolved:0\n'],
+])('a root with arguments and a plugin Command reads %j', async (words, stdout) => {
+  await expect(run('root-arguments', words).then((result) => result.stdout)).resolves.toBe(stdout);
+});
 
 test("the plugins' Commands leave globalOption() open", async () => {
   await expect(inspect('global-after-plugin-commands')).resolves.toBe('["doctor","local"]\n');

@@ -84,7 +84,12 @@ import { afterEach, describe, expect, it } from 'vite-plus/test';
 import { invoke } from '../../../scripts/test-process.js';
 import { ruleParts } from '../../../scripts/test-rules.js';
 import { runOnMock } from './fixtures/in-process.ts';
-import { checked, inspected, serviceGraphApplication } from './fixtures/service-graph.ts';
+import {
+  checked,
+  inspected,
+  mixedRootApplication,
+  serviceGraphApplication,
+} from './fixtures/service-graph.ts';
 import { servicePrograms } from './fixtures/service-programs.js';
 import { run as fixtureRun } from './fixtures/service-run-app.js';
 
@@ -1376,6 +1381,16 @@ describe('settings and the graph', () => {
       sentence:
         'Plugin "@loomcli/plugins/service" setting "run" does not route to a Command with an action: bogus.',
     });
+  });
+
+  it.each([
+    ['a word that names no child fills the root argument', ['notes.txt'], 'clean\n'],
+    ['a word after -- fills it even when it names a child', ['--', 'cache'], 'clean\n'],
+    ['a word that names a child routes into it', ['cache', 'clear'], 'clean\n'],
+    ['a group the root routes into runs nothing', ['cache'], undefined],
+  ])('a root that declares arguments: %s', (_name, words, expected) => {
+    const faults = mixedRootApplication(words).check();
+    expect(faults.length === 0).toBe(expected === 'clean\n');
   });
 
   it.each([

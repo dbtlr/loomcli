@@ -20,8 +20,11 @@
  *   (packages/plugins/tests/help-invocation.test.ts).
  */
 
+import { Application, Command } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
 import { expect, test } from 'vite-plus/test';
 
+import { runOnMock } from './fixtures/in-process.ts';
 import { run as fixtureRun } from './fixtures/run-app.js';
 
 /** One page the fixture printed, with the single newline `out.print` appends. */
@@ -522,4 +525,53 @@ test("a multiple option's env fact names its delimiter as a JSON string after th
   );
   expect(compact.stdout).not.toContain('APP_SECRETS');
   expect(compact.stdout).not.toContain('";"');
+});
+
+/** A root that reads files and holds a `completion` group, with or without the passthrough mode. */
+function reader(passthrough: boolean) {
+  const files = new Application('textstat', { plugins: [help()] }).argument('files', {
+    description: 'The files to count.',
+    variadic: true,
+  });
+  const group = new Command('completion', { description: 'Print a script.' }).command(
+    new Command('bash').action(() => undefined),
+  );
+  return (passthrough ? files.passthrough() : files).command(group).action(() => undefined);
+}
+
+test('a root with arguments and a visible child ends ARGUMENTS with the -- row', async () => {
+  const result = await runOnMock(reader(false), { argv: ['--help'] });
+  expect(result.stdout).toContain(
+    [
+      'ARGUMENTS',
+      '  files  The files to count.',
+      '  --     Read every later word as an argument, even a command name.',
+    ].join('\n'),
+  );
+  expect(result.stdout).toContain(
+    '  textstat [files...] [options]\n  textstat <command> [options]',
+  );
+});
+
+test('the passthrough mode keeps its own row, and a child page or a childless root has no -- row', async () => {
+  const passing = await runOnMock(reader(true), { argv: ['--help'] });
+  expect(passing.stdout).toContain('-- <args>...');
+  expect(passing.stdout).not.toContain('even a command name');
+  const child = await runOnMock(reader(false), { argv: ['completion', '--help'] });
+  expect(child.stdout).not.toContain('even a command name');
+  const childless = new Application('textstat', { plugins: [help()] })
+    .argument('files', { variadic: true })
+    .action(() => undefined);
+  const childlessPage = await runOnMock(childless, { argv: ['--help'] });
+  expect(childlessPage.stdout).not.toContain('even a command name');
+});
+
+test('a root with arguments whose only child is hidden has no -- row', async () => {
+  const hiddenOnly = new Application('textstat', { plugins: [help()] })
+    .argument('files', { description: 'The files to count.', variadic: true })
+    .command(new Command('internal', { hidden: true }).action(() => undefined))
+    .action(() => undefined);
+  const hiddenPage = await runOnMock(hiddenOnly, { argv: ['--help'] });
+  expect(hiddenPage.stdout).toContain('  files  The files to count.');
+  expect(hiddenPage.stdout).not.toContain('even a command name');
 });

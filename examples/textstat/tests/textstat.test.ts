@@ -156,3 +156,38 @@ test('words after -- are file paths, including a hyphenated name', async () => {
   expect(result.stdout).toContain('    6  one.txt\n');
   expect(result.stdout).toContain('    3  -notes.txt\n');
 });
+
+test('completion bash routes to the plugin and prints its script', async () => {
+  const { status, stdout } = await run(['completion', 'bash']);
+  expect(status).toBe(0);
+  expect(stdout).toContain('textstat');
+});
+
+test('a word after a file, or after --, is a file even when it names the completion group', async () => {
+  writeFileSync(join(directory, 'completion'), 'abcd');
+  const after = await run(['one.txt', 'completion']);
+  expect(after).toMatchObject({ status: 0, stderr: '' });
+  expect(after.stdout).toContain('    6  one.txt\n    4  completion\n');
+  const escaped = await run(['--', 'completion']);
+  expect(escaped).toMatchObject({ status: 0, stderr: '' });
+  expect(escaped.stdout).toContain('    4  completion\n');
+  expect(escaped.stdout).not.toContain('one.txt');
+});
+
+test('completion alone fails with the sentence that says how to count a file of that name', async () => {
+  const { status, stderr, stdout } = await run(['completion']);
+  expect(status).toBe(2);
+  expect(stdout).toBe('');
+  expect(stderr).toContain(
+    'Command "completion" requires a subcommand. Use one of: bash, zsh, fish, powershell, install, update, uninstall. To pass "completion" as an argument, write -- before it.',
+  );
+});
+
+test('completion offers its Command for a prefix of it, and file names for any other word', async () => {
+  const named = await run(['completion', '__complete', '--', 'co']);
+  expect(named.status).toBe(0);
+  expect(named.stdout).toMatch(/^completion\t[^\n]*\n:0\n$/u);
+  await expect(run(['completion', '__complete', '--', 'a'])).resolves.toMatchObject({
+    stdout: ':0\n',
+  });
+});

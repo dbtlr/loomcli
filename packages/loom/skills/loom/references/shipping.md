@@ -78,7 +78,7 @@ gh release create v1.4.0 dist/notes-* dist/SHA256SUMS --notes "$(npx loom change
 `selfUpdate()` from `@loomcli/plugins/self-update` adds the `self-update` Command and, unless `notices: false`, update notices, under [the self-update plugin](../../../../../docs/plugins/self-update.md).
 
 - **It replaces only what `install.sh` placed.** The binary must be a compile target built with `--release`, installed by the script, and unchanged since. A binary built or installed any other way draws `Update it the way you installed it.`, and a changed one says to install it again with `install.sh`.
-- **A root that declares arguments cannot install it.**
+- **A root that declares arguments can install it.** The `self-update` Command is a child like any other, so a word that names it routes there, and `--` passes that word as an argument.
 - **`afterReplace` runs the old code.** The hook runs in the replaced process, so anything that needs the new version runs the binary at `path`. The completion, man page, and skills plugins each export a refresh that does this. Compose them in one hook:
 
 ```ts

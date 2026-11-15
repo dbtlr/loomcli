@@ -42,3 +42,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-15: Proposed with the routing rule (LM-391), which ADR-0150 first carried and which moves here whole. It supersedes part of ADR-0004, ADR-0026, and ADR-0055, which carry dated entries.
+- 2026-11-15: [ADR-0160](0160-a-command-with-an-action-may-declare-arguments-and-hold-children-and-an-exact-child-name-routes-first.md), proposed, narrows this record's sentence that arguments and children stay exclusive to groups. A Command with an action may declare arguments and hold children. It binds when that record is accepted.

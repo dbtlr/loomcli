@@ -39,7 +39,8 @@ textstat is an example application that counts the bytes, words, or lines of fil
 
 - **Help** ([reference](../../docs/plugins/help.md#help-extensions)). textstat installs `help()` and `version()` from `@loomcli/plugins` ahead of the example plugin, so help and version win a tie. The root carries a `helpCommand` value with the `details` and `examples` the page shows, where each `command` omits the application name. The example plugin keeps its own descriptor and values, because the two are separate facts. `textstat --help` prints the page with its `--format` row, whose description names the declared default, as the [help restyle](../../docs/plugins/help.md#help-and-version-restyle) specifies, and whose [accepted values](../../docs/plugins/help.md#accepted-values) list the view names.
 - **Shared example plugin** ([reference](../../docs/core/extensions.md)). The [explain plugin](../explain/README.md) contributes `--explain`, which prints the command's name, its description, and the details its declaration carries, then ends the invocation without reading a file.
-- **Other plugins.** textstat also installs `suggestions()`, `manifest({ short: 'M' })`, and `loomTheme()` ([`src/application.ts`](src/application.ts)).
+- **Other plugins.** textstat also installs `suggestions()`, `manifest({ short: 'M' })`, `loomTheme()`, and `completion()` ([`src/application.ts`](src/application.ts)).
+- **Arguments beside children** ([reference](../../docs/core/commands.md#nested-commands-and-groups)). The root declares `files` and holds the `completion` group the plugin attaches. `textstat completion bash` routes to the plugin, `textstat a.txt completion` counts two files because a word after a file is a file, and `textstat -- completion` counts a file named `completion`. `textstat completion` alone fails with `To pass "completion" as an argument, write -- before it.`, and the help page's `--` row says the same. Completion offers `completion` for `co<Tab>` and leaves the shell its file names for any other prefix.
 
 ## Run it
 
@@ -75,7 +76,7 @@ node examples/textstat/dist/main.js --min-bytes 100 --total README.md docs/gloss
 
 `--explain` prints the command's name, its description, and the details its declaration carries, then ends the invocation without reading a file.
 
-The words after the first bare `--` are file paths too, so `textstat -- -notes.txt` counts a file whose name starts with a hyphen. textstat declares no passthrough, so it takes no tail.
+The words after the first bare `--` are file paths too, so `textstat -- -notes.txt` counts a file whose name starts with a hyphen, and `textstat -- completion` counts a file named `completion`. textstat declares no passthrough, so it takes no tail.
 
 The same built application runs with Bun:
 

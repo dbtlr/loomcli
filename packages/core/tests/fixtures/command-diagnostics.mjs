@@ -16,10 +16,6 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
     const scenarios = {
       'alias-portable': () => new Command('keys').alias('ls', 'bad name'),
       'application-name': () => new Application('bad name'),
-      'argument-beside-child': () =>
-        new Application('probe', {
-          plugins: [plugin('@acme/doctor', { commands: [leaf('check')] })],
-        }).argument('files', { variadic: true }),
       'argument-name': () => new Command('get').argument('-path', {}),
       'argument-twice': () =>
         new Command('get').argument('path', { required: true }).argument('path', {}),
@@ -31,6 +27,10 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       },
       'child-without-action': () => new Command('store').command(new Command('get')),
       'command-name': () => new Command('bad name'),
+      'group-argument': () =>
+        new Application('probe').command(
+          new Command('cache').argument('key', {}).command(leaf('ls')),
+        ),
       'optional-before-required': () =>
         new Command('keys').argument('path', {}).argument('name', { required: true }),
       'plugin-sibling': () =>
@@ -56,9 +56,13 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
 
     const scenario = fixtureWords[0];
 
-    if (scenario === 'root-without-action') {
+    if (scenario === 'root-without-action' || scenario === 'root-group-argument') {
       // A root fault waits for build, which run() reports with the application name in a development build.
-      fixture.exitCode = await new Application('probe').run({
+      const root =
+        scenario === 'root-group-argument'
+          ? new Application('probe').argument('key', {}).command(leaf('ls'))
+          : new Application('probe');
+      fixture.exitCode = await root.run({
         process: createProcess({ argv: [] }),
       });
     } else {

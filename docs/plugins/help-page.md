@@ -14,7 +14,7 @@ The page is a sequence of blocks separated by one blank line, and no block holds
 2. **Details.** Extended alone. The routed node's `details`, rendered under [Markdown details](#markdown-details), each line indented two spaces. Help reads the same line terminators the schema recognizes, CRLF and each single terminator, as line breaks and joins with LF, so an authored CR or NEL never reaches the page.
 3. **USAGE.** One line per form, each beginning with `<path>`, except that the action form of a node whose [`.stdin()`](../core/validation.md#content-inputs) declaration is required begins with `<producer> | `, as `<producer> | <path> [options]`. The action form is `<path> <arguments> <required options> [options]`: each declared argument in declaration order, as `<name>` when required, `required: 'non-interactive'` included, and `[name]` when optional, and as `[name]` when it is a content input that accepts stdin, because piped stdin can satisfy it, with `...` inside the brackets for a variadic, so `<path>`, `[path]`, `<files...>`, and `[files...]`, and the arguments after a variadic one in their place, as in `app copy <src...> <dest> [options]`; then each visible option that declares `required: true`, in declaration order, which is always the node's own because a global option declares no presence rule, except a [content input](../core/validation.md#content-inputs) that accepts stdin, which piped stdin can satisfy, so its row's `required` fact alone says a source is needed, as `--long <placeholder>`, or `-s <placeholder>` for a `shortOnly` option, or `--long[=<placeholder>]` and `-s[<placeholder>]` for an option with an [implied value](../core/options.md#implied-values), with `...` appended for a multiple option; then `[options]`, which is always present because the help option is one; then `[-- <args>...]` on a node that declares the [passthrough mode](../core/options.md#passthrough), and nothing on any other node, so `app exec <program> [options] [-- <args>...]`. A node with an action prints the action form. A node with a visible child prints the children form, `<path> <command> [options]`, after the action form when both apply. A group whose children are all hidden prints the children form alone, because it has no other form.
 4. **COMMANDS.** For a node with a visible child, one row per visible child in authoring order. The left cell is the child's name, followed by ` <command>` when the child is a group and by ` [command]` when it has an action and children. The right cell follows the right-cell rule below, with `deprecated` as its one possible fact.
-5. **ARGUMENTS.** For a node with arguments or the passthrough mode, one row per argument in declaration order. The left cell is the name, and the right cell follows the right-cell rule, with a [content input](../core/validation.md#content-inputs)'s source facts, `required when not interactive` for an argument that declares `required: 'non-interactive'`, and `default` as its possible facts, in that order. A `required: true` argument carries no `required` fact, because the usage line already prints it as `<name>`. A node with the passthrough mode ends the block with one more row, whose left cell is `-- <args>...` and whose right cell is the mode's description, or no right cell when it declares none.
+5. **ARGUMENTS.** For a node with arguments or the passthrough mode, one row per argument in declaration order. The left cell is the name, and the right cell follows the right-cell rule, with a [content input](../core/validation.md#content-inputs)'s source facts, `required when not interactive` for an argument that declares `required: 'non-interactive'`, and `default` as its possible facts, in that order. A `required: true` argument carries no `required` fact, because the usage line already prints it as `<name>`. A node with the passthrough mode ends the block with one more row, whose left cell is `-- <args>...` and whose right cell is the mode's description, or no right cell when it declares none. A node that declares at least one argument, holds a visible child, and does not declare the passthrough mode ends the block with one more row instead, whose left cell is `--` and whose right cell is `Read every later word as an argument, even a command name.`, under [ADR-0160](../decisions/0160-a-command-with-an-action-may-declare-arguments-and-hold-children-and-an-exact-child-name-routes-first.md). The two rows never both apply, because the second needs a node without the passthrough mode.
 6. **INPUT.** For a node that declares [`.stdin()`](../core/validation.md#content-inputs), the standalone stdin declaration, and not for an argument or option that accepts stdin. The block holds, each on its own line indented two spaces: the declaration's `description` on one line, when it has one; the sentence `Required. Reads piped or redirected stdin. Terminal input is not accepted.`, or `Optional. Reads piped or redirected stdin. Terminal input is not accepted.` when the declaration is not required; and the line `Example: <producer> | <path>`, which shows the way to supply the stream.
 7. **OPTIONS.** The routed node's visible local options in declaration order, one row each; on the root page of an Application with no children, the visible globals follow them in `graph.globals` order, in this one section. The left cell is the spellings, then ` <placeholder>` for a string option: `-f, --file <path>` with both spellings, `    --explain` with a long spelling alone, indented four spaces so the long spellings align, and `-m <metric>` for a `shortOnly` string option. A string option with an [implied value](../core/options.md#implied-values) shows its placeholder in brackets after `=`, `-b, --backup[=<control>]`, and after the letter alone, `-b[<control>]`, for a `shortOnly` one, because only an attached value replaces the implied value, and its right cell carries the fact `implied: <value>`, so the row reads `-b, --backup[=<control>]  How to back up each file.  (implied: simple)`. A [counted option](../core/options.md#counted-options) has no placeholder, and its spellings end with `...`, `-v, --verbose...`, or `-v...` for a `shortOnly` one, because each occurrence adds one; it never carries `repeatable`, `required`, or `default`, since the `...` already says it repeats and a count has no presence rule or default. The option that carries the [quiet mark](../core/verbosity.md) shows no `...`, `-q, --quiet`, because a further occurrence adds nothing. A Boolean option's long spelling follows its polarity: `--total` for `positive`, `--no-total` for `negative`, and `--[no-]total` for `both`. The right cell follows the right-cell rule. A Boolean option with `negative` polarity carries the fact `default: true`, because its absent value is `true` and both of its spellings set it to `false`; the other polarities carry no default fact, because their absent value is `false`.
 8. **GLOBAL OPTIONS.** On every page except the root page of an Application with no children, the visible globals in `graph.globals` order, one row each under the OPTIONS rule, so the reader sees which options belong to this Command and which reach every Command.
@@ -96,7 +96,7 @@ GLOBAL OPTIONS
   -q, --quiet       Hide info and success messages.
 ```
 
-textstat is one root Command with a variadic argument, four local options, of which `--timing` is hidden and `--min-bytes` carries the [alias](../core/options.md#option-aliases) `--minimum` that no page lists, `--min-bytes` and `--total` each bind a variable and a configuration key, a fifth local option `--format` that the [formatter](format.md) declared on it because it declares a result, and no children, so its page folds the globals into OPTIONS. The restyled `textstat --help` has this text with color and modifiers disabled:
+textstat is one root Command with a variadic argument, four local options, of which `--timing` is hidden and `--min-bytes` carries the [alias](../core/options.md#option-aliases) `--minimum` that no page lists, `--min-bytes` and `--total` each bind a variable and a configuration key, a fifth local option `--format` that the [formatter](format.md) declared on it because it declares a result, and one child group, `completion`, which the completion plugin attaches, so its page lists the globals under GLOBAL OPTIONS and ends the ARGUMENTS block with the `--` row. The restyled `textstat --help` has this text with color and modifiers disabled:
 
 ```text
 textstat · Count bytes, words, or lines across text sources.
@@ -105,9 +105,14 @@ textstat · Count bytes, words, or lines across text sources.
 
 USAGE
   textstat [files...] [options]
+  textstat <command> [options]
+
+COMMANDS
+  completion <command>  Print or install a shell completion script.
 
 ARGUMENTS
   files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)
+  --     Read every later word as an argument, even a command name.
 
 COUNTING
   MEASURE
@@ -119,6 +124,8 @@ COUNTING
 
 OPTIONS
   -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.
+
+GLOBAL OPTIONS
   -h, --help             Show this help.
   -V, --version          Print the version.
   -M, --manifest         Print this command's manifest as JSON.
@@ -129,6 +136,8 @@ OPTIONS
 EXAMPLES
   $ textstat one.txt two.txt
   $ textstat --metric words --total *.md
+
+Run textstat <command> --help for command details.
 ```
 
 `textstat -h` prints the compact page, without the details and EXAMPLES blocks, and it points to the extended page because those blocks hold something:
@@ -138,9 +147,14 @@ textstat · Count bytes, words, or lines across text sources.
 
 USAGE
   textstat [files...] [options]
+  textstat <command> [options]
+
+COMMANDS
+  completion <command>  Print or install a shell completion script.
 
 ARGUMENTS
   files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)
+  --     Read every later word as an argument, even a command name.
 
 COUNTING
   MEASURE
@@ -152,6 +166,8 @@ COUNTING
 
 OPTIONS
   -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.
+
+GLOBAL OPTIONS
   -h, --help             Show this help.
   -V, --version          Print the version.
   -M, --manifest         Print this command's manifest as JSON.
@@ -159,6 +175,7 @@ OPTIONS
       --no-config        Read no configuration file.
   -e, --explain          Explain the selected command and exit.
 
+Run textstat <command> -h for command details.
 Run textstat --help for details and examples.
 ```
 

@@ -334,6 +334,33 @@ describe('sections', () => {
     );
   });
 
+  it('a root with arguments whose only own child is hidden has no -- entry', () => {
+    const reader = new Application('reader')
+      .argument('files', { description: 'The files.', variadic: true })
+      .command(new Command('internal', { hidden: true }).action(noop))
+      .action(noop);
+    const hiddenPage = pagesOf(reader).get('reader.1');
+    expect(hiddenPage).toContain('The files.');
+    expect(hiddenPage).not.toContain('even a command name');
+  });
+
+  it('a root with arguments and a visible child ends ARGUMENTS with a -- entry', () => {
+    const reader = new Application('reader', { plugins: [manpage()] })
+      .argument('files', { description: 'The files.', variadic: true })
+      .action(noop);
+    expect(pagesOf(reader).get('reader.1')).toContain(
+      [
+        '.SH "ARGUMENTS"',
+        '.TP',
+        String.raw`\fIfiles\fR`,
+        'The files.',
+        '.TP',
+        String.raw`\-\-`,
+        'Read every later word as an argument, even a command name.',
+      ].join('\n'),
+    );
+  });
+
   it('an argument is italic, and a page under a group names the root and its parent', () => {
     const pages = pagesOf(kit);
     expect(pages.get('kit-show.1')).toContain(

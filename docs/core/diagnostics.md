@@ -18,10 +18,6 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Argument declared twice.** An action reads each argument under its name, so two arguments with one name leave one of them unreadable.
 
-### @loomcli/core/arguments-beside-children
-
-**Arguments beside children.** A Command's first bare token either names a child or fills an argument, so a Command that holds both cannot tell which one an operator meant.
-
 ### @loomcli/core/background-mark
 
 **Invalid background mark.** One string global option may carry the operator's background choice. Core reads it from argv right after host capture, beside the color choice and before anything else prints, so it takes no short alias and no second source.
@@ -56,7 +52,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/command-without-action
 
-**Nothing to run.** Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run.
+**Nothing to run.** Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run. A group that declares an argument, stdin, or the passthrough mode has the same fault, because those declarations reach no action.
 
 ### @loomcli/core/declared-name
 

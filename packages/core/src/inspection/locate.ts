@@ -19,7 +19,16 @@ import { graphMismatch, linkOf } from './inspect.js';
  * @sealed
  */
 type WordPosition =
-  | { readonly kind: 'command'; readonly command: CommandNode; readonly prefix: string }
+  | {
+      readonly kind: 'command';
+      readonly command: CommandNode;
+      /**
+       * The argument the word fills when it names no child: the routed Command's first argument
+       * when it declares one, and `null` otherwise.
+       */
+      readonly argument: ArgumentNode | null;
+      readonly prefix: string;
+    }
   | {
       readonly kind: 'option';
       readonly command: CommandNode;
@@ -89,11 +98,15 @@ function awaitedValue(scope: Scope, awaiting: AwaitingValue, last: string): Word
   return refusesValue(last) ? none : valueOf(scope, awaiting.name, { lead: '', prefix: last });
 }
 
-/** A plain word names a child until routing ends, and fills the next positional after. */
+/**
+ * A plain word names a child until routing ends, and fills the next positional after. Where it may
+ * still name a child, a Command that declares arguments also offers its first as the word's other
+ * reading.
+ */
 function plainWord(scope: Scope, last: string): WordPosition {
   const { command, earlier } = scope;
   if (!earlier.delimited && !earlier.committed && earlier.command.children.size > 0) {
-    return { command, kind: 'command', prefix: last };
+    return { argument: command.arguments[0] ?? null, command, kind: 'command', prefix: last };
   }
   const slot = argumentSlot(earlier.command.arguments, earlier.positionals.length);
   const argument = slot && command.arguments[earlier.command.arguments.indexOf(slot)];

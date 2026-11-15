@@ -230,7 +230,21 @@ function commands(
   );
 }
 
-function args(command: CommandNode, context: ViewContext): string[] {
+/** The right cell of the `--` row that tells an operator how to pass a child's name as an argument. */
+const escapeDescription = 'Read every later word as an argument, even a command name.';
+
+/**
+ * Whether the page notes the `--` escape: the node declares an argument, holds a visible child
+ * whose name an operator might mean as one, and has no passthrough mode, whose own row names `--`.
+ */
+function notesEscape(command: CommandNode, children: readonly CommandNode[]): boolean {
+  return !isEmpty(command.arguments) && !isEmpty(children) && !command.passthrough;
+}
+
+function args(
+  { command, children }: { command: CommandNode; children: readonly CommandNode[] },
+  context: ViewContext,
+): string[] {
   const rows = command.arguments.map((argument) => ({
     left: context.style.dim.italic(context.style.escape(argument.name)),
     right: rightCell(
@@ -243,6 +257,12 @@ function args(command: CommandNode, context: ViewContext): string[] {
     rows.push({
       left: `-- ${context.style.dim.italic('<args>...')}`,
       right: rightCell({ description: command.passthrough.description }, [], context),
+    });
+  }
+  if (notesEscape(command, children)) {
+    rows.push({
+      left: '--',
+      right: rightCell({ description: escapeDescription }, [], context),
     });
   }
   return isEmpty(rows) ? [] : [context.style.dim('ARGUMENTS'), ...column(rows, context)];
@@ -432,8 +452,8 @@ function groupSentences(command: CommandNode, context: ViewContext): string[] {
  */
 function renderPage({ command, graph, variant }: HelpPage, context: ViewContext): string {
   const path = pathOf(graph, command);
-  // One reading of the visible children answers three questions.
-  // They are the children usage form, the Command sections, and the child hint.
+  // One reading of the visible children answers four questions.
+  // They are the children usage form, the Command sections, the ARGUMENTS `--` row, and the child hint.
   const children = visible(command.children);
   const detailLines = details(command, context);
   const listed = examples(graph, command, context);
@@ -444,7 +464,7 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
     extended ? detailLines : [],
     usage({ children, command, graph }, context),
     ...commands({ children, command }, context),
-    args(command, context),
+    args({ children, command }, context),
     stdinInput(command, graph, context),
     ...options(command, graph, context),
     groupSentences(command, context),
@@ -465,7 +485,9 @@ export {
   childSuffix,
   commandHelp,
   commandMembers,
+  escapeDescription,
   foldsGlobals,
+  notesEscape,
   optionMembers,
   pathOf,
   renderPage,

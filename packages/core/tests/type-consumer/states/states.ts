@@ -56,8 +56,8 @@ const group = new Application('group')
 const openAfterChild = group.option('pretty', { type: 'boolean' }).command(finished);
 const application = openAfterChild.action(({ options, out }) => out.print(options.file));
 
-// @ts-expect-error TS2339: A Command with children declares no arguments.
-group.argument;
+// A root with children may still declare arguments.
+group.argument('files', { required: true, variadic: true }).action(() => {});
 // @ts-expect-error TS2339: An Application that registered its action declares no more arguments.
 application.argument;
 // @ts-expect-error TS2339: An Application that registered its action declares no more options.
@@ -73,12 +73,11 @@ const groupRun: () => Promise<number> = group.run;
 const applicationName: string = application.name;
 const applicationRun: Promise<number> = application.run();
 
-const withArgument = new Application('sized').argument('files', {
-  required: true,
-  variadic: true,
-});
-// @ts-expect-error TS2339: A Command with arguments attaches no children.
-withArgument.command;
+const withFileArgument = new Application('sized')
+  .globalOption('file', { default: 'sized.json', type: 'string' })
+  .argument('files', { required: true, variadic: true });
+// A root with arguments may still attach children.
+withFileArgument.command(finished).action(() => {});
 
 // The declaration helpers read the phantom types, so every state answers them.
 const freshHandler: ActionHandler<typeof freshCommand> = ({ options, out }) => {

@@ -23,7 +23,9 @@ import {
   childSuffix,
   commandHelp,
   commandMembers,
+  escapeDescription,
   foldsGlobals,
+  notesEscape,
   optionMembers,
   usageForms,
   visible,
@@ -205,7 +207,7 @@ function stdinSection({ command, graph }: Subject): string[] {
   ]);
 }
 
-function argumentsSection({ command }: Subject): string[] {
+function argumentsSection({ children, command }: Subject): string[] {
   return headed('ARGUMENTS', [
     ...command.arguments.flatMap(argumentEntry),
     ...(command.passthrough
@@ -213,6 +215,9 @@ function argumentsSection({ command }: Subject): string[] {
           `\\-\\- ${inFont('args', 'italic')}...`,
           entryText({ description: command.passthrough.description }, []),
         )
+      : []),
+    ...(notesEscape(command, children)
+      ? entry(String.raw`\-\-`, entryText({ description: escapeDescription }, []))
       : []),
   ]);
 }

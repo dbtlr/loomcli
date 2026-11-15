@@ -305,6 +305,13 @@ export default defineConfig({
         },
       },
       {
+        files: ['packages/core/src/inspection/locate.ts'],
+        rules: {
+          // A command position with no argument to fill reads `null`, as the graph's absent members do.
+          'unicorn/no-null': 'off',
+        },
+      },
+      {
         files: ['packages/core/src/output/log.ts'],
         rules: {
           // The log contract spells a missing plugin and a missing stderr `null`, and JSON data holds `null`.

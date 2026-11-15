@@ -28,11 +28,6 @@ const cases: Record<string, RuleParts> = {
     rule: 'portable-name',
     sentence: 'Application name "bad name" is invalid.',
   },
-  'argument-beside-child': {
-    correction: 'Move the argument into a child Command or remove the children.',
-    rule: 'arguments-beside-children',
-    sentence: 'The root Command declares argument "files" and attaches child "check".',
-  },
   'argument-name': {
     correction: 'Use a nonempty name without a leading hyphen, whitespace, or "=".',
     rule: 'declared-name',
@@ -57,6 +52,11 @@ const cases: Record<string, RuleParts> = {
     correction: portable,
     rule: 'portable-name',
     sentence: 'Command name "bad name" is invalid.',
+  },
+  'group-argument': {
+    correction: 'Declare the arguments on the Command that reads them, or register an action.',
+    rule: 'command-without-action',
+    sentence: 'Command "cache" declares arguments but registers no action to receive them.',
   },
   'optional-before-required': {
     correction: 'Declare optional arguments after required ones.',
@@ -109,6 +109,11 @@ test.each(Object.entries(cases))(
 
 /** The faults run() reports from a development build, which wait for the graph to be built. */
 const reportedCases: Record<string, RuleParts> = {
+  'root-group-argument': {
+    correction: 'Declare the arguments on the Command that reads them, or register an action.',
+    rule: 'command-without-action',
+    sentence: 'The root Command declares arguments but registers no action to receive them.',
+  },
   'root-without-action': {
     correction: 'Register an action.',
     rule: 'command-without-action',

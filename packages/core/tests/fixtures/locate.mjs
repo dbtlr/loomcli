@@ -69,7 +69,8 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         reduced.option = option.name;
         own &&= [...graph.globals, ...node.options].includes(option);
       }
-      if (argument !== undefined) {
+      // A command position holds `null` when the word fills no argument, which reads as no member here.
+      if (argument !== undefined && argument !== null) {
         reduced.argument = argument.name;
         own &&= node.arguments.includes(argument);
       }
