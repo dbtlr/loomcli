@@ -58,7 +58,7 @@ The handler a Command registers after its inputs, aliases, and children, which r
 _Avoid_: Handler, run function, executor
 
 **Action context**:
-The single object an action receives, carrying its validated inputs, the supplied record as `supplied`, the interaction decision as `interactive`, any stdin-only input as `stdin`, the passthrough tail, the output channel, the host, the signal, `cancel`, which aborts the signal, the style, the graph, the routed Command, `invoke`, which runs another Command of the same graph by name, `log`, which records log events, and `provided`, which holds the provided values of the providers its Command opts in to.
+The single object an action receives, carrying its validated inputs, the supplied record as `supplied`, the interaction decision as `interactive`, any stdin-only input as `stdin`, the passthrough tokens on a Command that declares passthrough, the output channel, the host, the signal, `cancel`, which aborts the signal, the style, the graph, the routed Command, `invoke`, which runs another Command of the same graph by name, `log`, which records log events, and `provided`, which holds the provided values of the providers its Command opts in to.
 _Avoid_: Invocation object, props, request (which is what a middleware reads)
 
 **Global options**:
@@ -76,7 +76,7 @@ _Avoid_: Command wiring, plugin installation
 ## Inputs
 
 **Argument**:
-A positional input a Command binds from plain words in declaration order. A scalar argument binds one token; a variadic argument is last and takes the remaining tokens.
+A positional input a Command binds from plain words in declaration order. A scalar argument binds one token; a variadic argument takes the tokens the other arguments leave, and only required scalar arguments follow it, filling from the end of the line.
 _Avoid_: Positional, operand, parameter
 
 **Option**:
@@ -195,7 +195,7 @@ One POSIX strftime layout a `date`, `dateTime`, or `time` validator reads beside
 _Avoid_: Format (for the layout), pattern, date format
 
 **Validation context**:
-The facts core attaches to every validator call it makes: the phase, the input's identity, the routed path, the passthrough tail, the raw supplied values, tokens and the values input sources filled alike, and the host. A validator reads it to decide rules that depend on the invocation.
+The facts core attaches to every validator call it makes: the phase, the input's identity, the routed path, the passthrough tokens, empty on a Command without passthrough, the raw supplied values, tokens and the values input sources filled alike, and the host. A validator reads it to decide rules that depend on the invocation.
 _Avoid_: Schema options, environment
 
 **Supplied record**:
@@ -203,11 +203,11 @@ The raw value of every input some tier supplied in one invocation, keyed by decl
 _Avoid_: Provenance, raw options, source map
 
 **Conditional requiredness**:
-The presence rule `required: 'non-interactive'` on a local string option, single or multiple, or a string argument, scalar or variadic: the input is required when the run's interaction decision is off and optional when it is on, so the action can ask for it. Such an argument sits after every `required: true` argument and before every optional one in the argument order.
+The presence rule `required: 'non-interactive'` on a local string option, single or multiple, or a string argument, scalar or variadic: the input is required when the run's interaction decision is off and optional when it is on, so the action can ask for it. Such an argument sits after every `required: true` argument and before every optional one in the argument order, up to and including a variadic argument.
 _Avoid_: Soft required, required unless prompted
 
 **Passthrough**:
-The tokens after the first bare `--`, delivered to the action unchanged and never parsed, validated, or transformed by core.
+The mode a Command with an action declares, under which every token after the first bare `--` reaches its action unchanged as `passthrough`, fills no argument, and is never parsed, validated, or transformed by core. On a Command without it, those tokens are plain words that fill its arguments.
 _Avoid_: Rest arguments, trailing arguments, raw args
 
 ## Names and routing
@@ -323,7 +323,7 @@ An option word the routed Command's table does not hold, while a visible Command
 _Avoid_: Early option, out-of-scope option
 
 **Word position**:
-Where the last word of an unfinished invocation sits under core's token grammar: a Command name, an option spelling, the value of one option, one argument, the passthrough tail, or nowhere. Core reads it with the parser's own grammar, so completion and parsing never disagree.
+Where the last word of an unfinished invocation sits under core's token grammar: a Command name, an option spelling, the value of one option, one argument, the passthrough tokens of a Command that declares passthrough, or nowhere. Core reads it with the parser's own grammar, so completion and parsing never disagree.
 _Avoid_: Slot (a single-owner contribution), cursor context, completion state
 
 **Dispatch**:
