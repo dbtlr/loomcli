@@ -75,7 +75,7 @@ node examples/textstat/dist/main.js --min-bytes 100 --total README.md docs/gloss
 
 `--explain` prints the command's name, its description, and the details its declaration carries, then ends the invocation without reading a file.
 
-The first bare `--` starts a separate passthrough tail. textstat ignores that tail; it does not treat tail tokens as file paths.
+The words after the first bare `--` are file paths too, so `textstat -- -notes.txt` counts a file whose name starts with a hyphen. textstat declares no passthrough, so it takes no tail.
 
 The same built application runs with Bun:
 

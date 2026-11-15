@@ -76,7 +76,7 @@ _Avoid_: Command wiring, plugin installation
 ## Inputs
 
 **Argument**:
-A positional input a Command binds from plain words in declaration order. A scalar argument binds one token; a variadic argument takes the tokens the other arguments leave, and only required scalar arguments follow it, filling from the end of the line.
+A positional input a Command binds from plain words in declaration order. A scalar argument binds one token; a variadic argument takes the tokens the other arguments leave, and only required scalar arguments that are not content arguments follow it, filling from the end of the line.
 _Avoid_: Positional, operand, parameter
 
 **Option**:
