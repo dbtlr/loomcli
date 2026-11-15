@@ -286,6 +286,23 @@ test('a path the schema rejects fails every command that reads the file with cod
   );
 });
 
+test('a cut over a wrong file changes nothing: the changelog, package.json, and the fragments stay', async () => {
+  for (const config of ['{ "paths": \n', `${JSON.stringify({ paths: { changes: '' } })}\n`]) {
+    const directory = configuredPackage(
+      {},
+      { '.changes/fix.md': '- Fix output.\n', 'CHANGELOG.md': '# Changelog\n' },
+    );
+    put(directory, 'loom.config.json', config);
+    const manifest = read(directory, 'package.json');
+    const result = await runLoom(directory, ['changelog', 'write']);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(read(directory, 'CHANGELOG.md')).toBe('# Changelog\n');
+    expect(read(directory, 'package.json')).toBe(manifest);
+    expect(read(directory, '.changes/fix.md')).toBe('- Fix output.\n');
+  }
+});
+
 test('an unknown key stays ignored, because the schema publishes no JSON Schema', async () => {
   const directory = configuredPackage(
     { pathz: { changes: 'notes' } },
