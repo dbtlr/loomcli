@@ -14,8 +14,11 @@
  * - When it restores. The console comes back at the last region's close, at the run's end when a
  *   region was left open, and when the action fails.
  * - At the process's end. A `console.error` followed by the process's exit event while a frame is
- *   drawn prints the message above the frame in that step, and the console is back after it. A mock
- *   never calls its `exit` listeners, so the test calls the one core adds to the mock's signal source.
+ *   drawn prints the message above the frame in that step, and the console is back after it. With
+ *   stdout on the terminal too, `console.log` and `console.error` calls and a second region's first
+ *   frame queued before the exit event reach the screen in the order they were made, each stdout
+ *   text between the stack's erase and its redraw. A mock never calls its `exit` listeners, so the
+ *   test calls the one core adds to the mock's signal source.
  * - What it puts back. A member another library replaced meanwhile keeps that library's function,
  *   and a replacement still held after the restore calls the member it replaced.
  * - One holder. A second run whose span opens while the first holds the console patches nothing,
@@ -25,7 +28,7 @@ import { Application } from '@loomcli/core';
 import type { Region } from '@loomcli/core';
 import { patchConsole } from '@loomcli/plugins/patch-console';
 import { mockProcess } from '@loomcli/testing';
-import type { MockProcess } from '@loomcli/testing';
+import type { MockProcess, Write } from '@loomcli/testing';
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test';
 
 const literal = { render: (value: string) => value };
@@ -135,6 +138,40 @@ test('a console.error followed by the exit event while a frame is drawn prints a
   });
   await expect(app.run({ process: mock })).resolves.toBe(0);
   expect(atExit).toEqual([[true, true, true]]);
+});
+
+/** The bytes that erase a stack of `rows` rows, from the cursor at the end of its last row. */
+function erase(rows: number): string {
+  return rows === 1 ? '\r\u001B[J' : `\r\u001B[${String(rows - 1)}A\u001B[J`;
+}
+
+test('with stdout on the terminal too, console writes before the exit event reach the screen in the order they were made', async () => {
+  const mock = onTerminal({ streams: ['stdout', 'stderr'] });
+  const exit = exitEvent(mock);
+  let atExit: readonly Write[] = [];
+  const app = new Application('ship', { plugins: [patchConsole()] }).action(async ({ out }) => {
+    await out.region().draw('FIRST', literal);
+    const before = mock.transcript.length;
+    console.log('OUT-1');
+    console.error('ERR-1');
+    console.log('OUT-2');
+    void out.region().draw('SECOND', literal);
+    console.error('ERR-2');
+    exit(1);
+    atExit = mock.transcript.slice(before);
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  // Each stdout text is written between the erase of the stack and its redraw on stderr.
+  expect(atExit).toEqual([
+    { stream: 'stderr', text: erase(1) },
+    { stream: 'stdout', text: 'OUT-1\n' },
+    { stream: 'stderr', text: `FIRST${erase(1)}ERR-1\nFIRST${erase(1)}` },
+    { stream: 'stdout', text: 'OUT-2\n' },
+    {
+      stream: 'stderr',
+      text: `FIRST${erase(1)}FIRST\nSECOND${erase(2)}ERR-2\nFIRST\nSECOND\u001B[?25h`,
+    },
+  ]);
 });
 
 test('with stdout on the terminal too, a console.log lands on stdout and the frame is drawn again', async () => {
