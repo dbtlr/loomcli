@@ -13,6 +13,7 @@ async function runFixture(words, fixtureOptions = {}) {
       .option('depth', { short: 'd', type: 'string' })
       .option('pattern', { type: 'string' })
       .option('total', { short: 't', type: 'boolean' })
+      .passthrough()
       .action(({ args, options, passthrough, host, out }) => {
         out.print(JSON.stringify({ args, argv: host.argv, options, passthrough }));
       });

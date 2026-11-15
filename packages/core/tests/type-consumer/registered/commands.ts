@@ -22,9 +22,10 @@ const vocabulary = () =>
 const get = new Command('get')
   .argument('path', { required: true })
   .option('raw', { short: 'r', type: 'boolean' })
+  .passthrough()
   .action(getValue);
 
-const keys = new Command('keys').action(({ args, options, passthrough }) => {
+const keys = new Command('keys').passthrough().action(({ args, options, passthrough }) => {
   const file: string = options.file;
   const quiet: boolean = options.quiet;
   const limit: number | undefined = options.limit;

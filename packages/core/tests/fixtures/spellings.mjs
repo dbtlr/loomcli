@@ -12,10 +12,12 @@ async function runFixture(words, fixtureOptions = {}) {
 
     const select = new Command('select')
       .option('field', { multiple: true, short: 'F', type: 'string' })
+      .passthrough()
       .action(report('select'));
 
     const count = new Command('count')
       .option('field', { polarity: 'both', short: 'F', type: 'boolean' })
+      .passthrough()
       .action(report('count'));
 
     const set = new Command('set')
@@ -24,6 +26,7 @@ async function runFixture(words, fixtureOptions = {}) {
         type: 'string',
         validate: z.string().transform((value) => value.toUpperCase()),
       })
+      .passthrough()
       .action(report('set'));
 
     const cache = new Command('cache').command(set);
@@ -33,6 +36,7 @@ async function runFixture(words, fixtureOptions = {}) {
       .command(select)
       .command(count)
       .command(cache)
+      .passthrough()
       .action(report('root'));
 
     await app.run({ process: createProcess({ argv: words.slice(1) }) });

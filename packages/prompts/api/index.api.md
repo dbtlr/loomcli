@@ -130,7 +130,8 @@ export interface ProgressUpdate {
 }
 
 // @public
-export type PromptContext<Options, Args = unknown> = Pick<ActionContext<Args, Options>, 'args' | 'passthrough' | 'options' | 'interactive' | 'supplied' | 'command' | 'graph' | 'host' | 'signal' | 'cancel' | 'onShutdown' | 'onSuspend' | 'onResume'> & {
+export type PromptContext<Options, Args = unknown> = Pick<ActionContext<Args, Options>, 'args' | 'options' | 'interactive' | 'supplied' | 'command' | 'graph' | 'host' | 'signal' | 'cancel' | 'onShutdown' | 'onSuspend' | 'onResume'> & {
+    readonly passthrough?: readonly string[];
     readonly out: Pick<Out, 'draw' | 'region' | 'lendTerminal'>;
 };
 

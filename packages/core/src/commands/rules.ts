@@ -34,11 +34,11 @@ const argumentDeclaredTwice = registerRule('@loomcli/core/argument-declared-twic
   headline: 'Argument declared twice',
 });
 
-/** A variadic argument that another argument follows. */
-const variadicArgumentLast = registerRule('@loomcli/core/variadic-argument-last', {
+/** An argument after a variadic that cannot reserve exactly one word from the end. */
+const argumentAfterVariadic = registerRule('@loomcli/core/argument-after-variadic', {
   explanation:
-    'A variadic argument takes every positional token that remains, so an argument after it would never receive one.',
-  headline: 'Variadic argument not last',
+    "A variadic argument takes the plain words between the arguments before it and the arguments after it, so each argument after it fills from the end of the line with exactly one word. Only a required scalar argument always takes exactly one word: an optional argument, a second variadic, an argument required only when input is not interactive, or a content argument after a variadic would leave the parser unable to tell where the variadic's words end.",
+  headline: 'Argument after variadic not a required scalar',
 });
 
 /** A required argument that an optional argument precedes. */
@@ -78,5 +78,5 @@ export {
   optionalArgumentLast,
   portableName,
   siblingNameTaken,
-  variadicArgumentLast,
+  argumentAfterVariadic,
 };

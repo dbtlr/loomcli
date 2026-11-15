@@ -15,6 +15,9 @@ const getValue: ActionHandler<typeof get> = async ({ args, out }) => {
   await out.print(args.path);
 };
 
+const forward = get.passthrough();
+const forwardValue: ActionHandler<typeof forward> = () => {};
+
 const read = new Command('read').stdin({ required: true });
 
 const readInput: ActionHandler<typeof read> = async ({ out, stdin }) => {
@@ -106,10 +109,11 @@ describe('actionContext', () => {
     });
   });
 
-  it('a handler may assign an unstated passthrough, as its context types it', () => {
-    const context = actionContext(getValue, {
+  it('a handler may assign passthrough when its Command declares the mode', () => {
+    const context = actionContext(forwardValue, {
       args: { path: 'name' },
       options: { verbose: 0 },
+      passthrough: [],
       provided: {},
     });
     context.passthrough = ['--', 'rest'];

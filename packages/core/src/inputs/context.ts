@@ -91,7 +91,9 @@ function questionIdentity(question: {
  * @public
  */
 function questionValidationOptions(
-  context: Pick<ActionContext<unknown>, 'host' | 'command' | 'passthrough' | 'supplied'>,
+  context: Pick<ActionContext<unknown>, 'host' | 'command' | 'supplied'> & {
+    readonly passthrough?: readonly string[];
+  },
   question: { message: string } & (
     | { option?: string; argument?: never }
     | { argument: string; option?: never }
@@ -101,7 +103,7 @@ function questionValidationOptions(
     command: [...context.command.path],
     host: context.host,
     input: questionIdentity(question),
-    passthrough: [...context.passthrough],
+    passthrough: [...(context.passthrough ?? [])],
     phase: 'question',
     supplied: copiedSupplied(context.supplied),
   });

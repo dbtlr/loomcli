@@ -221,7 +221,6 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
   onShutdown,
   options,
   out,
-  passthrough,
   provided,
   signal,
 }) => {
@@ -246,7 +245,7 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
       '--watch builds development, so pass --watch or --build distributed.',
     );
   }
-  await report({ out, passthrough, signal }, async () => {
+  await report({ out, signal }, async () => {
     const { cwd } = host;
     const directory = packageDirectory(cwd);
     const manifest = readManifest(directory);

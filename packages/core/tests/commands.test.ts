@@ -370,7 +370,7 @@ test.each([
   ],
   [
     'child-variadic-not-last',
-    'Argument "paths" is variadic and precedes argument "path" on Command "get". Declare the variadic argument last.',
+    'Argument "path" is optional and follows variadic argument "paths" on Command "get". Declare only required scalar arguments after a variadic argument.',
   ],
   [
     'late-child-invalid-name',

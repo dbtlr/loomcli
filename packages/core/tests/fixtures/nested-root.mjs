@@ -7,9 +7,12 @@ async function runFixture(words, fixtureOptions = {}) {
   const fixture = fixtureScenario({ ...fixtureOptions, argv: words });
   const { createProcess } = fixture;
   try {
-    const get = new Command('get').argument('path', { required: true }).action(report('get'));
+    const get = new Command('get')
+      .argument('path', { required: true })
+      .passthrough()
+      .action(report('get'));
 
-    const keys = new Command('keys').action(report('keys'));
+    const keys = new Command('keys').passthrough().action(report('keys'));
 
     // The unnamed root is a group too: it attaches children and registers no action of its own.
     const app = new Application('nested-root')

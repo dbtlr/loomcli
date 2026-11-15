@@ -94,9 +94,9 @@ const cases: Record<string, RuleParts> = {
       'Command "store" attaches child "keys" with alias "get", which is also the name of child "get".',
   },
   'variadic-not-last': {
-    correction: 'Declare the variadic argument last.',
-    rule: 'variadic-argument-last',
-    sentence: 'Argument "paths" is variadic and precedes argument "path" on Command "get".',
+    correction: 'Declare only required scalar arguments after a variadic argument.',
+    rule: 'argument-after-variadic',
+    sentence: 'Argument "path" is optional and follows variadic argument "paths" on Command "get".',
   },
 };
 

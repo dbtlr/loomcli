@@ -53,7 +53,7 @@ async function runFixture(words, fixtureOptions = {}) {
             .default('internal')
             .transform(() => ++calls),
         });
-        app = app.action(({ options, out }) =>
+        app = app.passthrough().action(({ options, out }) =>
           out.print(
             JSON.stringify({
               absent: options.size === undefined,
@@ -75,7 +75,9 @@ async function runFixture(words, fixtureOptions = {}) {
             return numberSchema['~standard'].validate(raw);
           }),
         });
-        app = app.action(({ options, out }) => out.print(JSON.stringify({ ...options, calls })));
+        app = app
+          .passthrough()
+          .action(({ options, out }) => out.print(JSON.stringify({ ...options, calls })));
         break;
       }
       case 'issues': {
@@ -108,7 +110,7 @@ async function runFixture(words, fixtureOptions = {}) {
           validate: z.string().transform((file) => file.toUpperCase()),
           variadic: true,
         });
-        app = app.action(({ args, passthrough, host, out }) =>
+        app = app.passthrough().action(({ args, passthrough, host, out }) =>
           out.print(
             JSON.stringify({
               args: { files: { count: args.files.length, joined: args.files.join(':') } },
@@ -219,9 +221,11 @@ async function runFixture(words, fixtureOptions = {}) {
             return undefined;
           }),
         });
-        app = app.action(({ options, out }) =>
-          out.print(JSON.stringify({ absent: options.size === undefined, calls })),
-        );
+        app = app
+          .passthrough()
+          .action(({ options, out }) =>
+            out.print(JSON.stringify({ absent: options.size === undefined, calls })),
+          );
         break;
       }
       case 'rerun': {
@@ -234,7 +238,7 @@ async function runFixture(words, fixtureOptions = {}) {
         app = app.option('__proto__', config);
         config.default = '99';
         config.validate = numberSchema;
-        app = app.action(({ options, out }) => {
+        app = app.passthrough().action(({ options, out }) => {
           out.print(JSON.stringify(options));
           options.__proto__.size = 55;
         });
@@ -260,7 +264,7 @@ async function runFixture(words, fixtureOptions = {}) {
       }
     }
     if (!['absence', 'async', 'each', 'undefined-output', 'rerun'].includes(scenario)) {
-      app = app.action(({ options, out }) => out.print(JSON.stringify(options)));
+      app = app.passthrough().action(({ options, out }) => out.print(JSON.stringify(options)));
     }
     if (scenario !== 'rerun') {
       await app.run({ process: createProcess({ argv }) });

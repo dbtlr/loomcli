@@ -26,11 +26,10 @@ export const writeChangelog: ActionHandler<typeof changelogWrite> = async ({
   onShutdown,
   options,
   out,
-  passthrough,
   provided,
   signal,
 }) => {
-  await report({ out, passthrough, signal }, async () => {
+  await report({ out, signal }, async () => {
     const directory = packageDirectory(host.cwd);
     const cut = await preparePackageCut(
       { host, onShutdown, root: directory, signal },

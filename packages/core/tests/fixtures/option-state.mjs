@@ -18,8 +18,8 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
     const left = base.option('left', { short: 'l', type: 'boolean' });
     const right = base.option('right', { short: 'l', type: 'boolean' });
 
-    const first = left.action(report);
-    const second = right.action(report);
+    const first = left.passthrough().action(report);
+    const second = right.passthrough().action(report);
     await first.run({
       process: createProcess({
         argv: ['-nl', '--__proto__=safe', '--dryRun', '--', '--', '', 'two words'],

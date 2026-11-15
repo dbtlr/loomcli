@@ -15,10 +15,9 @@ export const recordPlannedRelease: ActionHandler<typeof releaseRecord> = async (
   onShutdown,
   options,
   out,
-  passthrough,
   signal,
 }) => {
-  await report({ out, passthrough, signal }, async () => {
+  await report({ out, signal }, async () => {
     const token = host.env.GH_TOKEN;
     if (token === undefined || token === '') {
       throw new Error('Recording a release requires GH_TOKEN.');

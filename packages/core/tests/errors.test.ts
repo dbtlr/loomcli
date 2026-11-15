@@ -20,7 +20,7 @@ test.each([
     'required',
     ['-file'],
     2,
-    'fixture: Unknown option "-f". Supply a declared option; prefix a hyphenated path with "./".\n',
+    'fixture: Unknown option "-f". Supply a declared option, or pass it as an argument after "--".\n',
   ],
   ['actionless', [], 1, 'fixture: Something went wrong.\n'],
   [
@@ -53,7 +53,7 @@ test.each([
   ],
   [
     'competing',
-    'Argument "files" is variadic and precedes argument "extras" on the root Command. Declare the variadic argument last.',
+    'Argument "extras" is variadic and follows variadic argument "files" on the root Command. Declare only required scalar arguments after a variadic argument.',
   ],
 ] satisfies [string, string][])(
   'the %s declaration throws from the call that makes it',

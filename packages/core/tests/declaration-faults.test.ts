@@ -40,6 +40,7 @@ test('a Command value publishes its authoring calls and no declared state', asyn
       'extend',
       'oneRequired',
       'option',
+      'passthrough',
       'requiredTogether',
       'result',
       'rows',

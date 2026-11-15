@@ -34,7 +34,6 @@ export interface ActionContext<Args, Options = {}, Result = unknown, Provided = 
     readonly onSuspend: OnSuspend;
     options: Options;
     out: Out<Result>;
-    passthrough: string[];
     readonly provided: Provided;
     signal: AbortSignal;
     readonly stdin?: Content | undefined;
@@ -249,7 +248,7 @@ export interface CommandGraph {
 }
 
 // @public @sealed
-export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'option' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'result' | 'rows' | 'stdin';
+export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'option' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'result' | 'rows' | 'passthrough' | 'stdin';
 
 // @public @sealed
 export interface CommandNode {
@@ -264,6 +263,9 @@ export interface CommandNode {
     readonly name: string | null;
     readonly optionGroups: readonly OptionGroup[];
     readonly options: readonly OptionNode[];
+    readonly passthrough: Readonly<{
+        description: string | undefined;
+    }> | null;
     readonly path: readonly string[];
     readonly result: ResultNode | null;
     readonly stdin?: Readonly<{
@@ -1024,7 +1026,9 @@ export type LinkedOutput<Args, Options, Link> = Link extends {
 export type LinkedValue<Value> = [Value] extends [readonly (infer Element)[]] ? Element : Value;
 
 // @public
-export type LinkedValueContext<Args, Options> = Pick<ActionContext<Args, Options>, 'args' | 'options' | 'graph' | 'command' | 'host' | 'passthrough' | 'supplied'>;
+export type LinkedValueContext<Args, Options> = Pick<ActionContext<Args, Options>, 'args' | 'options' | 'graph' | 'command' | 'host' | 'supplied'> & {
+    readonly passthrough?: readonly string[];
+};
 
 // @public
 export type ListBinding = {
@@ -1438,7 +1442,9 @@ export type ProviderDefinition<Declared extends AnyProvider> = ('ephemeral' exte
 };
 
 // @public
-export function questionValidationOptions(context: Pick<ActionContext<unknown>, 'host' | 'command' | 'passthrough' | 'supplied'>, question: {
+export function questionValidationOptions(context: Pick<ActionContext<unknown>, 'host' | 'command' | 'supplied'> & {
+    readonly passthrough?: readonly string[];
+}, question: {
     message: string;
 } & ({
     option?: string;

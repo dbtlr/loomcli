@@ -27,10 +27,12 @@ function shellCommand(name: string, shell: string, script: () => Promise<ShellSc
 const answerCommand = new Command('__complete', {
   description: 'Answer a completion script.',
   hidden: true,
-}).action(async ({ graph, out, passthrough }) => {
-  const { answer } = await import('./answer.js');
-  return out.render(answer(graph, locate(graph, passthrough)), exactText);
-});
+})
+  .passthrough()
+  .action(async ({ graph, out, passthrough }) => {
+    const { answer } = await import('./answer.js');
+    return out.render(answer(graph, locate(graph, passthrough)), exactText);
+  });
 
 /** The four shell names `install` and `uninstall` accept. */
 const shellInput = oneOf(shells);

@@ -32,6 +32,7 @@ async function runFixture(words, fixtureOptions = {}) {
       case 'optional': {
         app = new Application('optional', development)
           .argument('path', { description: 'The path argument.' })
+          .passthrough()
           .action(({ args, out }) =>
             out.print(JSON.stringify({ absent: args.path === undefined, args })),
           );
@@ -45,6 +46,7 @@ async function runFixture(words, fixtureOptions = {}) {
             description: 'The path argument.',
             validate: digits,
           })
+          .passthrough()
           .action(report);
         break;
       }
@@ -54,6 +56,7 @@ async function runFixture(words, fixtureOptions = {}) {
             description: 'The path argument.',
             validate: counting(z.string().min(1, 'Supply a path.')),
           })
+          .passthrough()
           .action(({ args, out }) => out.print(JSON.stringify({ args, calls })));
         break;
       }
@@ -61,6 +64,7 @@ async function runFixture(words, fixtureOptions = {}) {
         app = new Application('optional', development)
           .argument('name', { description: 'The name argument.', required: true })
           .argument('path', { description: 'The path argument.', required: false })
+          .passthrough()
           .action(report);
         break;
       }
@@ -68,14 +72,16 @@ async function runFixture(words, fixtureOptions = {}) {
         const keys = new Command('keys', { description: 'The keys command.' })
           .argument('path', { description: 'The path argument.' })
           .argument('name', { description: 'The name argument.', required: true })
+          .passthrough()
           .action(report);
-        app = new Application('optional', development).command(keys).action(report);
+        app = new Application('optional', development).command(keys).passthrough().action(report);
         break;
       }
       case 'two-optional': {
         app = new Application('optional', development)
           .argument('path', { description: 'The path argument.' })
           .argument('extra', { description: 'The extra argument.' })
+          .passthrough()
           .action(report);
         break;
       }
@@ -86,12 +92,14 @@ async function runFixture(words, fixtureOptions = {}) {
             validate: counting(string),
             variadic: true,
           })
+          .passthrough()
           .action(({ args, out }) => out.print(JSON.stringify({ args, calls })));
         break;
       }
       case 'tail-default': {
         app = new Application('optional', development)
           .argument('files', { default: ['a'], description: 'The files argument.', variadic: true })
+          .passthrough()
           .action(({ args, out }) => {
             args.files.push('x');
             return out.print(JSON.stringify({ args }));
@@ -101,6 +109,7 @@ async function runFixture(words, fixtureOptions = {}) {
       case 'tail-required': {
         app = new Application('optional', development)
           .argument('files', { description: 'The files argument.', required: true, variadic: true })
+          .passthrough()
           .action(report);
         break;
       }
@@ -112,6 +121,7 @@ async function runFixture(words, fixtureOptions = {}) {
             validate: digits,
             variadic: true,
           })
+          .passthrough()
           .action(report);
         break;
       }

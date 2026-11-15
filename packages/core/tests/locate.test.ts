@@ -70,7 +70,7 @@ test('reads an empty list as one empty word at the root', async () => {
   ]);
 });
 
-test('reads every word after a bare delimiter as passthrough, a group included', async () => {
+test('reads delimiter words as arguments with the mode off', async () => {
   await expect(
     locateAll([
       ['paths', 'a', '--', 'x'],
@@ -79,10 +79,10 @@ test('reads every word after a bare delimiter as passthrough, a group included',
       ['cache', '--', '-'],
     ]),
   ).resolves.toEqual([
-    { command: ['paths'], kind: 'passthrough', own: true, prefix: 'x' },
-    { command: [], kind: 'passthrough', own: true, prefix: '--' },
-    { command: [], kind: 'passthrough', own: true, prefix: '' },
-    { command: ['cache'], kind: 'passthrough', own: true, prefix: '-' },
+    { argument: 'rest', command: ['paths'], kind: 'argument', own: true, prefix: 'x' },
+    { kind: 'none' },
+    { kind: 'none' },
+    { kind: 'none' },
   ]);
 });
 
@@ -387,7 +387,7 @@ test('answers synchronously and throws nothing for hostile word lists', async ()
 
 test('reads 200000 words without exhausting the call stack', async () => {
   await expect(locateAll([], 'long')).resolves.toEqual([
-    { command: [], kind: 'passthrough', own: true, prefix: '' },
+    { kind: 'none' },
     { argument: 'rest', command: ['paths'], kind: 'argument', own: true, prefix: '' },
   ]);
 });

@@ -12,11 +12,10 @@ export const notesChangelog: ActionHandler<typeof changelogNotes> = async ({
   host,
   onShutdown,
   out,
-  passthrough,
   provided,
   signal,
 }) => {
-  await report({ out, passthrough, signal }, async () => {
+  await report({ out, signal }, async () => {
     const directory = packageDirectory(host.cwd);
     return await packageNotes(
       { host, onShutdown, root: directory, signal },

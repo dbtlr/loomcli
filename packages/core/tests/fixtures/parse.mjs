@@ -60,27 +60,33 @@ async function runFixture(words, fixtureOptions = {}) {
         .option('pretty', { short: 'p', type: 'boolean' })
         .option('raw', { short: 'r', type: 'boolean' })
         .option('depth', { short: 'd', type: 'string' })
+        .passthrough()
         .action(report(['get']));
       const keys = new Command('keys')
         .argument('path', {})
         .option('raw', { short: 'r', type: 'boolean' })
+        .passthrough()
         .action(report(['keys']));
       const cache = new Command('cache')
         .command(
           new Command('clear')
             .option('force', { type: 'boolean' })
+            .passthrough()
             .action(report(['cache', 'clear'])),
         )
-        .command(new Command('list').action(report(['cache', 'list'])));
+        .command(new Command('list').passthrough().action(report(['cache', 'list'])));
       const debug = new Command('debug', { hidden: true })
         .option('xray', { short: 'x', type: 'boolean' })
+        .passthrough()
         .action(report(['debug']));
       const fetch = new Command('fetch', { deprecated: 'Use get instead.' })
         .option('yank', { short: 'y', type: 'boolean' })
+        .passthrough()
         .action(report(['fetch']));
       const old = new Command('old', { deprecated: 'Use cache instead.' }).command(
         new Command('sub')
           .option('xenon', { short: 'x', type: 'boolean' })
+          .passthrough()
           .action(report(['old', 'sub'])),
       );
       const plugins = scenario === 'observed' ? [observer, help] : [help];
@@ -93,6 +99,7 @@ async function runFixture(words, fixtureOptions = {}) {
         .command(debug)
         .command(fetch)
         .command(old)
+        .passthrough()
         .action(report([]));
     }
 
@@ -109,14 +116,17 @@ async function runFixture(words, fixtureOptions = {}) {
         .option('numbered', { short: 'n', type: 'boolean' })
         .option('level', { type: 'string' })
         .option('dry', { type: 'boolean' })
+        .passthrough()
         .action(report(['get']));
       const list = new Command('list')
         .option('deep', { type: 'boolean' })
         .option('plain', { short: 'p', type: 'boolean' })
+        .passthrough()
         .action(report(['cache', 'list']));
       const cache = new Command('cache')
         .option('deep', { type: 'boolean' })
         .command(list)
+        .passthrough()
         .action(report(['cache']));
       return new Application('rooted', { plugins: [help], views: [override(UsageError, facts)] })
         .globalOption('quiet', { short: 'q', type: 'boolean' })
@@ -127,6 +137,7 @@ async function runFixture(words, fixtureOptions = {}) {
         .option('dry', { type: 'string' })
         .command(get)
         .command(cache)
+        .passthrough()
         .action(report([]));
     }
 

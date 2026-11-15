@@ -170,8 +170,6 @@ export interface ActionContext<Args, Options = {}, Result = unknown, Provided = 
   readonly graph: CommandGraph;
   /** The routed node inside `graph`. */
   readonly command: CommandNode;
-  /** The words after the `--` separator. */
-  passthrough: string[];
   /** The channel the action emits its result and writes its output through. */
   out: Out<Result>;
   /** The run's host facts. */

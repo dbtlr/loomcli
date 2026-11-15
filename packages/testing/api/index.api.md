@@ -29,10 +29,14 @@ import type { ViewContext } from '@loomcli/core';
 import { Writable } from 'node:stream';
 
 // @public
-export function actionContext<Args, Options, Result, Stdin extends StdinContext, Provided>(handler: Action<Args, Options, Result, Stdin, Provided>, values: NoInfer<ActionValues<Args, Options, Result, Stdin, Provided>>): Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin;
+export function actionContext<Args, Options, Result, Stdin extends StdinContext & {
+    passthrough?: string[];
+}, Provided>(handler: Action<Args, Options, Result, Stdin, Provided>, values: NoInfer<ActionValues<Args, Options, Result, Stdin, Provided>>): Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin;
 
 // @public
-export type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> = Pick<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided'> & Stdin & OptionalMembers<Omit<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided' | 'stdin'>>;
+export type ActionValues<Args, Options, Result, Stdin extends StdinContext & {
+    passthrough?: string[];
+}, Provided> = Pick<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided'> & Stdin & OptionalMembers<Omit<ActionContext<Args, Options, Result, Provided>, 'args' | 'options' | 'provided' | 'stdin'>>;
 
 // @public
 export function assertAssembles(application: Pick<Application, 'check'>): void;

@@ -12,6 +12,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       .option('color', { polarity: 'negative', short: 'c', type: 'boolean' })
       .option('silent', { polarity: 'negative', short: 's', shortOnly: true, type: 'boolean' })
       .option('metric', { short: 'm', shortOnly: true, type: 'string' })
+      .passthrough()
       .action(({ options, passthrough, out }) =>
         out.print(JSON.stringify({ options, passthrough })),
       )

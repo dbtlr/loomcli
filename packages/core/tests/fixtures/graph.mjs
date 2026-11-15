@@ -139,7 +139,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
             .command(
               new Command('get')
                 .argument('paths', { required: true, variadic: true })
-                .argument('path', { required: true })
+                .argument('path', {})
                 .action(dispatch),
             )
             .action(dispatch);

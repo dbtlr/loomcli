@@ -1,5 +1,10 @@
 import type { ArgumentSlot, BuiltCommand, BuiltGraph } from '../commands/command.js';
-import { undeclaredArgument, UnknownCommandError, unknownOptionName } from '../failures/errors.js';
+import {
+  UnexpectedArgumentError,
+  undeclaredArgument,
+  UnknownCommandError,
+  unknownOptionName,
+} from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import { emptyValues } from '../inputs/options.js';
 import type { OptionValues, TableSpelling } from '../inputs/options.js';
@@ -289,6 +294,19 @@ function lowerArguments(read: Reading, entries: NamedCall['args']): void {
   }
 }
 
+/** A named tail on a Command without the mode ranks after every other unknown name. */
+function checkPassthrough(read: Reading, passthrough: readonly string[]): void {
+  if (read.command.passthrough === undefined && passthrough.length > 0) {
+    const failure = new UnexpectedArgumentError(
+      read.path,
+      read.command.arguments.length,
+      passthrough,
+    );
+    failure.message = `${read.path.length === 0 ? 'Root Command' : `Command "${read.path.join(' ')}"`} declares no passthrough. Remove passthrough from the values.`;
+    read.fault ??= failure;
+  }
+}
+
 /**
  * An invocation by name read into the result the parser produces for argv words: routing by path,
  * then each value lowered to the tokens a command line would give, once, with no argv text built.
@@ -314,6 +332,7 @@ function lowerInvocation(
   lowerOptions(read, call.options);
   checkExcluded(read, call.exclude);
   lowerArguments(read, call.args);
+  checkPassthrough(read, call.passthrough);
   const args: BoundArguments = read.args;
   return {
     args,
@@ -323,7 +342,7 @@ function lowerInvocation(
     // A value no token spells is an input problem, never a faulted occurrence.
     faulted: new Set(),
     globalFault: false,
-    passthrough: [...call.passthrough],
+    passthrough: command.passthrough ? [...call.passthrough] : [],
     path,
     unlowered: read.unlowered,
     values: read.values,

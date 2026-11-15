@@ -3,7 +3,7 @@ import type { Out } from '@loomcli/core';
 /** What a command's report reads from its action context. */
 interface Reporting {
   readonly out: Out;
-  readonly passthrough: string[];
+  readonly passthrough?: string[];
   readonly signal: AbortSignal;
 }
 
@@ -14,7 +14,7 @@ interface Reporting {
  * core keeps silent, so the command prints nothing and resolves the signal's code.
  */
 export async function report(
-  { out, passthrough, signal }: Reporting,
+  { out, passthrough = [], signal }: Reporting,
   work: () => Promise<string> | string,
 ) {
   try {

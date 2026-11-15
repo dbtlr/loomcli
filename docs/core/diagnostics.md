@@ -10,6 +10,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ## @loomcli/core
 
+### @loomcli/core/argument-after-variadic
+
+**Argument after variadic not a required scalar.** A variadic argument takes the plain words between the arguments before it and the arguments after it, so each argument after it fills from the end of the line with exactly one word. Only a required scalar argument always takes exactly one word: an optional argument, a second variadic, an argument required only when input is not interactive, or a content argument after a variadic would leave the parser unable to tell where the variadic's words end.
+
 ### @loomcli/core/argument-declared-twice
 
 **Argument declared twice.** An action reads each argument under its name, so two arguments with one name leave one of them unreadable.
@@ -197,10 +201,6 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 ### @loomcli/core/variable-bound-twice
 
 **Variable bound twice.** Within one invocation's scope a variable fills one option, so two options that bind it would both take the value an operator set for one of them.
-
-### @loomcli/core/variadic-argument-last
-
-**Variadic argument not last.** A variadic argument takes every positional token that remains, so an argument after it would never receive one.
 
 ### @loomcli/core/verbose-mark
 

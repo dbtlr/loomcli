@@ -48,6 +48,7 @@ async function runFixture(words, fixtureOptions = {}) {
           .option('flag', { type: 'boolean' })
           .option('color', { polarity: 'both', type: 'boolean' })
           .option('quiet', { type: 'boolean' })
+          .passthrough()
           .action(print);
         break;
       }
@@ -55,11 +56,13 @@ async function runFixture(words, fixtureOptions = {}) {
         const clear = new Command('clear')
           .alias('cl')
           .option('force', { type: 'string', validate: echo('force') })
+          .passthrough()
           .action(print);
         const cache = new Command('cache').alias('c').command(clear);
         app = new Application('context')
           .globalOption('mode', { type: 'string', validate: echo('mode') })
           .command(cache)
+          .passthrough()
           .action(print);
         break;
       }
@@ -67,6 +70,7 @@ async function runFixture(words, fixtureOptions = {}) {
         app = new Application('context')
           .option('depth', { default: '1', type: 'string', validate: echo('depth') })
           .option('size', { type: 'string', validate: echo('size') })
+          .passthrough()
           .action(print);
         break;
       }
@@ -119,6 +123,7 @@ async function runFixture(words, fixtureOptions = {}) {
         app = new Application('context')
           .argument('files', { validate: writer, variadic: true })
           .option('multi', { multiple: true, type: 'string', validate: reader })
+          .passthrough()
           .action(({ args, options, passthrough, out }) =>
             out.print(encode({ args, options, passthrough, seen })),
           );
@@ -130,6 +135,7 @@ async function runFixture(words, fixtureOptions = {}) {
             type: 'string',
             validate: z.string().regex(/^\d+$/u, 'Use decimal digits.').transform(Number),
           })
+          .passthrough()
           .action(({ options, out }) => out.print(encode({ size: options.size })));
         break;
       }

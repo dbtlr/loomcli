@@ -13,10 +13,9 @@ export const writeReleasePlan: ActionHandler<typeof releasePlan> = async ({
   onShutdown,
   options,
   out,
-  passthrough,
   signal,
 }) => {
-  await report({ out, passthrough, signal }, async () => {
+  await report({ out, signal }, async () => {
     const plan = await planRelease({
       checkout: { host, onShutdown, root: host.cwd, signal },
       githubApi: options['github-api'],
