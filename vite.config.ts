@@ -364,6 +364,16 @@ export default defineConfig({
         },
       },
       {
+        files: [
+          'packages/*/tests/message-voice.test.ts',
+          'packages/core/tests/voice-reader.test.ts',
+        ],
+        rules: {
+          // A voice test pins and reports each interpolation by its source text, which reads `${...}`.
+          'eslint/no-template-curly-in-string': 'off',
+        },
+      },
+      {
         files: ['packages/plugins/src/logging/directory.ts'],
         rules: {
           // A logging error with no directory to name reads `null` for its path, as the contract states.

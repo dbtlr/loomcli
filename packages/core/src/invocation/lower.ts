@@ -9,6 +9,15 @@ import type { LoomError } from '../failures/errors.js';
 import { emptyValues } from '../inputs/options.js';
 import type { OptionValues, TableSpelling } from '../inputs/options.js';
 import type { InputDeclaration } from '../inputs/validation.js';
+import {
+  takesBoolean,
+  takesCount,
+  takesImplied,
+  takesList,
+  takesListOrImplied,
+  takesScalar,
+  takesTuple,
+} from './messages.js';
 import { candidatesOf, write } from './parse.js';
 import type { BoundArguments, Occurrence, ParsedInvocation } from './parse.js';
 
@@ -25,16 +34,6 @@ interface NamedCall {
   exclude: readonly string[];
   passthrough: readonly string[];
 }
-
-/** The issue each kind of input reports for a value no token spells, which says what it takes. */
-const takes = {
-  boolean: 'Use true or false.',
-  count: 'Use a whole number of 0 or more.',
-  implied: 'Use a string, a number, or true.',
-  list: 'Use a string, a number, or a list of them.',
-  listOrImplied: 'Use a string, a number, true, or a list of strings and numbers.',
-  scalar: 'Use a string or a number.',
-} as const;
 
 /** The token one value gives: a string as it is, a finite number as `String` writes it, or none. */
 function tokenOf(value: unknown): string | undefined {
@@ -137,7 +136,7 @@ function booleanOccurrences(
   value: unknown,
 ): Lowering<Lowered[]> {
   if (typeof value !== 'boolean') {
-    return { issue: takes.boolean };
+    return { issue: takesBoolean };
   }
   const reading = entries.find((entry) => entry.type === 'boolean' && entry.value === value);
   return { occurrences: reading ? [{ option: reading, value }] : [] };
@@ -146,7 +145,7 @@ function booleanOccurrences(
 /** A whole number of 0 or more is that many occurrences of a counted option, so 0 is absence. */
 function countOccurrences(option: TableSpelling, value: unknown): Lowering<Lowered[]> {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-    return { issue: takes.count };
+    return { issue: takesCount };
   }
   return { occurrences: value > 0 ? [{ option, value }] : [] };
 }
@@ -155,9 +154,9 @@ function countOccurrences(option: TableSpelling, value: unknown): Lowering<Lower
 function stringIssue(option: TableSpelling & { type: 'string' }): string {
   const implied = option.valueClass === 'implied';
   if (option.multiple) {
-    return implied ? takes.listOrImplied : takes.list;
+    return implied ? takesListOrImplied : takesList;
   }
-  return implied ? takes.implied : takes.scalar;
+  return implied ? takesImplied : takesScalar;
 }
 
 /**
@@ -165,8 +164,7 @@ function stringIssue(option: TableSpelling & { type: 'string' }): string {
  * multiple option a list of such tuples.
  */
 function arityIssue(option: TableSpelling & { valueClass: 'arity' }): string {
-  const tuple = `a list of ${String(option.arity)} strings or numbers`;
-  return option.multiple ? `Use ${tuple}, or a list of such lists.` : `Use ${tuple}.`;
+  return takesTuple(option.arity, option.multiple);
 }
 
 /** One tuple's words, or none when the value is not a list of exactly `arity` tokens. */
@@ -265,10 +263,10 @@ function optionOccurrences(entries: readonly TableSpelling[], value: unknown): L
 function argumentTokens(slot: ArgumentSlot, value: unknown): Lowering<string | string[]> {
   if (!slot.variadic) {
     const token = tokenOf(value);
-    return token === undefined ? { issue: takes.scalar } : { occurrences: token };
+    return token === undefined ? { issue: takesScalar } : { occurrences: token };
   }
   const tokens = tokensOf(value);
-  return tokens === undefined ? { issue: takes.list } : { occurrences: tokens };
+  return tokens === undefined ? { issue: takesList } : { occurrences: tokens };
 }
 
 /** Records one occurrence a value lowered to, under the spelling a problem names its option by. */

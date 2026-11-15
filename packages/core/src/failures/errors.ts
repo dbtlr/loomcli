@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import { diagnosticText, isDiagnosticRule, valueCode } from '../diagnostics/diagnostic-text.js';
+import { diagnosticText, isDiagnosticRule } from '../diagnostics/diagnostic-text.js';
 import type { DiagnosticParts, DiagnosticRule, Finding } from '../diagnostics/diagnostic-text.js';
 import { isFailureCode } from '../diagnostics/identity.js';
 import {
@@ -12,12 +12,29 @@ import {
 import type { InputIdentity } from '../inputs/types.js';
 import { escapeControlCharacters } from '../support/controls.js';
 import type { FailureExitCode } from './exit-codes.js';
-
-/** The same subject at the start of a sentence, where a token fault names its Command. */
-function routedSentence(command: readonly string[]): string {
-  const subject = routedSubject(command);
-  return `${subject.slice(0, 1).toUpperCase()}${subject.slice(1)}`;
-}
+import {
+  booleanValue,
+  countedValue,
+  declaredNoPassthrough as declaredNoPassthroughSentence,
+  genericDefect,
+  misplacedOption,
+  missingArityRefused,
+  missingArityValues,
+  missingAttachedValue,
+  missingSubcommand,
+  missingValue,
+  quoted,
+  repeatedOption,
+  routedSentence,
+  separateValues,
+  undeclaredArgument as undeclaredArgumentSentence,
+  unexpectedArguments,
+  unknownCommand,
+  unknownOption,
+  unknownOptionBeforeArguments as unknownOptionBeforeArgumentsSentence,
+  unknownOptionName as unknownOptionNameSentence,
+  workingDirectoryUnreadable,
+} from './messages.js';
 
 /** The sentence one results-lane fault reports, which names the Command that holds it. */
 function resultMessage(kind: ResultFault, command: readonly string[]): string {
@@ -32,62 +49,11 @@ export function midSentence(text: string): string {
 }
 
 /**
- * A value a sentence quotes: raw text an operator typed, or a name or identity an author declared.
- * Text is escaped, so a control character or a bidirectional control in it cannot reorder or break
- * the line. A value of any other kind prints as the code a finding prints for it, because a rule
- * that rejects a value that is not a string quotes that value too. The failure's public field
- * keeps the raw value.
- */
-export function quoted(value: unknown): string {
-  return typeof value === 'string' ? `"${escapeControlCharacters(value)}"` : valueCode(value);
-}
-
-/**
- * The clause that states a routing fault's fix: the candidates, or, when the Command offers none
- * because every child is hidden or deprecated, the kind of name to supply.
- */
-function offering(candidates: readonly string[], kind: 'command' | 'subcommand'): string {
-  return candidates.length === 0
-    ? ` Supply the name of a declared ${kind}.`
-    : ` Use one of: ${candidates.join(', ')}.`;
-}
-
-/**
- * The sentence for a group routed without a subcommand. The root has no name to repeat, and the
- * default text already opens with the application name, so the root's sentence names no Command.
- */
-function nonCallableMessage(
-  command: readonly string[],
-  candidates: readonly string[],
-  argument: string | undefined,
-): string {
-  const sentence =
-    command.length === 0
-      ? `A command is required.${offering(candidates, 'command')}`
-      : `${routedSentence(command)} requires a subcommand.${offering(candidates, 'subcommand')}`;
-  return argument === undefined
-    ? sentence
-    : `${sentence} To pass ${quoted(argument)} as an argument, write -- before it.`;
-}
-
-/**
- * The sentence for an option word the routed Command's table does not hold, while visible Commands
- * below it declare it. Each Command reads as its path from the root.
- */
-function misplacedMessage(spelling: string, commands: readonly (readonly string[])[]): string {
-  const names = commands.map((path) => path.join(' '));
-  const [only] = names;
-  return names.length === 1 && only !== undefined
-    ? `Option ${quoted(spelling)} belongs to command ${quoted(only)}. Supply it after ${quoted(only)}.`
-    : `Option ${quoted(spelling)} belongs to commands ${names.join(', ')}. Supply it after the command name.`;
-}
-
-/**
  * The one message a distributed build shows an operator for a defect or a declaration fault: the
  * application name and a fixed phrase, with no reason, class name, code, or path.
  */
 export function genericDefectText(application: string): string {
-  return `${application}: Something went wrong.\n`;
+  return `${application}: ${genericDefect}\n`;
 }
 
 /**
@@ -120,23 +86,6 @@ export function defaultText(failure: LoomError, application: string): string {
     return genericDefectText(application);
   }
   return `${failure.message}\n`;
-}
-
-/** How a diagnostic names one Command inside a sentence: by name, or as the unnamed root. */
-export function commandSubject(name: string | null): string {
-  return name === null ? 'the root Command' : `Command "${name}"`;
-}
-
-/** The routed path names the Command a sentence speaks of; an empty path is the root. */
-export function routedSubject(command: readonly string[]): string {
-  const name = command.at(-1);
-  return name === undefined ? 'the root Command' : commandSubject(name);
-}
-
-/** The same subject at the start of a sentence. */
-export function commandSentence(name: string | null): string {
-  const subject = commandSubject(name);
-  return `${subject.slice(0, 1).toUpperCase()}${subject.slice(1)}`;
 }
 
 /**
@@ -383,7 +332,7 @@ export class UnknownCommandError extends UsageError {
   readonly candidates: readonly string[];
 
   constructor(token: string, candidates: readonly string[]) {
-    super(`Unknown command ${quoted(token)}.${offering(candidates, 'command')}`);
+    super(unknownCommand(token, candidates));
     this.candidates = candidates;
     this.name = 'UnknownCommandError';
     this.token = token;
@@ -429,7 +378,7 @@ export class NonCallableCommandError extends UsageError {
   readonly argument: string | undefined;
 
   constructor(command: readonly string[], candidates: readonly string[], argument?: string) {
-    super(nonCallableMessage(command, candidates, argument));
+    super(missingSubcommand(command, candidates, argument));
     this.argument = argument;
     this.candidates = candidates;
     this.command = command;
@@ -479,11 +428,7 @@ export class UnexpectedArgumentError extends UsageError {
   readonly extra: readonly string[];
 
   constructor(command: readonly string[], accepted: number, extra: readonly string[]) {
-    super(
-      accepted === 0
-        ? `${routedSentence(command)} accepts no arguments. Remove the supplied values.`
-        : `${routedSentence(command)} accepts ${accepted} ${accepted === 1 ? 'argument' : 'arguments'}. Remove the extra values.`,
-    );
+    super(unexpectedArguments(command, accepted));
     this.accepted = accepted;
     this.command = command;
     this.extra = extra;
@@ -518,9 +463,7 @@ export class UnknownOptionError extends UsageError {
   readonly spelling: string;
 
   constructor(spelling: string) {
-    super(
-      `Unknown option ${quoted(spelling)}. Supply a declared option; prefix a hyphenated path with "./".`,
-    );
+    super(unknownOption(spelling));
     this.name = 'UnknownOptionError';
     this.spelling = spelling;
   }
@@ -532,7 +475,7 @@ export class UnknownOptionError extends UsageError {
  */
 export function unknownOptionName(name: string): UnknownOptionError {
   const failure = new UnknownOptionError(name);
-  failure.message = `Unknown option ${quoted(name)}. Supply the name of a declared option.`;
+  failure.message = unknownOptionNameSentence(name);
   return failure;
 }
 
@@ -546,7 +489,7 @@ export function undeclaredArgument(
   name: string,
 ): UnexpectedArgumentError {
   const failure = new UnexpectedArgumentError(command, accepted, [name]);
-  failure.message = `${routedSentence(command)} declares no argument ${quoted(name)}. Supply the name of a declared argument.`;
+  failure.message = undeclaredArgumentSentence(command, name);
   return failure;
 }
 
@@ -560,7 +503,7 @@ export function declaredNoPassthrough(
   words: readonly string[],
 ): UnexpectedArgumentError {
   const failure = new UnexpectedArgumentError(command, accepted, words);
-  failure.message = `${routedSentence(command)} declares no passthrough. Remove passthrough from the values.`;
+  failure.message = declaredNoPassthroughSentence(command);
   return failure;
 }
 
@@ -570,7 +513,7 @@ export function declaredNoPassthrough(
  */
 export function unknownOptionBeforeArguments(spelling: string): UnknownOptionError {
   const failure = new UnknownOptionError(spelling);
-  failure.message = `Unknown option ${quoted(spelling)}. Supply a declared option, or pass it as an argument after "--".`;
+  failure.message = unknownOptionBeforeArgumentsSentence(spelling);
   return failure;
 }
 
@@ -605,14 +548,11 @@ function missingValueMessage(
   shortfall: MissingArity | undefined,
 ): string {
   if (shortfall !== undefined) {
-    const count = `${String(shortfall.arity)} values`;
     return shortfall.refused === undefined
-      ? `Option ${quoted(spelling)} requires ${count} and received ${String(shortfall.received)}. Supply ${count} after ${quoted(spelling)}.`
-      : `Option ${quoted(spelling)} requires ${count}, and ${quoted(shortfall.refused)} reads as an option. Supply ${count} after ${quoted(spelling)}; a value that reads as an option cannot be one of them.`;
+      ? missingArityValues(spelling, shortfall.arity, shortfall.received)
+      : missingArityRefused(spelling, shortfall.arity, shortfall.refused);
   }
-  return form === 'attached'
-    ? `Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}, or attach one that starts with a hyphen as ${quoted(`${spelling}=<value>`)}.`
-    : `Option ${quoted(spelling)} requires a value. Supply a value after ${quoted(spelling)}.`;
+  return form === 'attached' ? missingAttachedValue(spelling) : missingValue(spelling);
 }
 
 /**
@@ -703,13 +643,13 @@ export class UnexpectedValueError extends UsageError {
 function unexpectedValueMessage(spelling: string, kind: 'arity' | 'boolean' | 'count'): string {
   switch (kind) {
     case 'arity': {
-      return `Option ${quoted(spelling)} takes its values as separate words. Supply each one after ${quoted(spelling)} as its own word.`;
+      return separateValues(spelling);
     }
     case 'count': {
-      return `Counted option ${quoted(spelling)} does not accept a value. Repeat ${quoted(spelling)} to raise its count.`;
+      return countedValue(spelling);
     }
     case 'boolean': {
-      return `Boolean option ${quoted(spelling)} does not accept a value. Supply the flag alone.`;
+      return booleanValue(spelling);
     }
     default: {
       const exhaustive: never = kind;
@@ -744,7 +684,7 @@ export class RepeatedOptionError extends UsageError {
   readonly spelling: string;
 
   constructor(spelling: string) {
-    super(`Option ${quoted(spelling)} can be supplied only once. Remove the repeated option.`);
+    super(repeatedOption(spelling));
     this.name = 'RepeatedOptionError';
     this.spelling = spelling;
   }
@@ -789,7 +729,7 @@ export class MisplacedOptionError extends UsageError {
   readonly commands: readonly (readonly string[])[];
 
   constructor(spelling: string, commands: readonly (readonly string[])[]) {
-    super(misplacedMessage(spelling, commands));
+    super(misplacedOption(spelling, commands));
     this.commands = commands;
     this.name = 'MisplacedOptionError';
     this.spelling = spelling;
@@ -996,10 +936,7 @@ export class WorkingDirectoryError extends LoomError {
   static override readonly code: string = 'working-directory-unreadable';
 
   constructor(options?: ErrorOptions) {
-    super(
-      'The current working directory cannot be read. Change to a directory that exists and run the command again.',
-      options,
-    );
+    super(workingDirectoryUnreadable, options);
     this.name = 'WorkingDirectoryError';
   }
 }

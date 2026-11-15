@@ -1,5 +1,6 @@
 import { invalidReleaseFacts } from '../diagnostics/rules.js';
-import { InternalError, quoted } from '../failures/errors.js';
+import { InternalError } from '../failures/errors.js';
+import { quoted } from '../failures/messages.js';
 import { isPlainObject } from '../support/plain.js';
 import { readInstallation } from './installation.js';
 import type { InstallationLookup } from './installation.js';

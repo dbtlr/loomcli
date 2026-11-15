@@ -600,8 +600,16 @@ A message that runs while the author develops the application, such as a declara
 _Avoid_: Developer error (for the message), debug message
 
 **Message module**:
-The internal `messages.ts` beside one concept's code in a Loom package, which holds the operator messages that code raises or writes as named exports, each a function of the values it repeats or a constant. A voice test per package reads the message modules and holds their sentences to the failure message voice. No entry point exports one, and it is not a localization layer.
-_Avoid_: Message catalog (the validators' issue codes are the catalog), strings file, locale file, message keys
+The internal `messages.ts` beside one concept module's code in a Loom package, which holds the operator messages that code raises or writes as named exports, each a function of the values it repeats or a constant. A voice test per package reads the message modules and holds their sentences to the failure message voice. No entry point exports one, and it is not a localization layer.
+_Avoid_: Message catalog (the validator catalog is the validators `@loomcli/validators` ships), strings file, locale file, message keys
+
+**Concept module**:
+A folder directly under a Loom package's `src`, which holds the code of one concept, such as core's `failures` or `inputs`, or one plugin's folder in `@loomcli/plugins`. A package whose `src` has no folders is one concept module.
+_Avoid_: Feature folder, layer
+
+**Voice test**:
+The test of Loom's own repository, `tests/message-voice.test.ts` in each package whose sentences reach an operator, that reads the package's message modules and holds them to the banned words, the escaping rule, and the rule against outside text, and scans the package's other sources for a sentence written outside a message module. Each known exception is pinned in it with the reason it holds. It checks Loom's sentences, never an application's.
+_Avoid_: Message lint, voice rule (for the test), message check
 
 **Failure view**:
 The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, the hints plugins added, whether the run received argv or names, and the view the result would render through when the run failed, a middleware's assignment, else the view an invocation by name started with, else the Command's default view, with that view's media type. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.

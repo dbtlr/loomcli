@@ -7,8 +7,9 @@ import {
   viewSelection,
   viewSelectionCorrection,
 } from '../diagnostics/rules.js';
-import { InternalError, routedSubject } from '../failures/errors.js';
+import { InternalError } from '../failures/errors.js';
 import type { InvokedBy, LoomError } from '../failures/errors.js';
+import { routedSubject } from '../failures/messages.js';
 import type { Host } from '../host/types.js';
 import { isSupplied } from '../inputs/options.js';
 import type { OptionValues } from '../inputs/options.js';

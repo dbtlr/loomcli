@@ -2,6 +2,7 @@ import { escapeText } from '../style/style.js';
 import { exitCodeOf, failureCodeOf, FatalError, isAuthorFault } from './errors.js';
 import type { LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
+import { genericDefect } from './messages.js';
 
 /**
  * One failure as plain data, for a reader that cannot parse prose: `invoke()`'s outcome and its
@@ -48,9 +49,6 @@ function markedSentence(failure: LoomError, text: string): string {
   return failure instanceof FatalError ? text : escapeText(text);
 }
 
-/** The message a defect reads in a distributed build, which names no reason. */
-const genericMessage = 'Something went wrong.';
-
 /**
  * The form of one failure, built after the translators and the hooks. A defect or a declaration
  * fault reads `internal`, and its message follows the build: its sentence in a development build
@@ -61,7 +59,7 @@ const genericMessage = 'Something went wrong.';
 function failureForm(failure: LoomError, scene: FormScene): FailureForm {
   const { development, hints, plain } = scene;
   const author = isAuthorFault(failure);
-  let message = genericMessage;
+  let message = genericDefect;
   if (!author) {
     message = plain(markedSentence(failure, failure.message));
   } else if (development) {

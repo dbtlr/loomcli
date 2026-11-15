@@ -6,14 +6,26 @@ import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { callSite, partOf, siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import { validatorFailed } from '../diagnostics/rules.js';
-import { asSentence, DeclarationError, InputError, quoted, reasonOf } from '../failures/errors.js';
+import { asSentence, DeclarationError, InputError, reasonOf } from '../failures/errors.js';
 import type { InputProblem } from '../failures/errors.js';
 import type { Host } from '../host/types.js';
-import { escapeControlCharacters } from '../support/controls.js';
 import { defineEntry } from '../support/plain.js';
 import type { Content } from './content.js';
 import { prepareContent } from './content.js';
 import { holdsTuples, schemaOptions } from './context.js';
+import {
+  environmentBoolean,
+  environmentCount,
+  environmentTuple,
+  ignoredFill,
+  inputSubject,
+  issueLine,
+  requiredArgument,
+  requiredOption,
+  silentRejection,
+  stdinIssue,
+} from './messages.js';
+import type { InputSubject } from './messages.js';
 import { absentBooleans, groupReports } from './option-groups.js';
 import type { OptionGroup } from './option-groups.js';
 import {
@@ -289,9 +301,7 @@ export class ValidationLedger {
  * An argument declares and reads under one name, so the two namings differ for options alone.
  */
 export function declarationSubject(input: InputDeclaration): string {
-  return input.kind === 'argument'
-    ? `Argument ${quoted(input.name)}`
-    : `Option ${quoted(input.name)}`;
+  return inputSubject({ kind: input.kind, spelling: input.name });
 }
 
 /** Where the call that declared one input sits: the call's name and the Command it is on. */
@@ -370,27 +380,13 @@ function spellingOf(
 }
 
 /**
- * An input diagnostic names the declaration by kind and by the spelling that reaches it. A value an
- * input source filled adds its source in parentheses, so the operator learns where it came from.
+ * An input diagnostic names the declaration by kind and by the spelling that reaches it, and a
+ * value an input source filled by its source too. An argument has no source.
  */
-function suppliedName(input: InputDeclaration, spelling: string, origin?: string) {
-  if (input.kind === 'argument') {
-    return `Argument "${spelling}"`;
-  }
-  return origin === undefined ? `Option "${spelling}"` : `Option "${spelling}" (from ${origin})`;
-}
-
-/**
- * What the fix clause of a missing option asks for: a value, at least one of a collected option's,
- * an arity option's count of values, or at least one set of them on a multiple arity option. Core's
- * report and `missingInputError` read the clause here, so the two never drift.
- */
-export function missingValues(collected: boolean, arity: number | undefined): string {
-  if (arity === undefined) {
-    return collected ? 'at least one value' : 'a value';
-  }
-  const count = `${String(arity)} values`;
-  return collected ? `at least one set of ${count}` : count;
+function suppliedName(input: InputDeclaration, spelling: string, origin?: string): InputSubject {
+  return input.kind === 'argument'
+    ? { kind: 'argument', spelling }
+    : { kind: 'option', origin, spelling };
 }
 
 /**
@@ -404,9 +400,14 @@ function missingMessage(
   facts: { collected: boolean; origin?: string | undefined },
 ) {
   const { collected, origin } = facts;
+  const whenNotInteractive = input.config.required === 'non-interactive';
   return input.kind === 'argument'
-    ? `Argument "${spelling}" requires ${collected ? 'at least one value' : 'a value'}${input.config.required === 'non-interactive' ? ' when input is not interactive' : ''}. Supply a value for "${spelling}".`
-    : `${suppliedName(input, spelling, origin)} is required${input.config.required === 'non-interactive' ? ' when input is not interactive' : ''}. Supply ${missingValues(collected, arityOf(input.config))}.`;
+    ? requiredArgument(spelling, collected, whenNotInteractive)
+    : requiredOption({ kind: 'option', origin, spelling }, whenNotInteractive, {
+        arity: arityOf(input.config),
+        collected,
+        kind: 'values',
+      });
 }
 
 /**
@@ -724,26 +725,15 @@ export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
  * carries it and the default text is derived from it, so a view and core read the same issues.
  */
 function reported(issues: readonly StandardSchemaV1.Issue[]): readonly StandardSchemaV1.Issue[] {
-  return issues.length === 0
-    ? [
-        {
-          message:
-            'The validator rejected this value without an explanation. Supply a different value.',
-        },
-      ]
-    : issues;
+  return issues.length === 0 ? [{ message: silentRejection }] : issues;
 }
 
 /**
  * One line per issue under the input's subject. A path segment can hold text the operator typed,
  * such as a key of a record, so the line escapes the path; `issuePath` keeps it raw for a view.
  */
-function messages(subject: string, issues: readonly StandardSchemaV1.Issue[]) {
-  return issues.map((issue) => {
-    const path = issuePath(issue);
-    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
-    return `${subject}${position}: ${issue.message}`;
-  });
+function messages(subject: InputSubject, issues: readonly StandardSchemaV1.Issue[]) {
+  return issues.map((issue) => issueLine(subject, issuePath(issue), issue.message));
 }
 
 /** A declared `default: undefined` is a default, so presence is the key, never the value. */
@@ -820,13 +810,12 @@ function declaredOutput(
   }
   const { fault, site } = declared;
   const { correction, noun, rule } = declaredFaults[fault];
-  const subject = declarationSubject(input);
   throw new DeclarationError(rule, {
     correction,
     findings: site === undefined ? [] : [siteFinding(site, partOf(site, fault))],
     sentence: [
-      `${subject} has an invalid ${noun}.`,
-      ...messages(subject, reported(result.issues)),
+      `${declarationSubject(input)} has an invalid ${noun}.`,
+      ...messages({ kind: input.kind, spelling: input.name }, reported(result.issues)),
     ].join('\n'),
   });
 }
@@ -913,11 +902,11 @@ function grammarIssues(input: OptionInput): readonly StandardSchemaV1.Issue[] {
   const arity = arityOf(config);
   if (arity !== undefined) {
     const delimiter = config.type === 'string' ? (config.envDelimiter ?? '') : '';
-    return [{ message: `Use ${String(arity)} values separated by ${quoted(delimiter)}.` }];
+    return [{ message: environmentTuple(arity, delimiter) }];
   }
   return config.type === 'count'
-    ? [{ message: 'Use a whole number of 0 or more.' }]
-    : [{ message: 'Use true, false, yes, no, y, n, on, off, 1, or 0.' }];
+    ? [{ message: environmentCount }]
+    : [{ message: environmentBoolean }];
 }
 
 /** One validation problem and the lines core's default text holds. */
@@ -1055,7 +1044,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
   const reject = (
     entry: ScopedInput,
     issues: readonly StandardSchemaV1.Issue[],
-    subject: string,
+    subject: InputSubject,
   ) => {
     reports.set(entry.input, {
       lines: messages(subject, issues),
@@ -1112,10 +1101,9 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     }
     const [first] = issues;
     const path = first === undefined ? undefined : issuePath(first);
-    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
     dropped.set(
       entry.input,
-      `Ignored option "${named.spelling}"${position} from ${named.origin}: ${first?.message}`,
+      ignoredFill({ label: named.origin, spelling: named.spelling }, path, String(first?.message)),
     );
     return true;
   };
@@ -1260,7 +1248,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     );
     if (result.issues !== undefined) {
       stdinReport = {
-        lines: result.issues.map((issue) => `Stdin: ${issue.message}`),
+        lines: result.issues.map((issue) => stdinIssue(issue.message)),
         problem: {
           input: { global: false, kind: 'stdin', name: 'stdin' },
           reason: 'missing',

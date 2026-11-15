@@ -1,6 +1,7 @@
 import { callSite, pluginOptionSite, siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
-import { DeclarationError, quoted } from '../failures/errors.js';
+import { DeclarationError } from '../failures/errors.js';
+import { quoted } from '../failures/messages.js';
 import { claimVariables, envNames } from '../inputs/bindings.js';
 import type { BoundOption } from '../inputs/bindings.js';
 import { checkOptionName, compileOptions, spellingMark, tableEntries } from '../inputs/options.js';

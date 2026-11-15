@@ -53,17 +53,12 @@ import { slotSite } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { encoderRegistry } from '../failures/encoders.js';
 import type { EncoderRegistry } from '../failures/encoders.js';
-import {
-  DeclarationError,
-  exitCodeOf,
-  foreignFailure,
-  quoted,
-  toFailure,
-} from '../failures/errors.js';
+import { DeclarationError, exitCodeOf, foreignFailure, toFailure } from '../failures/errors.js';
 import type { InvokedBy, LoomError } from '../failures/errors.js';
 import type { FailureExitCode } from '../failures/exit-codes.js';
 import { failureForm } from '../failures/form.js';
 import type { FailureForm } from '../failures/form.js';
+import { quoted } from '../failures/messages.js';
 import { readTranslations, translateThrow } from '../failures/translators.js';
 import type { Translation, TranslatorRegistry } from '../failures/translators.js';
 import { askTerminal } from '../host/background-query.js';

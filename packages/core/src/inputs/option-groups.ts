@@ -1,8 +1,9 @@
 import { registerRule } from '../diagnostics/diagnostic-text.js';
 import type { Finding } from '../diagnostics/diagnostic-text.js';
-import { commandSentence, DeclarationError, quoted } from '../failures/errors.js';
+import { DeclarationError } from '../failures/errors.js';
 import type { InputProblem } from '../failures/errors.js';
-import { escapeControlCharacters } from '../support/controls.js';
+import { commandSentence, quoted } from '../failures/messages.js';
+import { groupSentence } from './messages.js';
 import { absentBoolean, isSupplied, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
 import type { InputDeclaration } from './validation.js';
@@ -292,29 +293,6 @@ function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
   }
 }
 
-/** A group has no singular subject, so each sentence states the complete relationship. */
-function groupMessage(kind: OptionGroup['kind'], names: readonly string[]): string {
-  const members =
-    names.length === 2
-      ? names.join(' and ')
-      : `${names.slice(0, -1).join(', ')}, and ${names.at(-1) ?? ''}`;
-  switch (kind) {
-    case 'exclusive': {
-      return `Options ${members} cannot be used together. Supply only one of them.`;
-    }
-    case 'oneRequired': {
-      return `One of options ${members} is required. Supply at least one of them.`;
-    }
-    case 'requiredTogether': {
-      return `Options ${members} must be supplied together. Supply all of them, or none.`;
-    }
-    default: {
-      const exhaustive: never = kind;
-      return exhaustive;
-    }
-  }
-}
-
 function reportGroup(
   group: OptionGroup,
   context: GroupContext,
@@ -322,12 +300,12 @@ function reportGroup(
   const spellings = group.options.map((name) =>
     context.named ? name : reportedOf(spellingsOf(context.table, name), name),
   );
-  const described = group.options.map((name, index) => {
-    const label = context.labels.get(name);
-    return `${quoted(spellings[index])}${label === undefined ? '' : ` (from ${escapeControlCharacters(label)})`}`;
-  });
+  const members = group.options.map((name, index) => ({
+    label: context.labels.get(name),
+    spelling: spellings[index] ?? name,
+  }));
   return {
-    lines: [groupMessage(group.kind, described)],
+    lines: [groupSentence(group.kind, members)],
     problem: {
       inputs: group.options.map((name) => ({ global: false, kind: 'option', name })),
       reason: group.kind,

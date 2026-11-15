@@ -1,5 +1,5 @@
-import { routedSubject } from '../failures/errors.js';
 import { glyph } from '../style/glyphs.generated.js';
+import { incompleteOutput } from './messages.js';
 import type { ViewContext } from './types.js';
 import { view } from './view.js';
 import type { AnyDeclaredView, DeclaredView } from './view.js';
@@ -142,8 +142,7 @@ interface IncompleteResult {
 const incompleteResult: DeclaredView<IncompleteResult> = view<IncompleteResult>(
   `${core}/results/incomplete`,
   {
-    render: ({ path, written, yielded }) =>
-      `Output is incomplete: ${routedSubject(path)} stopped after ${yielded} rows, ${written} written.\n`,
+    render: ({ path, written, yielded }) => `${incompleteOutput(path, yielded, written)}\n`,
   },
 );
 

@@ -2,9 +2,10 @@ import { elided, quoteString, spelled } from '../diagnostics/diagnostic-text.js'
 import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { partFinding, slotSite } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
-import { DeclarationError, defaultText, quoted, reasonOf } from '../failures/errors.js';
+import { DeclarationError, defaultText, reasonOf } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import { markedSentence } from '../failures/form.js';
+import { quoted } from '../failures/messages.js';
 import { foreignValue, foreignValueCorrection, twoPackageCopies } from '../plugins/rules.js';
 import type { RowView, View, ViewContext } from './types.js';
 

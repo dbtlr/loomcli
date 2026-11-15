@@ -42,7 +42,7 @@ Tests read built `dist`. `pnpm test` and `pnpm verify` build first, but a single
 
 A sentence Loom says to an operator goes in the internal `messages.ts` beside the code that raises or writes it: a failure's sentence, a hint line under a failure, a `-v` or `-vv` line, and a plugin's or the `loom` bin's notice, warning, or confirmation. Write it as a named export, a function of the values it repeats or a constant, and have the raising or writing code call it. Escape every value it repeats with `quoted` or `escapeControlCharacters`, and never read an error's `message`, `stack`, or `cause` in it. Fixed labels, such as help headings, and Developer Diagnostics stay where they are.
 
-Each package's `tests/message-voice.test.ts` holds these rules, the banned words of [Failure message voice](docs/core/failures.md#banned-words), and the rule that no failure constructor or out call outside a message module takes a literal sentence. A site that breaks a check and is right is pinned there, per file, by its source text with the reason it holds. [ADR-0164](docs/decisions/0164-looms-operator-messages-live-in-message-modules-and-a-voice-test-per-package-reads-them.md) records the decision.
+Each package's `tests/message-voice.test.ts` holds these rules, the banned words of [Failure message voice](docs/core/failures.md#banned-words), and the rule that no failure constructor or out call outside a message module takes a literal sentence. A site that breaks a check and is right is pinned there, per file, by its source text and its count of sites, with the reason it holds. [ADR-0164](docs/decisions/0164-looms-operator-messages-live-in-message-modules-and-a-voice-test-per-package-reads-them.md) records the decision.
 
 ### Tests stay inside their sandbox
 
