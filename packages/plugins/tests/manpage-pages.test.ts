@@ -303,6 +303,24 @@ describe('sections', () => {
     );
   });
 
+  it('an arity option prints its placeholder once per word, in its tag, usage, and variable lines', () => {
+    const app = new Application('kit', { plugins: [manpage()] })
+      .option('size', { arity: 2, env: 'BOX_SIZE', envDelimiter: 'x', type: 'string' })
+      .option('edge', { arity: 2, multiple: true, required: true, type: 'string' })
+      .action(noop);
+    expect(pagesOf(app).get('kit.1')?.split('\n')).toEqual(
+      expect.arrayContaining([
+        String.raw`\fB\-\-size\fR <\fIsize\fR> <\fIsize\fR>`,
+        String.raw`\fB\-\-edge\fR <\fIedge\fR> <\fIedge\fR>`,
+        String.raw`Environment: \fBBOX_SIZE\fR (2 values separated by \(dqx\(dq)`,
+        String.raw`Supplies \fB\-\-size\fR as 2 values separated by \(dqx\(dq.`,
+      ]),
+    );
+    expect(pagesOf(app).get('kit.1')).toContain(
+      String.raw`\fBkit\fR (\-\-edge <edge> <edge>)... [options]`,
+    );
+  });
+
   it('an ENVIRONMENT entry says when an empty value supplies a string option', () => {
     const app = new Application('kit', { plugins: [manpage()] })
       .option('prefix', { env: ['KIT_PREFIX', 'OLD_PREFIX'], envAllowEmpty: true, type: 'string' })

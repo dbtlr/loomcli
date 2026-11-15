@@ -1037,6 +1037,56 @@ test(
 );
 
 test(
+  'an arity option takes an array of exactly its count, a multiple one an array of such arrays',
+  inWorkspace(async (space) => {
+    const drawn = async (content: string, argv: string[] = []) => {
+      space.write('.app.json', content);
+      const result = await space.run(['draw', '-L', ...argv], loudEnv);
+      expect(result.status).toBe(0);
+      const line = result.stdout.split('\n').find((entry) => entry.startsWith('draw:'));
+      return { options: JSON.parse(line?.slice('draw:'.length) ?? ''), stderr: result.stderr };
+    };
+    await expect(
+      drawn(
+        json({
+          points: [
+            [1, 'b'],
+            ['c', 4],
+          ],
+          size: [800, '600'],
+        }),
+      ),
+    ).resolves.toEqual({
+      options: {
+        help: false,
+        loud: 1,
+        'no-config': false,
+        points: [
+          ['1', 'b'],
+          ['c', '4'],
+        ],
+        size: ['800', '600'],
+      },
+      stderr: '',
+    });
+    const sized =
+      'Ignored option "--size" from size in .app.json: Use an array of 2 strings or numbers.';
+    for (const size of [[1, 2, 3], '800 600', [1, {}], [1]]) {
+      const result = await drawn(json({ size }));
+      expect(result.stderr).toBe(wrong(sized));
+      expect(result.options).not.toHaveProperty('size');
+    }
+    const pointed =
+      'Ignored option "--points" from points in .app.json: Use an array of arrays, each of 2 strings or numbers.';
+    for (const points of [[1, 2], [[1, 2], [3]], 'a b']) {
+      const result = await drawn(json({ points }));
+      expect(result.stderr).toBe(wrong(pointed));
+      expect(result.options).toMatchObject({ points: [] });
+    }
+  }),
+);
+
+test(
   'an empty array fills a multiple option, and a value the option cannot take falls through to its default',
   inWorkspace(async (space) => {
     space.write('.app.json', json({ fields: [] }));
@@ -2453,11 +2503,12 @@ test(
 function linkFault(
   installed: Plugin,
   path: string,
-  kind: 'boolean' | 'count' | 'multiple' | 'string' = 'string',
+  kind: 'arity' | 'boolean' | 'count' | 'multiple' | 'string' = 'string',
 ) {
   const base = new Application('app', { plugins: [installed] });
   const extensions = [configInput({ path })];
   const declared = {
+    arity: () => base.option('opt', { arity: 2, extensions, type: 'string' }),
     boolean: () => base.option('opt', { extensions, type: 'boolean' }),
     count: () => base.option('opt', { extensions, type: 'count' }),
     multiple: () => base.option('opt', { extensions, multiple: true, type: 'string' }),
@@ -2477,7 +2528,7 @@ function linkFault(
 
 const pathCorrection = 'Link a path the schema describes, or add the key to the schema.';
 const typeCorrection =
-  'Link a key that holds a value the option takes: a string or a number for a string option, a Boolean for a Boolean option, a whole number for a counted option, or an array for a multiple option.';
+  'Link a key that holds a value the option takes: a string or a number for a string option, a Boolean for a Boolean option, a whole number for a counted option, or an array for a multiple or arity option.';
 
 test('a link to a key the schema does not hold is a build fault, and a held key builds', () => {
   const schema = z.object({
@@ -2525,6 +2576,17 @@ test('a link to a value the option cannot take is a build fault in every branch 
   expect(linkFault(configuration({ schema }).plugin, 'mixed', 'count')).toMatchObject({
     rule: '@loomcli/plugins/config/link-type',
   });
+});
+
+test('an array key links an arity option, a string key does not, and the correction names both', () => {
+  const schema = z.object({ pair: z.array(z.string()).optional(), word: z.string().optional() });
+  expect(linkFault(configuration({ schema }).plugin, 'pair', 'arity')).toBe('built');
+  expect(linkFault(configuration({ schema }).plugin, 'word', 'arity')).toEqual({
+    correction: typeCorrection,
+    rule: '@loomcli/plugins/config/link-type',
+    sentence: 'The root Command option "opt" links to word, which holds a string.',
+  });
+  expect(typeCorrection).toMatch(/or an array for a multiple or arity option\.$/u);
 });
 
 test('a union member that lists the key is judged, and an open member that does not list it stops the check', () => {

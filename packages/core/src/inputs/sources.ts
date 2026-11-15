@@ -30,7 +30,7 @@ import { isPlainObject } from '../support/plain.js';
 import { envNames } from './bindings.js';
 import { absentBooleans, claims, losingMembers } from './option-groups.js';
 import type { OptionGroup, Tier } from './option-groups.js';
-import { isSupplied, withdrawFill } from './options.js';
+import { arityOf, isSupplied, withdrawFill } from './options.js';
 import type { OptionValues } from './options.js';
 import type { OptionInput, Provenance, Validation } from './validation.js';
 
@@ -105,9 +105,15 @@ const truths: ReadonlyMap<string, boolean> = new Map([
 ]);
 
 /**
- * The raw value an option takes: a string, a Boolean, a count, or a list for a multiple option.
+ * The raw value an option takes: a string, a Boolean, a count, a list for a multiple option, or
+ * the tuples of an arity option's occurrences, one for a scalar option.
  */
-type RawFill = string | boolean | number | readonly string[];
+type RawFill =
+  | string
+  | boolean
+  | number
+  | readonly string[]
+  | { readonly tuples: readonly (readonly string[])[] };
 
 /** What one variable holds under the environment rules: a fill, or a value outside the grammar. */
 type VariableReading = { kind: 'fill'; value: RawFill } | { kind: 'rejected' };
@@ -124,7 +130,8 @@ type NamedReading = { reading: VariableReading; variable: string } | undefined;
  * string option's binding declares `envAllowEmpty`, under which the first defined variable supplies
  * the option, its value empty or not. A string
  * option receives the raw string, never its implied value, and a multiple option receives the
- * list its declared delimiter splits the raw string into, every item kept. A Boolean option reads the whole value
+ * list its declared delimiter splits the raw string into, every item kept. An arity option's value
+ * splits the same way and must give exactly its count of items. A Boolean option reads the whole value
  * through the grammar, so the value states the option's value and not a spelling, and a counted
  * option reads the whole value as decimal digits. A value outside the grammar stops at its
  * variable and never falls through.
@@ -141,6 +148,15 @@ function readVariable(input: OptionInput, env: Host['env']): NamedReading {
   }
   if (input.config.type === 'string' || input.config.type === 'content') {
     const { multiple, envDelimiter } = input.config;
+    const arity = arityOf(input.config);
+    if (arity !== undefined) {
+      const words = envDelimiter === undefined ? [raw] : raw.split(envDelimiter);
+      const reading: VariableReading =
+        words.length === arity
+          ? { kind: 'fill', value: { tuples: [words] } }
+          : { kind: 'rejected' };
+      return { reading, variable };
+    }
     const value = multiple === true && envDelimiter !== undefined ? raw.split(envDelimiter) : raw;
     return { reading: { kind: 'fill', value }, variable };
   }
@@ -165,6 +181,11 @@ function fill(values: OptionValues, name: string, value: RawFill): void {
     values.counts.set(name, value);
   } else if (typeof value === 'string') {
     values.strings.set(name, value);
+  } else if ('tuples' in value) {
+    values.tuples.set(
+      name,
+      value.tuples.map((words) => [...words]),
+    );
   } else {
     values.lists.set(name, [...value]);
   }
@@ -176,22 +197,75 @@ interface Requested {
   scope: StageScope;
 }
 
-/** The shape one option's raw value takes, which decides what an answer must hold. */
-type RawKind = 'boolean' | 'count' | 'list' | 'string';
+/**
+ * The shape one option's raw value takes, which decides what an answer must hold: an arity option's
+ * tuple of its count of strings, or a multiple one's list of such tuples.
+ */
+type RawKind =
+  | { kind: 'boolean' | 'count' | 'list' | 'string' }
+  | { kind: 'tuple' | 'tuples'; arity: number };
 
 /** How a fault names the value an answer owed, by the shape the option takes. */
-const owed: Readonly<Record<RawKind, string>> = {
-  boolean: 'a Boolean',
-  count: 'a whole number of 0 or more',
-  list: 'an array of strings',
-  string: 'a string',
-};
+function owed(shape: RawKind): string {
+  switch (shape.kind) {
+    case 'boolean': {
+      return 'a Boolean';
+    }
+    case 'count': {
+      return 'a whole number of 0 or more';
+    }
+    case 'list': {
+      return 'an array of strings';
+    }
+    case 'string': {
+      return 'a string';
+    }
+    case 'tuple': {
+      return `an array of ${String(shape.arity)} strings`;
+    }
+    case 'tuples': {
+      return `an array of arrays, each of ${String(shape.arity)} strings`;
+    }
+    default: {
+      const exhaustive: never = shape;
+      return exhaustive;
+    }
+  }
+}
 
 function rawKind(input: OptionInput): RawKind {
   if (input.config.type !== 'string' && input.config.type !== 'content') {
-    return input.config.type;
+    return { kind: input.config.type };
   }
-  return input.config.multiple === true ? 'list' : 'string';
+  const multiple = input.config.multiple === true;
+  const arity = arityOf(input.config);
+  if (arity !== undefined) {
+    return { arity, kind: multiple ? 'tuples' : 'tuple' };
+  }
+  return { kind: multiple ? 'list' : 'string' };
+}
+
+/** The run's own copy of an answered tuple, or `undefined` when it is not `arity` strings. */
+function stringTuple(arity: number, value: unknown): string[] | undefined {
+  const list = stringList(value);
+  return list?.length === arity ? list : undefined;
+}
+
+/** The run's own copy of an answered list of tuples, or `undefined` when one is not a tuple. */
+function tupleList(arity: number, value: unknown): string[][] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const tuples: string[][] = [];
+  // Iteration visits a hole as undefined, which is no tuple.
+  for (const entry of value) {
+    const tuple = stringTuple(arity, entry);
+    if (tuple === undefined) {
+      return undefined;
+    }
+    tuples.push(tuple);
+  }
+  return tuples;
 }
 
 /**
@@ -214,17 +288,33 @@ function stringList(value: unknown): string[] | undefined {
 }
 
 /** One answered value as the raw type its option takes, or `undefined` when it holds another. */
-function rawValue(kind: RawKind, value: unknown): RawFill | undefined {
-  if (kind === 'list') {
-    return stringList(value);
+function rawValue(shape: RawKind, value: unknown): RawFill | undefined {
+  switch (shape.kind) {
+    case 'list': {
+      return stringList(value);
+    }
+    case 'boolean': {
+      return typeof value === 'boolean' ? value : undefined;
+    }
+    case 'count': {
+      return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+    }
+    case 'string': {
+      return typeof value === 'string' ? value : undefined;
+    }
+    case 'tuple': {
+      const tuple = stringTuple(shape.arity, value);
+      return tuple && { tuples: [tuple] };
+    }
+    case 'tuples': {
+      const tuples = tupleList(shape.arity, value);
+      return tuples && { tuples };
+    }
+    default: {
+      const exhaustive: never = shape;
+      return exhaustive;
+    }
   }
-  if (kind === 'boolean') {
-    return typeof value === 'boolean' ? value : undefined;
-  }
-  if (kind === 'count') {
-    return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
-  }
-  return typeof value === 'string' ? value : undefined;
 }
 
 /**
@@ -261,7 +351,7 @@ function readAnswer(
   const value = rawValue(kind, shape.value);
   if (value === undefined) {
     throw ruleFault(
-      `${sentence} answered option ${quoted(input.name)} with a value that is not ${owed[kind]}.`,
+      `${sentence} answered option ${quoted(input.name)} with a value that is not ${owed(kind)}.`,
     );
   }
   const { directory } = shape;
@@ -392,8 +482,9 @@ async function askSource(stage: SourceStage, call: SourceCall): Promise<Answer[]
 
 /**
  * The environment tier: each option in scope that argv left unfilled reads its bound variable. A
- * filled option is labeled with the variable that supplied it, and a Boolean or counted one outside its grammar is
- * recorded as rejected, which fills nothing.
+ * filled option is labeled with the variable that supplied it, and a Boolean or counted one outside its grammar,
+ * or an arity one whose variable splits into another count of items, is recorded as rejected,
+ * which fills nothing.
  */
 function fillFromEnvironment(
   scopes: readonly StageScope[],

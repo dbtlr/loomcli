@@ -1,4 +1,11 @@
-import { Application, DeclarationError, InputError, override, plugin } from '@loomcli/core';
+import {
+  Application,
+  Command,
+  DeclarationError,
+  InputError,
+  override,
+  plugin,
+} from '@loomcli/core';
 import type { InvocationValues } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import type { ConfigurationSettings } from '@loomcli/plugins/config';
@@ -69,6 +76,23 @@ const views: Record<string, ReturnType<typeof override>[]> = {
   input: [override(InputError, { render: (failure) => `${JSON.stringify(failure.problems)}\n` })],
   none: [],
 };
+
+/** A Command whose options take several words per occurrence, so no other case reads its options. */
+const draw = new Command('draw', { description: 'Draw shapes.' })
+  .option('size', {
+    arity: 2,
+    description: 'The size.',
+    extensions: [configInput({ path: 'size' })],
+    type: 'string',
+  })
+  .option('points', {
+    arity: 2,
+    description: 'The points.',
+    extensions: [configInput({ path: 'points' })],
+    multiple: true,
+    type: 'string',
+  })
+  .action(print('draw'));
 
 /** What a case declares about the fixture application. */
 interface Declared {
@@ -180,6 +204,7 @@ function application({
         type: 'string',
         validate: path(),
       })
+      .command(draw)
       .action(async (context) => {
         await print('root')(context);
         if (provided) {

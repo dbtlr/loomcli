@@ -175,7 +175,7 @@ function resolveLink<Options, Key extends LinkKey<Options>, Args, Argument exten
 
 function checkKind(option: OptionNode, kind: string, message: string): void {
   if (kind === 'multiselect') {
-    if (option.type !== 'string' || !option.multiple) {
+    if (option.type !== 'string' || !option.multiple || option.arity !== null) {
       invalid(
         `The question "${message}" links option "${option.name}", which is not a multiple string option.`,
         'Link a multiple string option or a variadic string argument.',
@@ -188,7 +188,7 @@ function checkKind(option: OptionNode, kind: string, message: string): void {
         'Link a Boolean option.',
       );
     }
-  } else if (option.type !== 'string' || option.multiple) {
+  } else if (option.type !== 'string' || option.multiple || option.arity !== null) {
     invalid(
       `The question "${message}" links option "${option.name}", which is not a string option that takes one value.`,
       'Link a string option or argument that takes one value.',

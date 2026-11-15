@@ -128,8 +128,8 @@ An option word is a word the parser reads as options: `--` followed by at least 
 _Avoid_: Flag token, hyphen token (for the class), negative number (as a grammar rule)
 
 **Value class**:
-The way an option reads words, of which there are four: a Boolean option, a counted option, a string option with an implied value, and a string option that takes a separate value. A native content option shares the last class, and a parent's own option typed before a child's name binds to the child's option of that spelling only when both share one value class.
-_Avoid_: Arity, option shape, value kind
+The way an option reads words: a Boolean option, a counted option, a string option with an implied value, a string option that takes a separate value, and, for each [arity](#inputs) count, a string option that takes that many separate words. A native content option shares the separate-value class, and a parent's own option typed before a child's name binds to the child's option of that spelling only when both share one value class, the same arity count included.
+_Avoid_: Option shape, value kind
 
 **Command table**:
 The one spelling table graph build gives each Command after the lifecycle hooks have run: its local options and every global option, each entry referencing its one declaration. The routed Command's words are read against it.
@@ -146,6 +146,10 @@ _Avoid_: Flag group, validation group, constraint
 **Multiple option**:
 A string or content option that collects every occurrence into one array instead of rejecting the second. An omitted string option with no default receives `[]` and calls no per-value validator, while a content option holds assembled sources, including stdin when claimed.
 _Avoid_: Repeatable flag, array option, list option
+
+**Arity**:
+The fixed number of words, 2 or more, that one occurrence of a string option takes, declared as `arity`. The words are the separate words after the spelling, never an attached value, and the action reads them as a tuple, one validator output per word, or a list of tuples on a multiple option.
+_Avoid_: Number of arguments, nargs, value count
 
 **Counted option**:
 An option that takes no value and reads, as a number, how many times it was supplied across every spelling, so `-vvv` reads 3 and an option nothing supplied reads 0. Repeating it is never a fault.

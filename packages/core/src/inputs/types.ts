@@ -98,6 +98,25 @@ type StringBinding =
     };
 
 /**
+ * An arity option's binding. A scalar one binds no variable, or a variable beside the delimiter
+ * that splits its value into the declared count of words. A multiple one binds no variable, because
+ * one delimiter cannot separate the tuples from their words. An empty variable splits into one
+ * empty item and never fills the count, so no member declares `envAllowEmpty`.
+ *
+ * @public
+ */
+type ArityBinding =
+  | { multiple: true; env?: never; envDelimiter?: never; envAllowEmpty?: never }
+  | { multiple?: false; env?: never; envDelimiter?: never; envAllowEmpty?: never }
+  | {
+      multiple?: false;
+      env: string | readonly [string, ...string[]];
+      /** The non-empty string that separates the words of the variable's value. */
+      envDelimiter: string;
+      envAllowEmpty?: never;
+    };
+
+/**
  * The environment binding: the variable, or the non-empty list of variables, the input-source
  * stage fills the option from when argv supplies none. The first name holding a value supplies it.
  * The declaration names each explicitly, and core derives no name.
@@ -112,7 +131,7 @@ interface EnvBinding {
    * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/input-sources.md#environment-bindings
    */
   env?: string | readonly [string, ...string[]];
-  /** Only a multiple option declares a delimiter, under `ListBinding`. */
+  /** Only a multiple option declares a delimiter, under `ListBinding`, and a scalar arity option, under `ArityBinding`. */
   envDelimiter?: never;
   /** Only a scalar string option's binding declares it, under `StringBinding`. */
   envAllowEmpty?: never;
@@ -211,6 +230,7 @@ type BooleanFacts = Described &
     required?: never;
     validateOmitted?: never;
     implied?: never;
+    arity?: never;
   };
 
 /**
@@ -243,15 +263,48 @@ interface ArgumentExtensions {
 }
 
 /**
- * The tokens one declaration collects before validation: one string, or several. A multiple option
- * and a variadic argument collect alike, so they share this raw shape.
+ * A tuple of `Count` items, and for a union of counts a union of tuples, one per count. A count
+ * typed as the wide `number`, or one that names no whole number, gives no length to build, so it
+ * reads as an array of the item.
  */
-type RawValue<Config> = Config extends { multiple: true } | { variadic: true } ? string[] : string;
+type TupleOf<Item, Count extends number> = number extends Count
+  ? Item[]
+  : Count extends unknown
+    ? TupleOfLength<Item, Count>
+    : never;
 
-/** A multiple option and a variadic argument pass each value through the same validator. */
-type PerValue<Config, Value> = Config extends { multiple: true } | { variadic: true }
-  ? Value[]
-  : Value;
+/** A tuple of exactly one literal `Count` of items, built one item at a time. */
+type TupleOfLength<
+  Item,
+  Count extends number,
+  Built extends Item[] = [],
+> = `${Count}` extends `${bigint}`
+  ? `${Count}` extends `-${string}`
+    ? Item[]
+    : Built['length'] extends Count
+      ? Built
+      : TupleOfLength<Item, Count, [...Built, Item]>
+  : Item[];
+
+/**
+ * The value shape one declaration's words take, of one item type: an arity option's tuple, or a
+ * multiple arity option's list of tuples; a list for a multiple option and a variadic argument; and
+ * one item for every other input.
+ */
+type PerValue<Config, Value> = Config extends { arity: infer Count extends number }
+  ? Config extends { multiple: true }
+    ? TupleOf<Value, Count>[]
+    : TupleOf<Value, Count>
+  : Config extends { multiple: true } | { variadic: true }
+    ? Value[]
+    : Value;
+
+/**
+ * The tokens one declaration collects before validation: one string, several, a tuple of them, or a
+ * list of tuples. A multiple option and a variadic argument collect alike, so they share this raw
+ * shape.
+ */
+type RawValue<Config> = PerValue<Config, string>;
 
 /** The validated value: the validator's output for each value, or the raw shape without one. */
 type SchemaOutput<Config, Schema, Raw> = Schema extends StandardSchemaV1
@@ -267,14 +320,20 @@ type DefaultInput<Config> = 'validate' extends keyof Config
   ? PerValue<Config, SchemaInput<Config['validate']>>
   : RawValue<Config>;
 
+/** One array type with every array inside it made readonly, the way a `const` literal infers. */
+type DeepReadonlyArray<Value> = Value extends readonly unknown[]
+  ? { readonly [Index in keyof Value]: DeepReadonlyArray<Value[Index]> }
+  : Value;
+
 /**
  * The defaults a config accepts: its default input, or a readonly list of it. A list a conditional
- * declaration writes inline infers as a readonly tuple, and core copies a declared list for each
- * run, so the action still receives its own array.
+ * declaration writes inline infers as a readonly tuple, a list of tuples as a readonly list of
+ * readonly tuples, and core copies a declared list for each run, so the action still receives its
+ * own array.
  */
 type AcceptedDefault<Config> =
   | DefaultInput<Config>
-  | (DefaultInput<Config> extends unknown[] ? Readonly<DefaultInput<Config>> : never);
+  | (DefaultInput<Config> extends unknown[] ? DeepReadonlyArray<DefaultInput<Config>> : never);
 
 /**
  * The members of a config whose declared default is outside their own accepted defaults. A
@@ -300,6 +359,37 @@ type DefaultFault<Config> = Config extends { default: infer Default }
 type PairedDefault<Config> = Config extends unknown
   ? Config & { default?: DefaultInput<Config> }
   : never;
+
+/** A string option whose occurrence takes one word, or supplies its implied value. */
+type SingleWordString = (
+  | (Presence & Multiplicity & Omission)
+  | (ConditionalPresence & Multiplicity)
+) & {
+  /** Never declared: only an arity option takes several words per occurrence. */
+  arity?: never;
+  /** The value a bare spelling supplies, so an explicit value is attached to the spelling. */
+  implied?: string;
+};
+
+/**
+ * A string option whose occurrence takes exactly `arity` separate words. It implies no value,
+ * because its words are never attached, and sends no omission to its validator, which reads one
+ * word.
+ */
+type ArityString = (Presence | ConditionalPresence) &
+  ArityBinding & {
+    /**
+     * The whole number of words, 2 or more, each occurrence takes. The action reads a tuple of
+     * them, or a list of tuples on a multiple option.
+     *
+     * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#option-value-arity
+     */
+    arity: number;
+    /** Never declared: an arity option's words are separate, so a bare spelling supplies none. */
+    implied?: never;
+    /** Never declared: an arity option's validator reads one word, never an omission. */
+    validateOmitted?: never;
+  };
 
 interface ContentInput {
   /**
@@ -344,10 +434,16 @@ export interface SuppliedInputs {
   /** Raw positional values of the routed Command: one string, or the tokens of a variadic. */
   args: Readonly<Record<string, string | readonly string[] | undefined>>;
   /**
-   * Raw option values, globals and locals: a string, every occurrence, a Boolean presence, or the
-   * number of times a counted option was supplied.
+   * Raw option values, globals and locals: a string, every occurrence, a Boolean presence, the
+   * number of times a counted option was supplied, an arity option's tuple of words, or a multiple
+   * arity option's list of tuples.
    */
-  options: Readonly<Record<string, string | readonly string[] | boolean | number | undefined>>;
+  options: Readonly<
+    Record<
+      string,
+      string | readonly string[] | readonly (readonly string[])[] | boolean | number | undefined
+    >
+  >;
 }
 
 /**
@@ -387,9 +483,9 @@ export type ValidationContext =
  */
 export type StringOption = UnmarkedStringOption | BackgroundOption;
 
-/** A string option that carries no run-wide mark. */
+/** A string option that carries no run-wide mark: one word per occurrence, or a declared arity. */
 export type UnmarkedStringOption = OptionSpelling &
-  ((Presence & Multiplicity & Omission) | (ConditionalPresence & Multiplicity)) &
+  (SingleWordString | ArityString) &
   Described &
   Listed &
   Controlled &
@@ -398,8 +494,6 @@ export type UnmarkedStringOption = OptionSpelling &
     type: 'string';
     polarity?: never;
     validate?: StandardSchemaV1;
-    /** The value a bare spelling supplies, so an explicit value is attached to the spelling. */
-    implied?: string;
   };
 
 /**
@@ -422,6 +516,7 @@ export type BackgroundOption = Described &
     envAllowEmpty?: never;
     default?: never;
     implied?: never;
+    arity?: never;
     multiple?: false;
     required?: never;
     validateOmitted?: never;
@@ -477,6 +572,7 @@ export type ContentOption = ContentInput &
   Unmarked & {
     polarity?: never;
     implied?: never;
+    arity?: never;
   } & (
     | (ListBinding & { min?: number; max?: number })
     | ({ multiple?: false; min?: never; max?: never } & EnvBinding)
@@ -560,11 +656,14 @@ export type ImpliedConstraint<Config> = Config extends { implied: infer Implied 
   : unknown;
 
 /**
- * A multiple option or a variadic argument passes each value to its validator alone, so the
- * declared validator must accept one `string`. The key names the fault, the way the other
+ * A multiple option, a variadic argument, or an arity option passes each value to its validator
+ * alone, so the declared validator must accept one `string`. The key names the fault, the way the other
  * declaration constraints do.
  */
-export type PerValueConstraint<Config> = Config extends { multiple: true } | { variadic: true }
+export type PerValueConstraint<Config> = Config extends
+  | { multiple: true }
+  | { variadic: true }
+  | { arity: number }
   ? 'validate' extends keyof Config
     ? // A validator that declares no types infers `never`, so it states nothing to reject.
       [SchemaInput<Config['validate']>] extends [never]
@@ -675,6 +774,7 @@ export type CountOption = OptionSpelling &
     validateOmitted?: never;
     polarity?: never;
     implied?: never;
+    arity?: never;
   } & (
     | ({ verbose?: never; quiet?: never } & EnvBinding)
     | { verbose: true; quiet?: never; env?: never; envAllowEmpty?: never }
@@ -702,9 +802,9 @@ export type GlobalOptionConfig = Exclude<OptionConfig, ContentOption> &
 
 export type OptionValue<Config extends OptionConfig> = Config extends StringOption | ContentOption
   ? Config extends { multiple: true }
-    ? ValidatedValue<Config, string[]>
+    ? ValidatedValue<Config, RawValue<Config>>
     :
-        | ValidatedValue<Config, string>
+        | ValidatedValue<Config, RawValue<Config>>
         | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
             ? never
             : undefined)
@@ -712,4 +812,4 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
     ? number
     : boolean;
 
-export type { EnvBinding, ListBinding, StringBinding, Unmarked };
+export type { ArityBinding, EnvBinding, ListBinding, StringBinding, Unmarked };

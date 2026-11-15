@@ -33,7 +33,7 @@ await app.run();
 
 `type`, and `implied` on a string option, control token consumption. The validator receives the supplied string and determines the action's output type. Core awaits synchronous or asynchronous validation before dispatch. Without a validator, supplied values remain strings.
 
-A scalar argument's validator receives its one token. A variadic argument's validator, and a multiple option's, receive one value at a time under [ADR-0036](../decisions/0036-each-value-passes-the-same-validator.md), and the action receives the array of their outputs. A rule over a plain string list belongs to the action. Native [content collections](#content-inputs) declare source-count bounds. Passthrough never enters this pipeline. The [validators reference](../libs/validators.md) describes `@loomcli/validators`, the catalog of validators for common input shapes.
+A scalar argument's validator receives its one token. A variadic argument's validator, and a multiple option's, receive one value at a time under [ADR-0036](../decisions/0036-each-value-passes-the-same-validator.md), and the action receives the array of their outputs. An [arity option](options.md#option-value-arity)'s validator receives one word at a time, and the action receives a tuple of the outputs, or a list of tuples on a multiple option; an issue reads at the word's position, after its occurrence's on a multiple option, as in `Option "--point" at 2.1: Use an integer.` A rule over a plain string list belongs to the action. Native [content collections](#content-inputs) declare source-count bounds. Passthrough never enters this pipeline. The [validators reference](../libs/validators.md) describes `@loomcli/validators`, the catalog of validators for common input shapes.
 
 `ActionHandler<typeof app>` retains these output types for extracted handlers. `ArgumentConfig`, `StringOption`, and `OptionConfig` support configuration declarations with `satisfies`. A broad type annotation can erase validator details; `satisfies` preserves inference.
 
@@ -167,9 +167,11 @@ A default and an [implied value](options.md#implied-values) validate before any 
 | Counted option, supplied                       | The number of occurrences      |
 | Counted option, omitted                        | `undefined`                    |
 | String option with an implied value, bare      | The raw implied string, in its place in a multiple option's list |
+| Arity option, supplied                         | The tuple of its raw words, or a list of tuples on a multiple option, in supplied order |
+| Arity option, omitted                          | `undefined`, or `[]` on a multiple option |
 | Option an input source filled                  | The raw value it filled        |
 
-An omitted Boolean or counted option reads as `undefined` here, because the polarity value and `0` are absent values, not supplied tokens. A count an input source filled reads as the number it filled, so `SuppliedInputs.options`, the exported type of `supplied.options`, admits a `number` for a counted option. A bare spelling of a string option with an implied value reads as the raw implied string, before its validator, as a Boolean's entry holds the value of its spelling, because the operator supplied the option. Absence rules do not change: an omitted optional value with no default never reaches its validator, and no context is produced for it, unless its declaration asks for that call with `validateOmitted: true`.
+An omitted Boolean or counted option reads as `undefined` here, because the polarity value and `0` are absent values, not supplied tokens. A count an input source filled reads as the number it filled, so `SuppliedInputs.options`, the exported type of `supplied.options`, admits a `number` for a counted option, and a list of tuples for a multiple arity option. A bare spelling of a string option with an implied value reads as the raw implied string, before its validator, as a Boolean's entry holds the value of its spelling, because the operator supplied the option. Absence rules do not change: an omitted optional value with no default never reaches its validator, and no context is produced for it, unless its declaration asks for that call with `validateOmitted: true`.
 
 ### Validation options outside a run
 
@@ -219,6 +221,8 @@ const result = await dateTime()['~standard'].validate('2026-06-01 09:00', option
 | Optional value or argument omitted, no default  | `undefined`; validator is not called               |
 | Optional value omitted, `validateOmitted: true` | The validated output of `undefined`               |
 | Optional multiple option omitted, no default    | `[]`; validator is not called                     |
+| Optional scalar arity option omitted, no default | `undefined`; validator is not called            |
+| Arity option, declared default omitted by every tier | Each default word's validated output, in the default's tuple shape |
 | Optional variadic argument omitted, no default  | `[]`; validator is not called                     |
 | Optional value omitted, declared default        | The validated default output                      |
 | Supplied value, including an empty string       | Its validated output or input issues              |

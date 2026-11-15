@@ -3,6 +3,7 @@ import { DeclarationError, InputError, quoted } from '../failures/errors.js';
 import type { Host } from '../host/types.js';
 import { reportedSpelling } from '../inspection/inspect.js';
 import type { ActionContext } from '../invocation/types.js';
+import { missingValues } from './validation.js';
 
 /** Hosts belong to one invocation, so naming stays private while the action context is copied. */
 const missingInput = registerRule('@loomcli/core/missing-input-name', {
@@ -63,7 +64,9 @@ function missingInputError(
         ].filter((form) => form !== null)
       : [];
   const valueFix =
-    option.type === 'string' && option.multiple ? 'Supply at least one value.' : 'Supply a value.';
+    option.type === 'string'
+      ? `Supply ${missingValues(option.multiple, option.arity ?? undefined)}.`
+      : 'Supply a value.';
   const fix =
     !named.has(context.host) && forms.length > 0
       ? `Supply ${forms.map((form) => quoted(form)).join(' or ')}.`

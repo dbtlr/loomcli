@@ -65,7 +65,8 @@ export interface ActionChannel {
  * name, `options` by the declared name of a local or global option, and the passthrough tail. Each
  * value lowers to the tokens argv would give: a string or a number is one token, a Boolean a
  * spelling or its absence, a number on a counted option that many occurrences, and an array one
- * occurrence per element.
+ * occurrence per element. On an arity option a tuple is one occurrence of its words, and a list of
+ * tuples one occurrence per tuple.
  *
  * @public
  */
@@ -74,9 +75,20 @@ export interface InvocationValues {
   readonly args?: Readonly<
     Record<string, string | number | boolean | readonly (string | number)[] | undefined>
   >;
-  /** The value of each local or global option, by declared name. */
+  /**
+   * The value of each local or global option, by declared name. An arity option takes a tuple, and
+   * a multiple arity option a list of tuples.
+   */
   readonly options?: Readonly<
-    Record<string, string | number | boolean | readonly (string | number)[] | undefined>
+    Record<
+      string,
+      | string
+      | number
+      | boolean
+      | readonly (string | number)[]
+      | readonly (readonly (string | number)[])[]
+      | undefined
+    >
   >;
   /**
    * The words a command line would give after the `--` separator. They reach a Command that

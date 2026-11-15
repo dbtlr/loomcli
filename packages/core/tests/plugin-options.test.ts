@@ -206,6 +206,7 @@ test("a plugin's option publishes the node an application's global option publis
   );
   expect(graph.globals[2]).toEqual({
     aliases: [],
+    arity: null,
     background: false,
     control: false,
     default: { value: 'plain' },

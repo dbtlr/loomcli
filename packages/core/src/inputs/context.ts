@@ -35,6 +35,28 @@ function schemaOptions(context: ValidationContext): StandardSchemaV1.Options {
   return { libraryOptions: { [validationContextKey]: context } };
 }
 
+/** One raw option value of the supplied record. */
+type SuppliedOption = SuppliedInputs['options'][string];
+
+/**
+ * Whether a raw list holds a multiple arity option's tuples rather than single words. An empty list
+ * holds neither, and copies alike either way.
+ */
+function holdsTuples(
+  value: readonly string[] | readonly (readonly string[])[],
+): value is readonly (readonly string[])[] {
+  const entries: readonly unknown[] = value;
+  return entries.every((entry) => Array.isArray(entry));
+}
+
+/** The copy a raw option value is handed out as, a list of tuples copied at both depths. */
+function copiedOption(value: SuppliedOption): SuppliedOption {
+  if (typeof value !== 'object') {
+    return value;
+  }
+  return holdsTuples(value) ? value.map((words) => [...words]) : [...value];
+}
+
 /** A schema call gets its own raw-input copies, as invocation validators do. */
 function copiedSupplied(supplied: SuppliedInputs): SuppliedInputs {
   const args = { ...supplied.args };
@@ -45,9 +67,7 @@ function copiedSupplied(supplied: SuppliedInputs): SuppliedInputs {
     }
   }
   for (const [name, value] of Object.entries(options)) {
-    if (typeof value === 'object') {
-      options[name] = [...value];
-    }
+    options[name] = copiedOption(value);
   }
   return { args, options };
 }
@@ -217,6 +237,7 @@ function validationContext(
 
 export type { ValidationOptionsContext };
 export {
+  holdsTuples,
   questionValidationOptions,
   schemaOptions,
   validationContext,

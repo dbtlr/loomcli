@@ -147,6 +147,7 @@ async function run(args: string[] = [], env: Record<string, string | undefined> 
   const scenarios = {
     app: application,
     'argument-nan': () => placed('argument', Number.NaN),
+    arity,
     'array-date': () => defaulted([new Date(0)]),
     bigint: () => defaulted(10n),
     'child-nan': () => placed('child', Number.NaN),
@@ -281,6 +282,21 @@ function multiline() {
     .action(dispatch);
   return new Application('app', { description: 'Do the\nwork.', plugins: [manifest()] })
     .command(fetch)
+    .action(dispatch);
+}
+
+/** A scalar and a multiple arity option, beside one without an arity. */
+function arity() {
+  return new Application('app', { description: 'Draw.', plugins: [manifest()] })
+    .option('size', {
+      arity: 2,
+      default: ['800', '600'],
+      env: 'BOX_SIZE',
+      envDelimiter: 'x',
+      type: 'string',
+    })
+    .option('point', { arity: 2, multiple: true, type: 'string' })
+    .option('name', { type: 'string' })
     .action(dispatch);
 }
 

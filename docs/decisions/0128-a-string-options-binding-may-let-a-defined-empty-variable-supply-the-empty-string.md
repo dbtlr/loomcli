@@ -42,3 +42,4 @@ Accepted in 0.17.0.
 ## Changelog
 
 - 2026-10-30: Proposed with the contract. It narrows ADR-0032's clause that an empty variable is unset, for a scalar string option whose binding declares `envAllowEmpty: true`. ADR-0032 carries a dated entry.
+- 2026-11-15: [ADR-0161](0161-a-string-option-may-declare-an-arity-and-each-occurrence-takes-that-many-separate-words.md), proposed, rejects `envAllowEmpty` beside `arity` in the types, because an empty variable never fills an arity option's count. It binds when accepted; every other clause remains unchanged.

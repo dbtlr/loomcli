@@ -110,6 +110,11 @@ function listOf(items: Schema): Schema {
   return { type: 'array', items };
 }
 
+/** Exactly `count` values of one schema, as one occurrence of an option with an arity takes them. */
+function tupleOf(items: Schema, count: number): Schema {
+  return { ...listOf(items), minItems: count, maxItems: count };
+}
+
 /** The schema of one value the input takes: the published one, or one derived from its kind. */
 function valueSchema(property: Property): Schema {
   const { node } = property;
@@ -123,6 +128,14 @@ function valueSchema(property: Property): Schema {
     return { type: 'integer', minimum: 0 };
   }
   return { type: 'string' };
+}
+
+/** The count of words one occurrence takes, for an option that declares an arity. */
+function arityOf(property: Property): number | undefined {
+  if (property.kind === 'option' && property.node.type === 'string') {
+    return property.node.arity ?? undefined;
+  }
+  return undefined;
 }
 
 /** Whether the input takes several values. */
@@ -186,7 +199,9 @@ function listBounds(property: Property): {
  * plugin sets in place of any the converter wrote.
  */
 function propertySchema(property: Property): Schema {
-  const value = valueSchema(property);
+  const word = valueSchema(property);
+  const arity = arityOf(property);
+  const value = arity === undefined ? word : tupleOf(word, arity);
   const description = propertyDescription(property);
   return {
     ...(takesSeveral(property) ? { ...listOf(value), ...listBounds(property) } : value),

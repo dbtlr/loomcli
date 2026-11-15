@@ -121,6 +121,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         new Command('get')
           .option('color', { polarity: 'both', type: 'boolean' })
           .option('no-color', { type: 'boolean' }),
+      'option-arity': () => new Command('get').option('point', { arity: 1, type: 'string' }),
       'option-name': () => new Command('get').option('-raw', { type: 'boolean' }),
       'option-twice': () =>
         new Command('get').option('raw', { type: 'boolean' }).option('raw', { type: 'string' }),

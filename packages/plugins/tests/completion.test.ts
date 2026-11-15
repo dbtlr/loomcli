@@ -370,6 +370,26 @@ describe('the answer', () => {
     );
   });
 
+  it('an arity option offers its values at each word, and a scalar one is offered once, a multiple one again', () => {
+    const graph = new Application('kit')
+      .option('point', {
+        arity: 2,
+        type: 'string',
+        validate: shaped({ enum: ['x1', 'x2'], type: 'string' }),
+      })
+      .option('edge', { arity: 2, multiple: true, type: 'string' })
+      .argument('file', { validate: shaped({ enum: ['f1'], type: 'string' }) })
+      .action(() => {})
+      .inspect();
+    const at = (...words: string[]) => answer(graph, locate(graph, words));
+    expect(at('--point', '')).toBe(framed(['x1', 'x2'], 4));
+    expect(at('--point', 'x1', '')).toBe(framed(['x1', 'x2'], 4));
+    expect(at('--point', 'x1', 'x2', '')).toBe(framed(['f1'], 4));
+    expect(at('--point=')).toBe(framed([], 1));
+    expect(at('--point', 'x1', 'x2', '--')).toBe(framed(['--edge'], 4));
+    expect(at('--edge', 'a', 'b', '--')).toBe(framed(['--point', '--edge'], 4));
+  });
+
   it('a counted option is offered again, because another occurrence adds to its count', async () => {
     await expect(complete('backups', '-v', '--v')).resolves.toBe(
       framed(['--verbose\tSay more.'], 4),

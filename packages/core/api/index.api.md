@@ -315,6 +315,7 @@ export type ContentArgument = ContentInput & Described & ArgumentExtensions & ({
 export type ContentOption = ContentInput & OptionSpelling & Described & Listed & Controlled & OptionExtensions & Unmarked & {
     polarity?: never;
     implied?: never;
+    arity?: never;
 } & ((ListBinding & {
     min?: number;
     max?: number;
@@ -343,6 +344,7 @@ export type CountOption = OptionSpelling & Described & Listed & Controlled & Opt
     validateOmitted?: never;
     polarity?: never;
     implied?: never;
+    arity?: never;
 } & (({
     verbose?: never;
     quiet?: never;
@@ -956,7 +958,7 @@ export type InvocationOutcome<Mapped = LoomError> = {
 // @public
 export interface InvocationValues {
     readonly args?: Readonly<Record<string, string | number | boolean | readonly (string | number)[] | undefined>>;
-    readonly options?: Readonly<Record<string, string | number | boolean | readonly (string | number)[] | undefined>>;
+    readonly options?: Readonly<Record<string, string | number | boolean | readonly (string | number)[] | readonly (readonly (string | number)[])[] | undefined>>;
     readonly passthrough?: readonly string[];
 }
 
@@ -1146,13 +1148,21 @@ export class MisplacedOptionError extends UsageError {
 }
 
 // @public
+export interface MissingArity {
+    readonly arity: number;
+    readonly received: number;
+    readonly refused?: string | undefined;
+}
+
+// @public
 export function missingInputError(context: Pick<ActionContext<unknown>, 'command' | 'host' | 'interactive'>, input: string | {
     argument: string;
 }): InputError;
 
 // @public @sealed
 export class MissingValueError extends UsageError {
-    constructor(spelling: string, form?: MissingValueForm);
+    constructor(spelling: string, form?: MissingValueForm, shortfall?: MissingArity);
+    readonly arity: number | null;
     static readonly code: string;
     readonly spelling: string;
 }
@@ -1203,7 +1213,7 @@ export interface OptionGroup {
 }
 
 // @public @sealed
-export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'background' | 'envAllowEmpty'> & {
+export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'arity' | 'background' | 'envAllowEmpty'> & {
     readonly type: 'content';
     readonly stdin: boolean;
     readonly min: number | undefined;
@@ -1626,7 +1636,7 @@ export interface SourceAnswer {
     readonly directory?: string;
     readonly label: string;
     readonly strict?: boolean;
-    readonly value: string | boolean | number | readonly string[];
+    readonly value: string | boolean | number | readonly string[] | readonly (readonly string[])[];
 }
 
 // @public @sealed
@@ -1714,7 +1724,7 @@ export const style: RootStyle;
 // @public
 export interface SuppliedInputs {
     args: Readonly<Record<string, string | readonly string[] | undefined>>;
-    options: Readonly<Record<string, string | readonly string[] | boolean | number | undefined>>;
+    options: Readonly<Record<string, string | readonly string[] | readonly (readonly string[])[] | boolean | number | undefined>>;
 }
 
 // @public
@@ -1751,7 +1761,7 @@ export class UnexpectedArgumentError extends UsageError {
 
 // @public @sealed
 export class UnexpectedValueError extends UsageError {
-    constructor(spelling: string, value: string, kind?: 'boolean' | 'count');
+    constructor(spelling: string, value: string, kind?: 'arity' | 'boolean' | 'count');
     static readonly code: string;
     readonly spelling: string;
     readonly value: string;

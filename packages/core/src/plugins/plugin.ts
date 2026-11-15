@@ -222,8 +222,11 @@ interface SourceContext<Options extends PluginOptions = PluginOptions> {
  * @public
  */
 interface SourceAnswer {
-  /** The value for the option, of the kind the option's type takes. */
-  readonly value: string | boolean | number | readonly string[];
+  /**
+   * The value for the option, of the kind the option's type takes: an arity option's tuple of its
+   * count of strings, or a multiple arity option's list of such tuples.
+   */
+  readonly value: string | boolean | number | readonly string[] | readonly (readonly string[])[];
   /**
    * The one-line label core prints in a diagnostic about the value, such as where it was read from.
    */

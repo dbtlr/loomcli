@@ -44,11 +44,18 @@ const variableBoundTwice = registerRule('@loomcli/core/variable-bound-twice', {
   headline: 'Variable bound twice',
 });
 
-/** A multiple option whose variable splits at a delimiter that is the empty string. */
+/** A multiple or scalar arity option whose variable splits at a delimiter that is the empty string. */
 const envDelimiterEmpty = registerRule('@loomcli/core/env-delimiter', {
   explanation:
-    "A multiple option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.",
+    "A multiple option's or a scalar arity option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.",
   headline: 'Empty environment delimiter',
+});
+
+/** A string option whose arity is not a whole number of 2 or more. */
+const optionArity = registerRule('@loomcli/core/option-arity', {
+  explanation:
+    'An option with an arity takes exactly that many words per occurrence and gives the action a tuple of them. A count below 2 is the single word an option without arity already takes, and a count that is not whole names no number of words.',
+  headline: 'Invalid option arity',
 });
 
 /** A declared default its validator rejected. */
@@ -77,6 +84,7 @@ export {
   invalidDefault,
   invalidImplied,
   nameSharedAcrossKinds,
+  optionArity,
   optionDeclaredTwice,
   schemaConverterFailed,
   spellingTaken,
