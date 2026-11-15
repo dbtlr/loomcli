@@ -1,6 +1,6 @@
 import type { Middleware, MiddlewareContext } from '@loomcli/core';
 
-import { json, jsonl } from '../format/views.js';
+import { json, jsonl } from '../json-views.js';
 import type { version } from './plugin.js';
 import { versionFacts, versionLine } from './views.js';
 import type { VersionFacts } from './views.js';
