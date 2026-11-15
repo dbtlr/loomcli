@@ -4,7 +4,7 @@ title: ADR-0140 - The help plugin attaches a help Command on opt-in
 description: With help({ command: true }), the help plugin attaches a visible plugin Command, help, whose optional variadic argument names a Command path. Its action resolves the words child by child from the root, aliases and hidden Commands included, and prints that Command's extended help page, paged under the same setting as --help. A word that names no child is the ordinary unknown-command failure. With no settings, or command false, help attaches nothing.
 status: proposed
 created: 2026-11-09
-modified: 2026-11-09
+modified: 2026-11-15
 ---
 
 # ADR-0140 - The help plugin attaches a help Command on opt-in
@@ -56,3 +56,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-09: Proposed with the contract for the help Command (LM-369). It reverses the help reference's rejection of a `help` Command and adds a second request for a page to ADR-0040, which carries a dated entry.
+- 2026-11-15: [ADR-0160](0160-a-command-with-an-action-may-declare-arguments-and-hold-children-and-an-exact-child-name-routes-first.md), proposed, withdraws this record's sentence that a root that declares arguments cannot hold the help Command. A Command with an action, the root included, may declare arguments and hold children, so such a root holds the help Command like any child. It binds when that record is accepted.
