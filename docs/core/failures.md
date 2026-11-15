@@ -1,5 +1,5 @@
 ---
-description: The failure classes, declared exit codes, failure codes, the failure form, translators, the ordinary failure path every failure takes, and the voice of a failure message.
+description: The failure classes, declared exit codes, failure codes, the failure form, translators, the ordinary failure path every failure takes, and the voice of a failure message, with where Loom's own messages live and what its voice test holds.
 ---
 
 # Failures
@@ -334,7 +334,7 @@ Before: textstat: Option "--config": File "settings.json" is not valid JSON.
 After:  textstat: Option "--config": File "settings.json" is not valid JSON at line 3, column 7. Correct its syntax, or supply another file.
 ```
 
-The rules below bind every operator message Loom ships: core, `@loomcli/plugins`, and `@loomcli/validators`. Loom cannot check a message an application writes.
+The rules below bind every operator message Loom ships: core, `@loomcli/plugins`, `@loomcli/validators`, `@loomcli/prompts`, and the `loom` bin. Loom cannot check a message an application writes. Loom's own sentences live in [message modules](#where-looms-messages-live), and a [voice test](#what-the-voice-test-holds) holds them to the rules a test can judge.
 
 1. **Know who reads the message.**
    - **Operator message.** Any message that runs after the application is built and shipped: a usage error, a rejected value, a warning, a fatal error an action raises, and a defect. Its reader ran the application and cannot change its code.
@@ -363,7 +363,7 @@ The rules below bind every operator message Loom ships: core, `@loomcli/plugins`
 
    [`escapeControlCharacters`](styles.md#strings-and-composition) escapes all of them, and so does every place a Loom failure message quotes raw text. Results output is untouched, because right-to-left text uses these marks legitimately. Other format characters stay as they are: a zero-width joiner inside an emoji and a soft hyphen are ordinary text.
 
-6. **Quote no text Loom did not write.** An operator message Loom ships never includes text Loom did not write: a thrown cause, an engine or Node.js reason, or a stack. Such text is a leak. It can hold a path or a value the operator never supplied, it changes between runtimes and versions, and it gives the operator no step to take. The rule binds core, `@loomcli/plugins`, and `@loomcli/validators`, and not applications.
+6. **Quote no text Loom did not write.** An operator message Loom ships never includes text Loom did not write: a thrown cause, an engine or Node.js reason, or a stack. Such text is a leak. It can hold a path or a value the operator never supplied, it changes between runtimes and versions, and it gives the operator no step to take. The rule binds core, `@loomcli/plugins`, `@loomcli/validators`, `@loomcli/prompts`, and the `loom` bin, and not applications.
 
 7. **A defect shows one generic message.** A defect is a failure only the author can fix: an unexpected exception no [translator](#translators) answered, a broken view, `onFailure` or `onLog` hook, or translator, a broken result contract, or an author fault rule 8 classifies as one. It is the application's equivalent of an HTTP 500. A log record that a logging plugin the author installed writes to the console is not an operator message, and may carry the defect's detail. In a distributed build the operator sees one generic message with no reason, no class name, and no code detail:
 
@@ -384,3 +384,31 @@ The rules below bind every operator message Loom ships: core, `@loomcli/plugins`
    - A validator that rejects with no issues is a fault the operator can fix, by supplying a different value, so it stays an operator message: `The validator rejected this value without an explanation. Supply a different value.`
 
    Moving a check earlier, so the fault cannot reach a shipped application, is separate work under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md).
+
+### Banned words
+
+An operator message Loom ships uses the [glossary](../glossary.md)'s terms. It never contains a word the first column lists, at the start of any word and in any case, so `presentation` also bars `Presentations` and `presentational`. Write the second column's word instead. The voice test reads this table.
+
+| Do not write | Write |
+| --- | --- |
+| `presentation` | view, formatter, or request, whichever is meant |
+
+### Where Loom's messages live
+
+Each sentence Loom says to an operator lives in the internal `messages.ts` beside the code that raises or writes it, under [ADR-0164](../decisions/0164-looms-operator-messages-live-in-message-modules-and-a-voice-test-per-package-reads-them.md): `packages/core/src/failures/messages.ts` holds the failure classes' sentences, `packages/core/src/inputs/messages.ts` the validation phase's, and `packages/plugins/src/config/messages.ts` the configuration plugin's. A package whose `src` has no folders keeps one at `src/messages.ts`. Each sentence is a named export, a function of the values it repeats or a constant when it takes none, and it returns the sentence as a string; the code that raises the failure or writes the line calls it.
+
+- **What lives there.** A failure's sentence, a hint line a plugin adds under a failure, a line written at `-v` or `-vv`, and a notice, a warning, or a confirmation a plugin or the `loom` bin prints.
+- **What stays.** Fixed labels stay with the view that prints them: help headings, the `repeatable` fact, the key hints under a question, and table and record labels. A Developer Diagnostic, which addresses the author, does not move. A log event's message is not an operator message.
+- **The validators catalog.** `@loomcli/validators`'s public issue codes stay in `codes.ts`, and each code's `message` calls a sentence of the package's internal `messages.ts`.
+- **Not localization.** A message module is plain functions. Loom has no message keys, no locale provider, and no extension point for its sentences, and no entry point exports a message module.
+
+### What the voice test holds
+
+Each package whose sentences reach an operator has one voice test, `tests/message-voice.test.ts`: `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, `@loomcli/prompts`, `@loomcli/loom`, and `@loom/mcp`. It is a test of Loom's own repository, not a lint rule for authors, and it reads only its package's message modules, plus one plain text scan of the package's other source files. It holds four checks:
+
+1. **Banned words.** No literal in a message module contains a word the [banned-word table](#banned-words) lists.
+2. **Rule 5.** Every `${...}` in a message module is a call to an escaping helper, `quoted(...)` or `escapeControlCharacters(...)`, a call to another message function, or a parameter typed as a number. A conditional's two branches are read by the same rule, and a literal repeats no value.
+3. **Rule 6.** No message module reads a member named `message`, `stack`, or `cause`.
+4. **Gathering.** Outside a message module, no failure constructor and no out call (`print`, `info`, `success`, `warn`, `error`, `debug`, or `trace`) is handed a literal sentence, a string or template literal whose text holds a space.
+
+A known exception is pinned in that package's voice test, per check and per file, by its exact source text with the reason it holds, and a pin that matches no site fails the test as a site no pin covers does. Rules 2, 3, and 4 need judgment, so review judges them. A change that adds a sentence writes it into the message module beside its code.

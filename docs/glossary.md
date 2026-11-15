@@ -599,6 +599,10 @@ _Avoid_: User message, runtime error, end-user error
 A message that runs while the author develops the application, such as a declaration fault's Developer Diagnostic, addressed to the author who can change the code. A distributed build shows the generic defect message in its place.
 _Avoid_: Developer error (for the message), debug message
 
+**Message module**:
+The internal `messages.ts` beside one concept's code in a Loom package, which holds the operator messages that code raises or writes as named exports, each a function of the values it repeats or a constant. A voice test per package reads the message modules and holds their sentences to the failure message voice. No entry point exports one, and it is not a localization layer.
+_Avoid_: Message catalog (the validators' issue codes are the catalog), strings file, locale file, message keys
+
 **Failure view**:
 The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, the hints plugins added, whether the run received argv or names, and the view the result would render through when the run failed, a middleware's assignment, else the view an invocation by name started with, else the Command's default view, with that view's media type. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
 _Avoid_: Failure renderer, error handler, error formatter, catch
