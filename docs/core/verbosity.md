@@ -11,8 +11,8 @@ An operator asks a run for more detail with `-v` or `-vv`, and for less with `-q
 ```ts
 interface Out<Result = unknown> {
   // ...the members under Output and failures...
-  debug(message: string, view?: View<string>): Promise<void>; // written from verbosity 1
-  trace(message: string, view?: View<string>): Promise<void>; // written from verbosity 2
+  debug(...call: MessageArguments): Promise<void>; // written from verbosity 1
+  trace(...call: MessageArguments): Promise<void>; // written from verbosity 2
 }
 interface Unmarked {
   interaction?: never;
@@ -87,7 +87,7 @@ const app = new Application('fetchit')
   | 2 | `-vv`, `-vvv` | `trace`, `debug`, `info`, `success`, `warn`, `error` |
 
   `print`, `render`, `draw`, `results`, the failure report, and the [incomplete-result](results.md#a-sequence-that-stops-early) line write at every verbosity, so `-q` hides `info` and `success` alone, and help, a result, a warning, and a failure always print. Of the writes to stderr, only a [live region](output.md#live-region) opened without `input: true` also follows the verbosity: at -1 core draws none.
-- **A hidden call.** A message that is not a string gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A call the verbosity hides calls no view, neither its lane view nor one the call passed, writes nothing, and its promise resolves.
+- **A hidden call.** A message that is neither a string nor an async iterable of strings gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A call the verbosity hides calls no view, neither its lane view nor one the call passed, writes nothing, and its promise resolves. A hidden [streamed message](output.md#a-streamed-message) is read to its end and its text discarded: its promise resolves when the stream ends and rejects when it throws, as it does at a verbosity that shows it.
 - **Settled after graph build.** Right after graph build, its `onGraphBuilt` hooks included, and before [environment preparation](plugin-contract.md#environment-preparation), core settles the run's verbosity from `host.argv`, read against the built graph with the parser's own word reader, in the partial mode [`locate`](graph-inspection.md#locating-a-word) reads an unfinished invocation with. Every form reads as the ordinary parse reads it: `-v -v`, `-vv`, `--verbose -v`, `-vq`, a short group that holds a Command's own letters, such as `-vF name`, an [alias](options.md#option-aliases), and occurrences on both sides of the Command name, up to the first bare `--`. An occurrence the parse faults, such as `--verbose=2`, counts nothing. A word list that names an unknown command settles verbosity 0. That run fails in routing, and everything it writes, an `onEnvironment` warning and its failure, prints at every verbosity.
 - **Why after graph build.** An `onCommandAttach` hook can declare a local option with a short spelling on any Command, so only the built graph says what each letter of a short group is. Core builds `out` at the head of the run, and nothing can write a lane before the verbosity settles: graph build's hooks receive no `out`, and the only output before it is a host-capture failure or a declaration error from graph build, which is a failure report and prints at every verbosity.
 - **No mark.** An Application whose options carry neither mark settles verbosity 0, so `out.debug` and `out.trace` write nothing, and every other byte is unchanged.

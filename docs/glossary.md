@@ -442,12 +442,20 @@ The output channel object an action or a middleware receives, carrying the seman
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
-A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. The method is the message's level: its fixed default destination and the verbosity it writes at. Its look is the method's lane view, or a view over the message the call passes, and the method ends the message with one line break. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
+A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. The method is the message's level: its fixed default destination and the verbosity it writes at. Its look is the method's lane view, or a view over the message the call passes, and the method ends the message with one line break. The message is a string, or an async iterable of its text, which makes it a streamed message. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
 _Avoid_: Log level (a log level belongs to a log event), styled output
 
 **Message level**:
 What a semantic method decides about its message apart from its look: the destination it writes to and the verbosity it writes at. The method names it, so `out.info(text, step())` writes a step at `info`'s message level, hidden under `-q`, and a view the call passes changes the look alone.
 _Avoid_: Log level (a log level belongs to a log event), lane (for the level), severity
+
+**Streamed message**:
+A semantic message whose text arrives as an async iterable of chunks, such as a model's answer, passed in place of the string. It keeps the method's message level, draws through the lane view and never through a passed view, and once it ends has written what the method writes for the joined text. On a terminal that redraws, each chunk shows as it arrives; elsewhere, a captured run included, each line is written once it completes. A hidden one is read to its end.
+_Avoid_: Stream (for the message; a stream is stdout or stderr), live message, partial message, chunked output
+
+**Unfinished row**:
+The last row of a streamed message on a terminal, which core redraws as chunks arrive, above the open live regions. The rows before it are finished and permanent, and it becomes a finished row, with the message's closing line break, when the stream ends. It is not a live region.
+_Avoid_: Live row, pending line, frame (a frame belongs to a live region)
 
 **Rendered output**:
 Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and from an action it goes to stderr on a Command that declares a result.
@@ -510,7 +518,7 @@ The pairing of a key, a declared view or a failure class, with a replacement vie
 _Avoid_: Failure renderer, registration, hook
 
 **Lane view**:
-The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the line break the method appends when the view's text does not end with one is outside the view. A call that passes its own view replaces the lane view for that call alone. The bare word lane also names an output area of core, as in the results lane.
+The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the line break the method appends when the view's text does not end with one is outside the view. A call that passes its own view replaces the lane view for that call alone, and a streamed message always draws through it. The bare word lane also names an output area of core, as in the results lane.
 _Avoid_: Channel, log level (a log level belongs to a log event), stream (for the lane view)
 
 **Columns**:

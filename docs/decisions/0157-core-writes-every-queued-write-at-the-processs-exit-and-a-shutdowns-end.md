@@ -4,7 +4,7 @@ title: ADR-0157 - Core writes every queued write at the process's exit and a shu
 description: At the process's exit event and at a shutdown's end, SIGQUIT's included, core writes each live run's queued writes to the run's stdout and stderr synchronously, once per run, in the order they were queued, where it wrote only region frames before, so a message queued just before process.exit prints, with the patch-console plugin or without it. The flush uses the lane's existing flush seam and adds no host surface. A run that ends normally is unchanged, and a run with nothing queued at an end writes what it wrote there before.
 status: proposed
 created: 2026-11-15
-modified: 2026-11-15
+modified: 2026-11-16
 ---
 
 # ADR-0157 - Core writes every queued write at the process's exit and a shutdown's end
@@ -49,3 +49,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-15: Proposed with the patch-console plugin's contract (LM-390), whose routed console writes join core's write queue. It widens ADR-0106's terminal users clause, which carries a dated entry.
+- 2026-11-16: [ADR-0163](0163-a-semantic-method-takes-a-stream-of-text-and-shows-each-chunk-as-it-arrives.md), proposed, lets each semantic method take an async iterable of its message's text and adds to what is queued: the text an open stream has received and core has not yet written, which an end writes in its step, at the place the stream's last chunk took, as the stream's end would write it, with the one closing line break. Text the iterable has not yielded is not queued. It binds when that record is accepted.

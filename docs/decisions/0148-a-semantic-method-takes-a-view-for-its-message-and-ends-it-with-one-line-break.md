@@ -4,7 +4,7 @@ title: ADR-0148 - A semantic method takes a view for its message and ends it wit
 description: Each of the seven semantic methods takes an optional View<string> after its message. The method keeps its level, which is its destination and the verbosity it writes at, and the view replaces the lane view for that call and owns the whole layout. A semantic method ends its message with exactly one line break, appending one only when the view's text does not already end with one, so every pack view over a string is also a message view. The pack adds step(), and a note is box({ title }) written at a level.
 status: proposed
 created: 2026-11-13
-modified: 2026-11-13
+modified: 2026-11-16
 ---
 
 # ADR-0148 - A semantic method takes a view for its message and ends it with one line break
@@ -52,3 +52,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-13: Proposed with the contract for per-call message views and the step view (LM-370). It narrows ADR-0008's and ADR-0027's string-only signatures and ADR-0027's appended newline, and extends ADR-0090's hidden call to a passed view, each of which carries a dated entry. The contract review found that the line-break rule changes the default lanes as well, and the owner ruled it ships as one rule in a breaking fragment.
+- 2026-11-16: [ADR-0163](0163-a-semantic-method-takes-a-stream-of-text-and-shows-each-chunk-as-it-arrives.md), proposed, gives each semantic method a second form, `(message: AsyncIterable<string>)`, beside `(message: string, view?: View<string>)`, both under the exported `MessageArguments`. A stream takes no view and draws through the lane view, and the one line break this record states ends the joined text. It binds when that record is accepted.
