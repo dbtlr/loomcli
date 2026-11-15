@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0159 - Passthrough is a mode a Command declares, and required arguments may follow a variadic
-description: A Command turns passthrough on with .passthrough({ description? }), which types passthrough onto its action context. Without it, the first bare -- still ends routing and option parsing, and every later word is a plain word that fills the routed Command's next argument, so rm -- -draft.txt fills the argument. With it, every word after the first bare -- reaches passthrough untouched, as before. Required scalar arguments may follow a variadic argument and fill from the end of the line. It narrows ADR-0055's second layer, ADR-0042's passthrough position, ADR-0059's values and its argv equivalence, ADR-0028's typed passthrough, ADR-0110's actionContext member, and ADR-0136's rule that a variadic argument is last.
+description: A Command turns passthrough on with .passthrough({ description? }), which types passthrough onto its action context. Without it, the first bare -- still ends routing and option parsing, and every later word is a plain word that fills the routed Command's next argument, so rm -- -draft.txt fills the argument. With it, every word after the first bare -- reaches passthrough untouched, as before. Required scalar arguments may follow a variadic argument and fill from the end of the line. It narrows ADR-0055's second layer, ADR-0042's passthrough position, ADR-0059's values and its argv equivalence, ADR-0028's typed passthrough, ADR-0110's actionContext member, ADR-0093's argument order and its variadic fault, and ADR-0136's rule that a variadic argument is last.
 status: proposed
 created: 2026-11-15
 modified: 2026-11-15
@@ -56,4 +56,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 
 ## Changelog
 
-- 2026-11-15: Proposed with the passthrough mode and arguments after a variadic (LM-382). It narrows ADR-0055's second layer, ADR-0042's `passthrough` position, ADR-0059's values and its argv equivalence, ADR-0028's typed `passthrough`, ADR-0110's `passthrough` member, and ADR-0136's rule that a variadic argument is last. ADR-0028, ADR-0042, ADR-0055, ADR-0059, ADR-0110, and ADR-0136 carry dated entries.
+- 2026-11-15: Proposed with the passthrough mode and arguments after a variadic (LM-382). It narrows ADR-0055's second layer, ADR-0042's `passthrough` position, ADR-0059's values and its argv equivalence, ADR-0028's typed `passthrough`, ADR-0110's `passthrough` member, ADR-0093's argument order and its variadic fault, and ADR-0136's rule that a variadic argument is last. ADR-0028, ADR-0042, ADR-0055, ADR-0059, ADR-0093, ADR-0110, and ADR-0136 carry dated entries.
