@@ -32,6 +32,18 @@ new Command('points')
     return { absent, pairs, points };
   });
 
+// A union of counts reads a union of tuples, one per count, so a longer occurrence keeps its words.
+const either: 2 | 3 = Number('2') > 1 ? 2 : 3;
+new Command('either')
+  .option('words', { arity: either, required: true, type: 'string' })
+  .action(({ options }) => {
+    const words: [string, string] | [string, string, string] = options.words;
+    const three: [string, string, string] | [string, string] = words;
+    // @ts-expect-error TS2322: The value may hold three words, so it is not always a pair.
+    const pair: [string, string] = options.words;
+    return { pair, three, words };
+  });
+
 // An arity typed as the wide number reads an array of the output.
 const count = Number('2');
 new Command('wide')

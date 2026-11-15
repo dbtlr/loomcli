@@ -536,14 +536,26 @@ function write(values: OptionValues, occurrence: Occurrence & { kind: 'value' })
   } else if (typeof value === 'number') {
     values.counts.set(name, (values.counts.get(name) ?? 0) + value);
   } else if (Array.isArray(value)) {
-    // An arity option's occurrence adds its tuple, the one a scalar holds or the next of a list.
-    const tuples = collects(option) ? (values.tuples.get(name) ?? []) : [];
-    values.tuples.set(name, [...tuples, [...value]]);
+    writeTuple(values, option, value);
   } else {
     const position = writeString(values, option, value);
     if (occurrence.implied) {
       values.implied.set(name, [...(values.implied.get(name) ?? []), position]);
     }
+  }
+}
+
+/**
+ * Records one arity occurrence's tuple: the one tuple a scalar holds, or the next of a multiple
+ * option's list. The list belongs to this read, so a later occurrence appends to it, as
+ * `writeString` appends a repeated word.
+ */
+function writeTuple(values: OptionValues, option: TableSpelling, words: readonly string[]): void {
+  const tuples = collects(option) ? values.tuples.get(option.name) : undefined;
+  if (tuples) {
+    tuples.push([...words]);
+  } else {
+    values.tuples.set(option.name, [[...words]]);
   }
 }
 

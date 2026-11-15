@@ -632,8 +632,10 @@ declare class TranslationDeclaration {
     readonly [translation]: true;
 }
 
-type TupleOf<Item, Count extends number, Built extends Item[] = [
-]> = number extends Count ? Item[] : `${Count}` extends `${bigint}` ? `${Count}` extends `-${string}` ? Item[] : Built['length'] extends Count ? Built : TupleOf<Item, Count, [
+type TupleOf<Item, Count extends number> = number extends Count ? Item[] : Count extends unknown ? TupleOfLength<Item, Count> : never;
+
+type TupleOfLength<Item, Count extends number, Built extends Item[] = [
+]> = `${Count}` extends `${bigint}` ? `${Count}` extends `-${string}` ? Item[] : Built['length'] extends Count ? Built : TupleOfLength<Item, Count, [
     ...Built,
     Item
 ]> : Item[];

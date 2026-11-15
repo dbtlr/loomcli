@@ -263,18 +263,28 @@ interface ArgumentExtensions {
 }
 
 /**
- * A tuple of `Count` items. A count typed as the wide `number`, or one that names no whole number,
- * gives no length to build, so it reads as an array of the item.
+ * A tuple of `Count` items, and for a union of counts a union of tuples, one per count. A count
+ * typed as the wide `number`, or one that names no whole number, gives no length to build, so it
+ * reads as an array of the item.
  */
-type TupleOf<Item, Count extends number, Built extends Item[] = []> = number extends Count
+type TupleOf<Item, Count extends number> = number extends Count
   ? Item[]
-  : `${Count}` extends `${bigint}`
-    ? `${Count}` extends `-${string}`
-      ? Item[]
-      : Built['length'] extends Count
-        ? Built
-        : TupleOf<Item, Count, [...Built, Item]>
-    : Item[];
+  : Count extends unknown
+    ? TupleOfLength<Item, Count>
+    : never;
+
+/** A tuple of exactly one literal `Count` of items, built one item at a time. */
+type TupleOfLength<
+  Item,
+  Count extends number,
+  Built extends Item[] = [],
+> = `${Count}` extends `${bigint}`
+  ? `${Count}` extends `-${string}`
+    ? Item[]
+    : Built['length'] extends Count
+      ? Built
+      : TupleOfLength<Item, Count, [...Built, Item]>
+  : Item[];
 
 /**
  * The value shape one declaration's words take, of one item type: an arity option's tuple, or a
