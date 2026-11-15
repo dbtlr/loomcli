@@ -41,7 +41,7 @@
  * - The post-install declaration. Init renders the `postInstall` of `loom.config.json` into
  *   `install.sh` without loading the application module, so a module that throws while it loads
  *   changes nothing. A package that declares none gets the script with no post-install step, and a
- *   `command` the schema rejects is dropped while the message stays.
+ *   `command` the schema rejects fails init with code 2 and writes no script (ADR-0158).
  */
 
 import { spawnSync } from 'node:child_process';
@@ -756,16 +756,18 @@ test.each([
   ['holds no word', []],
   ['holds a word that is not a string', ['serve', '--port', 8080]],
 ])(
-  'a post-install command that %s is dropped whole, and install.sh keeps the message alone',
+  'a post-install command that %s fails init with code 2, and writes no install.sh',
   async (_case, command) => {
     const root = installPackage({
       'loom.config.json': configuring({ command, message: 'Run notes init next.' }),
     });
     const runResult = await loom(root, ['init', '--only', 'install']);
-    expect(runResult.status).toBe(0);
-    expect(read(root, 'install.sh')).toBe(
-      renderManaged(installerScript('notes', 'me/notes', { message: 'Run notes init next.' })),
-    );
+    expect(runResult).toMatchObject({
+      status: 2,
+      stderr:
+        'loom: Configuration value postInstall.command in loom.config.json: Expected a non-empty array of strings. Correct the value, or remove it.\nRun "loom init --help" to see the usage.\n',
+    });
+    expect(existsSync(join(root, 'install.sh'))).toBe(false);
   },
 );
 

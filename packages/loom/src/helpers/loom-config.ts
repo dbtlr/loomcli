@@ -18,7 +18,7 @@ import { conventionalChangelog, conventionalFragments } from './conventions.js';
 
 /**
  * One path the configuration file names. An empty string or a value of another type is an issue at
- * its own key, so the plugin drops that key alone and its convention applies.
+ * its own key, which fails the run under the bin's `strict: true`.
  */
 const pathValue = optional(pipe(string(), minLength(1)));
 
@@ -27,8 +27,7 @@ const postInstallWordList = tupleWithRest([string()], string());
 
 /**
  * The words, checked as one value: a rejected list is one issue at `command` rather than at an
- * item, so the configuration plugin drops the whole command instead of running the words that
- * remain.
+ * item, so the failure names the whole command rather than one of its words.
  */
 const postInstallWords = pipe(
   unknown(),
@@ -54,8 +53,7 @@ const postInstall = object({
 /**
  * The schema of `loom.config.json`. Every key is optional, and valibot's `object` strips a key it
  * does not describe, so an unknown key is ignored. The file names no skills folder, which the
- * skills plugin's `folder` setting names. `sharedVersion` passes through as written, because the plugin drops a value the schema rejects
- * and a dropped list would let a cut leave the listed manifests at the old version;
+ * skills plugin's `folder` setting names. `sharedVersion` passes through as written, and
  * `loom changelog write` checks it as one value and fails on a malformed one.
  */
 const loomConfigSchema = object({
@@ -91,13 +89,16 @@ export type LoomConfig = InferOutput<typeof loomConfigSchema>;
 /**
  * The configuration plugin the `loom` bin installs and the provider a command opts in to. The bin
  * reads `loom.config.json` from the working directory up to the package directory and never above
- * it, so a package in a monorepo never reads the root's file as its own.
+ * it, so a package in a monorepo never reads the root's file as its own. It reads under
+ * `strict: true`, under ADR-0158: a file that cannot be used, and a value the schema rejects, fail
+ * the command with code 2, so a CI run never passes on conventions the package did not choose.
  */
 export const { plugin: loomConfigPlugin, values: loomConfig } = configuration({
   file: 'loom.config.json',
   root: 'package.json',
   schema: loomConfigSchema,
   scopes: ['project'],
+  strict: true,
 });
 
 /** The post-install declaration of `loom.config.json`, which `loom init` renders into `install.sh`. */

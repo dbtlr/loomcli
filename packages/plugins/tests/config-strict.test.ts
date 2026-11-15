@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -710,4 +710,218 @@ test('the file problem comes before a linked global option, which the problem ma
       spelling: 'flag',
     },
   ]);
+});
+
+/** What one run over a file's raw text came to, with the settings a broken-file case varies. */
+interface BrokenCase {
+  /** The file's text, or `null` for a directory in its place. */
+  readonly text: string | null;
+  readonly strict?: Strict | undefined;
+  /** The file pattern, `.app.json` by default. */
+  readonly file?: string;
+  /** The name the file is written under, the pattern itself by default. */
+  readonly name?: string;
+  /** The variable that names the file, which the run sets to `name`. */
+  readonly env?: string;
+  /** Other files to write beside it, by name. */
+  readonly beside?: Readonly<Record<string, string>>;
+}
+
+/** Runs an application that reads the provider over a file written as raw text. */
+async function ranBroken({
+  beside = {},
+  env,
+  file = '.app.json',
+  name = file,
+  strict,
+  text,
+}: BrokenCase): Promise<Ran> {
+  const config = configuration({
+    file,
+    schema: closed,
+    ...(env === undefined ? {} : { env }),
+    ...(strict === undefined ? {} : { strict }),
+  });
+  const root = mkdtempSync(join(tmpdir(), 'loom-strict-'));
+  try {
+    if (text === null) {
+      mkdirSync(join(root, name));
+    } else {
+      writeFileSync(join(root, name), text);
+    }
+    for (const [other, body] of Object.entries(beside)) {
+      writeFileSync(join(root, other), body);
+    }
+    const mock = mockProcess({
+      argv: [],
+      cwd: root,
+      env: { HOME: root, ...(env === undefined ? {} : { [env]: name }) },
+    });
+    await new Application('app', { plugins: [config.plugin], uses: [config.values] })
+      .action(({ out }) => out.print('ran'))
+      .run({ process: mock });
+    return { status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+}
+
+const notJson =
+  'app: Configuration file .app.json is not valid JSON at line 1, column 2. Correct its syntax, or remove it.\n';
+
+test('a discovered file that does not parse fails the run with code 2 under strict: true, in place of its warning', async () => {
+  await expect(ranBroken({ strict: true, text: '{,}' })).resolves.toEqual({
+    status: 2,
+    stderr: notJson,
+    stdout: '',
+  });
+});
+
+test('a broken file fails the run under a list, whatever paths it names', async () => {
+  await expect(ranBroken({ strict: ['delivery'], text: '{,}' })).resolves.toEqual({
+    status: 2,
+    stderr: notJson,
+    stdout: '',
+  });
+});
+
+test('without strict, a broken file still warns and the run reads no configuration', async () => {
+  await expect(ranBroken({ text: '{,}' })).resolves.toEqual({
+    status: 0,
+    stderr:
+      '⚠ Skipped .app.json: the file is not valid JSON at line 1, column 2, so this run reads no configuration. Correct its syntax, or remove it.\n',
+    stdout: 'ran\n',
+  });
+});
+
+test('a file that does not hold an object, and one that cannot be read, fail with their own clause and fix', async () => {
+  await expect(ranBroken({ strict: true, text: '[1]' })).resolves.toEqual({
+    status: 2,
+    stderr:
+      'app: Configuration file .app.json does not hold a JSON object. Write its settings as one JSON object, or remove it.\n',
+    stdout: '',
+  });
+  await expect(ranBroken({ strict: true, text: null })).resolves.toEqual({
+    status: 2,
+    stderr:
+      'app: Configuration file .app.json could not be read. Make it readable, or remove it.\n',
+    stdout: '',
+  });
+});
+
+test('a broken TOML file names its format, its place, and its fix', async () => {
+  const result = await ranBroken({ file: '.app.toml', strict: true, text: 'a = \n' });
+  expect(result.status).toBe(2);
+  expect(result.stderr).toMatch(
+    /^app: Configuration file \.app\.toml is not valid TOML at line \d+, column \d+\. Correct its syntax, or remove it\.\n$/u,
+  );
+});
+
+test('a broken file the variable names fails the run under strict, and a missing one stays silent', async () => {
+  await expect(
+    ranBroken({ env: 'APP_CONFIG', name: 'custom.json', strict: true, text: '{,}' }),
+  ).resolves.toEqual({
+    status: 2,
+    stderr:
+      'app: Configuration file custom.json is not valid JSON at line 1, column 2. Correct its syntax, or remove it.\n',
+    stdout: '',
+  });
+  const config = configuration({
+    env: 'APP_CONFIG',
+    file: '.app.json',
+    schema: closed,
+    strict: true,
+  });
+  const root = mkdtempSync(join(tmpdir(), 'loom-strict-'));
+  try {
+    const mock = mockProcess({
+      argv: [],
+      cwd: root,
+      env: { APP_CONFIG: 'absent.json', HOME: root },
+    });
+    await new Application('app', { plugins: [config.plugin], uses: [config.values] })
+      .action(({ out }) => out.print('ran'))
+      .run({ process: mock });
+    expect({ status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text }).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'ran\n',
+    });
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test('a later candidate skipped unread keeps its warning, written before the broken file fails the run', async () => {
+  await expect(
+    ranBroken({
+      beside: { '.app.toml': 'a = 1\n' },
+      file: '.app.{json,toml}',
+      name: '.app.json',
+      strict: true,
+      text: '{,}',
+    }),
+  ).resolves.toEqual({
+    status: 2,
+    stderr: `⚠ Skipped .app.toml: .app.json matches the same pattern first. Keep one of the files, and remove the others.\n${notJson}`,
+    stdout: '',
+  });
+});
+
+test('a missing file is no fault under strict, and --no-config reads no broken file', async () => {
+  const config = configuration({ file: '.app.json', schema: closed, strict: true });
+  const root = mkdtempSync(join(tmpdir(), 'loom-strict-'));
+  try {
+    const app = new Application('app', { plugins: [config.plugin], uses: [config.values] }).action(
+      ({ out }) => out.print('ran'),
+    );
+    const missing = mockProcess({ argv: [], cwd: root, env: { HOME: root } });
+    await app.run({ process: missing });
+    expect(missing.exitCode).toBe(0);
+    expect(missing.stderr.text).toBe('');
+    writeFileSync(join(root, '.app.json'), '{,}');
+    const ignored = mockProcess({ argv: ['--no-config'], cwd: root, env: { HOME: root } });
+    await app.run({ process: ignored });
+    expect(ignored.exitCode).toBe(0);
+    expect(ignored.stderr.text).toBe('');
+    expect(ignored.stdout.text).toBe('ran\n');
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test('the broken-file failure is an InputError with one problem on --config and one issue', async () => {
+  const config = configuration({ file: '.app.json', schema: closed, strict: ['delivery'] });
+  const root = mkdtempSync(join(tmpdir(), 'loom-strict-'));
+  try {
+    writeFileSync(join(root, '.app.json'), '{,}');
+    const outcome = await new Application('app', {
+      plugins: [config.plugin],
+      uses: [config.values],
+    })
+      .option('webhook', {
+        extensions: [configInput({ path: 'delivery.webhook' })],
+        type: 'string',
+      })
+      .action(() => undefined)
+      .invoke([], {}, { process: mockProcess({ cwd: root, env: { HOME: root } }) });
+    expect(outcome.status).toBe('failed');
+    const failure = outcome.status === 'failed' ? outcome.failure : undefined;
+    expect(failure).toBeInstanceOf(InputError);
+    expect(failure instanceof InputError ? failure.problems : []).toEqual([
+      {
+        input: { global: true, kind: 'option', name: 'config' },
+        issues: [
+          {
+            message:
+              'Configuration file .app.json is not valid JSON at line 1, column 2. Correct its syntax, or remove it.',
+          },
+        ],
+        reason: 'invalid',
+        spelling: 'config',
+      },
+    ]);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
