@@ -9,6 +9,7 @@ import { parseFile } from './formats.js';
 import { splitExtension } from './names.js';
 import type { Clause, Reading } from './reading.js';
 import type { Reach } from './scopes.js';
+import { strictFailure } from './strict.js';
 import type { Position } from './text.js';
 
 /**
@@ -16,7 +17,8 @@ import type { Position } from './text.js';
  * variable does, or else the first of the pattern's candidates found in the scopes the author
  * chose: the project scope's walk from the start directory, then the user scope's home directory
  * and user folder. A file the variable names or the lookup discovers that cannot be used warns and
- * ends the lookup with no configuration, and the named file fails the run.
+ * ends the lookup with no configuration, or fails the run under `strict`, and the named file fails
+ * the run.
  */
 
 /** One file the lookup reads: where it is, and how a label or a diagnostic shows it, escaped. */
@@ -55,6 +57,8 @@ interface Lookup {
    * name, by its declared name, as core names an option there.
    */
   readonly invokedBy: 'argv' | 'name';
+  /** Whether any `strict` setting is on, so a discovered file that cannot be used fails the run. */
+  readonly strict: boolean;
 }
 
 /** The channels a warning about a discovered file is written through. */
@@ -315,6 +319,11 @@ async function presentFiles(files: readonly ConfigFile[]): Promise<ConfigFile[]>
   return present;
 }
 
+/** The file as a warning shows it: escaped for the terminal, and kept on one line. */
+function warned(file: ConfigFile, style: ContextualStyle): string {
+  return nowrap(style.escape(file.shown));
+}
+
 /** The one warning about the later present candidates a directory skips unread, when there are any. */
 async function warnSkipped(
   found: ConfigFile,
@@ -325,9 +334,9 @@ async function warnSkipped(
   if (first === undefined) {
     return;
   }
-  const names = skipped.map((file) => nowrap(style.escape(file.shown))).join(', ');
+  const names = skipped.map((file) => warned(file, style)).join(', ');
   await out.warn(
-    `Skipped ${names}: ${nowrap(style.escape(found.shown))} matches the same pattern first. Keep one of the files, and remove the others.`,
+    `Skipped ${names}: ${warned(found, style)} matches the same pattern first. Keep one of the files, and remove the others.`,
   );
 }
 
@@ -340,10 +349,23 @@ function skippedSentence(shown: string, { at, clause }: Unusable, fix: string): 
 }
 
 /**
- * A discovered file read once: its object, or the end of the lookup after one warning when it
- * cannot be used. One that does not exist is silent, and the lookup goes on.
+ * The one line of the failure a discovered file that cannot be used raises under `strict`: the
+ * warning's clause and fix, naming the file as a strict line's label does.
  */
-async function discoveredFile(file: ConfigFile, channels: Channels): Promise<Outcome | undefined> {
+function brokenLine(shown: string, { at, clause }: Unusable, fix: string): string {
+  return `Configuration file ${shown} ${withoutStop(clause)}${where(at)}. ${fix}`;
+}
+
+/**
+ * A discovered file read once: its object, or the end of the lookup after one warning when it
+ * cannot be used, or the run's failure under `strict`. One that does not exist is silent, and the
+ * lookup goes on.
+ */
+async function discoveredFile(
+  file: ConfigFile,
+  lookup: Lookup,
+  channels: Channels,
+): Promise<Outcome | undefined> {
   const reading = await read(file);
   if (reading.kind === 'usable') {
     return { kind: 'file', usable: { file, object: reading.object } };
@@ -352,8 +374,10 @@ async function discoveredFile(file: ConfigFile, channels: Channels): Promise<Out
   if (fix === undefined) {
     return undefined;
   }
-  const shown = nowrap(channels.style.escape(file.shown));
-  await channels.out.warn(skippedSentence(shown, reading, fix));
+  if (lookup.strict) {
+    throw strictFailure([brokenLine(file.shown, reading, fix)], [], lookup.invokedBy);
+  }
+  await channels.out.warn(skippedSentence(warned(file, channels.style), reading, fix));
   return { kind: 'ended' };
 }
 
@@ -364,6 +388,7 @@ async function discoveredFile(file: ConfigFile, channels: Channels): Promise<Out
  */
 async function directoryFile(
   files: readonly ConfigFile[],
+  lookup: Lookup,
   channels: Channels,
 ): Promise<Outcome | undefined> {
   const [found, ...skipped] = await presentFiles(files);
@@ -371,13 +396,13 @@ async function directoryFile(
     return undefined;
   }
   await warnSkipped(found, skipped, channels);
-  return discoveredFile(found, channels);
+  return discoveredFile(found, lookup, channels);
 }
 
 /** The file the variable names, read alone: a missing one ends the lookup silently. */
 async function variableFile(value: string, lookup: Lookup, channels: Channels): Promise<Outcome> {
   const file = configFile(resolve(lookup.host.cwd, value), value);
-  return (await discoveredFile(file, channels)) ?? { kind: 'ended' };
+  return (await discoveredFile(file, lookup, channels)) ?? { kind: 'ended' };
 }
 
 /** One directory a discovered step looks in, with the candidates it tries there, in order. */
@@ -472,7 +497,7 @@ async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise
       : filesIn(step.directory, step.candidates, { host: lookup.host, walked: step.walked });
   if (first !== undefined) {
     await out.info(
-      `Found no configuration file. Create ${nowrap(style.escape(first.shown))} to configure ${lookup.app}.`,
+      `Found no configuration file. Create ${warned(first, style)} to configure ${lookup.app}.`,
     );
   }
 }
@@ -482,6 +507,7 @@ async function searched(lookup: Lookup, channels: Channels): Promise<Outcome | u
   for await (const step of searchSteps(lookup)) {
     const outcome = await directoryFile(
       filesIn(step.directory, step.candidates, { host: lookup.host, walked: step.walked }),
+      lookup,
       channels,
     );
     if (outcome !== undefined) {
@@ -496,7 +522,8 @@ async function searched(lookup: Lookup, channels: Channels): Promise<Outcome | u
  * file and writes no notice, and with `--config` beside it fails the run. The named file answers
  * alone and fails the run when it cannot be used. Then the variable's file answers alone, and the
  * walk, the home directory, and the user folder answer in that order, each under its scope. A file
- * that cannot be used ends the lookup with a warning, and no later step answers in its place.
+ * that cannot be used ends the lookup with a warning, or fails the run under `strict`, and no later
+ * step answers in its place.
  */
 async function findFile(lookup: Lookup, channels: Channels): Promise<UsableFile | undefined> {
   if (lookup.ignored) {

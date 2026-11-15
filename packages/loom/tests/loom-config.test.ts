@@ -1,8 +1,9 @@
 /*
  * Acceptance plan for the configuration file (docs/toolchain/build.md#the-configuration-file), as
  * `loom init` and `loom changelog check` read it. Each case runs in-process on a mock process,
- * under ADR-0103; `build.test.ts` and `changelog.test.ts` prove `loom build` and `loom changelog
- * write`.
+ * under ADR-0103; `build.test.ts` and `changelog.test.ts` prove what `loom build` and `loom
+ * changelog write` do with the paths, and this file proves that every command fails on a wrong
+ * file.
  *
  * - `paths.source` moves the application module, the entry, and the test, and the scaffold's
  *   `tsconfig.json` `include`, the linter's file globs, and the `check` script's lint target name
@@ -13,8 +14,10 @@
  *   the configured folder and changelog. `changelog check` reads the configured folder.
  * - `paths.installer` renders `install.sh` at a monorepo's root and checks its drift there.
  * - A new application uses conventions whatever the configuration holds, a file `--config` names
- *   included, and a broken file above it still draws its warning.
- * - A value the schema rejects is dropped and its convention applies.
+ *   included. A broken file above it fails the scaffold, and `--no-config` scaffolds past it.
+ * - The bin reads the file under `strict: true` (ADR-0158): a file that does not parse, and a value
+ *   the schema rejects, fail the command with code 2 instead of running on conventions, and a
+ *   takeover such as `--help` reads no file. An unknown key stays ignored.
  */
 import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -208,28 +211,106 @@ test('a new application below a configured package uses every convention, a file
   }
 });
 
-test('a broken file above a new application still draws its warning', async () => {
+/**
+ * The failure of the command `words` for a `loom.config.json` whose text ends early, at line 2,
+ * column 1, with the help plugin's usage hint. `shown` is the file as its label shows it.
+ */
+function brokenFailure(words: string, shown = 'loom.config.json') {
+  return {
+    status: 2,
+    stderr: `loom: Configuration file ${shown} is not valid JSON at line 2, column 1. Correct its syntax, or remove it.\nRun "loom ${words} --help" to see the usage.\n`,
+    stdout: '',
+  };
+}
+
+test('a broken file above a new application fails the scaffold, and --no-config scaffolds past it', async () => {
   const directory = temporaryRoot('loom-config-');
   put(directory, 'package.json', '{ "name": "workspace" }\n');
   put(directory, 'loom.config.json', '{ "paths": \n');
   const fresh = join(directory, 'jot');
   mkdirSync(fresh);
-  const result = await runLoom(fresh, ['init', '--only', 'changes'], directory);
-  expect(result.status).toBe(0);
-  expect(result.stderr).toContain('is not valid JSON');
-  expect(result.stdout).toContain('Wrote .changes/README.md.\n');
+  await expect(runLoom(fresh, ['init', '--only', 'changes'], directory)).resolves.toEqual(
+    brokenFailure('init', join(directory, 'loom.config.json')),
+  );
+  const ignored = await runLoom(fresh, ['init', '--only', 'changes', '--no-config'], directory);
+  expect(ignored.status).toBe(0);
+  expect(ignored.stdout).toContain('Wrote .changes/README.md.\n');
 });
 
-test('a path the schema rejects is dropped, its convention applies, and -v names it', async () => {
+test('a file that does not parse fails changelog check and write, where they read the conventional folder', async () => {
+  const directory = configuredPackage({}, { '.changes/fix.md': '- Fix output.\n' });
+  put(directory, 'loom.config.json', '{ "paths": \n');
+  await expect(runLoom(directory, ['changelog', 'check'])).resolves.toEqual(
+    brokenFailure('changelog check'),
+  );
+  await expect(runLoom(directory, ['changelog', 'write', '--dry-run'])).resolves.toEqual(
+    brokenFailure('changelog write'),
+  );
+  const help = await runLoom(directory, ['build', '--help']);
+  expect(help.status).toBe(0);
+  await expect(runLoom(directory, ['changelog', 'check', '--no-config'])).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Checked 1 fragment.\n',
+  });
+});
+
+/** The failure of the command `words` for an empty `paths.changes`, with the usage hint. */
+function rejectedChanges(words: string) {
+  return {
+    status: 2,
+    stderr: `loom: Configuration value paths.changes in loom.config.json: Invalid length: Expected >=1 but received 0. Correct the value, or remove it.\nRun "loom ${words} --help" to see the usage.\n`,
+    stdout: '',
+  };
+}
+
+test('a path the schema rejects fails every command that reads the file with code 2', async () => {
   const directory = configuredPackage(
     { paths: { changes: '', source: 'lib' } },
     { '.changes/fix.md': '- Fix output.\n' },
   );
-  const result = await runLoom(directory, ['-v', 'changelog', 'check']);
-  expect(result.status).toBe(0);
-  expect(result.stdout).toBe('Checked 1 fragment.\n');
-  expect(result.stderr).toContain('Ignored paths.changes in loom.config.json');
-  // The valid key beside the rejected one survives.
-  const written = await runLoom(directory, ['init', '--only', 'application']);
-  expect(written.stdout).toBe('Wrote lib/application.ts.\n');
+  await expect(runLoom(directory, ['changelog', 'check'])).resolves.toEqual(
+    rejectedChanges('changelog check'),
+  );
+  await expect(runLoom(directory, ['init', '--only', 'application'])).resolves.toEqual(
+    rejectedChanges('init'),
+  );
+  await expect(runLoom(directory, ['changelog', 'write', '--dry-run'])).resolves.toEqual(
+    rejectedChanges('changelog write'),
+  );
+  await expect(runLoom(directory, ['changelog', 'notes', '1.0.0'])).resolves.toEqual(
+    rejectedChanges('changelog notes'),
+  );
+  await expect(runLoom(directory, ['build', '--target', 'node'])).resolves.toEqual(
+    rejectedChanges('build'),
+  );
+});
+
+test('a cut over a wrong file changes nothing: the changelog, package.json, and the fragments stay', async () => {
+  for (const config of ['{ "paths": \n', `${JSON.stringify({ paths: { changes: '' } })}\n`]) {
+    const directory = configuredPackage(
+      {},
+      { '.changes/fix.md': '- Fix output.\n', 'CHANGELOG.md': '# Changelog\n' },
+    );
+    put(directory, 'loom.config.json', config);
+    const manifest = read(directory, 'package.json');
+    const result = await runLoom(directory, ['changelog', 'write']);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(read(directory, 'CHANGELOG.md')).toBe('# Changelog\n');
+    expect(read(directory, 'package.json')).toBe(manifest);
+    expect(read(directory, '.changes/fix.md')).toBe('- Fix output.\n');
+  }
+});
+
+test('an unknown key stays ignored, because the schema publishes no JSON Schema', async () => {
+  const directory = configuredPackage(
+    { pathz: { changes: 'notes' } },
+    { '.changes/fix.md': '- Fix output.\n' },
+  );
+  await expect(runLoom(directory, ['changelog', 'check'])).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'Checked 1 fragment.\n',
+  });
 });

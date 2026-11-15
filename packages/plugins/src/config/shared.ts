@@ -7,7 +7,7 @@ import { findFile } from './lookup.js';
 import type { UsableFile } from './lookup.js';
 import { withoutPointer } from './pointer.js';
 import type { Reach } from './scopes.js';
-import { covers, coversRemoval, unknownLine, valueLine } from './strict.js';
+import { covers, coversRemoval, isStrict, unknownLine, valueLine } from './strict.js';
 import type { Strictness } from './strict.js';
 import { shownUnknownPath } from './unknown-path.js';
 import { unknownKeys } from './unknown.js';
@@ -162,6 +162,7 @@ async function load<Schema extends StandardSchemaV1>(
       named: stringOption(options, 'config'),
       notice: shared.notice,
       reach: shared.reach,
+      strict: isStrict(shared.strict),
     },
     { out, style },
   );

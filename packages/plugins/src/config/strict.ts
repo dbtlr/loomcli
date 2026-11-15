@@ -80,6 +80,11 @@ function covers(strictness: Strictness, path: readonly Step[]): boolean {
   );
 }
 
+/** Whether the setting is on at all, `true` or a list, so a broken discovered file fails the run. */
+function isStrict(strictness: Strictness): boolean {
+  return strictness.everything || strictness.listed.length > none;
+}
+
 /** Whether a linked option is covered: `strict` is `true`, or its path is at or under a listed one. */
 function coversLink(strictness: Strictness, linkPath: string): boolean {
   return covers(strictness, linkPath.split('.'));
@@ -281,6 +286,7 @@ export {
   covers,
   coversLink,
   coversRemoval,
+  isStrict,
   judgeStrict,
   judgeStrictPaths,
   strictFailure,

@@ -4,7 +4,7 @@ title: ADR-0131 - The post-install declaration moves from the Application into l
 description: postInstall leaves core's ApplicationOptions and the built graph and becomes a top-level key of loom.config.json with the same message and command. loom init's install piece reads it from the file and no longer loads the application module. No check that the words route survives, in core, in the assembly check, or in init, and @loomcli/core/post-install-unrouted retires. The installer script's behavior is unchanged. A breaking change for every author who declares postInstall. It supersedes ADR-0113's core option, its development check, and init's read of the module.
 status: accepted
 created: 2026-10-31
-modified: 2026-11-02
+modified: 2026-11-15
 ---
 
 # ADR-0131 - The post-install declaration moves from the Application into loom.config.json
@@ -38,3 +38,4 @@ Accepted in 0.17.0.
 ## Changelog
 
 - 2026-10-31: Proposed with the toolchain configuration contract (LM-434). It supersedes ADR-0113's core option, its development check that the words route and `check()`'s run of it, its rule that init loads the application module to read the declaration, and its rejection of "a check only in `loom init`", which gives way to no check. ADR-0113 carries a dated entry.
+- 2026-11-15: [ADR-0158](0158-the-loom-bin-reads-loom-config-json-strictly-so-a-broken-file-or-a-rejected-value-fails-the-run.md), proposed, has the `loom` bin read `loom.config.json` under the configuration plugin's `strict: true`, and supersedes the clause under **A key of the file** that a `command` the schema rejects is dropped and named at `-v`: a rejected `postInstall` value fails the run with code 2 instead (LM-524). It binds when that record is accepted.
