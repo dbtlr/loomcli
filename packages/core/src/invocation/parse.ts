@@ -105,17 +105,19 @@ function collects(option: TableSpelling): boolean {
 }
 
 /**
- * Whether every occurrence of an option adds to it: a multiple string option collects each, and a
- * counted option counts each, so neither is ever a repeat.
+ * Whether a later occurrence of an option is never a repeat: a multiple string option collects
+ * each, a counted option counts each, and a last-wins option replaces its value with each.
  */
-function accumulates(option: TableSpelling): boolean {
-  return option.type === 'count' || collects(option);
+function recurs(option: TableSpelling): boolean {
+  return (
+    option.type === 'count' || (option.type === 'string' && (option.multiple || option.lastWins))
+  );
 }
 
 /** Whether an occurrence of an option repeats one an earlier word supplied. */
 function repeats(context: WordContext, option: TableSpelling): boolean {
   const values = option.global ? context.values.globals : context.values.locals;
-  return !accumulates(option) && isSupplied(values, option.name);
+  return !recurs(option) && isSupplied(values, option.name);
 }
 
 /**
@@ -349,10 +351,10 @@ function valueLetter(
 
 /**
  * Whether a letter repeats an option an earlier letter of its group or an earlier word supplied. A
- * counted letter adds another occurrence instead, and so would a multiple option's.
+ * counted letter adds another occurrence instead, and so would a multiple or last-wins option's.
  */
 function repeatsInGroup(group: Group, option: TableSpelling): boolean {
-  return (group.set.has(option.name) && !accumulates(option)) || repeats(group.context, option);
+  return (group.set.has(option.name) && !recurs(option)) || repeats(group.context, option);
 }
 
 /** The letter at one index of a group, read against the group's table. */
@@ -538,10 +540,25 @@ function write(values: OptionValues, occurrence: Occurrence & { kind: 'value' })
   } else if (Array.isArray(value)) {
     writeTuple(values, option, value);
   } else {
-    const position = writeString(values, option, value);
-    if (occurrence.implied) {
-      values.implied.set(name, [...(values.implied.get(name) ?? []), position]);
-    }
+    noteImplied(values, occurrence, writeString(values, option, value));
+  }
+}
+
+/**
+ * Notes the position a bare spelling's implied value took. A scalar's value replaces a last-wins
+ * option's earlier one, so its note holds the last occurrence alone, and an explicit value clears it.
+ */
+function noteImplied(
+  values: OptionValues,
+  occurrence: Occurrence & { kind: 'value' },
+  position: number,
+): void {
+  const { option } = occurrence;
+  const earlier = collects(option) ? (values.implied.get(option.name) ?? []) : [];
+  if (occurrence.implied) {
+    values.implied.set(option.name, [...earlier, position]);
+  } else if (earlier.length === 0) {
+    values.implied.delete(option.name);
   }
 }
 
