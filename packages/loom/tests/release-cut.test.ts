@@ -683,9 +683,9 @@ test.each([[['--dry-run']], [[]]])(
     put(root, '.changes/change.md', '- Add an operation.\n');
     commit(root);
     const result = await cut(root, ...mode, '--', '--date', '2026-09-07');
-    expect(result.status).toBe(1);
+    expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Arguments after -- are not supported.');
+    expect(result.stderr).toContain('accepts no arguments. Remove the supplied values.');
     expect(git(root, ['status', '--porcelain'])).toBe('');
   },
 );

@@ -34,6 +34,7 @@ interface ManifestDocument {
 interface ManifestCommand {
   /** A standalone `.stdin()` declaration, or `null` when the Command declares none. */
   readonly stdin: { readonly description: string | null; readonly required: boolean } | null;
+  readonly passthrough: { readonly description: string | null } | null;
   readonly name: string | null;
   readonly path: readonly string[];
   readonly description: string | null;
@@ -384,6 +385,8 @@ function commandEntry(node: CommandNode): ManifestCommand {
       node.stdin === undefined
         ? null
         : { description: lineOf(node.stdin.description), required: node.stdin.required },
+    passthrough:
+      node.passthrough === null ? null : { description: lineOf(node.passthrough.description) },
     name: node.name,
     path: node.path,
     description: lineOf(node.description),

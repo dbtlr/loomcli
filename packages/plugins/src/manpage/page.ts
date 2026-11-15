@@ -206,7 +206,15 @@ function stdinSection({ command, graph }: Subject): string[] {
 }
 
 function argumentsSection({ command }: Subject): string[] {
-  return headed('ARGUMENTS', command.arguments.flatMap(argumentEntry));
+  return headed('ARGUMENTS', [
+    ...command.arguments.flatMap(argumentEntry),
+    ...(command.passthrough
+      ? entry(
+          `\\-\\- ${inFont('args', 'italic')}...`,
+          entryText({ description: command.passthrough.description }, []),
+        )
+      : []),
+  ]);
 }
 
 /**

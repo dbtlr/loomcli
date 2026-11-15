@@ -38,6 +38,7 @@ function completionApplication() {
     .option('quiet', { description: 'Say less.', short: 'q', type: 'boolean' })
     .option('secret', { hidden: true, type: 'boolean' })
     .option('legacy', { deprecated: 'Use --format.', type: 'boolean' })
+    .passthrough()
     .action(() => {});
 
   const keys = new Command('keys', { description: 'List keys.' })

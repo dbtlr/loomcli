@@ -148,3 +148,11 @@ test('the manifest, suggestions, and inspect() describe the same assembled graph
   });
   expect(JSON.stringify(textstat.inspect())).toContain('"enum":["bytes","words","lines"]');
 });
+
+test('words after -- are file paths, including a hyphenated name', async () => {
+  writeFileSync(join(directory, '-notes.txt'), 'abc');
+  const result = await run(['one.txt', '--', '-notes.txt']);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('    6  one.txt\n');
+  expect(result.stdout).toContain('    3  -notes.txt\n');
+});

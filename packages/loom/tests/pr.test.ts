@@ -944,7 +944,8 @@ test('a release branch must include the current base and ordinary argument error
   const runResult3 = await releaseCheck(root, base, '1.0.0');
   expect(runResult3.stderr).toContain('Expected release title');
   const runResult4 = await check(root, base, '--', 'extra');
-  expect(runResult4.stderr).toContain('Arguments after --');
+  expect(runResult4.status).toBe(2);
+  expect(runResult4.stderr).toContain('accepts no arguments. Remove the supplied values.');
   const runResult5 = await run(['pr', 'check'], { cwd: root });
   expect(runResult5.status).toBe(2);
 });
