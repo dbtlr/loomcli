@@ -320,7 +320,7 @@ async function manifestOf(
   return JSON.parse(stdout);
 }
 
-test('a manifest Command entry lists its visible aliases after name, and never a hidden alias or an entry of its own', async () => {
+test('a manifest Command entry lists its visible aliases after name, and never an alias that is not visible or an entry of its own', async () => {
   const { command } = await manifestOf(['cache']);
   expect(command.children.map(({ aliases, name }) => [name, aliases])).toEqual([
     ['clear', []],

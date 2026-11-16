@@ -242,6 +242,21 @@ test.each(['aliases', 'visibleAliases'] as const)(
   },
 );
 
+test.each(['aliases', 'visibleAliases'] as const)(
+  'an alias whose own spelling is new is kept in %s, though an alias before it already holds its negative form',
+  async (list) => {
+    const app = repeating(list, ['no-colour', 'colour']);
+    const [color] = app.inspect().root.options;
+    expect(aliasFacts(color)).toEqual({
+      aliases: ['no-colour', 'colour'],
+      visibleAliases: list === 'visibleAliases' ? ['no-colour', 'colour'] : [],
+    });
+    printed.length = 0;
+    await expect(app.run({ process: mockProcess({ argv: ['--colour'] }) })).resolves.toBe(0);
+    expect(printed).toEqual([{ color: true }]);
+  },
+);
+
 /** The Developer Diagnostic a declaring call throws, or a note that it threw nothing. */
 function thrown(declare: () => unknown): string {
   try {

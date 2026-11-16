@@ -290,8 +290,8 @@ function longSpellingsOf(name: string, config: OptionConfig): readonly string[] 
 
 /**
  * The aliases one option declares, its config's `aliases` and then its `visibleAliases`, without a
- * repeat: an alias whose long spelling the option already accepts, through its own name or an alias
- * before it, adds nothing, so it is skipped. A name `visibleAliases` holds is visible, in the place
+ * repeat: an alias whose own long spelling the option already accepts, through its name or an alias
+ * before it, adds nothing, so it is skipped, and one whose own spelling is new is kept. A name `visibleAliases` holds is visible, in the place
  * of its first declaration, and a fault marks it in `visibleAliases`, where the author declared it
  * visible.
  */
@@ -304,7 +304,9 @@ export function distinctAliases(name: string, config: OptionConfig): readonly Di
       return false;
     }
     const spellings = longSpellingsOf(alias, config);
-    if (spellings.some((spelling) => accepted.has(spelling))) {
+    // Only the alias's own spelling decides: a negative form another name already holds drops nothing.
+    const [own] = spellings;
+    if (own === undefined || accepted.has(own)) {
       return false;
     }
     for (const spelling of spellings) {
