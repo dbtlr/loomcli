@@ -248,7 +248,7 @@ export interface CommandGraph {
 }
 
 // @public @sealed
-export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'option' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'result' | 'rows' | 'passthrough' | 'stdin';
+export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'option' | 'options' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'result' | 'rows' | 'passthrough' | 'stdin';
 
 // @public @sealed
 export interface CommandNode {
@@ -1255,6 +1255,29 @@ export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'ar
     readonly env: readonly string[];
     readonly extensions: Readonly<Record<string, unknown>>;
 };
+
+// @public @sealed
+export interface OptionSet<Configs extends Readonly<Record<string, OptionConfig>> = Readonly<Record<string, OptionConfig>>> {
+    readonly [optionSetConfigs]: Configs;
+    exclusive(...names: [
+    Extract<keyof Configs, string>,
+    Extract<keyof Configs, string>,
+    ...Extract<keyof Configs, string>[]
+    ]): OptionSet<Configs>;
+    oneRequired(...names: [
+    Extract<keyof Configs, string>,
+    Extract<keyof Configs, string>,
+    ...Extract<keyof Configs, string>[]
+    ]): OptionSet<Configs>;
+    requiredTogether(...names: [
+    Extract<keyof Configs, string>,
+    Extract<keyof Configs, string>,
+    ...Extract<keyof Configs, string>[]
+    ]): OptionSet<Configs>;
+}
+
+// @public
+export function optionSet<const Configs extends Readonly<Record<string, OptionConfig>>>(configs: Configs & NoInfer<OptionSetConstraint<Configs>>): OptionSet<Configs>;
 
 // @public
 export type OptionsOf<Contributor> = Contributor extends Plugin_2<infer Options> ? Options : Contributor extends (...args: never[]) => Plugin_2<infer Options> ? Options : PluginOptions;

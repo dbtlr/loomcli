@@ -20,8 +20,12 @@ import { interaction } from '../marks/interaction.js';
 import { checkOneMark, isMarked } from '../marks/marks.js';
 import type { Mark } from '../marks/marks.js';
 import { quiet, verbose } from '../marks/verbosity.js';
-import { buildExtensions } from '../plugins/extension.js';
-import type { DescriptorRegistry } from '../plugins/extension.js';
+import { buildExtensions, noExtensions } from '../plugins/extension.js';
+import type {
+  AdmittedDescriptor,
+  DescriptorRegistry,
+  ExtensionSubject,
+} from '../plugins/extension.js';
 import type { BuiltPlugin } from '../plugins/plugin.js';
 import { snapshot } from '../support/plain.js';
 
@@ -415,6 +419,75 @@ function checkLocalOptions(
   return options;
 }
 
+/** The descriptors a declaration's extension values name, by identity. */
+type Descriptors = ReadonlyMap<string, AdmittedDescriptor>;
+
+/**
+ * One input's extension values, validated at the call that declared it, and the descriptors they
+ * name joined to `descriptors`, which stays as it was. An input that declares no value registers no
+ * descriptor and needs no site.
+ */
+function inputExtensions(
+  input: InputDeclaration,
+  slot: { descriptors: Descriptors; siteOf: () => InputSite; subject: ExtensionSubject },
+): { descriptors: Descriptors; record: Readonly<Record<string, unknown>> } {
+  if ((input.config.extensions ?? []).length === 0) {
+    return { descriptors: slot.descriptors, record: noExtensions };
+  }
+  const descriptors = new Map(slot.descriptors);
+  const site = slot.siteOf();
+  const record = buildExtensions({
+    declared: input.config.extensions,
+    descriptors,
+    site: { ...site, at: `${site.at}.extensions` },
+    subject: slot.subject,
+  });
+  return { descriptors, record };
+}
+
+/**
+ * Everything one local option proves on its own once its config is copied, at the call that
+ * declared it: its extension values, and its name, spellings, and settings alone, beside the options
+ * before it, and against the globals table. `option()` and `options(set)` on a Command and
+ * `optionSet()` for each entry judge an option through it, so a rule added here reaches each of
+ * them. Whether the name is a valid name at all is judged earlier, by `copyLocalOption`, before the
+ * config is read. `declarations` ends with the option, `compile` answers their table, and
+ * `extensions` names the option in an extension fault.
+ */
+function admitLocalOption(
+  input: OptionInput,
+  judgment: {
+    compile: () => ReadonlyMap<string, OptionSpelling>;
+    declarations: readonly OptionInput[];
+    descriptors: Descriptors;
+    extensions: ExtensionSubject;
+    scope: CompileScope<OptionInput>;
+  },
+  table: GlobalTable,
+): { descriptors: Descriptors; record: Readonly<Record<string, unknown>> } {
+  const { compile, declarations, scope } = judgment;
+  const extended = inputExtensions(input, {
+    descriptors: judgment.descriptors,
+    siteOf: () => scope.siteOf(input),
+    subject: judgment.extensions,
+  });
+  checkLocalOptions({ compile, declarations }, table, scope);
+  return extended;
+}
+
+/**
+ * The option a declaration holds: a copy of the declared one, made after its name is judged. The
+ * name fault reads none of the config, so `unread` is the option's site with the config elided.
+ * `option()`, `options(set)`, and `optionSet()` copy each option through it.
+ */
+function copyLocalOption<Name extends string, Config extends OptionConfig>(
+  declared: OptionInput<Name, Config>,
+  unread: () => InputSite,
+): OptionInput<Name, Config> {
+  checkOptionName(declared.name, unread);
+  return { ...declared, config: { ...declared.config } };
+}
+
 /** The options in one list that bind a variable, each named and placed by its scope. */
 function boundOptions(
   inputs: readonly OptionInput[],
@@ -496,14 +569,17 @@ function markedSpellings(
 
 export type { BuiltGlobals, GlobalsState, GlobalTable, InputRecords, OptionOwner, TableEntry };
 export {
+  admitLocalOption,
   boundOptions,
   buildGlobals,
   checkLocalOptions,
+  copyLocalOption,
   declareGlobalOption,
   emptyGlobals,
   frozenValues,
   globalSite,
   globalTable,
+  inputExtensions,
   markedSpellings,
   optionValues,
   pluginSites,

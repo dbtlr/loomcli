@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import { elided, spelled } from '../diagnostics/diagnostic-text.js';
+import type { AppliedSet, OptionSetValues } from '../commands/option-sets.js';
+import { called, elided, spelled } from '../diagnostics/diagnostic-text.js';
 import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { callSite, partOf, siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
@@ -166,7 +167,7 @@ function identityOf({ global, input }: ScopedInput): InputIdentity {
 
 /**
  * The validated values of one invocation, keyed by declaration. Only `validateValues` and the
- * validation ledger construct one, and its two readers are the only places where a validated value
+ * validation ledger construct one, and its three readers are the only places where a validated value
  * takes its declared type, so every binder reads through them and none asserts on its own.
  */
 class ValidatedInputs {
@@ -190,9 +191,25 @@ class ValidatedInputs {
     return this.#field(input);
   }
 
+  /** The record the options one `options(set)` call declared contribute, typed by the set's configs. */
+  optionSet<Configs extends Readonly<Record<string, OptionConfig>>>(
+    applied: AppliedSet<Configs>,
+  ): OptionSetValues<Configs> {
+    // Last resort: no typed path exists. The map stores every validated value as `unknown`.
+    // A record built from a list of inputs types its keys as `string`, never as the set's names.
+    // A typed accessor where a set's entries are stored needs an assertion, and so does this record.
+    // It holds because `applied.inputs` copy the entries `optionSet()` built from `Configs`.
+    // `AppliedSet` states why they belong to that set, and validation stores each one's output.
+    // `Object.fromEntries` defines each name as an own key, a name such as `__proto__` included.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return Object.fromEntries(
+      applied.inputs.map((input) => [input.name, this.#values.get(input)]),
+    ) as OptionSetValues<Configs>;
+  }
+
   /**
    * One validated value read without its declared type, which is what an untyped reader such as a
-   * middleware's request receives. The declared types stay with the two readers above.
+   * middleware's request receives. The declared types stay with the three readers above.
    */
   read(input: InputDeclaration): unknown {
     return this.#values.get(input);
@@ -289,15 +306,40 @@ export function inputPlace(input: InputDeclaration, path: readonly string[]): In
 }
 
 /**
+ * The options an `options(set)` call declared. The author wrote that call and no `option()` call,
+ * so every finding about one of them rebuilds the call that applied it.
+ */
+const appliedOptions = new WeakSet<InputDeclaration>();
+
+/** Records that an `options(set)` call declared this option, before any rule judges it. */
+export function markApplied(input: OptionInput): void {
+  appliedOptions.add(input);
+}
+
+/**
  * The site of the call that declared one input at `place`, rebuilt as `call(name, config)`. Every
  * finding for an input's own call starts from it, so each marks the call the same way. `subject`
- * is the sentence's name for the input.
+ * is the sentence's name for the input. An option a set applied is rebuilt as the call that
+ * applied it, `options(optionSet({ name: config }))` with that entry alone, whose entry stands for
+ * the name.
  */
 export function declaringSite(
   input: InputDeclaration,
   place: InputPlace,
   subject: string = declarationSubject(input),
 ): InputSite {
+  if (appliedOptions.has(input)) {
+    const at = `0.0.${input.name}`;
+    // `Object.fromEntries` defines the key as an own property whatever its name.
+    const entry = Object.fromEntries([[input.name, input.config]]);
+    const declaration = { arguments: [called('optionSet', [entry])], call: 'options' };
+    return {
+      at,
+      declaration: place.path === undefined ? declaration : { ...declaration, path: place.path },
+      named: at,
+      subject,
+    };
+  }
   return callSite(subject, { arguments: [input.name, input.config], ...place });
 }
 

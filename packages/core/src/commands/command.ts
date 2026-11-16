@@ -17,7 +17,7 @@ import {
 import type { InvokedBy, LoomError } from '../failures/errors.js';
 import { underCI } from '../host/host.js';
 import type { Host } from '../host/types.js';
-import { stdinClaimedTwice } from '../inputs/content-rules.js';
+import { claimsStdin, stdinClaimedTwice } from '../inputs/content-rules.js';
 import type { Content } from '../inputs/content.js';
 import { rememberInputNames } from '../inputs/missing-input.js';
 import { declareGroup } from '../inputs/option-groups.js';
@@ -67,6 +67,7 @@ import {
   configUnread,
   declaringSite,
   inputPlace,
+  markApplied,
   rejectsGlobal,
   validateValues,
   ValidationLedger,
@@ -110,7 +111,6 @@ import type {
 import {
   buildExtensions,
   extendStore,
-  noExtensions,
   publishStore,
   registerDescriptor,
   storeCommandLayers,
@@ -137,7 +137,7 @@ import type {
   ProviderGlobals,
   WithProviderGlobals,
 } from '../plugins/providers.js';
-import { brokenAttachHook } from '../plugins/rules.js';
+import { brokenAttachHook, foreignValue, foreignValueCorrection } from '../plugins/rules.js';
 import type { AttachedCommand, attachedCommand, CommandAttachHook } from '../plugins/types.js';
 import type { LaneHandlers } from '../signals/signal-lane.js';
 import { echoesCancellation } from '../signals/signals.js';
@@ -150,7 +150,21 @@ import type {
   InputRecords,
   TableEntry,
 } from './globals.js';
-import { buildGlobals, checkLocalOptions, frozenValues } from './globals.js';
+import {
+  admitLocalOption,
+  copyLocalOption,
+  buildGlobals,
+  checkLocalOptions,
+  frozenValues,
+  inputExtensions,
+} from './globals.js';
+import { setFacts } from './option-sets.js';
+import type {
+  AppliedSet,
+  OptionSet,
+  OptionSetNameConstraint,
+  OptionSetValues,
+} from './option-sets.js';
 import {
   argumentDeclaredTwice,
   commandAttachedTwice,
@@ -273,6 +287,7 @@ export type CommandMethod =
   | 'argument'
   | 'command'
   | 'option'
+  | 'options'
   | 'exclusive'
   | 'oneRequired'
   | 'requiredTogether'
@@ -682,11 +697,6 @@ function checkCompiledOptions(
   return checkLocalOptions({ compile, declarations: optionsOf(inputs) }, table, scope);
 }
 
-/** Whether one input claims stdin, which at most one target of a Command may. */
-function claimsStdin(input: InputDeclaration): boolean {
-  return input.config.type === 'content' && input.config.stdin === true;
-}
-
 /** The arguments an author wrote to a `passthrough()` call: none for a bare call. */
 function passthroughArguments(config: { description: string | undefined }): [] | [object] {
   return config.description === undefined ? [] : [{ description: config.description }];
@@ -746,24 +756,20 @@ function recordInput(
   input: InputDeclaration,
 ): Pick<Declared, 'descriptors' | 'records'> {
   const { name } = state;
-  // An input that declares no value registers no descriptor and needs no site.
-  if ((input.config.extensions ?? []).length === 0) {
-    return {
-      descriptors: state.descriptors,
-      records: new Map([...state.records, [input, noExtensions]]),
-    };
-  }
-  const descriptors = new Map(state.descriptors);
-  const record = buildExtensions({
-    declared: input.config.extensions,
-    descriptors,
-    site: { ...inputSite(name, pathOf(name), input), at: '1.extensions' },
-    subject: {
-      phrase: `on ${commandSubject(name)} ${input.kind} "${input.name}"`,
-      sentence: `${commandSentence(name)} ${input.kind} "${input.name}"`,
-    },
+  const { descriptors, record } = inputExtensions(input, {
+    descriptors: state.descriptors,
+    siteOf: () => inputSite(name, pathOf(name), input),
+    subject: inputSubject(name, input),
   });
   return { descriptors, records: new Map([...state.records, [input, record]]) };
+}
+
+/** How an extension fault names one input of the Command `name`. */
+function inputSubject(name: string | null, input: InputDeclaration): ExtensionSubject {
+  return {
+    phrase: `on ${commandSubject(name)} ${input.kind} "${input.name}"`,
+    sentence: `${commandSentence(name)} ${input.kind} "${input.name}"`,
+  };
 }
 
 /** Every rule one argument answers at its own call: its name, a repeated name, and its place after the arguments before it. */
@@ -864,12 +870,26 @@ export function declareOption<
   declared: OptionInput<Name, Config>,
   table: GlobalTable = noGlobals,
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
-  // The call's own input is judged before the receiver's state, as alias() judges its names.
-  const path = pathOf(state.name);
-  checkOptionName(declared.name, () => configUnread(inputSite(state.name, path, declared)));
-  const input = { ...declared, config: { ...declared.config } };
-  const recorded = recordInput(state, input);
-  const scope = localScope(state.name, path);
+  const input = copyLocalOption(declared, () =>
+    configUnread(localScope(state.name, pathOf(state.name)).siteOf(declared)),
+  );
+  return { ...state, ...admitOption(state, input, table), bind: bindOption(state.bind, input) };
+}
+
+/**
+ * One local option joining a declaration, with every rule `option()` judges: what the option
+ * proves on its own through `admitLocalOption`, then the stdin claim. Its name was judged before
+ * the config was read, by `copyLocalOption`. It answers the parts of the declaration the
+ * option changes.
+ */
+function admitOption(
+  state: Declared,
+  input: OptionInput,
+  table: GlobalTable,
+): Pick<Declared, 'descriptors' | 'inputs' | 'records'> {
+  const { name } = state;
+  const path = pathOf(name);
+  const scope = localScope(name, path);
   const inputs = [...state.inputs, input];
   // The options before this one compiled at their own calls, so only this one compiles here.
   const compile = () => {
@@ -877,12 +897,80 @@ export function declareOption<
     localCompiles.set(inputs, compiled);
     return compiled.table;
   };
-  checkLocalOptions({ compile, declarations: [...optionsOf(state.inputs), input] }, table, scope);
+  const { descriptors, record } = admitLocalOption(
+    input,
+    {
+      compile,
+      declarations: [...optionsOf(state.inputs), input],
+      descriptors: state.descriptors,
+      extensions: inputSubject(name, input),
+      scope,
+    },
+    table,
+  );
   // The list before this input already answered the rule, so only a claiming input can break it.
   if (claimsStdin(input)) {
     checkStdinClaims(inputs, { path, stdin: state.stdin });
   }
-  return { ...state, ...recorded, bind: bindOption(state.bind, input), inputs };
+  return { descriptors, inputs, records: new Map([...state.records, [input, record]]) };
+}
+
+/**
+ * Each option of a set joins the declaration as a local option, in the set's order, then each of
+ * the set's groups, as one `option()` call per option and one group call per group would. A fault
+ * about one of the set's options rebuilds the `options()` call that applied it. The set's values
+ * join `options` under the set's own types.
+ */
+export function declareOptionSet<
+  Args,
+  Options,
+  Globals,
+  Configs extends Readonly<Record<string, OptionConfig>>,
+>(
+  state: CommandState<Args, Options, Globals>,
+  set: OptionSet<Configs>,
+  table: GlobalTable = noGlobals,
+): CommandState<Args, Options & OptionSetValues<Configs>, Globals> {
+  const held = setFacts(set);
+  if (held === undefined) {
+    throw new DeclarationError(foreignValue, {
+      correction: foreignValueCorrection,
+      findings: [{ arguments: [set], call: 'options', mark: '0', path: pathOf(state.name) }],
+      sentence: `${commandSentence(state.name)} applies an option set another installed copy of @loomcli/core built.`,
+    });
+  }
+  // A working copy of the receiver's state takes each option in turn; the receiver stays unchanged.
+  const declared: CommandState<Args, Options, Globals> = { ...state };
+  const inputs: OptionInput[] = [];
+  for (const entry of held.entries) {
+    const input = copyLocalOption(entry, () =>
+      configUnread(localScope(state.name, pathOf(state.name)).siteOf(entry)),
+    );
+    markApplied(input);
+    Object.assign(declared, admitOption(declared, input, table));
+    inputs.push(input);
+  }
+  for (const group of held.groups) {
+    Object.assign(declared, declareOptionGroup(declared, group.kind, group.options));
+  }
+  return { ...declared, bind: bindOptionSet(state.bind, { inputs, set }) };
+}
+
+/**
+ * The bind one `options(set)` call answers: the earlier bind's values, then the set's own. It is
+ * built outside the call for the reason `bindOption` states.
+ */
+function bindOptionSet<Args, Options, Configs extends Readonly<Record<string, OptionConfig>>>(
+  previous: (values: ValidatedInputs) => { args: Args; options: Options },
+  applied: AppliedSet<Configs>,
+): (values: ValidatedInputs) => {
+  args: Args;
+  options: Options & OptionSetValues<Configs>;
+} {
+  return (values) => {
+    const bound = previous(values);
+    return { ...bound, options: { ...bound.options, ...values.optionSet(applied) } };
+  };
 }
 
 /**
@@ -2462,6 +2550,28 @@ export class CommandBuilder<
       name,
     };
     return this.#derive(declareOption(this.#state, input));
+  }
+
+  /**
+   * Declares each option of a set as a local option, in the set's order, then each of the set's
+   * option groups, as one `option()` call per option and one group call per group would. The
+   * action reads each option under `options`. Nothing inherits: a child that shares the options
+   * applies the set itself.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#sharing-options
+   */
+  options<Configs extends Readonly<Record<string, OptionConfig>>>(
+    set: OptionSet<Configs> & NoInfer<OptionSetNameConstraint<Configs, Options, Globals>>,
+  ): Command<
+    Args,
+    Options & { [Name in Extract<keyof Configs, string>]: OptionValue<Configs[Name]> },
+    Globals,
+    State,
+    Result,
+    Stdin,
+    Provided
+  > {
+    return this.#derive(declareOptionSet(this.#state, set));
   }
 
   /**

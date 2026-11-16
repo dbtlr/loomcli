@@ -24,6 +24,6 @@ export const selectFields: ActionHandler<typeof select> = async ({ options, out,
       );
     }
   }
-  const result = formatJson(Object.fromEntries(selected));
+  const result = formatJson(Object.fromEntries(selected), options);
   await out.print(style.escape(result));
 };

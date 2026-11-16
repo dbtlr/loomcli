@@ -50,7 +50,7 @@ The immutable value an authoring call returns. Each authoring call returns a new
 _Avoid_: Builder, definition object, config
 
 **Authoring call**:
-One of the calls that produce a new declaration: `argument()`, `option()`, `globalOption()`, `exclusive()`, `oneRequired()`, `requiredTogether()`, `stdin()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule for an author; a plugin's lifecycle hook makes the same calls with their types erased and the closures `action()` applies do not bind it.
+One of the calls that produce a new declaration: `argument()`, `option()`, `options()`, `globalOption()`, `exclusive()`, `oneRequired()`, `requiredTogether()`, `stdin()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule for an author; a plugin's lifecycle hook makes the same calls but `options()`, with their types erased, and the closures `action()` applies do not bind it. A hook declares its options one by one.
 _Avoid_: Builder method, chain step
 
 **Action**:
@@ -140,8 +140,16 @@ The Boolean option setting that selects which long forms exist and what an absen
 _Avoid_: Negation mode, inverse flag
 
 **Option group**:
-A declared relationship among a Command's local options: at most one supplied, at least one supplied, or all supplied together. In an exclusive group, a member claims the group when a tier supplies it, unless it is a Boolean supplied at its absent value, such as `--no-yaml` on a `both` option; the highest input tier that claims a member wins, a member a lower tier claimed is withdrawn before validation, and only members one tier claimed conflict. It is distinct from a routing Group and a help Section.
+A declared relationship among a Command's local options, or among an Option set's members, which `options(set)` declares on the Command: at most one supplied, at least one supplied, or all supplied together. In an exclusive group, a member claims the group when a tier supplies it, unless it is a Boolean supplied at its absent value, such as `--no-yaml` on a `both` option; the highest input tier that claims a member wins, a member a lower tier claimed is withdrawn before validation, and only members one tier claimed conflict. It is distinct from a routing Group and a help Section.
 _Avoid_: Flag group, validation group, constraint
+
+**Option set**:
+An immutable value `optionSet()` builds from a record of option name to option settings, each checked as `option()` checks it, and that may carry option groups over its own members. `options(set)` declares its options, then its groups, on a Command or the root exactly as one-by-one calls would, so no projection can tell the two apart. Applying a set to a parent gives its children nothing: each Command that shares the options applies the set itself. One option's shared settings are a Settings constant instead.
+_Avoid_: Option bundle, mixin, shared options (for the value), persistent options, option preset
+
+**Settings constant**:
+One option's settings, the object `option()` takes, kept in one constant typed with `satisfies` and a config type such as `ContentOption`, which each Command that shares the option passes to `option()` under the name it reads. It is the form for one shared option; an Option set is the form for several, and for the groups over them.
+_Avoid_: Configuration constant, option preset, shared config
 
 **Multiple option**:
 A string or content option that collects every occurrence into one array instead of rejecting the second. An omitted string option with no default receives `[]` and calls no per-value validator, while a content option holds assembled sources, including stdin when claimed.

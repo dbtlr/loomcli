@@ -15,6 +15,7 @@ import {
   declareArgument,
   declareOption,
   declareOptionGroup,
+  declareOptionSet,
   declareResult,
   declareResultViews,
   freshState,
@@ -45,6 +46,7 @@ import {
   pluginSites,
 } from '../commands/globals.js';
 import type { GlobalsState, GlobalTable } from '../commands/globals.js';
+import type { OptionSet, OptionSetNameConstraint } from '../commands/option-sets.js';
 import { portableName } from '../commands/rules.js';
 import type { GlobalNameConstraint, NameConstraint } from '../commands/types.js';
 import { slotSite } from '../diagnostics/facts.js';
@@ -572,6 +574,30 @@ class ApplicationBuilder<
       name,
     };
     return this.derive(declareOption(this.#root, input, this.table()));
+  }
+
+  /**
+   * Declares each option of a set as a local option of the root, in the set's order, then each of
+   * the set's option groups, as one `option()` call per option and one group call per group would.
+   * The action reads each option under `options`. Nothing inherits: a child that shares the options
+   * applies the set itself.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#sharing-options
+   */
+  options<Configs extends Readonly<Record<string, OptionConfig>>>(
+    set: OptionSet<Configs> & NoInfer<OptionSetNameConstraint<Configs, Options, Globals>>,
+  ): Application<
+    Args,
+    Options & { [Name in Extract<keyof Configs, string>]: OptionValue<Configs[Name]> },
+    Globals,
+    State,
+    Plugins,
+    Result,
+    Stdin,
+    Provided,
+    Requires
+  > {
+    return this.derive(declareOptionSet(this.#root, set, this.table()));
   }
 
   /**

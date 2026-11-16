@@ -12,7 +12,7 @@ Every `Invalid declaration: ` and `Internal error: ` line a page shows quotes th
 
 - [Application declarations](application.md): open it when you declare an `Application`: its name, version, description, root Command, and plugins.
 - [Commands and global options](commands.md): open it when you nest Commands, declare aliases or hidden members, add control or global options, or split the declaration.
-- [Local options](options.md): open it when you declare a Command's string, Boolean, or counted options, short groups, aliases, groups, or the passthrough mode.
+- [Local options](options.md): open it when you declare a Command's string, Boolean, or counted options, short groups, aliases, groups, option sets that Commands share, or the passthrough mode.
 - [Input sources](input-sources.md): open it when an input also reads an environment variable or a configuration source.
 - [Standard Schema validation](validation.md): open it when you validate an input, read content from a file or stdin, or publish an input's JSON Schema. The validator catalog is in [validators](../libs/validators.md).
 - [Declaration faults](declaration-faults.md): open it when you want to know when core rejects a declaration, how its Developer Diagnostic reads, and which defects core reports at run time.

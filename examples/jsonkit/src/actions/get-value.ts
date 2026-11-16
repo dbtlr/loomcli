@@ -8,5 +8,5 @@ import { resolvePath } from '../resolve-path.js';
 export const getValue: ActionHandler<typeof get> = async ({ args, options, out, style }) => {
   const document = await readJson({ options, out, style });
   const value = resolvePath(document, args.path);
-  await out.print(style.escape(formatJson(value)));
+  await out.print(style.escape(formatJson(value, options)));
 };

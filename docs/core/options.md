@@ -1,10 +1,10 @@
 ---
-description: "Local options: string, boolean, and counted options, short groups, repeated values, option value arity, last-occurrence-wins options, implied values, aliases, declared option groups, and passthrough."
+description: "Local options: string, boolean, and counted options, short groups, repeated values, option value arity, last-occurrence-wins options, implied values, aliases, declared option groups, sharing options across Commands with a settings constant or an option set, and passthrough."
 ---
 
 # Local options
 
-This page states how an author declares local options: string, Boolean, and counted options, short groups, repeated values, value arity, the last occurrence winning, implied values, aliases, option groups, and passthrough. An author uses it to shape the options a Command accepts.
+This page states how an author declares local options: string, Boolean, and counted options, short groups, repeated values, value arity, the last occurrence winning, implied values, aliases, option groups, sharing options across Commands, and passthrough. An author uses it to shape the options a Command accepts.
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -269,7 +269,7 @@ const app = new Application('textstat')
 
 ## Declaration and invocation errors
 
-A declaration rejects duplicate option keys and spelling collisions, including generated negative forms, short aliases, and option aliases, and an invalid option name or alias. Each throws from the call that declares the option, or from the attach that first brings two colliding options into one Application, as [Declaration faults](declaration-faults.md) states. TypeScript rejects an invalid type, polarity, implied value, or short-only combination at the call. The call that declares an input, `argument()`, `option()`, `globalOption()`, an input a lifecycle hook declares, and `plugin()` for each option it declares, keeps its own copy of the config object's keys, so a key the author adds to or replaces on that object later changes nothing the declaration holds. A fault judged before the config is read, such as an invalid name on `argument()`, `option()`, `globalOption()`, or `new Command()`, prints the config or options elided.
+A declaration rejects duplicate option keys and spelling collisions, including generated negative forms, short aliases, and option aliases, and an invalid option name or alias. Each throws from the call that declares the option, or from the attach that first brings two colliding options into one Application, as [Declaration faults](declaration-faults.md) states. TypeScript rejects an invalid type, polarity, implied value, or short-only combination at the call. The call that declares an input, `argument()`, `option()`, `globalOption()`, an input a lifecycle hook declares, `plugin()` for each option it declares, and `optionSet()` for its record and each entry, keeps its own copy of the config object's keys, so a key the author adds to or replaces on that object later changes nothing the declaration holds. A fault judged before the config is read, such as an invalid name on `argument()`, `option()`, `globalOption()`, or `new Command()`, prints the config or options elided.
 
 Each option that is neither multiple, counted, nor last-wins can occur only once per invocation. Repetition fails across every accepted spelling, including `--metric words -m bytes`, `--total -t`, `-tt`, `--total --no-total`, and `--backup -b=numbered` for a string option with an implied value. A `multiple` option collects its repetitions instead, as [Repeated string values](#repeated-string-values) describes, a counted option counts them, as [Counted options](#counted-options) describes, and a string option that declares `lastWins: true` takes its last occurrence, as [Last occurrence wins](#last-occurrence-wins) describes. An unknown or misplaced option, a missing value, a value after a Boolean or counted option, or a value attached to an [arity option](#option-value-arity) also prevents dispatch. Diagnostics identify the affected option and give a correction. A declaration error that `run()` reports returns code 1; invocation errors return code 2. A declaration diagnostic names the declaration, as in `Option "field"`, because the author edits the declaration to fix it. An input diagnostic names the supplied spelling, as in `Option "--field"`, because the operator changes that token. An argument declares and reads under one name, so its diagnostics use it throughout. A broken validator is a fault in the declaration, so it names the declaration even when a supplied value reached it. Command names, child attachment, and collisions between a global and a local option have their own rules, described in [Commands and global options](commands.md).
 
@@ -340,7 +340,74 @@ Completion suppresses exclusive siblings after a member that claims the group ap
 MCP omits groups containing hidden or control options, and writes a group that holds an excluded option over its other members. Its schemas use named supplied-value predicates for Boolean polarity, positive counts, and nonempty lists. An exclusive constraint reads a Boolean member as claiming only when it differs from its absent value, `true` for a `positive` or `both` option and `false` for a `negative` one, so a call with `json: true` and `yaml: false` passes.
 Exclusive constraints remain sound when external sources fill other options. Positive requirements are encoded only when every member has no environment binding or extensions.
 An extension might bind a configuration source, so uncertain groups remain runtime rules.
-[ADR-0085](../decisions/0085-a-command-declares-option-groups-over-supplied-local-options.md) records the contract, and [ADR-0123](../decisions/0123-in-an-exclusive-option-group-the-highest-input-tier-that-supplies-a-member-wins.md) decides an exclusive group by the highest tier that supplies a member.
+[ADR-0085](../decisions/0085-a-command-declares-option-groups-over-supplied-local-options.md) records the contract, and [ADR-0123](../decisions/0123-in-an-exclusive-option-group-the-highest-input-tier-that-supplies-a-member-wins.md) decides an exclusive group by the highest tier that supplies a member. An [option set](#sharing-options) carries groups over its own members, which `options(set)` declares on the Command.
+
+## Sharing options
+
+Local options never inherit along a path, so each Command that reads an option declares it. Two forms keep the declarations the same on every Command that shares them: a settings constant for one option, and an option set for several options and the groups over them. [ADR-0166](../decisions/0166-an-option-set-declares-shared-options-once-and-each-command-that-shares-them-applies-it.md) records the decision.
+
+### One option: a settings constant
+
+An option's settings are a plain object, so one option that several Commands declare is one constant, typed with `satisfies` and one of the config types `StringOption`, `BooleanOption`, `CountOption`, or `ContentOption`. Each Command passes it to `option()` under the name it reads.
+
+```ts
+// src/document-input.ts
+import type { ContentOption } from '@loomcli/core';
+
+export const documentInput = {
+  description: 'The document to read. Omit it to read piped text.',
+  required: true,
+  short: 'f',
+  stdin: true,
+  type: 'content',
+} satisfies ContentOption;
+
+// src/commands/get.ts
+export const get = new Command('get', { description: 'Read one value at a path.' })
+  .option('file', documentInput)
+  .argument('path', { description: 'Dot path to read.', required: true })
+  .action(getValue);
+```
+
+The jsonkit example's document Commands each declare `--file` this way.
+
+### Several options: an option set
+
+```ts
+// src/output-options.ts
+import { optionSet } from '@loomcli/core';
+
+export const output = optionSet({
+  json: { description: 'Print JSON.', type: 'boolean' },
+  yaml: { description: 'Print YAML.', type: 'boolean' },
+}).exclusive('json', 'yaml');
+
+// src/commands/list.ts
+export const list = new Command('list', { description: 'List the entries.' })
+  .options(output)
+  .action(({ options, out }) => out.print(options.yaml ? 'yaml' : 'json'));
+
+// src/commands/show.ts
+export const show = new Command('show', { description: 'Show one entry.' })
+  .argument('id', { description: 'The entry to show.', required: true })
+  .options(output)
+  .option('wide', { description: 'Print every column.', type: 'boolean' })
+  .exclusive('json', 'wide')
+  .action(showEntry);
+```
+
+`optionSet(configs)` takes a record of option name to option settings, the configuration `option()` takes, and returns an `OptionSet`. `options(set)` on a Command, or on the Application for the root, declares each of the set's options as a local option, then each of its groups. The action reads each option under `options` with the type one `option()` call gives it, so `options.json` above is a `boolean` in both actions.
+
+- **One by one, in order.** `options(set)` returns the declaration that one `option()` call per option, in the set's order, and then one group call per group, in the order the set holds them, would return, at the position of the call among the Command's other calls. The set's order is its record's key order as `Object.keys` reads it, so a linter rule that sorts object keys, such as ESLint's `sort-keys`, also sorts the order help lists the options in. A later group call on the Command may name a set's option beside one of its own, as `show` does above.
+- **Each entry is checked as `option()` checks it.** The types apply to each entry the constraints `option()` applies to one option, so a default outside its validator's input type, or a `multiple` option whose validator does not accept one string, fails to compile at `optionSet()`. The call raises the declaration faults the set's own entries prove, under [Declaration faults](declaration-faults.md#at-the-call): an invalid name or alias, two entries that share a spelling or a variable, an empty `envDelimiter`, an invalid `arity`, two content entries that claim stdin, and an extension value `option()` would refuse, two entries' values whose descriptors share an identity included. Each reads as the fault `option()` raises, and its finding rebuilds the entry alone in the set's record, `optionSet({ json: { … } })`. A default and an implied value pass their validators when `run()` starts, as they do for any option.
+- **Groups.** A set's `exclusive(...names)`, `oneRequired(...names)`, and `requiredTogether(...names)` name the set's own members, so a group that names an option outside the set, or fewer than two, fails to compile. Each returns a new set that holds the group after the receiver's, and applies the group rules of [Declared option groups](#declared-option-groups) that no type expresses over the set's members at the call, a repeated member and the conflicts between groups, with sentences that open `An option set`, such as `An option set exclusive group contains required option "json".`
+- **A value.** A set never changes. A group call returns a new set and leaves its receiver as it was, and one set applies to any number of Commands, in one Application or in several. A set holds options only, never an argument, stdin, or the passthrough mode, and an empty set declares nothing.
+- **What applying refuses.** A name the Command already declares as a local option, or one its global options hold, is a compile error at `options()`, which names it: `'This option name is already declared on this Command'` or `'This option name is already declared as a global option'`. At the call, `options()` raises every fault `option()` would raise for one of the set's options against the Command: a spelling or a variable the Command's own options hold, a second stdin claim, an extension descriptor that shares an identity with one the Command names, and on the root a key, spelling, or variable a global option holds. Attach and build judge a set's options as any local options. Every finding about a set's option, at `options()` or later, such as a default its validator rejects when `run()` starts, rebuilds the call that declared it, `.options(optionSet({ json: { … } }))`, with that entry alone and the part at fault marked. A set that another installed copy of `@loomcli/core` built is the [`@loomcli/core/foreign-value`](diagnostics.md#loomclicoreforeign-value) fault.
+- **Nothing inherits.** A parent that applies a set declares its options on the parent alone, and its children gain nothing. Each Command that shares the options applies the set itself. A set applied to a [group](commands.md#nested-commands-and-groups) gives the group its own options, which reach no action. When a parent and a child each apply one set, an operator may type such an option before the child's name, and it binds to the child's option, as [Global consumption and routing](commands.md#global-consumption-and-routing) states for any option both declare.
+- **Where.** `options()` exists on a Command and on the Application root, wherever `option()` does, and `action()` closes it. There is no set form for global options. The attached Command a [lifecycle hook](lifecycle-hooks.md) receives has no `options()`.
+- **Projections.** [`inspect()`](graph-inspection.md), the [manifest](../plugins/manifest.md), help, the man page, completion, and MCP show nothing about a set. A Command built with a set is the same in every projection as one that declared the same options and groups one by one, in the same order.
+
+A settings constant stays the form for one option. A set is for several options a group of Commands shares, and for the groups over them, which a constant cannot carry. The jsonkit example's Commands that print a JSON value each apply its `jsonLayout` set, `--compact` and `--indent` with an exclusive group over them, and keep `--file` a settings constant.
 
 ## Passthrough
 

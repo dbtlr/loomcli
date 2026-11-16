@@ -118,6 +118,26 @@ function spellingOf(value: unknown): string | undefined {
   return typeof value === 'object' && value !== null ? spellings.get(value) : undefined;
 }
 
+/**
+ * Stand-ins a finding prints as one call with its own arguments, such as the `optionSet({ … })`
+ * an `options()` call received, so a mark can underline a part inside the nested call's arguments.
+ */
+const calls = new WeakMap<
+  object,
+  { readonly call: string; readonly arguments: readonly unknown[] }
+>();
+
+/**
+ * A finding argument that prints as `call(...)` with the arguments given. Each argument's path is
+ * the stand-in's own path and the argument's index, so `0.0.json` marks the key `json` of the first
+ * argument of the call that stands as a finding's first argument.
+ */
+function called(call: string, args: readonly unknown[]): object {
+  const value = Object.freeze({});
+  calls.set(value, { arguments: args, call });
+  return value;
+}
+
 /** Whether a value is a Standard Schema, which a finding prints as an ellipsis like a function. */
 function isValidator(value: object): boolean {
   return '~standard' in value;
@@ -212,7 +232,28 @@ class CodePrinter {
     if (Array.isArray(value)) {
       return this.list(value, inner);
     }
+    return this.call(value, inner) ?? this.object(value, inner);
+  }
+
+  /** One object that is not an array: a plain object literal, or an ellipsis for any other. */
+  private object(value: object, inner: Place): string {
     return isValidator(value) || !isPlainObject(value) ? elided : this.record(value, inner);
+  }
+
+  /**
+   * One nested call a `called()` stand-in names, whose arguments append in place, so each records
+   * its own span, or `undefined` for any other value.
+   */
+  private call(value: object, { path, seen }: Place): string | undefined {
+    const nested = calls.get(value);
+    if (nested === undefined) {
+      return undefined;
+    }
+    this.text += `${escapeControlCharacters(nested.call)}(`;
+    this.separated(nested.arguments, (argument, index) => {
+      this.value(argument, { path: `${path}.${String(index)}`, seen });
+    });
+    return ')';
   }
 
   /** One array literal. Its members append in place, so each records its own span. */
@@ -389,6 +430,7 @@ function isDiagnosticRule(value: unknown): value is DiagnosticRule {
 
 export type { Anatomy, DiagnosticParts, DiagnosticRule, Finding, Layout };
 export {
+  called,
   diagnosticSections,
   diagnosticText,
   elided,

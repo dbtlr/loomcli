@@ -62,6 +62,29 @@ tester.run('discarded-declaration', discardedDeclaration, {
         }`,
       errors: [discarded('result'), discarded('rows'), discarded('views')],
     },
+    {
+      // Applying a set returns a new Command, and a set's group call returns a new set.
+      code: `import { Command, optionSet } from '@loomcli/core';
+        const output = optionSet({ json: { type: 'boolean' }, yaml: { type: 'boolean' } });
+        output.exclusive('json', 'yaml');
+        output.oneRequired('json', 'yaml').requiredTogether('json', 'yaml');
+        const base = new Command('base', { description: 'Base.' });
+        base.options(output);`,
+      errors: [discarded('exclusive'), discarded('requiredTogether'), discarded('options')],
+    },
+    {
+      code: `import { optionSet as set } from '@loomcli/core';
+        set({ json: { type: 'boolean' }, yaml: { type: 'boolean' } }).exclusive('json', 'yaml');`,
+      errors: [discarded('exclusive')],
+    },
+    {
+      code: `import * as loom from '@loomcli/core';
+        const output = loom.optionSet({ json: { type: 'boolean' }, yaml: { type: 'boolean' } });
+        const grouped = output;
+        grouped.exclusive('json', 'yaml');
+        new loom.Application('tool').options(grouped);`,
+      errors: [discarded('exclusive'), discarded('options')],
+    },
   ],
   valid: [
     {
@@ -83,6 +106,15 @@ tester.run('discarded-declaration', discardedDeclaration, {
         const { destructured } = make();
         destructured.option('a', { type: 'boolean' });
         function make() { return { destructured: new Command('y') }; }`,
+    },
+    {
+      // A set that is kept, and an optionSet that does not come from @loomcli/core.
+      code: `import { Command, optionSet } from '@loomcli/core';
+        import { optionSet as other } from 'elsewhere';
+        const output = optionSet({ json: { type: 'boolean' }, yaml: { type: 'boolean' } });
+        export const grouped = output.exclusive('json', 'yaml');
+        export const list = new Command('list').options(grouped);
+        other({}).exclusive('a', 'b');`,
     },
     {
       // A deliberate discard is not an oversight.

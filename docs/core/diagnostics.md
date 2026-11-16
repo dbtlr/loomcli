@@ -84,7 +84,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/foreign-value
 
-**Value from another copy of core.** Core reads a plugin, an extension value, a declared view, a view override, a translation, a failure encoding, and a provider through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.
+**Value from another copy of core.** Core reads a plugin, an extension value, a declared view, a view override, a translation, a failure encoding, a provider, and an option set through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.
 
 ### @loomcli/core/interaction-mark
 
