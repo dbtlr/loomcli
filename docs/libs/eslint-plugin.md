@@ -90,7 +90,8 @@ Reports a declaration that has no description. Agents, MCP tools, help, and the 
 - a `new Command(...)` or `new Application(...)` whose options leave out `description`;
 - an `option(...)`, `argument(...)`, or `globalOption(...)` call whose configuration leaves out `description`;
 - a `stdin(...)` call whose configuration leaves out `description`;
-- an option that a `plugin(...)` definition declares as an object literal under `options`, so a plugin is linted where its source is.
+- an option that a `plugin(...)` definition declares as an object literal under `options`, so a plugin is linted where its source is;
+- each entry of an `optionSet({...})` record from `@loomcli/core` whose settings are an object literal that leaves out `description`, under any import of `optionSet`, so an option keeps the check when it moves into a set. A computed key, a spread, and settings that are no object literal are skipped.
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -138,6 +139,7 @@ Reports a literal name that core rejects when the module loads. The rule calls t
 
 - The name of a `new Command(...)` or `new Application(...)`, and each name in an `alias(...)` call, must be a portable name: A-Z, a-z, 0-9, `.`, `_`, and `-`, nonempty, and not starting with `-` or `.`.
 - The name of an `option(...)`, `argument(...)`, or `globalOption(...)` call, and each literal in an option's `aliases` array, must be a declared name: nonempty, with no leading hyphen, whitespace, or `=`.
+- The key of each entry of an `optionSet({...})` record from `@loomcli/core`, and each literal in that entry's `aliases` array, answer the same declared-name rule, under any import of `optionSet`.
 
 ```ts
 // Reported: a space is not a portable name character.

@@ -6,8 +6,11 @@ import {
   authoringCallOf,
   constructorOf,
   literalString,
+  memberKey,
+  optionSetEntries,
   positionalArguments,
   readProperty,
+  unwrapped,
 } from '../declarations.js';
 import type { Argument, AuthoringCall } from '../declarations.js';
 import { ruleUrl } from '../docs.js';
@@ -32,9 +35,9 @@ const declaredNames: ReadonlyMap<string, string> = new Map([
 /** The checks one lint run applies: each reports a literal name that core would reject. */
 interface Checks {
   /** A name an operator types as a command: the application, a Command, and an alias. */
-  readonly portable: (node: Node, subject: string) => void;
+  readonly portable: (node: Node, subject: string, name?: string) => void;
   /** A name the parser reads as a token: an option, an argument, and an option alias. */
-  readonly declared: (node: Node, subject: string) => void;
+  readonly declared: (node: Node, subject: string, name?: string) => void;
 }
 
 /** The scope analysis the rule reads. */
@@ -77,8 +80,19 @@ function checkDeclaredName(call: AuthoringCall, node: CallExpression, checks: Ch
   }
 }
 
+/** Checks the key and the aliases of each entry of an `optionSet()` record. */
+function checkOptionSet(sourceCode: SourceCode, node: CallExpression, checks: Checks): void {
+  for (const member of optionSetEntries(sourceCode, node)) {
+    checks.declared(member.key, 'Option', memberKey(member));
+    for (const alias of aliasesOf(unwrapped(member.value))) {
+      checks.declared(alias, 'Option alias');
+    }
+  }
+}
+
 /** Checks the names an authoring call declares, wherever the source spells them out. */
 function checkCall(sourceCode: SourceCode, node: CallExpression, checks: Checks): void {
+  checkOptionSet(sourceCode, node, checks);
   const call = authoringCallOf(sourceCode, node);
   if (call?.method === 'alias') {
     for (const alias of literalArguments(node.arguments)) {
@@ -109,8 +123,7 @@ const nameShape: Rule.RuleModule = {
     const { sourceCode } = context;
     const check =
       (isValid: (name: string) => boolean, messageId: string): Checks['portable'] =>
-      (node, subject) => {
-        const name = literalString(node);
+      (node, subject, name = literalString(node)) => {
         if (name !== undefined && !isValid(name)) {
           context.report({ data: { name: JSON.stringify(name), subject }, messageId, node });
         }

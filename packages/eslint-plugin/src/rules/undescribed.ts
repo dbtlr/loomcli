@@ -7,6 +7,7 @@ import {
   coreCalleeOf,
   literalString,
   memberKey,
+  optionSetEntries,
   positionalArguments,
   readProperty,
   unwrapped,
@@ -101,8 +102,25 @@ function reportPluginOptions(known: readonly Node[], report: Report): void {
   }
 }
 
+/** Reports each entry of an `optionSet()` record that is an object literal without a description. */
+function reportOptionSetEntries(
+  sourceCode: SourceCode,
+  node: CallExpression,
+  report: Report,
+): void {
+  for (const member of optionSetEntries(sourceCode, node)) {
+    if (
+      unwrapped(member.value).type === 'ObjectExpression' &&
+      leavesOutDescription(unwrapped(member.value))
+    ) {
+      report(member.key, subjectOf('Option set option', memberKey(member)));
+    }
+  }
+}
+
 /** Reports a call that declares something without a description, wherever the source can read it. */
 function reportCall(sourceCode: SourceCode, node: CallExpression, report: Report): void {
+  reportOptionSetEntries(sourceCode, node, report);
   const known = positionalArguments(node);
   if (!known) {
     return;
