@@ -30,14 +30,16 @@
  *   question that closes beside the unfinished row moves into scrollback above it, and the final
  *   screen equals the joined text's. A row that would be wider than the screen is never drawn, and
  *   one a narrowed terminal made wider stays as drawn, with every other unfinished row, while its
- *   message writes the rest a row at a time.
+ *   message writes the rest a row at a time, and a message whose row stayed draws none again.
  * - On a terminal, `print`. Each write is what a chunk adds at the cursor, and after a resize
  *   between chunks or with VS16 and ZWJ graphemes in a long line the final screen equals the whole
  *   print's. While its line is unfinished another message, on either stream, and a live region's
- *   first frame wait for the line's end, two prints take the terminal in turn, an iterable that
- *   awaits a write to the terminal waits until a stop ends its line, a stop still writes the failure
- *   report at once, and a row sequence on stdout holds no stderr write. While a live region or
- *   another unfinished row is shown it writes whole lines, and chunk by chunk again once none is.
+ *   first frame wait for the line's end, through a suspend too, two prints take the terminal in
+ *   turn, an iterable that awaits a write to the terminal waits until a stop ends its line, a stop
+ *   still writes the failure report at once, and a row sequence on stdout holds no stderr write, a
+ *   `print` line on stderr included. While a live region or another unfinished row is shown, or a
+ *   row sequence is open on either stream, it writes whole lines, and chunk by chunk again once
+ *   none is.
  *   A style's close waits for the next chunk, so the bytes are the whole print's.
  * - The live-region hook. An unfinished row and a `print` line open a span when nothing else is
  *   on the screen, with stdout alone on the terminal too.
@@ -1118,6 +1120,28 @@ test('a live region opened while a streamed print line is unfinished draws its f
   expect(screens).toEqual([['first li'], ['first line', 'Working']]);
 });
 
+test('a suspend while a streamed print line is unfinished keeps a held region frame behind the line', async () => {
+  const mock = terminal(40);
+  const screens: (readonly string[])[] = [];
+  const app = marked('suspend').action(async ({ out }) => {
+    async function* text(): AsyncGenerator<string> {
+      yield 'first li';
+      const region = out.region();
+      void region.draw(null, { render: () => 'Working' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      mock.signals.raise('SIGTSTP');
+      screens.push(await shown(mock, 40));
+      mock.signals.raise('SIGCONT');
+      yield 'ne\n';
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      screens.push(await shown(mock, 40));
+    }
+    await out.print(text());
+  });
+  await app.run({ process: mock });
+  expect(screens).toEqual([['first li'], ['first line', 'Working']]);
+});
+
 test('two streamed prints take the terminal in turn, a line at a time', async () => {
   const mock = terminal(40);
   const app = marked('two').action(async ({ out }) => {
@@ -1363,6 +1387,45 @@ test('a streamed print issued while a row sequence holds stdout holds no stderr 
   await expect(shown(mock, 40)).resolves.toEqual(['⚠ Not held.', 'row', 'first line']);
 });
 
+test.each([{ warns: true }, { warns: false }])(
+  'a streamed print on stderr beside a row sequence open on stdout shows its line before the sequence ends (row source warns: $warns)',
+  async ({ warns }) => {
+    const mock = terminal(40);
+    const gate = Promise.withResolvers<void>();
+    async function* sources(out: Out): AsyncGenerator<string> {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (warns) {
+        await out.warn('One source was skipped.');
+      }
+      yield 'source one';
+      await gate.promise;
+      yield 'source two';
+    }
+    let during: readonly string[] = [];
+    // The screen is read once the answer's line has ended and before the sequence ends.
+    const watch = async (): Promise<void> => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      during = await shown(mock, 40);
+      gate.resolve();
+    };
+    const app = new Application('ask')
+      .rows<string>({ views: { list: { row: (row) => `${row}\n` } } })
+      .action(async ({ out }) => {
+        const answer = slow('The answer is', ' forty-two.\n');
+        await Promise.all([out.print(answer), out.results(sources(out)), watch()]);
+      });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    const warning = warns ? ['⚠ One source was skipped.'] : [];
+    expect(during).toEqual([...warning, 'source one', 'The answer is forty-two.']);
+    await expect(shown(mock, 40)).resolves.toEqual([
+      ...warning,
+      'source one',
+      'The answer is forty-two.',
+      'source two',
+    ]);
+  },
+);
+
 test('when an unfinished row is too wide to erase, every unfinished row stays as drawn', async () => {
   const mock = terminal(40);
   const gate = Promise.withResolvers<void>();
@@ -1392,4 +1455,37 @@ test('when an unfinished row is too wide to erase, every unfinished row stays as
   // No write after the resize moves the cursor up to erase a row drawn before it.
   // A line break moves the cursor off the rows left on the screen, and each message writes its row whole.
   expect(after).toBe('\n⚠ one two three four five six seven\nℹ Short\n');
+});
+
+test('a message whose unfinished row was left as drawn draws no unfinished row again', async () => {
+  const mock = terminal(40);
+  const gate = Promise.withResolvers<void>();
+  let narrowed = 0;
+  async function* short(): AsyncGenerator<string> {
+    yield 'Short';
+    await gate.promise;
+    // The row this chunk lays out fits the narrowed screen.
+    yield ' more';
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  async function* long(): AsyncGenerator<string> {
+    yield 'one two three four five six';
+    mock.resize(15, 24);
+    narrowed = mock.transcript.length;
+    yield ' seven';
+  }
+  const app = marked('left').action(async ({ out }) => {
+    const first = out.info(short());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await out.warn(long());
+    gate.resolve();
+    await first;
+  });
+  await app.run({ process: mock });
+  const after = mock.transcript
+    .slice(narrowed)
+    .map(({ text }) => text)
+    .join('');
+  // The message that kept the short row writes its text once it is finished, and draws it never.
+  expect(after).toBe('\n⚠ one two three four five six seven\nℹ Short more\n');
 });

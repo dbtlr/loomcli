@@ -422,10 +422,11 @@ class Destination {
   /**
    * Writes every composition still queued straight to the stream, in the order it was queued, and
    * then `after`, synchronously, as a suspend does before the process stops. Every other write
-   * keeps its turn.
+   * keeps its turn, and with `held` every composition keeps its turn too, so a frame held behind a
+   * streamed `print`'s unfinished line is not written inside it.
    */
-  flushComposed(after: () => string): void {
-    const composed = [...this.#queued].filter((queued) => queued.composed);
+  flushComposed(after: () => string, held = false): void {
+    const composed = held ? [] : [...this.#queued].filter((queued) => queued.composed);
     for (const queued of composed) {
       this.#queued.delete(queued);
     }
@@ -998,8 +999,9 @@ export class Output {
   /**
    * Erases the live regions on a suspend and redraws them on the resume until the call it answers.
    * The erase is written straight to the terminal, after every region frame still queued, with the
-   * cursor shown, because the process stops as the suspend handlers return. The redraw is queued,
-   * so a write queued before the suspend reaches the screen first.
+   * cursor shown, because the process stops as the suspend handlers return. While a streamed
+   * `print` line holds the terminal, the frames queued keep their turn behind it. The redraw is
+   * queued, so a write queued before the suspend reaches the screen first.
    */
   private holdSuspend(): () => void {
     const { suspension } = this;
@@ -1009,8 +1011,9 @@ export class Output {
     }
     const removers = [
       suspension.onSuspend(() => {
-        destination.flushComposed(() =>
-          this.screen.lending > 0 ? '' : this.screen.suspend() + this.cursorShown(),
+        destination.flushComposed(
+          () => (this.screen.lending > 0 ? '' : this.screen.suspend() + this.cursorShown()),
+          this.lineHeld(),
         );
       }),
       suspension.onResume(() => {
@@ -1384,8 +1387,10 @@ export class Output {
   /**
    * How a streamed message lays out on a terminal that redraws, if it is on one: a lane that wraps
    * keeps an unfinished row, and `print` grows its line at the cursor while no live region is
-   * open, no other streamed message keeps an unfinished row, and no row sequence holds its
-   * destination's order, and writes a whole line at a time otherwise.
+   * open, no other streamed message keeps an unfinished row, and no row sequence holds the order of
+   * either stream on its terminal, and writes a whole line at a time otherwise. A line held while a
+   * sequence is open would start behind the sequence and hold every write to the terminal behind it,
+   * a stderr write the sequence's source awaits included.
    */
   private terminalLayout(
     redrawn: boolean,
@@ -1400,7 +1405,9 @@ export class Output {
     }
     return {
       appends: () =>
-        !this.regions.drawing && !target.sequenced && ![...this.streams].some((open) => open.rows),
+        !this.regions.drawing &&
+        ![target, ...this.sharing(target)].some(({ sequenced }) => sequenced) &&
+        ![...this.streams].some((open) => open.rows),
       kind: 'append',
     };
   }
