@@ -3,7 +3,7 @@
 import type { Child, ChildExit, Host, Log } from '@loomcli/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
-import { readCall, readLimit } from '../src/service/manager.js';
+import { expectChange, readCall, readLimit } from '../src/service/manager.js';
 import type { Call, Manager } from '../src/service/manager.js';
 import { ranCall } from '../src/service/messages.js';
 
@@ -200,5 +200,45 @@ describe('a status read', () => {
     await expect(readCall(manager, call)).resolves.toEqual({ error, kind: 'missing' });
     // A program that cannot start writes no -v line, because its failure or its note names it.
     expect(said).toEqual([]);
+  });
+});
+
+/** A manager whose `-v` lane rejects every write, as a closed stderr does, and whose log records. */
+function unwritable(events: unknown[]): Manager {
+  const { manager } = fakeManager({ answer: exitOf(0), signal: new AbortController().signal });
+  return {
+    ...manager,
+    debug: async () => await Promise.reject(new Error('The stream is closed.')),
+    log: {
+      ...silentLog,
+      info: (message, fields) => {
+        events.push({ fields, message });
+      },
+    },
+  };
+}
+
+describe('a -v line whose write fails', () => {
+  it('leaves a change that was made answered and recorded', async () => {
+    const events: unknown[] = [];
+    await expect(expectChange(unwritable(events), call)).resolves.toEqual({
+      code: 0,
+      kind: 'exited',
+      stdout: '',
+    });
+    expect(events).toEqual([
+      {
+        fields: { arguments: ['--user', 'show'], code: 0, program: 'systemctl' },
+        message: 'Program run.',
+      },
+    ]);
+  });
+
+  it('leaves a read answered', async () => {
+    await expect(readCall(unwritable([]), call)).resolves.toEqual({
+      code: 0,
+      kind: 'exited',
+      stdout: '',
+    });
   });
 });

@@ -11,6 +11,7 @@ import { FatalError } from '@loomcli/core';
 import type { ChildExit, Host, Log, OnShutdown } from '@loomcli/core';
 
 import { programRun } from '../change-events.js';
+import { say } from '../lane-writes.js';
 import { managerExited, managerMissing, ranCall } from './messages.js';
 
 /** What one call answered: the code it exited with and its standard output, or that it never started. */
@@ -61,10 +62,14 @@ function answerOf(exit: ChildExit): Answer {
     : { error: exit.error, kind: 'missing' };
 }
 
-/** Names a call that started once it ends, whatever its code; one that could not start names none. */
+/**
+ * Names a call that started once it ends, whatever its code; one that could not start names none.
+ * A line that cannot be written is let go, so the change the call made is still answered and
+ * recorded, and the steps after it still run.
+ */
 async function sayRan(manager: Manager, call: Call, started: boolean): Promise<void> {
   if (started) {
-    await manager.debug(ranCall(call.program, call.args));
+    await say(manager.debug(ranCall(call.program, call.args)));
   }
 }
 
