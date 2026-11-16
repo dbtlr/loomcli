@@ -130,6 +130,7 @@ type ManifestOption =
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly interaction: boolean; // see Interaction
       readonly color: boolean; // see Color
+      readonly plain: boolean; // see The plain switch
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
     }
@@ -184,6 +185,7 @@ type ManifestOption =
       "polarity": "positive",
       "interaction": false,
       "color": false,
+      "plain": false,
       "schema": null,
       "env": []
     }

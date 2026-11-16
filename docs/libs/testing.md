@@ -678,7 +678,7 @@ test('Ctrl-C at the second question ends the run with 130', async () => {
 });
 ```
 
-The question frames land on `stderr`, a live region on the mock's terminal, so `mock.stderr.text` holds every redraw with its control sequences. A test asserts the answer's effect, the exit code, and the final screen text rather than each frame.
+The question frames land on `stderr`, a live region on the mock's terminal, so `mock.stderr.text` holds every redraw with its control sequences. A test asserts the answer's effect, the exit code, and the final screen text rather than each frame. With `ACCESSIBLE` set and not empty in `env`, or the [plain switch](../core/output.md#the-plain-switch)'s spelling in `argv`, a question [asks line by line](prompts.md#asking-line-by-line) instead: `mock.stderr.text` holds each piece it printed once, with no control sequence and none of the keys, which the mock does not echo, so a test may compare it whole.
 
 ### Cancelling at a named point
 
