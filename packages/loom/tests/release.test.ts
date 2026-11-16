@@ -1086,7 +1086,7 @@ test('an --output whose folder is missing names the path and the cause', async (
     ),
   ).resolves.toEqual({
     status: 1,
-    stderr: `Cannot open ${output}, because it does not exist. Check the path and each folder on the way to it, then run the command again.\n`,
+    stderr: `Cannot write ${output}, because its folder does not exist. Create the folder, then run the command again.\n`,
     stdout: '',
   });
 });

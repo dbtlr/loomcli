@@ -152,6 +152,10 @@ function tagAwayFromPublication(
   return `Tag ${escaped(tag)} names ${escaped(tagCommit)}, but ${escaped(version)} was published from ${escaped(commit)}, and recording never moves a tag, so supersede ${escaped(version)} with the next cut.`;
 }
 
+function outputFolderMissing(path: string): string {
+  return `Cannot write ${escaped(path)}, because its folder does not exist. Create the folder, then run the command again.`;
+}
+
 function planNotJson(path: string): string {
   return `${escaped(path)} is not valid JSON, so write the plan again with loom release plan, then run loom release record again.`;
 }
@@ -325,6 +329,7 @@ export {
   onRegistry,
   planDecision,
   planHeading,
+  outputFolderMissing,
   planNotJson,
   planNotJsonAt,
   planWithoutNotes,
