@@ -1,392 +1,94 @@
-import { StringDecoder } from 'node:string_decoder';
-
-import { raiseInterruptKeys } from '@loomcli/core';
+import { escapeControlCharacters, style, width } from '@loomcli/core';
 import type { Region, View } from '@loomcli/core';
 
 import { controls } from './controls.js';
-import { graphemes } from './line.js';
+import { TypedLine } from './line.js';
+import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
 import { cancelledLine, questionLine } from './views.js';
 import type { QuestionLine } from './views.js';
 
-/** What one read of a line answers: the line Enter ended, or the end of input. */
-type LineRead = { readonly kind: 'line'; readonly value: string } | { readonly kind: 'eof' };
-
-/**
- * Where an escape sequence that starts at `start` ends: past a CSI or SS3 sequence, past the ESC
- * alone before any other character, or `undefined` while the read ends inside the sequence.
- */
-function sequenceEnd(text: string, start: number): number | undefined {
-  const intro = text[start + 1];
-  if (intro === undefined) {
-    return undefined;
-  }
-  if (intro === 'O') {
-    return text[start + 2] === undefined ? undefined : start + 3;
-  }
-  if (intro !== '[') {
-    return start + 1;
-  }
-  for (let index = start + 2; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (code >= 0x40 && code <= 0x7e) {
-      return index + 1;
-    }
-    if (code < 0x20 || code > 0x7e) {
-      return index;
-    }
-  }
-  return undefined;
-}
-
-/** The line with its last word removed, and the spaces after it, as Ctrl-W removes it. */
-function withoutLastWord(line: string): string {
-  return line.replace(/\S*\s*$/u, '');
-}
-
-/**
- * One run's hold on stdin for its questions asked line by line. It reads stdin one read at a time,
- * only while a question waits for a line, and never switches it to raw mode except while a secret
- * reads. Each read's text waits in the run's queue until a question takes a line from it, so a
- * line typed ahead answers the next question. The one line rule reads every read: a printable
- * character joins the line, Backspace removes its last grapheme, Enter, `\r`, `\n`, or `\r\n`,
- * ends it, Ctrl-D ends input on an empty line, and every other key, a sequence included, adds
- * nothing. A secret also clears the line at Ctrl-U and removes its last word at Ctrl-W, the keys a
- * terminal's line mode edits with, because it reads in raw mode, where the terminal edits nothing.
- * Ctrl-C, Ctrl-\, and Ctrl-Z, which arrive as bytes on a stdin that is not in its line mode, raise
- * their signals as the raw-mode reader's keys do.
- */
-class LineInput {
-  readonly #context: PromptContext<unknown>;
-  #decoder = new StringDecoder('utf8');
-  /** The text of each read no question has finished, oldest first. */
-  #reads: string[] = [];
-  /** Whether the first queued read is the rest of the read that held the last line's Enter. */
-  #restOfLast = false;
-  /** The line typed so far. */
-  #partial = '';
-  /** Whether the last character ended a line with `\r`, so a `\n` after it ends nothing. */
-  #carriage = false;
-  #wake: (() => void) | undefined = undefined;
-  #failure: { error: unknown } | undefined = undefined;
-  /** Whether Ctrl-C or Ctrl-\ raised its signal, after which every read is dropped. */
-  #interrupted = false;
-  #readers = 0;
-  #raw = false;
-  #removers: (() => void)[] = [];
-
-  constructor(context: PromptContext<unknown>) {
-    this.#context = context;
-  }
-
-  get #input() {
-    return this.#context.host.stdin;
-  }
-
-  /** Begins one question's reading, holding stdin while it is the run's first. */
-  open(): void {
-    this.#readers += 1;
-    if (this.#readers > 1) {
-      return;
-    }
-    const input = this.#input;
-    // Paused first, so the data listener reads nothing until a question waits for a line.
-    input.pause();
-    input.on('data', this.#data).once('end', this.#end).once('close', this.#end);
-    input.on('error', this.#error);
-    this.#removers = [
-      this.#context.onResume(() => {
-        if (this.#raw) {
-          this.#rawMode(true);
-        }
-        if (this.#wake !== undefined) {
-          input.resume();
-        }
-      }),
-      this.#context.onSuspend(() => {
-        if (this.#raw) {
-          this.#rawMode(false);
-        }
-      }),
-      this.#context.onShutdown(() => {
-        if (this.#raw) {
-          this.#rawMode(false);
-        }
-      }),
-    ];
-    if (input.readableEnded || input.destroyed) {
-      this.#context.cancel();
-    }
-  }
-
-  /** Ends one question's reading, letting stdin go once no question of the run reads it. */
-  close(): void {
-    this.#readers -= 1;
-    if (this.#readers > 0) {
-      return;
-    }
-    this.release();
-  }
-
-  /**
-   * Lets stdin go now, as an editor question does while its editor reads the terminal: the
-   * listeners leave and stdin pauses, and the queued text stays until `drop`. `open` holds it
-   * again.
-   */
-  release(): void {
-    this.#readers = 0;
-    for (const remove of this.#removers.splice(0)) {
-      remove();
-    }
-    const input = this.#input;
-    input.off('data', this.#data).off('end', this.#end).off('close', this.#end);
-    input.off('error', this.#error);
-    input.pause();
-    this.#wake = undefined;
-  }
-
-  /** Drops every read still queued and the line typed so far, as an editor's start does. */
-  drop(): void {
-    this.#reads = [];
-    this.#restOfLast = false;
-    this.#partial = '';
-    this.#carriage = false;
-    this.#decoder = new StringDecoder('utf8');
-  }
-
-  /** Clears the line typed so far, as a terminal in its line mode discards it at Ctrl-Z. */
-  clearLine(): void {
-    this.#partial = '';
-  }
-
-  /**
-   * Holds stdin in raw mode while a secret reads, so nothing it types is echoed, or leaves raw
-   * mode once the secret ends. A stdin with no `setRawMode` method cannot hide a secret.
-   */
-  raw(mode: boolean): void {
-    if (mode && !('setRawMode' in this.#input && typeof this.#input.setRawMode === 'function')) {
-      throw new TypeError('Interactive stdin has no setRawMode method.');
-    }
-    this.#raw = mode;
-    this.#rawMode(mode);
-  }
-
-  #rawMode(mode: boolean): void {
-    const input = this.#input;
-    if ('setRawMode' in input && typeof input.setRawMode === 'function') {
-      input.setRawMode(mode);
-    }
-  }
-
-  /**
-   * Drops the rest of the read that held the last line's Enter, as an accepted secret does, so
-   * text typed after it never answers the next question.
-   */
-  discardRest(): void {
-    if (this.#restOfLast) {
-      this.#reads.shift();
-      this.#restOfLast = false;
-    }
-  }
-
-  /** Reads the next line, rejecting with `signal`'s reason once it aborts. */
-  async line(options: {
-    readonly secret: boolean;
-    readonly signal: AbortSignal;
-  }): Promise<LineRead> {
-    while (true) {
-      options.signal.throwIfAborted();
-      if (this.#failure !== undefined) {
-        throw this.#failure.error;
-      }
-      const read = this.#take(options.secret);
-      if (read !== undefined) {
-        return read;
-      }
-      await this.#more(options.signal);
-    }
-  }
-
-  /** Takes a line, or the end of input, from the queued reads, or answers `undefined` for neither. */
-  #take(secret: boolean): LineRead | undefined {
-    while (this.#reads.length > 0) {
-      const text = this.#reads[0] ?? '';
-      let index = 0;
-      while (index < text.length) {
-        if (text[index] === '\u001b') {
-          const end = sequenceEnd(text, index);
-          if (end === undefined) {
-            if (this.#reads.length === 1) {
-              this.#reads[0] = text.slice(index);
-              return undefined;
-            }
-            // The sequence goes on in the next read.
-            this.#reads.splice(0, 2, text.slice(index) + (this.#reads[1] ?? ''));
-            index = -1;
-            break;
-          }
-          index = end;
-          this.#carriage = false;
-          continue;
-        }
-        const point = text.codePointAt(index) ?? 0;
-        const character = String.fromCodePoint(point);
-        index += character.length;
-        if (character === '\n' && this.#carriage) {
-          this.#carriage = false;
-          continue;
-        }
-        this.#carriage = character === '\r';
-        if (character === '\r' || character === '\n') {
-          const value = this.#partial;
-          this.#partial = '';
-          this.#finish(index);
-          return { kind: 'line', value };
-        }
-        if (character === '\u0004') {
-          if (this.#partial === '') {
-            this.#finish(index);
-            return { kind: 'eof' };
-          }
-        } else if (character === '\u007f' || character === '\b') {
-          this.#partial = graphemes(this.#partial).slice(0, -1).join('');
-        } else if (secret && character === '\u0015') {
-          this.#partial = '';
-        } else if (secret && character === '\u0017') {
-          this.#partial = withoutLastWord(this.#partial);
-        } else if (point >= 32 && (point < 127 || point > 159)) {
-          this.#partial += character;
-        }
-      }
-      if (index !== -1) {
-        this.#reads.shift();
-        this.#restOfLast = false;
-      }
-    }
-    return undefined;
-  }
-
-  /** Keeps what the first read holds after `index`, or drops the read when nothing is left. */
-  #finish(index: number): void {
-    const rest = (this.#reads[0] ?? '').slice(index);
-    this.#restOfLast = rest !== '';
-    if (rest === '') {
-      this.#reads.shift();
-    } else {
-      this.#reads[0] = rest;
-    }
-  }
-
-  /** Reads stdin once more, resolving at the next read and rejecting once `signal` aborts. */
-  #more(signal: AbortSignal): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const done = () => {
-        signal.removeEventListener('abort', abort);
-        this.#wake = undefined;
-      };
-      const abort = () => {
-        done();
-        reject(signal.reason);
-      };
-      this.#wake = () => {
-        done();
-        resolve();
-      };
-      signal.addEventListener('abort', abort, { once: true });
-      this.#input.resume();
-    });
-  }
-
-  /** One read: stdin pauses at once, so the next read waits until a question asks for it. */
-  readonly #data = (chunk: Buffer | string) => {
-    this.#input.pause();
-    if (this.#interrupted) {
-      return;
-    }
-    const { raised, rest } = raiseInterruptKeys(
-      this.#context,
-      typeof chunk === 'string' ? chunk : this.#decoder.write(chunk),
-    );
-    if (raised !== undefined) {
-      // A raised interrupt drops every key still unread, as a terminal in its line mode does.
-      this.#interrupted = raised === 'ending';
-      this.drop();
-      return;
-    }
-    if (rest !== '') {
-      this.#reads.push(rest);
-    }
-    this.#wake?.();
-  };
-
-  readonly #end = () => {
-    this.#context.cancel();
-  };
-
-  readonly #error = (error: unknown) => {
-    this.#failure = { error };
-    this.#wake?.();
-  };
-}
-
-const inputs = new WeakMap<AbortSignal, LineInput>();
-
-/** The run's line input, which every question of the run asked line by line shares. */
-function lineInput(context: PromptContext<unknown>): LineInput {
-  const existing = inputs.get(context.signal);
-  if (existing !== undefined) {
-    return existing;
-  }
-  const created = new LineInput(context);
-  inputs.set(context.signal, created);
-  return created;
-}
-
 /** A call that does nothing, which a resolver replaces. */
 const nothing = (): void => undefined;
 
-/** The end of the last turn each run's questions asked line by line have queued. */
-const turns = new WeakMap<AbortSignal, Promise<void>>();
+/**
+ * The keys that edit a line asked line by line, whose cursor stays at its end: a character or a
+ * paste joins it, Backspace removes its last grapheme, Ctrl-U clears it, and Ctrl-W removes its
+ * last whitespace word. Every other key, an arrow or an Alt chord included, edits nothing.
+ */
+const editingKeys: ReadonlySet<string> = new Set([
+  'text',
+  'paste',
+  'backspace',
+  'killStart',
+  'killWhitespace',
+]);
+
+/** The bytes a terminal in its line mode writes to erase `cells` columns before the cursor. */
+function erasing(cells: number): string {
+  return '\b \b'.repeat(cells);
+}
 
 /**
- * Waits for this question's turn among the run's questions asked line by line, and answers the
- * call that gives the turn to the next one. Rejects with `signal`'s reason when it aborts first.
+ * Echoes an edit that turned the line `before` into `after`: the text a key added, drawn as a
+ * frame draws it, or the erasure of the cells the removed text took. The erasure goes straight to
+ * stderr, because `out.draw` drops a control character on a terminal that does not redraw, and
+ * the question's own writes before it have landed, since each echo awaits its draw.
  */
-async function takeTurn(context: PromptContext<unknown>, signal: AbortSignal): Promise<() => void> {
-  const before = turns.get(context.signal) ?? Promise.resolve();
-  let pass = nothing;
-  const mine = new Promise<void>((resolve) => {
-    pass = resolve;
-  });
-  turns.set(
-    context.signal,
-    before.then(() => mine),
-  );
-  let abort = nothing;
+async function echo(
+  context: PromptContext<unknown>,
+  line: { readonly before: string; readonly after: string },
+): Promise<void> {
+  const { after, before } = line;
+  if (after.startsWith(before)) {
+    const added = after.slice(before.length);
+    if (added !== '') {
+      await context.out.draw(style.escape(escapeControlCharacters(added)), controls);
+    }
+    return;
+  }
+  const cells = width(escapeControlCharacters(before.slice(after.length)));
+  if (cells > 0) {
+    context.host.stderr.write(erasing(cells));
+  }
+}
+
+/**
+ * Waits for the input region's turn, which core gives the run's input regions one at a time, live
+ * or not: a region that is not live draws nothing, and its draw resolves once its turn has come.
+ * Rejects with `signal`'s reason when it aborts first.
+ */
+async function turn(region: Region, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  let stop = nothing;
   const aborted = new Promise<never>((_resolve, reject) => {
-    abort = () => {
+    stop = () => {
       reject(signal.reason);
     };
   });
+  signal.addEventListener('abort', stop, { once: true });
   try {
-    signal.throwIfAborted();
-    signal.addEventListener('abort', abort, { once: true });
-    await Promise.race([before, aborted]);
-  } catch (error) {
-    pass();
-    throw error;
+    await Promise.race([region.draw('', controls), aborted]);
   } finally {
-    signal.removeEventListener('abort', abort);
+    signal.removeEventListener('abort', stop);
   }
-  return pass;
+  signal.throwIfAborted();
+}
+
+/** Opens the run's key reader for a line-based question, ending the region when it cannot open. */
+function heldReader(context: PromptContext<unknown>, region: Region) {
+  try {
+    return openReader(context, true);
+  } catch (error) {
+    void region.end();
+    throw error;
+  }
 }
 
 /** What a question asked line by line uses to print its pieces and read its answers. */
 interface LineAsking {
   /** Aborts when the run is cancelled or core closes the question's region. */
   readonly signal: AbortSignal;
-  /** The run's line input. */
-  readonly input: LineInput;
   /** Prints one piece through `questionLine`. An asking row leaves its row open for the answer. */
   print(piece: QuestionLine): Promise<void>;
   /**
@@ -395,12 +97,21 @@ interface LineAsking {
    */
   printFrame<Data>(data: Data, view: View<Data>, opensRow: boolean): Promise<void>;
   /**
-   * Reads the answer's line. Ctrl-D on an empty line and stdin ending cancel the run, so the
-   * question throws the run's reason.
+   * Reads the answer's line from the run's key reader, writing each typed character after the
+   * asking row, and nothing at a secret, and the line break at Enter. Ctrl-D on an empty line and
+   * stdin ending cancel the run, so the question throws the run's reason.
    */
   read(secret?: boolean): Promise<string>;
   /** Sets what the question prints again when the process resumes after a suspend. */
   reasking(print: (() => Promise<void>) | undefined): void;
+  /** Discards the keys left from the read that held the last Enter, as an accepted secret does. */
+  discardRest(): void;
+  /** Discards the keys left from the reads an earlier question took, as an editor does. */
+  discardTaken(): void;
+  /** Lets stdin go and drops every queued key, while an editor reads the terminal. */
+  lend(): void;
+  /** Holds stdin again once the editor exits. */
+  reclaim(): void;
 }
 
 /** The pieces that leave their row open for the answer the operator types after them. */
@@ -416,9 +127,10 @@ const askingKinds: ReadonlySet<QuestionLine['kind']> = new Set([
 
 /**
  * Asks one question line by line in the input region core opened for it, which is not live. The
- * question waits for its turn, prints nothing when core closes the region first, and prints its
- * cancelled line once, on a row of its own, by any path out without an answer. `body` answers
- * `{ value }`, and the region ends with the question.
+ * question holds the run's key reader in raw mode from the start, as a question that redraws does,
+ * writing no terminal control, waits for its region's turn, prints nothing when core closes the
+ * region first, and prints its cancelled line once, on a row of its own, by any path out without
+ * an answer. `body` answers the question, and the region ends with it.
  */
 async function askLineByLine<Answer>(
   context: PromptContext<unknown>,
@@ -438,27 +150,34 @@ async function askLineByLine<Answer>(
     }
     void context.out.draw({ message }, cancelledLine);
   };
+  const keys = heldReader(context, region);
   // A cancellation, a failure, or a return closes the region, and the cancelled line prints then.
   region.signal.addEventListener(
     'abort',
     () => {
-      if (region.closedBy !== 'end') {
-        leave();
+      if (region.closedBy === 'end') {
+        return;
+      }
+      leave();
+      if (region.closedBy !== 'cancellation') {
+        keys.abandon(region.signal.reason);
       }
     },
     { once: true },
   );
-  const pass = await takeTurn(context, signal);
-  state.holding = true;
-  const input = lineInput(context);
+  const line = new TypedLine();
   let reask: (() => Promise<void>) | undefined = undefined;
-  const unresume = context.onResume(() => {
-    input.clearLine();
-    void reask?.();
-  });
-  input.open();
+  let unresume = nothing;
   const asking: LineAsking = {
-    input,
+    discardRest() {
+      keys.discard();
+    },
+    discardTaken() {
+      keys.discardTaken();
+    },
+    lend() {
+      keys.pause();
+    },
     async print(piece) {
       await context.out.draw(piece, questionLine);
       state.rowOpen = askingKinds.has(piece.kind);
@@ -468,31 +187,56 @@ async function askLineByLine<Answer>(
       state.rowOpen = opensRow;
     },
     async read(secret = false) {
-      const read = await input.line({ secret, signal });
-      if (read.kind === 'eof') {
-        context.cancel();
-        context.signal.throwIfAborted();
+      while (true) {
+        const key = await keys.read();
+        if (key.kind === 'eof' && line.value === '') {
+          context.cancel();
+          context.signal.throwIfAborted();
+        }
+        if (key.kind === 'enter') {
+          const { value } = line;
+          line.value = '';
+          line.cursor = 0;
+          await context.out.draw('\n', controls);
+          state.rowOpen = false;
+          return value;
+        }
+        if (editingKeys.has(key.kind)) {
+          const before = line.value;
+          line.edit(key.kind, 'value' in key ? key.value : '');
+          if (!secret) {
+            await echo(context, { after: line.value, before });
+          }
+        }
       }
-      state.rowOpen = false;
-      return read.kind === 'line' ? read.value : '';
     },
     reasking(next) {
       reask = next;
     },
+    reclaim() {
+      keys.resume();
+    },
     signal,
   };
   try {
+    await turn(region, signal);
+    state.holding = true;
+    // The answer starts empty after a resume, as a terminal in its line mode discards the line.
+    unresume = context.onResume(() => {
+      line.value = '';
+      line.cursor = 0;
+      void reask?.();
+    });
     const answer = await body(asking);
     state.answered = true;
     return answer;
   } finally {
     unresume();
-    input.close();
+    keys.close();
     leave();
     if (region.closedBy === undefined) {
       await region.end();
     }
-    pass();
   }
 }
 

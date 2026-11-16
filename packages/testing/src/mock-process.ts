@@ -115,8 +115,7 @@ type MockFields = MockFacts &
         readonly stdin?: undefined;
         /**
          * No terminal when omitted. With `keys`, puts stdin on the terminal as its keyboard; each entry
-         * is what the operator types while one reader holds it in raw mode, or what one read
-         * outside raw mode takes, as a terminal in its line mode hands over typed-ahead lines.
+         * is what the operator types while one reader holds it.
          */
         readonly terminal?: MockTerminal & {
           readonly keys?: readonly (string | readonly string[])[] | undefined;
@@ -325,9 +324,6 @@ const laterRead = 100;
 /** The milliseconds between checks on whether a consumer has taken a buffered read. */
 const bufferedCheck = 10;
 
-/** The count of an entry's reads left when none is. */
-const noReads = 0;
-
 /** The sentence a raw-mode switch with no entry left fails the keyboard with. */
 const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to terminal.keys.';
 
@@ -341,23 +337,11 @@ const noKeysLeft = 'mockProcess has no keys left for this read. Add an entry to 
  * writes its query (`background-query.ts`, `exchange`). By the hand-over, the keyboard knows whose
  * hold it is, and the reader is listening for the entry or the error. A switch with no entry left
  * emits the error that fails the reader's pending read.
- *
- * Outside raw mode the keyboard hands its entries to a reader as a terminal in its line mode hands
- * over typed-ahead lines: each read the flowing stream asks for takes the next entry, or the next
- * string of an array entry, so a reader that pauses after each read takes one at a time. A read
- * that finds no entry left emits the same error.
  */
 class Keyboard extends Readable implements MockStdin {
   readonly isTTY = true;
   readonly #entries: (string | readonly string[])[];
   #raw = false;
-  /** The reads of an array entry handed over outside raw mode that are still to come. */
-  #lineReads: string[] = [];
-  /**
-   * Whether the stream asked for a read that nothing pushed, which keeps it from asking again, so
-   * the next resume outside raw mode answers it.
-   */
-  #wanted = false;
   /** The current hold, which each switch to raw mode begins, so a hand-over belongs to its own. */
   #hold: object | undefined = undefined;
   /** Whether the background query was written during the current hold. */
@@ -375,66 +359,7 @@ class Keyboard extends Readable implements MockStdin {
   }
 
   override _read() {
-    // In raw mode keys arrive only at the switch, and outside it at each read a reader takes.
-    this.#wanted = true;
-    if (!this.#raw) {
-      this.#lineRead();
-    }
-  }
-
-  override resume(): this {
-    super.resume();
-    this.#lineReadSoon();
-    return this;
-  }
-
-  /** Answers an unanswered read outside raw mode in the next turn. */
-  #lineReadSoon(): void {
-    if (!this.#raw && this.#wanted) {
-      setImmediate(() => {
-        if (!this.#raw && this.#wanted) {
-          this.#lineRead();
-        }
-      });
-    }
-  }
-
-  /**
-   * Answers a read outside raw mode: the next read of the entry in hand, or of the next entry,
-   * once a reader has taken the read before it, and nothing while it is paused, so an entry is
-   * never handed over before a reader asks for it.
-   */
-  #lineRead(): void {
-    if (this.destroyed || this.readableEnded) {
-      return;
-    }
-    if (this.readableFlowing !== true) {
-      // An empty push lets the stream ask again once a reader resumes it.
-      this.#wanted = false;
-      this.push('');
-    } else if (this.readableLength > noBytes) {
-      // The stream asks before it emits the read it holds, so the answer waits until the reader took it.
-      this.#lineReadSoon();
-    } else {
-      this.#pushLine();
-    }
-  }
-
-  /** Pushes the next read of the entry in hand, or of the next entry, or fails with none left. */
-  #pushLine(): void {
-    if (this.#lineReads.length === noReads) {
-      const entry = this.#entries.shift();
-      this.#lineReads = typeof entry === 'string' ? [entry] : [...(entry ?? [])];
-    }
-    const read = this.#lineReads.shift();
-    this.#wanted = false;
-    if (read === undefined) {
-      setImmediate(() => {
-        this.emit('error', new Error(noKeysLeft));
-      });
-    } else {
-      this.push(Buffer.from(read));
-    }
+    // Keys arrive only when a reader switches to raw mode.
   }
 
   setRawMode(mode: boolean): this {
@@ -444,7 +369,6 @@ class Keyboard extends Readable implements MockStdin {
       // A switch ends the entry in hand, so its reads not yet handed over are never read.
       clearTimeout(this.#later);
       this.#later = undefined;
-      this.#lineReads = [];
     }
     if (switched) {
       this.#begin();
@@ -496,7 +420,6 @@ class Keyboard extends Readable implements MockStdin {
     if (read === undefined || hold !== this.#hold || !this.#raw) {
       return;
     }
-    this.#wanted = false;
     this.push(Buffer.from(read));
     if (reads.length) {
       this.#sendAfter(laterRead, hold, reads);

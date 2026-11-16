@@ -796,6 +796,8 @@ export class Output {
           (input
             ? movesCursor(this.host.env, this.plainSwitch)
             : this.verbosity >= 0 && redraws(this.host.env, this.plainSwitch)),
+        // A question asks only where stderr is a terminal, so only there do input regions take turns.
+        turns: () => this.host.terminal.stderr.isTTY,
         write: (compose) => this.destination(this.host.stderr).compose(compose),
       },
       this.screen,

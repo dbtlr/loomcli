@@ -213,7 +213,7 @@ class AnswerFile<Options, Output> {
       answer: {
         lines: lines.length,
         output: result.value,
-        value: lines.find((line) => /[^\p{White_Space}﻿]/u.test(line)) ?? '',
+        value: lines.find((line) => /[^\p{White_Space}\uFEFF]/u.test(line)) ?? '',
       },
     };
   }
@@ -287,7 +287,7 @@ async function askEditor<Options, Output>(
  * once: the asking frame, the editing frame on the row after the Enter, ended with a line break
  * before the editor starts, and the answered line once the editor exits. A rejected answer prints
  * its issue and the asking frame again. The question lets stdin go while the editor reads the
- * terminal, so the editor reads every key.
+ * terminal, as it does when it redraws, so the editor reads every key.
  */
 async function askEditorLines<Options, Output>(
   context: PromptContext<Options>,
@@ -308,21 +308,22 @@ async function askEditorLines<Options, Output>(
         );
       line.reasking(() => (lent ? Promise.resolve() : frame(false)));
       await frame(false);
+      // The question shows now, so keys left from the reads an earlier question took are not its own.
+      line.discardTaken();
       while (true) {
         // Whatever the line held before Enter is ignored.
         await line.read();
         file.write();
         await frame(true);
         await context.out.draw('\n', controls);
-        line.input.drop();
-        line.input.release();
+        line.lend();
         lent = true;
         let edited: Edited<Output> | undefined = undefined;
         try {
           edited = await file.edit(line.signal);
         } finally {
           lent = false;
-          line.input.open();
+          line.reclaim();
         }
         if ('answer' in edited) {
           await line.printFrame(

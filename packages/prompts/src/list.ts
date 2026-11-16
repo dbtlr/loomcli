@@ -655,7 +655,7 @@ async function askListLines<Options, Args>(
     };
     await line.print({ kind: 'title', message: settings.message });
     if (facts.search) {
-      return searchLines(settings, line, { answer, limits });
+      return searchLines(settings, line, { answer, facts, limits });
     }
     const entries = settings.choices ?? [];
     const list = numberedList(entries);
@@ -694,16 +694,60 @@ async function askListLines<Options, Args>(
 }
 
 /**
+ * The default a search asked line by line offers at its refine row: the choices the prefill
+ * selects, as the form without search matches them. Under `choices` they are found among every
+ * choice, and under a `source` among the choices its calls have answered so far.
+ */
+interface SearchDefault {
+  readonly picked: readonly Item[];
+  /** The issue a supplied value that selects none of the choices prints, under `choices` alone. */
+  readonly issue: string | undefined;
+}
+
+/**
+ * The hint the refine row shows for `picked`: its labels joined with `,`, `none` at a multiselect
+ * that may be left empty and has no default, and `undefined` at a question that must be answered
+ * and has none, whose row shows no brackets.
+ */
+function searchHint(picked: readonly Item[], limits: Limits): string | undefined {
+  if (picked.length > 0) {
+    return picked.map((choice) => choice.row.label).join(',');
+  }
+  return limits.multiple && limits.min === 0 ? 'none' : undefined;
+}
+
+/**
  * The search form of a select or multiselect asked line by line: `Search: `, the matches for the
- * term as a numbered list, and `Enter a number, or text to search again: `, where a line of
- * numbers chooses from the list just printed and any other line is a new term. A source is called
- * once for each term, and the next call and the question's end abort the call before.
+ * term as a numbered list, and `Enter a number, or text to search again [us-east]: `, where a line
+ * of numbers chooses from the list just printed, Enter alone takes the default in brackets, and
+ * any other line is a new term. With no default in brackets, Enter alone is the empty term. A
+ * source is called once for each term, and the next call and the question's end abort the call
+ * before.
  */
 async function searchLines<Options, Args>(
   settings: ListSettings<Options, Args>,
   line: LineAsking,
-  using: { readonly answer: Answering; readonly limits: Limits },
+  using: {
+    readonly answer: Answering;
+    readonly limits: Limits;
+    readonly facts: { readonly supplied: boolean; readonly values: readonly unknown[] };
+  },
 ): Promise<unknown> {
+  const { limits } = using;
+  /** Every choice a source has answered, in the order its calls answered them. */
+  const answered: ChoiceEntry[] = [];
+  const defaultAmong = (entries: readonly ChoiceEntry[], supplied: boolean): SearchDefault =>
+    prefilledChoices(numberedList(entries), entries, {
+      max: limits.max,
+      multiple: limits.multiple,
+      supplied,
+      values: using.facts.values,
+    });
+  const fixed =
+    settings.source === undefined
+      ? defaultAmong(settings.choices ?? [], using.facts.supplied)
+      : undefined;
+  const offered = () => fixed?.picked ?? defaultAmong(answered, false).picked;
   let call: AbortController | undefined = undefined;
   const stop = () => {
     call?.abort();
@@ -732,11 +776,18 @@ async function searchLines<Options, Args>(
     stop();
     call = new AbortController();
     const called = settings.source(term, { signal: call.signal });
-    return Array.isArray(called) ? called : Promise.race([Promise.resolve(called), stopped]);
+    const found = Array.isArray(called)
+      ? called
+      : await Promise.race([Promise.resolve(called), stopped]);
+    answered.push(...found);
+    return found;
   };
   const searchRow = () => line.print({ hint: undefined, kind: 'search' });
-  const refineRow = () => line.print({ hint: undefined, kind: 'refine' });
+  const refineRow = () => line.print({ hint: searchHint(offered(), limits), kind: 'refine' });
   try {
+    if (fixed?.issue !== undefined) {
+      await line.print({ issue: fixed.issue, kind: 'issue' });
+    }
     line.reasking(searchRow);
     await searchRow();
     let term = await line.read();
@@ -755,27 +806,58 @@ async function searchLines<Options, Args>(
       await refineRow();
       while (true) {
         const typed = await line.read();
+        const picked = typed === '' ? offeredChoice(offered(), limits) : undefined;
+        if (picked !== undefined) {
+          if ('issue' in picked) {
+            await line.print({ issue: picked.issue, kind: 'issue' });
+            await refineRow();
+            continue;
+          }
+          const chosen = await using.answer(picked.chosen, refineRow);
+          if (chosen !== undefined) {
+            return chosen.value;
+          }
+          continue;
+        }
         const numbers = numbersIn(typed);
-        // A line of numbers chooses, and any other line, Enter alone included, is a new term.
+        // A line of numbers chooses, and any other line is a new term, Enter alone with no default.
         if (numbers === undefined || numbers.length === 0) {
           term = typed;
           break;
         }
-        const picked = chosenBy(numbers, list, using.limits);
-        if ('issue' in picked) {
-          await line.print({ issue: picked.issue, kind: 'issue' });
+        const numbered = chosenBy(numbers, list, limits);
+        if ('issue' in numbered) {
+          await line.print({ issue: numbered.issue, kind: 'issue' });
           await refineRow();
           continue;
         }
-        const answered = await using.answer(picked.chosen, refineRow);
-        if (answered !== undefined) {
-          return answered.value;
+        const chosen = await using.answer(numbered.chosen, refineRow);
+        if (chosen !== undefined) {
+          return chosen.value;
         }
       }
     }
   } finally {
     stop();
   }
+}
+
+/**
+ * What Enter alone at a search's refine row chooses: the default it offers, which a multiselect's
+ * `min` may refuse, the empty selection at a multiselect that may be left empty, or `undefined`
+ * when the row offers none, so Enter alone is the empty term.
+ */
+function offeredChoice(
+  picked: readonly Item[],
+  limits: Limits,
+): { readonly chosen: readonly Item[] } | { readonly issue: string } | undefined {
+  if (searchHint(picked, limits) === undefined) {
+    return undefined;
+  }
+  if (limits.multiple && picked.length < limits.min) {
+    return { issue: chooseAtLeast(limits.min) };
+  }
+  return { chosen: picked };
 }
 
 export { askList };

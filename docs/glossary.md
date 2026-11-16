@@ -781,7 +781,7 @@ One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, 
 _Avoid_: Prompt (for one question; the package is prompts), wizard step, input source
 
 **Line-based question**:
-A question asked line by line, which a question is when interaction is on and its input region is not live, under the plain switch or `TERM=dumb`. Each piece it prints, its asking row with the default in brackets, a select's or multiselect's numbered list, and a rejected answer's sentence, is printed once through the `questionLine` view and never redrawn, and the operator types the answer in the terminal's own line mode and presses Enter. A secret reads in raw mode with nothing echoed.
+A question asked line by line, which a question is when interaction is on and its input region is not live, under the plain switch or `TERM=dumb`. Each piece it prints, its asking row with the default in brackets, a select's or multiselect's numbered list, and a rejected answer's sentence, is printed once through the `questionLine` view and never redrawn, and the operator types the answer and presses Enter. It reads its keys in raw mode through the reader a question that redraws uses, and echoes each typed character itself once its turn has come, with a terminal line mode's `\b \b` erasure for Backspace, Ctrl-U, and Ctrl-W; a secret echoes nothing.
 _Avoid_: Accessible prompt, plain prompt, fallback prompt
 
 **Choice**:

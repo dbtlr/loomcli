@@ -967,60 +967,10 @@ describe('the keyboard', () => {
     stdin.on('data', (chunk) => {
       reads.push(String(chunk));
       rawMode(stdin, false);
-      // A reader outside raw mode would take the next entry, so this one stops reading.
-      stdin.pause();
     });
     rawMode(stdin, true);
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(reads).toEqual(['ab']);
-  });
-
-  it('outside raw mode, a reader that pauses after each read takes one entry per read, an array entry read by read', async () => {
-    const { stdin } = mockProcess({
-      terminal: { columns: 80, keys: ['ab\r', ['cd', 'ef\r'], 'gh\r'], rows: 24 },
-    });
-    const reads: string[] = [];
-    const next = () =>
-      new Promise<string>((resolve) => {
-        stdin.once('data', (chunk) => {
-          stdin.pause();
-          resolve(String(chunk));
-        });
-        stdin.resume();
-      });
-    stdin.pause();
-    for (let count = 0; count < 3; count += 1) {
-      reads.push(await next());
-      // While the reader is paused, the keyboard hands over nothing more.
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(stdin.readableLength).toBe(0);
-    }
-    reads.push(await next());
-    expect(reads).toEqual(['ab\r', 'cd', 'ef\r', 'gh\r']);
-  });
-
-  it('outside raw mode, a read that finds no entry left fails with the no-keys sentence', async () => {
-    const { stdin } = mockProcess({ terminal: keyboard([]) });
-    const failure = new Promise<unknown>((resolve) => {
-      stdin.once('error', resolve);
-    });
-    stdin.resume();
-    await expect(failure).resolves.toMatchObject({ message: noKeysLeft });
-  });
-
-  it('a reader outside raw mode after a secret in raw mode still takes the next entry', async () => {
-    const { stdin } = mockProcess({ terminal: keyboard(['token\r', 'name\r']) });
-    const reads: string[] = [];
-    stdin.on('data', (chunk) => {
-      reads.push(String(chunk));
-      stdin.pause();
-    });
-    rawMode(stdin, true);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    rawMode(stdin, false);
-    stdin.resume();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(reads).toEqual(['token\r', 'name\r']);
   });
 
   it('the types make keys and piped stdin exclusive, and a MockTerminal still passes', () => {

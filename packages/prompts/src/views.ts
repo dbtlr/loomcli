@@ -846,8 +846,10 @@ type QuestionLine =
        */
       readonly kind: 'number' | 'numbers' | 'search' | 'refine';
       /**
-       * The numbers Enter alone answers, which the row shows in brackets, such as `1` or `1,3`, or
-       * `undefined` when there are none, and always at `search`.
+       * What Enter alone answers, which the row shows in brackets: the numbers at `number` and
+       * `numbers`, such as `1` or `1,3`, and at `refine` the default's labels joined with `,`,
+       * such as `us-east`, or `none` at a multiselect that may be left empty. `undefined` when
+       * there is none, and always at `search`.
        */
       readonly hint: string | undefined;
     }

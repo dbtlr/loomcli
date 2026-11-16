@@ -11,7 +11,8 @@
  *   Boolean option's does. A repeated spelling is the repetition error.
  * - The option still parses. `options.plain` reads what the operator typed, never the switch.
  * - What it turns off. With the switch on, a region on a terminal stderr, with or without
- *   `input: true`, reads `live` `false`, `out.draw` keeps the Application's `terminalControls`
+ *   `input: true`, reads `live` `false`, input regions there still take turns, while off a
+ *   terminal one opens at once, `out.draw` keeps the Application's `terminalControls`
  *   setting, a signal that ends the run shows no cursor unless the Application preserves controls,
  *   and a streamed message writes each completed line once, on a terminal stderr and on a terminal
  *   stdout.
@@ -134,6 +135,47 @@ test.each([
     expect(mock.stderr.text).toBe(text);
   },
 );
+
+test('with the switch on, input regions still take turns: the second draws once the first ends', async () => {
+  const order: string[] = [];
+  const app = new Application('notes').action(async ({ out }) => {
+    const first = out.region({ input: true });
+    const second = out.region({ input: true });
+    const waited = (async () => {
+      await second.draw('second', { render: (text: string) => text });
+      order.push('second opened');
+    })();
+    await first.draw('first', { render: (text: string) => text });
+    order.push('first drew');
+    // Nothing has opened the second region yet, so its draw is still waiting.
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+    order.push('first ends');
+    await first.end();
+    await waited;
+    await second.end();
+  });
+  const mock = mockProcess({
+    env: { ACCESSIBLE: '1', TERM: 'xterm-256color' },
+    terminal: { columns: 40, keys: [], rows: 24 },
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(order).toEqual(['first drew', 'first ends', 'second opened']);
+  expect(mock.stderr.text).toBe('');
+});
+
+test('off a terminal, where no question asks, an input region opens at once and the run ends', async () => {
+  const app = new Application('notes').action(async ({ out }) => {
+    out.region({ input: true });
+    // The first region never ends, so a turn would never come.
+    await out.region({ input: true }).draw('second', { render: (text: string) => text });
+    await out.info('done');
+  });
+  const mock = mockProcess({ env: { ACCESSIBLE: '1' } });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(mock.stderr.text).toBe('ℹ done\n');
+});
 
 test.each([
   { preserve: false, text: 'ℹ working\n' },

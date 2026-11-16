@@ -211,8 +211,7 @@ async function askText<Options, Output>(
 /**
  * Asks a text, secret, or confirm question line by line: its asking row, `Project name [my-app]: `,
  * then the line the operator enters, where Enter alone takes the prefill. A rejected answer
- * prints its sentence and the asking row again. A secret reads in raw mode, so nothing it types is
- * echoed, and prints the line break its Enter did not.
+ * prints its sentence and the asking row again. A secret echoes nothing of what it reads.
  */
 async function askTextLines<Options, Output>(
   context: PromptContext<Options>,
@@ -233,35 +232,23 @@ async function askTextLines<Options, Output>(
         message: settings.message,
       });
     line.reasking(row);
-    if (secret) {
-      line.input.raw(true);
-    }
-    try {
-      await row();
-      while (true) {
-        const typed = await line.read(secret);
+    await row();
+    while (true) {
+      const typed = await line.read(secret);
+      const raw = typed === '' ? (settings.hint ?? '') : typed;
+      const result = await validateAnswer(context, settings, raw);
+      line.signal.throwIfAborted();
+      if (result.issues === undefined) {
         if (secret) {
-          await context.out.draw('\n', controls);
+          line.discardRest();
         }
-        const raw = typed === '' ? (settings.hint ?? '') : typed;
-        const result = await validateAnswer(context, settings, raw);
-        line.signal.throwIfAborted();
-        if (result.issues === undefined) {
-          if (secret) {
-            line.input.discardRest();
-          }
-          return result.value;
-        }
-        await line.print({
-          issue: result.issues[0]?.message ?? invalidAnswer,
-          kind: 'issue',
-        });
-        await row();
+        return result.value;
       }
-    } finally {
-      if (secret) {
-        line.input.raw(false);
-      }
+      await line.print({
+        issue: result.issues[0]?.message ?? invalidAnswer,
+        kind: 'issue',
+      });
+      await row();
     }
   });
 }

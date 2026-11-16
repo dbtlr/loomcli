@@ -613,8 +613,8 @@ test.each([
 test('on a terminal stderr whose TERM is dumb, a question asked beside two plain lines asks line by line', async () => {
   const run = await lines('question', 'tty', [], { TERM: 'dumb' });
   expect(run.code).toBe(0);
-  // The mock does not echo the answer, so the end line follows the asking row.
-  expect(run.stderr).toBe('ℹ First\nℹ Second\nContinue: ✔ First\n✔ Second\n');
+  // The question echoes the answer and its Enter, so the end lines follow on rows of their own.
+  expect(run.stderr).toBe('ℹ First\nℹ Second\nContinue: yes\n✔ First moved\n✔ Second\n');
 });
 
 test('under -q only the failure lines print', async () => {
