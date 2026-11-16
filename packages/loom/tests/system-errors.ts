@@ -2,8 +2,8 @@
  * System errors an in-process `loom` run meets where a test plans one. A test file wraps the
  * `node:fs` members it fails in `failing`, from a `vi.mock` factory, and a case plans one failure
  * with `failAt`, which `restoreFs` undoes. A planned failure throws what the runtime throws: an
- * error that carries the code, its text in the runtime's own words, which no sentence of the bin's
- * repeats.
+ * error that carries the code, the system call that failed, and the path, with its text in the
+ * runtime's own words, which no sentence of the bin's repeats.
  */
 
 /** The one failure a case planned: the member, which first arguments it fails, and the code. */
@@ -15,13 +15,23 @@ interface Planned {
 
 let planned: Planned | undefined = undefined;
 
+/** The system call each member that a case may fail makes, which the runtime's error names. */
+const syscalls: Readonly<Record<string, string>> = {
+  lstatSync: 'lstat',
+  mkdtempSync: 'mkdtemp',
+  readFileSync: 'open',
+  renameSync: 'rename',
+  rmSync: 'rm',
+  writeFileSync: 'open',
+};
+
 /**
- * The error the runtime throws for a call on the path that failed with the code. Without a code,
- * it is a throw that carries none.
+ * The error the runtime throws for a system call on the path that failed with the code. Without a
+ * code, it is a throw that carries none.
  */
-function systemError(path: string, code: string | undefined): Error {
-  const error = new Error(`${code ?? 'UNKNOWN'}: induced failure, open '${path}'`);
-  return code === undefined ? error : Object.assign(error, { code });
+function systemError(path: string, code: string | undefined, syscall = 'open'): Error {
+  const error = new Error(`${code ?? 'UNKNOWN'}: induced failure, ${syscall} '${path}'`);
+  return code === undefined ? error : Object.assign(error, { code, path, syscall });
 }
 
 /**
@@ -51,7 +61,7 @@ function failing<Member extends (...args: never[]) => unknown>(
     apply(target, self, args: unknown[]) {
       const first = String(args[0]);
       if (planned?.member === member && planned.matches(first)) {
-        throw systemError(first, planned.code);
+        throw systemError(first, planned.code, syscalls[member]);
       }
       return Reflect.apply(target, self, args);
     },

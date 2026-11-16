@@ -22,6 +22,7 @@ import { definePair } from './build-facts.js';
 import type { BuildFacts } from './build-facts.js';
 import type { BuildTarget } from './build-target.js';
 import { superviseBun } from './bun.js';
+import { parseJsonFile } from './manifest.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { RunHost } from './run-host.js';
 import type { SkillsCarry } from './skills-declaration.js';
@@ -249,7 +250,7 @@ function packageOf(path: string, names: Map<string, string | undefined>) {
   for (let current = dirname(path); ; current = dirname(current)) {
     const manifest = join(current, 'package.json');
     if (!names.has(current) && existsSync(manifest)) {
-      const parsed: unknown = JSON.parse(readFileSync(manifest, 'utf8'));
+      const parsed = parseJsonFile(readFileSync(manifest, 'utf8'), manifest);
       const name: unknown =
         typeof parsed === 'object' && parsed !== null ? Reflect.get(parsed, 'name') : undefined;
       names.set(current, typeof name === 'string' ? name : undefined);

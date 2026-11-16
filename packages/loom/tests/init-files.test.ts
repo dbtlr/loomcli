@@ -77,30 +77,51 @@ test('a path on the way to the file that is a file names that path', async () =>
   });
 });
 
+test('a file on the way two folders down names that file, not the folder below it', async () => {
+  const directory = notesPackage({ '.agents/skills': 'a file where a folder belongs\n' });
+  await expect(init(directory, '--only', 'skill')).resolves.toEqual({
+    status: 1,
+    stderr:
+      'Cannot write .agents/skills/loom-changelog/SKILL.md, because .agents/skills is a file. Remove or rename it, then run loom init again.\n',
+    stdout: '',
+  });
+});
+
+test('a package.json init cannot read names the path, the cause, and a step', async () => {
+  const directory = notesPackage();
+  const manifest = join(directory, 'package.json');
+  failAt('readFileSync', manifest, 'EACCES');
+  await expect(init(directory, '--only', 'changes')).resolves.toEqual({
+    status: 1,
+    stderr: `Cannot open ${manifest}, because permission was denied. Check that your user can open it and has execute access to each folder above it, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
 test.each([
   [
     'EISDIR',
-    'Cannot write .changes/README.md, because it is a directory. Remove or rename the directory, then run loom init again.',
+    'Cannot write .changes/README.md, because it is a folder. Remove or rename the folder, then run loom init again.',
   ],
   [
     'EACCES',
-    'Cannot write .changes/README.md, because permission was denied. Give your user write access to it and its directory, then run loom init again.',
+    'Cannot write .changes/README.md, because permission was denied. Give your user write access to it and its folder, and execute access to each folder above it, then run loom init again.',
   ],
   [
     'EPERM',
-    'Cannot write .changes/README.md, because permission was denied. Give your user write access to it and its directory, then run loom init again.',
+    'Cannot write .changes/README.md, because permission was denied. Give your user write access to it and its folder, and execute access to each folder above it, then run loom init again.',
   ],
   [
     'EROFS',
-    'Cannot write .changes/README.md, because its file system is read-only. Run loom init in a package on a writable file system.',
+    'Cannot write .changes/README.md, because the file system is read-only. Run loom init in a package on a writable file system.',
   ],
   [
     'ENOSPC',
-    'Cannot write .changes/README.md, because the disk is full. Free some space, then run loom init again.',
+    'Cannot write .changes/README.md, because no space is left. Free some space, then run loom init again.',
   ],
   [
     'ENOTDIR',
-    'Cannot write .changes/README.md (ENOTDIR). Check that you can write to it and its directory, then run loom init again.',
+    'Cannot write .changes/README.md, because a path on the way is a file. Remove or rename the file on the way, then run loom init again.',
   ],
   [
     'EIO',
@@ -123,15 +144,15 @@ test.each([
 test.each([
   [
     'EACCES',
-    `Cannot remove ${retiredPath}, because permission was denied. Give your user write access to its directory, then run loom init again.`,
+    `Cannot remove ${retiredPath}, because permission was denied. Give your user write access to its folder, and execute access to each folder above it, then run loom init again.`,
   ],
   [
     'EPERM',
-    `Cannot remove ${retiredPath}, because permission was denied. Give your user write access to its directory, then run loom init again.`,
+    `Cannot remove ${retiredPath}, because permission was denied. Give your user write access to its folder, and execute access to each folder above it, then run loom init again.`,
   ],
   [
     'EROFS',
-    `Cannot remove ${retiredPath}, because its file system is read-only. Run loom init in a package on a writable file system.`,
+    `Cannot remove ${retiredPath}, because the file system is read-only. Run loom init in a package on a writable file system.`,
   ],
   [
     'EBUSY',
@@ -156,7 +177,7 @@ test('a managed path that is a directory names it when init reads it', async () 
   await expect(init(directory, '--only', 'changes')).resolves.toEqual({
     status: 1,
     stderr:
-      'Cannot read .changes/README.md, because it is a directory. Remove or rename the directory, then run loom init again.\n',
+      'Cannot read .changes/README.md, because it is a folder. Remove or rename the folder, then run loom init again.\n',
     stdout: '',
   });
 });
@@ -164,11 +185,11 @@ test('a managed path that is a directory names it when init reads it', async () 
 test.each([
   [
     'EACCES',
-    'Cannot read .changes/README.md, because permission was denied. Give your user read access to it, then run loom init again.',
+    'Cannot read .changes/README.md, because permission was denied. Give your user read access to it, and execute access to each folder above it, then run loom init again.',
   ],
   [
     'EPERM',
-    'Cannot read .changes/README.md, because permission was denied. Give your user read access to it, then run loom init again.',
+    'Cannot read .changes/README.md, because permission was denied. Give your user read access to it, and execute access to each folder above it, then run loom init again.',
   ],
   [
     'EIO',
@@ -190,7 +211,7 @@ test('a skill file the sweep cannot read names the cause and a step', async () =
   const result = await init(directory, '--only', 'skill');
   expect(result.status).toBe(1);
   expect(result.stderr).toBe(
-    `Cannot read ${retiredPath}, because permission was denied. Give your user read access to it, then run loom init again.\n`,
+    `Cannot read ${retiredPath}, because permission was denied. Give your user read access to it, and execute access to each folder above it, then run loom init again.\n`,
   );
 });
 

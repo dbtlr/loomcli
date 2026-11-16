@@ -5,7 +5,7 @@
  */
 import { escapeControlCharacters } from '@loomcli/core';
 
-import { codeNote } from '../../helpers/messages.js';
+import { codeNote, systemCause } from '../../helpers/messages.js';
 
 const escaped = escapeControlCharacters;
 
@@ -53,17 +53,20 @@ const testRunnerQuestion = 'Which test runner should the scaffold use?';
 function cannotWrite(path: string, code: string | undefined): string {
   switch (code) {
     case 'EISDIR': {
-      return `Cannot write ${escaped(path)}, because it is a directory. Remove or rename the directory, then run loom init again.`;
+      return `Cannot write ${escaped(path)}${systemCause(code)}. Remove or rename the folder, then run loom init again.`;
+    }
+    case 'ENOTDIR': {
+      return `Cannot write ${escaped(path)}${systemCause(code)}. Remove or rename the file on the way, then run loom init again.`;
     }
     case 'EACCES':
     case 'EPERM': {
-      return `Cannot write ${escaped(path)}, because permission was denied. Give your user write access to it and its directory, then run loom init again.`;
+      return `Cannot write ${escaped(path)}${systemCause(code)}. Give your user write access to it and its folder, and execute access to each folder above it, then run loom init again.`;
     }
     case 'EROFS': {
-      return `Cannot write ${escaped(path)}, because its file system is read-only. Run loom init in a package on a writable file system.`;
+      return `Cannot write ${escaped(path)}${systemCause(code)}. Run loom init in a package on a writable file system.`;
     }
     case 'ENOSPC': {
-      return `Cannot write ${escaped(path)}, because the disk is full. Free some space, then run loom init again.`;
+      return `Cannot write ${escaped(path)}${systemCause(code)}. Free some space, then run loom init again.`;
     }
     default: {
       return `Cannot write ${escaped(path)}${codeNote(code)}. Check that you can write to it and its directory, then run loom init again.`;
@@ -79,10 +82,10 @@ function cannotRemove(path: string, code: string | undefined): string {
   switch (code) {
     case 'EACCES':
     case 'EPERM': {
-      return `Cannot remove ${escaped(path)}, because permission was denied. Give your user write access to its directory, then run loom init again.`;
+      return `Cannot remove ${escaped(path)}${systemCause(code)}. Give your user write access to its folder, and execute access to each folder above it, then run loom init again.`;
     }
     case 'EROFS': {
-      return `Cannot remove ${escaped(path)}, because its file system is read-only. Run loom init in a package on a writable file system.`;
+      return `Cannot remove ${escaped(path)}${systemCause(code)}. Run loom init in a package on a writable file system.`;
     }
     default: {
       return `Cannot remove ${escaped(path)}${codeNote(code)}. Check that you can write to its directory, then run loom init again.`;
@@ -93,11 +96,11 @@ function cannotRemove(path: string, code: string | undefined): string {
 function cannotRead(path: string, code: string | undefined): string {
   switch (code) {
     case 'EISDIR': {
-      return `Cannot read ${escaped(path)}, because it is a directory. Remove or rename the directory, then run loom init again.`;
+      return `Cannot read ${escaped(path)}${systemCause(code)}. Remove or rename the folder, then run loom init again.`;
     }
     case 'EACCES':
     case 'EPERM': {
-      return `Cannot read ${escaped(path)}, because permission was denied. Give your user read access to it, then run loom init again.`;
+      return `Cannot read ${escaped(path)}${systemCause(code)}. Give your user read access to it, and execute access to each folder above it, then run loom init again.`;
     }
     default: {
       return `Cannot read ${escaped(path)}${codeNote(code)}. Check that you can read it, then run loom init again.`;

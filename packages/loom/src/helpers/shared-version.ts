@@ -39,7 +39,7 @@ function unreadable(entry: string, error: unknown): Error {
   }
   const sentence =
     code === 'EACCES' || code === 'EPERM'
-      ? sharedFileDenied(entry)
+      ? sharedFileDenied(entry, code)
       : sharedFileUnreadable(entry, code);
   return new Error(sentence, { cause: error });
 }

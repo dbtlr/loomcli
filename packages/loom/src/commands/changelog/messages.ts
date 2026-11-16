@@ -5,7 +5,7 @@
  */
 import { escapeControlCharacters } from '@loomcli/core';
 
-import { codeNote } from '../../helpers/messages.js';
+import { codeNote, systemCause } from '../../helpers/messages.js';
 
 const escaped = escapeControlCharacters;
 
@@ -76,7 +76,9 @@ function expectedFragmentFile(path: string, folder: string): string {
 }
 
 function fragmentUnreadable(path: string, code: string): string {
-  return `Cannot read ${escaped(path)}${codeNote(code)}. Check that you can read it, then run the command again.`;
+  return code === 'EACCES' || code === 'EPERM'
+    ? `Cannot read ${escaped(path)}${systemCause(code)}. Give your user read access to it, and execute access to each folder above it, then run the command again.`
+    : `Cannot read ${escaped(path)}${codeNote(code)}. Check that you can read it, then run the command again.`;
 }
 
 function expectedFragmentName(path: string): string {
@@ -151,8 +153,8 @@ const sharedFileMissing = 'does not exist';
 
 const sharedFileIrregular = 'is not a regular file';
 
-function sharedFileDenied(entry: string): string {
-  return `sharedVersion lists ${escaped(entry)}, which cannot be read, because permission was denied. Give your user read access to it, then cut again.`;
+function sharedFileDenied(entry: string, code: string): string {
+  return `sharedVersion lists ${escaped(entry)}, which cannot be read${systemCause(code)}. Give your user read access to it, and execute access to each folder above it, then cut again.`;
 }
 
 function sharedFileUnreadable(entry: string, code: string | undefined): string {

@@ -11,7 +11,7 @@ import {
   lockfileTimedOut,
   pnpmMissing,
 } from '../commands/release/messages.js';
-import { withVersion } from './manifest.js';
+import { parseJsonFile, withVersion } from './manifest.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { Release } from './release.js';
 import { git, readRegularFileBytes, readWorkingFile } from './repository.js';
@@ -56,7 +56,7 @@ async function updateLockfile(run: RunHost, root: string) {
   }
   const manifestPath = pnpmManifestPath();
   const manifestSource = readWorkingFile(dirname(manifestPath), 'package.json');
-  const manifest = parseOrThrow(pnpmManifest, JSON.parse(manifestSource));
+  const manifest = parseOrThrow(pnpmManifest, parseJsonFile(manifestSource, manifestPath));
   const limit = AbortSignal.timeout(lockfileLimit);
   run.signal.throwIfAborted();
   const child = run.host.spawn(

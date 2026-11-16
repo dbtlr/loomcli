@@ -1,4 +1,5 @@
 import {
+  answerBrokeOff,
   invalidJsonAnswer,
   neverAppeared,
   refusedRequest,
@@ -28,7 +29,7 @@ function parseJson(url: string, text: string) {
 }
 
 async function refuse(method: string, url: string, response: Response) {
-  const text = await response.text();
+  const text = await bodyOf(method, url, async () => response.text());
   return new Error(refusedRequest(method, url, response.status, text.trim()));
 }
 
@@ -55,6 +56,21 @@ async function send(method: string, url: string, init: RequestInit) {
       throw error;
     }
     throw new Error(requestUnreached(method, url), { cause: error });
+  }
+}
+
+/**
+ * Reads the body of a response. A read that breaks off before the body ends, other than on its
+ * deadline, which `within` names, fails in the bin's words, carrying the runtime's error as its cause.
+ */
+async function bodyOf<Body>(method: string, url: string, read: () => Promise<Body>) {
+  try {
+    return await read();
+  } catch (error) {
+    if (timedOut(error)) {
+      throw error;
+    }
+    throw new Error(answerBrokeOff(method, url), { cause: error });
   }
 }
 
@@ -105,7 +121,7 @@ export async function readJson(
     if (!response.ok) {
       throw await refuse('GET', url, response);
     }
-    const text = await response.text();
+    const text = await bodyOf('GET', url, async () => response.text());
     return { data: parseJson(url, text), status: response.status };
   });
 }
@@ -117,7 +133,7 @@ export async function readBytes(policy: HttpPolicy, url: string) {
     if (!response.ok) {
       throw await refuse('GET', url, response);
     }
-    const body = await response.arrayBuffer();
+    const body = await bodyOf('GET', url, async () => response.arrayBuffer());
     return Buffer.from(body);
   });
 }
@@ -132,7 +148,7 @@ export async function writeJson(policy: HttpPolicy, url: string, token: string, 
     if (!response.ok) {
       throw await refuse('POST', url, response);
     }
-    const text = await response.text();
+    const text = await bodyOf('POST', url, async () => response.text());
     return parseJson(url, text);
   });
 }

@@ -145,7 +145,7 @@ const exceptions: VoiceExceptions = {
     'helpers/report.ts': {
       'error.message': {
         reason:
-          "report() prints the sentence of the failure a command's work throws, which the bin's message modules word. A system error carries no such sentence, so report() prints the general sentence with its code instead.",
+          "report() prints the message of a throw that is no system error, which is the bin's own sentence for every failure the bin raises. A system error is worded from its code, call, and path instead. A defect of the bin's own inputs prints a runtime's text, as ADR-0164 lists: a runtime error with an internal ERR_ code, a Bun metafile or the application reader's result file that is not JSON, or a GitHub upload address that is not a URL.",
         sites: 1,
       },
     },

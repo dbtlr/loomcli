@@ -13,6 +13,103 @@ function codeNote(code: string | undefined): string {
   return code === undefined ? '' : ` (${escaped(code)})`;
 }
 
+/*
+ * The cause of a system error in Loom's words, from its code, which every sentence about a file the
+ * bin cannot use reads, so one cause reads the same at every site. A code no line names gives the
+ * bare code in parentheses.
+ */
+function systemCause(code: string | undefined): string {
+  switch (code) {
+    case 'ENOENT': {
+      return ', because it does not exist';
+    }
+    case 'EISDIR': {
+      return ', because it is a folder';
+    }
+    case 'ENOTDIR': {
+      return ', because a path on the way is a file';
+    }
+    case 'EACCES':
+    case 'EPERM': {
+      return ', because permission was denied';
+    }
+    case 'EROFS': {
+      return ', because the file system is read-only';
+    }
+    case 'ENOSPC': {
+      return ', because no space is left';
+    }
+    default: {
+      return codeNote(code);
+    }
+  }
+}
+
+// What a failed system call was doing to its path, as a verb, such as read for a read of a file.
+function systemVerb(syscall: string): string {
+  switch (syscall) {
+    case 'access':
+    case 'lstat':
+    case 'opendir':
+    case 'read':
+    case 'readlink':
+    case 'scandir':
+    case 'stat': {
+      return 'read';
+    }
+    case 'mkdir':
+    case 'mkdtemp': {
+      return 'create';
+    }
+    case 'open': {
+      return 'open';
+    }
+    case 'rm':
+    case 'rmdir':
+    case 'unlink': {
+      return 'remove';
+    }
+    case 'write': {
+      return 'write';
+    }
+    default: {
+      return 'use';
+    }
+  }
+}
+
+// The step for a file the bin cannot use, from the system error's code.
+function fileStep(verb: string, code: string): string {
+  switch (code) {
+    case 'ENOENT': {
+      return 'Check the path and each folder on the way to it, then run the command again.';
+    }
+    case 'EISDIR': {
+      return 'Name a file, not a folder, then run the command again.';
+    }
+    case 'ENOTDIR': {
+      return 'Check each folder on the way to it, then run the command again.';
+    }
+    case 'EACCES':
+    case 'EPERM': {
+      return `Check that your user can ${escaped(verb)} it and has execute access to each folder above it, then run the command again.`;
+    }
+    case 'EROFS': {
+      return 'Name a path on a writable file system, then run the command again.';
+    }
+    case 'ENOSPC': {
+      return 'Free some space, then run the command again.';
+    }
+    default: {
+      return `Check that you can ${escaped(verb)} it, then run the command again.`;
+    }
+  }
+}
+
+function cannotUseFile(verb: string, path: string, code: string): string {
+  return `Cannot ${escaped(verb)} ${escaped(path)}${systemCause(code)}. ${fileStep(verb, code)}`;
+}
+
 function systemFailure(code: string): string {
   return `The command failed on a system error (${escaped(code)}). Check the files it reads and writes, then run it again.`;
 }
@@ -135,9 +232,12 @@ const useTestRunner = 'Use bun or vitest.';
 
 const useWholeNumber = 'Supply a whole number.';
 
+const useHttpUrl = 'Use an http or https URL.';
+
 export {
   acceptedTargets,
   cannotRun,
+  cannotUseFile,
   codeNote,
   expectedRegularFile,
   expectedVersionString,
@@ -162,10 +262,13 @@ export {
   refusedTarget,
   releaseShallow,
   symlinkedPackage,
+  systemCause,
   systemFailure,
+  systemVerb,
   unreadableRepositoryField,
   unstableLibraryVersions,
   useBuild,
+  useHttpUrl,
   useLinter,
   useOwnerName,
   usePiece,

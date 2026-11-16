@@ -67,6 +67,14 @@ function requestUnreached(method: string, url: string): string {
   return `${escaped(method)} ${escaped(url)} could not be reached. Check your network connection, then run the command again.`;
 }
 
+function answerBrokeOff(method: string, url: string): string {
+  return `${escaped(method)} ${escaped(url)} stopped before its answer ended. Check your network connection, then run the command again.`;
+}
+
+function provenanceNotJson(url: string): string {
+  return `GET ${escaped(url)} answered with a provenance statement that is not JSON, so check that --registry names an npm registry, then run the command again.`;
+}
+
 function neverAppeared(subject: string, attempts: number): string {
   return `${escaped(subject)} did not appear after ${String(attempts)} attempts, so run the command again once the service's write has propagated, with a larger --retry-attempts if it is slow.`;
 }
@@ -142,6 +150,17 @@ function tagAwayFromPublication(
   commit: string,
 ): string {
   return `Tag ${escaped(tag)} names ${escaped(tagCommit)}, but ${escaped(version)} was published from ${escaped(commit)}, and recording never moves a tag, so supersede ${escaped(version)} with the next cut.`;
+}
+
+function planNotJson(path: string): string {
+  return `${escaped(path)} is not valid JSON, so write the plan again with loom release plan, then run loom release record again.`;
+}
+
+function planNotJsonAt(
+  path: string,
+  { column, expected, line }: { column: number; expected: string; line: number },
+): string {
+  return `${escaped(path)} is not valid JSON: line ${String(line)}, column ${String(column)} needs ${escaped(expected)}, so write the plan again with loom release plan, then run loom release record again.`;
 }
 
 const planWithoutNotes =
@@ -280,6 +299,7 @@ const tokenRequired = 'Recording a release requires GH_TOKEN.';
 
 export {
   abandonedVersion,
+  answerBrokeOff,
   changedDuringPreparation,
   changedSinceCut,
   checkoutChanged,
@@ -305,10 +325,13 @@ export {
   onRegistry,
   planDecision,
   planHeading,
+  planNotJson,
+  planNotJsonAt,
   planWithoutNotes,
   pnpmMissing,
   provenanceConflict,
   provenanceElsewhere,
+  provenanceNotJson,
   provenanceNotOurs,
   provenanceOf,
   provenanceWithoutSource,

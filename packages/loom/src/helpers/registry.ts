@@ -5,6 +5,7 @@ import { array, looseObject, minLength, pipe, record, string, unknown } from 'va
 import {
   integrityMismatch,
   provenanceElsewhere,
+  provenanceNotJson,
   provenanceWithoutSource,
   unsupportedIntegrity,
 } from '../commands/release/messages.js';
@@ -55,6 +56,15 @@ function endpoint(target: RegistryTarget, path: string) {
   return `${target.registry.replace(/\/+$/u, '')}/${path}`;
 }
 
+// The statement an attestation's envelope carries, parsed as JSON; one that is not names the request.
+function parseStatement(url: string, statement: string): unknown {
+  try {
+    return JSON.parse(statement);
+  } catch (error) {
+    throw new Error(provenanceNotJson(url), { cause: error });
+  }
+}
+
 // The registry the release reads, with the deadline every one of its requests carries.
 export interface RegistryTarget {
   policy: HttpPolicy;
@@ -73,8 +83,8 @@ export async function readPublished(target: RegistryTarget, name: string, versio
 
 // The commit and the source repository npm attests for one published version.
 export async function readProvenance(target: RegistryTarget, name: string, version: string) {
-  const path = `-/npm/v1/attestations/${name}@${version}`;
-  const { data } = await readJson(target.policy, endpoint(target, path));
+  const url = endpoint(target, `-/npm/v1/attestations/${name}@${version}`);
+  const { data } = await readJson(target.policy, url);
   if (data === undefined) {
     return undefined;
   }
@@ -85,7 +95,7 @@ export async function readProvenance(target: RegistryTarget, name: string, versi
     return undefined;
   }
   const statement = Buffer.from(attestation.bundle.dsseEnvelope.payload, 'base64').toString('utf8');
-  const payload: unknown = JSON.parse(statement);
+  const payload = parseStatement(url, statement);
   const provenance = parseOrThrow(provenanceSchema, payload);
   const purl = packageUrl(name, version);
   if (!provenance.subject.some((subject) => subject.name === purl)) {
