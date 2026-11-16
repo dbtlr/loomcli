@@ -805,6 +805,7 @@ export type BooleanOption =
       short?: never;
       shortOnly?: never;
       aliases?: readonly string[];
+      visibleAliases?: readonly string[];
       env?: never;
       envAllowEmpty?: never;
     });
