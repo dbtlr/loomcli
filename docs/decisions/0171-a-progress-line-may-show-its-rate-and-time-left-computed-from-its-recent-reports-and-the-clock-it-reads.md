@@ -88,9 +88,10 @@ The owner settled the shape on 2026-11-16 (LM-530): an opt-in `estimate` setting
     readonly estimate?: boolean | undefined;
     /**
      * Units done per second over the line's window: from the latest report at least 10 seconds older
-     * than the newest, or the first report while none is that old, to the newest, so reports a
-     * minute apart are measured over that minute. It is `undefined` until there is enough
-     * progress. A line always supplies it, whether or not `estimate` is set.
+     * than the newest to the newest, so reports a minute apart are measured over that minute. While
+     * no report is that old, it is measured from the window's first report: the line's first, or the
+     * one whose count went backward and restarted the window. It is `undefined` until there is
+     * enough progress. A line always supplies it, whether or not `estimate` is set.
      */
     readonly rate?: number | undefined;
     /**

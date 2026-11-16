@@ -35,7 +35,7 @@ interface Estimate {
  */
 function estimate(): Estimate {
   let samples: Sample[] = [];
-  // The anchor's index. The samples before it are never read again, and drop once they are half.
+  // The anchor's index. The samples before it are never read again, and drop once they outnumber the rest.
   let anchor = 0;
   let drops = 0;
   const span = (): { first: Sample; last: Sample } | undefined => {
