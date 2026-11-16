@@ -205,8 +205,8 @@ interface Admitted {
 /**
  * One entry, judged at `optionSet()` as `option()` judges one option on a Command that declares the
  * entries before it and nothing else: what it proves on its own through `admitLocalOption`, its
- * name, its extension values, and each rule its settings answer alone or with an earlier entry,
- * then the stdin claim.
+ * extension values and each rule its settings answer alone or with an earlier entry, then the stdin
+ * claim. Its name is judged before this, by `copyLocalOption`, when the entry is copied.
  */
 function admitEntry(admitted: Admitted, input: OptionInput): Admitted {
   let { compiled } = admitted;
@@ -294,19 +294,20 @@ class OptionSetValue implements OptionSet {
 function optionSet<const Configs extends Readonly<Record<string, OptionConfig>>>(
   configs: Configs & NoInfer<OptionSetConstraint<Configs>>,
 ): OptionSet<Configs> {
-  // The set keeps its own copy of each entry, so a later change to the record changes nothing.
-  // Each name is judged before its config is read, so a name fault reads none of the config.
-  const inputs = Object.entries(configs).map(([name, config]): OptionInput => {
-    const entry: OptionInput = { config, kind: 'option', name };
-    return copyLocalOption(entry, () => entryUnread(entry));
-  });
   let admitted: Admitted = {
     compiled: { claims: new Map(), names: new Map(), table: new Map() },
     descriptors: new Map(),
     entries: [],
   };
-  for (const input of inputs) {
+  // The set keeps its own copy of each entry, so a later change to the record changes nothing.
+  // Each entry is judged whole in the record's order, so an earlier entry's fault reports first.
+  // Its name is judged before its config is read, so a name fault reads none of that config.
+  const inputs: OptionInput[] = [];
+  for (const [name, config] of Object.entries(configs)) {
+    const entry: OptionInput = { config, kind: 'option', name };
+    const input = copyLocalOption(entry, () => entryUnread(entry));
     admitted = admitEntry(admitted, input);
+    inputs.push(input);
   }
   const set: OptionSet = new OptionSetValue({ entries: Object.freeze(inputs), groups: [] });
   // Last resort: no typed path exists. The facts hold each entry as an untyped input.

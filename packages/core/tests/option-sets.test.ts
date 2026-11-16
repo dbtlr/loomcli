@@ -664,3 +664,19 @@ test('an invalid option name reads none of its config, on option() and on an opt
   expect(() => optionSet({ '-raw': config })).toThrow('Option name "-raw" is invalid.');
   expect(reads).toBe(0);
 });
+
+// Entries are judged in the record's order, as one-by-one declarations are.
+// The keys are already in sorted order, so the key-sorting lint fix leaves the record's order alone.
+test('an earlier entry fault reports before a later entry invalid name', () => {
+  const shared = { short: 'q', type: 'boolean' } as const;
+  const fault = 'Option spelling "-q" is used by both "alpha" and "beta".';
+  expect(() => optionSet({ alpha: shared, beta: shared, 'zed=raw': { type: 'boolean' } })).toThrow(
+    fault,
+  );
+  expect(() =>
+    new Command('get')
+      .option('alpha', shared)
+      .option('beta', shared)
+      .option('zed=raw', { type: 'boolean' }),
+  ).toThrow(fault);
+});
