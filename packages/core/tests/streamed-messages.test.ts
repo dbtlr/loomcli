@@ -435,6 +435,23 @@ test('on a terminal, a trailing space never finishes a row the joined text lays 
   expect(run.end).toEqual(['ℹ aaaa bbbbbbb', '  c']);
 });
 
+test('on a terminal, a character whose two halves arrive in separate chunks is written whole', async () => {
+  const [high = '', low = ''] = '\u{1F600}'.split('');
+  const parts = ['a ', high, `${low} b`, ' c\n'];
+  const appended = await onScreen(20, parts, (out, text) => out.print(text));
+  // A print only appends, so each half written alone would stay on the screen as a replacement character.
+  expect(appended.mock.transcript.map(({ text }) => text)).toEqual(['a', ' \u{1F600} b', ' c\n']);
+  const drawn = await onScreen(20, parts, (out, text) => out.info(text));
+  expect(drawn.mock.transcript.map(({ text }) => text).join('')).not.toContain('\uFFFD');
+  expect(drawn.end).toEqual(['ℹ a \u{1F600} b c']);
+});
+
+test('a message that ends on half a character writes what the method writes for the joined text', async () => {
+  const [high = ''] = '\u{1F600}'.split('');
+  const run = await onScreen(20, ['a', high], (out, text) => out.print(text));
+  expect(run.end).toEqual(await wholeScreen(20, (out) => out.print(`a${high}`)));
+});
+
 test('on a terminal, a streamed print writes what each chunk adds at the cursor and never redraws it', async () => {
   const parts = ['abcdefghij', 'klmnopqrstu', 'vw\nx', 'yz'];
   const run = await onScreen(10, parts, (out, text) => out.print(text));

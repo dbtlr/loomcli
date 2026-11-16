@@ -69,16 +69,22 @@ interface MessageSink {
 }
 
 /**
- * A trailing run of spaces, tabs, and carriage returns, with only frame closes after it. The lane
- * views break a row at a space, so a space that ends the text so far can move the word before it
- * to the next row, which the text that follows it may move back; a carriage return waits to learn
- * whether a line feed follows it. Both show once text after them arrives or the message ends.
+ * What the text so far ends with and the message does not lay out yet, with only frame closes after
+ * it: a trailing run of spaces, tabs, and carriage returns, and a high surrogate whose low surrogate
+ * has not arrived. The lane views break a row at a space, so a space that ends the text so far can
+ * move the word before it to the next row, which the text that follows it may move back; a carriage
+ * return waits to learn whether a line feed follows it; and half a character written alone reaches
+ * a terminal as a replacement character, which a `print` never redraws. Each shows once text after
+ * it arrives or the message ends.
  */
-const trailingBlank = new RegExp(`[ \\t\\r]+(?=${close}*$)`, 'u');
+const trailingHeld = new RegExp(
+  `(?:[ \\t\\r]+[\\uD800-\\uDBFF]?|[\\uD800-\\uDBFF])(?=${close}*$)`,
+  'u',
+);
 
-/** The text so far as the message lays it out before its end: without its trailing blank run. */
+/** The text so far as the message lays it out before its end: without what its end holds back. */
 function heldBack(text: string): string {
-  return text.replace(trailingBlank, '');
+  return text.replace(trailingHeld, '');
 }
 
 /** Every completed line of resolved text, each with its line break, and the text after the last one. */
@@ -305,7 +311,10 @@ class StreamedMessage {
       if (next.done === true) {
         return this.#end();
       }
-      this.#joined += next.value;
+      // A hidden message writes nothing, so it keeps none of the text it drains.
+      if (!this.#sink.hidden) {
+        this.#joined += next.value;
+      }
       await this.#chunk(steps);
     }
     endSteps(steps);
@@ -396,8 +405,8 @@ class StreamedMessage {
   }
 
   /**
-   * The writes that take what was written to what the method writes for the text so far, held
-   * back by its trailing blank run, or at the end for the joined text and its closing line break.
+   * The writes that take what was written to what the method writes for the text so far, less
+   * what its end holds back, or at the end for the joined text and its closing line break.
    * Nothing is laid out before the first chunk that holds text. The lane view lays out the text
    * from the split on, and the split then moves past every line the text has finished.
    */
