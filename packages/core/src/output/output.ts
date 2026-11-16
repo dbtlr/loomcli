@@ -38,7 +38,7 @@ import type {
   View,
   ViewContext,
 } from './types.js';
-import { resolveRowView, resolveView } from './view.js';
+import { overridden, resolveRowView, resolveView } from './view.js';
 import type { ViewRegistry } from './view.js';
 
 export type WriteState = { kind: 'ok' } | { kind: 'failed'; error: unknown };
@@ -631,9 +631,10 @@ function erased(value: unknown): never {
 }
 
 /**
- * The sequences one channel has issued. An action that fails while one of them is still pending
- * stays primary, so its sequences are stopped rather than drained. A sequence that finished
- * already answers its own switch with nothing, so the set is never pruned.
+ * The sequences and the streamed messages one channel has issued. An action that fails while one
+ * of them is still pending stays primary, so its sequences are stopped rather than drained. A
+ * sequence that finished already answers its own switch with nothing, so it stays, and a streamed
+ * message leaves the set at its end, so an ended message and the text it joined are not held.
  */
 type LiveSequences = Set<() => void>;
 
@@ -1338,7 +1339,8 @@ export class Output {
    * a suspend while it is open, and `print` grows its line at the cursor, holding every other write
    * to the terminal until the line ends; elsewhere it writes each line once it completes. The view
    * context is read once, at its first layout, so the whole message lays out at one width. A
-   * message an action issued joins its channel's live set, so the action's failure stops it.
+   * message an action issued joins its channel's live set, so the action's failure stops it, and
+   * leaves it at its end.
    */
   private streamed(kind: Purpose, source: AsyncIterable<string>, look: MessageLook): Promise<void> {
     const { destination } = look;
@@ -1352,6 +1354,7 @@ export class Output {
     const line = this.lineWriter(target, slot);
     const sink: MessageSink = {
       hidden,
+      partial: !overridden<string>(this.registry, lanes[kind]),
       raise: (cause) => {
         this.raised.add(cause);
       },
@@ -1372,11 +1375,13 @@ export class Output {
     const message = new StreamedMessage(source, sink, this.signal.aborted);
     const open: OpenStream = { destination: target, line, message, place, rows, slot };
     this.streams.add(open);
-    look.live?.add(() => {
+    const stop = (): void => {
       message.stop();
-    });
+    };
+    look.live?.add(stop);
     const done = message.done.finally(() => {
       this.streams.delete(open);
+      look.live?.delete(stop);
       line.release();
       release?.();
     });
