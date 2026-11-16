@@ -178,13 +178,13 @@ import type { ExitCode, RunOptions } from './types.js';
  * Every authoring call an Application can publish, beside `inspect()`, `check()`, `run()`,
  * `invoke()`, and `name`, which always remain.
  * An Application's type state is a subset of these, and each call removes the names it invalidates.
- * The unnamed root declares what a named Command declares, except for `alias()`: the root answers
- * to no bare token, so it has no name to alias.
+ * The unnamed root declares what a named Command declares, except for `alias()` and
+ * `visibleAlias()`: the root answers to no bare token, so it has no name to alias.
  *
  * @public
  * @sealed
  */
-export type ApplicationMethod = Exclude<CommandMethod, 'alias'> | 'globalOption';
+export type ApplicationMethod = Exclude<CommandMethod, 'alias' | 'visibleAlias'> | 'globalOption';
 
 /** The registry a failure is reported through when the application's own could not be built. */
 const noViews: ViewRegistry = [];

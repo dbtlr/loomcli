@@ -18,6 +18,7 @@ const owned = {
   extensions: {},
   hidden: false,
   schema: null,
+  visibleAliases: [],
 };
 
 async function invokeInspect(graph: string, mode = 'json') {
@@ -43,6 +44,7 @@ const leaf = {
   options: [],
   passthrough: null,
   result: null,
+  visibleAliases: [],
 };
 
 test('inspects a graph of globals, a root action, and three children', async () => {
@@ -169,6 +171,7 @@ test('inspects a graph of globals, a root action, and three children', async () 
       passthrough: null,
       path: [],
       result: null,
+      visibleAliases: [],
     },
     version: '0.0.0',
   });
@@ -249,6 +252,7 @@ test('reports the version and every declared description, and the root reports t
           passthrough: null,
           path: ['get'],
           result: null,
+          visibleAliases: [],
         },
       ],
       deprecated: none,
@@ -262,6 +266,7 @@ test('reports the version and every declared description, and the root reports t
       passthrough: null,
       path: [],
       result: null,
+      visibleAliases: [],
     },
     version: '1.2.0',
   });
@@ -359,6 +364,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
       passthrough: null,
       path: [],
       result: null,
+      visibleAliases: [],
     },
     version: '0.0.0',
   });
@@ -392,6 +398,7 @@ test('inspects a group at two named levels below the root', async () => {
           passthrough: null,
           path: ['cache'],
           result: null,
+          visibleAliases: [],
         },
       ],
       deprecated: none,
@@ -405,6 +412,7 @@ test('inspects a group at two named levels below the root', async () => {
       passthrough: null,
       path: [],
       result: null,
+      visibleAliases: [],
     },
     version: '0.0.0',
   });

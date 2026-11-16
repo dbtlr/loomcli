@@ -20,10 +20,16 @@ answered.option;
 answered.alias;
 // @ts-expect-error TS2555: An alias() call names at least one alias.
 new Command('keys').alias();
+// @ts-expect-error TS2339: A Command that registered its action declares no more visible aliases.
+answered.visibleAlias;
+// @ts-expect-error TS2555: A visibleAlias() call names at least one alias.
+new Command('keys').visibleAlias();
 
 // An alias invalidates no call, so it reads the same in every state before the action.
 const aliasedArgument = withArgument.alias('g');
 const aliasedGroup = group.alias('caches').command(leaf);
+// A visible alias invalidates no call either, and the two calls mix in any order.
+const advertised = withArgument.visibleAlias('g', 'fetch').alias('read').visibleAlias('r');
 
 // @ts-expect-error TS2353: An attached value is a Command, whatever else it names.
 new Command('cache').command({ name: 'clear' });
@@ -40,4 +46,4 @@ declare module '@loomcli/core' {
   }
 }
 
-export { group, openAfterChild, answered, aliasedArgument, aliasedGroup };
+export { group, openAfterChild, answered, aliasedArgument, aliasedGroup, advertised };

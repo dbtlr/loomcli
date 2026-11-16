@@ -33,6 +33,8 @@ const closed: CommandAttachHook = (command) => {
   command.action(() => {});
   // @ts-expect-error TS2339: A hook declares no alias.
   command.alias('c');
+  // @ts-expect-error TS2339: A hook declares no visible alias.
+  command.visibleAlias('c');
   // @ts-expect-error TS2339: A hook attaches no child.
   command.command(command);
   const record = command.result;

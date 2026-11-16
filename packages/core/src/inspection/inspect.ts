@@ -112,9 +112,11 @@ interface ArgumentNode {
  * occurrence takes, or `null` when it declares none; its default is then a tuple, or a list of them.
  * A string option's `lastWins` is `true` when its declaration says `true`, under which a later
  * occurrence on the command line replaces an earlier one; a content option's node carries none.
- * `aliases` holds the declared aliases as bare names in declaration order. An alias is
- * unadvertised, so the spellings above are the ones the declared name derives and no listing reads
- * `aliases`; parsing and `locate` read the table, which holds every alias's spellings.
+ * `aliases` holds every declared alias as bare names, the config's `aliases` and then its
+ * `visibleAliases`, without a repeat, and `visibleAliases` holds the visible ones alone, in the
+ * order `aliases` holds them. The spellings above are the ones the declared name derives, a listing
+ * reads `visibleAliases` and never the other aliases, and parsing and `locate` read the table,
+ * which holds every alias's spellings.
  */
 interface StringOptionNode {
   /** Discriminates a string option from the other option kinds. */
@@ -133,8 +135,10 @@ interface StringOptionNode {
   readonly long: string | null;
   /** The short spelling the declaration gives, or `null` where the option has none. */
   readonly short: string | null;
-  /** The declared aliases as bare names, in declaration order. */
+  /** The declared aliases as bare names, visible ones included, in declaration order. */
   readonly aliases: readonly string[];
+  /** The aliases declared visible, as bare names in the order `aliases` holds them. */
+  readonly visibleAliases: readonly string[];
   /** Whether a value must be supplied. A content option with a `min` above 0 is required. */
   readonly required: boolean;
   /**
@@ -210,6 +214,7 @@ type OptionNode =
       readonly short: string | null;
       readonly negative: string | null;
       readonly aliases: readonly string[];
+      readonly visibleAliases: readonly string[];
       readonly interaction: boolean;
       readonly color: boolean;
       /** Whether the option carries the plain mark, whose spellings turn the run's plain switch on. */
@@ -229,6 +234,7 @@ type OptionNode =
       readonly long: string | null;
       readonly short: string | null;
       readonly aliases: readonly string[];
+      readonly visibleAliases: readonly string[];
       readonly verbose: boolean;
       readonly quiet: boolean;
       readonly schema: null;
@@ -238,8 +244,8 @@ type OptionNode =
 
 /**
  * One Command in the graph. `name` is `null` for the root, and `path` is its route from it.
- * `aliases` holds the aliases in declaration order, so a Command appears once, under its canonical
- * name, and `path` never holds an alias. The root reports the Application's description, so a
+ * `aliases` holds every alias in declaration order and `visibleAliases` the visible ones, so a
+ * Command appears once, under its canonical name, and `path` never holds an alias. The root reports the Application's description, so a
  * projection that walks nodes never special-cases it, and it reads `hidden: false` and
  * `deprecated: undefined`, the two core facts a listing reads on every other node.
  *
@@ -255,8 +261,10 @@ interface CommandNode {
   readonly stdin?: Readonly<{ description: string | undefined; required: boolean }>;
   /** The Command's own name, and `null` for the root. */
   readonly name: string | null;
-  /** The declared aliases, in declaration order. */
+  /** The declared aliases, visible ones included, in declaration order. */
   readonly aliases: readonly string[];
+  /** The aliases declared visible, in the order `aliases` holds them, which every listing shows. */
+  readonly visibleAliases: readonly string[];
   /** The route from the root through canonical names, which is empty for the root. */
   readonly path: readonly string[];
   /**
@@ -525,8 +533,9 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
   const { check, records, table } = read;
   const { config, name } = input;
   const { long, negative, short } = spellingsOf(table, name);
+  const aliases = distinctAliases(name, config);
   const shared = {
-    aliases: Object.freeze(distinctAliases(name, config).map(({ alias }) => alias)),
+    aliases: Object.freeze(aliases.map(({ alias }) => alias)),
     control: config.control === true,
     deprecated: config.deprecated,
     description: config.description,
@@ -536,6 +545,9 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
     long,
     name,
     short,
+    visibleAliases: Object.freeze(
+      aliases.filter(({ visible }) => visible).map(({ alias }) => alias),
+    ),
   };
   switch (config.type) {
     case 'content':
@@ -674,6 +686,7 @@ function commandNode(
     options: Object.freeze(optionNodes(command.inputs, { check, records, table: command.table })),
     path,
     result: resultNode(command.result),
+    visibleAliases: Object.freeze([...command.visibleAliases]),
   };
   const frozen = Object.freeze(node);
   nodes.set(command, frozen);

@@ -228,6 +228,7 @@ test("a plugin's option publishes the node an application's global option publis
     type: 'string',
     validateOmitted: false,
     validated: false,
+    visibleAliases: [],
   });
   expect(graph.globals[1]).toEqual({
     aliases: [],
@@ -246,6 +247,7 @@ test("a plugin's option publishes the node an application's global option publis
     schema: null,
     short: null,
     type: 'boolean',
+    visibleAliases: [],
   });
   expect(graph.globals[5]).toMatchObject({
     env: ['FIXTURE_LEVEL'],

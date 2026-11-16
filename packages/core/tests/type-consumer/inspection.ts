@@ -44,8 +44,10 @@ const rootHidden: boolean = root.hidden;
 const rootDeprecated: string | undefined = root.deprecated;
 const optionHidden = (option: OptionNode): boolean => option.hidden;
 const optionDeprecated = (option: OptionNode): string | undefined => option.deprecated;
-// Both option forms publish their declared aliases.
+// Both option forms publish their declared aliases, and the visible ones apart.
 const optionAliases = (option: OptionNode): readonly string[] => option.aliases;
+const optionVisibleAliases = (option: OptionNode): readonly string[] => option.visibleAliases;
+const visibleAliases: readonly string[] = root.visibleAliases;
 // @ts-expect-error TS2339: An argument carries neither listing fact.
 slots.map((slot) => slot.hidden);
 
@@ -67,6 +69,8 @@ root.hasAction = true;
 root.children.push(root);
 // @ts-expect-error TS2339: The alias list is read-only too.
 root.aliases.push('other');
+// @ts-expect-error TS2339: So is the list of visible aliases.
+root.visibleAliases.push('other');
 // @ts-expect-error TS2339: The graph carries the globals once, never inside a Command node.
 root.globals;
 
@@ -121,6 +125,7 @@ void slots;
 void name;
 void path;
 void aliases;
+void visibleAliases;
 void version;
 void summary;
 void rootSummary;
@@ -131,5 +136,6 @@ void rootDeprecated;
 void optionHidden;
 void optionDeprecated;
 void optionAliases;
+void optionVisibleAliases;
 void configuration;
 void configurationSchema;

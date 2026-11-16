@@ -48,6 +48,7 @@ test('a Command value publishes its authoring calls and no declared state', asyn
       'rows',
       'stdin',
       'views',
+      'visibleAlias',
     ],
   });
 });

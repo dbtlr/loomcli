@@ -64,6 +64,11 @@ tester.run('name-shape', nameShape, {
     },
     {
       code: `${coreImport}
+        new Command('base', { description: 'D.' }).visibleAlias('ls', 'not good').alias('.hidden');`,
+      errors: [portable('Alias', 'not good'), portable('Alias', '.hidden')],
+    },
+    {
+      code: `${coreImport}
         new Command('base', { description: 'D.' })
           .option('has space', ${described})
           .option('-leading', ${described})
@@ -96,6 +101,22 @@ tester.run('name-shape', nameShape, {
       errors: [declared('Option alias', 'bad alias'), declared('Option alias', '--x')],
     },
     {
+      code: `${coreImport}
+        new Application('tool', { description: 'D.' })
+          .globalOption('color', { type: 'boolean', aliases: ['bad alias'], visibleAliases: ['c', '-c'] })
+          .option('count', { type: 'count', visibleAliases: ['a=b'] });`,
+      errors: [
+        declared('Option alias', 'bad alias'),
+        declared('Option alias', '-c'),
+        declared('Option alias', 'a=b'),
+      ],
+    },
+    {
+      code: `import { optionSet } from '@loomcli/core';
+        optionSet({ json: { type: 'boolean', visibleAliases: ['j', 'no good'] } });`,
+      errors: [declared('Option alias', 'no good')],
+    },
+    {
       code: `import { Command as Cmd } from '@loomcli/core';
         new Cmd('bad name');`,
       errors: [portable('Command', 'bad name')],
@@ -123,6 +144,12 @@ tester.run('name-shape', nameShape, {
     {
       code: `import { optionSet } from '@loomcli/core';
         optionSet({ json: { aliases: ['j'], type: 'boolean' }, 'dry-run': { type: 'boolean' } });`,
+    },
+    {
+      code: `${coreImport}
+        new Command('list', { description: 'D.' })
+          .visibleAlias('ls', 'dir.list')
+          .option('min-bytes', { type: 'string', visibleAliases: ['minimum'] });`,
     },
     {
       // A computed key, a spread, and a settings value that is no object literal are skipped.

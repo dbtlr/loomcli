@@ -35,12 +35,19 @@ type LowercaseLetter =
 type ShortAlias = LowercaseLetter | Uppercase<LowercaseLetter>;
 
 /**
- * The spellings an option declares beyond its long form. `aliases` adds a long spelling for each
- * name, so `shortOnly`, which removes every long spelling, never declares one.
+ * The spellings an option declares beyond its long form. `aliases` and `visibleAliases` each add
+ * a long spelling for each name, and a visible alias is one that help, completion, and the
+ * manifest show beside the option, so `shortOnly`, which removes every long spelling, declares
+ * neither.
  */
 type OptionSpelling =
-  | { short?: ShortAlias; shortOnly?: false; aliases?: readonly string[] }
-  | { short: ShortAlias; shortOnly: true; aliases?: never };
+  | {
+      short?: ShortAlias;
+      shortOnly?: false;
+      aliases?: readonly string[];
+      visibleAliases?: readonly string[];
+    }
+  | { short: ShortAlias; shortOnly: true; aliases?: never; visibleAliases?: never };
 
 interface ConditionalPresence {
   /**
@@ -532,6 +539,7 @@ export type BackgroundOption = Described &
     type: 'string';
     background: true;
     aliases?: readonly string[];
+    visibleAliases?: readonly string[];
     validate?: StandardSchemaV1;
     short?: never;
     shortOnly?: never;
@@ -769,6 +777,7 @@ export type BooleanOption =
         short?: ShortAlias;
         shortOnly?: false;
         aliases?: readonly string[];
+        visibleAliases?: readonly string[];
       })
   | (BooleanFacts & {
       color: true;
@@ -777,6 +786,7 @@ export type BooleanOption =
       short?: never;
       shortOnly?: never;
       aliases?: readonly string[];
+      visibleAliases?: readonly string[];
       env?: never;
       envAllowEmpty?: never;
     })

@@ -24,6 +24,12 @@ const declaredCorrection = 'Use a nonempty name without a leading hyphen, whites
 /** The calls whose options take aliases, which answer the declared-name rule. */
 const aliasedCalls: ReadonlySet<string> = new Set(['globalOption', 'option']);
 
+/** The calls that declare a Command's aliases, which answer the portable-name rule. */
+const aliasCalls: ReadonlySet<string> = new Set(['alias', 'visibleAlias']);
+
+/** The settings that list an option's aliases, hidden and visible. */
+const aliasSettings = ['aliases', 'visibleAliases'] as const;
+
 /** The kind of declaration each call names with its first argument. */
 const declaredNames: ReadonlyMap<string, string> = new Map([
   ['argument', 'Argument'],
@@ -47,18 +53,23 @@ function literalArguments(args: readonly Argument[]): readonly Node[] {
   return args.filter((argument) => literalString(argument) !== undefined);
 }
 
-/** The literal aliases of an option's configuration, when it is an object literal without spread. */
+/**
+ * The literal aliases of an option's configuration, from `aliases` and then `visibleAliases`, each
+ * when the configuration is an object literal without spread and the list is an array literal.
+ */
 function aliasesOf(configuration: Node | undefined): readonly Node[] {
   if (configuration?.type !== 'ObjectExpression') {
     return [];
   }
-  const reading = readProperty(configuration, 'aliases');
-  if (reading.kind !== 'found' || reading.value.type !== 'ArrayExpression') {
-    return [];
-  }
-  return literalArguments(
-    reading.value.elements.flatMap((element) => (element === null ? [] : [element])),
-  );
+  return aliasSettings.flatMap((setting) => {
+    const reading = readProperty(configuration, setting);
+    if (reading.kind !== 'found' || reading.value.type !== 'ArrayExpression') {
+      return [];
+    }
+    return literalArguments(
+      reading.value.elements.flatMap((element) => (element === null ? [] : [element])),
+    );
+  });
 }
 
 /** Checks the name an option, an argument, or a global option takes, and an option's aliases. */
@@ -93,7 +104,7 @@ function checkOptionSet(sourceCode: SourceCode, node: CallExpression, checks: Ch
 function checkCall(sourceCode: SourceCode, node: CallExpression, checks: Checks): void {
   checkOptionSet(sourceCode, node, checks);
   const call = authoringCallOf(sourceCode, node);
-  if (call?.method === 'alias') {
+  if (call && aliasCalls.has(call.method)) {
     for (const alias of literalArguments(node.arguments)) {
       checks.portable(alias, 'Alias');
     }
@@ -114,8 +125,8 @@ function checkConstruction(sourceCode: SourceCode, node: NewExpression, checks: 
 
 /**
  * Reports a literal name that core rejects when the module loads: a Command or Application name
- * or an alias against the portable-name rule, and an option, an argument, or an option alias
- * against the declared-name rule.
+ * or an alias of either kind against the portable-name rule, and an option, an argument, or an
+ * option alias of either kind against the declared-name rule.
  */
 const nameShape: Rule.RuleModule = {
   create(context) {

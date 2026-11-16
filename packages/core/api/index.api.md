@@ -106,7 +106,7 @@ export interface ApplicationEnvironment<Globals = {}, Plugins extends readonly P
 }
 
 // @public @sealed
-export type ApplicationMethod = Exclude<CommandMethod, 'alias'> | 'globalOption';
+export type ApplicationMethod = Exclude<CommandMethod, 'alias' | 'visibleAlias'> | 'globalOption';
 
 // @public
 export interface ApplicationOptions<Plugins extends readonly Plugin_2[] = readonly Plugin_2[], Uses extends readonly AnyProvider[] = []> {
@@ -183,6 +183,7 @@ export type BooleanOption = (OptionSpelling & BooleanFacts & EnvBinding & {
     short?: ShortAlias;
     shortOnly?: false;
     aliases?: readonly string[];
+    visibleAliases?: readonly string[];
 }) | (BooleanFacts & {
     color: true;
     plain?: never;
@@ -190,6 +191,7 @@ export type BooleanOption = (OptionSpelling & BooleanFacts & EnvBinding & {
     short?: never;
     shortOnly?: never;
     aliases?: readonly string[];
+    visibleAliases?: readonly string[];
     env?: never;
     envAllowEmpty?: never;
 }) | (BooleanFacts & {
@@ -262,7 +264,7 @@ export interface CommandGraph {
 }
 
 // @public @sealed
-export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'option' | 'options' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'requires' | 'result' | 'rows' | 'passthrough' | 'stdin';
+export type CommandMethod = 'action' | 'alias' | 'visibleAlias' | 'argument' | 'command' | 'option' | 'options' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'requires' | 'result' | 'rows' | 'passthrough' | 'stdin';
 
 // @public @sealed
 export interface CommandNode {
@@ -286,6 +288,7 @@ export interface CommandNode {
         description: string | undefined;
         required: boolean;
     }>;
+    readonly visibleAliases: readonly string[];
 }
 
 // @public
@@ -1255,6 +1258,7 @@ export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'ar
     readonly short: string | null;
     readonly negative: string | null;
     readonly aliases: readonly string[];
+    readonly visibleAliases: readonly string[];
     readonly interaction: boolean;
     readonly color: boolean;
     readonly plain: boolean;
@@ -1272,6 +1276,7 @@ export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'ar
     readonly long: string | null;
     readonly short: string | null;
     readonly aliases: readonly string[];
+    readonly visibleAliases: readonly string[];
     readonly verbose: boolean;
     readonly quiet: boolean;
     readonly schema: null;
