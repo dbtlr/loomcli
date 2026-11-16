@@ -1,5 +1,6 @@
 import type { Rule, Scope } from 'eslint';
 import type {
+  CallExpression,
   Expression,
   Identifier,
   ImportDeclaration,
@@ -286,6 +287,24 @@ function isDeclaration(
 }
 
 /**
+ * The entries of an `optionSet({...})` call from `@loomcli/core` that spell a literal key, each
+ * with its settings. A spread, a computed key that is no literal, and a call that does not come
+ * from core are skipped, because the source cannot say what they declare.
+ */
+function optionSetEntries(sourceCode: SourceCode, call: CallExpression): readonly Property[] {
+  const [record] = positionalArguments(call) ?? [];
+  if (
+    coreCalleeOf(sourceCode, call.callee) !== optionSetName ||
+    record?.type !== 'ObjectExpression'
+  ) {
+    return [];
+  }
+  return record.properties.filter(
+    (member): member is Property => member.type === 'Property' && memberKey(member) !== undefined,
+  );
+}
+
+/**
  * The arguments of a call without the type assertions around them, or `undefined` when a spread
  * makes the position of one unknown.
  */
@@ -365,6 +384,7 @@ export {
   isNode,
   literalString,
   memberKey,
+  optionSetEntries,
   positionalArguments,
   readProperty,
   unwrapped,

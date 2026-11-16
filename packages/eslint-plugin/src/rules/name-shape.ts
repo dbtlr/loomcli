@@ -6,8 +6,10 @@ import {
   authoringCallOf,
   constructorOf,
   literalString,
+  optionSetEntries,
   positionalArguments,
   readProperty,
+  unwrapped,
 } from '../declarations.js';
 import type { Argument, AuthoringCall } from '../declarations.js';
 import { ruleUrl } from '../docs.js';
@@ -77,8 +79,19 @@ function checkDeclaredName(call: AuthoringCall, node: CallExpression, checks: Ch
   }
 }
 
+/** Checks the key and the aliases of each entry of an `optionSet()` record. */
+function checkOptionSet(sourceCode: SourceCode, node: CallExpression, checks: Checks): void {
+  for (const member of optionSetEntries(sourceCode, node)) {
+    checks.declared(member.key, 'Option');
+    for (const alias of aliasesOf(unwrapped(member.value))) {
+      checks.declared(alias, 'Option alias');
+    }
+  }
+}
+
 /** Checks the names an authoring call declares, wherever the source spells them out. */
 function checkCall(sourceCode: SourceCode, node: CallExpression, checks: Checks): void {
+  checkOptionSet(sourceCode, node, checks);
   const call = authoringCallOf(sourceCode, node);
   if (call?.method === 'alias') {
     for (const alias of literalArguments(node.arguments)) {

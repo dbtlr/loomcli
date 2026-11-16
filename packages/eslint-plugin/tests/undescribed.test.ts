@@ -6,6 +6,24 @@ const missing = (subject: string) => ({ data: { subject }, messageId: 'undescrib
 tester.run('undescribed', undescribed, {
   invalid: [
     {
+      code: `import { optionSet } from '@loomcli/core';
+        optionSet({ json: { type: 'boolean' }, 'dry-run': { description: 'D.', type: 'boolean' }, yaml: {} });`,
+      errors: [
+        { ...missing('Option set option "json"'), column: 21, line: 2 },
+        missing('Option set option "yaml"'),
+      ],
+    },
+    {
+      code: `import { optionSet as set } from '@loomcli/core';
+        set({ json: { type: 'boolean' } });`,
+      errors: [missing('Option set option "json"')],
+    },
+    {
+      code: `import * as loom from '@loomcli/core';
+        loom.optionSet({ json: { type: 'boolean' } }).exclusive('json', 'json');`,
+      errors: [missing('Option set option "json"')],
+    },
+    {
       code: `${coreImport}\nnew Command('build');`,
       errors: [{ ...missing('Command "build"'), column: 5, line: 2 }],
     },
@@ -108,6 +126,22 @@ tester.run('undescribed', undescribed, {
     },
   ],
   valid: [
+    {
+      code: `import { optionSet } from '@loomcli/core';
+        optionSet({ json: { description: 'JSON.', type: 'boolean' } });`,
+    },
+    {
+      // A computed key, a spread, and a settings value that is no object literal are untraceable.
+      code: `import { optionSet } from '@loomcli/core';
+        const key = 'x';
+        const shared = { type: 'boolean' };
+        optionSet({ [key]: { type: 'boolean' }, ...shared, plain: shared, spread: { ...shared } });`,
+    },
+    {
+      // An optionSet that does not come from @loomcli/core is not read.
+      code: `import { optionSet } from 'elsewhere';
+        optionSet({ json: { type: 'boolean' } });`,
+    },
     {
       code: `${coreImport}
         const app = new Application('tool', { description: 'Tool.' })

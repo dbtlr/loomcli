@@ -18,6 +18,25 @@ const described = "{ description: 'One line.', type: 'string' }";
 tester.run('name-shape', nameShape, {
   invalid: [
     {
+      code: `import { optionSet } from '@loomcli/core';
+        optionSet({ '--verbose': { aliases: ['-v', 'ok'], type: 'boolean' }, 'a b': {} });`,
+      errors: [
+        { ...declared('Option', '--verbose'), column: 21, line: 2 },
+        declared('Option alias', '-v'),
+        declared('Option', 'a b'),
+      ],
+    },
+    {
+      code: `import { optionSet as set } from '@loomcli/core';
+        set({ '': { type: 'boolean' } });`,
+      errors: [declared('Option', '')],
+    },
+    {
+      code: `import * as loom from '@loomcli/core';
+        loom.optionSet({ 'x=y': { aliases: ['a b'], type: 'boolean' } });`,
+      errors: [declared('Option', 'x=y'), declared('Option alias', 'a b')],
+    },
+    {
       code: `${coreImport}\nnew Command('bad name', { description: 'D.' });`,
       errors: [{ ...portable('Command', 'bad name'), column: 13, line: 2 }],
     },
@@ -101,6 +120,22 @@ tester.run('name-shape', nameShape, {
     },
   ],
   valid: [
+    {
+      code: `import { optionSet } from '@loomcli/core';
+        optionSet({ json: { aliases: ['j'], type: 'boolean' }, 'dry-run': { type: 'boolean' } });`,
+    },
+    {
+      // A computed key, a spread, and a settings value that is no object literal are skipped.
+      code: `import { optionSet } from '@loomcli/core';
+        const key = '--bad';
+        const shared = { aliases: ['-v'] };
+        optionSet({ [key]: { type: 'boolean' }, ...shared, plain: shared, spread: { ...shared }, loose: { aliases: [key, ...shared.aliases] } });`,
+    },
+    {
+      // An optionSet that does not come from @loomcli/core is not read.
+      code: `import { optionSet } from 'elsewhere';
+        optionSet({ '--verbose': { aliases: ['-v'] } });`,
+    },
     {
       code: `${coreImport}
         const base = new Command('build', { description: 'D.' }).alias('b', 'make.it', 'a_b-c');
