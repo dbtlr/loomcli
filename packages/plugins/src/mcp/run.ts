@@ -2,6 +2,7 @@
  * What `install` and `uninstall` share: the run a child acts on, the checks made before any
  * program starts, the plugin's files read, and the agent output a failure repeats.
  */
+import { escapeControlCharacters, FatalError } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
@@ -9,7 +10,7 @@ import { readRegistration, removeStagingOfPluginFile } from '../installation/fil
 import type { RecordedRegistration } from '../installation/record.js';
 import { recordName } from './agents.js';
 import type { Agent } from './agents.js';
-import { refusals, shown } from './messages.js';
+import { recordUnreadable, registersNotOnWindows } from './messages.js';
 import type { Child, Names } from './messages.js';
 import { callAgent, registrationName } from './registration.js';
 import type { Answer } from './registration.js';
@@ -59,7 +60,7 @@ function namesOf(run: ChildRun): Names {
 /** Refuses a child on `win32`, before it reads anything. */
 function refuseWindows(run: ChildRun, child: Child): void {
   if (run.host.platform === 'win32') {
-    throw refusals.notOnWindows(run.name, child);
+    throw new FatalError(registersNotOnWindows(run.name, child));
   }
 }
 
@@ -72,7 +73,7 @@ function readRecords(run: ChildRun, { agents, child, record }: Reading): Recorde
   for (const agent of agents) {
     const read = readRegistration({ plugin: recordName(agent), record });
     if (read.status === 'refused') {
-      throw refusals.record(run.name, read.refused.path, child);
+      throw new FatalError(recordUnreadable(run.name, read.refused.path, child));
     }
     recorded.set(agent, read.registration);
   }
@@ -106,7 +107,7 @@ function outputLines(answer: Answer): readonly string[] {
 /** Prints the agent's captured output through `out.warn`, one line each. */
 async function warnOutput(run: ChildRun, answer: Answer): Promise<void> {
   for (const line of outputLines(answer)) {
-    await run.warn(shown(line));
+    await run.warn(escapeControlCharacters(line));
   }
 }
 

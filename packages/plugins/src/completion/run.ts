@@ -2,6 +2,7 @@
  * What `install`, `update`, and `uninstall` share: the run they act on, each shell's plugin's file
  * in the installation record, and the lines they write about startup lines.
  */
+import { FatalError } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
 import { digestOf, exists } from '../installation/disk.js';
@@ -15,7 +16,21 @@ import type {
   StartupLinesOutcome,
 } from '../installation/files.js';
 import { pluginFilePath } from '../installation/record.js';
-import { lines, refusals } from './messages.js';
+import {
+  addedLine,
+  alreadyLoads,
+  installsNotOnWindows,
+  lineNoLongerHeld,
+  recordUnreadable,
+  removedFile,
+  removedLine,
+  removeLineYourself,
+  scriptChanged,
+  scriptLeftInPlace,
+  scriptNotInstalled,
+  scriptsInTheWay,
+  updatedLine,
+} from './messages.js';
 import type { Shell } from './shell-names.js';
 
 /** What a child reads from its action: the application, the run, and the lanes it writes. */
@@ -47,7 +62,7 @@ interface ShellRecord {
 function refuseWindows(run: ChildRun, shell?: Shell): void {
   if (run.host.platform === 'win32') {
     const printer = shell === undefined || shell === 'pwsh' ? 'powershell' : shell;
-    throw refusals.notOnWindows(run.name, printer);
+    throw new FatalError(installsNotOnWindows(run.name, printer));
   }
 }
 
@@ -76,7 +91,7 @@ function readShell(
   const request = { plugin: recordName(shell), record };
   const read = readRecorded(request);
   if (read.status === 'refused') {
-    throw refusals.record(run.name, read.refused.path, verb);
+    throw new FatalError(recordUnreadable(run.name, read.refused.path, verb));
   }
   return {
     files: read.files,
@@ -141,13 +156,13 @@ async function refuseInTheWay(
   for (const { refusal } of refused) {
     await run.warn(
       refusal.reason === 'changed'
-        ? lines.changed(run.name, refusal.path)
-        : lines.notInstalled(run.name, refusal.path),
+        ? scriptChanged(run.name, refusal.path)
+        : scriptNotInstalled(run.name, refusal.path),
     );
   }
   const [first] = refused;
   if (first !== undefined) {
-    throw refusals.inTheWay(run.name, verb, first.shell);
+    throw new FatalError(scriptsInTheWay(run.name, verb, first.shell));
   }
 }
 
@@ -169,9 +184,9 @@ function outcomeFailure(
 ): Error {
   const [first] = refused;
   if (first?.reason === 'damaged' || first?.reason === 'unknown-format') {
-    return refusals.record(run.name, first.path, 'install');
+    return new FatalError(recordUnreadable(run.name, first.path, 'install'));
   }
-  return refusals.inTheWay(run.name, verb, shell);
+  return new FatalError(scriptsInTheWay(run.name, verb, shell));
 }
 
 /**
@@ -193,7 +208,7 @@ async function writeNotices(run: ChildRun, notices: readonly Notice[]): Promise<
 
 /** The notice of a recorded line the plugin released and the operator removes by hand. */
 function removeNotice(run: ChildRun, released: StartupLine): Notice {
-  return { line: released.line, sentence: lines.removeYourself(run.name, released.path) };
+  return { line: released.line, sentence: removeLineYourself(run.name, released.path) };
 }
 
 /**
@@ -207,19 +222,19 @@ async function reportLines(
   held: boolean,
 ): Promise<void> {
   for (const { path } of outcome?.removed ?? []) {
-    await run.info(lines.removedLine(path));
+    await run.info(removedLine(path));
   }
   for (const { path } of outcome?.noLongerHeld ?? []) {
-    await run.info(lines.noLongerHolds(run.name, path));
+    await run.info(lineNoLongerHeld(run.name, path));
   }
   for (const { path } of outcome?.added ?? []) {
-    await run.success(lines.added(path));
+    await run.success(addedLine(path));
   }
   for (const { path } of outcome?.replaced ?? []) {
-    await run.success(lines.updatedLine(path));
+    await run.success(updatedLine(path));
   }
   for (const { path } of held ? (outcome?.held ?? []) : []) {
-    await run.info(lines.alreadyLoads(path));
+    await run.info(alreadyLoads(path));
   }
 }
 
@@ -243,14 +258,14 @@ async function reportWritten(
   { held, loaded, notices, outcome }: Written,
 ): Promise<void> {
   for (const path of outcome.removed) {
-    await run.info(lines.removed(path));
+    await run.info(removedFile(path));
   }
   for (const path of outcome.kept) {
-    await run.warn(lines.leftInPlace(run.name, path));
+    await run.warn(scriptLeftInPlace(run.name, path));
   }
   await reportLines(run, outcome.lines, held);
   for (const path of loaded) {
-    await run.info(lines.alreadyLoads(path));
+    await run.info(alreadyLoads(path));
   }
   await writeNotices(run, notices);
 }

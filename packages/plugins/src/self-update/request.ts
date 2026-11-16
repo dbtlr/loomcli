@@ -1,3 +1,5 @@
+import { requestErrorText } from './messages.js';
+
 /** The most redirects one request follows; one more fails it. */
 const maxRedirects = 20;
 
@@ -39,7 +41,7 @@ class RequestError extends Error {
     url: string,
     options: { readonly status?: number | undefined; readonly cause?: unknown } = {},
   ) {
-    super(`The request for ${url} failed: ${kind}.`, { cause: options.cause });
+    super(requestErrorText(url, kind), { cause: options.cause });
     this.name = 'RequestError';
     this.kind = kind;
     this.url = url;

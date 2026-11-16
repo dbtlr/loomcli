@@ -8,7 +8,8 @@ import type { Host } from '@loomcli/core';
 import { releaseBinary } from './binary.js';
 import { writeCache } from './cache.js';
 import type { CacheEntry } from './cache.js';
-import { failures, refusals } from './messages.js';
+import { fatal } from './fatal.js';
+import { cacheNotAbsolute, cacheUnwritable, notReleaseBinary } from './messages.js';
 import { latestRelease } from './resolve.js';
 
 /** What the refresh reads: the graph's name, the run's host, and the run signal. */
@@ -23,7 +24,7 @@ function writeOrFail(name: string, directory: string, entry: CacheEntry): void {
   try {
     writeCache(directory, entry);
   } catch (error) {
-    throw failures.cache(name, directory, error);
+    throw fatal(cacheUnwritable(name, directory), error);
   }
 }
 
@@ -36,11 +37,11 @@ function writeOrFail(name: string, directory: string, entry: CacheEntry): void {
 async function refreshNotice({ name, host, signal }: RefreshRun): Promise<void> {
   const binary = releaseBinary(host);
   if (binary === undefined) {
-    throw refusals.notBuilt(name);
+    throw fatal(notReleaseBinary(name));
   }
   const directory = applicationDirectory('cache', name, host);
   if ('variable' in directory) {
-    throw refusals.cache(name, directory.variable);
+    throw fatal(cacheNotAbsolute(name, directory.variable));
   }
   const { channel, repository } = binary;
   const found = await latestRelease(repository, channel, signal);

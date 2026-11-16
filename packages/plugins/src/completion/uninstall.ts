@@ -5,6 +5,8 @@
  */
 import { dirname, sep } from 'node:path';
 
+import { FatalError } from '@loomcli/core';
+
 import { recordDirectory } from '../application-folders.js';
 import { realPath } from '../installation/disk.js';
 import {
@@ -14,7 +16,13 @@ import {
   uninstall,
 } from '../installation/files.js';
 import type { StartupLine, UninstallOutcome } from '../installation/files.js';
-import { lines, refusals } from './messages.js';
+import {
+  noCompletionToRemove,
+  recordUnreadable,
+  removedFile,
+  scriptGone,
+  scriptLeftInPlace,
+} from './messages.js';
 import {
   hasPluginFile,
   readShell,
@@ -54,11 +62,11 @@ async function reportScripts(
 ): Promise<void> {
   for (const { path } of recorded.files) {
     if (outcome.removed.includes(path)) {
-      await run.info(lines.removed(path));
+      await run.info(removedFile(path));
     } else if (outcome.kept.includes(path)) {
-      await run.warn(lines.leftInPlace(run.name, path));
+      await run.warn(scriptLeftInPlace(run.name, path));
     } else {
-      await run.info(lines.gone(path));
+      await run.info(scriptGone(path));
     }
   }
 }
@@ -74,7 +82,7 @@ async function removeShell(run: ChildRun, record: string, planned: Planned): Pro
   });
   if (outcome.status === 'refused') {
     const [refused] = outcome.refused;
-    throw refusals.record(run.name, refused?.path ?? record, 'uninstall');
+    throw new FatalError(recordUnreadable(run.name, refused?.path ?? record, 'uninstall'));
   }
   await reportScripts(run, recorded, outcome);
   await reportLines(run, outcome.lines, false);
@@ -161,7 +169,7 @@ async function uninstallShells(run: ChildRun, argument: Shell | undefined): Prom
     await removeShell(run, record, entry);
   }
   if (!selected.some(recordsAnything)) {
-    await run.success(lines.noneToRemove(run.name));
+    await run.success(noCompletionToRemove(run.name));
   }
 }
 

@@ -16,6 +16,7 @@ import type {
 import { singleLine } from '../lines.js';
 import { isRecord } from '../plain-data.js';
 import { excludedNames } from './exposure.js';
+import { argumentsNotObject, unknownTool, unlistedArgument } from './messages.js';
 import { progressRelay } from './progress.js';
 import { listedTool, propertiesOf, toolEntries } from './tools.js';
 import type { ListedTool, Property, ToolEntry } from './tools.js';
@@ -98,10 +99,7 @@ function callResult(
 function argumentsOf(entry: ToolEntry, call: ToolCall): Readonly<Record<string, unknown>> {
   const received = call.arguments === undefined ? {} : call.arguments;
   if (!isRecord(received)) {
-    throw new ProtocolError(
-      errorCodes.invalidParams,
-      `Tool "${entry.name}" arguments must be an object. Supply a JSON object of named inputs.`,
-    );
+    throw new ProtocolError(errorCodes.invalidParams, argumentsNotObject(entry.name));
   }
   return received;
 }
@@ -140,11 +138,7 @@ function unlistedKey(
     return undefined;
   }
   return {
-    content: [
-      text(
-        `Tool "${entry.name}" takes no argument "${unlisted}". Use a property its input schema lists.`,
-      ),
-    ],
+    content: [text(unlistedArgument(entry.name, unlisted))],
     isError: true,
   };
 }
@@ -191,10 +185,7 @@ async function serve(context: ServeContext): Promise<void> {
     callTool: (call) => {
       const entry = byName.get(call.name);
       if (entry === undefined) {
-        throw new ProtocolError(
-          errorCodes.invalidParams,
-          `Unknown tool "${call.name}". Call tools/list for the tool names.`,
-        );
+        throw new ProtocolError(errorCodes.invalidParams, unknownTool(call.name));
       }
       return callTool(context, entry, call);
     },

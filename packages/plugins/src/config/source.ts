@@ -16,6 +16,16 @@ import type {
 import { isRecord } from '../plain-data.js';
 import { configInput } from './extension.js';
 import type { UsableFile } from './lookup.js';
+import {
+  booleanIssue,
+  countIssue,
+  filledOptionLine,
+  ignoredOption,
+  stringListIssue,
+  stringOrNumberIssue,
+  tupleIssue,
+  tupleListIssue,
+} from './messages.js';
 import type { ConfigOptions } from './plugin.js';
 import { loadOnce } from './shared.js';
 import type { Shared } from './shared.js';
@@ -97,7 +107,7 @@ function shapeList(value: readonly unknown[]): Shaped {
   value.forEach((item, index) => {
     const text = textOf(item);
     if (text === undefined) {
-      issues.push({ message: 'Use a string or a number.', path: [index] });
+      issues.push({ message: stringOrNumberIssue, path: [index] });
     } else {
       items.push(text);
     }
@@ -131,13 +141,13 @@ function shapeArity(request: StringNode, value: unknown, arity: number): Shaped 
     return held !== undefined && held.length === tuples?.length
       ? { kind: 'value', value: held }
       : {
-          issues: [{ message: `Use an array of arrays, each of ${arity} strings or numbers.` }],
+          issues: [{ message: tupleListIssue(arity) }],
           kind: 'wrong',
         };
   }
   const tuple = shapeTuple(value, arity);
   return tuple === undefined
-    ? { issues: [{ message: `Use an array of ${arity} strings or numbers.` }], kind: 'wrong' }
+    ? { issues: [{ message: tupleIssue(arity) }], kind: 'wrong' }
     : { kind: 'value', value: tuple };
 }
 
@@ -167,11 +177,11 @@ function shapeStrings(
   if (request.multiple) {
     return Array.isArray(value)
       ? shapeList(value)
-      : { issues: [{ message: 'Use an array of strings or numbers.' }], kind: 'wrong' };
+      : { issues: [{ message: stringListIssue }], kind: 'wrong' };
   }
   const text = textOf(value);
   return text === undefined
-    ? { issues: [{ message: 'Use a string or a number.' }], kind: 'wrong' }
+    ? { issues: [{ message: stringOrNumberIssue }], kind: 'wrong' }
     : { kind: 'value', value: text };
 }
 
@@ -183,12 +193,12 @@ function shape(request: OptionNode, value: unknown): Shaped {
   if (request.type === 'boolean') {
     return typeof value === 'boolean'
       ? { kind: 'value', value }
-      : { issues: [{ message: 'Use true or false.' }], kind: 'wrong' };
+      : { issues: [{ message: booleanIssue }], kind: 'wrong' };
   }
   if (request.type === 'count') {
     const count = countOf(value);
     return count === undefined
-      ? { issues: [{ message: 'Use a whole number of 0 or more.' }], kind: 'wrong' }
+      ? { issues: [{ message: countIssue }], kind: 'wrong' }
       : { kind: 'value', value: count };
   }
   return shapeStrings(request, value);
@@ -207,11 +217,9 @@ function ignoredLines(
   issues: readonly Issue[],
   style: ContextualStyle,
 ): string[] {
-  return issues.map((issue) => {
-    const path = issuePath(issue);
-    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
-    return `Ignored option "${subject.spelling}"${position} from ${style.escape(subject.label)}: ${issue.message}`;
-  });
+  return issues.map((issue) =>
+    ignoredOption({ ...subject, path: issuePath(issue) }, issue.message, style),
+  );
 }
 
 /**
@@ -223,11 +231,9 @@ function strictLines(
   subject: { label: string; spelling: string },
   issues: readonly Issue[],
 ): string[] {
-  return issues.map((issue) => {
-    const path = issuePath(issue);
-    const position = path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
-    return `Option "${subject.spelling}" (from ${subject.label})${position}: ${issue.message}`;
-  });
+  return issues.map((issue) =>
+    filledOptionLine({ ...subject, path: issuePath(issue) }, issue.message),
+  );
 }
 
 /**

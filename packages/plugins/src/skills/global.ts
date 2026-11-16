@@ -5,6 +5,7 @@
  */
 import { join } from 'node:path';
 
+import { FatalError } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
@@ -20,7 +21,20 @@ import type { InstalledFolder, InstallOutcome, Refusal } from '../installation/f
 import { folderHoldsExactly } from '../installation/folders.js';
 import { loadSkills } from './load.js';
 import type { LoadedSkill } from './load.js';
-import { lines, refusals } from './messages.js';
+import {
+  folderGone,
+  folderNotInstalled,
+  folderUnchanged,
+  installedSkill,
+  noSkillsToRemove,
+  noSkillsToUpdate,
+  recordUnreadable,
+  removedFolder,
+  replacedFolder,
+  sameSkillsFolder,
+  skillsInTheWay,
+  updatedSkill,
+} from './messages.js';
 import type { Declared } from './settings.js';
 import { globalPlaces, selectedTargets } from './targets.js';
 import type { Place, Target } from './targets.js';
@@ -86,7 +100,7 @@ async function actingPlaces(run: ChildRun, places: readonly Place[]): Promise<re
   if (realPath(first.directory) !== realPath(second.directory)) {
     return places;
   }
-  await run.info(lines.sameFolder(run.name, second.directory, first.directory));
+  await run.info(sameSkillsFolder(run.name, second.directory, first.directory));
   return [first];
 }
 
@@ -107,7 +121,7 @@ function recordedBy(
     const request = { plugin: recordName(place.target), record: where.record };
     const read = readRecorded(request);
     if (read.status === 'refused') {
-      throw refusals.record(where.run.name, read.refused.path, verb);
+      throw new FatalError(recordUnreadable(where.run.name, read.refused.path, verb));
     }
     return {
       folders: (read.folders ?? []).map(({ path }) => path),
@@ -151,9 +165,9 @@ function isUnchanged({ folders, pending, wanted }: Wanted): boolean {
 function failureOf(run: ChildRun, verb: WritingVerb, refused: readonly Refusal[]): Error {
   const [first] = refused;
   if (first?.reason === 'damaged' || first?.reason === 'unknown-format') {
-    return refusals.record(run.name, first.path, 'install');
+    return new FatalError(recordUnreadable(run.name, first.path, 'install'));
   }
-  return refusals.inTheWay(run.name, verb);
+  return new FatalError(skillsInTheWay(run.name, verb));
 }
 
 /** What `install` and `update` read from the command line. */
@@ -178,17 +192,17 @@ async function reportInstall(
 ): Promise<void> {
   const { run } = writing;
   for (const folder of outcome.replaced ?? []) {
-    await run.info(lines.replaced(run.name, folder));
+    await run.info(replacedFolder(run.name, folder));
   }
   for (const { name, path } of entry.wanted) {
     await run.success(
       writing.verb === 'update'
-        ? lines.updated(name, entry.place.target, path)
-        : lines.installed(name, entry.place.target, path),
+        ? updatedSkill(name, entry.place.target, path)
+        : installedSkill(name, entry.place.target, path),
     );
   }
   for (const folder of outcome.removed) {
-    await run.info(lines.removed(folder));
+    await run.info(removedFolder(folder));
   }
 }
 
@@ -197,7 +211,7 @@ async function writeTarget(writing: Writing, entry: Wanted): Promise<void> {
   const { record, run } = writing;
   if (isUnchanged(entry)) {
     for (const { path } of entry.wanted) {
-      await run.info(lines.unchanged(path));
+      await run.info(folderUnchanged(path));
     }
     return;
   }
@@ -245,10 +259,10 @@ async function refuseUnrecorded(
 ): Promise<void> {
   const refused = request.force ? [] : unrecorded(chosen);
   for (const { path } of refused) {
-    await run.warn(lines.notInstalled(run.name, path));
+    await run.warn(folderNotInstalled(run.name, path));
   }
   if (refused.length > none) {
-    throw refusals.inTheWay(run.name, request.verb);
+    throw new FatalError(skillsInTheWay(run.name, request.verb));
   }
 }
 
@@ -261,7 +275,7 @@ async function installGlobal(run: ChildRun, request: InstallRequest): Promise<vo
   const { places, ...where } = prepare(run, request.agent);
   const chosen = await chosenTargets(where, request, places);
   if (chosen.length === none) {
-    await run.success(lines.noneToUpdate(run.name));
+    await run.success(noSkillsToUpdate(run.name));
     return;
   }
   await refuseUnrecorded(run, request, chosen);
@@ -277,10 +291,10 @@ async function removeTarget(where: Where, entry: Recorded): Promise<void> {
   const outcome = uninstall({ plugin: recordName(entry.place.target), record, signal: run.signal });
   if (outcome.status === 'refused') {
     const [refused] = outcome.refused;
-    throw refusals.record(run.name, refused?.path ?? record, 'uninstall');
+    throw new FatalError(recordUnreadable(run.name, refused?.path ?? record, 'uninstall'));
   }
   for (const folder of entry.folders) {
-    await run.info(outcome.removed.includes(folder) ? lines.removed(folder) : lines.gone(folder));
+    await run.info(outcome.removed.includes(folder) ? removedFolder(folder) : folderGone(folder));
   }
 }
 
@@ -292,7 +306,7 @@ async function uninstallGlobal(run: ChildRun, agent: Target | undefined): Promis
     ({ folders }) => folders.length > none,
   );
   if (recording.length === none) {
-    await run.success(lines.noneToRemove(run.name));
+    await run.success(noSkillsToRemove(run.name));
     return;
   }
   for (const entry of recording) {

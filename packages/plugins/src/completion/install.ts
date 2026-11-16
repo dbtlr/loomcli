@@ -5,10 +5,18 @@
  */
 import { normalize } from 'node:path';
 
+import { FatalError } from '@loomcli/core';
+
 import { recordDirectory, requiredHome } from '../application-folders.js';
 import { install } from '../installation/files.js';
 import type { InstallOutcome, StartupLine } from '../installation/files.js';
-import { lines, refusals } from './messages.js';
+import {
+  alreadyLoads,
+  installedScript,
+  openNewShell,
+  scriptUnchanged,
+  startupNotAFile,
+} from './messages.js';
 import { askProfile } from './profile.js';
 import {
   directoryMode,
@@ -124,7 +132,7 @@ function planLines(
   }
   const judgement = judgeStartup(startup.path, startup.line, run.host.uid);
   if (judgement.kind === 'not-file') {
-    throw refusals.notAFile(run.name, startup.path);
+    throw new FatalError(startupNotAFile(run.name, startup.path));
   }
   const others = recorded.filter(({ path }) => path !== startup.path);
   const before = otherLines(run, others);
@@ -174,9 +182,9 @@ interface Writing {
 
 /** States a script and line that are already in place, and the line the operator adds by hand. */
 async function reportSteady(run: ChildRun, writing: Writing): Promise<void> {
-  await run.info(lines.unchanged(writing.place.script));
+  await run.info(scriptUnchanged(writing.place.script));
   for (const path of [...writing.plan.lines.map((entry) => entry.path), ...writing.plan.loaded]) {
-    await run.info(lines.alreadyLoads(path));
+    await run.info(alreadyLoads(path));
   }
   await writeNotices(run, writing.plan.notices);
 }
@@ -236,11 +244,11 @@ async function reportInstalled(
 ): Promise<void> {
   const { place, plan } = writing;
   await (scriptChanged
-    ? run.success(lines.installed(place.shell, place.script))
-    : run.info(lines.unchanged(place.script)));
+    ? run.success(installedScript(place.shell, place.script))
+    : run.info(scriptUnchanged(place.script)));
   await reportWritten(run, { held: true, loaded: plan.loaded, notices: plan.notices, outcome });
   if (changedAnything(scriptChanged, outcome)) {
-    await run.info(lines.openShell);
+    await run.info(openNewShell);
   }
 }
 

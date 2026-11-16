@@ -5,9 +5,10 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import { FatalError } from '@loomcli/core';
 import type { ChildExit, Host, OnShutdown } from '@loomcli/core';
 
-import { failures } from './messages.js';
+import { managerExited, managerMissing } from './messages.js';
 
 /** What one call answered: the code it exited with and its standard output, or that it never started. */
 type Answer =
@@ -116,10 +117,13 @@ async function expectCall(
 ): Promise<{ readonly code: number; readonly stdout: string }> {
   const answer = await run(manager, call);
   if (answer.kind === 'missing') {
-    throw failures.missing(manager.name, call.program, answer.error);
+    throw new FatalError(
+      managerMissing(manager.name, call.program),
+      answer.error === undefined ? undefined : { cause: answer.error },
+    );
   }
   if (!accepted.includes(answer.code)) {
-    throw failures.exited(callText(call), answer.code, call.report);
+    throw new FatalError(managerExited(callText(call), answer.code, call.report));
   }
   return answer;
 }

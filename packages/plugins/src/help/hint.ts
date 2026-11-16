@@ -1,6 +1,8 @@
 import { UsageError } from '@loomcli/core';
 import type { FailureHook } from '@loomcli/core';
 
+import { usageHint } from './messages.js';
+
 /**
  * Points every usage error at the extended help page of the Command routing reached, which states
  * the usage and each input's accepted values. The command line is the application name and the
@@ -9,5 +11,5 @@ import type { FailureHook } from '@loomcli/core';
  */
 export const helpHint: FailureHook = (failure, { application, invokedBy, path }) =>
   failure instanceof UsageError && invokedBy === 'argv'
-    ? `Run "${[application, ...path, '--help'].join(' ')}" to see the usage.`
+    ? usageHint([application, ...path])
     : undefined;

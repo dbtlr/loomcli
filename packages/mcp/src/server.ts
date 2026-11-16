@@ -11,6 +11,18 @@ import {
   resultMessage,
 } from './json-rpc.js';
 import type { RequestId } from './json-rpc.js';
+import {
+  alreadyInitialized,
+  callWithoutTool,
+  handlerFailed,
+  idInUse,
+  initializeIncomplete,
+  methodNotServed,
+  methodNotServedInitialized,
+  metaKeyMissing,
+  unknownCursor,
+  versionNotSpoken,
+} from './messages.js';
 import type { CallToolResult, ProgressUpdate, ServerIdentity, Tool, ToolCall } from './protocol.js';
 import {
   handshakeRevisions,
@@ -82,7 +94,7 @@ const handshakeMethods = new Set(['ping', 'tools/call', 'tools/list']);
 function unsupportedVersion(requested: string) {
   return new ProtocolError(
     errorCodes.unsupportedProtocolVersion,
-    `Unsupported protocol version. This server speaks MCP ${protocolRevision} per request; send that version in every request's params._meta, or open the connection with initialize for MCP ${handshakeRevisions.join(' or ')}.`,
+    versionNotSpoken(protocolRevision, handshakeRevisions.join(' or ')),
     { supported: supportedRevisions, requested },
   );
 }
@@ -90,7 +102,7 @@ function unsupportedVersion(requested: string) {
 function missingMeta(key: string) {
   return new ProtocolError(
     errorCodes.invalidParams,
-    `The request's params._meta carries no "${key}". Send "${metaKeys.protocolVersion}" and "${metaKeys.clientCapabilities}" with every request, or open the connection with initialize.`,
+    metaKeyMissing(key, metaKeys.protocolVersion, metaKeys.clientCapabilities),
   );
 }
 
@@ -109,10 +121,7 @@ function negotiate(params: unknown): HandshakeRevision | ProtocolError {
   const requested = isRecord(params) ? params.protocolVersion : undefined;
   const capabilities = isRecord(params) ? params.capabilities : undefined;
   if (typeof requested !== 'string' || !isRecord(capabilities)) {
-    return new ProtocolError(
-      errorCodes.invalidParams,
-      'The initialize request carries no protocol version or no capabilities. Send params.protocolVersion as a string and params.capabilities as an object.',
-    );
+    return new ProtocolError(errorCodes.invalidParams, initializeIncomplete);
   }
   return handshakeRevisions.find((revision) => revision === requested) ?? latestHandshakeRevision;
 }
@@ -163,20 +172,14 @@ function requestFault(method: string, params: unknown, initialized: boolean) {
   if (eraOf(params) === 'per-request') {
     return methods.has(method)
       ? envelopeFault(params)
-      : new ProtocolError(
-          errorCodes.methodNotFound,
-          `The method is not one this server serves. This server speaks MCP ${protocolRevision}; call server/discover, tools/list, tools/call, or subscriptions/listen.`,
-        );
+      : new ProtocolError(errorCodes.methodNotFound, methodNotServed(protocolRevision));
   }
   if (!initialized && methods.has(method)) {
     return missingMeta(metaKeys.protocolVersion);
   }
   return handshakeMethods.has(method)
     ? undefined
-    : new ProtocolError(
-        errorCodes.methodNotFound,
-        'The method is not one this server serves on an initialized connection. Call ping, tools/list, or tools/call.',
-      );
+    : new ProtocolError(errorCodes.methodNotFound, methodNotServedInitialized);
 }
 
 /** Listens for the output's error event. A write the client cannot read has no one to report to. */
@@ -372,15 +375,8 @@ class Session {
    */
   #initialize(id: RequestId, params: unknown) {
     if (this.#handshake !== undefined) {
-      this.#send(
-        errorMessage(
-          id,
-          new ProtocolError(
-            errorCodes.invalidRequest,
-            `The connection is already initialized on MCP ${this.#handshake}. Send initialize once, as the first request.`,
-          ),
-        ),
-      );
+      const refusal = alreadyInitialized(this.#handshake);
+      this.#send(errorMessage(id, new ProtocolError(errorCodes.invalidRequest, refusal)));
       return;
     }
     const version = negotiate(params);
@@ -404,10 +400,7 @@ class Session {
    */
   #idInUse(id: RequestId): ProtocolError | undefined {
     return this.#inFlight.has(id) || this.#subscriptions.has(id)
-      ? new ProtocolError(
-          errorCodes.invalidRequest,
-          `The request id ${JSON.stringify(id)} is in use by a request still in flight. Send each request with an id no request in flight holds.`,
-        )
+      ? new ProtocolError(errorCodes.invalidRequest, idInUse(JSON.stringify(id)))
       : undefined;
   }
 
@@ -494,10 +487,7 @@ class Session {
     } catch (error) {
       return error instanceof ProtocolError
         ? error
-        : new ProtocolError(
-            errorCodes.internalError,
-            `The server failed while handling ${method}. The failure is a defect in the server; report it to the server's author.`,
-          );
+        : new ProtocolError(errorCodes.internalError, handlerFailed(method));
     }
   }
 
@@ -523,10 +513,7 @@ class Session {
   async #call(params: Record<string, unknown>, handling: Handling) {
     const { name } = params;
     if (typeof name !== 'string') {
-      throw new ProtocolError(
-        errorCodes.invalidParams,
-        "The tools/call request names no tool. Send the tool's name as params.name.",
-      );
+      throw new ProtocolError(errorCodes.invalidParams, callWithoutTool);
     }
     const { era, progress, signal } = handling;
     const call: ToolCall = { name, arguments: params.arguments, signal };
@@ -539,10 +526,7 @@ class Session {
   /** The tool listing: one page, which no client caches on the per-request revision. */
   async #list(params: Record<string, unknown>, era: Era) {
     if (params.cursor !== undefined) {
-      throw new ProtocolError(
-        errorCodes.invalidParams,
-        'The cursor is not one this server issued. Call tools/list without a cursor.',
-      );
+      throw new ProtocolError(errorCodes.invalidParams, unknownCursor);
     }
     const tools = await this.#options.listTools();
     return era === 'per-request' ? { tools, ttlMs: 0, cacheScope: 'private' } : { tools };

@@ -5,6 +5,7 @@ import type { EnvironmentContext } from '@loomcli/core';
 
 import { expandValue } from './expand.js';
 import type { Lookup } from './expand.js';
+import { fileUnreadable, lineMalformed } from './messages.js';
 import { parseDotenv } from './parse.js';
 import type { DotenvAssignment } from './parse.js';
 
@@ -36,9 +37,7 @@ async function fileText(
   } catch (error) {
     const code: unknown = error instanceof Error ? Reflect.get(error, 'code') : undefined;
     if (code !== 'ENOENT' && code !== 'ENOTDIR' && code !== 'EISDIR') {
-      await out.warn(
-        `Skipped ${file}: the file could not be read. Make it readable, or remove it.`,
-      );
+      await out.warn(fileUnreadable(file));
     }
     return undefined;
   }
@@ -74,9 +73,7 @@ async function readLayer(
   }
   const { assignments, malformed } = parseDotenv(text, imports);
   for (const { line, name } of malformed) {
-    await out.warn(
-      `Skipped ${name} on line ${String(line)} of ${file}: the line is not a valid assignment. Correct the line, or remove it.`,
-    );
+    await out.warn(lineMalformed(name, line, file));
   }
   return expandFile(assignments, outer);
 }

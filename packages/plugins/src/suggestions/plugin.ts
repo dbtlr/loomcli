@@ -1,10 +1,4 @@
-import {
-  escapeControlCharacters,
-  override,
-  plugin,
-  UnknownCommandError,
-  UnknownOptionError,
-} from '@loomcli/core';
+import { override, plugin, UnknownCommandError, UnknownOptionError } from '@loomcli/core';
 import type {
   CommandGraph,
   CommandNode,
@@ -19,6 +13,7 @@ import type {
 
 import { packageName } from '../constants.js';
 import { nearest } from './match.js';
+import { unknownWithSuggestion } from './messages.js';
 
 /**
  * The sentence the hook wrote, keyed by the failure instance core hands to both the hook and the
@@ -66,29 +61,15 @@ function optionNames(graph: CommandGraph, command: CommandNode): string[][] {
 
 /**
  * The sentence that names what the operator typed and offers the matches as its fix, or
- * `undefined` when nothing matched. Every quoted text is escaped, a declared option name included,
- * because the declared-name rule allows a control character.
+ * `undefined` when nothing matched.
  */
-function sentence(kind: string, typed: string, names: readonly string[]): string | undefined {
-  const quoted = names.map((name) => escapeControlCharacters(name));
-  const [first, second] = quoted;
-  if (first === undefined) {
-    return undefined;
-  }
-  const fix =
-    second === undefined
-      ? `Did you mean "${first}"?`
-      : `Did you mean one of these: ${quoted.join(', ')}?`;
-  return `Unknown ${kind} "${escapeControlCharacters(typed)}". ${fix}`;
-}
-
 function suggestion(
   failure: Readonly<LoomError>,
   { command, graph, invokedBy }: FailureHookContext,
 ): string | undefined {
   // A failure an action built may carry a replaced field, so the typed word is checked first.
   if (failure instanceof UnknownCommandError && typeof failure.token === 'string') {
-    return sentence(
+    return unknownWithSuggestion(
       'command',
       failure.token,
       nearest(failure.token, commandNames(command), 'command'),
@@ -100,7 +81,7 @@ function suggestion(
       invokedBy === 'name'
         ? nearest(failure.spelling, optionNames(graph, command), 'name')
         : nearest(failure.spelling, optionSpellings(graph, command), 'option');
-    return sentence('option', failure.spelling, matches);
+    return unknownWithSuggestion('option', failure.spelling, matches);
   }
   return undefined;
 }
