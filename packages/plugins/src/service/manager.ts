@@ -1,14 +1,17 @@
 /*
  * The service managers' programs, run as child programs through the run's `host.spawn`, with no
  * shell. A call runs until it exits, and the run signal ends it with SIGTERM; only a read that
- * status makes has a time limit. Each call's output is captured and never printed.
+ * status makes has a time limit. Each call's output is captured and never printed. Each call that
+ * started is named at -v once it ends, and each call that changes a unit and exits with an accepted
+ * code records `Program run.`, under ADR-0165.
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { FatalError } from '@loomcli/core';
-import type { ChildExit, Host, OnShutdown } from '@loomcli/core';
+import type { ChildExit, Host, Log, OnShutdown } from '@loomcli/core';
 
-import { managerExited, managerMissing } from './messages.js';
+import { programRun } from '../change-events.js';
+import { managerExited, managerMissing, ranCall } from './messages.js';
 
 /** What one call answered: the code it exited with and its standard output, or that it never started. */
 type Answer =
@@ -27,7 +30,8 @@ interface Call {
 
 /**
  * Where the calls run: the application's name, their environment, the run signal, the run's
- * shutdown registration, and the run's spawn.
+ * shutdown registration, and the run's spawn, with the action's `-v` lane, which names each call,
+ * and its log, which records each change.
  */
 interface Manager {
   readonly name: string;
@@ -35,6 +39,8 @@ interface Manager {
   readonly signal: AbortSignal;
   readonly onShutdown: OnShutdown;
   readonly spawn: Host['spawn'];
+  readonly debug: (message: string) => Promise<void>;
+  readonly log: Log;
 }
 
 /** The code of a call that succeeded. */
@@ -55,6 +61,13 @@ function answerOf(exit: ChildExit): Answer {
     : { error: exit.error, kind: 'missing' };
 }
 
+/** Names a call that started once it ends, whatever its code; one that could not start names none. */
+async function sayRan(manager: Manager, call: Call, started: boolean): Promise<void> {
+  if (started) {
+    await manager.debug(ranCall(call.program, call.args));
+  }
+}
+
 /**
  * Runs one call from the run's working directory, its standard output captured and its standard
  * error discarded, until it exits, or until the run signal ends it, whose reason it then throws.
@@ -68,6 +81,7 @@ async function run(manager: Manager, call: Call): Promise<Answer> {
     stderr: 'ignore',
   }).exited;
   signal.throwIfAborted();
+  await sayRan(manager, call, exit.kind === 'exited');
   return answerOf(exit);
 }
 
@@ -98,6 +112,7 @@ async function readCall(manager: Manager, call: Call): Promise<Read> {
     removeKill();
   });
   signal.throwIfAborted();
+  await sayRan(manager, call, ranOut || exit.kind === 'exited');
   return ranOut ? { kind: 'timedOut' } : answerOf(exit);
 }
 
@@ -107,10 +122,10 @@ function callText(call: Call): string {
 }
 
 /**
- * Runs one call and answers its code and output when it exits with one of the accepted codes. A
- * program that cannot be started, and any other code, fail with exit 1.
+ * Runs one call that reads and answers its code and output when it exits with one of the accepted
+ * codes. A program that cannot be started, and any other code, fail with exit 1.
  */
-async function expectCall(
+async function expectRead(
   manager: Manager,
   call: Call,
   accepted: readonly number[] = [succeeded],
@@ -128,6 +143,21 @@ async function expectCall(
   return answer;
 }
 
+/**
+ * Runs one call that changes a unit as `expectRead` does, and records `Program run.` with the code
+ * the plugin accepted. Its words are the manager's verbs, a unit name, a domain, a label, and a
+ * path, so the event carries no secret.
+ */
+async function expectChange(
+  manager: Manager,
+  call: Call,
+  accepted: readonly number[] = [succeeded],
+): Promise<{ readonly code: number; readonly stdout: string }> {
+  const answer = await expectRead(manager, call, accepted);
+  programRun(manager.log, { arguments: call.args, code: answer.code, program: call.program });
+  return answer;
+}
+
 /** Waits `milliseconds`, or until the run signal aborts, whose reason it then throws. */
 async function pause(milliseconds: number, signal: AbortSignal): Promise<void> {
   try {
@@ -141,4 +171,14 @@ async function pause(milliseconds: number, signal: AbortSignal): Promise<void> {
 }
 
 export type { Answer, Call, Manager, Read };
-export { callText, expectCall, pause, readCall, readLimit, readLimitSeconds, run, succeeded };
+export {
+  callText,
+  expectChange,
+  expectRead,
+  pause,
+  readCall,
+  readLimit,
+  readLimitSeconds,
+  run,
+  succeeded,
+};

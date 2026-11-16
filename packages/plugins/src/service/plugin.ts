@@ -19,6 +19,7 @@ type ChildContext = Pick<
 function childRun(label: string, context: ChildContext): ChildRun {
   const { graph, host, log, onShutdown, out, signal } = context;
   return {
+    debug: (message) => out.debug(message),
     description: graph.description,
     host,
     info: (message) => out.info(message),

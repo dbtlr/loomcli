@@ -7,7 +7,8 @@ import { spawnSync } from 'node:child_process';
  *
  * - Reach. An action, a middleware, a configuration source, and an `onFailure` hook each log one
  *   event, which the collector receives in call order: the middleware's, source's, and hook's name
- *   the fixture plugin, and the action's, a plugin Command's action included, read `null`. The
+ *   the fixture plugin, and the application's action reads `null`. A plugin Command's action, and
+ *   the action of a Command below it, names the plugin whose `commands` list contributed it. The
  *   negative type checks find no `log` in `onCommandAttach` or `onGraphBuilt`.
  * - The copy. Fields holding a `Date`, an `Error` with a `cause`, a `bigint`, an object that holds
  *   itself, `undefined`, a function, an array holding `undefined`, `NaN`, and a class instance each
@@ -121,11 +122,16 @@ test('an action, a middleware, a source, and an onFailure hook each log one even
   ]);
 });
 
-test("a plugin Command's action logs under no plugin", async () => {
+test("a plugin Command's action, and one below it, logs under the plugin that listed it", async () => {
   await expect(summary('reach', ['plug'])).resolves.toEqual([
     ['info', 'from source', 'fixture/reaching'],
     ['info', 'from middleware', 'fixture/reaching'],
-    ['info', 'from plugin command', null],
+    ['info', 'from plugin command', 'fixture/commands'],
+  ]);
+  await expect(summary('reach', ['plug', 'deep'])).resolves.toEqual([
+    ['info', 'from source', 'fixture/reaching'],
+    ['info', 'from middleware', 'fixture/reaching'],
+    ['info', 'from plugin child', 'fixture/commands'],
   ]);
 });
 

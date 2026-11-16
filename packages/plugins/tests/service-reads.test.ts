@@ -1,10 +1,11 @@
 // Acceptance plan: see packages/plugins/tests/service.test.ts.
 
-import type { Child, ChildExit, Host } from '@loomcli/core';
+import type { Child, ChildExit, Host, Log } from '@loomcli/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { readCall, readLimit } from '../src/service/manager.js';
 import type { Call, Manager } from '../src/service/manager.js';
+import { ranCall } from '../src/service/messages.js';
 
 const call: Call = { args: ['--user', 'show'], program: 'systemctl', report: 'systemctl status' };
 
@@ -20,9 +21,16 @@ function exitOf(code: number, stdout = ''): ChildExit {
   };
 }
 
-/** The signals a fake child received. */
+/** A log that records nothing, because a read raises no event. */
+const unused = (): void => {
+  throw new Error('A read records no event.');
+};
+const silentLog: Log = { debug: unused, error: unused, info: unused, trace: unused, warn: unused };
+
+/** The signals a fake child received, and the -v lines the reads wrote. */
 interface Fake {
   readonly kills: string[];
+  readonly said: string[];
   readonly manager: Manager;
   readonly shutdown: { handlers: (() => void)[]; removed: number };
 }
@@ -38,6 +46,7 @@ function fakeManager(options: {
   readonly answer?: ChildExit;
 }): Fake {
   const kills: string[] = [];
+  const said: string[] = [];
   const handlers: (() => void)[] = [];
   const shutdown = { handlers, removed: 0 };
   const spawn: Host['spawn'] = (_program, _args, spawnOptions) => {
@@ -62,7 +71,11 @@ function fakeManager(options: {
     return child;
   };
   const manager: Manager = {
+    debug: async (message) => {
+      said.push(message);
+    },
     env: {},
+    log: silentLog,
     name: 'notes',
     onShutdown: (handler) => {
       const handle = () => {
@@ -76,7 +89,7 @@ function fakeManager(options: {
     signal: options.signal,
     spawn,
   };
-  return { kills, manager, shutdown };
+  return { kills, manager, said, shutdown };
 }
 
 describe('a status read', () => {
@@ -92,13 +105,15 @@ describe('a status read', () => {
   });
 
   it('ends with SIGKILL at the limit and answers that it ran out, whatever the manager does with SIGTERM', async () => {
-    const { kills, manager } = fakeManager({ signal: new AbortController().signal });
+    const { kills, manager, said } = fakeManager({ signal: new AbortController().signal });
     const pending = readCall(manager, call);
     await vi.advanceTimersByTimeAsync(readLimit - 1);
     expect(kills).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     await expect(pending).resolves.toEqual({ kind: 'timedOut' });
     expect(kills).toEqual(['SIGKILL']);
+    // A read the limit ended started, so -v names it as it names one that exits.
+    expect(said).toEqual([ranCall('systemctl', ['--user', 'show'])]);
   });
 
   it('answers a read that exits 143 on its own as an exit, not as one that ran out', async () => {
@@ -178,10 +193,12 @@ describe('a status read', () => {
 
   it('answers a program that cannot start as missing', async () => {
     const error = new Error('spawn systemctl ENOENT');
-    const { manager } = fakeManager({
+    const { manager, said } = fakeManager({
       answer: { error, kind: 'unstarted' },
       signal: new AbortController().signal,
     });
     await expect(readCall(manager, call)).resolves.toEqual({ error, kind: 'missing' });
+    // A program that cannot start writes no -v line, because its failure or its note names it.
+    expect(said).toEqual([]);
   });
 });

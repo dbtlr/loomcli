@@ -1,16 +1,19 @@
 /*
  * What `install` and `uninstall` share: the run a child acts on, the checks made before any
- * program starts, the plugin's files read, and the agent output a failure repeats.
+ * program starts, the plugin's files read, each named at -vv, the agent output a failure repeats,
+ * and the `Program run.` event of an agent call that changed a registration.
  */
 import { escapeControlCharacters, FatalError } from '@loomcli/core';
 import type { Host, Log } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
+import { programRun } from '../change-events.js';
 import { readRegistration, removeStagingOfPluginFile } from '../installation/files.js';
+import { pluginFilePath } from '../installation/record.js';
 import type { RecordedRegistration } from '../installation/record.js';
 import { recordName } from './agents.js';
 import type { Agent } from './agents.js';
-import { recordUnreadable, registersNotOnWindows } from './messages.js';
+import { checkedRecord, recordUnreadable, registersNotOnWindows } from './messages.js';
 import type { Child, Names } from './messages.js';
 import { callAgent, registrationName } from './registration.js';
 import type { Answer } from './registration.js';
@@ -22,6 +25,7 @@ interface ChildRun {
   readonly signal: AbortSignal;
   /** The action's log, which records each file the child writes or removes. */
   readonly log: Log;
+  readonly trace: (message: string) => Promise<void>;
   readonly info: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
   readonly warn: (message: string) => Promise<void>;
@@ -66,18 +70,31 @@ function refuseWindows(run: ChildRun, child: Child): void {
   }
 }
 
+/** The registration one agent's plugin's file records, named at -vv once read, or its refusal. */
+async function readRecord(
+  run: ChildRun,
+  { child, record }: Reading,
+  agent: Agent,
+): Promise<RecordedRegistration | undefined> {
+  const plugin = recordName(agent);
+  const read = readRegistration({ plugin, record });
+  if (read.status === 'refused') {
+    throw new FatalError(recordUnreadable(run.name, read.refused.path, child));
+  }
+  await run.trace(checkedRecord(pluginFilePath(record, plugin)));
+  return read.registration;
+}
+
 /**
- * The registration each agent's plugin's file records, or the refusal of one it cannot read. Once
- * every file reads, the staging files a killed write left beside them are removed.
+ * The registration each agent's plugin's file records, or the refusal of one it cannot read. Each
+ * file read, there or not, is named at -vv; a refused one is named by its failure. Once every file
+ * reads, the staging files a killed write left beside them are removed.
  */
-function readRecords(run: ChildRun, { agents, child, record }: Reading): Recorded {
+async function readRecords(run: ChildRun, reading: Reading): Promise<Recorded> {
+  const { agents, record } = reading;
   const recorded = new Map<Agent, RecordedRegistration | undefined>();
   for (const agent of agents) {
-    const read = readRegistration({ plugin: recordName(agent), record });
-    if (read.status === 'refused') {
-      throw new FatalError(recordUnreadable(run.name, read.refused.path, child));
-    }
-    recorded.set(agent, read.registration);
+    recorded.set(agent, await readRecord(run, reading, agent));
   }
   for (const agent of agents) {
     removeStagingOfPluginFile({ log: run.log, plugin: recordName(agent), record });
@@ -94,6 +111,32 @@ function recordOf(run: ChildRun): string {
 async function starts(run: ChildRun, agent: Agent): Promise<boolean> {
   const answer = await callAgent(run, agent.name, agent.version);
   return answer.kind === 'exited';
+}
+
+/** One agent call that changes a registration: the agent, the words it passed, and its answer. */
+interface AgentChange {
+  readonly agent: Agent;
+  readonly words: readonly string[];
+  readonly answer: Answer;
+}
+
+/**
+ * Records `Program run.` for an agent's `mcp add` or `mcp remove` that exited 0. The words are the
+ * registration name and `host.program`, so the event carries no secret.
+ */
+function recordChange(run: ChildRun, { agent, answer, words }: AgentChange): void {
+  if (succeededAt(answer)) {
+    programRun(run.log, { arguments: words, code: succeeded, program: agent.name });
+  }
+}
+
+/**
+ * Runs an agent call that changes a registration, records it when it exits 0, and answers it.
+ */
+async function changeAgent(run: ChildRun, agent: Agent, words: readonly string[]): Promise<Answer> {
+  const answer = await callAgent(run, agent.name, words);
+  recordChange(run, { agent, answer, words });
+  return answer;
 }
 
 /** The lines of a call's captured standard error and then its standard output, none of them empty. */
@@ -117,6 +160,7 @@ export type { ChildRun, Recorded, Target };
 export {
   namesOf,
   none,
+  changeAgent,
   readRecords,
   recordOf,
   refuseWindows,

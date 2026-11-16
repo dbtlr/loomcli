@@ -207,7 +207,7 @@ The `Registered`, `Removed`, and nothing-to lines go through `out.success`; the 
 
 | Level | Line | When |
 | --- | --- | --- |
-| `-vv` | `Checked /home/me/.local/state/notes/installation/mcp.claude.json.` | Once for each selected agent's record file that `install` or `uninstall` reads, in table order, whether or not it exists. The path is shown as the record's other sentences show it. |
+| `-vv` | `Checked /home/me/.local/state/notes/installation/mcp.claude.json.` | Once for each selected agent's record file that `install` or `uninstall` reads, in table order, whether or not it exists. A file that cannot be read writes no line, because its failure names it. The path is shown as the record's other sentences show it. |
 
 The `Registered`, `Removed`, `Replaced`, and `Skipped` lines confirm every registration a child changes, so the plugin has no `-v` line. Serving and `config` write no line.
 

@@ -172,7 +172,7 @@ WantedBy=default.target
 
 | Level | Line | When |
 | --- | --- | --- |
-| `-v` | `Ran systemctl --user daemon-reload.` | Once for each service manager call that started, once it ends, whatever its code: every `systemctl --user` and `loginctl` call on systemd and every `launchctl` call on launchd, the reads `status` makes and each `print` of launchd's unload wait included, and a read the five-second limit ended. A program that cannot start writes no line, because its failure names it. |
+| `-v` | `Ran systemctl --user daemon-reload.` | Once for each service manager call that started, once it ends, whatever its code: every `systemctl --user` and `loginctl` call on systemd and every `launchctl` call on launchd, the reads `status` makes and each `print` of launchd's unload wait included, and a read the five-second limit ended. A program that cannot start writes no line, because its failure names it, and neither does a call the run's cancellation ended. |
 
 The words are the program and its arguments joined by single spaces, as a manager failure repeats a call: `Ran systemctl --user enable notes.service.`, `Ran launchctl bootstrap gui/501 /Users/me/Library/LaunchAgents/com.acme.notes.plist.`, and `Ran launchctl kickstart -k gui/501/com.acme.notes.` The `Wrote`, `is unchanged`, `Removed`, `Started`, `Stopped`, and `Restarted` lines already confirm the plugin's other acts, so they have no `-v` line.
 

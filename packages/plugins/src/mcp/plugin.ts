@@ -24,6 +24,7 @@ function childRun({ graph, host, log, out, signal }: ChildContext): ChildRun {
     name: graph.name,
     signal,
     success: (message) => out.success(message),
+    trace: (message) => out.trace(message),
     warn: (message) => out.warn(message),
   };
 }

@@ -16,10 +16,10 @@ import {
   staysRegistered,
   uninstallIncomplete,
 } from './messages.js';
-import { callAgent } from './registration.js';
 import {
   namesOf,
   none,
+  changeAgent,
   readRecords,
   recordOf,
   refuseWindows,
@@ -46,7 +46,7 @@ async function removeFrom({ agent, record, recorded, run }: RecordedTarget): Pro
     prior: recorded.command,
     record,
   });
-  const answer = await callAgent(run, agent.name, agent.remove(names.registration));
+  const answer = await changeAgent(run, agent, agent.remove(names.registration));
   deletePluginFile({ log: run.log, plugin, record });
   if (succeededAt(answer)) {
     await run.success(removedRegistration(names, agent.name));
@@ -57,12 +57,12 @@ async function removeFrom({ agent, record, recorded, run }: RecordedTarget): Pro
 }
 
 /** The agents whose plugin's file records a registration, in table order. */
-function recordedTargets(
+async function recordedTargets(
   run: ChildRun,
   record: string,
   selected: readonly Agent[],
-): readonly RecordedTarget[] {
-  const recorded = readRecords(run, { agents: selected, child: 'uninstall', record });
+): Promise<readonly RecordedTarget[]> {
+  const recorded = await readRecords(run, { agents: selected, child: 'uninstall', record });
   return selected.flatMap((agent) => {
     const registration = recorded.get(agent);
     return registration === undefined ? [] : [{ agent, record, recorded: registration, run }];
@@ -89,7 +89,7 @@ async function removeEach(
 /** `uninstall`: the checks, then each recorded agent removed in table order. */
 async function uninstallRegistrations(run: ChildRun, named: AgentName | undefined): Promise<void> {
   refuseWindows(run, 'uninstall');
-  const targets = recordedTargets(run, recordOf(run), selectedAgents(named));
+  const targets = await recordedTargets(run, recordOf(run), selectedAgents(named));
   if (targets.length === none) {
     await run.success(nothingToRemove(namesOf(run), named));
     return;

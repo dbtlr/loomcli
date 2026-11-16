@@ -97,7 +97,7 @@ The order of a replacing run at `-vv` on the stable channel is: each `Requested`
 
 | Level | Line | When |
 | --- | --- | --- |
-| `-v` | `Ran systemctl --user daemon-reload.` | Once for each service manager call that started, once it ends, whatever its code: every `systemctl --user` and `loginctl` call on systemd and every `launchctl` call on launchd, the reads `status` makes and each `print` of launchd's unload wait included, and a read the five-second limit ended. A program that cannot start writes no line, because its failure names it. |
+| `-v` | `Ran systemctl --user daemon-reload.` | Once for each service manager call that started, once it ends, whatever its code: every `systemctl --user` and `loginctl` call on systemd and every `launchctl` call on launchd, the reads `status` makes and each `print` of launchd's unload wait included, and a read the five-second limit ended. A program that cannot start writes no line, because its failure names it, and neither does a call the run's cancellation ended. |
 
 The words are the program and its arguments joined by single spaces, as the plugin's failure sentence repeats a call, so launchd reads `Ran launchctl bootstrap gui/501 /Users/me/Library/LaunchAgents/com.acme.notes.plist.` and `Ran launchctl kickstart -k gui/501/com.acme.notes.` The `Wrote`, `is unchanged`, `Removed`, `Started`, `Stopped`, and `Restarted` lines already confirm the plugin's other acts.
 
@@ -116,7 +116,7 @@ The words are the program and its arguments joined by single spaces, as the plug
 
 | Level | Line | When |
 | --- | --- | --- |
-| `-vv` | `Checked /home/me/.local/state/notes/installation/mcp.claude.json.` | Once for each selected agent's record file that `mcp install` or `mcp uninstall` reads, in table order, whether or not it exists. The path is shown as the record's other sentences show it. |
+| `-vv` | `Checked /home/me/.local/state/notes/installation/mcp.claude.json.` | Once for each selected agent's record file that `mcp install` or `mcp uninstall` reads, in table order, whether or not it exists. A file that cannot be read writes no line, because its failure names it. The path is shown as the record's other sentences show it. |
 
 Its `Registered`, `Removed`, `Replaced`, and `Skipped` lines confirm every registration it changes, so it has no `-v` line.
 
@@ -303,3 +303,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 
 - 2026-11-16: Proposed with the contract (LM-371). It supersedes ADR-0080's clause that the notice part reports none of its faults and ADR-0069's clause that every action's `log` names no plugin, narrows ADR-0090's and ADR-0102's `warn`-only environment hook, adds `out` to ADR-0069's destination for ADR-0070's lines, adds `name` and `out` to ADR-0073's `afterReplace` context, and skips ADR-0076's and ADR-0079's refresh when nothing is installed. ADR-0069, ADR-0070, ADR-0073, ADR-0076, ADR-0079, ADR-0080, ADR-0090, and ADR-0102 carry dated entries.
 - 2026-11-16: The contract review settles what the proposal left open (LM-371). The record supersedes in part ADR-0033's clause that a plugin Command's action receives what every action receives, for the `log` identity alone, and states that ADR-0069's rule that `out` and `log` route through neither the other still binds core. A dotenv file's count leaves out a name the environment defines. The configuration plugin writes `Found no configuration file.` whenever the `notice: true` notice does not print, and no `Looked for` line for a candidate after the file found in its directory. A `format` 1 cache for another repository or channel, or with a `latest` that is not a version, is read and refreshed, never ignored. The middleware's lines follow the order it acts in. On a channel other than stable the lookup's `SHA256SUMS` requests come before `Resolved`. Every plugin that writes through the installation record records `File removed.` for a leftover staging file. The MCP record path names its `installation` folder. No `log` context runs before the verbosity settles, so no line waits on it. `@loomcli/testing`'s `environmentContext` fills `out.debug` and `out.trace`. The glossary gains Update check, and ADR-0033 and ADR-0101 carry dated entries.
+- 2026-11-16: The implementation settles two edges the tables left open (LM-371): a service manager call the run's cancellation ended writes no `Ran` line, and an MCP record file that cannot be read writes no `Checked` line, because its failure names it.
