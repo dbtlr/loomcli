@@ -91,7 +91,7 @@ Reports a declaration that has no description. Agents, MCP tools, help, and the 
 - an `option(...)`, `argument(...)`, or `globalOption(...)` call whose configuration leaves out `description`;
 - a `stdin(...)` call whose configuration leaves out `description`;
 - an option that a `plugin(...)` definition declares as an object literal under `options`, so a plugin is linted where its source is;
-- each entry of an `optionSet({...})` record from `@loomcli/core` whose settings are an object literal that leaves out `description`, under any import of `optionSet`, so an option keeps the check when it moves into a set. A computed key, a spread, and settings that are no object literal are skipped.
+- each entry of an `optionSet({...})` record from `@loomcli/core` whose settings are an object literal that leaves out `description`, under any import of `optionSet`, so an option keeps the check when it moves into a set. A computed key that is not a literal, a spread, and settings that are no object literal are skipped.
 
 ```ts
 import { Application } from '@loomcli/core';

@@ -109,10 +109,7 @@ function reportOptionSetEntries(
   report: Report,
 ): void {
   for (const member of optionSetEntries(sourceCode, node)) {
-    if (
-      unwrapped(member.value).type === 'ObjectExpression' &&
-      leavesOutDescription(unwrapped(member.value))
-    ) {
+    if (leavesOutDescription(unwrapped(member.value))) {
       report(member.key, subjectOf('Option set option', memberKey(member)));
     }
   }
