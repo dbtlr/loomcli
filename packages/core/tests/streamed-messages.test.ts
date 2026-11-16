@@ -489,6 +489,47 @@ test('while the terminal is lent, a finished row is written as it is and no unfi
   await expect(shown(mock, 40)).resolves.toEqual(['first', 'sec', 'child', 'during', '', 'second']);
 });
 
+test('a suspend erases the unfinished row, and the resume draws it again', async () => {
+  const mock = terminal(40);
+  const screens: (readonly string[])[] = [];
+  async function* text(): AsyncGenerator<string> {
+    yield 'first\nsec';
+    mock.signals.raise('SIGTSTP');
+    screens.push(await shown(mock, 40));
+    mock.signals.raise('SIGCONT');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    screens.push(await shown(mock, 40));
+    yield 'ond';
+  }
+  const app = marked('suspend').action(async ({ out }) => {
+    await out.print(text());
+  });
+  await app.run({ process: mock });
+  expect(screens).toEqual([['first'], ['first', 'sec']]);
+  await expect(shown(mock, 40)).resolves.toEqual(['first', 'second']);
+});
+
+test('at the exit event on a terminal, the unfinished row is written as a finished row', async () => {
+  const mock = terminal(40);
+  const on = vi.spyOn(mock.signals, 'on');
+  async function* text(): AsyncGenerator<string> {
+    yield 'first\nsec';
+    for (const [event, listener] of on.mock.calls) {
+      if (event === 'exit') {
+        listener(1);
+      }
+    }
+    yield 'ond';
+  }
+  const app = marked('exit').action(async ({ out }) => {
+    const region = out.region();
+    await region.draw(null, { render: () => 'Working' });
+    await out.print(text());
+  });
+  await app.run({ process: mock });
+  await expect(shown(mock, 40)).resolves.toEqual(['first', 'sec', 'Working']);
+});
+
 test('with stdout alone on the terminal, a streamed print grows its unfinished row there', async () => {
   const mock = terminal(40, ['stdout']);
   const screens: (readonly string[])[] = [];
