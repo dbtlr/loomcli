@@ -1,9 +1,9 @@
 /*
  * The reader every package's voice test shares, under ADR-0164. It reads a package's message
  * modules, the files named `messages.ts` under its `src`, with a small scanner of its own, and
- * scans the package's other source files for the gathering check. It builds no type-checked
- * program: a message module holds functions, constants, imports, and types, and the scanner reads
- * its comments, string literals, and template literals exactly.
+ * scans the package's other source files for the gathering and outside-text checks. It builds no
+ * type-checked program: a message module holds functions, constants, imports, and types, and the
+ * scanner reads its comments, string literals, and template literals exactly.
  */
 import { readdir, readFile } from 'node:fs/promises';
 
@@ -180,7 +180,7 @@ const patternKeywords = new Set([
 /** The escaping helpers core exports, which rule 5 accepts around any value. */
 const escapingHelpers = new Set(['escapeControlCharacters', 'quoted']);
 
-/** The members rule 6 bars a message module from reading. */
+/** The members rule 6 bars a source file from reading unless a pin covers the read. */
 const outsideMembers = new Set(['cause', 'message', 'stack']);
 
 /** The out calls the gathering check reads. */
@@ -775,7 +775,11 @@ function escapingSites(tokens: readonly Token[]): string[] {
   return sites;
 }
 
-/** The outside-text sites among the tokens: each read of a member rule 6 bars. */
+/**
+ * The outside-text sites among the tokens: each read of a member rule 6 bars, by a dot, an optional
+ * chain, or a bracket with a string literal. A plain assignment to such a member, such as
+ * `this.cause = cause`, writes it and reads nothing, so it is no site.
+ */
 function outsideSites(tokens: readonly Token[]): string[] {
   const sites: string[] = [];
   tokens.forEach((token, index) => {
@@ -785,16 +789,21 @@ function outsideSites(tokens: readonly Token[]): string[] {
     if (
       (is(token, '.') || is(token, '?.')) &&
       named(member) &&
-      outsideMembers.has(member?.text ?? '')
+      outsideMembers.has(member?.text ?? '') &&
+      !is(tokens[index + 2], '=')
     ) {
       sites.push(`${receiver}${token.text}${member?.text ?? ''}`);
     }
     const closer = tokens[index + 2];
+    // A bracket after a value or an optional chain reads a member; elsewhere it opens an array.
+    const afterValue = !opensPattern(previous) || is(previous, '?.');
     if (
       is(token, '[') &&
+      afterValue &&
       member?.kind === 'string' &&
       outsideMembers.has(member.value) &&
-      is(closer, ']')
+      is(closer, ']') &&
+      !is(tokens[index + 3], '=')
     ) {
       sites.push(`${receiver}${token.text}${member.text}]`);
     }
@@ -992,8 +1001,9 @@ function isMessageModule(path: string): boolean {
 
 /**
  * Every site the four checks report over one package's sources, by path under its `src`: the
- * banned words, escaping, and outside text over its message modules, and gathering over every other
- * file. A message module that holds a `/` outside a comment or a literal throws.
+ * banned words and escaping over its message modules, gathering over every other file, and outside
+ * text over both, so it reaches the code that calls a message function as well as the function. A
+ * message module that holds a `/` outside a comment or a literal throws.
  *
  * @example
  * ```ts
@@ -1016,6 +1026,7 @@ function voiceSites(files: ReadonlyMap<string, string>, options: VoiceOptions): 
     } else {
       const tokens = new Scanner(source, 'source', file).tokens(false);
       add('gathering', file, gatheringSites(tokens, options.sinks ?? {}));
+      add('outside-text', file, outsideSites(tokens));
     }
   }
   return sites;

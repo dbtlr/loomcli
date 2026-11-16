@@ -5,7 +5,8 @@
  *
  * - banned words, a word the voice page's table bars, in any literal of a message module;
  * - escaping, an interpolation that is not an escaping helper, a message function, or a number;
- * - outside text, a message module that reads an error's `message`, `stack`, or `cause`;
+ * - outside text, a read of an error's `message`, `stack`, or `cause` in any source file, a message
+ *   module or the code that calls one;
  * - gathering, a literal sentence handed to a failure constructor or an out call outside one.
  *
  * A known exception is pinned per check and per file by its source text and its count of sites, and
@@ -38,7 +39,16 @@ function moduleSites(check: string, source: string): string[] {
 
 /** The text of every gathering site over a single source file that is not a message module. */
 function gathered(source: string, sinks?: VoiceSinks): string[] {
-  return sitesOf({ 'inputs/validation.ts': source }, sinks).map((site) => site.text);
+  return sitesOf({ 'inputs/validation.ts': source }, sinks)
+    .filter((site) => site.check === 'gathering')
+    .map((site) => site.text);
+}
+
+/** The text of every outside-text site over a single source file that is not a message module. */
+function readOutside(source: string): string[] {
+  return sitesOf({ 'inputs/validation.ts': source })
+    .filter((site) => site.check === 'outside-text')
+    .map((site) => site.text);
 }
 
 test('the banned words are the first column of the table under the banned-words heading', () => {
@@ -216,6 +226,72 @@ test("a message module that reads an error's message, stack, or cause is reporte
     'error?.stack',
     'error["cause"]',
   ]);
+});
+
+test("a caller outside a message module that passes an error's text into a message function is reported", () => {
+  const source = [
+    "import { cannotRead } from './messages.js';",
+    'export function read(path: string, error: Error) {',
+    '  throw new InputError(cannotRead(path, error.message), [], { cause: error });',
+    '}',
+    'export function reason(error?: Error): string {',
+    "  return `${error?.stack ?? ''}${String(error?.['cause'])}`;",
+    '}',
+  ].join('\n');
+  expect(readOutside(source)).toEqual(['error.message', 'error?.stack', "['cause']"]);
+});
+
+test('a bracket reads a member only after a value, so an array of the names reads nothing', () => {
+  const source = [
+    "const keys = ['message'];",
+    "const named = pick(shape, ['cause'], ['stack']);",
+    "export const read = (error: Error) => [error['message'], call()['stack'], keys[0]];",
+  ].join('\n');
+  expect(readOutside(source)).toEqual(["error['message']", "['stack']"]);
+});
+
+test("a caller's read of an error's text passes once a pin names its text, its file, and its count", () => {
+  const sites = sitesOf({
+    'inputs/validation.ts': [
+      'export function relay(error: Error, other: Error) {',
+      '  return [relayed(error.message), relayed(other.message), relayed(error.message)];',
+      '}',
+    ].join('\n'),
+  });
+  const reason = "The program's own report, which the sentence relays by design.";
+  expect(unpinnedSites(sites, {})).toEqual([
+    'outside-text inputs/validation.ts: error.message has 2 sites and no pin.',
+    'outside-text inputs/validation.ts: other.message has 1 site and no pin.',
+  ]);
+  expect(
+    unpinnedSites(sites, {
+      'outside-text': {
+        'inputs/validation.ts': {
+          'error.message': { reason, sites: 2 },
+          'other.message': { reason, sites: 1 },
+        },
+      },
+    }),
+  ).toEqual([]);
+});
+
+test('an assignment to a member named message, stack, or cause writes it, so no check reports it', () => {
+  const source = [
+    'export class ReadError extends Error {',
+    '  constructor(cause: unknown) {',
+    '    super();',
+    '    this.cause = cause;',
+    "    this['stack'] = undefined;",
+    '  }',
+    '}',
+    "export const same = (failure: Error) => failure.message === 'A comparison reads it.';",
+  ].join('\n');
+  expect(sitesOf({ 'inputs/validation.ts': source })).toEqual([
+    { check: 'outside-text', file: 'inputs/validation.ts', text: 'failure.message' },
+  ]);
+  expect(
+    sitesOf({ 'inputs/messages.ts': 'export const reset = (e: Error) => { e.cause = 1; };' }),
+  ).toEqual([]);
 });
 
 test('a division or a pattern in a message module is refused', () => {
