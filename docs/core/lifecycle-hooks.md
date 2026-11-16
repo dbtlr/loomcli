@@ -26,6 +26,10 @@ interface AttachedCommand {
   readonly extensions: Readonly<Record<string, unknown>>; // as inspect() would publish it at this hook
   argument(name: string, config: ArgumentConfig): AttachedCommand;
   option(name: string, config: OptionConfig): AttachedCommand;
+  exclusive(...names: [string, string, ...string[]]): AttachedCommand; // the option-group calls, over local options
+  oneRequired(...names: [string, string, ...string[]]): AttachedCommand;
+  requiredTogether(...names: [string, string, ...string[]]): AttachedCommand;
+  requires(option: string, ...needed: [string, ...string[]]): AttachedCommand;
   views<const R extends Readonly<Record<string, ResultView>>>(replacements: R, options?: { default?: keyof R & string }): AttachedCommand;
   extend(...values: readonly ExtensionValue<'command'>[]): AttachedCommand;
 }
