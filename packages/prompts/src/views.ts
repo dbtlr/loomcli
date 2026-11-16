@@ -936,7 +936,8 @@ const questionLine = view<QuestionLine>('@loomcli/prompts/question-line', {
 });
 
 /**
- * What one progress line's view draws: its state, its counts, its spinner frame, and its time.
+ * What one progress line's view draws: its state, its counts, its spinner frame, its time, and
+ * its rate and time left.
  *
  * @public
  */
@@ -955,6 +956,27 @@ interface ProgressLine {
   readonly bar: { readonly complete: string; readonly incomplete: string };
   /** Milliseconds since `progress()` opened the line. */
   readonly elapsed: number;
+  /**
+   * Whether the default view draws the rate and time left: the line's `estimate` setting. A line
+   * always supplies it; absent, false.
+   */
+  readonly estimate?: boolean | undefined;
+  /**
+   * Units done per second over the line's window: from the latest report at least 10 seconds older
+   * than the newest to the newest, so reports a minute apart are measured over that minute. While
+   * no report is that old, it is measured from the window's first report: the line's first, or the
+   * one whose count went backward and restarted the window. It is `undefined` until there is
+   * enough progress. A line always supplies it, whether or not `estimate` is set.
+   */
+  readonly rate?: number | undefined;
+  /**
+   * Milliseconds of work left at `rate`, counting down from the newest report and held at 0, or
+   * `undefined` while `rate` is `undefined` or 0, without a total, and once `completed` reaches
+   * `total`. A line always supplies it, whether or not `estimate` is set.
+   */
+  readonly remaining?: number | undefined;
+  /** What the line counts, as the author wrote it, or `undefined` without one. */
+  readonly unit?: string | undefined;
 }
 
 /** The cells of a progress bar, which the default view never widens. */
@@ -977,6 +999,53 @@ function counts(completed: number, total: number): string {
     return `${String(completed)}/${String(total)}`;
   }
   return total === 0 ? '100%' : `${String(Math.floor((100 * completed) / total))}%`;
+}
+
+/** A figure computed in floating point, rounded to 12 significant digits so its digits read true. */
+function steady(value: number): number {
+  return Number(value.toPrecision(12));
+}
+
+/** A rate per second in the largest unit of time it reaches 1 in: per second, minute, or hour. */
+function perTime(rate: number): readonly [amount: number, suffix: string] {
+  if (rate >= 1) {
+    return [rate, '/s'];
+  }
+  const perMinute = (rate * MINUTE) / SECOND;
+  return perMinute >= 1 ? [perMinute, '/min'] : [(rate * HOUR) / SECOND, '/h'];
+}
+
+/**
+ * A rate in the largest unit of time it reaches 1 in, `/s`, `/min`, or `/h`, rounded down to a whole
+ * number from 10 and to one decimal below: `3.3/s`, `15 files/min`, and `0/s` for none.
+ */
+function rateText(rate: number, unit: string | undefined): string {
+  const named = unit === undefined ? '' : ` ${unit}`;
+  if (rate === 0) {
+    return `0${named}/s`;
+  }
+  const [amount, suffix] = perTime(rate);
+  const shown =
+    amount >= 10
+      ? String(Math.floor(steady(amount)))
+      : (Math.floor(steady(amount * 10)) / 10).toFixed(1);
+  return `${shown}${named}${suffix}`;
+}
+
+/**
+ * A time left in whole seconds rounded up, at least 1, in one unit of time: `about 24s left`,
+ * `about 3m left`, and `about 2h left`, minutes and hours rounded half up.
+ */
+function timeLeft(remaining: number): string {
+  const seconds = Math.max(1, Math.ceil(steady(remaining / SECOND)));
+  const minutes = Math.floor(seconds / 60 + 0.5);
+  let span = `${String(Math.floor(seconds / 3600 + 0.5))}h`;
+  if (seconds < 60) {
+    span = `${String(seconds)}s`;
+  } else if (minutes < 60) {
+    span = `${String(minutes)}m`;
+  }
+  return `about ${span} left`;
 }
 
 /** Elapsed time, rounded down: `2.4s` under a minute, `1m 05s` under an hour, and `1h 02m` from one. */
@@ -1022,7 +1091,7 @@ function elapsedTime(elapsed: number): string {
  * @public
  */
 const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
-  render: (data, { style }) => {
+  render: (data, { columns, style, width }) => {
     const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;
     if (data.state === 'cancelled') {
       return style.dim(`${glyph.squareCenter} ${data.label} (cancelled)`);
@@ -1050,7 +1119,22 @@ const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
     } else if (data.completed !== undefined) {
       measure = ` ${String(data.completed)}`;
     }
-    return `${style.highlight(textStyle.escape(data.frame))} ${data.label}${measure} ${time}`;
+    const running = `${style.highlight(textStyle.escape(data.frame))} ${data.label}${measure} ${time}`;
+    if (data.estimate !== true || data.rate === undefined) {
+      return running;
+    }
+    const pace = `${style.dim('·')} ${style.dim(rateText(data.rate, data.unit))}`;
+    const left =
+      data.remaining === undefined
+        ? []
+        : [`${style.dim('·')} ${style.dim(timeLeft(data.remaining))}`];
+    // On a narrow row the rate gives way first, then the time left, so neither makes the line wrap.
+    const fits = (text: string) => width(text) <= Math.max(1, columns ?? 80);
+    return (
+      [[pace, ...left], left]
+        .map((parts) => [running, ...parts].join(' '))
+        .find((text) => fits(text)) ?? running
+    );
   },
 });
 

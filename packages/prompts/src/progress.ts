@@ -9,6 +9,7 @@ import type {
 } from '@loomcli/core';
 
 import { controls } from './controls.js';
+import { estimate } from './estimate.js';
 import { progressLine } from './views.js';
 import type { ProgressLine } from './views.js';
 
@@ -25,8 +26,8 @@ interface Spinner {
 }
 
 /**
- * The settings of one progress line: its label, an optional total that makes it a bar, and an
- * optional spinner of its own.
+ * The settings of one progress line: its label, an optional total that makes it a bar, an
+ * optional spinner of its own, and whether it shows its rate and time left.
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#progress
  * @public
@@ -38,6 +39,13 @@ interface ProgressSettings {
   readonly total?: number;
   /** This line's own spinner, over the application's style. */
   readonly spinner?: Spinner;
+  /**
+   * Whether the running line shows its rate and time left once there is enough progress, as in
+   * `40/120 · 12.0s · 3.3/s · about 24s left`. Absent, false.
+   */
+  readonly estimate?: boolean;
+  /** What the line counts, as the rate names it: `files` reads `3.3 files/s`. A marked string. */
+  readonly unit?: string;
 }
 
 /**
@@ -260,7 +268,9 @@ interface LineState {
  * last frame, so it leaves nothing. A line whose region closed as it opened draws nothing, writes
  * nothing, and runs no timer. Off a terminal it writes one start line through `info` and one
  * end line through `success`, `error`, `info` for a skipped line, or `warn`, and a cleared line
- * writes no end line. It reports at its start, at each update, and at its close.
+ * writes no end line. It reports at its start, at each update, and at its close. With `estimate`,
+ * a running line also draws its rate and time left, computed from the counts its updates report
+ * and the clock it reads for the elapsed time.
  *
  * @example
  * ```ts
@@ -287,6 +297,8 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
   const bar = style?.bar ?? defaultBar;
   const region: Region = context.out.region();
   const started = Date.now();
+  // The rate and time left read the reports and the clock the elapsed time reads, and no timer.
+  const pace = estimate();
   const line: LineState = {
     completed: total === undefined ? undefined : 0,
     label,
@@ -294,15 +306,22 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     tick: 0,
     total,
   };
-  const frame = (): ProgressLine => ({
-    bar,
-    completed: line.completed,
-    elapsed: Date.now() - started,
-    frame: spinner.frames[line.tick % spinner.frames.length] ?? '',
-    label: line.label,
-    state: line.state,
-    total: line.total,
-  });
+  const frame = (): ProgressLine => {
+    const now = Date.now();
+    return {
+      bar,
+      completed: line.completed,
+      elapsed: now - started,
+      estimate: settings.estimate ?? false,
+      frame: spinner.frames[line.tick % spinner.frames.length] ?? '',
+      label: line.label,
+      rate: pace.rate(),
+      remaining: pace.remaining(line.total, now),
+      state: line.state,
+      total: line.total,
+      unit: settings.unit,
+    };
+  };
   region.report(total === undefined ? { label } : { completed: 0, label, total });
   let timer: ReturnType<typeof setInterval> | undefined = undefined;
   if (region.closedBy !== undefined) {
@@ -387,6 +406,9 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
         return;
       }
       line.completed = completed ?? line.completed;
+      if (completed !== undefined) {
+        pace.report(Date.now(), completed);
+      }
       line.total = nextTotal ?? line.total;
       line.label = nextLabel ?? line.label;
       region.report({

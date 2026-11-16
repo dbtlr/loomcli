@@ -841,6 +841,8 @@ interface ProgressSettings {
   readonly label: string;
   readonly total?: number; // a bar with counts; without it, a spinner
   readonly spinner?: Spinner; // this line's own spinner, over the application's style
+  readonly estimate?: boolean; // the running line shows its rate and time left; absent, false
+  readonly unit?: string; // what the line counts, as the rate names it: 3.3 files/s
 }
 interface ProgressUpdate {
   readonly completed?: number;
@@ -966,17 +968,79 @@ A progress line shows an operator that work is under way: a spinner while the wo
 
 - **A line in a region.** `progress()` opens one region through `context.out.region()`, reports `{ label, total, completed: 0 }` with a total and `{ label }` without one, draws its first frame, and returns the line's handle at once. Several lines stack in the order they started, and a question asked meanwhile draws below them. An action, a middleware, and a configuration source each call it with their own context.
 - **Updates.** `update({ completed?, total?, label? })` changes what the line shows, reports the change, and draws the next frame, and an omitted field keeps its value. A `total` turns a spinner into a bar. It returns nothing, because the frame queues in call order. After the line has closed it checks its settings, as every call does, and then does nothing.
-- **The frame timer.** While the line is live, the library redraws it every spinner `interval` from its own `setInterval`, advancing the spinner frame and the elapsed time. The timer is unref'd, so it never keeps a process alive, and the library clears it when the region's signal aborts, whatever closed the region. It cancels and limits nothing. A line that is not live runs no timer.
+- **The frame timer.** While the line is live, the library redraws it every spinner `interval` from its own `setInterval`, advancing the spinner frame and the elapsed time, and counting down the time left of a line that shows one. The timer is unref'd, so it never keeps a process alive, and the library clears it when the region's signal aborts, whatever closed the region. It cancels and limits nothing. A line that is not live runs no timer.
 - **Ending.** `end(message?)` draws the line's success line, with the message or else the label, and closes its region with `end('ended', message)`. `fail(message?)` draws its failure line and closes the region with `end('failed', message)`, so its last progress event reads `failed`. `skip(message?)` draws its skipped line, dim, and closes the region with `end('skipped', message)`, for work that had nothing to do. `warn(message?)` draws its warned line and closes the region with `end('warned', message)`, for work that finished with a problem the operator should see. Each way the end event's label is the message, so an `onProgress` observer and an MCP client read the same end text the terminal shows, and a line ended with no message keeps its last label. Each resolves once its line is written. [ADR-0170](../decisions/0170-a-progress-line-may-end-skipped-or-warned-or-be-cleared-and-a-regions-end-event-reads-skipped-and-warned.md) records the skipped, warned, and cleared ends.
 - **Clearing.** `clear()` removes the line and leaves nothing, with one exception: under [Lending the terminal](../core/output.md#lending-the-terminal), a frame drawn before the terminal was lent stays where it was drawn, so a line cleared during or after a lend leaves that frame. It draws an empty last frame, which does not pass through the [progress view](#progress-view), and closes its region with `end('ended')`, so the rows above the line stay as they were, the lines below close the gap, and no blank row is left. Its end event reads `ended` with the last label. Only the author's own `clear()` removes a line: a line that fails or is cancelled keeps its text, and nothing clears a line on its own.
 - **After an end.** Once the line has ended, failed, been cancelled, been skipped, been warned, or been cleared, `end`, `fail`, `skip`, `warn`, and `clear` do nothing and resolve.
 - **Tracking work.** `track(work, { done?, failed? })` awaits `work`, and ends the line only as a success or a failure. When it resolves, the line ends with `done`, and `track` returns the value. When it rejects, the line fails with `failed`, and `track` rejects with the same rejection, unchanged. `done` is a string or a function of the resolved value, and `failed` a string or a function of the rejection, so either message can say what happened, and each defaults to the label. When the line has already closed, `track` only returns the value or rethrows.
 - **Cancellation.** The handle has no cancel method. When the run is cancelled, core closes the line's region for the cancellation, and the line draws its cancelled line in the region's abort. A line started after the run is cancelled finds its region already closed, so it draws and writes nothing and starts no timer.
 - **A failing run.** When the run fails with a line still open, core closes the line's region for the failure before it renders the failure report, and the line draws its failure line with its label in the abort, so the report follows every line. A line the action leaves open draws its success line with its label when the action returns. A line a middleware or a configuration source leaves open stays open through the action, so a middleware can show a line around the whole run, and draws its success line with its label once the middleware chain has unwound.
-- **Off a terminal.** When the region is not live, because stderr is not a terminal, the terminal does not [redraw](../core/output.md#live-region) in place (the run's [plain switch](../core/output.md#the-plain-switch) on, `TERM=dumb`, or `CI` set and not `false`), the run is an [invocation by name](../core/invocation.md#invocation-by-name), or the run's [verbosity](../core/verbosity.md) is -1, the line draws nothing. `progress()` writes its label once through `context.out.info`. `end` and a resolved `track` write the end message through `context.out.success`, `skip` writes it through `context.out.info`, `warn` through `context.out.warn`, and `fail`, a rejected `track`, and a failing run write it through `context.out.error`. An update, a cancellation, and `clear` write nothing, so a cleared line leaves its start line alone, and no line carries the elapsed time. So under `-q` the start, success, and skipped lines hide with their lanes and a warned or failure line prints, and under an invocation by name the lines land in `messages`. The library reads the region's `live` and never the verbosity.
+- **Off a terminal.** When the region is not live, because stderr is not a terminal, the terminal does not [redraw](../core/output.md#live-region) in place (the run's [plain switch](../core/output.md#the-plain-switch) on, `TERM=dumb`, or `CI` set and not `false`), the run is an [invocation by name](../core/invocation.md#invocation-by-name), or the run's [verbosity](../core/verbosity.md) is -1, the line draws nothing. `progress()` writes its label once through `context.out.info`. `end` and a resolved `track` write the end message through `context.out.success`, `skip` writes it through `context.out.info`, `warn` through `context.out.warn`, and `fail`, a rejected `track`, and a failing run write it through `context.out.error`. An update, a cancellation, and `clear` write nothing, so a cleared line leaves its start line alone, and no line carries the elapsed time, the rate, or the time left. So under `-q` the start, success, and skipped lines hide with their lanes and a warned or failure line prints, and under an invocation by name the lines land in `messages`. The library reads the region's `live` and never the verbosity.
 - **Reports.** The line reports at its start, at each update, and when it closes, so an [`onProgress`](../core/invocation.md#invocation-by-name) observer and an [MCP](../plugins/mcp.md) client read `started`, `updated`, and `ended`, `failed`, `skipped`, `warned`, or `cancelled`, whether or not the line draws. A cleared line reads `ended`.
 - **The values.** `label`, an update's `label`, and the end messages are marked strings, as a lane message is, so an author escapes raw data with `style.escape` first. `total` and `completed` are counts of 0 or more, which the library draws as given, and `completed` may pass `total`.
+- **Rate and time left.** With `estimate: true`, a running line also shows how fast its work goes and how long it has left, under [Rate and time left](#rate-and-time-left).
 - **No limit.** A line shows until its work ends. The library adds no timeout and no stall check.
+
+### Rate and time left
+
+```ts
+import { Command } from '@loomcli/core';
+import { progress } from '@loomcli/prompts';
+
+import { copyFile, listFiles } from './files.js';
+
+export const copy = new Command('copy').action(async (context) => {
+  const files = await listFiles();
+  const copying = progress(context, {
+    estimate: true,
+    label: 'Copying files',
+    total: files.length,
+    unit: 'files',
+  });
+  for (const [index, file] of files.entries()) {
+    await copyFile(file);
+    copying.update({ completed: index + 1 });
+  }
+  await copying.end(`Copied ${String(files.length)} files`);
+});
+```
+
+At a terminal, the line reads, partway through:
+
+```text
+◓ Copying files ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s · 3.3 files/s · about 24s left
+```
+
+and the run leaves the end line without either part:
+
+```text
+✔ Copied 120 files · 31.6s
+```
+
+A line whose settings set `estimate` shows its rate and its time left while it runs. It computes both from the counts its author reports through `update` and from `Date.now()`, the clock it already reads for the elapsed time, and draws them on the frames it already draws, so it adds no timer and puts none on the author's work. [ADR-0171](../decisions/0171-a-progress-line-may-show-its-rate-and-time-left-computed-from-its-recent-reports-and-the-clock-it-reads.md) records the rules.
+
+- **The settings.** `estimate: true` turns both parts on, and without it, or with `false`, the line draws as before. `unit` names what the line counts, as the author writes it, plural included, and the rate names it: `3.3 files/s`. Neither changes after `progress()` opens the line.
+- **Samples.** The line keeps a sample, a time and a count, for each `update` that states `completed`: that count at the time of the update. The opening is no sample, so the first report is the window's first sample, and a count done before it, such as the share a resumed download already had, never enters the rate. An update that states the same count again is a sample, so reports through a stall slow the rate, and an update that states only `total` or `label` is none.
+- **The rate.** The rate is measured from the window's anchor to its newest sample, the latest report. The anchor is the latest sample at least 10 000 milliseconds before the newest one, or, when no sample is that old, the window's first sample, the first report or a restart. With `c` the count and `t` the time in milliseconds, the rate in units per second is `(c_newest − c_anchor) × 1000 ÷ (t_newest − t_anchor)`. So reports many times a second measure over the last 10 seconds, reports a minute apart measure between the last two, and the rate follows work whose speed changes. Between reports the rate holds.
+- **Enough progress.** The rate is known once the anchor and the newest sample are at least 1000 milliseconds apart, so at the second report at the earliest. Until then the line shows neither part.
+- **The time left.** With a known rate above 0, a `total`, and `completed` below it, the time left at a frame, in milliseconds, is `(total − c_newest) × (t_newest − t_anchor) ÷ (c_newest − c_anchor) − (now − t_newest)`, held at 0, where `now` is the time the frame is built and `total` is the line's current total. So the estimate made at a report counts down on each frame the timer draws until the next report sets it afresh, and one that reaches 0 first holds at 0.
+- **The edges.** A rate of 0, when the anchor and the newest sample hold the same count, reads `0/s` with no time left. A report whose `completed` is below the newest sample's restarts the window at that report, so neither part shows until a report at least a second after it. Once `completed` reaches or passes `total`, the rate shows and the time left does not. A `total` an update changes takes effect in the time left at the next frame and leaves the rate alone. A line without a `total` shows the rate alone, `◑ Reading rows 1204 · 3.0s · 400/s` after reports of 204 at 500 milliseconds and 1204 at 3000, and a line that reports no `completed` shows neither.
+- **A worked sequence.** A line opens at time 0 with `total: 120` and `estimate: true`, and its author reports these counts and no others. Each row is the frame drawn at the report, and the first report's frame shows neither part.
+
+  | Time (ms) | `completed` | Anchor     | Rate                        | Time left                                     |
+  | --------- | ----------- | ---------- | --------------------------- | --------------------------------------------- |
+  | 500       | 1           | None       | Not known, neither part     | Not known                                     |
+  | 3000      | 10          | 1 at 500   | 9 × 1000 ÷ 2500, `3.6/s`    | 110 × 2500 ÷ 9 = 30 555.6, `about 31s left`   |
+  | 12 000    | 40          | 1 at 500   | 39 × 1000 ÷ 11 500, `3.3/s` | 80 × 11 500 ÷ 39 = 23 589.7, `about 24s left` |
+  | 13 000    | 70          | 10 at 3000 | 60 × 1000 ÷ 10 000, `6.0/s` | 50 × 10 000 ÷ 60 = 8333.3, `about 9s left`    |
+  | 14 000    | 100         | 10 at 3000 | 90 × 1000 ÷ 11 000, `8.1/s` | 20 × 11 000 ÷ 90 = 2444.4, `about 3s left`    |
+
+  A frame the timer draws at 12 500 reads `about 24s left`, from 23 089.7. Frames at 16 000 and 17 000, with no report after 14 000, hold 444.4 and 0, and each reads `about 1s left`.
+- **The rate's format.** A rate of 0 reads `0/s`, and `0 files/s` with a `unit`. Otherwise it reads per second when it is at least 1 a second, per minute when it is at least 1 a minute, and per hour below that, with the suffix `/s`, `/min`, or `/h`. In that unit of time, a rate of 10 or more reads as a whole number and one under 10 with one decimal, each rounded down: `1204/s`, `3.3/s`, `15/min` for 0.25 a second, and `0.5/h`. A `unit` stands between the number and the suffix after a space: `3.3 files/s`.
+- **The time left's format.** `about`, the span, and `left`. The span counts whole seconds, rounded up, and at least 1. Under 60 of them it reads seconds, `about 24s left`; otherwise minutes, the seconds ÷ 60 rounded half up, while that is under 60, `about 3m left`; and otherwise hours, the seconds ÷ 3600 rounded half up, `about 2h left`. So 89 seconds reads `about 1m left`, 90 reads `about 2m left`, and 3570 reads `about 1h left`.
+- **Where they show.** On a running line alone, after the elapsed time, the rate first, each after a dim `·` and drawn dim, as the elapsed time is. An end line shows neither, and where the line does not draw, its start and end lines carry neither. On a row too narrow for them they give way, the rate first, under the [progress view](#progress-view).
+- **The words.** `about`, `left`, `/s`, `/min`, and `/h` are fixed labels of the progress view, as `(cancelled)` is, so they stay with the view that prints them. The `unit` is a marked string, as the label is, so an author escapes raw data with `style.escape` first.
+- **Progress events.** No event carries the rate or the time left. An `onProgress` observer or an MCP client reads the counts and measures a rate against its own clock if it needs one.
 
 ### Progress style
 
@@ -1008,6 +1072,10 @@ interface ProgressLine {
   readonly frame: string; // the spinner's current frame
   readonly bar: { readonly complete: string; readonly incomplete: string };
   readonly elapsed: number; // milliseconds since progress() opened the line
+  readonly estimate?: boolean | undefined; // the line's estimate setting; absent, false
+  readonly rate?: number | undefined; // units per second over recent reports; undefined until known
+  readonly remaining?: number | undefined; // milliseconds left at rate, counting down; undefined when none
+  readonly unit?: string | undefined; // what the line counts, as the author wrote it
 }
 ```
 
@@ -1018,6 +1086,7 @@ interface ProgressLine {
 | Running, no total                      | The frame in `highlight`, the label, then a dim `·` and the elapsed time, dim: `◐ Building the index · 0.8s`                    |
 | Running, with a total                  | The frame, the label, a bar of 10 cells, complete cells in `highlight` and incomplete cells dim, the counts, the dim `·`, and the elapsed time: `◓ Fetching records ▰▰▰▰▰▰▱▱▱▱ 6/10 · 2.4s` |
 | Running, `completed` without a total   | The frame, the label, the count, the dim `·`, and the elapsed time: `◑ Reading rows 1204 · 3.0s`                                |
+| Running, with `estimate`               | As running, then, once each is known, a dim `·` and the rate, dim, and a dim `·` and the time left, dim: `◓ Fetching records ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s · 3.3/s · about 24s left` |
 | Ended                                  | The glyph `success` in `success`, the message, the dim `·`, and the elapsed time: `✔ Fetched 10 records · 4.1s`               |
 | Failed                                 | Core's glyph `error` in `error`, the message, the dim `·`, and the elapsed time: `✘ Fetching records · 2.6s`, and `× Fetching records · 2.6s` where the terminal takes compat forms |
 | Cancelled                              | The glyph `squareCenter`, the label, and `(cancelled)`, all dim: `■ Fetching records (cancelled)`                              |
@@ -1026,9 +1095,11 @@ interface ProgressLine {
 
 - **The bar.** The complete cells number 10 × `completed` ÷ `total`, rounded down and held between 0 and 10, and a total of 0 fills the bar. The counts read `completed/total` when both are whole numbers, and otherwise the percent, 100 × `completed` ÷ `total` rounded down and followed by `%`, which a total of 0 reads as `100%`. An absent `completed` reads 0.
 - **Elapsed time.** Under a minute it reads seconds with one decimal, `2.4s`; under an hour, minutes and two-digit seconds, `1m 05s`; and from an hour, hours and two-digit minutes, `1h 02m`. Each rounds down.
+- **Rate and time left.** A line supplies `estimate`, `rate`, `remaining`, and `unit` on every frame, whether or not its settings set `estimate`, so an application's own view can draw a rate or a time left the default view does not. `rate` is `undefined` until there is enough progress, and `remaining` is `undefined` while `rate` is `undefined` or 0, without a total, and once `completed` reaches `total`. The four are optional, so data an application builds by hand draws without them: an absent `estimate` reads `false`. The default view draws the rate when `estimate` is `true`, the state is `running`, and `rate` is defined, and the time left when `remaining` is defined as well, in the formats of [Rate and time left](#rate-and-time-left). An end line's data carries the values of its frame, which the default view does not draw.
+- **A narrow row.** While a running line with its rate and time left, measured with the view context's `width`, is wider than the view context's `columns`, or 80 columns when `columns` is `undefined`, the rate drops with its `·`, and then the time left with its `·`. So the two parts never make a line wrap, and the time left, which the operator waits on, stays longest.
 - **The end glyphs.** Each end line's glyph is the one its plain line's lane draws: `success` for the success lane, core's `error` for the error lane, `info` for the info lane, and `warning` for the warn lane, so a line shows the same glyph live and not live. The success, failure, and warned lines also style the glyph as their lanes do, while the skipped line draws its glyph dim with the rest of the line, where the info lane draws it in `info`. The skipped and warned lines draw no spinner frame, bar, or counts, as the success line draws none.
 - **A cleared line.** A cleared line never reaches the view, so an override cannot leave text for it. An override written before the skipped and warned states receives them only from a line whose author calls `skip` or `warn`. One whose switch over `state` has no default branch needs the two new values handled.
-- **Plain text.** The spinner frames and the bar cells are plain text, not glyphs, so a terminal that takes compat forms draws them as the style gives them. The view neither wraps nor clips a long label: the terminal wraps it, and core counts the rows it takes.
+- **Plain text.** The spinner frames and the bar cells are plain text, not glyphs, so a terminal that takes compat forms draws them as the style gives them. The view neither wraps nor clips a long label: the terminal wraps it, and core counts the rows it takes. Only the rate and the time left give way to a narrow row.
 
 ## When author code fails
 
@@ -1060,5 +1131,6 @@ A question's `validate`, the linked input's validator a select or multiselect ru
 - A typed line's history, kill ring, and vi mode.
 - A default, a prefill, or "Enter keeps the current value" for secret.
 - Redrawing when the terminal is resized while a question asks. The next frame after a resize erases the whole region, because core recounts its last frame at the current width.
-- A progress line drawn as a multi-step tree, a progress line with a rate or an estimated time left, and a progress line on stdout.
+- A progress line drawn as a multi-step tree, and a progress line on stdout.
+- A rate or a time left on a progress event, on a plain line, or on an end line, and a setting that changes the rate window or the second of progress the rate waits for.
 - A setting that clears a progress line when it ends, as Rich's `transient` does, and an end that leaves the running frame as it stands, as ora's `stop` does. An author calls `clear()` for a line that should leave nothing.
