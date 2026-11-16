@@ -4,7 +4,7 @@ title: ADR-0101 - Completion installs on Linux and macOS, and a startup line is 
 description: The completion plugin's install, update, and uninstall serve bash, zsh, fish, and pwsh on Linux and macOS, and refuse on Windows, where completion powershell still prints Cobra's script. Windows PowerShell 5.1 as its own shell, the execution-policy check, UTF-16LE startup files, the byte order mark on a created profile, and the win32 variables and folders come out. A startup line is either written and recorded, or printed with nothing recorded, and uninstall removes only a line Loom wrote. Every other provision of ADR-0078 carries forward. It supersedes ADR-0078.
 status: accepted
 created: 2026-10-20
-modified: 2026-10-22
+modified: 2026-11-16
 ---
 
 # ADR-0101 - Completion installs on Linux and macOS, and a startup line is written or printed
@@ -66,3 +66,4 @@ Accepted in 0.15.0.
 
 - 2026-10-20: Proposed with the 0.15.0 rescope.
 - 2026-10-21: The implementation settles two cases the Decision leaves open. A startup file the plugin may not change that already holds the line gets no line printed: `install` states that the file already loads the script, and records no line. `update` drops a recorded line whose text this version keeps without printing anything, because no line in the file has to change, and prints the line to remove and the line to add in its place when the text changes.
+- 2026-11-16: [ADR-0165](0165-first-party-plugins-say-what-they-did-at-v-and-record-each-change-they-make-as-a-log-event.md), proposed, has `refreshCompletion` look in the installation record before it starts the new binary: when the record holds no `completion.<shell>` file for any shell, it starts no child and writes `Skipped the completion refresh: nothing is installed.` at `-vv`, and a child that exits 0 writes `Refreshed completion after the update.` at `-v`. A record that cannot be read, a directory that does not resolve, and a context without the application's name still run the child. It binds when that record is accepted.

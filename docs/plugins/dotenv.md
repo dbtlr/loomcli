@@ -112,13 +112,13 @@ Warnings do not change the exit code and are captured in a named invocation's `m
 
 | Level | Line | When |
 | --- | --- | --- |
-| `-v` | `Imported 3 variables from .env.local.`, or `Imported 1 variable from .env.` | Once for each file that supplies at least one name to the plugin's answer, after the plugin reads that file, in reading order, the most specific first. The count is the names that file supplies. |
+| `-v` | `Imported 3 variables from .env.local.`, or `Imported 1 variable from .env.` | Once for each file that imports at least one name, after the plugin reads that file, in reading order, the most specific first. A file imports each name it assigns that the settings allow, the environment does not define, and no more specific file supplied, and the count is those names. A name the environment already defines is skipped, because core keeps the environment's value. |
 | `-vv` | `Skipped <name> from <file>: on the except list.` | A name the file assigns that `except` lists. |
 | `-vv` | `Skipped <name> from <file>: not on the only list.` | A name the file assigns that `only` does not list. |
 | `-vv` | `Skipped <name> from <file>: already set.` | A name the hook's environment already defines, an empty value included, which core keeps. |
 | `-vv` | `Skipped <name> from <file>: already set from <specific>.` | A name a more specific file, `<specific>`, already supplied. |
 
-`<file>` is the file's name, as the warnings name it. A line names variables and counts them, and never holds a value. Each name passed over writes one line, after its file's `-v` line, in the order the file first assigns the names, with the first reason that holds, in the table's order. A name on a malformed line keeps its warning or its silence, under **Warnings**, and gets no line. A missing file writes nothing, and a file that supplies no name writes no `-v` line while its names still write theirs. The lines go through the hook's `out`, whose `debug` and `trace` follow the run's verbosity, settled before [environment preparation](../core/plugin-contract.md#environment-preparation), so they appear once per outer run.
+`<file>` is the file's name, as the warnings name it. A line names variables and counts them, and never holds a value. Each name passed over writes one line, after its file's `-v` line, in the order the file first assigns the names, with the first reason that holds, in the table's order. A name on a malformed line keeps its warning or its silence, under **Warnings**, and gets no line. A missing file writes nothing, and a file that imports no name writes no `-v` line while its names still write theirs. The lines go through the hook's `out`, whose `debug` and `trace` follow the run's verbosity, settled before [environment preparation](../core/plugin-contract.md#environment-preparation), so they appear once per outer run.
 
 ```text
 $ NODE_ENV=development API_TOKEN=set notes sync -vv

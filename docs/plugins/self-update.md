@@ -140,16 +140,16 @@ The Command's lines fall between the lines it already prints:
 | Level | Line | When |
 | --- | --- | --- |
 | `-vv` | `Requested <url>.` | Before each request the Command sends, each redirect it follows included, under `--check` and `--refresh-notice` too. |
-| `-v` | `Resolved v1.5.1 on the stable channel.` | A run without a version found the newest release on the channel it follows, and that release is newer, so the run goes on to replace. It is written before the `SHA256SUMS` request and the `Downloading` line. A newer-only line or a `--check` line already names the release, so those runs write none, and a named version writes none. |
+| `-v` | `Resolved v1.5.1 on the stable channel.` | A run without a version found the newest release on the channel it follows, and that release is newer, so the run goes on to replace. It is written once the lookup ends and before the `Downloading` line. On the stable channel the `SHA256SUMS` request follows it; on any other channel the lookup has already requested each candidate's `SHA256SUMS`, newest first, until one answered, and no request follows. A newer-only line or a `--check` line already names the release, so those runs write none, and a named version writes none. |
 | `-v` | `Verified notes-linux-x64 against SHA256SUMS.` | The downloaded asset's digest matches the one `SHA256SUMS` lists. |
 | `-v` | `Replaced /home/me/.local/bin/notes.` | The verified bytes were renamed over the recorded path, before the record is rewritten. |
 
-The update notices' middleware writes these, after the action and after the notice:
+The update notices' middleware writes these after the action, in the order it acts: `Read` once it reads the cache, then the notice when the cache names a newer release, then `Started` once the refresh starts:
 
 | Level | Line | When |
 | --- | --- | --- |
 | `-vv` | `Skipped the update check: <reason>` | The middleware does nothing, naming the first condition of **The middleware** that fails, in its order: `NO_UPDATE_NOTIFIER is set.`, `NOTES_NO_UPDATE_NOTICE is set.` for the author's `env`, `stdout is not a terminal.`, `stderr is not a terminal.`, `CI is set.`, `self-update is running.`, `notes is not a release binary.`, `notes was not installed by install.sh.`, and `HOME is not an absolute path.`, naming the variable the cache directory's lookup answers. The first condition writes no line: the notice part speaks only after an action, and a cancelled run writes nothing more. |
-| `-v` | `Read the update check from /home/me/.cache/notes/update.json.` | The cache file holds an update cache this version reads, stale or not. |
+| `-v` | `Read the update check from /home/me/.cache/notes/update.json.` | The cache file holds an update cache this version reads, stale or not: a `format` 1 object for another repository or channel, or whose `latest` is not a version, is a stale cache, which writes this line and starts a refresh. |
 | `-vv` | `Ignored /home/me/.cache/notes/update.json: it is not an update cache this version reads.` | Something is at the path that cannot be read, is not a regular file, does not hold the cache's object, or holds a `format` other than `1`. A missing cache writes nothing. |
 | `-v` | `Started a refresh of the update check.` | The detached refresh child was started, once `host.spawn` returns it. |
 

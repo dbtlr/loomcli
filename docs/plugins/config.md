@@ -454,9 +454,9 @@ A run reads at most one configuration file, and nothing is merged across files. 
 | Level | Line | When |
 | --- | --- | --- |
 | `-v` | `Read configuration from <file>.` | Once the file the lookup chose, the `--config` file, the variable's, or a discovered one, is read and parses, before any `Ignored` line about it. |
-| `-v` | `Found no configuration file.` | The lookup ends with no file found: no step found one, a variable that names a missing file included. Not under `--no-config`, not with `notice: true`, whose notice opens with the same sentence, and not after a broken file, whose warning already says the run reads no configuration. |
+| `-v` | `Found no configuration file.` | The lookup ends with no file found: no step found one, a variable that names a missing file included. Not under `--no-config`, not when the `notice: true` notice prints, because it opens with the same sentence, and not after a broken file, whose warning already says the run reads no configuration. With `notice: true`, a run whose notice does not print, because the variable names a missing file or the lookup looks nowhere, writes this line. |
 | `-v` | `Ignored <path> in <file>: <message>` | A dropped value or an unknown key, under **Dropping values** and **Naming unknown keys**. |
-| `-vv` | `Looked for <file>: not found.` | Once for each candidate path the lookup checks and finds nothing at, in the lookup's order, the variable's missing file included. A later candidate skipped where an earlier one was found keeps its warning and gets no line. |
+| `-vv` | `Looked for <file>: not found.` | Once for each candidate path the lookup checks and finds nothing at, in the lookup's order, the variable's missing file included. In the directory where the lookup finds a file, only the candidates before that file write a line: a later absent candidate writes none, and a later present one keeps its warning and writes none. |
 
 `<file>` is the file as the labels under **Missing and broken files** show it, escaped with `style.escape` and kept on one line, as a warning shows it. The source and the provider share one read per run, so each line is written once, through the `out` of whichever reads first, and a run that needs no configuration value writes none. Under `--no-config` the run looks for no file and writes no line.
 

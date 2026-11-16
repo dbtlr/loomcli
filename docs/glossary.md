@@ -961,7 +961,7 @@ A declaration fact core owns and every projection reads without any plugin insta
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin Command**:
-A Command a plugin lists under its definition's `commands`, which core attaches to the root ahead of the application's own Commands. It is an ordinary Command in every other way: every Command rule applies to it, every projection reads it without a special case, and the graph does not record which plugin attached it. The application cannot rename or remove it.
+A Command a plugin lists under its definition's `commands`, which core attaches to the root ahead of the application's own Commands. It is an ordinary Command in every other way: every Command rule applies to it, every projection reads it without a special case, and the graph does not record which plugin attached it. Its action's `log` alone names that plugin, from a record core keeps beside the graph. The application cannot rename or remove it.
 _Avoid_: Plugin subcommand, built-in command, contributed command
 
 **Core**:
@@ -1049,6 +1049,10 @@ _Avoid_: Auto-update, upgrade (for the Command), updater
 **Update notice**:
 The one `out.info` message the self-update plugin prints on stderr after the action of a run at a terminal, when its cache names a newer release on the running binary's release channel. A detached copy of the application refreshes the cache about once a day, so no run waits on the network, and the author or the operator can turn notices off.
 _Avoid_: Update check (for the line), nag, banner
+
+**Update check**:
+The self-update plugin's look for a newer release behind the update notice: the middleware reads the cache, `update.json`, and starts a detached refresh of it when it is stale. The `-v` and `-vv` lines name it, such as `Read the update check from <cache>.` and `Skipped the update check: CI is set.`; the line the check may print is the update notice.
+_Avoid_: Update notice (for the check), version check, update poll
 
 **Service unit**:
 The file that has the platform supervise one of the application's own Commands for the user: a systemd user unit on Linux or a launchd user agent on macOS, named by the application's reverse-DNS label. The service plugin writes it through the installation record, runs `host.program` with the declared argument words from home, and starts, stops, restarts, reports, and removes it.
