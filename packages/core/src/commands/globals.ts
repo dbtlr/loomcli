@@ -446,12 +446,13 @@ function inputExtensions(
 }
 
 /**
- * Everything one local option proves on its own, at the call that declared it: its name, its
- * extension values, and its settings alone, beside the options before it, and against the globals
- * table. `option()` and `options(set)` on a Command and `optionSet()` for each entry judge an option
- * through it, so a rule added here reaches each of them. The name is judged earlier, by
- * `copyLocalOption`, before the config is read. `declarations` ends with the option, `compile`
- * answers their table, and `extensions` names the option in an extension fault.
+ * Everything one local option proves on its own once its config is copied, at the call that
+ * declared it: its extension values, and its name, spellings, and settings alone, beside the options
+ * before it, and against the globals table. `option()` and `options(set)` on a Command and
+ * `optionSet()` for each entry judge an option through it, so a rule added here reaches each of
+ * them. Whether the name is a valid name at all is judged earlier, by `copyLocalOption`, before the
+ * config is read. `declarations` ends with the option, `compile` answers their table, and
+ * `extensions` names the option in an extension fault.
  */
 function admitLocalOption(
   input: OptionInput,
