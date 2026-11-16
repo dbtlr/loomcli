@@ -4,9 +4,12 @@
 
 ### Migration
 
-**Affected surface.** The type checker reports every affected site. The surface is a context built by hand, such as a test's object literal, that omits `out.warn` and is passed to `progress()` from `@loomcli/prompts`. A context core hands an action, a middleware, or a configuration source, and one `@loomcli/testing` builds, already carries `warn`.
+**Affected surface.** The type checker reports every affected site, for each of two breaks.
 
-**Why.** A warned line that is not live writes its end line through `out.warn`, so `progress()` needs the warn lane.
+- A context built by hand, such as a test's object literal, that omits `out.warn` and is passed to `progress()` from `@loomcli/prompts`. A context core hands an action, a middleware, or a configuration source, and one `@loomcli/testing` builds, already carries `warn`.
+- A switch over a progress line's or a progress event's `state` that has no default branch and relies on covering every state, such as an override of the `@loomcli/prompts/progress` view whose `render` returns a string from one case per `ProgressLine` state, or an `onProgress` observer that ends its switch over `ProgressEvent['state']` with an exhaustiveness check. Under `strict` it no longer compiles, with an error such as TS2366, "Function lacks ending return statement", or a `never` check that rejects `'skipped'`.
+
+**Why.** A warned line that is not live writes its end line through `out.warn`, so `progress()` needs the warn lane. A skipped and a warned end are new states of the line and of its progress events, so a reader tells them from a success.
 
 **Before and after.**
 
@@ -22,9 +25,37 @@ After:
 const line = progress({ graph, out: { error, info, region, success, warn } }, { label: 'Fetching records' });
 ```
 
+Before, in an override of the progress view:
+
+```ts
+function render(line: ProgressLine): string {
+  switch (line.state) {
+    case 'running': return `… ${line.label}`;
+    case 'ended': return `done ${line.label}`;
+    case 'failed': return `failed ${line.label}`;
+    case 'cancelled': return `stopped ${line.label}`;
+  }
+}
+```
+
+After:
+
+```ts
+function render(line: ProgressLine): string {
+  switch (line.state) {
+    case 'running': return `… ${line.label}`;
+    case 'ended': return `done ${line.label}`;
+    case 'failed': return `failed ${line.label}`;
+    case 'cancelled': return `stopped ${line.label}`;
+    case 'skipped': return `skipped ${line.label}`;
+    case 'warned': return `warning ${line.label}`;
+  }
+}
+```
+
 **Steps.**
 
 1. Add a `warn` method to each hand-built context passed to `progress()`, with the signature `Out['warn']` gives it, or build the context with `actionContext` from `@loomcli/testing`.
-2. Where an `onProgress` observer, an override of the `@loomcli/prompts/progress` view, or other code switches over a progress event's or a progress line's `state` and treats an unknown value as an error, handle `'skipped'` and `'warned'`.
+2. Where an `onProgress` observer, an override of the `@loomcli/prompts/progress` view, or other code switches over a progress event's or a progress line's `state`, handle `'skipped'` and `'warned'`: the type checker reports a switch with no default branch that must cover every state, and code that treats an unknown value as an error at run time needs the same two cases.
 
 **Validation.** Run the application's type check, such as `pnpm exec tsc --noEmit`, and its tests.
