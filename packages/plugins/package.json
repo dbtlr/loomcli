@@ -103,6 +103,10 @@
       "types": "./dist/src/patch-console/plugin.d.ts",
       "import": "./dist/src/patch-console/plugin.js"
     },
+    "./plain": {
+      "types": "./dist/src/plain/plugin.d.ts",
+      "import": "./dist/src/plain/plugin.js"
+    },
     "./prose": {
       "types": "./dist/src/prose.d.ts",
       "import": "./dist/src/prose.js"

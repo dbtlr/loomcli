@@ -174,6 +174,7 @@ export type BackgroundOption = Described & Listed & Controlled & OptionExtension
     polarity?: never;
     interaction?: never;
     color?: never;
+    plain?: never;
     verbose?: never;
     quiet?: never;
 };
@@ -682,6 +683,7 @@ type TupleOfLength<Item, Count extends number, Built extends Item[] = [
 interface Unmarked {
     interaction?: never;
     color?: never;
+    plain?: never;
     verbose?: never;
     quiet?: never;
     background?: never;

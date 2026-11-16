@@ -124,6 +124,7 @@ import {
   colorChoice,
   uncapturedPolicy,
 } from '../marks/color.js';
+import { checkPlainBinding, plain, plainSwitch } from '../marks/plain.js';
 import { argvVerbosity, checkVerbosityBinding, namedVerbosity } from '../marks/verbosity.js';
 import { coreViews } from '../output/lanes.js';
 import { RunLog } from '../output/log.js';
@@ -369,12 +370,14 @@ class ApplicationBuilder<
   readonly #config: ApplicationConfig;
   /**
    * The spellings of the options that carry the marks a run reads from argv before graph build,
-   * the color mark and the background mark, read from the declarations the first time a run needs
-   * them. The holder keeps an Application with neither mark from reading them again.
+   * the color mark, the plain mark, and the background mark, read from the declarations the first
+   * time a run needs them. The holder keeps an Application with none of them from reading them
+   * again.
    */
   #markedSpellings:
     | {
         readonly color: ReadonlyMap<string, OptionSpelling> | undefined;
+        readonly plain: ReadonlyMap<string, OptionSpelling> | undefined;
         readonly background: ReadonlyMap<string, OptionSpelling> | undefined;
       }
     | undefined = undefined;
@@ -1069,8 +1072,10 @@ class ApplicationBuilder<
     this.#markedSpellings ??= {
       background: markedSpellings(globalInputs, installed, background),
       color: markedSpellings(globalInputs, installed, color),
+      plain: markedSpellings(globalInputs, installed, plain),
     };
     const spellings = this.#markedSpellings.color;
+    const plainSpellings = this.#markedSpellings.plain;
     const backgroundSpellings = this.#markedSpellings.background;
     const { stderr } = door;
     let output: Output | undefined = undefined;
@@ -1200,7 +1205,11 @@ class ApplicationBuilder<
         const { host } = capture;
         // The operator's color choice, read from argv before anything else prints.
         const choice = spellings && colorChoice(host.argv, spellings);
-        const invocationOutput = door.output(host, controller.signal, chosenPolicy({}, choice));
+        // The plain switch, read beside it, so every byte written after capture follows it.
+        const invocationOutput = door.output(host, controller.signal, {
+          early: chosenPolicy({}, choice),
+          plain: plainSwitch(host.argv, host.env, plainSpellings),
+        });
         output = invocationOutput;
         invocationOutput.useLiveRegionsHooks(
           this.#config.plugins.flatMap(({ onLiveRegions }) =>
@@ -1351,11 +1360,12 @@ class ApplicationBuilder<
           code = exitCodeOf(failure);
           decisive = failure;
           // Output is unbuilt only when host capture failed, before the choice could be read.
-          output ??= door.output(
-            reportingHost(),
-            controller.signal,
-            uncapturedPolicy(spellings !== undefined),
-          );
+          // Argv was never read, so the switch follows ACCESSIBLE alone.
+          const reporting = reportingHost();
+          output ??= door.output(reporting, controller.signal, {
+            early: uncapturedPolicy(spellings !== undefined),
+            plain: plainSwitch([], reporting.env, undefined),
+          });
           const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
           if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
             // A broken failure view or a throwing onFailure hook forces 1 over the failure's code.
@@ -1622,9 +1632,13 @@ interface RunDoor {
   /**
    * The run's output, before the build hands it the declared policy. `early` is the policy the
    * output follows until then: the operator's color choice, or color off in a marked Application
-   * whose host capture failed before the choice could be read.
+   * whose host capture failed before the choice could be read. `plain` is the run's plain switch.
    */
-  output: (host: ReportHost, signal: AbortSignal, early: RenderingPolicy) => Output;
+  output: (
+    host: ReportHost,
+    signal: AbortSignal,
+    settled: { early: RenderingPolicy; plain: boolean },
+  ) => Output;
   /**
    * Where the run's log events are delivered: the outermost run's destination, which this run's
    * host names under `run()` and an action's call takes from its parent.
@@ -1688,8 +1702,8 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     invokedBy: 'argv',
     lane,
     listens: true,
-    output: (host, signal, early) => {
-      const output = new Output(host, signal);
+    output: (host, signal, { early, plain: on }) => {
+      const output = new Output(host, signal, on);
       output.configure(early, new Map());
       return output;
     },
@@ -1873,9 +1887,9 @@ function carriedBinding(
 }
 
 /**
- * An option that carries a mark read before configuration, the color mark, a verbosity mark, or
- * the background mark, carries no value of the installed source's binding. `binding` is that
- * binding when it does.
+ * An option that carries a mark read before configuration, the color mark, the plain mark, a
+ * verbosity mark, or the background mark, carries no value of the installed source's binding.
+ * `binding` is that binding when it does.
  */
 function checkMarkBindings(
   config: OptionConfig,
@@ -1883,6 +1897,7 @@ function checkMarkBindings(
   binding: string | undefined,
 ): void {
   checkColorBinding(config, site, binding);
+  checkPlainBinding(config, site, binding);
   checkVerbosityBinding(config, site, binding);
   checkBackgroundBinding(config, site, binding);
 }

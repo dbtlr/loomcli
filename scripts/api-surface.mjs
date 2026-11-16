@@ -155,6 +155,11 @@ export const surfacePackages = [
             'Constant behind the exported `ManifestOptions`; the author names `ManifestOptions`.',
         },
       },
+      './plain': {
+        forgottenExports: {
+          options: 'Constant behind the exported `PlainOptions`; the author names `PlainOptions`.',
+        },
+      },
       './theme': {
         forgottenExports: {
           defaults:

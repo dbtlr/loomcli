@@ -117,11 +117,12 @@ const unopened = (): void => undefined;
 const showCursor = '\u001B[?25h';
 
 /**
- * Whether a terminal stderr redraws a region in place: not under `TERM=dumb`, which cannot move
- * the cursor, and not under CI, where the terminal feeds a build log.
+ * Whether a terminal destination redraws in place: not with the run's plain switch on, which
+ * turns every redraw off, not under `TERM=dumb`, which cannot move the cursor, and not under CI,
+ * where the terminal feeds a build log.
  */
-function redraws(env: ReportHost['env']): boolean {
-  return env.TERM !== 'dumb' && !underCI(env);
+function redraws(env: ReportHost['env'], plain: boolean): boolean {
+  return !plain && env.TERM !== 'dumb' && !underCI(env);
 }
 
 /** One sequence's hold on a destination: the pieces it writes, and the end of its place. */
@@ -753,9 +754,14 @@ export class Output {
     return { reason: this.signal.reason };
   };
 
+  /**
+   * `plain` is the run's plain switch, which core settles right after host capture, so a terminal
+   * destination redraws nothing for the whole run when it is on.
+   */
   constructor(
     readonly host: ReportHost,
     private readonly signal: AbortSignal,
+    private readonly plainSwitch = false,
   ) {
     this.screen = new Screen({
       column: (shown, column) => nextColumn(shown, this.screenColumns(), column),
@@ -779,7 +785,7 @@ export class Output {
         // An input region draws wherever stderr is a terminal, so a question still asks.
         live: (input) =>
           this.host.terminal.stderr.isTTY &&
-          (input || (this.verbosity >= 0 && redraws(this.host.env))),
+          (input || (this.verbosity >= 0 && redraws(this.host.env, this.plainSwitch))),
         write: (compose) => this.destination(this.host.stderr).compose(compose),
       },
       this.screen,
@@ -1095,7 +1101,9 @@ export class Output {
    * cursor dropped its control sequences, so nothing hid it.
    */
   private cursorShown(): string {
-    return redraws(this.host.env) || this.policy.terminalControls === 'preserve' ? showCursor : '';
+    return redraws(this.host.env, this.plainSwitch) || this.policy.terminalControls === 'preserve'
+      ? showCursor
+      : '';
   }
 
   /**
@@ -1346,7 +1354,8 @@ export class Output {
     const { destination } = look;
     const hidden = this.verbosity < shownFrom[kind];
     const target = this.destination(this.host[destination]);
-    const redrawn = !hidden && this.host.terminal[destination].isTTY && redraws(this.host.env);
+    const redrawn =
+      !hidden && this.host.terminal[destination].isTTY && redraws(this.host.env, this.plainSwitch);
     const rows = redrawn && kind !== 'print';
     const slot: Slot = { closed: false, input: false, latest: undefined, shown: undefined };
     let context: ViewContext | undefined = undefined;
@@ -1574,7 +1583,7 @@ export class Output {
    */
   private async draw(data: unknown, value: View<never>): Promise<number> {
     // A terminal that does not redraw keeps the Application's setting, as a redirected stderr does.
-    const controls = this.host.terminal.stderr.isTTY && redraws(this.host.env);
+    const controls = this.host.terminal.stderr.isTTY && redraws(this.host.env, this.plainSwitch);
     const frame = this.frame(data, value, controls);
     if ('failed' in frame) {
       await frame.failed;

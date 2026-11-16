@@ -174,16 +174,29 @@ export type Background = 'dark' | 'light';
 // @public
 export type BooleanOption = (OptionSpelling & BooleanFacts & EnvBinding & {
     color?: never;
+    plain?: never;
     polarity?: 'positive' | 'negative';
 }) | (BooleanFacts & EnvBinding & {
     color?: never;
+    plain?: never;
     polarity: 'both';
     short?: ShortAlias;
     shortOnly?: false;
     aliases?: readonly string[];
 }) | (BooleanFacts & {
     color: true;
+    plain?: never;
     polarity?: 'positive' | 'negative' | 'both';
+    short?: never;
+    shortOnly?: never;
+    aliases?: readonly string[];
+    env?: never;
+    envAllowEmpty?: never;
+}) | (BooleanFacts & {
+    plain: true;
+    color?: never;
+    interaction?: never;
+    polarity?: 'positive';
     short?: never;
     shortOnly?: never;
     aliases?: readonly string[];
@@ -338,6 +351,7 @@ export type CountOption = OptionSpelling & Described & Listed & Controlled & Opt
     type: 'count';
     interaction?: never;
     color?: never;
+    plain?: never;
     background?: never;
     validate?: never;
     default?: never;
@@ -1243,6 +1257,7 @@ export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'ar
     readonly aliases: readonly string[];
     readonly interaction: boolean;
     readonly color: boolean;
+    readonly plain: boolean;
     readonly polarity: 'positive' | 'negative' | 'both';
     readonly schema: InputSchema;
     readonly env: readonly string[];

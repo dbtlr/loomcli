@@ -256,15 +256,17 @@ type BooleanFacts = Described &
 
 /**
  * A value-taking option carries no run-wide mark but the background mark, which the marked string
- * shape declares: the interaction and color marks belong to one Boolean global option each, and
- * the verbose and quiet marks to one counted global option each. A local option's declaration
- * carries none of them either.
+ * shape declares: the interaction, color, and plain marks belong to one Boolean global option
+ * each, and the verbose and quiet marks to one counted global option each. A local option's
+ * declaration carries none of them either.
  */
 interface Unmarked {
   /** Never declared: the interaction mark belongs to one Boolean global option. */
   interaction?: never;
   /** Never declared: the color mark belongs to one Boolean global option. */
   color?: never;
+  /** Never declared: the plain mark belongs to one Boolean global option. */
+  plain?: never;
   /** Never declared: the verbose mark belongs to one counted global option. */
   verbose?: never;
   /** Never declared: the quiet mark belongs to one counted global option. */
@@ -545,6 +547,7 @@ export type BackgroundOption = Described &
     polarity?: never;
     interaction?: never;
     color?: never;
+    plain?: never;
     verbose?: never;
     quiet?: never;
   };
@@ -743,9 +746,10 @@ export type ArgumentValue<Config extends ArgumentConfig> = Config extends { vari
           : undefined);
 
 /**
- * A Boolean option: one polarity with any spelling, both polarities with long forms, or the color
+ * A Boolean option: one polarity with any spelling, both polarities with long forms, the color
  * mark, which the run reads from argv before short groups and binds no variable, so it declares
- * no short alias and no `env`.
+ * no short alias and no `env`, or the plain mark, which the run reads the same way and which takes
+ * its positive spelling alone, because nothing turns the plain switch off.
  *
  * @public
  */
@@ -754,11 +758,13 @@ export type BooleanOption =
       BooleanFacts &
       EnvBinding & {
         color?: never;
+        plain?: never;
         polarity?: 'positive' | 'negative';
       })
   | (BooleanFacts &
       EnvBinding & {
         color?: never;
+        plain?: never;
         polarity: 'both';
         short?: ShortAlias;
         shortOnly?: false;
@@ -766,7 +772,26 @@ export type BooleanOption =
       })
   | (BooleanFacts & {
       color: true;
+      plain?: never;
       polarity?: 'positive' | 'negative' | 'both';
+      short?: never;
+      shortOnly?: never;
+      aliases?: readonly string[];
+      env?: never;
+      envAllowEmpty?: never;
+    })
+  | (BooleanFacts & {
+      /**
+       * Marks the one option whose spellings turn the run's plain switch on. Core reads them from
+       * argv right after host capture, so the option takes no short alias and no variable, and it
+       * takes its positive spelling alone, because nothing turns the switch off.
+       *
+       * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/output.md#the-plain-switch
+       */
+      plain: true;
+      color?: never;
+      interaction?: never;
+      polarity?: 'positive';
       short?: never;
       shortOnly?: never;
       aliases?: readonly string[];
@@ -790,6 +815,7 @@ export type CountOption = OptionSpelling &
     type: 'count';
     interaction?: never;
     color?: never;
+    plain?: never;
     background?: never;
     validate?: never;
     default?: never;

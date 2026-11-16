@@ -212,6 +212,8 @@ type OptionNode =
       readonly aliases: readonly string[];
       readonly interaction: boolean;
       readonly color: boolean;
+      /** Whether the option carries the plain mark, whose spellings turn the run's plain switch on. */
+      readonly plain: boolean;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: InputSchema;
       readonly env: readonly string[];
@@ -573,6 +575,7 @@ function optionNode(input: OptionInput, read: OptionScope): OptionNode {
         color: config.color === true,
         interaction: config.interaction === true,
         negative,
+        plain: config.plain === true,
         polarity: config.polarity ?? 'positive',
         schema: null,
         type: 'boolean',

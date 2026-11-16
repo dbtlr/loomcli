@@ -37,7 +37,7 @@ The help factory takes an optional `paging` setting under [Help paging](help.md#
 - [Loom theme](theme.md): open it when an application installs the named Loom theme.
 - [Color](color.md): open it when an operator turns color on or off with `--color`.
 - [Verbose](verbose.md): open it when an operator raises or lowers the run's verbosity with `-v` and `-q`.
-- [Plain](plain.md): open it when an operator turns off all redrawing with `--plain`, so progress prints plain lines and questions ask line by line.
+- [Plain](plain.md): open it when an operator turns off redrawing with `--plain`, so progress lines and streamed messages print plain lines.
 - [Background](background.md): open it when an operator states the terminal's background.
 - [Patch console](patch-console.md): open it when a dependency's `console` writes tear a progress line, a question, or another live region.
 

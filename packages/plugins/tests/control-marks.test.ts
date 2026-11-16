@@ -2,7 +2,7 @@
  * Acceptance plan for the first-party control marks (docs/core/commands.md#control-options).
  *
  * - A fixture application installs the first-party plugins that declare an option, and `inspect()`
- *   reads `control: true` on `--help`, `--version`, `--manifest`, `--color`, `--verbose`,
+ *   reads `control: true` on `--help`, `--version`, `--manifest`, `--color`, `--plain`, `--verbose`,
  *   `--quiet`, `--config`, and the `--format` the formatter's hook declares on a Command with a
  *   result, and `control: false` on the fixture's own work options.
  * - The core rules for a control option, and the fixture marks of each declarer, are proven in
@@ -14,6 +14,7 @@ import { configuration } from '@loomcli/plugins/config';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { manifest } from '@loomcli/plugins/manifest';
+import { plain } from '@loomcli/plugins/plain';
 import { verbose } from '@loomcli/plugins/verbose';
 import { version } from '@loomcli/plugins/version';
 import { expect, test } from 'vite-plus/test';
@@ -33,6 +34,7 @@ function marked() {
       manifest(),
       configuration({ schema: z.object({}) }).plugin,
       color(),
+      plain(),
       verbose(),
     ],
     version: '1.0.0',
@@ -59,6 +61,7 @@ test('the first-party plugins mark their options as controls, and a work option 
     format: true,
     help: true,
     manifest: true,
+    plain: true,
     quiet: true,
     verbose: true,
     version: true,

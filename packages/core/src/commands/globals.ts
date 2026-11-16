@@ -20,6 +20,7 @@ import { color } from '../marks/color.js';
 import { interaction } from '../marks/interaction.js';
 import { checkOneMark, isMarked } from '../marks/marks.js';
 import type { Mark } from '../marks/marks.js';
+import { plain } from '../marks/plain.js';
 import { quiet, verbose } from '../marks/verbosity.js';
 import { buildExtensions, noExtensions } from '../plugins/extension.js';
 import type {
@@ -291,7 +292,7 @@ function compileGlobalTable(
     });
   });
   const all = [...inputs, ...plugins.flatMap((entry) => entry.inputs)];
-  for (const mark of [interaction, color, verbose, quiet, background]) {
+  for (const mark of [interaction, color, plain, verbose, quiet, background]) {
     checkOneMark(
       all
         .filter((input) => isMarked(input.config, mark))
@@ -546,9 +547,9 @@ function join(
 }
 
 /**
- * The long spellings of the Application's option that carries `mark`, the color mark or the
- * background mark, each with the value it supplies, from the globals table every earlier call
- * already proved, or `undefined` when no option carries the mark. A short alias never reaches the
+ * The long spellings of the Application's option that carries `mark`, the color mark, the plain
+ * mark, or the background mark, each with the value it supplies, from the globals table every
+ * earlier call already proved, or `undefined` when no option carries the mark. A short alias never reaches the
  * read of argv, because a marked option declares none.
  */
 function markedSpellings(

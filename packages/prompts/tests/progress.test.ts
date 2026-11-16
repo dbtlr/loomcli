@@ -21,8 +21,10 @@
  * - Cancellation. `SIGINT` writes each open line's cancelled line, the run resolves 130, and the
  *   process dies by the signal.
  * - Off a terminal. With stderr piped, the run writes exactly the plain lines the Progress section
- *   shows. On a terminal stderr whose `TERM` is `dumb`, or with `CI` set, it writes
- *   the same plain lines and no control sequence, and a question asked beside two lines still asks. Under `-q` with the verbose plugin, it writes only failure lines. Under `app.invoke`,
+ *   shows. On a terminal stderr whose `TERM` is `dumb`, with `CI` set, with `ACCESSIBLE` set, or
+ *   with `--plain` from the plain plugin, it writes the same plain lines and no control sequence,
+ *   and under `TERM=dumb` a question asked beside two lines still asks. Under `-q` with the verbose
+ *   plugin, it writes only failure lines. Under `app.invoke`,
  *   the lines land in `messages`, and the observer reads every progress event in order. The end
  *   event of a line ended by `end`, `fail`, or `track` with a `done` or `failed` message carries
  *   that message as its label, and one ended with no message carries the line's last label.
@@ -37,6 +39,7 @@
 
 import { Application, FatalError, override, plugin } from '@loomcli/core';
 import type { ActionContext, MiddlewareContext, Plugin, ProgressEvent } from '@loomcli/core';
+import { plain as plainPlugin } from '@loomcli/plugins/plain';
 import { verbose } from '@loomcli/plugins/verbose';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test, vi } from 'vite-plus/test';
@@ -407,7 +410,7 @@ async function lines(
   }
   const app = new Application('progress', {
     description: 'Show progress lines.',
-    plugins: [...(chosen.plugins ?? []), verbose()],
+    plugins: [...(chosen.plugins ?? []), verbose(), plainPlugin()],
     views: chosen.views ?? [],
   }).action(chosen.action);
   let code: number | string = 0;
@@ -592,10 +595,15 @@ test('with stderr piped, the run writes one start line and one end line per prog
   );
 });
 
-test.each([{ TERM: 'dumb' }, { CI: 'true' }])(
-  'on a terminal stderr with %o, the run writes the plain lines and no control sequence',
-  async (env) => {
-    const run = await lines('plain', 'tty', [], env);
+test.each([
+  { argv: [], env: { TERM: 'dumb' } },
+  { argv: [], env: { CI: 'true' } },
+  { argv: [], env: { ACCESSIBLE: '1' } },
+  { argv: ['--plain'], env: {} },
+])(
+  'on a terminal stderr with argv $argv and $env, the run writes the plain lines and no control sequence',
+  async ({ argv, env }) => {
+    const run = await lines('plain', 'tty', argv, env);
     expect(run.stderr).toBe(
       'ℹ Fetching records\n✔ Fetched 10 records\nℹ Building the index\n✔ Indexed 812 records\nℹ Uploading\n✘ Uploading\n',
     );
