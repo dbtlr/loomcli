@@ -74,10 +74,14 @@ export interface ProgressLine {
     };
     readonly completed: number | undefined;
     readonly elapsed: number;
+    readonly estimate?: boolean | undefined;
     readonly frame: string;
     readonly label: string;
+    readonly rate?: number | undefined;
+    readonly remaining?: number | undefined;
     readonly state: 'running' | 'ended' | 'failed' | 'cancelled' | 'skipped' | 'warned';
     readonly total: number | undefined;
+    readonly unit?: string | undefined;
 }
 
 // @public

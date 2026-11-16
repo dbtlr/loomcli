@@ -108,9 +108,11 @@ export type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
 
 // @public
 export interface ProgressSettings {
+    readonly estimate?: boolean;
     readonly label: string;
     readonly spinner?: Spinner;
     readonly total?: number;
+    readonly unit?: string;
 }
 
 // @public
