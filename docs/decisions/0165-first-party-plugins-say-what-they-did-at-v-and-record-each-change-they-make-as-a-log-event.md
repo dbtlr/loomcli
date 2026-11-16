@@ -108,7 +108,7 @@ The words are the program and its arguments joined by single spaces, as the plug
 | `-v` | `Refreshed completion after the update.`, `Refreshed the man pages after the update.`, `Refreshed the skills after the update.` | The refresh child exited 0. |
 | `-vv` | `Skipped the completion refresh: nothing is installed.`, `Skipped the man page refresh: nothing is installed.`, `Skipped the skills refresh: nothing is installed.` | The refresh did not run, because the installation record holds none of the plugin's files. |
 
-- **Nothing is installed.** Before it starts the child, a refresh whose context carries `name` looks in `applicationDirectory('installation', name, host)` for the plugin's files: `completion.<shell>` for any shell, the man page plugin's file, or the skills plugin's file for any target. When none exists, it starts no child, writes its `-vv` line, and resolves. It reads only whether each file exists, so an unreadable or damaged record still runs the child, whose failure names the fix. A directory that does not resolve, and a context without `name`, run the child as before. This is the one reason a refresh does not run.
+- **Nothing is installed.** Before it starts the child, a refresh whose context carries `name` looks in `applicationDirectory('installation', name, host)` for the plugin's files: `completion.<shell>` for any shell, the man page plugin's file, or the skills plugin's file for any target. When none exists, it starts no child, writes its `-vv` line, and resolves. It reads only whether each file exists, so an unreadable or damaged record still runs the child, whose failure names the fix. A directory that does not resolve or cannot be searched, and a context without `name`, run the child as before. This is the one reason a refresh does not run.
 - **A child that fails.** A child that exits with any code but 0, or cannot start, keeps its `warn` log event and the line it writes to `host.stderr`, and writes no `-v` line.
 - **No `out`.** A refresh called with a context that carries no `out` writes no line and otherwise acts the same.
 
@@ -215,7 +215,7 @@ interface LogDestination {
 }
 ```
 
-A hook calls a lane without awaiting it, because it returns `undefined`, and catches the promise's rejection, so core's output contract alone reports a write that fails. `@loomcli/testing`'s `logDestination` fills `out` with lanes that resolve and write nothing, and `LogDestinationValues`, `Partial<LogDestination>`, gains it as an optional member.
+A hook calls a lane without awaiting it, because it returns `undefined`, and catches the promise's rejection. A stream that refused the write stays broken, which the run reports as any failed write, and a lane view that threw is reported by nothing else once the hook has caught its rejection. `@loomcli/testing`'s `logDestination` fills `out` with lanes that resolve and write nothing, and `LogDestinationValues`, `Partial<LogDestination>`, gains it as an optional member.
 
 `AfterReplaceContext` gains two members:
 

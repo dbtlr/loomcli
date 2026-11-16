@@ -10,7 +10,7 @@
  * - Without a name, or a record directory that does not resolve, the child runs as before.
  * - A child that fails writes no `-v` line, and a context without `out` writes no line.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -135,6 +135,21 @@ describe.each(kinds)('$kind', ({ kind, record, refreshed, skipped, words }) => {
     const unresolved = await refresh(kind, ['-v']);
     expect(unresolved).toMatchObject({ started: [words], stderr: `› ${refreshed}\n` });
   });
+
+  // A superuser searches any folder, so the case needs an ordinary user.
+  it.skipIf(process.getuid?.() === 0)(
+    'with a record directory it cannot search, the child runs',
+    async () => {
+      const { record: directory, state } = stateHome();
+      chmodSync(directory, 0o000);
+      try {
+        const result = await refresh(kind, ['-v'], { state });
+        expect(result).toMatchObject({ started: [words], stderr: `› ${refreshed}\n` });
+      } finally {
+        chmodSync(directory, 0o755);
+      }
+    },
+  );
 
   it('a failing child writes no -v line, and no out writes no line', async () => {
     const { record: directory, state } = stateHome();

@@ -66,8 +66,8 @@ function errorText(error: unknown): string {
 
 /**
  * Whether the installation record holds none of the plugin's files, read only by whether each
- * exists. A context without a name, or a record directory that does not resolve, is not known to
- * hold none.
+ * exists. A context without a name, a record directory that does not resolve, or one that cannot be
+ * read, is not known to hold none.
  */
 function nothingInstalled({ host, name }: RefreshContext, records: readonly string[]): boolean {
   if (name === undefined) {
@@ -77,7 +77,12 @@ function nothingInstalled({ host, name }: RefreshContext, records: readonly stri
   if ('variable' in directory) {
     return false;
   }
-  return !records.some((record) => exists(pluginFilePath(directory.path, record)));
+  try {
+    return !records.some((record) => exists(pluginFilePath(directory.path, record)));
+  } catch {
+    // The child reads the record itself and reports what it finds there.
+    return false;
+  }
 }
 
 /**
