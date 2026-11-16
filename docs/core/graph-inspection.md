@@ -48,10 +48,16 @@ interface CommandNode {
   readonly children: readonly CommandNode[];
   readonly extensions: Readonly<Record<string, unknown>>;
 }
-interface OptionGroup {
-  readonly kind: 'exclusive' | 'oneRequired' | 'requiredTogether';
-  readonly options: readonly string[];
-}
+type OptionGroup =
+  | {
+      readonly kind: 'exclusive' | 'oneRequired' | 'requiredTogether';
+      readonly options: readonly string[];
+    }
+  | {
+      readonly kind: 'requires'; // a one-way requirement
+      readonly option: string; // the option that has the requirement
+      readonly requires: readonly string[]; // the options it needs
+    };
 interface ResultNode {
   readonly kind: 'value' | 'rows';
   readonly views: readonly string[];
@@ -145,6 +151,7 @@ type OptionNode =
 - `arity`, on the string variant alone, is the count of separate words each occurrence takes, under [Option value arity](options.md#option-value-arity), and `null` on a string option that declares none. An arity option's `schema` is the schema of one word, and its `default` wraps a tuple, or a list of tuples on a multiple option.
 - `lastWins`, on the string variant alone, is `true` when the declaration says `true`, under which a later occurrence on the command line replaces an earlier one, as [Last occurrence wins](options.md#last-occurrence-wins) states, and `false` otherwise.
 - A content option's node is the string variant with `type: 'content'`, `stdin`, `min`, and `max`, and without `arity`, `background`, `envAllowEmpty`, and `lastWins`. A content argument's node carries the same four facts, which a plain argument's node omits, and `min` and `max` are `undefined` when the declaration states no bound. A Command that declares a standalone [`.stdin()`](validation.md#content-inputs) carries it as `stdin`, its `description` and whether it is `required`, and a Command that declares none omits the field. [Content inputs](validation.md#content-inputs) describe them.
+- `optionGroups` holds the Command's [declared option groups](options.md#declared-option-groups) in declaration order, hidden members included, or `[]`. An exclusive, one-required, or required-together group is `{ kind, options }`, its members in the order the call names them, and a [one-way requirement](options.md#a-one-way-requirement) is `{ kind: 'requires', option, requires }`, so `.requires('password', 'user')` reads `{ kind: 'requires', option: 'password', requires: ['user'] }`. Narrow `kind` before reading `options`.
 - `passthrough` is `null` on a Command that does not declare the [passthrough mode](options.md#passthrough), and otherwise `{ description }`, the mode's description or `undefined` when it declares none.
 - `requiredWhen` is `'non-interactive'` on the node of an argument or a string option that declares `required: 'non-interactive'`, whose `required` reads `false`, and `null` on every other argument and string or content option, a content argument's included, under [Interaction](interaction.md).
 - `control` is the fact [Control options](commands.md#control-options) describes: `true` when the declaration marks the option as controlling the invocation, and `false` otherwise. Routing, parsing, and validation read it nowhere.

@@ -301,6 +301,7 @@ const exportCommand = new Command('export', { description: 'Export a document.' 
 
 `exclusive(...names)` permits at most one member that claims the group: a supplied member claims it unless it is a Boolean at its absent value. `oneRequired(...names)` requires at least one.
 `requiredTogether(...names)` requires all members or none. Combining exclusive and one-required groups over the same members expresses exactly one.
+`requires(option, ...needed)` is a one-way requirement: supplying `option` requires each of `needed`, while any of them alone is accepted, as [A one-way requirement](#a-one-way-requirement) states.
 Each call returns a new declaration, preserves the receiver, and closes at `action()` without changing action option types.
 Application exposes the same methods for root-local options. Lifecycle hooks use them on the erased attached Command after action registration.
 
@@ -324,7 +325,8 @@ An exclusive group limits supplied options, so stdin may still attach to an unsu
 Unknown names, repeated names, fewer than two members, globals, and arguments are declaration faults at the group call under `@loomcli/core/option-group`.
 An exclusive group cannot contain an individually required member, including conditional requiredness and content with a positive minimum.
 A content stdin claim does not remove that conflict because named calls have no stdin.
-An exclusive group and a required-together group cannot share two or more members, in either declaration order.
+An exclusive group and a required-together group cannot share two or more members, in either declaration order, and neither can an exclusive group and a requirement.
+A requirement cannot name its option among the options it needs.
 Other redundancy is allowed, and core performs no transitive constraint solving.
 
 Each failed group adds one problem to an exit-2 `InputError`, after individual input problems and in group declaration order.
@@ -332,15 +334,45 @@ The problem carries `reason`, `inputs`, `spellings`, and `supplied`, with member
 A failure depending only on unanswered configuration requests is suppressed, because those members' presence is unknown.
 Existing held-fault precedence and middleware takeover rules remain unchanged across `run()`, `invoke()`, and MCP.
 
-Inspection publishes frozen `optionGroups: [{ kind, options }]` on every Command, including hidden members, or `[]`.
-Help states each visible group in one plain sentence and the manifest publishes the same facts.
-Both omit groups with hidden members. Help notes when a group contains a stdin claim that piping does not count.
-Completion suppresses exclusive siblings after a member that claims the group appears in the line, an alias included, without reading environment or configuration. A spelling that gives a Boolean its absent value, such as `--no-json` on a `both` option, suppresses no sibling.
+Inspection publishes frozen `optionGroups` on every Command, including hidden members, or `[]`: `{ kind, options }` for an exclusive, one-required, or required-together group, and `{ kind: 'requires', option, requires }` for a requirement.
+Help and the man page state each visible group in one plain sentence and the manifest publishes the same facts.
+All three omit groups with hidden members. Help and the man page note when a group contains a stdin claim that piping does not count.
+Completion suppresses exclusive siblings after a member that claims the group appears in the line, an alias included, without reading environment or configuration. A spelling that gives a Boolean its absent value, such as `--no-json` on a `both` option, suppresses no sibling. A requirement changes no completion.
 
 MCP omits groups containing hidden or control options, and writes a group that holds an excluded option over its other members. Its schemas use named supplied-value predicates for Boolean polarity, positive counts, and nonempty lists. An exclusive constraint reads a Boolean member as claiming only when it differs from its absent value, `true` for a `positive` or `both` option and `false` for a `negative` one, so a call with `json: true` and `yaml: false` passes.
-Exclusive constraints remain sound when external sources fill other options. Positive requirements are encoded only when every member has no environment binding or extensions.
+Exclusive constraints remain sound when external sources fill other options. Positive requirements, a requirement included, are encoded only when every member has no environment binding or extensions.
 An extension might bind a configuration source, so uncertain groups remain runtime rules.
 [ADR-0085](../decisions/0085-a-command-declares-option-groups-over-supplied-local-options.md) records the contract, and [ADR-0123](../decisions/0123-in-an-exclusive-option-group-the-highest-input-tier-that-supplies-a-member-wins.md) decides an exclusive group by the highest tier that supplies a member. An [option set](#sharing-options) carries groups over its own members, which `options(set)` declares on the Command.
+
+### A one-way requirement
+
+`requires(option, ...needed)` declares that supplying `option` requires each option `needed` names, while each of them alone, or all of them without `option`, is accepted:
+
+```ts
+const login = new Command('login', { description: 'Sign in to the server.' })
+  .option('user', { description: 'The account name.', type: 'string' })
+  .option('password', { description: 'The account password.', env: 'LOGIN_PASSWORD', type: 'string' })
+  .option('host', { description: 'The server.', type: 'string' })
+  .requires('password', 'user', 'host')
+  .action(({ options, out }) => out.print(options.user ?? 'anonymous'));
+```
+
+`login --user ada` runs, and so does `login --user ada --password secret --host example.org`. `login --password secret` fails with exit 2. The first name is the option that has the requirement, and each further name is an option it needs, at least one. Each is typed as a declared local option, as the other group calls type theirs. [ADR-0167](../decisions/0167-a-command-declares-that-one-option-requires-others-and-the-others-alone-are-accepted.md) records the decision.
+
+- **A requirement only.** No option fills, sets, or defaults another. An option that should take a value when another is supplied stays the action's logic.
+- **The trigger.** The requirement applies when its option is supplied, by a token, the environment, or the configuration source, and not by a default. A Boolean whose value equals its [absent value](#boolean-polarity) triggers nothing, as it claims no exclusive group, so `--no-pretty` runs without what `pretty` requires. A counted or string option triggers it whatever its value.
+- **The needed options.** A needed option satisfies the requirement when a token, the environment, or the configuration source supplies it, a filled `false`, zero, or empty list included, and a default does not. No tier ranks the two sides: a configured `user` satisfies a typed `--password`.
+- **Beside an exclusive group.** A requirement withdraws nothing. A requirement that holds a member an exclusive group withdrew, as its option or as a needed option, is not checked, because the sibling that won replaced it, as for a `requiredTogether` group. With `exclusive('token', 'user')` and `requires('password', 'user')`, a configured `user` beside a typed `--token` and a typed `--password` runs.
+- **The failure.** A broken requirement is one problem whose `reason` is `'requires'`. `inputs` and `spellings` list the option, then each needed option, and `supplied` lists the members that were supplied. Its sentence names the option and only the needed options it still lacks, then both ways out, and the option carries its source label when the environment or the configuration source supplied it:
+
+  ```text
+  login: Option "--password" requires options "--user" and "--host". Supply them as well, or remove "--password".
+  login: Option "--password" (from LOGIN_PASSWORD) requires option "--host". Supply it as well, or remove "--password".
+  ```
+
+  The second line is a run with `LOGIN_PASSWORD` set and `--user` typed. Three or more lacking options read `"--user", "--host", and "--port"`.
+- **Declaration faults.** The call raises the group rules above under [`@loomcli/core/option-group`](diagnostics.md#loomclicoreoption-group): an undeclared local option, a global option and an argument included, a repeated name, and an option that requires itself, `Command "login" requires names option "password" as its own requirement.`, corrected by `Name only other local options after the first.` A requirement and an exclusive group that share two or more members are `Command "login" exclusive and requires groups share at least two options.`, because the option could never be supplied with everything it needs. Two requirements that need each other, a requirement of a required option, and a requirement repeated are allowed.
+- **Projections.** Help and the man page print `Use --password only with --user and --host.`, and the manifest publishes the entry inspection publishes, each omitting a requirement with a hidden member. Under the conditions above, which `login`'s `LOGIN_PASSWORD` binding fails, so its requirement stays a rule the run checks, an MCP tool's schema writes JSON Schema's `dependentRequired`, such as `{ password: ['user', 'host'] }`, or the same rule with named-value predicates where presence alone does not state it, as for a Boolean option or a counted or multiple member. Completion offers every option a requirement holds.
 
 ## Sharing options
 
@@ -400,7 +432,7 @@ export const show = new Command('show', { description: 'Show one entry.' })
 
 - **One by one, in order.** `options(set)` returns the declaration that one `option()` call per option, in the set's order, and then one group call per group, in the order the set holds them, would return, at the position of the call among the Command's other calls. The set's order is its record's key order as `Object.keys` reads it, so a linter rule that sorts object keys, such as ESLint's `sort-keys`, also sorts the order help lists the options in. A later group call on the Command may name a set's option beside one of its own, as `show` does above.
 - **Each entry is checked as `option()` checks it.** The types apply to each entry the constraints `option()` applies to one option, so a default outside its validator's input type, or a `multiple` option whose validator does not accept one string, fails to compile at `optionSet()`. The call raises the declaration faults the set's own entries prove, under [Declaration faults](declaration-faults.md#at-the-call): an invalid name or alias, two entries that share a spelling or a variable, an empty `envDelimiter`, an invalid `arity`, two content entries that claim stdin, and an extension value `option()` would refuse, two entries' values whose descriptors share an identity included. Each reads as the fault `option()` raises, and its finding rebuilds the entry alone in the set's record, `optionSet({ json: { … } })`. A default and an implied value pass their validators when `run()` starts, as they do for any option.
-- **Groups.** A set's `exclusive(...names)`, `oneRequired(...names)`, and `requiredTogether(...names)` name the set's own members, so a group that names an option outside the set, or fewer than two, fails to compile. Each returns a new set that holds the group after the receiver's, and applies the group rules of [Declared option groups](#declared-option-groups) that no type expresses over the set's members at the call, a repeated member and the conflicts between groups, with sentences that open `An option set`, such as `An option set exclusive group contains required option "json".`
+- **Groups.** A set's `exclusive(...names)`, `oneRequired(...names)`, `requiredTogether(...names)`, and `requires(option, ...needed)` name the set's own members, so a group that names an option outside the set, or fewer than two, fails to compile. Each returns a new set that holds the group after the receiver's, and applies the group rules of [Declared option groups](#declared-option-groups) that no type expresses over the set's members at the call, a repeated member, an option that requires itself, and the conflicts between groups, with sentences that open `An option set`, such as `An option set exclusive group contains required option "json".`
 - **A value.** A set never changes. A group call returns a new set and leaves its receiver as it was, and one set applies to any number of Commands, in one Application or in several. A set holds options only, never an argument, stdin, or the passthrough mode, and an empty set declares nothing.
 - **What applying refuses.** A name the Command already declares as a local option, or one its global options hold, is a compile error at `options()`, which names it: `'This option name is already declared on this Command'` or `'This option name is already declared as a global option'`. At the call, `options()` raises every fault `option()` would raise for one of the set's options against the Command: a spelling or a variable the Command's own options hold, a second stdin claim, an extension descriptor that shares an identity with one the Command names, and on the root a key, spelling, or variable a global option holds. Attach and build judge a set's options as any local options. Every finding about a set's option, at `options()` or later, such as a default its validator rejects when `run()` starts, rebuilds the call that declared it, `.options(optionSet({ json: { … } }))`, with that entry alone and the part at fault marked. A set that another installed copy of `@loomcli/core` built is the [`@loomcli/core/foreign-value`](diagnostics.md#loomclicoreforeign-value) fault.
 - **Nothing inherits.** A parent that applies a set declares its options on the parent alone, and its children gain nothing. Each Command that shares the options applies the set itself. A set applied to a [group](commands.md#nested-commands-and-groups) gives the group its own options, which reach no action. When a parent and a child each apply one set, an operator may type such an option before the child's name, and it binds to the child's option, as [Global consumption and routing](commands.md#global-consumption-and-routing) states for any option both declare.
