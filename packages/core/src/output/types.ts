@@ -327,7 +327,10 @@ export interface Region {
   readonly signal: AbortSignal;
   /** What closed the region, or `undefined` while it is open. */
   readonly closedBy: RegionCloser | undefined;
-  /** Replaces the region's frame with a view's text, rendered as `out.draw` renders it. */
+  /**
+   * Replaces the region's frame with a view's text, rendered as `out.draw` renders it. An input
+   * region waiting for its turn resolves once it opens, and one that is not live writes nothing.
+   */
   draw<Data>(data: Data, view: View<Data>): Promise<void>;
   /**
    * Closes the region, leaving its last frame in scrollback; `'failed'` makes its end event read

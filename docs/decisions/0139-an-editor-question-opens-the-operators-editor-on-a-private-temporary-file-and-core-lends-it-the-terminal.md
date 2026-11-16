@@ -4,7 +4,7 @@ title: ADR-0139 - An editor question opens the operator's editor on a private te
 description: A sixth question kind, editor, waits for Enter and then opens the editor VISUAL, EDITOR, or vi names, through /bin/sh as help's pager runs PAGER, on a file in a private folder under host.tmpdir that holds the prefill. Its answer is the saved text exactly. It links, prefills, skips, and validates as text does. An editor that cannot start or exits with a code other than 0, and a file the question cannot write, fail the run with EditorError. While the editor runs, the question leaves raw mode and starts it inside a new core method, out.lendTerminal, which ends the bottom frame's row, holds every live region still, and draws a fresh stack below whatever the child wrote when it exits, erasing nothing. This narrows ADR-0082's kinds, exports, link clause, and leaving clause, ADR-0138's count of kinds, ADR-0091's rules that core redraws regions around every write and that the failure report is last, ADR-0106's terminal users' suspend and resume handlers, and ADR-0115's rule that the pager is the one child that runs through a shell.
 status: proposed
 created: 2026-11-04
-modified: 2026-11-04
+modified: 2026-11-16
 ---
 
 # ADR-0139 - An editor question opens the operator's editor on a private temporary file, and core lends it the terminal
@@ -131,3 +131,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-04: Proposed with the contract for the editor question (LM-462). It narrows ADR-0082's kinds, exports, link clause, and leaving clause, ADR-0138's count of kinds, ADR-0091's redraw and report rules, ADR-0106's terminal users' suspend and resume handlers, and ADR-0115's no-shell rule for Loom's other children. Each carries a dated entry.
+- 2026-11-16: [ADR-0169](0169-one-plain-switch-turns-off-all-redrawing-so-progress-prints-plain-lines-and-a-question-asks-line-by-line.md), proposed, narrows the editor's frames for an editor question asked line by line. Its interaction and its words are unchanged, and its asking frame, its editing frame, and its answered line are each printed once, on rows of their own, rather than replacing one another in the input region. It binds when that record is accepted.

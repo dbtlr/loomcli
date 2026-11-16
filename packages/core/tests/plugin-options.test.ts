@@ -241,6 +241,7 @@ test("a plugin's option publishes the node an application's global option publis
     long: '--cache',
     name: 'cache',
     negative: '--no-cache',
+    plain: false,
     polarity: 'both',
     schema: null,
     short: null,

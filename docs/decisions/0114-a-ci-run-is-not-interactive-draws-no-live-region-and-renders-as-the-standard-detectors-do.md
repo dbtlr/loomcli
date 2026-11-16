@@ -4,7 +4,7 @@ title: ADR-0114 - A CI run is not interactive, draws no live region, and renders
 description: Core reads CI as ci-info reads it, set and nonempty with CI=false meaning not CI, and a CI run is not interactive, draws no live region, renders color and hyperlinks as supports-color and supports-hyperlinks do under CI, and sends no background query. The interaction decision is off under CI whatever the terminal facts say, so a linked question takes its supplied option or fails with the missing-input error, an unlinked one fails with InteractionUnavailableError, and a required non-interactive option is required. A region opened without input true is not live on a terminal stderr under CI or TERM=dumb, so a progress line writes plain lines. CI=false is the operator's way back, and the interaction mark stays one-way.
 status: accepted
 created: 2026-10-27
-modified: 2026-10-27
+modified: 2026-11-16
 ---
 
 # ADR-0114 - A CI run is not interactive, draws no live region, and renders as the standard detectors do
@@ -48,3 +48,4 @@ Accepted in 0.16.0.
 
 - 2026-10-27: Proposed with the rendering and background rules, after the owner ruled the background query skips under CI and color follows common standards.
 - 2026-10-27: Proposed. It records the live-region rule shipped in PR 293 and its `CI=false` reading from PR 298, and adds the interaction decision.
+- 2026-11-16: [ADR-0169](0169-one-plain-switch-turns-off-all-redrawing-so-progress-prints-plain-lines-and-a-question-asks-line-by-line.md), proposed, narrows the No live region clause's sentence that an input region still draws under `TERM=dumb`, so a question there still asks. Under `TERM=dumb` an input region is not live, and a question there still asks, line by line, printing each piece once with no cursor movement or erase sequence, as the new plain switch makes it ask. Under CI nothing changes. It binds when that record is accepted.

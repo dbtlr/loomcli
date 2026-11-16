@@ -112,6 +112,8 @@ type ManifestOption =
       readonly negative: string | null;
       readonly interaction: boolean;
       readonly color: boolean;
+      /** Whether the option carries the plain mark, whose spellings turn the run's plain switch on. */
+      readonly plain: boolean;
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly schema: Readonly<Record<string, unknown>> | null;
       readonly env: readonly string[];
@@ -194,6 +196,7 @@ function optionEntry(node: OptionNode): ManifestOption {
         polarity: node.polarity,
         interaction: node.interaction,
         color: node.color,
+        plain: node.plain,
         schema: node.schema,
         env: node.env,
       };

@@ -441,8 +441,16 @@ class Screen {
 
 /** What the run's regions need from the output that owns them. */
 interface RegionHost {
-  /** Whether a region opened now is live: stderr is a terminal, and it takes input or the run is not quiet. */
+  /**
+   * Whether a region opened now is live: stderr is a terminal, and an input region's terminal
+   * moves its cursor, or another region's terminal redraws in place and the run is not quiet.
+   */
   live: (input: boolean) => boolean;
+  /**
+   * Whether an input region opened now takes its turn among the run's input regions, live or not:
+   * stderr is a terminal, the one place a question asks.
+   */
+  turns: () => boolean;
   /** Renders one frame through its view, or answers the rejection a broken view raised. */
   frame: (data: unknown, view: View<never>) => Frame | { failed: Promise<void> };
   /** Writes what `compose` answers once every earlier write to stderr has reached the stream. */
@@ -461,8 +469,10 @@ interface RegionHost {
 /** One region a run opened, as its handle answers and as the run closes it. */
 class LiveRegion implements Region {
   readonly live: boolean;
+  /** Whether the region is an input region that takes its turn, live or not. */
+  readonly ordered: boolean;
   readonly slot: Slot;
-  /** Whether the region has opened; a live input region waits while another one is open. */
+  /** Whether the region has opened; an ordered input region waits while another one is open. */
   opened = false;
   /** Draw promises a waiting region resolves once it opens and its frame is written. */
   readonly waiters: (() => void)[] = [];
@@ -477,10 +487,14 @@ class LiveRegion implements Region {
   readonly reports: RegionReports;
   readonly #regions: Regions;
 
-  constructor(regions: Regions, facts: { input: boolean; live: boolean; reports: RegionReports }) {
+  constructor(
+    regions: Regions,
+    facts: { input: boolean; live: boolean; ordered: boolean; reports: RegionReports },
+  ) {
     this.#regions = regions;
     this.input = facts.input;
     this.live = facts.live;
+    this.ordered = facts.ordered;
     this.reports = facts.reports;
     this.slot = { closed: false, input: facts.input, latest: undefined, shown: undefined };
   }
@@ -494,8 +508,12 @@ class LiveRegion implements Region {
   }
 
   draw<Data>(data: Data, view: View<Data>): Promise<void> {
-    if (this.#finished || !this.live) {
+    if (this.#finished) {
       return Promise.resolve();
+    }
+    // A region that is not live draws nothing, and a waiting one's draw resolves at its turn.
+    if (!this.live) {
+      return this.#regions.turn(this);
     }
     return this.#regions.draw(this, data, view);
   }
@@ -532,7 +550,9 @@ class LiveRegion implements Region {
 
 /**
  * The regions one run opened: the ones still open in the order they opened, the one input region
- * that is open, and the input regions waiting for it to close.
+ * that is open, and the input regions waiting for it to close. Every input region on a terminal
+ * takes its turn, live or not, so an author's own input region and a question asked line by line
+ * take turns too.
  */
 class Regions {
   readonly #open = new Set<LiveRegion>();
@@ -553,14 +573,16 @@ class Regions {
    */
   open(options: RegionOptions | undefined, owner?: Set<LiveRegion>): Region {
     const input = options?.input === true;
+    const live = this.host.live(input);
     const region = new LiveRegion(this, {
       input,
-      live: this.host.live(input),
+      live,
+      ordered: input && (live || this.host.turns()),
       reports: this.host.ledger.region(),
     });
     this.#open.add(region);
     owner?.add(region);
-    if (region.live && input && this.#inputOwner !== undefined) {
+    if (region.ordered && this.#inputOwner !== undefined) {
       this.#waiting.push(region);
     } else {
       this.#start(region);
@@ -579,6 +601,19 @@ class Regions {
     for (const region of targets) {
       void region.close(closer, 'ended');
     }
+  }
+
+  /**
+   * The draw of a region that is not live, which writes nothing: it resolves at once when the
+   * region has opened, and otherwise when the waiting region opens or closes.
+   */
+  turn(region: LiveRegion): Promise<void> {
+    if (region.opened) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      region.waiters.push(resolve);
+    });
   }
 
   /** One frame of a live region that has not finished. */
@@ -624,16 +659,19 @@ class Regions {
     return closing;
   }
 
-  /** A region that opens now: an input region holds the input until it closes. */
+  /** A region that opens now: an ordered input region holds the input until it closes. */
   #start(region: LiveRegion): void {
     region.opened = true;
+    if (region.ordered) {
+      this.#inputOwner = region;
+    }
     if (!region.live) {
+      for (const resolve of region.waiters.splice(0)) {
+        resolve();
+      }
       return;
     }
     this.#enterLive();
-    if (region.input) {
-      this.#inputOwner = region;
-    }
     const { pending, slot } = region;
     const opened = this.host.write(() => {
       this.screen.open(slot);

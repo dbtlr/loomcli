@@ -318,21 +318,26 @@ const sessions = new WeakMap<AbortSignal, Session>();
 /**
  * Registers the run's handlers that restore the terminal while raw mode holds: a shutdown leaves
  * raw mode, turns bracketed paste off, and shows the cursor, a suspend leaves raw mode and turns
- * bracketed paste off before the process stops, and the resume turns both on again. The shutdown
- * and the suspend write straight to stderr, because each runs inside its signal's handler and a
- * queued draw would land after the process ends or stops. Answers the call that removes them.
+ * bracketed paste off before the process stops, and the resume turns both on again. A `plain`
+ * hold leaves and enters raw mode alone, because it wrote no control to undo. The shutdown and the
+ * suspend write straight to stderr, because each runs inside its signal's handler and a queued
+ * draw would land after the process ends or stops. Answers the call that removes them.
  */
 function restoring<Options>(
   context: PromptContext<Options>,
   raw: (mode: boolean) => unknown,
-  paused: () => boolean,
+  hold: { readonly paused: () => boolean; readonly plain: boolean },
 ): () => void {
+  const { paused, plain } = hold;
   const removers = [
     context.onShutdown(() => {
       if (paused()) {
         return;
       }
       raw(false);
+      if (plain) {
+        return;
+      }
       context.host.stderr.write(pasteOff);
       if (context.host.terminal.stderr.isTTY) {
         context.host.stderr.write(showCursor);
@@ -343,14 +348,18 @@ function restoring<Options>(
         return;
       }
       raw(false);
-      context.host.stderr.write(pasteOff);
+      if (!plain) {
+        context.host.stderr.write(pasteOff);
+      }
     }),
     context.onResume(() => {
       if (paused()) {
         return;
       }
       raw(true);
-      void context.out.draw(pasteOn, controls);
+      if (!plain) {
+        void context.out.draw(pasteOn, controls);
+      }
     }),
   ];
   return () => {
@@ -360,8 +369,15 @@ function restoring<Options>(
   };
 }
 
-/** Enters raw mode and feeds the run's queue until the last reader closes or the run aborts. */
-function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue): Session {
+/**
+ * Enters raw mode and feeds the run's queue until the last reader closes or the run aborts. A
+ * `plain` hold, a question's asked line by line, sets raw mode and writes no terminal control.
+ */
+function holdInput<Options>(
+  context: PromptContext<Options>,
+  queue: InputQueue,
+  plain: boolean,
+): Session {
   const input = context.host.stdin;
   if (!('setRawMode' in input) || typeof input.setRawMode !== 'function') {
     throw new TypeError('Interactive stdin has no setRawMode method.');
@@ -401,7 +417,9 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
       }
       paused = false;
       raw(true);
-      void context.out.draw(hideCursor + pasteOn, controls);
+      if (!plain) {
+        void context.out.draw(hideCursor + pasteOn, controls);
+      }
       input.on('data', data);
       input.resume();
     },
@@ -481,8 +499,10 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
   context.signal.addEventListener('abort', abort, { once: true });
   try {
     raw(true);
-    void context.out.draw(hideCursor + pasteOn, controls);
-    unregister = restoring(context, raw, () => paused);
+    if (!plain) {
+      void context.out.draw(hideCursor + pasteOn, controls);
+    }
+    unregister = restoring(context, raw, { paused: () => paused, plain });
     input.on('data', data).once('end', end).once('close', end).once('error', inputError);
     input.resume();
     if (input.readableEnded || input.destroyed) {
@@ -490,7 +510,9 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
     }
   } catch (error) {
     session.release();
-    void context.out.draw(pasteOff, controls);
+    if (!plain) {
+      void context.out.draw(pasteOff, controls);
+    }
     throw error;
   }
   sessions.set(context.signal, session);
@@ -500,9 +522,10 @@ function holdInput<Options>(context: PromptContext<Options>, queue: InputQueue):
 /**
  * Brackets raw mode and listeners for one question; abort restores cooked mode synchronously.
  * Raw mode holds while any question of the run is open, so a key typed for a question still
- * waiting its turn never reaches a cooked terminal.
+ * waiting its turn never reaches a cooked terminal. A question asked line by line opens it
+ * `plain`, so the hold writes no terminal control; every question of a run asks one way.
  */
-export function openReader<Options>(context: PromptContext<Options>) {
+export function openReader<Options>(context: PromptContext<Options>, plain = false) {
   context.signal.throwIfAborted();
   const queue = queues.get(context.signal) ?? {
     carriage: false,
@@ -517,7 +540,7 @@ export function openReader<Options>(context: PromptContext<Options>) {
     taken: 0,
   };
   queues.set(context.signal, queue);
-  const session = sessions.get(context.signal) ?? holdInput(context, queue);
+  const session = sessions.get(context.signal) ?? holdInput(context, queue, plain);
   session.readers += 1;
   let closed = false;
   let abandoned: { reason: unknown } | undefined = undefined;

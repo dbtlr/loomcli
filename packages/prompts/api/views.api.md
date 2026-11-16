@@ -58,6 +58,15 @@ export interface ListFrame {
 }
 
 // @public
+export interface NumberedChoice {
+    readonly description: string | undefined;
+    readonly kind: 'choice';
+    readonly label: string;
+    readonly number: number | undefined;
+    readonly reason: string | undefined;
+}
+
+// @public
 export interface ProgressLine {
     readonly bar: {
         readonly complete: string;
@@ -86,6 +95,28 @@ export type QuestionFrame = EditorFrame | TypedFrame | (ListFrame & {
 
 // @public
 export const questionFrame: DeclaredView<QuestionFrame>;
+
+// @public
+export type QuestionLine = {
+    readonly kind: 'text' | 'secret' | 'confirm';
+    readonly message: string;
+    readonly hint: string | undefined;
+} | {
+    readonly kind: 'title';
+    readonly message: string;
+} | {
+    readonly kind: 'list';
+    readonly choices: readonly (NumberedChoice | SeparatorRow)[];
+} | {
+    readonly kind: 'number' | 'numbers' | 'search' | 'refine';
+    readonly hint: string | undefined;
+} | {
+    readonly kind: 'issue';
+    readonly issue: string;
+};
+
+// @public
+export const questionLine: DeclaredView<QuestionLine>;
 
 // @public
 export interface SeparatorRow {

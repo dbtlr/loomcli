@@ -6,13 +6,13 @@ import type { OptionConfig } from '../inputs/types.js';
 
 /**
  * A run-wide mark: the key one global option carries, the option type that carries it, and the
- * rule that reports two marked options. The interaction and color marks sit on a Boolean option,
+ * rule that reports two marked options. The interaction, color, and plain marks sit on a Boolean option,
  * the verbose and quiet marks on a counted one, and the background mark on a string one. The types
  * place each mark on a global option of its type, and core reads a mark from the global options
  * alone.
  */
 interface Mark {
-  readonly fact: 'background' | 'color' | 'interaction' | 'quiet' | 'verbose';
+  readonly fact: 'background' | 'color' | 'interaction' | 'plain' | 'quiet' | 'verbose';
   readonly type: 'boolean' | 'count' | 'string';
   readonly rule: DiagnosticRule;
 }

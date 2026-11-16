@@ -44,6 +44,18 @@ function chooseAtLeast(min: number): string {
   return `Choose at least ${String(min)}.`;
 }
 
+function chooseAtMost(max: number): string {
+  return `Choose at most ${String(max)}.`;
+}
+
+function typeOneNumber(highest: number): string {
+  return `Type a number from 1 to ${String(highest)}.`;
+}
+
+function typeNumbers(highest: number): string {
+  return `Type numbers from 1 to ${String(highest)}, separated by commas.`;
+}
+
 function choiceIssue(label: string, issueSentence: string): string {
   return `${escapeControlCharacters(label)}: ${issueSentence}`;
 }
@@ -62,6 +74,7 @@ export {
   answerNotUtf8,
   choiceIssue,
   chooseAtLeast,
+  chooseAtMost,
   editorExited,
   editorFileUnwritable,
   editorNotStarted,
@@ -69,6 +82,8 @@ export {
   invalidAnswer,
   noSelectableChoice,
   overLimit,
+  typeNumbers,
+  typeOneNumber,
   unselectable,
   yesOrNo,
 };
