@@ -60,18 +60,10 @@ function heldBack(text: string): string {
   return text.replace(trailingBlank, '');
 }
 
-/**
- * Every completed line of resolved text, each with its line break. At the message's end, the
- * control sequences after the last line break, such as a style's close, join the last line.
- */
-function completeLines(text: string, end: boolean): string[] {
+/** Every completed line of resolved text, each with its line break, and the text after the last one. */
+function completeLines(text: string): { lines: string[]; tail: string } {
   const lines = text.match(/[^\n]*\n/gu) ?? [];
-  const tail = text.slice(lines.join('').length);
-  const last = lines.length - 1;
-  if (end && tail !== '' && last >= 0) {
-    lines[last] = `${lines[last] ?? ''}${tail}`;
-  }
-  return lines;
+  return { lines, tail: text.slice(lines.join('').length) };
 }
 
 /** The columns between tab stops, as a terminal sets them. */
@@ -172,6 +164,12 @@ function frameOf(text: string): Frame | undefined {
   return text === '' ? undefined : { marked: escapeText(visible(text)), text };
 }
 
+/** The writes that end a message, and the failure its lane view raised at the final layout, if any. */
+interface Closing {
+  readonly pieces: Piece[];
+  readonly fault?: { readonly cause: unknown } | undefined;
+}
+
 /** The value a stopped reading resolves its race with, compared by identity. */
 const stopRequested = Symbol('stopRequested');
 
@@ -240,7 +238,7 @@ class StreamedMessage {
    */
   stop(): void {
     if (!this.#ended) {
-      this.#stopping = writeAll(this.#sink, this.#closing()).catch(() => undefined);
+      this.#stopping = writeAll(this.#sink, this.#closing().pieces).catch(() => undefined);
       this.#wake(stopRequested);
     }
   }
@@ -253,21 +251,24 @@ class StreamedMessage {
     if (this.#ended) {
       return [];
     }
-    const pieces = this.#closing();
+    const { pieces } = this.#closing();
     this.#wake(stopRequested);
     return pieces;
   }
 
-  /** Reads the iterable to its end, a fault, or a stop, writing as each chunk arrives. */
+  /**
+   * Reads the iterable to its end, a fault, or a stop, writing as each chunk arrives. A chunk that
+   * arrives once a stop has ended the message is discarded.
+   */
   async #read(source: AsyncIterable<string>): Promise<void> {
     const steps = await this.#steps(source);
     for (
       let next = await this.#pull(steps);
-      next !== stopRequested;
+      next !== stopRequested && !this.#ended;
       next = await this.#pull(steps)
     ) {
       if (next.done === true) {
-        return writeAll(this.#sink, this.#closing());
+        return this.#end();
       }
       this.#joined += next.value;
       await this.#chunk(steps);
@@ -294,8 +295,7 @@ class StreamedMessage {
     const pulled = Promise.resolve().then(async () => steps.next());
     void handled(pulled);
     try {
-      const next = await Promise.race([pulled, this.#woken]);
-      return this.#ended ? stopRequested : next;
+      return await Promise.race([pulled, this.#woken]);
     } catch (error) {
       return this.#fault(error);
     }
@@ -320,30 +320,39 @@ class StreamedMessage {
   }
 
   /** A failure the iterable or the lane view raised: the message ends, and the call rejects with it. */
-  async #fault(cause: unknown): Promise<never> {
+  async #fault(cause: unknown, pieces?: readonly Piece[]): Promise<never> {
     this.#sink.raise(cause);
-    if (!this.#ended) {
-      await writeAll(this.#sink, this.#closing()).catch(() => undefined);
+    const closing = pieces ?? (this.#ended ? undefined : this.#closing().pieces);
+    if (closing !== undefined) {
+      await writeAll(this.#sink, closing).catch(() => undefined);
     }
     throw cause;
   }
 
   /**
+   * The iterable's end: the writes that end the message. A lane view that throws at the final
+   * layout rejects the call once the message is closed, as one that throws at a chunk does.
+   */
+  async #end(): Promise<void> {
+    const { fault, pieces } = this.#closing();
+    return fault === undefined ? writeAll(this.#sink, pieces) : this.#fault(fault.cause, pieces);
+  }
+
+  /**
    * The writes that end the message with its joined text and its closing line break, after which
    * it reads and writes nothing more. A lane view that breaks at the end leaves what the last
-   * layout had not written, ended with a line break.
+   * layout had not written, ended with a line break, and its failure.
    */
-  #closing(): Piece[] {
-    let pieces: Piece[] = [];
+  #closing(): Closing {
+    let closing: Closing = { pieces: [] };
     try {
-      pieces = this.#advance(true);
-    } catch {
-      pieces = [
-        { row: this.#sink.rows === undefined ? undefined : dropped, text: `${this.#pending}\n` },
-      ];
+      closing = { pieces: this.#advance(true) };
+    } catch (error) {
+      const row = this.#sink.rows === undefined ? undefined : dropped;
+      closing = { fault: { cause: error }, pieces: [{ row, text: `${this.#pending}\n` }] };
     }
     this.#ended = true;
-    return pieces;
+    return closing;
   }
 
   /**
@@ -362,14 +371,21 @@ class StreamedMessage {
       : this.#rows(marked, end, this.#sink.rows.columns());
   }
 
-  /** Off a terminal: each line completed since the last write, one write a line. */
+  /**
+   * Off a terminal: each line completed since the last write, one write a line. At the message's
+   * end, the control sequences after the last line break, such as a style's close, join the last
+   * line, or follow the lines already written when that line was written before.
+   */
   #lines(marked: string, end: boolean): Piece[] {
     const resolved = this.#sink.resolve(marked);
     const whole = end && !endsWithLineBreak(resolved) ? `${resolved}\n` : resolved;
-    const lines = completeLines(whole, end);
+    const { lines, tail } = completeLines(whole);
     const fresh = lines.slice(this.#written);
     this.#written = Math.max(this.#written, lines.length);
-    this.#pending = whole.slice(lines.join('').length);
+    this.#pending = tail;
+    if (end && tail !== '') {
+      fresh.push(`${fresh.pop() ?? ''}${tail}`);
+    }
     return fresh.map((line) => ({ text: line }));
   }
 
@@ -422,5 +438,5 @@ class StreamedMessage {
   }
 }
 
-export { heldBack, StreamedMessage };
+export { StreamedMessage };
 export type { MessageSink, Piece, RowChange };

@@ -7,7 +7,9 @@
  * - The joined text decides. Off a terminal, the bytes each lane writes for a stream equal the
  *   bytes it writes for the joined text, with color on, so a style the debug and trace lanes keep
  *   open across a line break included, and on a Command that declares a result `print` moves to
- *   stderr with its stream.
+ *   stderr with its stream. A text that ends with a line break writes the style close after that
+ *   break wherever two chunks split it, so the next message starts with no style open.
+ * - The lane view's context is read once a message.
  * - One write a line. Off a terminal each completed line is one write, a CRLF or an LF that two
  *   chunks split included, and a message written between two lines lands between them.
  * - An empty stream writes what the method writes for the empty string.
@@ -15,18 +17,22 @@
  *   when it ends and rejects when it throws.
  * - A throw. The text received stays, the message gets its one line break, and the call rejects
  *   with the thrown value; a throw no code observed fails the run through the ordinary failure path.
+ *   A lane view that throws at the final layout does the same, off a terminal and on one.
  * - A stop. An action that fails while its stream is open ends the message ahead of its failure
  *   report and the call resolves; a cancelled run ends every open stream, and the iterable is told
- *   to stop.
+ *   to stop, as it is after a write fails or a lane view throws at a chunk. A stream issued after
+ *   the abort reads no chunk, and a chunk that arrives after a stop is discarded.
  * - The run waits for a stream no code awaited.
  * - On a terminal. At every chunk the screen shows what the method writes for the text so far, the
  *   unfinished row sits above an open live region, a message written meanwhile lands between the
  *   finished rows and the unfinished row, a trailing space never finishes a row the joined text lays
  *   out otherwise, a row longer than the screen is written a screen row at a time, a style kept
- *   across rows leaks into no other write, and the final screen equals the joined text's.
- * - At the process's end, the text an open stream received is written with its line break.
+ *   across rows leaks into no other write, a question that closes beside the unfinished row moves
+ *   into scrollback above it, and the final screen equals the joined text's.
+ * - At the process's end, the text an open stream received is written with its line break, at the
+ *   place its last write took among the queued writes.
  */
-import { Application, style } from '@loomcli/core';
+import { Application, lanes, override, style } from '@loomcli/core';
 import type { Lane, Out } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import type { MockProcess } from '@loomcli/testing';
@@ -574,4 +580,369 @@ test('at the process exit event, the text an open stream received is written wit
   await app.run({ process: mock });
   expect(atExit).toBe('Saved one\nSaved two\n');
   expect(mock.stdout.text).toBe('Saved one\nSaved two\n');
+});
+
+/** A text in segments: a string splits at any character, and a style call's text only at its edges. */
+type Segment = string | { readonly styled: string };
+
+/** Texts that end with a line break, so the joined text writes a style's close after that break. */
+const endingTexts: readonly (readonly Segment[])[] = [
+  ['Fetched the page.\n'],
+  ['one\n\ntwo\n'],
+  [{ styled: style.bold('Answer ready.\n') }],
+  ['Then ', { styled: style.bold('bold\nend\n') }],
+  [{ styled: style.bold('a\n') }, 'b\n'],
+];
+
+/** The text a segment holds. */
+function segmentText(segment: Segment): string {
+  return typeof segment === 'string' ? segment : segment.styled;
+}
+
+/** Every split of a text into two nonempty chunks that keeps each style call inside one chunk. */
+function twoChunkSplits(segments: readonly Segment[]): (readonly [string, string])[] {
+  const text = segments.map(segmentText).join('');
+  const cuts = new Set<number>();
+  let at = 0;
+  for (const segment of segments) {
+    const { length } = segmentText(segment);
+    if (typeof segment === 'string') {
+      for (let inside = 1; inside < length; inside += 1) {
+        cuts.add(at + inside);
+      }
+    }
+    at += length;
+    cuts.add(at);
+  }
+  return [...cuts]
+    .filter((cut) => cut < text.length)
+    .map((cut) => [text.slice(0, cut), text.slice(cut)] as const);
+}
+
+test.each(semantic)(
+  'off a terminal, a stream on %s whose text ends with a line break writes the joined bytes wherever two chunks split it',
+  async (lane) => {
+    for (const segments of endingTexts) {
+      const joined = await piped(
+        (out) => out[lane](segments.map(segmentText).join('')),
+        ['-vv'],
+        colored,
+      );
+      for (const [first, second] of twoChunkSplits(segments)) {
+        const streamed = await piped((out) => out[lane](chunks(first, second)), ['-vv'], colored);
+        expect({ first, stderr: streamed.stderr, stdout: streamed.stdout }).toEqual({
+          first,
+          stderr: joined.stderr,
+          stdout: joined.stdout,
+        });
+      }
+    }
+  },
+);
+
+test('off a terminal, a message written after a stream that ends with a line break starts with no style open', async () => {
+  const mock = mockProcess({ argv: ['-vv'], env: {} });
+  await marked('closed')
+    .action(async ({ out }) => {
+      await out.trace(chunks('Fetched the page.\n'));
+      await out.print(chunks(style.bold('Answer ready.\n')));
+      await out.warn('Next message');
+      await out.print('plain');
+    })
+    .run({ process: mock, rendering: colored });
+  const next = [
+    { message: 'Next message', opened: '\u001B[2m', stream: 'stderr' },
+    { message: 'plain', opened: '\u001B[1m', stream: 'stdout' },
+  ];
+  for (const { message, opened, stream } of next) {
+    const writes = mock.transcript.filter((write) => write.stream === stream);
+    const before = writes
+      .slice(
+        0,
+        writes.findIndex(({ text }) => text.includes(message)),
+      )
+      .map(({ text }) => text)
+      .join('');
+    // The stream opens a faint or bold attribute, and the bytes before the next message close it.
+    expect({
+      closed: before.endsWith('\n\u001B[22m'),
+      opened: before.includes(opened),
+      stream,
+    }).toEqual({
+      closed: true,
+      opened: true,
+      stream,
+    });
+  }
+});
+
+/**
+ * An iterable whose `next` answers each request with `answer`, its requests counted from 1, and
+ * which notes each time core tells it to stop.
+ */
+function scripted(answer: (request: number) => Promise<IteratorResult<string>>) {
+  const returned = vi.fn(async (): Promise<IteratorResult<string>> => ({
+    done: true,
+    value: undefined,
+  }));
+  const requested = vi.fn();
+  let requests = 0;
+  const iterable: AsyncIterable<string> = {
+    [Symbol.asyncIterator]: () => ({
+      next: async (): Promise<IteratorResult<string>> => {
+        requests += 1;
+        requested(requests);
+        return answer(requests);
+      },
+      return: returned,
+    }),
+  };
+  return { iterable, requested, returned };
+}
+
+/** An answer that never comes, as a stream waiting on the network gives. */
+const never = async (): Promise<never> => await new Promise<never>(() => undefined);
+
+/** The error an info lane view that refuses a text throws. */
+const refusal = new Error('The view refused the text.');
+
+/** An application whose info lane view throws on a text `refuses` names, and writes any other as it is. */
+function refusing(name: string, refuses: (message: string) => boolean) {
+  return new Application(name, {
+    views: [
+      override(lanes.info, {
+        render: (message) => {
+          if (refuses(message)) {
+            throw refusal;
+          }
+          return message;
+        },
+      }),
+    ],
+  });
+}
+
+/** Lane views that accept every layout before the end and throw at the final one, off a terminal. */
+const finalLayouts = [
+  {
+    name: 'an empty stream whose view throws on the empty string',
+    parts: [],
+    refuses: (message: string) => message === '',
+    written: '\n',
+  },
+  {
+    name: 'a joined text that differs from every earlier layout only by a trailing space',
+    parts: ['Hello', ' '],
+    refuses: (message: string) => message.endsWith(' '),
+    written: 'Hello\n',
+  },
+  {
+    name: 'a view that rejects the finished text',
+    parts: ['first\nsec', 'ond.\t'],
+    refuses: (message: string) => message === 'first\nsecond.\t',
+    written: 'first\nsecond.\n',
+  },
+];
+
+test.each(finalLayouts)(
+  'off a terminal, $name keeps the text, ends with one line break, and rejects the call',
+  async ({ parts, refuses, written }) => {
+    const mock = mockProcess();
+    let rejection: unknown = undefined;
+    const code = await refusing('final', refuses)
+      .action(async ({ out }) => {
+        rejection = await out.info(chunks(...parts)).catch((error: unknown) => error);
+      })
+      .run({ process: mock });
+    expect({ code, rejection, stderr: mock.stderr.text }).toEqual({
+      code: 0,
+      rejection: refusal,
+      stderr: written,
+    });
+  },
+);
+
+test.each(finalLayouts)(
+  'off a terminal, $name that no code observed fails the run as the same call with a string does',
+  async ({ parts, refuses, written }) => {
+    async function run(write: (out: Out) => Promise<void>) {
+      const mock = mockProcess();
+      const code = await refusing('unobserved', refuses)
+        .action(async ({ out }) => {
+          void write(out);
+        })
+        .run({ process: mock });
+      return { code, stderr: mock.stderr.text };
+    }
+    const streamed = await run((out) => out.info(chunks(...parts)));
+    const whole = await run((out) => out.info(parts.join('')));
+    expect(whole.code).not.toBe(0);
+    expect(streamed.code).toBe(whole.code);
+    expect(streamed.stderr).toBe(`${written}${whole.stderr}`);
+    expect(streamed.stderr).toContain(refusal.message);
+  },
+);
+
+test('on a terminal, a lane view that rejects the finished text keeps the rows shown and rejects the call', async () => {
+  const mock = terminal(40);
+  let rejection: unknown = undefined;
+  const code = await refusing('final', (message) => message === 'first\nsecond.\t')
+    .action(async ({ out }) => {
+      rejection = await out.info(chunks('first\nsec', 'ond.\t')).catch((error: unknown) => error);
+      await out.info('after');
+    })
+    .run({ process: mock });
+  expect({ code, rejection }).toEqual({ code: 0, rejection: refusal });
+  await expect(shown(mock, 40)).resolves.toEqual(['first', 'second.', 'after']);
+});
+
+/** What a run writes when its action cancels the run and then calls `write`. */
+async function afterAbort(write: (out: Out) => Promise<void>) {
+  const mock = mockProcess();
+  await new Application('late')
+    .action(async ({ cancel, out, signal }) => {
+      cancel();
+      expect(signal.aborted).toBe(true);
+      await write(out);
+    })
+    .run({ process: mock });
+  return { stderr: mock.stderr.text, stdout: mock.stdout.text };
+}
+
+test('a stream issued after the run signal aborted reads no chunk and ends as the empty message does', async () => {
+  const { iterable, requested } = scripted(async (request) =>
+    request === 1 ? { done: false, value: 'late\n' } : { done: true, value: undefined },
+  );
+  const streamed = await afterAbort((out) => out.print(iterable));
+  expect(requested).not.toHaveBeenCalled();
+  expect(streamed).toEqual(await afterAbort((out) => out.print('')));
+});
+
+test('a write that fails ends the stream, rejects its call, and the iterable is told to stop', async () => {
+  const mock = mockProcess();
+  const { iterable, returned } = scripted(async (request) => {
+    if (request === 2) {
+      mock.stderr.destroy(new Error('The terminal hung up.'));
+    }
+    return request <= 2 ? { done: false, value: `line ${String(request)}\n` } : await never();
+  });
+  let rejection: unknown = undefined;
+  await new Application('failed')
+    .action(async ({ out }) => {
+      rejection = await out.info(iterable).catch((error: unknown) => error);
+    })
+    .run({ process: mock });
+  expect(rejection).toBeInstanceOf(Error);
+  expect(returned).toHaveBeenCalledOnce();
+});
+
+test('a lane view that throws at a chunk ends the stream, and the iterable is told to stop', async () => {
+  const { iterable, returned } = scripted(async (request) =>
+    request === 1 ? { done: false, value: 'refused' } : await never(),
+  );
+  let rejection: unknown = undefined;
+  await refusing('view', (message) => message === 'refused')
+    .action(async ({ out }) => {
+      rejection = await out.info(iterable).catch((error: unknown) => error);
+    })
+    .run({ process: mockProcess() });
+  expect(rejection).toBe(refusal);
+  expect(returned).toHaveBeenCalledOnce();
+});
+
+test('a stream reads the view context once, at its first layout', async () => {
+  const contexts = new Set<unknown>();
+  const app = new Application('context', {
+    views: [
+      override(lanes.info, {
+        render: (message, context) => {
+          contexts.add(context);
+          return message;
+        },
+      }),
+    ],
+  }).action(async ({ out }) => {
+    await out.info(chunks('one ', 'two ', 'three'));
+  });
+  await app.run({ process: mockProcess() });
+  expect(contexts.size).toBe(1);
+});
+
+test('at the exit event, the rest of an open stream takes the place its last write took among the queued writes', async () => {
+  const mock = mockProcess();
+  const on = vi.spyOn(mock.signals, 'on');
+  const { iterable } = scripted(async (request) =>
+    request === 1 ? { done: false, value: 'Saved one\nSaved t' } : await never(),
+  );
+  const gate: { release?: () => void } = {};
+  const held = new Promise<void>((resolve) => {
+    gate.release = resolve;
+  });
+  // A row sequence that waits holds its place in stdout's order, so every later stdout write stays queued.
+  async function* waiting(): AsyncGenerator<string> {
+    await held;
+    yield* [];
+  }
+  let atExit = '';
+  const app = new Application('exit').action(async ({ out }) => {
+    // The sequence yields no row, so its row view is never called.
+    void out.render(waiting(), { row: () => '' });
+    void out.print('before');
+    void out.print(iterable);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    void out.print('after');
+    for (const [event, listener] of on.mock.calls) {
+      if (event === 'exit') {
+        listener(1);
+      }
+    }
+    atExit = mock.stdout.text;
+    gate.release?.();
+  });
+  await app.run({ process: mock });
+  expect(atExit).toBe('before\nSaved one\nSaved t\nafter\n');
+});
+
+test('a chunk that arrives after a stop is discarded', async () => {
+  // The stop comes a growing number of microtasks after the chunk arrives.
+  // One of those delays lands the stop between the chunk's arrival and core taking it.
+  for (let delay = 0; delay < 12; delay += 1) {
+    const mock = mockProcess();
+    const app = new Application('late').action(async ({ cancel, out }) => {
+      const { iterable } = scripted((request) => {
+        if (request > 1) {
+          return never();
+        }
+        let stop = Promise.resolve();
+        for (let step = 0; step < delay; step += 1) {
+          stop = stop.then(() => undefined);
+        }
+        void stop.then(cancel);
+        return Promise.resolve({ done: false, value: 'Partial\nmore\n' });
+      });
+      await out.print(iterable);
+    });
+    await app.run({ process: mock });
+    // The chunk is either taken before the stop or discarded whole, never taken after the end.
+    expect({ delay, stdout: mock.stdout.text }).toEqual({
+      delay,
+      stdout: expect.stringMatching(/^(?:\n|Partial\nmore\n)$/u),
+    });
+  }
+});
+
+test('a question that closes beside an unfinished row moves into scrollback above it', async () => {
+  const mock = terminal(40);
+  const app = marked('question').action(async ({ out }) => {
+    const question = out.region({ input: true });
+    await question.draw(null, { render: () => 'Continue?' });
+    async function* text(): AsyncGenerator<string> {
+      yield 'one';
+      await question.end();
+      yield ' two';
+    }
+    await out.print(text());
+  });
+  await app.run({ process: mock });
+  await expect(shown(mock, 40)).resolves.toEqual(['Continue?', 'one two']);
 });

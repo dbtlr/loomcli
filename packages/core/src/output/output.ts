@@ -85,12 +85,11 @@ type Purpose = Lane;
 type Stream = 'stdout' | 'stderr';
 
 /**
- * Where one semantic message goes and the view it draws through, its lane view when none is passed,
- * and the channel whose failure stops it when it is streamed.
+ * Where one semantic message goes, and the channel whose failure stops it when it is streamed. The
+ * view it draws through comes from the call: the view the call passed, or its lane view.
  */
 interface MessageLook {
   readonly destination: Stream;
-  readonly view: View<string> | undefined;
   readonly live?: LiveSequences | undefined;
 }
 
@@ -1239,7 +1238,7 @@ export class Output {
    * verbosity hides calls no view and writes nothing. A message that is an async iterable of its
    * text is a streamed message, which takes no view.
    */
-  emit(kind: Purpose, call: MessageArguments, look: Omit<MessageLook, 'view'>): Promise<void> {
+  emit(kind: Purpose, call: MessageArguments, look: MessageLook): Promise<void> {
     const [message, view = lanes[kind]] = call;
     if (typeof message !== 'string') {
       return this.streamed(kind, message, look);
@@ -1263,11 +1262,7 @@ export class Output {
    * its first layout, so the whole message lays out at one width. A message an action issued joins
    * its channel's live set, so the action's failure stops it.
    */
-  private streamed(
-    kind: Purpose,
-    source: AsyncIterable<string>,
-    look: Omit<MessageLook, 'view'>,
-  ): Promise<void> {
+  private streamed(kind: Purpose, source: AsyncIterable<string>, look: MessageLook): Promise<void> {
     const { destination } = look;
     const hidden = this.verbosity < shownFrom[kind];
     const target = this.destination(this.host[destination]);
