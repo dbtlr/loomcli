@@ -41,24 +41,6 @@ import type { PostInstall } from '../../helpers/loom-config.js';
 import { loomVersion, typescriptRange } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
 import { parseManifest } from '../../helpers/manifest.js';
-import {
-  addedKey,
-  cannotRemove,
-  cannotWrite,
-  createPackageQuestion,
-  installerWithoutRepository,
-  invalidDirectoryName,
-  linterQuestion,
-  notEmptyWithoutPackage,
-  plainTypescript,
-  removedFile,
-  staleSkillFile,
-  testRunnerQuestion,
-  unexportedApplication,
-  unloadedApplication,
-  unreadReason,
-  wroteFile,
-} from '../../helpers/messages.js';
 import { nearestPackageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
 import type { RunHost } from '../../helpers/run-host.js';
@@ -85,6 +67,24 @@ import {
 } from '../../helpers/tooling.js';
 import type { Linter, TestRunner, Tooling } from '../../helpers/tooling.js';
 import type { init, Piece } from './command.js';
+import {
+  addedKey,
+  cannotRemove,
+  cannotWrite,
+  createPackageQuestion,
+  installerWithoutRepository,
+  invalidDirectoryName,
+  linterQuestion,
+  notEmptyWithoutPackage,
+  plainTypescript,
+  removedFile,
+  staleSkillFile,
+  testRunnerQuestion,
+  unexportedApplication,
+  unloadedApplication,
+  unreadReason,
+  wroteFile,
+} from './messages.js';
 
 /** The pieces that read the application's name from `package.json`. */
 const namedPieces: readonly Piece[] = ['package', 'application', 'entry', 'test', 'install'];

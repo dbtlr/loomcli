@@ -133,6 +133,45 @@ test("a template inside an escaping helper's arguments is escaped whole", () => 
   expect(moduleSites('escaping', source)).toEqual(['${spelling}']);
 });
 
+test('a template handed straight to an escaping helper is escaped whole, and one beside it is not', () => {
+  const source = [
+    "import { quoted } from '../failures/messages.js';",
+    'export function direct(name: string): string {',
+    '  return quoted(`a ${name}`);',
+    '}',
+    'export function beside(name: string): string {',
+    "  return [quoted(`b ${name}`), `c ${name}`].join(' ');",
+    '}',
+  ].join('\n');
+  expect(moduleSites('escaping', source)).toEqual(['${name}']);
+});
+
+test('a banned word in a literal nested in an interpolation is reported', () => {
+  const source = [
+    'export function counted(count: number): string {',
+    "  return `${count > 1 ? 'presentations' : 'one'} failed.`;",
+    '}',
+  ].join('\n');
+  expect(moduleSites('banned-words', source)).toEqual(["'presentations'"]);
+});
+
+test('a name bound to String is no escaping helper and no message function', () => {
+  const source = [
+    'const shown = String;',
+    'export function named(name: string): string {',
+    '  return `Read ${shown(name)}.`;',
+    '}',
+  ].join('\n');
+  expect(moduleSites('escaping', source)).toEqual(['${shown(name)}']);
+});
+
+test('a destructured member its inline type declares as a string is no number', () => {
+  const source = [
+    'export const named = ({ name }: { name: string }): string => `Read ${name}.`;',
+  ].join('\n');
+  expect(moduleSites('escaping', source)).toEqual(['${name}']);
+});
+
 test("a conditional's branches are read by the rule, and its condition repeats nothing", () => {
   const source = [
     'export function either(name: string, count: number): string {',
@@ -233,6 +272,58 @@ test('an out call is a sink on any receiver but a style and the log', () => {
     "'The cache is stale. Run refresh.'",
     '`Read ${String(1)} file.`',
     "'The registry is down. Try again later.'",
+  ]);
+});
+
+test('a literal sentence handed to print, info, success, error, or trace is reported', () => {
+  const source = [
+    'export function run(out: Out) {',
+    "  out.print('The plan is ready. Run apply.');",
+    "  out.info('The cache is warm. Nothing to do.');",
+    "  out.success('The release is cut. Push its tag.');",
+    "  out.error('The tag is taken. Choose another.');",
+    "  out.trace('Read the lockfile. It is current.');",
+    '}',
+  ].join('\n');
+  expect(gathered(source)).toEqual([
+    "'The plan is ready. Run apply.'",
+    "'The cache is warm. Nothing to do.'",
+    "'The release is cut. Push its tag.'",
+    "'The tag is taken. Choose another.'",
+    "'Read the lockfile. It is current.'",
+  ]);
+});
+
+test('a template whose sentence is held only in a literal inside its interpolation is read', () => {
+  const source = [
+    'export function fail(missing: boolean) {',
+    "  throw new InputError(`${missing ? 'The value is missing.' : 'Bad.'}`, []);",
+    '}',
+  ].join('\n');
+  expect(gathered(source)).toEqual(["`${missing ? 'The value is missing.' : 'Bad.'}`"]);
+});
+
+test('a literal sentence handed to a named wrapper call, or returned to a named call, is reported', () => {
+  const source = [
+    "throw fatal('The update failed. Try again.', cause);",
+    "throw conflict('channel', 'The channel conflicts. Pick one.', issue);",
+    "run.line('Wrote the file. Commit it.');",
+    "other.line('A line of another receiver.');",
+    "line('A plain call, not the member.');",
+    'await report({ out, signal }, async () => {',
+    "  const unused = () => 'Not returned to report';",
+    "  return done ? 'The check passed. Nothing to fix.' : summary(count);",
+    '});',
+    "await other(async () => { return 'A call no sink names.'; });",
+  ].join('\n');
+  expect(gathered(source)).toEqual([]);
+  expect(
+    gathered(source, { calls: ['conflict', 'fatal', 'run.line'], returns: ['report'] }),
+  ).toEqual([
+    "'The update failed. Try again.'",
+    "'The channel conflicts. Pick one.'",
+    "'Wrote the file. Commit it.'",
+    "'The check passed. Nothing to fix.'",
   ]);
 });
 

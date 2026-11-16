@@ -1,4 +1,9 @@
-import { invalidJsonAnswer, neverAppeared, refusedRequest, requestTimedOut } from './messages.js';
+import {
+  invalidJsonAnswer,
+  neverAppeared,
+  refusedRequest,
+  requestTimedOut,
+} from '../commands/release/messages.js';
 
 const maximumDelayMs = 60_000;
 

@@ -3,12 +3,12 @@ import { resolve } from 'node:path';
 
 import type { ActionHandler } from '@loomcli/core';
 
-import { tokenRequired } from '../../helpers/messages.js';
 import { parseOrThrow } from '../../helpers/parse-or-throw.js';
 import { planSchema } from '../../helpers/release-plan.js';
 import { recordRelease } from '../../helpers/release-record.js';
 import { report } from '../../helpers/report.js';
 import type { releaseRecord } from './command.js';
+import { tokenRequired } from './messages.js';
 
 /** Records a planned release as a tag and a GitHub release. */
 export const recordPlannedRelease: ActionHandler<typeof releaseRecord> = async ({

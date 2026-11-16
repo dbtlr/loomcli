@@ -400,7 +400,7 @@ class Session {
    */
   #idInUse(id: RequestId): ProtocolError | undefined {
     return this.#inFlight.has(id) || this.#subscriptions.has(id)
-      ? new ProtocolError(errorCodes.invalidRequest, idInUse(JSON.stringify(id)))
+      ? new ProtocolError(errorCodes.invalidRequest, idInUse)
       : undefined;
   }
 

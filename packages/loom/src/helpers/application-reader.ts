@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import type { BaseIssue, BaseSchema, InferOutput } from 'valibot';
 
+import { bunCouldNotRead } from '../commands/build/messages.js';
 import { runBun } from './bun.js';
-import { bunCouldNotRead } from './messages.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { RunHost } from './run-host.js';
 

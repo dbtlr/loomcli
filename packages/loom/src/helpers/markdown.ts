@@ -1,7 +1,7 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
+import { unclosedBlock } from '../commands/changelog/messages.js';
 import { withoutByteOrderMark } from './byte-order-mark.js';
-import { unclosedBlock } from './messages.js';
 import { parseVersion } from './version.js';
 import type { Version } from './version.js';
 

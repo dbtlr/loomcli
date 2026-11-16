@@ -3,7 +3,7 @@ import { StringDecoder } from 'node:string_decoder';
 
 import type { ProcessSignal } from '@loomcli/core';
 
-import { missingBun } from './messages.js';
+import { missingBun } from '../commands/build/messages.js';
 import type { RunHost } from './run-host.js';
 
 /** Whether a spawn failed because no executable answered to the name. */

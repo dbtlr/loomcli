@@ -2,14 +2,14 @@ import { createHash } from 'node:crypto';
 
 import { array, looseObject, minLength, pipe, record, string, unknown } from 'valibot';
 
-import { readJson } from './http.js';
-import type { HttpPolicy } from './http.js';
 import {
   integrityMismatch,
   provenanceElsewhere,
   provenanceWithoutSource,
   unsupportedIntegrity,
-} from './messages.js';
+} from '../commands/release/messages.js';
+import { readJson } from './http.js';
+import type { HttpPolicy } from './http.js';
 import { parseOrThrow } from './parse-or-throw.js';
 
 const nonEmpty = pipe(string(), minLength(1));

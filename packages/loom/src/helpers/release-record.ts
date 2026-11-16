@@ -1,16 +1,4 @@
 import {
-  createRelease,
-  createTag,
-  isUploadedAsset,
-  readAssets,
-  readRelease,
-  readTagCommit,
-  removeAsset,
-  uploadAsset,
-} from './github.js';
-import { readBytes, until } from './http.js';
-import type { RetryPolicy } from './http.js';
-import {
   commitOutsideCheckout,
   createdRelease,
   createdTag,
@@ -31,7 +19,19 @@ import {
   uploadedAsset,
   uploadsDisagree,
   verifiedTarball,
-} from './messages.js';
+} from '../commands/release/messages.js';
+import {
+  createRelease,
+  createTag,
+  isUploadedAsset,
+  readAssets,
+  readRelease,
+  readTagCommit,
+  removeAsset,
+  uploadAsset,
+} from './github.js';
+import { readBytes, until } from './http.js';
+import type { RetryPolicy } from './http.js';
 import { readProvenance, readPublished, tarballName, verifyIntegrity } from './registry.js';
 import type { ReleasePlan } from './release-plan.js';
 import { git, gitLine } from './repository.js';

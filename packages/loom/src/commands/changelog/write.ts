@@ -2,12 +2,12 @@ import type { ActionHandler } from '@loomcli/core';
 
 import { readNarrative, releaseDate } from '../../helpers/changelog.js';
 import { changelogFiles, packagePaths } from '../../helpers/loom-config.js';
-import { nextVersion, pendingFragments } from '../../helpers/messages.js';
 import { preparePackageCut, writePackageCut } from '../../helpers/package-changelog.js';
 import type { PackageCut } from '../../helpers/package-changelog.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
 import type { changelogWrite } from './command.js';
+import { nextVersion, pendingFragments } from './messages.js';
 
 // A stable cut prints its section and the version, and a prerelease cut the version and how many fragments stay pending.
 function cutSummary(cut: PackageCut) {

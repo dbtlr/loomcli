@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { driftedManagedFile } from './messages.js';
+import { driftedManagedFile } from '../commands/init/messages.js';
 
 /** The header line of a managed Markdown file, which records the checksum of the file's content. */
 const markdownHeader = /^<!-- Managed by loom init\. sha256:(?<checksum>[\da-f]{64}) -->$/u;

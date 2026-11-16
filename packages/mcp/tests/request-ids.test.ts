@@ -13,7 +13,7 @@ describe('a request id in use', () => {
       error: {
         code: -32_600,
         message:
-          'The request id 7 is in use by a request still in flight. Send each request with an id no request in flight holds.',
+          'The request id is in use by a request still in flight. Send each request with an id no request in flight holds.',
       },
       id: 7,
       jsonrpc: '2.0',
@@ -49,7 +49,7 @@ describe('a request id in use', () => {
       error: {
         code: -32_600,
         message:
-          'The request id "listen" is in use by a request still in flight. Send each request with an id no request in flight holds.',
+          'The request id is in use by a request still in flight. Send each request with an id no request in flight holds.',
       },
       id: 'listen',
     });

@@ -1,4 +1,4 @@
-import { decisionIndexChanged, decisionRecordChanged } from './messages.js';
+import { decisionIndexChanged, decisionRecordChanged } from '../commands/pr/messages.js';
 import { git, readRegularFile } from './repository.js';
 import type { Checkout } from './repository.js';
 

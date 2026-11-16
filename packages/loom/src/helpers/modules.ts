@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { relative } from 'node:path';
 
-import { missingModule } from './messages.js';
+import { missingModule } from '../commands/build/messages.js';
 
 /** A path as the operator reads it: relative to the working directory. */
 export function shown(cwd: string, path: string) {

@@ -5,6 +5,13 @@ import type { ActionHandler } from '@loomcli/core';
 
 import { insertSection, readNarrative, releaseDate } from '../../helpers/changelog.js';
 import { withVersion } from '../../helpers/manifest.js';
+import { prepareLockfile } from '../../helpers/release-files.js';
+import { prepareRelease, requireReleaseNotes } from '../../helpers/release.js';
+import type { Release } from '../../helpers/release.js';
+import { report } from '../../helpers/report.js';
+import { git, gitLine, readWorkingFile } from '../../helpers/repository.js';
+import type { Checkout } from '../../helpers/repository.js';
+import type { releaseCut } from './command.js';
 import {
   changedDuringPreparation,
   checkoutChanged,
@@ -13,14 +20,7 @@ import {
   lockExists,
   rollbackIncomplete,
   tagExists,
-} from '../../helpers/messages.js';
-import { prepareLockfile } from '../../helpers/release-files.js';
-import { prepareRelease, requireReleaseNotes } from '../../helpers/release.js';
-import type { Release } from '../../helpers/release.js';
-import { report } from '../../helpers/report.js';
-import { git, gitLine, readWorkingFile } from '../../helpers/repository.js';
-import type { Checkout } from '../../helpers/repository.js';
-import type { releaseCut } from './command.js';
+} from './messages.js';
 
 /** Whether the checkout's HEAD or working tree moved away from the prepared release. */
 async function checkoutMoved(checkout: Checkout, release: Release) {

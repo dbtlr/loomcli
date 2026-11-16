@@ -9,10 +9,13 @@
 import { expect, test } from 'vite-plus/test';
 
 import { voiceReport } from '../../../scripts/test-voice.js';
-import type { VoiceExceptions } from '../../../scripts/test-voice.js';
+import type { VoiceExceptions, VoiceSinks } from '../../../scripts/test-voice.js';
 
 /** Core's sources, which every check reads. */
 const src = new URL('../src/', import.meta.url);
+
+/** An issue's `message`, the line a value core's own code rejects prints after the input's name. */
+const sinks: VoiceSinks = { properties: ['message'] };
 
 /**
  * Core's known exceptions. An issue's sentence is its validator's, from the catalog or the author,
@@ -33,5 +36,5 @@ const exceptions: VoiceExceptions = {
 };
 
 test('every sentence core says to an operator keeps the voice the voice test holds', async () => {
-  await expect(voiceReport(src, exceptions)).resolves.toEqual([]);
+  await expect(voiceReport(src, exceptions, sinks)).resolves.toEqual([]);
 });

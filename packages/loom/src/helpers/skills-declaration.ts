@@ -4,10 +4,14 @@ import { dirname, join } from 'node:path';
 import { array, boolean, literal, strictObject, string, union } from 'valibot';
 import type { InferOutput } from 'valibot';
 
+import {
+  skillsFolderJudged,
+  twoSkillsFolders,
+  unreadableSkillsRegistry,
+} from '../commands/build/messages.js';
 import { loadFailure, threw } from './application-load-failure.js';
 import type { Threw } from './application-load-failure.js';
 import { runReader } from './application-reader.js';
-import { skillsFolderJudged, twoSkillsFolders, unreadableSkillsRegistry } from './messages.js';
 import type { RunHost } from './run-host.js';
 
 /** One file of a judged skill: its path relative to the skill's folder, and its executable bit. */

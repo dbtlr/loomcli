@@ -1,6 +1,6 @@
 import { posix } from 'node:path';
 
-import { noVersionCommit } from './messages.js';
+import { noVersionCommit } from '../commands/release/messages.js';
 import type { Checkout, Libraries } from './repository.js';
 import {
   currentVersion,

@@ -78,10 +78,19 @@ test('--help loads every command declaration and the work of no command', () => 
   ]);
 });
 
-test("changelog check loads its own work and no other command's", () => {
+test.each(['--help', '--version', 'build --help', 'release plan --help'])(
+  "loom %s routes to no command's work and loads no command's message module",
+  (line) => {
+    const modules = loadedCommandModules(line.split(' '));
+    expect(modules.filter((path) => path.endsWith('/messages.ts'))).toEqual([]);
+  },
+);
+
+test("changelog check loads its own work and sentences and no other command's", () => {
   const modules = loadedCommandModules(['changelog', 'check']);
   expect(modules.filter((path) => !path.endsWith('/command.ts'))).toEqual([
     'src/commands/changelog/check.ts',
+    'src/commands/changelog/messages.ts',
   ]);
 });
 

@@ -1,9 +1,9 @@
 import { array, looseObject, minLength, number, pipe, string, transform } from 'valibot';
 import type { InferOutput } from 'valibot';
 
+import { tagObjectMissing, uploadOriginRefused } from '../commands/release/messages.js';
 import { readJson, removeResource, writeBytes, writeJson } from './http.js';
 import type { HttpPolicy } from './http.js';
-import { tagObjectMissing, uploadOriginRefused } from './messages.js';
 import { parseOrThrow } from './parse-or-throw.js';
 
 // GitHub serves uploads from its own host, and a self-hosted API serves them from the API host.

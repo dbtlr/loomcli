@@ -1,8 +1,5 @@
 import { object, string } from 'valibot';
 
-import { readFragments } from './fragments.js';
-import { parseManifest } from './manifest.js';
-import { isBuildAffectingPath } from './material.js';
 import {
   expectedReleaseTitle,
   fragmentRequired,
@@ -10,7 +7,10 @@ import {
   prShallow,
   releaseBranchBehind,
   versionMustStay,
-} from './messages.js';
+} from '../commands/pr/messages.js';
+import { readFragments } from './fragments.js';
+import { parseManifest } from './manifest.js';
+import { isBuildAffectingPath } from './material.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import { checkRelease } from './release-check.js';
 import { currentVersion, git, gitLine, readLibraries, readRegularFile } from './repository.js';

@@ -5,13 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { number, object, string, union } from 'valibot';
 import { parseAllDocuments } from 'yaml';
 
-import { withVersion } from './manifest.js';
 import {
   lockfileInvalidYaml,
   lockfilePreparationFailed,
   lockfileTimedOut,
   pnpmMissing,
-} from './messages.js';
+} from '../commands/release/messages.js';
+import { withVersion } from './manifest.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { Release } from './release.js';
 import { git, readRegularFileBytes, readWorkingFile } from './repository.js';

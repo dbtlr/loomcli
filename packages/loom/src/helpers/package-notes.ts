@@ -1,10 +1,14 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+import {
+  noPendingFragments,
+  notCurrentVersion,
+  versionNotCut,
+} from '../commands/changelog/messages.js';
 import { landedFragments, renderGroups } from './changelog.js';
 import type { ChangelogFiles } from './changelog.js';
 import { releaseBody } from './markdown.js';
-import { noPendingFragments, notCurrentVersion, versionNotCut } from './messages.js';
 import { packageVersion, requireHistory } from './package-changelog.js';
 import { readWorkingFile } from './repository.js';
 import type { Checkout } from './repository.js';

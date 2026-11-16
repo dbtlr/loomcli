@@ -19,19 +19,13 @@ const ownConstant =
 
 /**
  * The package's known exceptions. The package bundles into the plugin pack with no dependency on
- * core, so its sentences repeat only what the server itself names, and a request id, which the
- * client chose and the server writes as JSON in its reply to that client.
+ * core, so its sentences repeat only what the server itself names.
  */
 const exceptions: VoiceExceptions = {
   escaping: {
     'messages.ts': {
       '${capabilitiesKey}': { reason: ownConstant, sites: 1 },
       '${handshakes}': { reason: ownConstant, sites: 1 },
-      '${id}': {
-        reason:
-          'A request id is the one the client sent, written as JSON, in the reply to that client.',
-        sites: 1,
-      },
       '${key}': { reason: ownConstant, sites: 1 },
       '${method}': { reason: ownConstant, sites: 1 },
       '${revision}': { reason: ownConstant, sites: 3 },

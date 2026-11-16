@@ -255,6 +255,30 @@ const filePathsOnly = 'This input accepts file paths only. Use ./- for a file na
 const pipedStdin = 'Expected piped or redirected stdin.';
 
 /**
+ * The issue of a content input that reads fewer sources than its minimum.
+ *
+ * @example
+ * ```ts
+ * const issues = [{ message: tooFewSources(2) }]; // 'Expected at least 2 readable sources.'
+ * ```
+ */
+function tooFewSources(minimum: number): string {
+  return `Expected at least ${String(minimum)} readable ${minimum === 1 ? 'source' : 'sources'}.`;
+}
+
+/**
+ * The issue of a content input that reads more sources than its maximum.
+ *
+ * @example
+ * ```ts
+ * const issues = [{ message: tooManySources(1) }]; // 'Expected at most 1 readable source.'
+ * ```
+ */
+function tooManySources(maximum: number): string {
+  return `Expected at most ${String(maximum)} readable ${maximum === 1 ? 'source' : 'sources'}.`;
+}
+
+/**
  * One member of a broken option group: the spelling that reaches it, and the source that filled
  * it, if one did.
  *
@@ -321,5 +345,7 @@ export {
   requiredOption,
   silentRejection,
   stdinIssue,
+  tooFewSources,
+  tooManySources,
   unreadableFile,
 };

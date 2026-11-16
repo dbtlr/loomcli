@@ -3,7 +3,6 @@ import { basename, dirname, resolve } from 'node:path';
 
 import { array, minLength, pipe, safeParse, string } from 'valibot';
 
-import { parseManifest } from './manifest.js';
 import {
   sharedFileMissing,
   sharedFileOtherVersion,
@@ -12,7 +11,8 @@ import {
   sharedFileWithoutVersion,
   sharedVersionNotList,
   sharedVersionRefused,
-} from './messages.js';
+} from '../commands/changelog/messages.js';
+import { parseManifest } from './manifest.js';
 import { readWorkingFile } from './repository.js';
 
 /** The value of `sharedVersion`, checked as one value: a list of nonempty strings. */

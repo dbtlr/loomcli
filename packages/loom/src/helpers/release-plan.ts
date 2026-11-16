@@ -11,10 +11,6 @@ import {
 } from 'valibot';
 import type { InferOutput } from 'valibot';
 
-import { isUploadedAsset, readRelease, readTagCommit } from './github.js';
-import type { HttpPolicy } from './http.js';
-import { locateRelease } from './markdown.js';
-import { materialBaseline } from './material.js';
 import {
   abandonedVersion,
   changedSinceCut,
@@ -31,7 +27,11 @@ import {
   tagState,
   tagWithoutProvenance,
   unreleasedPlan,
-} from './messages.js';
+} from '../commands/release/messages.js';
+import { isUploadedAsset, readRelease, readTagCommit } from './github.js';
+import type { HttpPolicy } from './http.js';
+import { locateRelease } from './markdown.js';
+import { materialBaseline } from './material.js';
 import { readProvenance, readPublished, tarballName } from './registry.js';
 import type { RegistryTarget } from './registry.js';
 import {

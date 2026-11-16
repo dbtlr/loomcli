@@ -1,9 +1,9 @@
 import type { ActionHandler } from '@loomcli/core';
 
-import { prChecksPassed } from '../../helpers/messages.js';
 import { checkPullRequest } from '../../helpers/pr-check.js';
 import { report } from '../../helpers/report.js';
 import type { prCheck } from './command.js';
+import { prChecksPassed } from './messages.js';
 
 /** Checks a pull request against its base for changelog and release rules. */
 export const checkPr: ActionHandler<typeof prCheck> = async ({

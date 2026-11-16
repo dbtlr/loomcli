@@ -111,17 +111,16 @@ function alreadyInitialized(revision: string): string {
 }
 
 /**
- * The error of a request whose id a request still in flight holds, with the id written as JSON.
+ * The error of a request whose id a request still in flight holds. The error response's `id`
+ * member carries that id, so the sentence does not repeat it.
  *
  * @example
  * ```ts
- * idInUse('7');
- * // 'The request id 7 is in use by a request still in flight. Send each request with an id no request in flight holds.'
+ * console.log(idInUse); // 'The request id is in use by a request still in flight. Send each request ...'
  * ```
  */
-function idInUse(id: string): string {
-  return `The request id ${id} is in use by a request still in flight. Send each request with an id no request in flight holds.`;
-}
+const idInUse =
+  'The request id is in use by a request still in flight. Send each request with an id no request in flight holds.';
 
 /**
  * The error of a handler that failed with anything but a protocol error, naming the method.

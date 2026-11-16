@@ -9,7 +9,13 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { aliasesProcessStdin } from '../host/process-handle.js';
 import type { Host } from '../host/types.js';
-import { filePathsOnly, pipedStdin, unreadableFile } from './messages.js';
+import {
+  filePathsOnly,
+  pipedStdin,
+  tooFewSources,
+  tooManySources,
+  unreadableFile,
+} from './messages.js';
 
 /**
  * A prepared source whose contents are read only when the action asks for them.
@@ -204,14 +210,10 @@ function countIssues(count: number, config: ContentSettings): StandardSchemaV1.I
   const issues: StandardSchemaV1.Issue[] = [];
   const minimum = minimumSources(config);
   if (count < minimum) {
-    issues.push({
-      message: `Expected at least ${minimum} readable ${minimum === 1 ? 'source' : 'sources'}.`,
-    });
+    issues.push({ message: tooFewSources(minimum) });
   }
   if (config.max !== undefined && count > config.max) {
-    issues.push({
-      message: `Expected at most ${config.max} readable ${config.max === 1 ? 'source' : 'sources'}.`,
-    });
+    issues.push({ message: tooManySources(config.max) });
   }
   return issues;
 }

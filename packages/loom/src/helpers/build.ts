@@ -17,11 +17,11 @@ import { basename, dirname, join, parse, relative, resolve, sep } from 'node:pat
 
 import { object, record, string, unknown } from 'valibot';
 
+import { bunBuildFailed, watchExited } from '../commands/build/messages.js';
 import { definePair } from './build-facts.js';
 import type { BuildFacts } from './build-facts.js';
 import type { BuildTarget } from './build-target.js';
 import { superviseBun } from './bun.js';
-import { bunBuildFailed, watchExited } from './messages.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { RunHost } from './run-host.js';
 import type { SkillsCarry } from './skills-declaration.js';

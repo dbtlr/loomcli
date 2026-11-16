@@ -67,13 +67,15 @@ interface VoiceSite {
 
 /**
  * The routes beyond failure constructors and out calls by which one package's sentences reach an
- * operator, which the gathering check also reads: calls of the named functions, assignments to the
- * named variables or members, object members by the named keys, and the named error classes, such
- * as JavaScript's own `Error`, counted as failure constructors.
+ * operator, which the gathering check also reads: calls of the named functions, or of a named
+ * member on a named receiver, such as `run.line`; assignments to the named variables or members;
+ * object members by the named keys; the named error classes, such as JavaScript's own `Error`,
+ * counted as failure constructors; and the `return` statements inside the arguments of a call of
+ * the named functions, such as the `loom` bin's `report`, which prints what its work returns.
  *
  * @example
  * ```ts
- * const sinks: VoiceSinks = { assignments: ['issue'], calls: ['rpcError'] };
+ * const sinks: VoiceSinks = { assignments: ['issue'], calls: ['rpcError', 'run.line'] };
  * ```
  */
 interface VoiceSinks {
@@ -81,6 +83,7 @@ interface VoiceSinks {
   readonly calls?: readonly string[];
   readonly classes?: readonly string[];
   readonly properties?: readonly string[];
+  readonly returns?: readonly string[];
 }
 
 /**
@@ -743,20 +746,27 @@ function bannedSites(tokens: readonly Token[], banned: readonly string[]): strin
 function escapingSites(tokens: readonly Token[]): string[] {
   const scope = moduleScope(tokens);
   const sites: string[] = [];
-  tokens.forEach((token, index) => {
-    if (token.kind !== 'template') {
-      return;
-    }
-    const holder = scope.declarations.find(({ end, start }) => index >= start && index < end);
-    const numbers = holder?.numbers ?? new Set<string>();
-    for (const template of templates([token])) {
-      for (const expression of template.expressions) {
-        if (!escapes(expression.tokens, scope, numbers)) {
-          sites.push(expression.text);
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (
+      token?.kind === 'identifier' &&
+      escapingHelpers.has(token.text) &&
+      is(tokens[index + 1], '(')
+    ) {
+      // A template among an escaping helper's arguments is escaped whole, as `templates` reads it.
+      index = closing(tokens, index + 1);
+    } else if (token?.kind === 'template') {
+      const holder = scope.declarations.find(({ end, start }) => index >= start && index < end);
+      const numbers = holder?.numbers ?? new Set<string>();
+      for (const template of templates([token])) {
+        for (const expression of template.expressions) {
+          if (!escapes(expression.tokens, scope, numbers)) {
+            sites.push(expression.text);
+          }
         }
       }
     }
-  });
+  }
   return sites;
 }
 
@@ -859,9 +869,16 @@ function gatheringSites(tokens: readonly Token[], sinks: VoiceSinks): string[] {
   const calls = new Set<string>(sinks.calls);
   const assignments = new Set(['message', ...(sinks.assignments ?? [])]);
   const properties = new Set<string>(sinks.properties);
+  const returns = new Set<string>(sinks.returns);
   const bodies = failureClassBodies(tokens);
   const sites: string[] = [];
   const argumentsAt = (open: number) => sentences(tokens.slice(open + 1, closing(tokens, open)));
+  const returnedAt = (open: number) =>
+    tokens
+      .slice(open + 1, closing(tokens, open))
+      .flatMap((token, at, inner) =>
+        named(token, 'return') ? sentences(valueAfter(inner, at + 1)) : [],
+      );
   tokens.forEach((token, index) => {
     const previous = tokens[index - 1];
     const next = tokens[index + 1];
@@ -879,8 +896,13 @@ function gatheringSites(tokens: readonly Token[], sinks: VoiceSinks): string[] {
       const receiver = tokens[index - 2];
       const outCall =
         member && outCalls.has(token.text) && !isStyle(receiver) && !named(receiver, 'log');
-      if (outCall || (!member && calls.has(token.text))) {
+      const memberCall =
+        member && receiver?.kind === 'identifier' && calls.has(`${receiver.text}.${token.text}`);
+      if (outCall || memberCall || (!member && calls.has(token.text))) {
         sites.push(...argumentsAt(index + 1));
+      }
+      if (!member && returns.has(token.text)) {
+        sites.push(...returnedAt(index + 1));
       }
     } else if (token.kind === 'identifier' && is(next, '=')) {
       const assigned = token.text === 'message' ? member : true;

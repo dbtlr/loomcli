@@ -1,14 +1,14 @@
 import { array, boolean, literal, number, picklist, strictObject, string, union } from 'valibot';
 import type { InferOutput } from 'valibot';
 
-import { loadFailure, threw } from './application-load-failure.js';
-import { runReader } from './application-reader.js';
 import {
   coreUnresolved,
   coreWithoutApplication,
   manyApplicationExports,
   noApplicationExport,
-} from './messages.js';
+} from '../commands/init/messages.js';
+import { loadFailure, threw } from './application-load-failure.js';
+import { runReader } from './application-reader.js';
 import type { RunHost } from './run-host.js';
 
 /** The names a module exports its Application under. */

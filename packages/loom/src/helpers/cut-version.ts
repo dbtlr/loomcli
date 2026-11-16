@@ -1,5 +1,3 @@
-import type { FragmentKind } from './fragments.js';
-import { releaseVersions } from './markdown.js';
 import {
   minimumAboveRelease,
   prereleaseNeedsSection,
@@ -7,7 +5,9 @@ import {
   targetNotAbove,
   targetNotVersion,
   versionCannotAdvance,
-} from './messages.js';
+} from '../commands/changelog/messages.js';
+import type { FragmentKind } from './fragments.js';
+import { releaseVersions } from './markdown.js';
 import {
   compareReleases,
   compareSemVer,

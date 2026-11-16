@@ -5,8 +5,9 @@
  * share, keep theirs in `src/messages.ts`. This test holds those modules to the banned words of the
  * voice page, rule 5's escaping, and rule 6's ban on outside text, and holds the rest of the pack's
  * sources to gathering. An issue's `message`, which a validator or a value an option cannot take
- * reports, and the text of a tool execution error the MCP plugin's server returns, are routes a
- * sentence takes to the operator too.
+ * reports, the text of a tool execution error the MCP plugin's server returns, and the sentence
+ * self-update's `fatal(...)` and `conflict(...)` and the skills plugin's `directoryProblem(...)`
+ * each wrap in a failure, are routes a sentence takes to the operator too.
  */
 import { expect, test } from 'vite-plus/test';
 
@@ -16,8 +17,14 @@ import type { VoiceExceptions, VoiceSinks } from '../../../scripts/test-voice.js
 /** The pack's sources, which every check reads. */
 const src = new URL('../src/', import.meta.url);
 
-/** An issue's `message`, and the MCP server's `text(...)` content of a tool execution error. */
-const sinks: VoiceSinks = { calls: ['text'], properties: ['message'] };
+/**
+ * An issue's `message`, the MCP server's `text(...)` content of a tool execution error, and the
+ * plugins' own wrappers that build a failure around a sentence.
+ */
+const sinks: VoiceSinks = {
+  calls: ['conflict', 'directoryProblem', 'fatal', 'text'],
+  properties: ['message'],
+};
 
 const textRule =
   "A text rule's sentence is an extension schema's refusal, which addresses the author under a Developer Diagnostic.";

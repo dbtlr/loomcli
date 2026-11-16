@@ -1,12 +1,12 @@
-import { highestKind, landedFragments, renderSection } from './changelog.js';
-import { materialBaseline, unchangedLibraries } from './material.js';
 import {
   initialNeedsZero,
   noFragments,
   releaseWithoutEntries,
   stableTargetOnly,
   targetBelowRelease,
-} from './messages.js';
+} from '../commands/release/messages.js';
+import { highestKind, landedFragments, renderSection } from './changelog.js';
+import { materialBaseline, unchangedLibraries } from './material.js';
 import { currentVersion, readLibraries } from './repository.js';
 import type { Checkout } from './repository.js';
 import { compareReleases, nextVersion, parseVersion } from './version.js';

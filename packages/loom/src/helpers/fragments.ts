@@ -4,9 +4,6 @@ import { join } from 'node:path';
 import { escapeControlCharacters } from '@loomcli/core';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
-import { withoutByteOrderMark } from './byte-order-mark.js';
-import { conventionalFragments } from './conventions.js';
-import { requireClosedBlocks } from './markdown.js';
 import {
   carriageReturnHeld,
   controlCharacterHeld,
@@ -19,7 +16,10 @@ import {
   invalidUtf8Line,
   migrationLabels,
   unsafeLine,
-} from './messages.js';
+} from '../commands/changelog/messages.js';
+import { withoutByteOrderMark } from './byte-order-mark.js';
+import { conventionalFragments } from './conventions.js';
+import { requireClosedBlocks } from './markdown.js';
 import { readDirectory, readRegularFileBytes } from './repository.js';
 import type { Checkout } from './repository.js';
 

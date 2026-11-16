@@ -13,6 +13,13 @@ import { basename, dirname, join } from 'node:path';
 import { object, safeParse, string } from 'valibot';
 
 import {
+  invalidPackageVersion,
+  noFragmentsToCut,
+  notInRepository,
+  restoreFailed,
+  shallowHistory,
+} from '../commands/changelog/messages.js';
+import {
   highestKind,
   insertSection,
   landedFragments,
@@ -27,14 +34,7 @@ import {
   requireReleaseSection,
 } from './cut-version.js';
 import { parseManifest, withVersion } from './manifest.js';
-import {
-  expectedVersionString,
-  invalidPackageVersion,
-  noFragmentsToCut,
-  notInRepository,
-  restoreFailed,
-  shallowHistory,
-} from './messages.js';
+import { expectedVersionString } from './messages.js';
 import { isRepository, isShallow, readWorkingFile } from './repository.js';
 import type { Checkout } from './repository.js';
 import { sharedManifests } from './shared-version.js';

@@ -3,11 +3,6 @@ import { resolve } from 'node:path';
 
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
-import { withoutByteOrderMark } from './byte-order-mark.js';
-import { conventionalChangelog, conventionalFragments } from './conventions.js';
-import type { FragmentKind } from './fragments.js';
-import { readFragments, requireSafeCharacters } from './fragments.js';
-import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
 import {
   changelogWithoutTitle,
   narrativeHeadings,
@@ -15,7 +10,12 @@ import {
   sectionExists,
   uncommittedFragment,
   unreleasedSection,
-} from './messages.js';
+} from '../commands/changelog/messages.js';
+import { withoutByteOrderMark } from './byte-order-mark.js';
+import { conventionalChangelog, conventionalFragments } from './conventions.js';
+import type { FragmentKind } from './fragments.js';
+import { readFragments, requireSafeCharacters } from './fragments.js';
+import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
 import { git, gitLine, requireFullHistory } from './repository.js';
 import type { Checkout } from './repository.js';
 

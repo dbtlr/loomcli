@@ -40,9 +40,16 @@ Tests read built `dist`. `pnpm test` and `pnpm verify` build first, but a single
 
 ### Operator messages
 
-A sentence Loom says to an operator goes in the internal `messages.ts` beside the code that raises or writes it: a failure's sentence, a hint line under a failure, a `-v` or `-vv` line, and a plugin's or the `loom` bin's notice, warning, or confirmation. Write it as a named export, a function of the values it repeats or a constant, and have the raising or writing code call it. Escape every value it repeats with `quoted` or `escapeControlCharacters`, and never read an error's `message`, `stack`, or `cause` in it. Fixed labels, such as help headings, and Developer Diagnostics stay where they are.
+A sentence Loom says to an operator goes in the internal `messages.ts` beside the code that raises or writes it, or in the `loom` bin, beside the command whose work it serves: a failure's sentence, a hint line under a failure, a `-v` or `-vv` line, and a plugin's or the `loom` bin's notice, warning, or confirmation. Write it as a named export, a function of the values it repeats or a constant, and have the raising or writing code call it. Escape every value it repeats with `quoted` or `escapeControlCharacters`, and never read an error's `message`, `stack`, or `cause` in it. Fixed labels, such as help headings, and Developer Diagnostics stay where they are.
 
-Each package's `tests/message-voice.test.ts` holds these rules, the banned words of [Failure message voice](docs/core/failures.md#banned-words), and the rule that no failure constructor or out call outside a message module takes a literal sentence. A site that breaks a check and is right is pinned there, per file, by its source text and its count of sites, with the reason it holds. [ADR-0164](docs/decisions/0164-looms-operator-messages-live-in-message-modules-and-a-voice-test-per-package-reads-them.md) records the decision.
+Each package's `tests/message-voice.test.ts` holds these rules, the banned words of [Failure message voice](docs/core/failures.md#banned-words), and the rule that no failure constructor or out call outside a message module takes a literal sentence. A site that breaks a check and is right is pinned there, per file, by its source text and its count of sites, with the reason it holds.
+
+The rule 6 check reads message modules only, so it cannot see code outside one that reads an error's text and passes it to a message function as a value. The `loom` bin has sentences that quote text it did not write, all as they did before message modules, and how far rule 6 binds the bin is an open question in ADR-0164:
+
+- Nine sentences repeat text whole, unescaped, as `output`: another program's output in `gitFailed`, `bunCouldNotRead`, whose Bun report carries the error an author's module threw, `bunBuildFailed`, `skillMissing`, `skillInvalidYaml`, `lockfilePreparationFailed`, and `refusedRequest`, the plugin pack's judging of a skills folder in `skillsFolderJudged`, and the bin's own sentence about a skill's frontmatter in `skillVersionUnset`. The bin's voice test pins each site with the reason it holds.
+- `cannotWrite`, `cannotRemove`, and `sharedFileUnreadable` repeat a Node.js reason, and `unloadedApplication` the first line of the error an author's application module threw. Their callers read that text from an error, which the check does not see.
+
+[ADR-0164](docs/decisions/0164-looms-operator-messages-live-in-message-modules-and-a-voice-test-per-package-reads-them.md) records the decision.
 
 ### Tests stay inside their sandbox
 

@@ -2,10 +2,6 @@ import { isDeepStrictEqual } from 'node:util';
 
 import { parse } from 'yaml';
 
-import { authoringSkillSource } from '../content/authoring-skill.js';
-import { placedSection, releaseDate, releaseInsertion } from './changelog.js';
-import { requireSafeCharacters } from './fragments.js';
-import { frontmatter } from './managed.js';
 import {
   changelogRewritten,
   fileModeChanged,
@@ -24,8 +20,12 @@ import {
   skillVersionUnset,
   skillWithoutFrontmatter,
   skillWithoutVersion,
-  tagExists,
-} from './messages.js';
+} from '../commands/pr/messages.js';
+import { tagExists } from '../commands/release/messages.js';
+import { authoringSkillSource } from '../content/authoring-skill.js';
+import { placedSection, releaseDate, releaseInsertion } from './changelog.js';
+import { requireSafeCharacters } from './fragments.js';
+import { frontmatter } from './managed.js';
 import { checkDecisions } from './release-decisions.js';
 import { prepareLockfile } from './release-files.js';
 import { prepareRelease, requireReleaseNotes } from './release.js';
