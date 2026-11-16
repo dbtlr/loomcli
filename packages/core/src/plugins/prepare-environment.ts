@@ -18,8 +18,11 @@ interface EnvironmentContext {
     readonly cwd: Host['cwd'];
     readonly env: Readonly<Host['env']>;
   };
-  /** The output channel, which a hook uses to warn the operator. */
-  readonly out: Pick<Out, 'warn'>;
+  /**
+   * The output channel: `warn` for the operator, and `debug` and `trace`, which follow the run's
+   * verbosity, settled before environment preparation.
+   */
+  readonly out: Pick<Out, 'warn' | 'debug' | 'trace'>;
   /** Records a log event under the identity of the plugin whose hook is running. */
   readonly log: Log;
 }
@@ -39,7 +42,7 @@ type EnvironmentHook = (
 interface EnvironmentSetup {
   host: Host;
   log: LogBinder;
-  out: Pick<Out, 'warn'>;
+  out: EnvironmentContext['out'];
   plugins: readonly BuiltPlugin[];
   /** Where an argv run copies each accepted addition out: its process handle's `publishEnv`. */
   publish: ((name: string, value: string) => void) | undefined;

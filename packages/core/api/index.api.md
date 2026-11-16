@@ -458,7 +458,7 @@ export interface EnvironmentContext {
         readonly env: Readonly<Host['env']>;
     };
     readonly log: Log;
-    readonly out: Pick<Out, 'warn'>;
+    readonly out: Pick<Out, 'warn' | 'debug' | 'trace'>;
 }
 
 // @public
@@ -1099,6 +1099,7 @@ export interface LogDefect {
 export interface LogDestination {
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly home: string;
+    readonly out: Pick<Out, 'debug' | 'trace'>;
     readonly platform: string;
     readonly stderr: Writable | null;
 }

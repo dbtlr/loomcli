@@ -5,6 +5,7 @@ import type { LogDefect } from '../diagnostics/defect.js';
 import { isAuthorFault } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import type { FailureForm } from '../failures/form.js';
+import type { Out } from './types.js';
 
 /**
  * The levels a log event carries. `fatal` is core's alone: `Log` has no method for it.
@@ -87,7 +88,8 @@ interface Log {
 
 /**
  * Where a hook writes: the outermost run's environment, home, platform, and stderr, which is
- * `null` under an invocation by name, because that writes to no process stream.
+ * `null` under an invocation by name, because that writes to no process stream, and its `debug`
+ * and `trace` lanes.
  *
  * @public
  * @sealed
@@ -101,6 +103,12 @@ interface LogDestination {
   readonly platform: string;
   /** The outermost run's stderr stream, or `null` under an invocation by name. */
   readonly stderr: Writable | null;
+  /**
+   * The outermost run's `debug` and `trace` lanes, which follow that run's verbosity and write to
+   * its stderr, or to its captured messages under an invocation by name. A hook calls a lane without
+   * awaiting it and catches its rejection, because the hook returns `undefined`.
+   */
+  readonly out: Pick<Out, 'debug' | 'trace'>;
 }
 
 /**

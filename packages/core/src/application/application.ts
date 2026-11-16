@@ -1127,9 +1127,17 @@ class ApplicationBuilder<
      * outermost run's, which the door decides, and the path is the one routing published.
      */
     const logged: { current: RunLog | undefined } = { current: undefined };
+    /**
+     * The run's `debug` and `trace` lanes for an `onLog` hook, read at each call, so a line follows
+     * the verbosity the run settled. Core logs no event before then.
+     */
+    const lanes: LogDestination['out'] = {
+      debug: async (...call: MessageArguments) => output?.out.debug(...call),
+      trace: async (...call: MessageArguments) => output?.out.trace(...call),
+    };
     // A hook's stderr follows the run's stderr order once the run's output exists.
     const logDestination = (): LogDestination => {
-      const destination = door.destination(reportingHost());
+      const destination = door.destination(reportingHost(), lanes);
       return output?.logDestination(destination) ?? destination;
     };
     const logs = (): RunLog => {
@@ -1269,7 +1277,11 @@ class ApplicationBuilder<
           await prepareEnvironment({
             host,
             log: (identity) => logs().bind(identity),
-            out: { warn: (...call: MessageArguments) => invocationOutput.out.warn(...call) },
+            out: {
+              debug: (...call: MessageArguments) => invocationOutput.out.debug(...call),
+              trace: (...call: MessageArguments) => invocationOutput.out.trace(...call),
+              warn: (...call: MessageArguments) => invocationOutput.out.warn(...call),
+            },
             plugins: built.plugins,
             publish: entered.publishEnvironment,
             signal: controller.signal,
@@ -1641,9 +1653,9 @@ interface RunDoor {
   ) => Output;
   /**
    * Where the run's log events are delivered: the outermost run's destination, which this run's
-   * host names under `run()` and an action's call takes from its parent.
+   * host and lanes name under `run()` and `app.invoke`, and an action's call takes from its parent.
    */
-  destination: (host: ReportHost) => LogDestination;
+  destination: (host: ReportHost, out: LogDestination['out']) => LogDestination;
   /** The policy the run resolves its output by, from the Application's declared one. */
   rendering: (declared: RenderingPolicy) => RenderingPolicy;
   /** The graph an action's run built, which this run reuses, or none for a run that builds. */
@@ -1668,8 +1680,8 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     bound: undefined,
     bracket: (controller, entry) =>
       bracketRun(controller, { caller: options?.signal, entry: { ...entry, listens: true }, lane }),
-    destination: ({ env, home, platform, stderr }) =>
-      Object.freeze({ env, home, platform, stderr }),
+    destination: ({ env, home, platform, stderr }, out) =>
+      Object.freeze({ env, home, out, platform, stderr }),
     encodes: true,
     enter: () => {
       const { publishEnv } = handle;
@@ -1750,8 +1762,8 @@ function nameDoor<Mapped>(
         parent: action?.parent,
       }),
     // An invocation by name writes to no process stream, so a call of the application has no stderr.
-    destination: ({ env, home, platform }) =>
-      action?.destination ?? Object.freeze({ env, home, platform, stderr: null }),
+    destination: ({ env, home, platform }, out) =>
+      action?.destination ?? Object.freeze({ env, home, out, platform, stderr: null }),
     encodes: false,
     enter: () => ({
       // An invocation by name settles no background and writes no query.

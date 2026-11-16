@@ -180,6 +180,7 @@ export {
   neverAborts,
   nothing,
   outWith,
+  readsToEnd,
   registersNothing,
   resolved,
   unstated,
