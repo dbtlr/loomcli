@@ -316,6 +316,7 @@ export type ContentOption = ContentInput & OptionSpelling & Described & Listed &
     polarity?: never;
     implied?: never;
     arity?: never;
+    lastWins?: never;
 } & ((ListBinding & {
     min?: number;
     max?: number;
@@ -345,6 +346,7 @@ export type CountOption = OptionSpelling & Described & Listed & Controlled & Opt
     polarity?: never;
     implied?: never;
     arity?: never;
+    lastWins?: never;
 } & (({
     verbose?: never;
     quiet?: never;
@@ -1038,11 +1040,13 @@ export type ListBinding = {
     env?: never;
     envDelimiter?: never;
     envAllowEmpty?: never;
+    lastWins?: never;
 } | {
     multiple: true;
     env: string | readonly [string, ...string[]];
     envDelimiter: string;
     envAllowEmpty?: never;
+    lastWins?: never;
 };
 
 // @public
@@ -1213,7 +1217,7 @@ export interface OptionGroup {
 }
 
 // @public @sealed
-export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'arity' | 'background' | 'envAllowEmpty'> & {
+export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'arity' | 'background' | 'envAllowEmpty' | 'lastWins'> & {
     readonly type: 'content';
     readonly stdin: boolean;
     readonly min: number | undefined;

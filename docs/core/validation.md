@@ -169,6 +169,7 @@ A default and an [implied value](options.md#implied-values) validate before any 
 | String option with an implied value, bare      | The raw implied string, in its place in a multiple option's list |
 | Arity option, supplied                         | The tuple of its raw words, or a list of tuples on a multiple option, in supplied order |
 | Arity option, omitted                          | `undefined`, or `[]` on a multiple option |
+| Last-wins option, supplied more than once      | Its last occurrence's string, or tuple on an arity option; a replaced value is never held |
 | Option an input source filled                  | The raw value it filled        |
 
 An omitted Boolean or counted option reads as `undefined` here, because the polarity value and `0` are absent values, not supplied tokens. A count an input source filled reads as the number it filled, so `SuppliedInputs.options`, the exported type of `supplied.options`, admits a `number` for a counted option, and a list of tuples for a multiple arity option. A bare spelling of a string option with an implied value reads as the raw implied string, before its validator, as a Boolean's entry holds the value of its spelling, because the operator supplied the option. Absence rules do not change: an omitted optional value with no default never reaches its validator, and no context is produced for it, unless its declaration asks for that call with `validateOmitted: true`.

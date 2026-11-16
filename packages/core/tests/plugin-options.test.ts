@@ -217,6 +217,7 @@ test("a plugin's option publishes the node an application's global option publis
     extensions: {},
     hidden: false,
     implied: null,
+    lastWins: false,
     long: '--mode',
     multiple: false,
     name: 'mode',

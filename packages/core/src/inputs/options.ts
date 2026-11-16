@@ -61,12 +61,27 @@ export type SpellingOrigin =
  * its spelling is bare, a string option that takes the next word as its value when nothing is
  * attached, and, for each arity count, a string option that takes that many separate words and
  * refuses an attached value. Compiling the table derives the class once, and the parser, a rebound
- * occurrence, and `locate` read that one fact.
+ * occurrence, and `locate` read that one fact. A string form's `lastWins` says a later occurrence
+ * replaces an earlier one instead of repeating it; it is no part of the value class.
  */
 type OptionForm =
-  | { type: 'string'; valueClass: 'separate'; name: string; multiple: boolean }
-  | { type: 'string'; valueClass: 'implied'; name: string; multiple: boolean; implied: string }
-  | { type: 'string'; valueClass: 'arity'; name: string; multiple: boolean; arity: number }
+  | { type: 'string'; valueClass: 'separate'; name: string; multiple: boolean; lastWins: boolean }
+  | {
+      type: 'string';
+      valueClass: 'implied';
+      name: string;
+      multiple: boolean;
+      lastWins: boolean;
+      implied: string;
+    }
+  | {
+      type: 'string';
+      valueClass: 'arity';
+      name: string;
+      multiple: boolean;
+      lastWins: boolean;
+      arity: number;
+    }
   | { type: 'boolean'; valueClass: 'boolean'; name: string; value: boolean }
   | { type: 'count'; valueClass: 'count'; name: string };
 
@@ -357,13 +372,21 @@ function positiveForm(name: string, config: OptionConfig): OptionForm {
     case 'content':
     case 'string': {
       const multiple = config.multiple === true;
+      const lastWins = config.lastWins === true;
       const arity = arityOf(config);
       if (arity !== undefined) {
-        return { arity, multiple, name, type: 'string', valueClass: 'arity' };
+        return { arity, lastWins, multiple, name, type: 'string', valueClass: 'arity' };
       }
       return config.implied === undefined
-        ? { multiple, name, type: 'string', valueClass: 'separate' }
-        : { implied: config.implied, multiple, name, type: 'string', valueClass: 'implied' };
+        ? { lastWins, multiple, name, type: 'string', valueClass: 'separate' }
+        : {
+            implied: config.implied,
+            lastWins,
+            multiple,
+            name,
+            type: 'string',
+            valueClass: 'implied',
+          };
     }
     case 'boolean': {
       return {

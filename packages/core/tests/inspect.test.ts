@@ -1,3 +1,4 @@
+import { Application } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke as invokeFixture } from './run-fixture.ts';
@@ -58,6 +59,7 @@ test('inspects a graph of globals, a root action, and three children', async () 
         envAllowEmpty: false,
         envDelimiter: null,
         implied: null,
+        lastWins: false,
         long: '--file',
         multiple: false,
         name: 'file',
@@ -138,6 +140,7 @@ test('inspects a graph of globals, a root action, and three children', async () 
               envAllowEmpty: false,
               envDelimiter: null,
               implied: null,
+              lastWins: false,
               long: '--field',
               multiple: true,
               name: 'field',
@@ -188,6 +191,7 @@ test('reports the version and every declared description, and the root reports t
         envAllowEmpty: false,
         envDelimiter: null,
         implied: null,
+        lastWins: false,
         long: '--file',
         multiple: false,
         name: 'file',
@@ -276,6 +280,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
         envAllowEmpty: false,
         envDelimiter: null,
         implied: null,
+        lastWins: false,
         long: '--file',
         multiple: false,
         name: 'file',
@@ -322,6 +327,7 @@ test('reports hidden and deprecated on every Command and option, and neither on 
               envDelimiter: null,
               hidden: true,
               implied: null,
+              lastWins: false,
               long: '--raw',
               multiple: false,
               name: 'raw',
@@ -477,6 +483,7 @@ test('reports the accepted spellings of each polarity and of a short-only option
       envAllowEmpty: false,
       envDelimiter: null,
       implied: null,
+      lastWins: false,
       long: null,
       multiple: false,
       name: 'mode',
@@ -515,6 +522,7 @@ test('reads each spelling role from the table, including a name that begins with
       envAllowEmpty: false,
       envDelimiter: null,
       implied: null,
+      lastWins: false,
       long: null,
       multiple: true,
       name: 'field',
@@ -540,6 +548,7 @@ test('wraps a declared default and leaves an undeclared one undefined', async ()
       envAllowEmpty: false,
       envDelimiter: null,
       implied: null,
+      lastWins: false,
       long: '--depth',
       multiple: false,
       name: 'depth',
@@ -559,6 +568,7 @@ test('wraps a declared default and leaves an undeclared one undefined', async ()
       envAllowEmpty: false,
       envDelimiter: null,
       implied: null,
+      lastWins: false,
       long: '--limit',
       multiple: false,
       name: 'limit',
@@ -578,6 +588,7 @@ test('wraps a declared default and leaves an undeclared one undefined', async ()
       envAllowEmpty: false,
       envDelimiter: null,
       implied: null,
+      lastWins: false,
       long: '--plain',
       multiple: false,
       name: 'plain',
@@ -615,6 +626,7 @@ test('reports the option and the argument that validate their own omission', asy
       envAllowEmpty: false,
       envDelimiter: null,
       implied: null,
+      lastWins: false,
       long: '--file',
       multiple: false,
       name: 'file',
@@ -634,6 +646,7 @@ test('reports the option and the argument that validate their own omission', asy
       envAllowEmpty: false,
       envDelimiter: null,
       implied: null,
+      lastWins: false,
       long: '--size',
       multiple: false,
       name: 'size',
@@ -718,4 +731,12 @@ test('returns frozen data and builds a new graph on each call', async () => {
     ],
     repeats: 'jsonkit',
   });
+});
+
+test('an option declared with lastWins false inspects as lastWins false', () => {
+  const graph = new Application('app')
+    .option('editor', { lastWins: false, type: 'string' })
+    .action(() => {})
+    .inspect();
+  expect(graph.root.options[0]).toMatchObject({ lastWins: false, name: 'editor', type: 'string' });
 });

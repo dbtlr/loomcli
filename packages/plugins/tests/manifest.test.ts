@@ -146,6 +146,7 @@ const globals = [
     requiredWhen: null,
     multiple: false,
     arity: null,
+    lastWins: false,
     schema: null,
     env: [],
     envDelimiter: null,
@@ -224,6 +225,7 @@ const getDocument = {
         requiredWhen: null,
         multiple: false,
         arity: null,
+        lastWins: false,
         schema: {
           $schema: 'https://json-schema.org/draft/2020-12/schema',
           type: 'string',
@@ -248,6 +250,7 @@ const getDocument = {
         requiredWhen: null,
         multiple: true,
         arity: null,
+        lastWins: false,
         schema: null,
         env: ['APP_TAGS'],
         envDelimiter: ',',
@@ -281,6 +284,7 @@ const getDocument = {
         requiredWhen: null,
         multiple: false,
         arity: null,
+        lastWins: false,
         schema: null,
         env: [],
         envDelimiter: null,
@@ -301,6 +305,7 @@ const getDocument = {
         requiredWhen: null,
         multiple: false,
         arity: null,
+        lastWins: false,
         schema: { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'string' },
         env: [],
         envDelimiter: null,
@@ -437,6 +442,7 @@ test('a result reads kind, views, default, and media types in order, and the for
       description: 'Select the output format, text by default.',
       envDelimiter: null,
       arity: null,
+      lastWins: false,
       envAllowEmpty: false,
       env: [],
       implied: null,
@@ -507,6 +513,22 @@ test('a string option entry carries its arity after multiple, null without one',
   expect(keys.indexOf('arity')).toBe(keys.indexOf('multiple') + 1);
 });
 
+test('a string option entry carries lastWins after arity, false without it, and a content entry none', async () => {
+  const result = await run('last-wins', ['--manifest']);
+  const options = z
+    .array(z.record(z.string(), z.unknown()))
+    .parse(entryAt(printedSchema.parse(JSON.parse(result.stdout)), []).options);
+  expect(options).toMatchObject([
+    { lastWins: true, name: 'editor' },
+    { arity: 2, lastWins: true, name: 'resize' },
+    { lastWins: false, name: 'name' },
+    { name: 'body', type: 'content' },
+  ]);
+  expect(Object.hasOwn(options[3] ?? {}, 'lastWins')).toBe(false);
+  const keys = Object.keys(options[0] ?? {});
+  expect(keys.indexOf('lastWins')).toBe(keys.indexOf('arity') + 1);
+});
+
 test('a hidden Command routed to directly prints its own slice, and a group prints its children', async () => {
   expect(entryAt(await documentOf(['secret', '--manifest']), [])).toMatchObject({
     description: 'A hidden command.',
@@ -536,6 +558,7 @@ test('marker characters print exactly, C1 controls escape up to U+009F, and U+00
       requiredWhen: null,
       multiple: false,
       arity: null,
+      lastWins: false,
       schema: null,
       env: [],
       envDelimiter: null,

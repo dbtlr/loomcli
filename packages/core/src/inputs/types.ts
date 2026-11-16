@@ -64,7 +64,25 @@ type Presence = { required: true; default?: never } | { required?: false; defaul
  * member of `ListBinding` that binds no variable, declares `envDelimiter?: never`, so the types
  * reject it on an option that is not multiple or binds no variable.
  */
-type Multiplicity = ListBinding | ({ multiple?: false } & StringBinding);
+type Multiplicity = ListBinding | ({ multiple?: false } & StringBinding & LastWins);
+
+/**
+ * The repeat policy of a string option that collects no list. A multiple option collects every
+ * occurrence, and a Boolean, counted, or content option declares no policy, so each of them
+ * declares `lastWins?: never`.
+ *
+ * @public
+ */
+interface LastWins {
+  /**
+   * `true` lets a later occurrence on the command line replace an earlier one, so a wrapper script
+   * or an alias that puts a default first yields to the operator's later value. Omitted or `false`,
+   * a second occurrence is the repeated-option error.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#last-occurrence-wins
+   */
+  lastWins?: boolean;
+}
 
 /**
  * A multiple option's binding: no variable, or a variable and the delimiter that splits it.
@@ -72,13 +90,15 @@ type Multiplicity = ListBinding | ({ multiple?: false } & StringBinding);
  * @public
  */
 type ListBinding =
-  | { multiple: true; env?: never; envDelimiter?: never; envAllowEmpty?: never }
+  | { multiple: true; env?: never; envDelimiter?: never; envAllowEmpty?: never; lastWins?: never }
   | {
       multiple: true;
       env: string | readonly [string, ...string[]];
       /** The non-empty string that separates the items of the variable's value. */
       envDelimiter: string;
       envAllowEmpty?: never;
+      /** Never declared: a multiple option collects every occurrence, so none replaces another. */
+      lastWins?: never;
     };
 
 /**
@@ -106,15 +126,15 @@ type StringBinding =
  * @public
  */
 type ArityBinding =
-  | { multiple: true; env?: never; envDelimiter?: never; envAllowEmpty?: never }
-  | { multiple?: false; env?: never; envDelimiter?: never; envAllowEmpty?: never }
-  | {
+  | { multiple: true; env?: never; envDelimiter?: never; envAllowEmpty?: never; lastWins?: never }
+  | ({ multiple?: false; env?: never; envDelimiter?: never; envAllowEmpty?: never } & LastWins)
+  | ({
       multiple?: false;
       env: string | readonly [string, ...string[]];
       /** The non-empty string that separates the words of the variable's value. */
       envDelimiter: string;
       envAllowEmpty?: never;
-    };
+    } & LastWins);
 
 /**
  * The environment binding: the variable, or the non-empty list of variables, the input-source
@@ -231,6 +251,7 @@ type BooleanFacts = Described &
     validateOmitted?: never;
     implied?: never;
     arity?: never;
+    lastWins?: never;
   };
 
 /**
@@ -504,7 +525,8 @@ export type UnmarkedStringOption = OptionSpelling &
 export type BackgroundOption = Described &
   Listed &
   Controlled &
-  OptionExtensions & {
+  OptionExtensions &
+  LastWins & {
     type: 'string';
     background: true;
     aliases?: readonly string[];
@@ -573,6 +595,8 @@ export type ContentOption = ContentInput &
     polarity?: never;
     implied?: never;
     arity?: never;
+    /** Never declared: a content option declares no repeat policy. */
+    lastWins?: never;
   } & (
     | (ListBinding & { min?: number; max?: number })
     | ({ multiple?: false; min?: never; max?: never } & EnvBinding)
@@ -775,6 +799,7 @@ export type CountOption = OptionSpelling &
     polarity?: never;
     implied?: never;
     arity?: never;
+    lastWins?: never;
   } & (
     | ({ verbose?: never; quiet?: never } & EnvBinding)
     | { verbose: true; quiet?: never; env?: never; envAllowEmpty?: never }
@@ -812,4 +837,4 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
     ? number
     : boolean;
 
-export type { ArityBinding, EnvBinding, ListBinding, StringBinding, Unmarked };
+export type { ArityBinding, EnvBinding, LastWins, ListBinding, StringBinding, Unmarked };

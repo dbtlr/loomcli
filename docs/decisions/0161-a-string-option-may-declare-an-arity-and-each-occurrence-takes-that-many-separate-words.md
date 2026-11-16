@@ -55,3 +55,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-15: Proposed with the contract (LM-386). It narrows ADR-0036's value shape, ADR-0127's binding, ADR-0128's empty variable, ADR-0057's value classes as ADR-0055 and ADR-0152 bind by them, and ADR-0059's argv equivalence. ADR-0036, ADR-0055, ADR-0057, ADR-0059, ADR-0127, ADR-0128, and ADR-0152 carry dated entries.
+- 2026-11-16: [ADR-0162](0162-a-scalar-string-option-may-declare-that-its-last-occurrence-wins.md), proposed, narrows **A repeat**: a scalar arity option that declares `lastWins: true` takes the whole tuple of its last occurrence instead of failing as a repeat, and each occurrence still takes its words and raises every fault but the repeat. It narrows the **Projections** clause that completion offers a scalar arity option once: such an option is offered again.
