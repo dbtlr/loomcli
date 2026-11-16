@@ -4,12 +4,9 @@ import { StringDecoder } from 'node:string_decoder';
 import type { ProcessSignal } from '@loomcli/core';
 
 import { missingBun } from '../commands/build/messages.js';
+import { cannotRun } from './messages.js';
 import type { RunHost } from './run-host.js';
-
-/** Whether a spawn failed because no executable answered to the name. */
-function isMissing(error: Error | undefined) {
-  return error !== undefined && 'code' in error && error.code === 'ENOENT';
-}
+import { systemErrorCode } from './system-error.js';
 
 /**
  * The signal that stops Bun once the run is cancelled: the ending signal loom received, or SIGTERM
@@ -22,9 +19,13 @@ function stopSignal(signal: AbortSignal): ProcessSignal {
   return source === 'SIGHUP' || source === 'SIGINT' || source === 'SIGQUIT' ? source : 'SIGTERM';
 }
 
-/** The error a Bun that could not start fails with: the sentence for a missing Bun, else its own. */
+/**
+ * The error a Bun that could not start fails with: the sentence for a missing Bun, else the general
+ * one with the system error's code. It carries the runtime's error as its cause.
+ */
 function unstartedError(error: Error) {
-  return isMissing(error) ? new Error(missingBun) : error;
+  const code = systemErrorCode(error);
+  return new Error(code === 'ENOENT' ? missingBun : cannotRun('Bun', code), { cause: error });
 }
 
 /**
@@ -57,8 +58,8 @@ export interface BunResult {
  * Runs Bun from the PATH with the arguments, in the directory, through the run's host, and waits
  * for it. The run's signal ends Bun once the run is cancelled, a cancelled run fails with the
  * signal's reason, and a shutdown that ends while Bun still runs kills it. Its stdout and stderr are collected,
- * stdout first, and the output is unbounded, as git's is. A missing Bun fails with a sentence that
- * names it.
+ * stdout first, and the output is unbounded, as git's is. A Bun that cannot start fails with a
+ * sentence that names why.
  */
 export async function runBun(
   run: RunHost,
@@ -86,7 +87,7 @@ export async function runBun(
  * kills it. With `collect`, Bun's stdout and stderr are collected together in the order they
  * arrive, as nearly as two pipes allow; with `inherit`, Bun writes to the run's own streams and the
  * output is empty. Bun runs in the run's environment, or in `env` when one is given, which
- * replaces it whole. A missing Bun fails with a sentence that names it.
+ * replaces it whole. A Bun that cannot start fails with a sentence that names why.
  */
 export async function superviseBun(
   args: readonly string[],

@@ -1,9 +1,24 @@
 import type { Out } from '@loomcli/core';
 
+import { systemFailure } from './messages.js';
+import { systemErrorCode } from './system-error.js';
+
 /** What a command's report reads from its action context. */
 interface Reporting {
   readonly out: Out;
   readonly signal: AbortSignal;
+}
+
+/**
+ * The sentence of a failure a command's work threw: the bin's own, or, for a system error no code
+ * on the way caught, the general sentence with its code, so no runtime text reaches the operator.
+ */
+function failureSentence(error: unknown): string {
+  const code = systemErrorCode(error);
+  if (code !== undefined) {
+    return systemFailure(code);
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -20,6 +35,6 @@ export async function report({ out, signal }: Reporting, work: () => Promise<str
     await out.render(text, { render: (value) => value });
   } catch (error) {
     signal.throwIfAborted();
-    out.fatal(error instanceof Error ? error.message : String(error));
+    out.fatal(failureSentence(error));
   }
 }

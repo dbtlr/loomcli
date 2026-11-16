@@ -1,9 +1,11 @@
-import { existsSync } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { lstatSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { array, minLength, pipe, safeParse, string } from 'valibot';
 
 import {
+  sharedFileDenied,
+  sharedFileIrregular,
   sharedFileMissing,
   sharedFileOtherVersion,
   sharedFileUnparsed,
@@ -13,7 +15,7 @@ import {
   sharedVersionRefused,
 } from '../commands/changelog/messages.js';
 import { parseManifest } from './manifest.js';
-import { readWorkingFile } from './repository.js';
+import { systemErrorCode } from './system-error.js';
 
 /** The value of `sharedVersion`, checked as one value: a list of nonempty strings. */
 const entryList = array(pipe(string(), minLength(1)));
@@ -26,15 +28,47 @@ function describe(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-// The source of a listed file, or the failure naming why the entry cannot carry the version.
+/**
+ * The failure of a listed file that could not be read, named from the system error's code: a file
+ * gone by the time it is read reads as missing.
+ */
+function unreadable(entry: string, error: unknown): Error {
+  const code = systemErrorCode(error);
+  if (code === 'ENOENT' || code === 'ENOTDIR') {
+    return new Error(sharedVersionRefused(entry, sharedFileMissing), { cause: error });
+  }
+  const sentence =
+    code === 'EACCES' || code === 'EPERM'
+      ? sharedFileDenied(entry)
+      : sharedFileUnreadable(entry, code);
+  return new Error(sentence, { cause: error });
+}
+
+/** What a listed file is, or `undefined` when it is missing. A failure names the entry and the cause. */
+function entryStats(entry: string, path: string) {
+  try {
+    return lstatSync(path, { throwIfNoEntry: false });
+  } catch (error) {
+    throw unreadable(entry, error);
+  }
+}
+
+/**
+ * The source of a listed file, or the failure naming why the entry cannot carry the version. The
+ * entry's own file type tells a directory or a symbolic link from a regular file.
+ */
 function sharedSource(entry: string, path: string) {
-  if (!existsSync(path)) {
+  const stats = entryStats(entry, path);
+  if (stats === undefined) {
     return refuse(entry, sharedFileMissing);
   }
+  if (!stats.isFile()) {
+    return refuse(entry, sharedFileIrregular);
+  }
   try {
-    return readWorkingFile(dirname(path), basename(path));
+    return readFileSync(path, 'utf8');
   } catch (error) {
-    return refuse(entry, sharedFileUnreadable(describe(error)));
+    throw unreadable(entry, error);
   }
 }
 
@@ -73,9 +107,10 @@ export function sharedEntries(value: unknown): string[] {
 }
 
 /**
- * Reads each manifest `sharedVersion` lists, resolved against the package directory. The package's own `package.json` and a repeated file count once. A file that
- * is missing, does not parse, has no `version` string, or holds a version other than the package's
- * current one fails the cut, naming the key and the file, before anything changes.
+ * Reads each manifest `sharedVersion` lists, resolved against the package directory. The package's
+ * own `package.json` and a repeated file count once. A file that is missing, is not a regular file,
+ * cannot be read, does not parse, has no `version` string, or holds a version other than the
+ * package's current one fails the cut, naming the key and the file, before anything changes.
  */
 export function sharedManifests(
   directory: string,

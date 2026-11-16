@@ -565,7 +565,9 @@ test('a write that fails names the file after the lines of what was already writ
   const result = await loom(root, ['init', '--only', 'changes', '--only', 'skill']);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe(`Wrote ${guidePath}.\n`);
-  expect(result.stderr).toContain(`Cannot write ${skillPath}: `);
+  expect(result.stderr).toBe(
+    `Cannot write ${skillPath}, because .agents is a file. Remove or rename it, then run loom init again.\n`,
+  );
 });
 
 test('--only skill in an empty directory writes package.json and the skill alone', async () => {

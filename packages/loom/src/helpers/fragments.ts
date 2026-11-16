@@ -13,6 +13,7 @@ import {
   expectedMigrationAfterBullets,
   expectedOneMigration,
   formatCharacterHeld,
+  fragmentUnreadable,
   invalidUtf8Line,
   migrationLabels,
   unsafeLine,
@@ -22,6 +23,7 @@ import { conventionalFragments } from './conventions.js';
 import { requireClosedBlocks } from './markdown.js';
 import { readDirectory, readRegularFileBytes } from './repository.js';
 import type { Checkout } from './repository.js';
+import { systemErrorCode } from './system-error.js';
 
 // Undefined for a name outside the grammar: a bare kind prefix, an empty slug, or another extension.
 function fragmentKind(name: string): FragmentKind | undefined {
@@ -196,6 +198,18 @@ async function readFragment(
   return { body, kind, name, source };
 }
 
+/**
+ * The sentence of a fragment the reader refused: the bin's own sentence about it, or, for a system
+ * error, which has none, the sentence that names the fragment and the code.
+ */
+function fragmentFailure(path: string, error: unknown): string {
+  const code = systemErrorCode(error);
+  if (code !== undefined) {
+    return fragmentUnreadable(path, code);
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** A fragment's kind, read from its file name: `breaking.<slug>.md`, `feature.<slug>.md`, or `<slug>.md`. */
 export type FragmentKind = 'breaking' | 'feature' | 'fix';
 
@@ -226,7 +240,7 @@ export async function readFragments(
     } catch (error) {
       // A cancelled run reads no further fragment and reports none.
       checkout.signal.throwIfAborted();
-      failures.push(error instanceof Error ? error.message : String(error));
+      failures.push(fragmentFailure(`${folder}/${entry.name}`, error));
     }
   }
   if (failures.length > 0) {

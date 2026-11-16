@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 
 import { mockProcess } from '@loomcli/testing';
-import type { ProgramCall } from '@loomcli/testing';
+import type { Program, ProgramCall } from '@loomcli/testing';
 import { z } from 'zod';
 
 import { childEnvironment } from '../../../scripts/test-process.js';
@@ -50,10 +50,18 @@ function bunProgram(missing: Error[]) {
   };
 }
 
-/** One toolchain run, with process facts and effects confined to the fixture. */
+/**
+ * One toolchain run, with process facts and effects confined to the fixture. `pnpm`, when given,
+ * answers in place of the installed pnpm.
+ */
 export async function run(
   args: string[] = [],
-  options: { ceiling?: string; cwd?: string; env?: Record<string, string | undefined> } = {},
+  options: {
+    ceiling?: string;
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+    pnpm?: Program;
+  } = {},
 ) {
   const manifestPath = pnpmManifestPath();
   const manifest = z
@@ -70,7 +78,7 @@ export async function run(
     env: childEnvironment(options.env),
     home,
     platform: process.platform,
-    programs: { bun: bunProgram(missing), git: program, [pnpm]: program },
+    programs: { bun: bunProgram(missing), git: program, [pnpm]: options.pnpm ?? program },
     tmpdir: home,
   });
   await loom.run({ process: mock });

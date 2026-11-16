@@ -5,6 +5,8 @@
  */
 import { escapeControlCharacters } from '@loomcli/core';
 
+import { codeNote } from '../../helpers/messages.js';
+
 const escaped = escapeControlCharacters;
 
 // Application readers.
@@ -47,12 +49,60 @@ const linterQuestion = 'Which linter should the scaffold use?';
 
 const testRunnerQuestion = 'Which test runner should the scaffold use?';
 
-function cannotWrite(path: string, reason: string): string {
-  return `Cannot write ${escaped(path)}: ${escaped(reason)}.`;
+// Each sentence of a file init cannot write, remove, or read names the cause from the code.
+function cannotWrite(path: string, code: string | undefined): string {
+  switch (code) {
+    case 'EISDIR': {
+      return `Cannot write ${escaped(path)}, because it is a directory. Remove or rename the directory, then run loom init again.`;
+    }
+    case 'EACCES':
+    case 'EPERM': {
+      return `Cannot write ${escaped(path)}, because permission was denied. Give your user write access to it and its directory, then run loom init again.`;
+    }
+    case 'EROFS': {
+      return `Cannot write ${escaped(path)}, because its file system is read-only. Run loom init in a package on a writable file system.`;
+    }
+    case 'ENOSPC': {
+      return `Cannot write ${escaped(path)}, because the disk is full. Free some space, then run loom init again.`;
+    }
+    default: {
+      return `Cannot write ${escaped(path)}${codeNote(code)}. Check that you can write to it and its directory, then run loom init again.`;
+    }
+  }
 }
 
-function cannotRemove(path: string, reason: string): string {
-  return `Cannot remove ${escaped(path)}: ${escaped(reason)}.`;
+function fileInTheWay(path: string, file: string): string {
+  return `Cannot write ${escaped(path)}, because ${escaped(file)} is a file. Remove or rename it, then run loom init again.`;
+}
+
+function cannotRemove(path: string, code: string | undefined): string {
+  switch (code) {
+    case 'EACCES':
+    case 'EPERM': {
+      return `Cannot remove ${escaped(path)}, because permission was denied. Give your user write access to its directory, then run loom init again.`;
+    }
+    case 'EROFS': {
+      return `Cannot remove ${escaped(path)}, because its file system is read-only. Run loom init in a package on a writable file system.`;
+    }
+    default: {
+      return `Cannot remove ${escaped(path)}${codeNote(code)}. Check that you can write to its directory, then run loom init again.`;
+    }
+  }
+}
+
+function cannotRead(path: string, code: string | undefined): string {
+  switch (code) {
+    case 'EISDIR': {
+      return `Cannot read ${escaped(path)}, because it is a directory. Remove or rename the directory, then run loom init again.`;
+    }
+    case 'EACCES':
+    case 'EPERM': {
+      return `Cannot read ${escaped(path)}, because permission was denied. Give your user read access to it, then run loom init again.`;
+    }
+    default: {
+      return `Cannot read ${escaped(path)}${codeNote(code)}. Check that you can read it, then run loom init again.`;
+    }
+  }
 }
 
 function wroteFile(path: string): string {
@@ -79,7 +129,10 @@ function plainTypescript(range: string, alias: string, guide: string): string {
   return `warning: package.json declares typescript as ${escaped(range)}, and typescript-eslint supports TypeScript below 6.1, so eslint . fails on TypeScript 7. Set typescript to npm:@typescript/typescript6@${escaped(alias)} and add @typescript/native as npm:typescript@${escaped(range)}, which keeps tsc on your compiler. See ${escaped(guide)}.`;
 }
 
-const unreadReason = 'it could not be read';
+// The reason a read that failed on a system error gives, with its code when it carries one.
+function unreadReason(code: string | undefined): string {
+  return `it could not be read${codeNote(code)}`;
+}
 
 function unloadedApplication(
   path: string,
@@ -96,12 +149,14 @@ function unexportedApplication(path: string, application: string, noun: string):
 
 export {
   addedKey,
+  cannotRead,
   cannotRemove,
   cannotWrite,
   coreUnresolved,
   coreWithoutApplication,
   createPackageQuestion,
   driftedManagedFile,
+  fileInTheWay,
   installerWithoutRepository,
   invalidDirectoryName,
   linterQuestion,

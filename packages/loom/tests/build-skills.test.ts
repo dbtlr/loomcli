@@ -411,7 +411,7 @@ test.each([
     expect(stderr).toContain('@loomcli/plugins/skills/files');
     expect(stderr).toContain('Skill "notes" lists no SKILL.md.');
     expect(stderr).toContain(
-      `loom build judged the skills folder ${join(root, 'skills')} and built nothing.`,
+      `loom build judged the skills folder ${join(root, 'skills')} and built nothing, so fix what it reported and run loom build again.`,
     );
   },
 );

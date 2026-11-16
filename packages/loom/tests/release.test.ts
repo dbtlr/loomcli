@@ -814,6 +814,34 @@ test('a stalled registry read under plan fails with the url it waited on', async
   expect(deadlines).toEqual([50]);
 });
 
+test("a registry that cannot be reached fails plan in the bin's words, with no runtime text", async () => {
+  const { root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { published: true } },
+    repository: owner,
+    version: '0.2.0',
+  });
+  const unreachable = `${endpoints.registry}/${library}`;
+  const originalFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (
+      decodeURIComponent(input instanceof Request ? input.url : input.toString()) === unreachable
+    ) {
+      throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9'), {
+          code: 'ECONNREFUSED',
+        }),
+      });
+    }
+    return originalFetch(input, init);
+  });
+  await expect(plan(root, endpoints)).resolves.toEqual({
+    status: 1,
+    stderr: `GET ${unreachable} could not be reached. Check your network connection, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
 test('a tarball that does not match its integrity fails before any write', async () => {
   const { packages, root } = recordFixture({ integrity: 'sha512-Ym9ndXM=' });
   const endpoints = await startServices({ packages, repository: owner, version: '0.2.0' });

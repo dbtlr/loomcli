@@ -28,7 +28,10 @@
  *   new minimum. A stable version without its section cannot cut a prerelease, and `0.0.0` can.
  * - `sharedVersion`. Every listed manifest is set in the one replacement; a missing, versionless,
  *   unparsable, or differently versioned file, and a malformed value, fail naming the key and
- *   change no file, `--dry-run` included.
+ *   change no file, `--dry-run` included. An entry that is not a regular file, and a file that
+ *   cannot be read, fail with the whole sentence that names the cause and a step.
+ * - System errors. A fragment the reader cannot read names the fragment and the code, and a system
+ *   error no sentence names prints the general sentence with its code, never the runtime's text.
  * - `notes`. A stable version prints its section's body, a prerelease prints the pending
  *   fragments, and a version that is not cut, a prerelease other than the current one, and an
  *   argument that is not a version fail.
@@ -40,6 +43,7 @@ import fs, {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -48,14 +52,18 @@ import { afterEach, expect, test, vi } from 'vite-plus/test';
 
 import { commit, git, migration, put, removeRoots, repository, temporaryRoot } from './fixture.js';
 import { run as runLoom } from './run.js';
+import { failAt, restoreFs, systemError } from './system-errors.js';
 
 // Mock the named exports through the test runner; Bun does not synchronize builtin ESM exports.
 // The toolchain's walks up from a fixture stop at the sandbox (see ./ceiling.ts).
+// A case may fail a read of one file with a system error (see ./system-errors.ts).
 vi.mock(import('node:fs'), async (importOriginal) => {
   const { ceiled } = await import('./ceiling.js');
+  const { failing } = await import('./system-errors.js');
   const actual = ceiled(await importOriginal());
   return {
     ...actual,
+    readFileSync: failing('readFileSync', actual.readFileSync),
     renameSync: vi.fn(actual.renameSync),
     writeFileSync: vi.fn(actual.writeFileSync),
   };
@@ -70,6 +78,7 @@ async function runCeiled(ceiling: string, cwd: string, ...args: string[]) {
 }
 afterEach(() => {
   vi.restoreAllMocks();
+  restoreFs();
   vi.mocked(writeFileSync).mockReset();
   vi.mocked(renameSync).mockReset();
   removeRoots();
@@ -262,6 +271,20 @@ test.each(['directory', 'README.md'])('check refuses a directory named %s', asyn
   await expect(run(root, 'check')).resolves.toEqual({
     status: 1,
     stderr: `.changes/${name}: expected a fragment file. Keep fragments directly in .changes/.\n`,
+    stdout: '',
+  });
+});
+
+test('check names a fragment it cannot read and the code', async () => {
+  const root = directory({
+    '.changes/fix.md': '- Fix output.\n',
+    '.changes/other.md': '- Other.\n',
+  });
+  failAt('readFileSync', join(root, '.changes/fix.md'), 'EACCES');
+  await expect(run(root, 'check')).resolves.toEqual({
+    status: 1,
+    stderr:
+      'Cannot read .changes/fix.md (EACCES). Check that you can read it, then run the command again.\n',
     stdout: '',
   });
 });
@@ -1385,6 +1408,68 @@ test.each([
   }
 });
 
+test.each([
+  [
+    'a directory',
+    '../hub',
+    'sharedVersion lists ../hub, which is not a regular file, so correct the entry or the file and cut again.',
+  ],
+  [
+    'a symbolic link',
+    '../link/package.json',
+    'sharedVersion lists ../link/package.json, which is not a regular file, so correct the entry or the file and cut again.',
+  ],
+])(
+  'a cut refuses a sharedVersion entry that is %s with the whole sentence',
+  async (_label, entry, sentence) => {
+    const { collector, root } = sharedRepository([entry]);
+    mkdirSync(join(root, 'packages/link'));
+    symlinkSync(join(root, 'packages/hub/package.json'), join(root, 'packages/link/package.json'));
+    for (const flags of [[], ['--dry-run']]) {
+      await expect(run(collector, 'write', ...flags)).resolves.toEqual({
+        status: 1,
+        stderr: `${sentence}\n`,
+        stdout: '',
+      });
+    }
+  },
+);
+
+test.each([
+  [
+    'EACCES',
+    'sharedVersion lists ../hub/package.json, which cannot be read, because permission was denied. Give your user read access to it, then cut again.',
+  ],
+  [
+    'EPERM',
+    'sharedVersion lists ../hub/package.json, which cannot be read, because permission was denied. Give your user read access to it, then cut again.',
+  ],
+  [
+    'ENOENT',
+    'sharedVersion lists ../hub/package.json, which does not exist, so correct the entry or the file and cut again.',
+  ],
+  [
+    'EIO',
+    'sharedVersion lists ../hub/package.json, which cannot be read (EIO). Check that you can read it, then cut again.',
+  ],
+])(
+  'a sharedVersion file that cannot be read on %s names the cause and a step',
+  async (code, sentence) => {
+    const { collector, root } = sharedRepository(['../hub/package.json']);
+    const before = snapshot(root);
+    failAt('readFileSync', join(root, 'packages/hub/package.json'), code);
+    for (const flags of [[], ['--dry-run']]) {
+      await expect(run(collector, 'write', ...flags)).resolves.toEqual({
+        status: 1,
+        stderr: `${sentence}\n`,
+        stdout: '',
+      });
+    }
+    restoreFs();
+    expect(snapshot(root)).toEqual(before);
+  },
+);
+
 test('a cut refuses a sharedVersion file that is not JSON and changes no file', async () => {
   const { collector, root } = sharedRepository(['../hub/package.json'], {
     'packages/hub/package.json': '{ "version": \n',
@@ -1447,6 +1532,27 @@ test('a failure while replacing a sharedVersion manifest restores every file', a
   const result = await run(collector, 'write', '--date', '2026-10-07');
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('induced');
+  expect(snapshot(root)).toEqual(before);
+});
+
+test('a system error no sentence names prints the general sentence with its code', async () => {
+  const { collector, root } = sharedRepository(['../hub/package.json']);
+  const before = snapshot(root);
+  const { renameSync: rename } = fs;
+  let failed = false;
+  vi.mocked(renameSync).mockImplementation((from, to) => {
+    if (!failed && String(to) === join(root, 'packages/hub/package.json')) {
+      failed = true;
+      throw systemError(String(to), 'EIO');
+    }
+    return rename(from, to);
+  });
+  await expect(run(collector, 'write', '--date', '2026-10-07')).resolves.toEqual({
+    status: 1,
+    stderr:
+      'The command failed on a system error (EIO). Check the files it reads and writes, then run it again.\n',
+    stdout: '',
+  });
   expect(snapshot(root)).toEqual(before);
 });
 

@@ -3,6 +3,7 @@ import {
   neverAppeared,
   refusedRequest,
   requestTimedOut,
+  requestUnreached,
 } from '../commands/release/messages.js';
 
 const maximumDelayMs = 60_000;
@@ -40,6 +41,21 @@ function sleep(delayMs: number) {
 // A deadline reached during the request or during the body read arrives as the timeout error itself or as its cause.
 function timedOut(error: unknown): boolean {
   return error instanceof Error && (error.name === 'TimeoutError' || timedOut(error.cause));
+}
+
+/**
+ * Sends one request. A request that fails before any response, other than on its deadline, which
+ * `within` names, fails in the bin's words, carrying the runtime's error as its cause.
+ */
+async function send(method: string, url: string, init: RequestInit) {
+  try {
+    return await fetch(url, { ...init, method });
+  } catch (error) {
+    if (timedOut(error)) {
+      throw error;
+    }
+    throw new Error(requestUnreached(method, url), { cause: error });
+  }
 }
 
 // Every request carries a deadline, because a stalled connection would otherwise hold the run forever.
@@ -82,7 +98,7 @@ export async function readJson(
   token?: string,
 ): Promise<JsonAnswer> {
   return within('GET', url, policy.requestTimeoutMs, async (signal) => {
-    const response = await fetch(url, { headers: headers(token), signal });
+    const response = await send('GET', url, { headers: headers(token), signal });
     if (response.status === 404) {
       return { data: undefined, status: response.status };
     }
@@ -97,7 +113,7 @@ export async function readJson(
 export async function readBytes(policy: HttpPolicy, url: string) {
   const deadlineMs = policy.requestTimeoutMs * bytesDeadlineFactor;
   return within('GET', url, deadlineMs, async (signal) => {
-    const response = await fetch(url, { signal });
+    const response = await send('GET', url, { signal });
     if (!response.ok) {
       throw await refuse('GET', url, response);
     }
@@ -108,10 +124,9 @@ export async function readBytes(policy: HttpPolicy, url: string) {
 
 export async function writeJson(policy: HttpPolicy, url: string, token: string, body: unknown) {
   return within('POST', url, policy.requestTimeoutMs, async (signal) => {
-    const response = await fetch(url, {
+    const response = await send('POST', url, {
       body: JSON.stringify(body),
       headers: { ...headers(token), 'content-type': 'application/json' },
-      method: 'POST',
       signal,
     });
     if (!response.ok) {
@@ -131,10 +146,9 @@ export async function writeBytes(
 ) {
   const deadlineMs = policy.requestTimeoutMs * bytesDeadlineFactor;
   await within('POST', url, deadlineMs, async (signal) => {
-    const response = await fetch(url, {
+    const response = await send('POST', url, {
       body: new Uint8Array(bytes),
       headers: { ...headers(token), 'content-type': contentType },
-      method: 'POST',
       signal,
     });
     if (!response.ok) {
@@ -145,7 +159,7 @@ export async function writeBytes(
 
 export async function removeResource(policy: HttpPolicy, url: string, token: string) {
   await within('DELETE', url, policy.requestTimeoutMs, async (signal) => {
-    const response = await fetch(url, { headers: headers(token), method: 'DELETE', signal });
+    const response = await send('DELETE', url, { headers: headers(token), signal });
     if (!response.ok) {
       throw await refuse('DELETE', url, response);
     }

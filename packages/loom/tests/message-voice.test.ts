@@ -97,8 +97,8 @@ const exceptions: VoiceExceptions = {
     'commands/init/init.ts': {
       'error.message': {
         reason:
-          "unloadedApplication repeats the first line of the sentence the read of the author's application module failed with, which carries the error the module threw. The other two, the callers of cannotWrite and cannotRemove, pass on a Node.js reason until those sentences name the cause from the system error's code, as ADR-0164 states.",
-        sites: 3,
+          "unloadedApplication repeats the first line of the sentence the read of the author's application module failed with, which carries the error the module threw. A system error carries no such sentence, so it passes the general reason with its code instead.",
+        sites: 1,
       },
     },
     'content/installer-script.ts': {
@@ -118,7 +118,7 @@ const exceptions: VoiceExceptions = {
     'helpers/fragments.ts': {
       'error.message': {
         reason:
-          "The bin's own sentence about each invalid fragment, gathered into one failure so a run reports them all. A fragment it cannot read passes on a Node.js reason until the reader names the cause from the system error's code, as ADR-0164 states.",
+          "The bin's own sentence about each invalid fragment, gathered into one failure so a run reports them all. A system error carries no such sentence, so a fragment the reader cannot read is named with its code instead.",
         sites: 1,
       },
     },
@@ -145,14 +145,13 @@ const exceptions: VoiceExceptions = {
     'helpers/report.ts': {
       'error.message': {
         reason:
-          "report() prints the sentence of the failure a command's work throws, which the bin's message modules word. A system error no sentence names passes on a Node.js reason until report() prints the general sentence ADR-0164 states.",
+          "report() prints the sentence of the failure a command's work throws, which the bin's message modules word. A system error carries no such sentence, so report() prints the general sentence with its code instead.",
         sites: 1,
       },
     },
     'helpers/shared-version.ts': {
       'error.message': {
-        reason:
-          "sharedFileUnparsed repeats the bin's own sentence that parseManifest throws. sharedFileUnreadable passes on a Node.js reason until it names the cause from the system error's code, as ADR-0164 states.",
+        reason: "sharedFileUnparsed repeats the bin's own sentence that parseManifest throws.",
         sites: 1,
       },
     },

@@ -10,7 +10,7 @@ const escaped = escapeControlCharacters;
 // Application readers.
 
 function bunCouldNotRead(output: string, module: string): string {
-  return `${output}\n\nBun could not read ${escaped(module)}.`;
+  return `${output}\n\nBun could not read ${escaped(module)}, so fix what Bun reported and run the command again.`;
 }
 
 const unreadableSkillsRegistry =
@@ -21,7 +21,7 @@ function twoSkillsFolders(module: string, first: string, second: string): string
 }
 
 function skillsFolderJudged(output: string, folder: string): string {
-  return `${output}\n\nloom build judged the skills folder ${escaped(folder)} and built nothing.`;
+  return `${output}\n\nloom build judged the skills folder ${escaped(folder)} and built nothing, so fix what it reported and run loom build again.`;
 }
 
 // Bun.
@@ -30,11 +30,11 @@ const missingBun =
   'Bun is not on the PATH, and loom build and loom init do their work under Bun. Install Bun from https://bun.sh and run the command again.';
 
 function bunBuildFailed(output: string): string {
-  return `${output}\n\nBun could not build the application, so no output changed.`;
+  return `${output}\n\nBun could not build the application, so no output changed. Fix what Bun reported, then run loom build again.`;
 }
 
 function watchExited(code: number): string {
-  return `bun build --watch exited with ${String(code)}.`;
+  return `bun build --watch exited with ${String(code)}, so fix what Bun reported and run loom build --watch again.`;
 }
 
 // Modules and the package directory.

@@ -6,6 +6,24 @@ import { escapeControlCharacters } from '@loomcli/core';
 
 const escaped = escapeControlCharacters;
 
+// System errors.
+
+// A system error's code in parentheses, or nothing for a throw that carries no string code.
+function codeNote(code: string | undefined): string {
+  return code === undefined ? '' : ` (${escaped(code)})`;
+}
+
+function systemFailure(code: string): string {
+  return `The command failed on a system error (${escaped(code)}). Check the files it reads and writes, then run it again.`;
+}
+
+const gitMissing =
+  'git is not on the PATH, and loom reads the repository with it. Install git and run the command again.';
+
+function cannotRun(program: string, code: string | undefined): string {
+  return `Cannot run ${escaped(program)}${codeNote(code)}. Check that ${escaped(program)} is installed and that you can run it, then run the command again.`;
+}
+
 // Build facts and targets.
 
 const noRepositoryField =
@@ -77,7 +95,7 @@ const notAWordList = 'Expected a non-empty array of strings';
 // Repository reads.
 
 function gitFailed(command: string, output: string): string {
-  return `git ${escaped(command)} failed: ${output}`;
+  return `git ${escaped(command)} failed, so fix what git reported and run the command again: ${output}`;
 }
 
 function expectedRegularFile(path: string): string {
@@ -87,14 +105,15 @@ function expectedRegularFile(path: string): string {
 const releaseShallow = 'Release preparation requires full Git history.';
 
 function symlinkedPackage(name: string): string {
-  return `packages/${escaped(name)}: symlinks are not supported.`;
+  return `packages/${escaped(name)}: symlinks are not supported, so replace the link with the package's own directory.`;
 }
 
 const libraryNamesRepeat = 'Publishable library names must be unique.';
 
 const libraryVersionsDiffer = 'Publishable library versions must match.';
 
-const noLibraries = 'No publishable libraries in packages/*.';
+const noLibraries =
+  'No publishable libraries in packages/*, so run the command at the root of a repository whose packages/* holds a package that is not private.';
 
 const unstableLibraryVersions = 'Library versions must be stable 0.x versions.';
 
@@ -118,9 +137,12 @@ const useWholeNumber = 'Supply a whole number.';
 
 export {
   acceptedTargets,
+  cannotRun,
+  codeNote,
   expectedRegularFile,
   expectedVersionString,
   gitFailed,
+  gitMissing,
   invalidVersionField,
   libraryNamesRepeat,
   libraryVersionsDiffer,
@@ -140,6 +162,7 @@ export {
   refusedTarget,
   releaseShallow,
   symlinkedPackage,
+  systemFailure,
   unreadableRepositoryField,
   unstableLibraryVersions,
   useBuild,
