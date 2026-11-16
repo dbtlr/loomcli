@@ -31,13 +31,17 @@
  *   new term, matched in any case; a term that matches nothing prints `No matches` and asks
  *   `Search: ` again; a source is called once for each term. The refine row shows the default by
  *   its label, a supplied value included, and Enter alone takes it; a multiselect that may be left
- *   empty shows `[none]`; and a question that must be answered and has no default shows no
- *   brackets, where Enter alone lists the choices again.
+ *   empty shows `[none]`; a multiselect whose default holds fewer than `min` choices refuses Enter
+ *   alone with `Choose at least 2.` and asks the refine row again; and a question that must be
+ *   answered and has no default shows no brackets, where Enter alone lists the choices again.
  * - Editor. Its frames print once each: the asking frame, the editing frame and a line break, and
  *   the answered line.
  * - Leaving. Ctrl-C prints the cancelled line on a row of its own and ends the run with 130, and
  *   Ctrl-D on an empty line cancels. Ctrl-Z prints the asking row again at the resume, with raw
  *   mode off while the process is stopped and on again once it resumes.
+ * - Terminal controls. Under `terminalControls: 'preserve'`, which keeps every control a draw
+ *   passes, a question writes no cursor or bracketed paste sequence as it starts, after a suspend
+ *   and resume, or when an editor gives the keyboard back.
  * - Turns. Two questions asked at once print one after the other, and so do an author's own input
  *   region and a question.
  * - The switches. `ACCESSIBLE`, `--plain`, and `TERM=dumb` print the same transcript; under CI a
@@ -99,11 +103,14 @@ async function asked(
     argv?: string[];
     styled?: boolean;
     plugins?: readonly Plugin[];
+    terminalControls?: 'preserve';
   } = {},
 ): Promise<Asked> {
   const answers: unknown[] = [];
   // Unstyled unless a case is about style, so a transcript reads as the plain text it prints.
-  const rendering = facts.styled ? {} : ({ color: 'never', modifiers: 'never' } as const);
+  const look = facts.styled ? {} : ({ color: 'never', modifiers: 'never' } as const);
+  // A case may keep every terminal control a draw passes, so one the question writes would show.
+  const rendering = { ...look, terminalControls: facts.terminalControls };
   const plugins = [plain(), interaction(), verbose(), ...(facts.plugins ?? [])];
   const app = new Application('setup', { plugins, rendering })
     .option('backend', { type: 'string' })
@@ -591,6 +598,26 @@ test.each([
   },
 );
 
+test('at a search, a multiselect whose default holds fewer than min choices refuses Enter alone and asks the refine row again', async () => {
+  const run = await asked(['\r\r1,3\r'], async (context, answers) => {
+    answers.push(
+      await multiselect(context, {
+        choices: ['a', 'b', 'c'],
+        default: ['a'],
+        message: 'Pick',
+        min: 2,
+        search: true,
+      }),
+    );
+  });
+  const again = 'Enter a number, or text to search again [a]: ';
+  expect(run).toMatchObject({
+    answers: [['a', 'c']],
+    code: 0,
+    stderr: `Pick\nSearch: \n  1. a\n  2. b\n  3. c\n${again}\n✘ Choose at least 2.\n${again}1,3\n`,
+  });
+});
+
 test('at a search, a value the operator supplied for the linked option is the default', async () => {
   const run = await asked(
     ['\r\r'],
@@ -677,6 +704,44 @@ test('an editor answer its validator refuses prints the issue and the asking fra
   }
 });
 
+test('an editor asked line by line writes no cursor or bracketed paste sequence when it takes the keyboard back, even where the terminal controls are kept', async () => {
+  const app = new Application('edit', {
+    rendering: { color: 'never', modifiers: 'never', terminalControls: 'preserve' },
+  }).action(async (context) => {
+    const notes = await editor(context, {
+      message: 'Release notes',
+      validate: schema<string>((value) =>
+        value === 'draft'
+          ? { issues: [{ message: 'Write the notes.' }] }
+          : { value: String(value) },
+      ),
+    });
+    await context.out.print(notes);
+  });
+  const saved = ['draft', 'Final notes'];
+  const folder = mkdtempSync(join(tmpdir(), 'line-editor-'));
+  try {
+    const mock = mockProcess({
+      env: { ACCESSIBLE: '1', EDITOR: 'nano', TMPDIR: folder },
+      programs: {
+        '/bin/sh': ({ args }) => {
+          writeFileSync(args[3] ?? '', saved.shift() ?? '');
+          return {};
+        },
+      },
+      terminal: { columns: 80, keys: ['\r', '\r'], rows: 24 },
+    });
+    await expect(app.run({ process: mock })).resolves.toBe(0);
+    const asking = '? Release notes › Press Enter to open your editor\n';
+    const editing = '? Release notes › Waiting for your editor to close the file…\n';
+    expect(mock.stderr.text).toBe(
+      `${asking}${editing}✘ Write the notes.\n${asking}${editing}? Release notes · Final notes\n`,
+    );
+  } finally {
+    rmSync(folder, { force: true, recursive: true });
+  }
+});
+
 test.each([
   { keys: ['ab\u0003'], stderr: 'Name: \n? Name · cancelled\n' },
   { keys: [['ab', '\u0003']], stderr: 'Name: ab\n? Name · cancelled\n' },
@@ -703,6 +768,27 @@ test('Ctrl-Z discards the line typed so far and prints the asking row again at t
   });
   expect(run).toMatchObject({ answers: ['cd'], code: 0, stderr: 'Name: abName: cd\n' });
 });
+
+test.each([
+  { keys: ['bob\r'], path: 'as it starts', stderr: 'Name: bob\n' },
+  {
+    keys: [['ab', '\u001a'], 'cd\r'],
+    path: 'after a suspend and resume',
+    stderr: 'Name: abName: cd\n',
+  },
+])(
+  'a question asked line by line writes no cursor or bracketed paste sequence $path, even where the terminal controls are kept',
+  async ({ keys, stderr }) => {
+    const run = await asked(
+      keys,
+      async (context, answers) => {
+        answers.push(await text(context, { message: 'Name' }));
+      },
+      { terminalControls: 'preserve' },
+    );
+    expect(run).toMatchObject({ code: 0, stderr });
+  },
+);
 
 test('two questions asked at once take turns', async () => {
   const run = await asked(['a\rb\r'], async (context, answers) => {

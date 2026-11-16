@@ -14,7 +14,8 @@
  * - A text answer and a secret typed ahead in one write at the text question's row answer both,
  *   and the secret never reaches the screen.
  * - A process that exits while a secret asked line by line waits, with no signal that aborts the
- *   run first, leaves raw mode in its shutdown handler, before the action's own.
+ *   run first, leaves raw mode in its shutdown handler, before the action's own, and writes no
+ *   cursor or bracketed paste sequence after the asking row.
  */
 import { fileURLToPath } from 'node:url';
 
@@ -155,6 +156,9 @@ test.skipIf(zsh === undefined)(
       tty.send(command('plain', 'exit'));
       const result = await tty.expect('SHUTDOWN raw:(true|false)');
       expect(result).toContain('SHUTDOWN raw:false');
+      // The question's shutdown handler runs first and writes no cursor or paste sequence.
+      const asked = result.slice(result.lastIndexOf('Token: '), result.lastIndexOf('SHUTDOWN'));
+      expect(asked).toBe('Token: ');
       await expect(tty.exitStatus()).resolves.toBe('EXIT:0:END');
     } finally {
       await tty.close();
