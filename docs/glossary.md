@@ -450,12 +450,16 @@ What a semantic method decides about its message apart from its look: the destin
 _Avoid_: Log level (a log level belongs to a log event), lane (for the level), severity
 
 **Streamed message**:
-A semantic message whose text arrives as an async iterable of chunks, such as a model's answer, passed in place of the string. It keeps the method's message level, draws through the lane view and never through a passed view, and once it ends has written what the method writes for the joined text. On a terminal that redraws, each chunk shows as it arrives; elsewhere, a captured run included, each line is written once it completes. A hidden one is read to its end.
+A semantic message whose text arrives as an async iterable of chunks, such as a model's answer, passed in place of the string. It keeps the method's message level, draws through the lane view and never through a passed view, and once its iterable ends has written what the method writes for the joined text. On a terminal that redraws, each chunk shows as it arrives; elsewhere, a captured run included, each line is written once it completes. A hidden one is read to its end.
 _Avoid_: Stream (for the message; a stream is stdout or stderr), live message, partial message, chunked output
 
 **Unfinished row**:
-The last row of a streamed message on a terminal, which core redraws as chunks arrive, above the open live regions. The rows before it are finished and permanent, and it becomes a finished row, with the message's closing line break, when the stream ends. It is not a live region.
+The last row of a streamed message on a terminal, which core redraws as chunks arrive, above the open live regions. The rows before it are finished and permanent, and it becomes a finished row, with the message's closing line break, when the iterable ends. It is not a live region.
 _Avoid_: Live row, pending line, frame (a frame belongs to a live region)
+
+**Captured run**:
+A run whose stdout and stderr core writes to streams a caller reads back rather than to a terminal: an invocation by name, whose `output` and `messages` hold what it wrote, an MCP tool call, and a run on a mock process whose streams are its recording streams. Its streams are not terminals, so its output follows the rules for a pipe.
+_Avoid_: Headless run, captured output (for the run)
 
 **Rendered output**:
 Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and from an action it goes to stderr on a Command that declares a result.
