@@ -152,7 +152,7 @@ The fixed number of words, 2 or more, that one occurrence of a string option tak
 _Avoid_: Number of arguments, nargs, value count
 
 **Last-wins option**:
-A scalar string option, an arity option included, that declares `lastWins: true`, so a later occurrence on the command line, across every accepted spelling, replaces an earlier one instead of failing as a repeat. Only the last occurrence's value reaches the validator, and a replaced value is dropped unread. Every occurrence still takes its words and raises every fault but the repeat, and the setting changes neither the option's value class nor the precedence of its input sources.
+A scalar string option, an arity option included, that declares `lastWins: true`, so a later occurrence on the command line, across every accepted spelling, replaces an earlier one instead of failing as a repeat. Only the last occurrence's value reaches the validator, and a replaced value is dropped unread. A declared implied value is no occurrence's value: it validates with the declaration, before any word is read, whether or not an occurrence uses it. Every occurrence still takes its words and raises every fault but the repeat, and the setting changes neither the option's value class nor the precedence of its input sources.
 _Avoid_: Overridable option, override flag, repeatable option (for a scalar)
 
 **Counted option**:
