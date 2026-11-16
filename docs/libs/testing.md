@@ -643,6 +643,7 @@ An `onLog` hook takes a log event and a log destination, and a progress observer
   | | `state` | `'updated'` |
   | | `completed`, `total` | absent |
 
+- **Every state core builds.** A stated progress event `state` is any state core types, `skipped` and `warned` included, so a test of an observer states a skipped or a warned end as it states an ended one: `progressEvent({ label: 'Fetched 118 of 120 records', state: 'warned' })`.
 - **Frozen as core freezes them.** Each builder returns a frozen copy: a log event with everything it holds, and a destination and a progress event at their top level, as a run hands them to a hook. The values the test stated stay as they were.
 - **Nothing is checked.** The builder takes the values as their types allow and checks nothing, so a `run` of any length or a `time` in any form is the test's own.
 - **Names.** `logEvent`, `logDestination`, and `progressEvent` are exported from `@loomcli/testing`, and so are the types `LogEventValues`, `LogDestinationValues`, and `ProgressEventValues`.

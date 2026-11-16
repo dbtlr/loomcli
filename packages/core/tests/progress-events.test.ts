@@ -9,8 +9,9 @@ import { expect, test } from 'vite-plus/test';
  *   the observer has received the event before `report` returns. A label reported as
  *   `style.highlight('x')` reaches the observer as `x`.
  * - Ends. A region closed by `end('failed')` and by a thrown failure delivers `failed`, one closed
- *   by the action's return delivers `ended`, and one closed by the call's cancellation delivers
- *   `cancelled`. A region that never reported delivers nothing. A region ended with a label
+ *   by `end('skipped')` delivers `skipped`, one closed by `end('warned')` delivers `warned`, one
+ *   closed by the action's return delivers `ended`, and one closed by the call's cancellation
+ *   delivers `cancelled`. A region that never reported delivers nothing. A region ended with a label
  *   delivers that label, plain, on its end event alone, and one ended with none keeps its last
  *   reported label.
  * - Not logging. A fixture `onLog` hook receives no event for any report.
@@ -88,6 +89,8 @@ test('each event is frozen and its label is plain text', () => {
 test.each([
   ['end', 'ended', 'ended'],
   ['end', 'failed', 'failed'],
+  ['end', 'skipped', 'skipped'],
+  ['end', 'warned', 'warned'],
   ['completion', 'ended', 'ended'],
   ['failure', 'ended', 'failed'],
   ['cancellation', 'ended', 'cancelled'],
@@ -97,6 +100,20 @@ test.each([
   region.report({ label: 'work' });
   region.close(closer, state);
   expect(events.at(-1)?.state).toBe(built);
+});
+
+test('a skipped or warned end carries the label end() passed, read as plain text, and the counts as reported', () => {
+  const { events, ledger: run } = ledger();
+  const skipped = run.region();
+  const warned = run.region();
+  skipped.report({ label: 'Fetching' });
+  warned.report({ completed: 118, label: 'Fetching records', total: 120 });
+  skipped.close('end', 'skipped', 'Fetched *nothing*: the cache is fresh');
+  warned.close('end', 'warned', 'Fetched 118 of 120 records');
+  expect(events.slice(2)).toStrictEqual([
+    { id: 1, label: 'Fetched nothing: the cache is fresh', state: 'skipped' },
+    { completed: 118, id: 2, label: 'Fetched 118 of 120 records', state: 'warned', total: 120 },
+  ]);
 });
 
 test('a region that never reported builds no event when it closes', () => {
@@ -155,6 +172,14 @@ test('each way a region closes reaches onProgress as its end state, and a region
   expect(states(ends.thrown)).toEqual([
     ['thrown', 'started'],
     ['thrown', 'failed'],
+  ]);
+  expect(states(ends.endSkipped)).toEqual([
+    ['end skipped', 'started'],
+    ['Fetched nothing: the cache is fresh', 'skipped'],
+  ]);
+  expect(states(ends.endWarned)).toEqual([
+    ['end warned', 'started'],
+    ['end warned', 'warned'],
   ]);
   expect(states(ends.returned)).toEqual([
     ['returned', 'started'],

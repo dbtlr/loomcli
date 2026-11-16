@@ -855,10 +855,13 @@ interface Progress {
   update(update: ProgressUpdate): void;
   end(message?: string): Promise<void>;
   fail(message?: string): Promise<void>;
+  skip(message?: string): Promise<void>;
+  warn(message?: string): Promise<void>;
+  clear(): Promise<void>;
   track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
 }
 type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
-  readonly out: Pick<Out, 'region' | 'info' | 'success' | 'error'>;
+  readonly out: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'>;
 };
 interface ProgressStyleSettings {
   readonly spinner?: Spinner;
@@ -913,17 +916,65 @@ With stderr piped, on a terminal whose `TERM` is `dumb`, or with the run's [plai
 ✔ Indexed 812 records
 ```
 
+Work that did nothing, finished short, or leaves nothing worth keeping ends with `skip`, `warn`, or `clear`:
+
+```ts
+import { Command } from '@loomcli/core';
+import { progress } from '@loomcli/prompts';
+
+import { cacheIsFresh, fetchRecords, readCache } from './records.js';
+
+export const sync = new Command('sync').action(async (context) => {
+  const reading = progress(context, { label: 'Reading the cache' });
+  const cache = await readCache();
+  await reading.clear();
+  const fetching = progress(context, { label: 'Fetching records' });
+  if (cacheIsFresh(cache)) {
+    await fetching.skip('Fetched nothing: the cache is fresh');
+    return;
+  }
+  const { fetched, total } = await fetchRecords(cache);
+  if (fetched < total) {
+    await fetching.warn(`Fetched ${String(fetched)} of ${String(total)} records`);
+  } else {
+    await fetching.end(`Fetched ${String(fetched)} records`);
+  }
+});
+```
+
+At a terminal, the cleared line leaves nothing, and the run leaves the skipped line, dim:
+
+```text
+ℹ Fetched nothing: the cache is fresh · 0.3s
+```
+
+or the warned line:
+
+```text
+⚠ Fetched 118 of 120 records · 3.2s
+```
+
+Where the line is not live, the cleared line's start line stays and nothing follows it:
+
+```text
+ℹ Reading the cache
+ℹ Fetching records
+ℹ Fetched nothing: the cache is fresh
+```
+
 A progress line shows an operator that work is under way: a spinner while the work has no known size, and a bar with counts once it has a total. `progress(context, settings)` draws one in a [live region](../core/output.md#live-region), animates it on its own timer, and reports it as [progress events](../core/output.md#progress-events), so an invocation by name and an MCP client read the same progress a terminal shows.
 
 - **A line in a region.** `progress()` opens one region through `context.out.region()`, reports `{ label, total, completed: 0 }` with a total and `{ label }` without one, draws its first frame, and returns the line's handle at once. Several lines stack in the order they started, and a question asked meanwhile draws below them. An action, a middleware, and a configuration source each call it with their own context.
 - **Updates.** `update({ completed?, total?, label? })` changes what the line shows, reports the change, and draws the next frame, and an omitted field keeps its value. A `total` turns a spinner into a bar. It returns nothing, because the frame queues in call order. After the line has closed it checks its settings, as every call does, and then does nothing.
 - **The frame timer.** While the line is live, the library redraws it every spinner `interval` from its own `setInterval`, advancing the spinner frame and the elapsed time. The timer is unref'd, so it never keeps a process alive, and the library clears it when the region's signal aborts, whatever closed the region. It cancels and limits nothing. A line that is not live runs no timer.
-- **Ending.** `end(message?)` draws the line's success line, with the message or else the label, and closes its region with `end('ended', message)`. `fail(message?)` draws its failure line and closes the region with `end('failed', message)`, so its last progress event reads `failed`. Either way the end event's label is the message, so an `onProgress` observer and an MCP client read the same end text the terminal shows, and a line ended with no message keeps its last label. Each resolves once its line is written. After the line has ended, failed, or been cancelled, `end` and `fail` do nothing and resolve.
-- **Tracking work.** `track(work, { done?, failed? })` awaits `work`. When it resolves, the line ends with `done`, and `track` returns the value. When it rejects, the line fails with `failed`, and `track` rejects with the same rejection, unchanged. `done` is a string or a function of the resolved value, and `failed` a string or a function of the rejection, so either message can say what happened, and each defaults to the label. When the line has already closed, `track` only returns the value or rethrows.
+- **Ending.** `end(message?)` draws the line's success line, with the message or else the label, and closes its region with `end('ended', message)`. `fail(message?)` draws its failure line and closes the region with `end('failed', message)`, so its last progress event reads `failed`. `skip(message?)` draws its skipped line, dim, and closes the region with `end('skipped', message)`, for work that had nothing to do. `warn(message?)` draws its warned line and closes the region with `end('warned', message)`, for work that finished with a problem the operator should see. Each way the end event's label is the message, so an `onProgress` observer and an MCP client read the same end text the terminal shows, and a line ended with no message keeps its last label. Each resolves once its line is written. [ADR-0170](../decisions/0170-a-progress-line-may-end-skipped-or-warned-or-be-cleared-and-a-regions-end-event-reads-skipped-and-warned.md) records the skipped, warned, and cleared ends.
+- **Clearing.** `clear()` removes the line and leaves nothing, with one exception: under [Lending the terminal](../core/output.md#lending-the-terminal), a frame drawn before the terminal was lent stays where it was drawn, so a line cleared during or after a lend leaves that frame. It draws an empty last frame, which does not pass through the [progress view](#progress-view), and closes its region with `end('ended')`, so the rows above the line stay as they were, the lines below close the gap, and no blank row is left. Its end event reads `ended` with the last label. Only the author's own `clear()` removes a line: a line that fails or is cancelled keeps its text, and nothing clears a line on its own.
+- **After an end.** Once the line has ended, failed, been cancelled, been skipped, been warned, or been cleared, `end`, `fail`, `skip`, `warn`, and `clear` do nothing and resolve.
+- **Tracking work.** `track(work, { done?, failed? })` awaits `work`, and ends the line only as a success or a failure. When it resolves, the line ends with `done`, and `track` returns the value. When it rejects, the line fails with `failed`, and `track` rejects with the same rejection, unchanged. `done` is a string or a function of the resolved value, and `failed` a string or a function of the rejection, so either message can say what happened, and each defaults to the label. When the line has already closed, `track` only returns the value or rethrows.
 - **Cancellation.** The handle has no cancel method. When the run is cancelled, core closes the line's region for the cancellation, and the line draws its cancelled line in the region's abort. A line started after the run is cancelled finds its region already closed, so it draws and writes nothing and starts no timer.
 - **A failing run.** When the run fails with a line still open, core closes the line's region for the failure before it renders the failure report, and the line draws its failure line with its label in the abort, so the report follows every line. A line the action leaves open draws its success line with its label when the action returns. A line a middleware or a configuration source leaves open stays open through the action, so a middleware can show a line around the whole run, and draws its success line with its label once the middleware chain has unwound.
-- **Off a terminal.** When the region is not live, because stderr is not a terminal, the terminal does not [redraw](../core/output.md#live-region) in place (the run's [plain switch](../core/output.md#the-plain-switch) on, `TERM=dumb`, or `CI` set and not `false`), the run is an [invocation by name](../core/invocation.md#invocation-by-name), or the run's [verbosity](../core/verbosity.md) is -1, the line draws nothing. `progress()` writes its label once through `context.out.info`. `end` and a resolved `track` write the end message through `context.out.success`, and `fail`, a rejected `track`, and a failing run write it through `context.out.error`. An update and a cancellation write nothing, and no line carries the elapsed time. So under `-q` the start and success lines hide with their lanes and a failure line prints, and under an invocation by name the lines land in `messages`. The library reads the region's `live` and never the verbosity.
-- **Reports.** The line reports at its start, at each update, and when it closes, so an [`onProgress`](../core/invocation.md#invocation-by-name) observer and an [MCP](../plugins/mcp.md) client read `started`, `updated`, and `ended`, `failed`, or `cancelled`, whether or not the line draws.
+- **Off a terminal.** When the region is not live, because stderr is not a terminal, the terminal does not [redraw](../core/output.md#live-region) in place (the run's [plain switch](../core/output.md#the-plain-switch) on, `TERM=dumb`, or `CI` set and not `false`), the run is an [invocation by name](../core/invocation.md#invocation-by-name), or the run's [verbosity](../core/verbosity.md) is -1, the line draws nothing. `progress()` writes its label once through `context.out.info`. `end` and a resolved `track` write the end message through `context.out.success`, `skip` writes it through `context.out.info`, `warn` through `context.out.warn`, and `fail`, a rejected `track`, and a failing run write it through `context.out.error`. An update, a cancellation, and `clear` write nothing, so a cleared line leaves its start line alone, and no line carries the elapsed time. So under `-q` the start, success, and skipped lines hide with their lanes and a warned or failure line prints, and under an invocation by name the lines land in `messages`. The library reads the region's `live` and never the verbosity.
+- **Reports.** The line reports at its start, at each update, and when it closes, so an [`onProgress`](../core/invocation.md#invocation-by-name) observer and an [MCP](../plugins/mcp.md) client read `started`, `updated`, and `ended`, `failed`, `skipped`, `warned`, or `cancelled`, whether or not the line draws. A cleared line reads `ended`.
 - **The values.** `label`, an update's `label`, and the end messages are marked strings, as a lane message is, so an author escapes raw data with `style.escape` first. `total` and `completed` are counts of 0 or more, which the library draws as given, and `completed` may pass `total`.
 - **No limit.** A line shows until its work ends. The library adds no timeout and no stall check.
 
@@ -950,8 +1001,8 @@ export const app = new Application('fetchit', {
 
 ```ts
 interface ProgressLine {
-  readonly state: 'running' | 'ended' | 'failed' | 'cancelled';
-  readonly label: string; // the end message once the line has ended or failed
+  readonly state: 'running' | 'ended' | 'failed' | 'cancelled' | 'skipped' | 'warned';
+  readonly label: string; // the end message once the line has ended, failed, been skipped, or warned
   readonly completed: number | undefined;
   readonly total: number | undefined;
   readonly frame: string; // the spinner's current frame
@@ -970,9 +1021,13 @@ interface ProgressLine {
 | Ended                                  | The glyph `success` in `success`, the message, the dim `·`, and the elapsed time: `✔ Fetched 10 records · 4.1s`               |
 | Failed                                 | Core's glyph `error` in `error`, the message, the dim `·`, and the elapsed time: `✘ Fetching records · 2.6s`, and `× Fetching records · 2.6s` where the terminal takes compat forms |
 | Cancelled                              | The glyph `squareCenter`, the label, and `(cancelled)`, all dim: `■ Fetching records (cancelled)`                              |
+| Skipped                                | The glyph `info`, the message, the `·`, and the elapsed time, all dim: `ℹ Fetched nothing: the cache is fresh · 0.3s`, and `i Fetched nothing: the cache is fresh · 0.3s` where the terminal takes compat forms |
+| Warned                                 | The glyph `warning` in `warning`, the message, the dim `·`, and the elapsed time: `⚠ Fetched 118 of 120 records · 3.2s`, and `‼ Fetched 118 of 120 records · 3.2s` where the terminal takes compat forms |
 
 - **The bar.** The complete cells number 10 × `completed` ÷ `total`, rounded down and held between 0 and 10, and a total of 0 fills the bar. The counts read `completed/total` when both are whole numbers, and otherwise the percent, 100 × `completed` ÷ `total` rounded down and followed by `%`, which a total of 0 reads as `100%`. An absent `completed` reads 0.
 - **Elapsed time.** Under a minute it reads seconds with one decimal, `2.4s`; under an hour, minutes and two-digit seconds, `1m 05s`; and from an hour, hours and two-digit minutes, `1h 02m`. Each rounds down.
+- **The end glyphs.** Each end line's glyph is the one its plain line's lane draws: `success` for the success lane, core's `error` for the error lane, `info` for the info lane, and `warning` for the warn lane, so a line shows the same glyph live and not live. The success, failure, and warned lines also style the glyph as their lanes do, while the skipped line draws its glyph dim with the rest of the line, where the info lane draws it in `info`. The skipped and warned lines draw no spinner frame, bar, or counts, as the success line draws none.
+- **A cleared line.** A cleared line never reaches the view, so an override cannot leave text for it. An override written before the skipped and warned states receives them only from a line whose author calls `skip` or `warn`. One whose switch over `state` has no default branch needs the two new values handled.
 - **Plain text.** The spinner frames and the bar cells are plain text, not glyphs, so a terminal that takes compat forms draws them as the style gives them. The view neither wraps nor clips a long label: the terminal wraps it, and core counts the rows it takes.
 
 ## When author code fails
@@ -1006,3 +1061,4 @@ A question's `validate`, the linked input's validator a select or multiselect ru
 - A default, a prefill, or "Enter keeps the current value" for secret.
 - Redrawing when the terminal is resized while a question asks. The next frame after a resize erases the whole region, because core recounts its last frame at the current width.
 - A progress line drawn as a multi-step tree, a progress line with a rate or an estimated time left, and a progress line on stdout.
+- A setting that clears a progress line when it ends, as Rich's `transient` does, and an end that leaves the running frame as it stands, as ora's `stop` does. An author calls `clear()` for a line that should leave nothing.

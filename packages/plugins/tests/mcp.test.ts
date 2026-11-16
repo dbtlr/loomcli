@@ -35,7 +35,10 @@
  *   spinner line `Fetching records` that ends with the message `Fetched 3 records.` sends `Fetching
  *   records (started)` and `Fetched 3 records. (ended)`. Two lines that each start and end in one
  *   call share the token and one counter, so their four notifications read `progress` 1 to 4 in the
- *   order their events were delivered, and none is left out. The same call without a token sends no
+ *   order their events were delivered, and none is left out. A line skipped with a message sends
+ *   `Fetched nothing: the cache is fresh (skipped)`, a counted line warned with one sends `Fetched
+ *   118 of 120 records 118/120 (warned)`, and a cleared line sends `Reading the cache (ended)`, and
+ *   the result's text holds each start line and the skipped and warned end lines. The same call without a token sends no
  *   notification, and a call the client cancels sends none after its cancellation. A hand-drawn
  *   region that reports `{ completed: 1 }` with no label sends the message `1 (started)`, and one
  *   that reports `{}` sends `(started)`.
@@ -736,6 +739,31 @@ describe('progress', () => {
       progressNote('pair', 2, 'Second (started)'),
       progressNote('pair', 3, 'First (ended)'),
       progressNote('pair', 4, 'Second (ended)'),
+    ]);
+  });
+
+  it('a skipped and a warned line send their own end states, a cleared line sends ended, and the result holds the plain lines', async () => {
+    const session = serve('progress');
+    session.send(tracked(1, 'ends', 'ends'));
+    const { answer, before } = await untilAnswer(session, 1);
+    await session.close();
+    expect(before).toEqual([
+      progressNote('ends', 1, 'Fetching records (started)'),
+      progressNote('ends', 2, 'Fetched nothing: the cache is fresh (skipped)'),
+      progressNote('ends', 3, 'Fetching more 0/120 (started)'),
+      progressNote('ends', 4, 'Fetching more 118/120 (updated)'),
+      progressNote('ends', 5, 'Fetched 118 of 120 records 118/120 (warned)'),
+      progressNote('ends', 6, 'Reading the cache (started)'),
+      progressNote('ends', 7, 'Reading the cache (ended)'),
+    ]);
+    const [content] = Object(answer.result).content;
+    expect(content.text.split('\n')).toEqual([
+      expect.stringMatching(/ Fetching records$/u),
+      expect.stringMatching(/ Fetched nothing: the cache is fresh$/u),
+      expect.stringMatching(/ Fetching more$/u),
+      expect.stringMatching(/ Fetched 118 of 120 records$/u),
+      expect.stringMatching(/ Reading the cache$/u),
+      '',
     ]);
   });
 

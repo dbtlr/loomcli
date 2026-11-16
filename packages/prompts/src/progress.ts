@@ -8,6 +8,7 @@ import type {
   StandardSchemaV1,
 } from '@loomcli/core';
 
+import { controls } from './controls.js';
 import { progressLine } from './views.js';
 import type { ProgressLine } from './views.js';
 
@@ -80,6 +81,19 @@ interface Progress {
   end(message?: string): Promise<void>;
   /** Ends the line as a failure, with an optional message in place of the label. */
   fail(message?: string): Promise<void>;
+  /**
+   * Ends the line as skipped, with an optional message in place of the label. Where the line draws,
+   * it leaves a dim line. Where it does not draw, it writes the line through `out.info`.
+   */
+  skip(message?: string): Promise<void>;
+  /** Ends the line with a warning, with an optional message in place of the label. */
+  warn(message?: string): Promise<void>;
+  /**
+   * Ends the line and removes it. Where the line draws, it leaves nothing, except a frame drawn
+   * before the terminal was lent, which stays where it was drawn. Where the line does not draw, it
+   * writes nothing after the start line, which stays.
+   */
+  clear(): Promise<void>;
   /** Ends the line by how the work settles and returns the work's value, or rethrows its rejection. */
   track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
 }
@@ -90,7 +104,7 @@ interface Progress {
  * @public
  */
 type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
-  readonly out: Pick<Out, 'region' | 'info' | 'success' | 'error'>;
+  readonly out: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'>;
 };
 
 /**
@@ -219,12 +233,15 @@ async function settle<Value>(
 }
 
 /** The state a line takes when core closes its region. */
-const closedState: Readonly<Record<RegionCloser, ProgressLine['state']>> = {
+const closedState: Readonly<Record<RegionCloser, Exclude<ProgressLine['state'], 'running'>>> = {
   cancellation: 'cancelled',
   completion: 'ended',
   end: 'ended',
   failure: 'failed',
 };
+
+/** The state a line's own end takes, each of which draws its own last line. */
+type EndState = Exclude<ProgressLine['state'], 'running' | 'cancelled'>;
 
 /** What one line shows and how it changes, which its view reads at each frame. */
 interface LineState {
@@ -239,9 +256,11 @@ interface LineState {
  * One progress line in its own live region: a spinner while the work has no total, and a bar with
  * counts once it has one. While the region is live the line animates on its own unref'd timer,
  * which it clears when the region's signal aborts, and draws its success, failure, or cancelled
- * line as the region's last frame. A line whose region closed as it opened draws nothing, writes
+ * line as the region's last frame, or its skipped or warned line. A cleared line draws an empty
+ * last frame, so it leaves nothing. A line whose region closed as it opened draws nothing, writes
  * nothing, and runs no timer. Off a terminal it writes one start line through `info` and one
- * end line through `success` or `error`. It reports at its start, at each update, and at its close.
+ * end line through `success`, `error`, `info` for a skipped line, or `warn`, and a cleared line
+ * writes no end line. It reports at its start, at each update, and at its close.
  *
  * @example
  * ```ts
@@ -299,6 +318,13 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
   } else {
     void context.out.info(label);
   }
+  // Where the region is not live, each end writes its line through the lane of its level.
+  const plainLine: Readonly<Record<EndState, (text: string) => Promise<void>>> = {
+    ended: (text) => context.out.success(text),
+    failed: (text) => context.out.error(text),
+    skipped: (text) => context.out.info(text),
+    warned: (text) => context.out.warn(text),
+  };
   // Core closes the region for the action's return, a failure, or cancellation.
   // The line draws its closing frame inside the abort, so that frame is the region's last.
   region.signal.addEventListener(
@@ -311,33 +337,38 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
       line.state = closedState[region.closedBy ?? 'completion'];
       if (region.live) {
         void region.draw(frame(), progressLine);
-      } else if (line.state === 'ended') {
-        void context.out.success(line.label);
-      } else if (line.state === 'failed') {
-        void context.out.error(line.label);
+      } else if (line.state !== 'cancelled') {
+        void plainLine[line.state](line.label);
       }
     },
     { once: true },
   );
-  const finish = async (state: 'ended' | 'failed', message: string | undefined): Promise<void> => {
+  const finish = async (state: EndState, message: string | undefined): Promise<void> => {
     if (line.state !== 'running') {
       return;
     }
     line.state = state;
     line.label = message ?? line.label;
     clearInterval(timer);
-    if (region.live) {
-      await region.draw(frame(), progressLine);
-    } else if (state === 'ended') {
-      await context.out.success(line.label);
-    } else {
-      await context.out.error(line.label);
-    }
+    await (region.live ? region.draw(frame(), progressLine) : plainLine[state](line.label));
     await region.end(state, message);
   };
   return {
+    // A cleared line ends as ended, but its last frame is the library's empty one, never the view's.
+    async clear() {
+      if (line.state !== 'running') {
+        return;
+      }
+      line.state = 'ended';
+      clearInterval(timer);
+      if (region.live) {
+        await region.draw('', controls);
+      }
+      await region.end('ended');
+    },
     end: (message) => finish('ended', message),
     fail: (message) => finish('failed', message),
+    skip: (message) => finish('skipped', message),
     async track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value> {
       const outcome = await settle(work);
       if ('error' in outcome) {
@@ -367,6 +398,7 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
         void region.draw(frame(), progressLine);
       }
     },
+    warn: (message) => finish('warned', message),
   };
 }
 

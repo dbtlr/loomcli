@@ -81,6 +81,16 @@ async function runFixture(words, fixtureOptions = {}) {
           region.report({ label: 'end failed' });
           await region.end('failed');
         }),
+        endSkipped: await observed(async ({ out }) => {
+          const region = out.region();
+          region.report({ label: 'end skipped' });
+          await region.end('skipped', 'Fetched nothing: the cache is fresh');
+        }),
+        endWarned: await observed(async ({ out }) => {
+          const region = out.region();
+          region.report({ label: 'end warned' });
+          await region.end('warned');
+        }),
         returned: await observed(({ out }) => {
           out.region().report({ label: 'returned' });
         }),

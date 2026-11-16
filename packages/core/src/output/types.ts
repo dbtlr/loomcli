@@ -333,10 +333,11 @@ export interface Region {
    */
   draw<Data>(data: Data, view: View<Data>): Promise<void>;
   /**
-   * Closes the region, leaving its last frame in scrollback; `'failed'` makes its end event read
-   * failed, and a `label` replaces the reported label on that event.
+   * Closes the region, leaving its last frame in scrollback; `'failed'`, `'skipped'`, and
+   * `'warned'` make its end event read that state, and a `label` replaces the reported label on
+   * that event.
    */
-  end(state?: 'ended' | 'failed', label?: string): Promise<void>;
+  end(state?: 'ended' | 'failed' | 'skipped' | 'warned', label?: string): Promise<void>;
   /** Builds a typed progress event for whoever observes the run, and draws nothing. */
   report(progress: ProgressReport): void;
 }
@@ -353,7 +354,7 @@ export interface ProgressEvent {
   /** The plain text of the region's last reported label, or of the label `end()` passed. */
   readonly label: string;
   /** Where the region is: its first report is `started`, and its close builds the end state. */
-  readonly state: 'started' | 'updated' | 'ended' | 'failed' | 'cancelled';
+  readonly state: 'started' | 'updated' | 'ended' | 'failed' | 'cancelled' | 'skipped' | 'warned';
   /** The last reported `completed`, when the region reported one. */
   readonly completed?: number;
   /** The last reported `total`, when the region reported one. */

@@ -941,9 +941,9 @@ const questionLine = view<QuestionLine>('@loomcli/prompts/question-line', {
  * @public
  */
 interface ProgressLine {
-  /** How the line stands: running, ended, failed, or cancelled. */
-  readonly state: 'running' | 'ended' | 'failed' | 'cancelled';
-  /** The label while the line runs, and the end message once it has ended or failed. */
+  /** How the line stands: running, ended, failed, cancelled, skipped, or warned. */
+  readonly state: 'running' | 'ended' | 'failed' | 'cancelled' | 'skipped' | 'warned';
+  /** The label while the line runs, and the end message once it has ended, failed, been skipped, or warned. */
   readonly label: string;
   /** The count of units done, or `undefined` when the work has not counted any. */
   readonly completed: number | undefined;
@@ -1032,6 +1032,12 @@ const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
     }
     if (data.state === 'failed') {
       return `${style.error(glyph.error)} ${data.label} ${time}`;
+    }
+    if (data.state === 'skipped') {
+      return style.dim(`${glyph.info} ${data.label} · ${elapsedTime(data.elapsed)}`);
+    }
+    if (data.state === 'warned') {
+      return `${style.warning(glyph.warning)} ${data.label} ${time}`;
     }
     const completed = data.completed ?? 0;
     let measure = '';

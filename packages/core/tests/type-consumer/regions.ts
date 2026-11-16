@@ -1,4 +1,5 @@
 import type {
+  Out,
   ProgressEvent,
   ProgressReport,
   Region,
@@ -26,10 +27,14 @@ const drawn = new Application('drawn').action(async ({ out }) => {
   region.report(report);
   await region.draw(2, ticking);
   await region.end('failed');
+  await out.region().end('skipped', 'Fetched nothing: the cache is fresh');
+  await out.region().end('warned');
   // @ts-expect-error TS2345: A frame's view reads the data drawn.
   await region.draw('two', ticking);
-  // @ts-expect-error TS2345: End takes "ended", "failed", or nothing.
+  // @ts-expect-error TS2345: End takes "ended", "failed", "skipped", "warned", or nothing.
   await region.end('done');
+  // @ts-expect-error TS2345: A cleared line ends as "ended", so end takes no "cleared".
+  await region.end('cleared');
   // @ts-expect-error TS2322: A report's completed is a number.
   region.report({ completed: '3' });
   // @ts-expect-error TS2322: A report's total is a number.
@@ -46,6 +51,29 @@ const drawn = new Application('drawn').action(async ({ out }) => {
 /** A progress event's fields, as an observer reads them. */
 const event = ({ completed, id, label, state, total }: ProgressEvent): string =>
   `${id} ${label} ${state} ${completed ?? '-'}/${total ?? '-'}`;
+
+/** An observer's switch over every state an event takes, a skipped and a warned end included. */
+function outcome(state: ProgressEvent['state']): string {
+  switch (state) {
+    case 'started':
+    case 'updated': {
+      return 'running';
+    }
+    case 'ended': {
+      return 'done';
+    }
+    case 'skipped': {
+      return 'nothing to do';
+    }
+    case 'warned': {
+      return 'done with a warning';
+    }
+    case 'failed':
+    case 'cancelled': {
+      return 'stopped';
+    }
+  }
+}
 
 /** A middleware's context opens a progress line, as an action's does. */
 const around = plugin('@fixture/around', {
@@ -74,6 +102,15 @@ const tracked = new Application('tracked', {
     done: (value: number) => `Indexed ${String(value)}`,
     failed: (error: unknown) => String(error),
   });
+  const ending: Progress = progress(context, { label: 'Fetching' });
+  await ending.skip('Fetched nothing: the cache is fresh');
+  await ending.warn();
+  await ending.clear();
+  // @ts-expect-error TS2554: A cleared line leaves no text, so clear takes no message.
+  await ending.clear('Cleared');
+  const lanes: Pick<Out, 'region' | 'info' | 'success' | 'error'> = context.out;
+  // @ts-expect-error TS2741: A context passed to progress() carries the warn lane.
+  progress({ graph: context.graph, out: lanes }, { label: 'Fetching' });
   // @ts-expect-error TS2345: A done function reads the tracked work's own value type.
   await progress(context, { label: 'Indexing' }).track(Promise.resolve(3), {
     done: (value: string) => value,
@@ -95,4 +132,26 @@ const line: ProgressLine = {
 };
 const declared = progressLine;
 
-export { declared, drawn, event, line, tracked };
+/** An override's switch over every state the progress view takes, a skipped and a warned end included. */
+function drawnLine({ label, state }: ProgressLine): string {
+  switch (state) {
+    case 'running': {
+      return `… ${label}`;
+    }
+    case 'ended': {
+      return `done ${label}`;
+    }
+    case 'skipped': {
+      return `skipped ${label}`;
+    }
+    case 'warned': {
+      return `warning ${label}`;
+    }
+    case 'failed':
+    case 'cancelled': {
+      return `stopped ${label}`;
+    }
+  }
+}
+
+export { declared, drawn, drawnLine, event, line, outcome, tracked };

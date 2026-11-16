@@ -8,9 +8,18 @@
  *   `×`. Two lines stack in start order, a lane message written between their frames lands above
  *   both, and a question asked while they run holds them still and lets each catch up once when it
  *   is answered.
+ * - The other ends (ADR-0170). A skipped line reads its message under `ℹ`, dim throughout, a warned
+ *   line its message under `⚠`, the glyph alone in the warning token, and a line skipped with no
+ *   message its label; compat forms read `i` and `‼`. A cleared line leaves nothing: the rows above
+ *   and below it stay as they were with no blank row between. After any end, every end method and
+ *   an update draw, write, and report nothing more. A line that fails, and a line cancelled with the
+ *   run, keep their text when the author then clears them. An override of the view receives the
+ *   skipped and warned states, and never a cleared line. `progress-pty.test.ts` proves the drawn
+ *   ends on a real terminal.
  * - Counts and time. The default view, rendered directly, draws 3 complete cells for 1/3, 10 for
  *   12/10, and 10 for 0/0, reads `33%` for 1.5 of 4.5 and `0/5` for an absent `completed` of 5, and
- *   reads `59.9s` at 59 999 ms, `1m 05s` at 65 999 ms, and `1h 02m` at 3 779 999 ms.
+ *   reads `59.9s` at 59 999 ms, `1m 05s` at 65 999 ms, and `1h 02m` at 3 779 999 ms. A skipped and a
+ *   warned line draw no frame, bar, or counts.
  * - Tracking. `track` returns the work's value and ends with `done` from a function of it, and a
  *   rejection fails with `failed` from a function of the rejection and rethrows the same object. A
  *   line closed before its work settles draws nothing more.
@@ -27,7 +36,11 @@
  *   plugin, it writes only failure lines. Under `app.invoke`,
  *   the lines land in `messages`, and the observer reads every progress event in order. The end
  *   event of a line ended by `end`, `fail`, or `track` with a `done` or `failed` message carries
- *   that message as its label, and one ended with no message carries the line's last label.
+ *   that message as its label, and one ended with no message carries the line's last label. Where
+ *   the line is not live (piped, `TERM=dumb`, `ACCESSIBLE`, `--plain`), a skipped line writes its
+ *   end line through `info`, a warned line through `warn`, which alone prints under `-q`, and a
+ *   cleared line writes nothing after its start line; their events read `skipped`, `warned`, and
+ *   `ended`.
  * - Style. `progressStyle({ spinner: spinners.dots })` draws the dots frames at their interval, a
  *   call's own spinner wins for its line, and the defaults hold without the plugin.
  * - View. An override of `progressLine` changes every line's frame, and its data carries the state,
@@ -37,9 +50,10 @@
  *   declarations under Node and Bun.
  */
 
-import { Application, FatalError, override, plugin } from '@loomcli/core';
+import { Application, FatalError, override, plugin, style } from '@loomcli/core';
 import type { ActionContext, MiddlewareContext, Plugin, ProgressEvent } from '@loomcli/core';
 import { plain as plainPlugin } from '@loomcli/plugins/plain';
+import { theme } from '@loomcli/plugins/theme';
 import { verbose } from '@loomcli/plugins/verbose';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test, vi } from 'vite-plus/test';
@@ -48,6 +62,7 @@ import { start } from '../../../scripts/test-process.js';
 import { replay, until } from '../../../scripts/test-screen.js';
 import type { Recorded } from '../../../scripts/test-screen.js';
 import { progress, progressStyle, text } from '../src/index.js';
+import type { Progress } from '../src/index.js';
 import { progressLine } from '../src/views.js';
 import { observing, recording } from './support.js';
 
@@ -105,6 +120,15 @@ function after(ms: number): Promise<void> {
   });
 }
 
+/** Calls every end method of a line once more, each with a message where it takes one. */
+async function endAgain(line: Progress): Promise<void> {
+  await line.end('Ended again');
+  await line.fail('Failed again');
+  await line.skip('Skipped again');
+  await line.warn('Warned again');
+  await line.clear();
+}
+
 /** A plugin whose middleware runs `body` around the rest of the chain. */
 function around(body: (context: MiddlewareContext) => Promise<void>) {
   return plugin('@fixture/around', {
@@ -141,12 +165,57 @@ const scenarios: Record<string, (scene: Scene) => Scenario> = {
       }),
     ],
   }),
+  /** Each end of a line, then every end method once more after it. */
+  again: () => ({
+    action: async (context) => {
+      for (const [label, ending] of [
+        ['Ended', (line: Progress) => line.end()],
+        ['Failed', (line: Progress) => line.fail()],
+        ['Skipped', (line: Progress) => line.skip()],
+        ['Warned', (line: Progress) => line.warn()],
+        ['Cleared', (line: Progress) => line.clear()],
+      ] as const) {
+        const line = progress(context, { label });
+        await ending(line);
+        await endAgain(line);
+        line.update({ completed: 3, label: 'Updated again' });
+      }
+    },
+    plugins: [progressStyle({ spinner: still })],
+  }),
   /** One line open when the run is cancelled. */
   cancel: (scene) => ({
     action: async (context) => {
       progress(context, { label: 'Waiting' });
       await context.out.info('started');
       scene.caller.abort();
+    },
+    plugins: [progressStyle({ spinner: still })],
+  }),
+  /** One line open when the run is cancelled, which the action then clears. */
+  cancelClear: (scene) => ({
+    action: async (context) => {
+      const line = progress(context, { label: 'Waiting' });
+      await context.out.info('started');
+      scene.caller.abort();
+      await line.clear();
+    },
+    plugins: [progressStyle({ spinner: still })],
+  }),
+  /** Three lines with a lane line above them, the middle one cleared while the others run. */
+  clear: (scene) => ({
+    action: async (context) => {
+      await context.out.info('lane line');
+      const above = progress(context, { label: 'Above' });
+      const reading = progress(context, { label: 'Reading the cache' });
+      const below = progress(context, { label: 'Below', total: 4 });
+      // The first frames queue as the lines open, so the scenario waits for them to reach the terminal.
+      await after(10);
+      scene.screen.mark('running');
+      await reading.clear();
+      scene.screen.mark('cleared');
+      await above.end();
+      await below.end();
     },
     plugins: [progressStyle({ spinner: still })],
   }),
@@ -157,6 +226,36 @@ const scenarios: Record<string, (scene: Scene) => Scenario> = {
         Promise.resolve(812),
         { done: (count) => `Indexed ${count} records` },
       );
+    },
+    plugins: [progressStyle({ spinner: still })],
+  }),
+  /**
+   * A skipped line with a message, a counted line warned with one, a line skipped with none, and
+   * a cleared line.
+   */
+  ends: () => ({
+    action: async (context) => {
+      await progress(context, { label: 'Fetching records' }).skip(
+        'Fetched nothing: the cache is fresh',
+      );
+      const counted = progress(context, { label: 'Fetching more', total: 120 });
+      counted.update({ completed: 118 });
+      await counted.warn('Fetched 118 of 120 records');
+      await progress(context, { label: 'Checking' }).skip();
+      await progress(context, { label: 'Reading the cache' }).clear();
+    },
+    // The dim token is faint and the warning token yellow, so a test reads each from a cell.
+    plugins: [
+      progressStyle({ spinner: still }),
+      theme({ dim: style.faint, warning: style.yellow }),
+    ],
+  }),
+  /** A line that fails and then is cleared, which keeps its failure line. */
+  failClear: () => ({
+    action: async (context) => {
+      const line = progress(context, { label: 'Uploading' });
+      await line.fail('Upload refused');
+      await line.clear();
     },
     plugins: [progressStyle({ spinner: still })],
   }),
@@ -198,10 +297,30 @@ const scenarios: Record<string, (scene: Scene) => Scenario> = {
         }),
       };
       scene.caller.abort();
-      progress(counted, { label: 'Late', spinner: { frames: ['a', 'b'], interval: 10 } });
+      const line = progress(counted, {
+        label: 'Late',
+        spinner: { frames: ['a', 'b'], interval: 10 },
+      });
+      await line.end();
+      await line.fail();
+      await line.skip();
+      await line.warn();
+      await line.clear();
       // The run is read once the line has had time for several frames.
       scene.lingering = after(100);
     },
+  }),
+  /** A line cleared after the terminal was lent, which leaves the frame drawn before the lend. */
+  lendClear: () => ({
+    action: async (context) => {
+      const line = progress(context, { label: 'Preparing the release' });
+      // The first frame queues as the line opens, so the scenario waits for it to reach the terminal.
+      await after(10);
+      await context.out.lendTerminal(async () => {
+        await line.clear();
+      });
+    },
+    plugins: [progressStyle({ spinner: still })],
   }),
   /** A counted line and a spinner line, a lane line between their frames, then each end. */
   look: (scene) => ({
@@ -257,6 +376,23 @@ const scenarios: Record<string, (scene: Scene) => Scenario> = {
             `${data.bar.complete}${data.bar.incomplete}`,
             typeof data.elapsed,
           ].join('|'),
+      }),
+    ],
+  }),
+  /** An override of the progress view that notes every end it draws, for each new end. */
+  overrideEnds: (scene) => ({
+    action: async (context) => {
+      await progress(context, { label: 'Fetching records' }).skip('Nothing to do');
+      await progress(context, { label: 'Fetching more' }).warn();
+      await progress(context, { label: 'Reading the cache' }).clear();
+    },
+    plugins: [progressStyle({ spinner: still })],
+    views: [
+      override(progressLine, {
+        render: (data) => {
+          scene.notes.frames = [...(scene.notes.frames ?? []), `${data.state}|${data.label}`];
+          return `${data.state} ${data.label}`;
+        },
       }),
     ],
   }),
@@ -364,7 +500,9 @@ const scenarios: Record<string, (scene: Scene) => Scenario> = {
         { ...base, completed: undefined, elapsed: 59_999, total: undefined },
         { ...base, completed: undefined, elapsed: 65_999, total: undefined },
         { ...base, completed: undefined, elapsed: 3_779_999, total: undefined },
-      ];
+        { ...base, completed: 3, elapsed: 300, state: 'skipped', total: 4 },
+        { ...base, completed: 118, elapsed: 3200, state: 'warned', total: 120 },
+      ] as const;
       for (const row of rows) {
         await out.render(row, {
           render: (data, context) => `${progressLine.render(data, context)}\n`,
@@ -469,6 +607,84 @@ test('each success and failure line replaces its frame and stays in scrollback',
   expect(shown[3]).toMatch(new RegExp(`^✔ Reading rows · ${seconds}$`, 'u'));
 });
 
+test('a skipped line, a warned line, and a line skipped with no message replace their frames, and a cleared line leaves nothing', async () => {
+  const run = await lines('ends');
+  expect(run.stdout).toBe('');
+  const shown = await screen(run);
+  expect(shown).toHaveLength(3);
+  expect(shown[0]).toMatch(new RegExp(`^ℹ Fetched nothing: the cache is fresh · ${seconds}$`, 'u'));
+  expect(shown[1]).toMatch(new RegExp(`^⚠ Fetched 118 of 120 records · ${seconds}$`, 'u'));
+  expect(shown[2]).toMatch(new RegExp(`^ℹ Checking · ${seconds}$`, 'u'));
+});
+
+test('with color, the skipped line is dim throughout and the warned line colors only its glyph', async () => {
+  const run = await lines('ends', 'tty', [], { NO_COLOR: undefined });
+  const shown = await replay(until(run.events), { columns: 60 });
+  expect(shown.dim[0]).toBe(shown.lines[0]);
+  const message = '⚠ Fetched 118 of 120 records ';
+  expect(shown.dim[1]).toMatch(new RegExp(`^ {${String(message.length)}}· ${seconds}$`, 'u'));
+  expect(shown.colored[1]).toBe('⚠');
+});
+
+test('a cleared line leaves the rows above and below it as they were, with no blank row between', async () => {
+  const run = await lines('clear');
+  const running = await screen(run, 'running');
+  expect(running).toHaveLength(4);
+  expect(running[2]).toMatch(/^◐ Reading the cache · /u);
+  const cleared = await screen(run, 'cleared');
+  expect(cleared[0]).toBe('ℹ lane line');
+  expect(cleared[1]).toMatch(new RegExp(`^◐ Above · ${seconds}$`, 'u'));
+  expect(cleared[2]).toMatch(new RegExp(`^◐ Below ▱▱▱▱▱▱▱▱▱▱ 0/4 · ${seconds}$`, 'u'));
+  expect(cleared).toHaveLength(3);
+  const ended = await screen(run);
+  expect(ended.slice(1).map((row) => row.split(' · ')[0])).toEqual(['✔ Above', '✔ Below']);
+  expect(ended).toHaveLength(3);
+});
+
+test('a line cleared during a lend leaves the frame drawn before the lend, and nothing more', async () => {
+  const run = await lines('lendClear');
+  // The lend's start and end each write one line break, and the cleared line draws nothing between.
+  expect(run.stderr).toMatch(new RegExp(`^◐ Preparing the release · ${seconds}\\n\\n$`, 'u'));
+  await expect(screen(run)).resolves.toHaveLength(1);
+});
+
+test('after any end, every end method and an update do nothing more', async () => {
+  const shown = await screen(await lines('again'));
+  expect(shown.map((row) => row.split(' · ')[0])).toEqual([
+    '✔ Ended',
+    '✘ Failed',
+    'ℹ Skipped',
+    '⚠ Warned',
+  ]);
+});
+
+test('a line that fails keeps its failure line when it is then cleared', async () => {
+  const shown = await screen(await lines('failClear'));
+  expect(shown).toHaveLength(1);
+  expect(shown[0]).toMatch(new RegExp(`^✘ Upload refused · ${seconds}$`, 'u'));
+});
+
+test('a line cancelled with the run keeps its cancelled line when it is then cleared', async () => {
+  const run = await lines('cancelClear');
+  expect(run.code).toBe(130);
+  await expect(screen(run)).resolves.toEqual(['ℹ started', '■ Waiting (cancelled)']);
+});
+
+test('on a host that takes compat glyph forms, the skipped line opens with i and the warned line with ‼', async () => {
+  const shown = await screen(await lines('ends', 'tty', [], { TERM: 'linux' }));
+  expect(shown[0]).toMatch(/^i Fetched nothing: the cache is fresh · /u);
+  expect(shown[1]).toMatch(/^‼ Fetched 118 of 120 records · /u);
+});
+
+test('an override of the progress view draws the skipped and warned ends, and never a cleared line', async () => {
+  const run = await lines('overrideEnds');
+  expect(run.notes.frames?.filter((frame) => !frame.startsWith('running|'))).toEqual([
+    'skipped|Nothing to do',
+    'warned|Fetching more',
+  ]);
+  await expect(screen(run)).resolves.toEqual(['skipped Nothing to do', 'warned Fetching more']);
+});
+
 test('on a host that takes compat glyph forms, the failure line opens with ×', async () => {
   const shown = await screen(await lines('look', 'tty', [], { TERM: 'linux' }), 'ended');
   expect(shown[2]).toMatch(/^× Building the index · /u);
@@ -528,10 +744,10 @@ test('a question asked while two lines run holds them still and lets each catch 
   expect(answered[2]).toMatch(/^◐ Second ▰▰▰▰▰▰▰▱▱▱ 3\/4 · /u);
 });
 
-test('the default view draws the bar cells, the counts, and the elapsed time', async () => {
+test('the default view draws the bar cells, the counts, and the elapsed time, and no bar or counts on a skipped or warned line', async () => {
   const run = await lines('view', 'pipe');
   expect(run.stderr).toBe('');
-  expect(run.stdout.split('\n').slice(0, 8)).toEqual([
+  expect(run.stdout.split('\n').slice(0, 10)).toEqual([
     '* Work ###------- 1/3 · 0.0s',
     '* Work ########## 12/10 · 0.0s',
     '* Work ########## 0/0 · 0.0s',
@@ -540,6 +756,8 @@ test('the default view draws the bar cells, the counts, and the elapsed time', a
     '* Work · 59.9s',
     '* Work · 1m 05s',
     '* Work · 1h 02m',
+    'ℹ Work · 0.3s',
+    '⚠ Work · 3.2s',
   ]);
 });
 
@@ -609,6 +827,77 @@ test.each([
     );
   },
 );
+
+/** The plain lines of the ends scenario: a skipped end through info, a warned end through warn, and a cleared line's start line alone. */
+const plainEnds =
+  'ℹ Fetching records\nℹ Fetched nothing: the cache is fresh\nℹ Fetching more\n⚠ Fetched 118 of 120 records\nℹ Checking\nℹ Checking\nℹ Reading the cache\n';
+
+test.each([
+  { argv: [], env: {}, terminal: 'pipe' },
+  { argv: [], env: { TERM: 'dumb' }, terminal: 'tty' },
+  { argv: [], env: { ACCESSIBLE: '1' }, terminal: 'tty' },
+  { argv: ['--plain'], env: {}, terminal: 'tty' },
+])(
+  'on $terminal with argv $argv and $env, a skipped line writes through info, a warned line through warn, and a cleared line nothing more',
+  async ({ argv, env, terminal }) => {
+    const run = await lines('ends', terminal, argv, env);
+    expect(run.stdout).toBe('');
+    expect(run.stderr).toBe(plainEnds);
+  },
+);
+
+test('under -q a warned line prints with the warn lane and a skipped line hides with the info lane', async () => {
+  const run = await lines('ends', 'pipe', ['-q']);
+  expect(run.stderr).toBe('⚠ Fetched 118 of 120 records\n');
+});
+
+test('where the line is not live, an end after an end writes nothing more', async () => {
+  const run = await lines('again', 'pipe');
+  expect(run.stderr).toBe(
+    'ℹ Ended\n✔ Ended\nℹ Failed\n✘ Failed\nℹ Skipped\nℹ Skipped\nℹ Warned\n⚠ Warned\nℹ Cleared\n',
+  );
+});
+
+test('where the line is not live, a line that fails keeps its failure line when it is then cleared', async () => {
+  const run = await lines('failClear', 'pipe');
+  expect(run.stderr).toBe('ℹ Uploading\n✘ Upload refused\n');
+});
+
+test('under app.invoke a skipped and a warned end read skipped and warned with their messages, and a cleared line reads ended with its label', async () => {
+  const run = await lines('ends', 'invoke');
+  expect(run.messages).toBe(plainEnds);
+  const reported = [Object(run.notes.progress)].flat();
+  expect(
+    reported.map(({ completed, id, label, state, total }) => [id, state, label, completed, total]),
+  ).toEqual([
+    [1, 'started', 'Fetching records', undefined, undefined],
+    [1, 'skipped', 'Fetched nothing: the cache is fresh', undefined, undefined],
+    [2, 'started', 'Fetching more', 0, 120],
+    [2, 'updated', 'Fetching more', 118, 120],
+    [2, 'warned', 'Fetched 118 of 120 records', 118, 120],
+    [3, 'started', 'Checking', undefined, undefined],
+    [3, 'skipped', 'Checking', undefined, undefined],
+    [4, 'started', 'Reading the cache', undefined, undefined],
+    [4, 'ended', 'Reading the cache', undefined, undefined],
+  ]);
+});
+
+test('under app.invoke an end after an end reports nothing more', async () => {
+  const run = await lines('again', 'invoke');
+  const reported = [Object(run.notes.progress)].flat();
+  expect(reported.map(({ id, state }) => [id, state])).toEqual([
+    [1, 'started'],
+    [1, 'ended'],
+    [2, 'started'],
+    [2, 'failed'],
+    [3, 'started'],
+    [3, 'skipped'],
+    [4, 'started'],
+    [4, 'warned'],
+    [5, 'started'],
+    [5, 'ended'],
+  ]);
+});
 
 test('on a terminal stderr whose TERM is dumb, a question asked beside two plain lines asks line by line', async () => {
   const run = await lines('question', 'tty', [], { TERM: 'dumb' });

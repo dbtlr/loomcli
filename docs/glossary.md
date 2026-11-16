@@ -494,7 +494,7 @@ A live region opened with `input: true`, which reads the operator's keys, as a q
 _Avoid_: Prompt region, modal, focus
 
 **Progress event**:
-The typed value a live region's report builds, `{ id, label, state, completed?, total? }`, whose state is `started`, `updated`, `ended`, `failed`, or `cancelled`. An invocation by name delivers each one to its `onProgress` observer, and the MCP plugin sends each one as `notifications/progress`. It is not a log event.
+The typed value a live region's report builds, `{ id, label, state, completed?, total? }`, whose state is `started`, `updated`, `ended`, `failed`, `skipped`, `warned`, or `cancelled`. A region's own `end()` decides between `ended`, `failed`, `skipped`, and `warned`. An invocation by name delivers each one to its `onProgress` observer, and the MCP plugin sends each one as `notifications/progress`. It is not a log event.
 _Avoid_: Progress notification (for the event; the MCP message is one), log event, progress log
 
 **View**:
@@ -829,7 +829,7 @@ The span in which a run hands the terminal to a child program that draws on it, 
 _Avoid_: Handoff, pause, suspend (which stops the process)
 
 **Progress line**:
-One line of work in flight that an action shows through `progress()` from `@loomcli/prompts`, drawn in its own live region: a spinner while the work has no total, and a bar with counts once it has one. It ends as a success line, a failure line, or a cancelled line that stays in scrollback, and when its region is not live it writes one start line and, unless it is cancelled, one end line through the semantic lanes. It reports each change as a progress event.
+One line of work in flight that an action shows through `progress()` from `@loomcli/prompts`, drawn in its own live region: a spinner while the work has no total, and a bar with counts once it has one. It ends as a success line, a failure line, a skipped line, a warned line, or a cancelled line that stays in scrollback, or, when its author calls `clear()`, leaves nothing, except that a frame drawn before the terminal was lent stays where it was drawn, so a line cleared during or after a lend leaves that frame. When its region is not live it writes one start line and, unless it is cancelled or cleared, one end line through the semantic lanes. Only the author clears a line: a line that fails or is cancelled keeps its text. It reports each change as a progress event, and a cleared line reports as ended.
 _Avoid_: Spinner (for the whole line), progress bar (for the whole line), task, step
 
 **Progress style**:
