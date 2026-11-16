@@ -449,9 +449,9 @@ function inputExtensions(
  * Everything one local option proves on its own, at the call that declared it: its name, its
  * extension values, and its settings alone, beside the options before it, and against the globals
  * table. `option()` and `options(set)` on a Command and `optionSet()` for each entry judge an option
- * through it, so a rule added here reaches each of them. `declarations` ends with the option,
- * `compile` answers their table, `unread` is the option's site with its config elided, and
- * `extensions` names the option in an extension fault.
+ * through it, so a rule added here reaches each of them. The name is judged earlier, by
+ * `copyLocalOption`, before the config is read. `declarations` ends with the option, `compile`
+ * answers their table, and `extensions` names the option in an extension fault.
  */
 function admitLocalOption(
   input: OptionInput,
@@ -461,12 +461,10 @@ function admitLocalOption(
     descriptors: Descriptors;
     extensions: ExtensionSubject;
     scope: CompileScope<OptionInput>;
-    unread: () => InputSite;
   },
   table: GlobalTable,
 ): { descriptors: Descriptors; record: Readonly<Record<string, unknown>> } {
   const { compile, declarations, scope } = judgment;
-  checkOptionName(input.name, judgment.unread);
   const extended = inputExtensions(input, {
     descriptors: judgment.descriptors,
     siteOf: () => scope.siteOf(input),
@@ -474,6 +472,19 @@ function admitLocalOption(
   });
   checkLocalOptions({ compile, declarations }, table, scope);
   return extended;
+}
+
+/**
+ * The option a declaration holds: a copy of the declared one, made after its name is judged. The
+ * name fault reads none of the config, so `unread` is the option's site with the config elided.
+ * `option()`, `options(set)`, and `optionSet()` copy each option through it.
+ */
+function copyLocalOption<Name extends string, Config extends OptionConfig>(
+  declared: OptionInput<Name, Config>,
+  unread: () => InputSite,
+): OptionInput<Name, Config> {
+  checkOptionName(declared.name, unread);
+  return { ...declared, config: { ...declared.config } };
 }
 
 /** The options in one list that bind a variable, each named and placed by its scope. */
@@ -561,6 +572,7 @@ export {
   boundOptions,
   buildGlobals,
   checkLocalOptions,
+  copyLocalOption,
   declareGlobalOption,
   emptyGlobals,
   frozenValues,

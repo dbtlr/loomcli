@@ -629,3 +629,38 @@ test('a set another installed copy of core built fails at options()', () => {
     },
   );
 });
+
+// The fault a declaring call raises names the first member that breaks a rule, in member order.
+test.each<[string, [string, string, ...string[]], string]>([
+  ['a repeat with the member undeclared', ['x', 'x'], 'names undeclared local option "x"'],
+  [
+    'an undeclared member before a repeat of a declared one',
+    ['z', 'a', 'a'],
+    'names undeclared local option "z"',
+  ],
+  ['a repeat of a declared member before an undeclared one', ['a', 'a', 'z'], 'repeats option "a"'],
+])(
+  'a Command group call with %s reports the first fault in member order',
+  (_name, names, fault) => {
+    const command = new Command('get').option('a', { type: 'boolean' });
+    expect(() =>
+      // @ts-expect-error The probe names options the Command does not declare.
+      command.exclusive(...names),
+    ).toThrow(`Command "get" exclusive ${fault}.`);
+  },
+);
+
+// A name fault is judged before the config is read, so no getter on the config runs.
+test('an invalid option name reads none of its config, on option() and on an optionSet entry', () => {
+  let reads = 0;
+  const config = {
+    get description(): string {
+      reads += 1;
+      return 'Read me.';
+    },
+    type: 'boolean',
+  } as const;
+  expect(() => new Command('get').option('-raw', config)).toThrow('Option name "-raw" is invalid.');
+  expect(() => optionSet({ '-raw': config })).toThrow('Option name "-raw" is invalid.');
+  expect(reads).toBe(0);
+});

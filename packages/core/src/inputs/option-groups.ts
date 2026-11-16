@@ -51,8 +51,9 @@ function checkMembers(declaration: Declaration, fail: Fault): void {
       'Name at least two local options.',
     );
   }
-  checkRepeats({ ...declaration, subject }, fail);
+  const judgeRepeat = repeatJudgment({ ...declaration, subject }, fail);
   for (const member of names) {
+    judgeRepeat(member);
     if (!inputs.some((input) => input.kind === 'option' && input.name === member)) {
       fail(
         `${subject} ${kind} names undeclared local option ${quoted(member)}.`,
@@ -137,24 +138,30 @@ function declareSetGroup(declaration: GroupCall, finding: Finding): OptionGroup 
   const fail: Fault = (sentence, correction) => {
     throw new DeclarationError(groupDeclaration, { correction, findings: [finding], sentence });
   };
-  checkRepeats(judged, fail);
+  const judgeRepeat = repeatJudgment(judged, fail);
+  for (const member of names) {
+    judgeRepeat(member);
+  }
   const group: OptionGroup = Object.freeze({ kind, options: Object.freeze([...names]) });
   checkConflicts(judged, group, fail);
   return group;
 }
 
-/** A group names each member once, so a repeated name is a fault. */
-function checkRepeats(
-  { kind, names, subject }: GroupCall & { readonly subject: string },
+/**
+ * A group names each member once, so a repeated name is a fault. The judgment takes one member at
+ * a time, so a caller that judges more of each member, as a Command does, keeps its order.
+ */
+function repeatJudgment(
+  { kind, subject }: Pick<GroupCall, 'kind'> & { readonly subject: string },
   fail: Fault,
-): void {
+): (member: string) => void {
   const seen = new Set<string>();
-  for (const member of names) {
+  return (member) => {
     if (seen.has(member)) {
       fail(`${subject} ${kind} repeats option ${quoted(member)}.`, 'Name each option once.');
     }
     seen.add(member);
-  }
+  };
 }
 
 /** The input tier that supplied an option's value. `tierRanks` orders them, argv highest. */

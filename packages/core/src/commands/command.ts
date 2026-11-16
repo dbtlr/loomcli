@@ -152,6 +152,7 @@ import type {
 } from './globals.js';
 import {
   admitLocalOption,
+  copyLocalOption,
   buildGlobals,
   checkLocalOptions,
   frozenValues,
@@ -869,14 +870,16 @@ export function declareOption<
   declared: OptionInput<Name, Config>,
   table: GlobalTable = noGlobals,
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
-  const input = { ...declared, config: { ...declared.config } };
+  const input = copyLocalOption(declared, () =>
+    configUnread(localScope(state.name, pathOf(state.name)).siteOf(declared)),
+  );
   return { ...state, ...admitOption(state, input, table), bind: bindOption(state.bind, input) };
 }
 
 /**
  * One local option joining a declaration, with every rule `option()` judges: what the option
- * proves on its own through `admitLocalOption`, its name first, before the receiver's state, as
- * alias() judges its names, then the stdin claim. It answers the parts of the declaration the
+ * proves on its own through `admitLocalOption`, then the stdin claim. Its name was judged before
+ * the config was read, by `copyLocalOption`. It answers the parts of the declaration the
  * option changes.
  */
 function admitOption(
@@ -902,7 +905,6 @@ function admitOption(
       descriptors: state.descriptors,
       extensions: inputSubject(name, input),
       scope,
-      unread: () => configUnread(scope.siteOf(input)),
     },
     table,
   );
@@ -941,7 +943,9 @@ export function declareOptionSet<
   const declared: CommandState<Args, Options, Globals> = { ...state };
   const inputs: OptionInput[] = [];
   for (const entry of held.entries) {
-    const input = { ...entry, config: { ...entry.config } };
+    const input = copyLocalOption(entry, () =>
+      configUnread(localScope(state.name, pathOf(state.name)).siteOf(entry)),
+    );
     markApplied(input);
     Object.assign(declared, admitOption(declared, input, table));
     inputs.push(input);

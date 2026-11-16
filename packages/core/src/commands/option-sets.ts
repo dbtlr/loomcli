@@ -19,7 +19,7 @@ import type {
 } from '../inputs/types.js';
 import type { OptionInput } from '../inputs/validation.js';
 import type { AdmittedDescriptor } from '../plugins/extension.js';
-import { admitLocalOption } from './globals.js';
+import { admitLocalOption, copyLocalOption } from './globals.js';
 import type { GlobalTable } from './globals.js';
 import type { NameConstraint } from './types.js';
 
@@ -225,7 +225,6 @@ function admitEntry(admitted: Admitted, input: OptionInput): Admitted {
         sentence: `${setSentence} option ${quoted(input.name)}`,
       },
       scope: setScope,
-      unread: () => entryUnread(input),
     },
     noGlobals,
   );
@@ -296,11 +295,11 @@ function optionSet<const Configs extends Readonly<Record<string, OptionConfig>>>
   configs: Configs & NoInfer<OptionSetConstraint<Configs>>,
 ): OptionSet<Configs> {
   // The set keeps its own copy of each entry, so a later change to the record changes nothing.
-  const inputs = Object.entries(configs).map(([name, config]): OptionInput => ({
-    config: { ...config },
-    kind: 'option',
-    name,
-  }));
+  // Each name is judged before its config is read, so a name fault reads none of the config.
+  const inputs = Object.entries(configs).map(([name, config]): OptionInput => {
+    const entry: OptionInput = { config, kind: 'option', name };
+    return copyLocalOption(entry, () => entryUnread(entry));
+  });
   let admitted: Admitted = {
     compiled: { claims: new Map(), names: new Map(), table: new Map() },
     descriptors: new Map(),
