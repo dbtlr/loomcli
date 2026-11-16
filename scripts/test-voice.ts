@@ -355,7 +355,8 @@ function opensPattern(previous: Token | undefined): boolean {
     return true;
   }
   if (previous.kind === 'punctuator') {
-    return ![')', ']', '}'].includes(previous.text);
+    // A closing bracket ends a value, and so does a postfix `++` or `--`, so a `/` after one divides.
+    return ![')', ']', '}', '++', '--'].includes(previous.text);
   }
   return previous.kind === 'identifier' && patternKeywords.has(previous.text);
 }

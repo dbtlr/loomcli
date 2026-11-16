@@ -440,6 +440,15 @@ test('a pattern and a division outside a message module are read by the token be
   expect(gathered(source)).toEqual(["'The ratio is wrong. Supply another.'"]);
 });
 
+test.each(['++', '--'])('a division after a postfix %s hides no later sentence', (operator) => {
+  const source = [
+    `const share = count${operator} / 2;`,
+    "export const fail = () => new InputError('The share is wrong. Supply another.', []);",
+    'const rest = total / 2;',
+  ].join('\n');
+  expect(gathered(source)).toEqual(["'The share is wrong. Supply another.'"]);
+});
+
 test("a package's own sinks name its calls, assignments, properties, and plain error classes", () => {
   const source = [
     "const reply = rpcError(-32602, 'The tool takes no such argument.');",
