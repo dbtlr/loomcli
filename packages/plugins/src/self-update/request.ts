@@ -77,8 +77,8 @@ interface Walk {
 }
 
 /**
- * What every request reads: the run signal, and the call that names a URL before it is requested,
- * which the Command answers with its `-vv` line.
+ * What every request reads: the run signal, and the call that names a URL's address before it is
+ * requested, which the Command answers with its `-vv` line.
  */
 interface Requesting {
   readonly signal: AbortSignal;
@@ -126,12 +126,21 @@ function follow(
 }
 
 /**
- * One request with no redirect followed, named before it is sent, its failure before a response
- * named for `start`.
+ * The address a `-vv` line names: the URL's scheme, host, and path. The userinfo, query, and
+ * fragment are left out, because they may carry a credential or a signature, as an asset store's
+ * signed redirect does.
+ */
+function shownAddress(url: URL): string {
+  return `${url.protocol}//${url.host}${url.pathname}`;
+}
+
+/**
+ * One request with no redirect followed, named by its address before it is sent, its failure
+ * before a response named for `start`.
  */
 async function request(url: URL, start: URL, requesting: Requesting): Promise<Response> {
   const { requested, signal } = requesting;
-  await requested(url.href);
+  await requested(shownAddress(url));
   try {
     return await fetch(url, { redirect: 'manual', signal });
   } catch (error) {

@@ -126,7 +126,7 @@ function brokenFileLine(file: string, { at, clause }: Unusable): string {
 const noFileFound = 'Found no configuration file.';
 
 function noFileNotice(file: string, app: string, style: ContextualStyle): string {
-  return `Found no configuration file. Create ${warned(file, style)} to configure ${shown(app)}.`;
+  return `${noFileFound} Create ${warned(file, style)} to configure ${shown(app)}.`;
 }
 
 /** The `-v` line that names the file the run read. */

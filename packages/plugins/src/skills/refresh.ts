@@ -1,6 +1,6 @@
 import { refreshByRunning } from '../refresh.js';
 import type { RefreshContext } from '../refresh.js';
-import { targets } from './targets.js';
+import { recordName, targets } from './targets.js';
 
 /**
  * An `afterReplace` function for the self-update plugin: it runs the new binary with
@@ -33,7 +33,7 @@ async function refreshSkills(context: RefreshContext): Promise<void> {
     await import('./messages.js');
   await refreshByRunning(context, {
     notStarted: skillsNotRefreshed,
-    records: targets.map((target) => `skills.${target}`),
+    records: targets.map(recordName),
     refreshed: skillsRefreshed,
     skipped: skillsRefreshSkipped,
     warning: 'Skills were not refreshed after the update.',

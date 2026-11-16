@@ -14,6 +14,14 @@ const targets = ['claude', 'agents'] as const;
 
 type Target = (typeof targets)[number];
 
+/**
+ * The plugin's file in the installation record for a target, `skills.<target>.json`. The Commands
+ * and the refresh read it from here, so both name the same file.
+ */
+function recordName(target: Target): string {
+  return `skills.${target}`;
+}
+
 /** The targets a child acts on: the one `--agent` names, or both. */
 function selectedTargets(agent: Target | undefined): readonly Target[] {
   return agent === undefined ? targets : [agent];
@@ -64,4 +72,4 @@ function realFolder(folder: string): string {
 }
 
 export type { Place, Target };
-export { globalPlaces, realFolder, selectedTargets, skillsDirectory, targets };
+export { globalPlaces, realFolder, recordName, selectedTargets, skillsDirectory, targets };

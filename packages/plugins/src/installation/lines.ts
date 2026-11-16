@@ -5,8 +5,7 @@
  */
 import type { Log } from '@loomcli/core';
 
-import { fileRemoved } from '../change-events.js';
-import { missingParents, removeStagingFiles } from './disk.js';
+import { missingParents, recordLeftovers, removeStagingFiles } from './disk.js';
 import type { PendingLine, StartupLine } from './record.js';
 import {
   appendLine,
@@ -339,9 +338,7 @@ function heldLine(entry: PendingLine): StartupLine[] {
  * beside its startup file's real path, each recorded as removed.
  */
 function recoveredLine(entry: PendingLine, log: Log): StartupLine[] {
-  for (const staging of removeStagingFiles(realPathOf(entry.path))) {
-    fileRemoved(log, { path: staging });
-  }
+  recordLeftovers(log, removeStagingFiles(realPathOf(entry.path)));
   return heldLine(entry);
 }
 

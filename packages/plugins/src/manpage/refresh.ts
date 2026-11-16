@@ -1,5 +1,6 @@
 import { refreshByRunning } from '../refresh.js';
 import type { RefreshContext } from '../refresh.js';
+import { recordName } from './pages.js';
 
 /**
  * An `afterReplace` function for the self-update plugin: a page is fixed text and the replaced
@@ -29,7 +30,7 @@ async function refreshManpages(context: RefreshContext): Promise<void> {
     await import('./messages.js');
   await refreshByRunning(context, {
     notStarted: manpagesNotRefreshed,
-    records: ['manpage'],
+    records: [recordName],
     refreshed: manpagesRefreshed,
     skipped: manpagesRefreshSkipped,
     warning: 'Man pages were not refreshed after the update.',

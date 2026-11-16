@@ -9,7 +9,8 @@
  * - At -v a replacing run names the release it resolved, the asset it verified, and the binary it
  *   replaced, between the lines it already prints; a named version and `--check` resolve nothing.
  * - At -vv each request, each redirect it follows included, is named before it is sent, on the
- *   stable channel and on another, and under `--refresh-notice`.
+ *   stable channel and on another, and under `--refresh-notice`, by its scheme, host, and path
+ *   alone, without the userinfo, query, or fragment a signed redirect carries.
  * - A replacing run records `File removed.` for each leftover staging file, `Binary replaced.`, and
  *   `File written.` for `install.json`; `--refresh-notice` records `File written.` for the cache.
  * - The `afterReplace` context carries the graph's name and the action's `out`.
@@ -76,6 +77,7 @@ function sandbox(): Sandbox {
 interface Case {
   readonly version?: string;
   readonly hook?: 'record';
+  readonly rules?: Record<string, string>;
 }
 
 /** Runs `notes ...argv` at the version, and answers its status, stderr, and log events. */
@@ -101,6 +103,7 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Case = {}) {
         repository: 'acme/notes',
       },
       ...(scenario.hook === undefined ? {} : { hook: scenario.hook }),
+      ...(scenario.rules === undefined ? {} : { rules: scenario.rules }),
       hookLog: join(box.root, 'hook.jsonl'),
       notices: false,
       release,
@@ -179,6 +182,23 @@ test('-vv names each request before it is sent, each redirect included', async (
       '',
     ].join('\n'),
   });
+});
+
+test('-vv names a signed redirect by its scheme, host, and path alone', async () => {
+  const box = sandbox();
+  const signed = { 'releases/download/v1.5.0/notes-linux-x64': 'signed' };
+  const { status, stderr } = await run(box, ['-vv', 'self-update'], { rules: signed });
+  expect(status).toBe(0);
+  expect(stderr.split('\n').filter((line) => line.includes('Requested'))).toEqual([
+    `  ┆ Requested ${github}/releases/latest.`,
+    `  ┆ Requested ${github}/releases/download/v1.5.0/SHA256SUMS.`,
+    `  ┆ Requested ${assets}/v1.5.0/SHA256SUMS.`,
+    `  ┆ Requested ${github}/releases/download/v1.5.0/notes-linux-x64.`,
+    `  ┆ Requested ${assets}/v1.5.0/notes-linux-x64.`,
+  ]);
+  for (const secret of ['user:pass@', 'pass', 'X-Amz-Signature', 'token=def', '#frag', '?']) {
+    expect(stderr).not.toContain(secret);
+  }
 });
 
 test('on another channel the lookup requests each candidate SHA256SUMS before Resolved', async () => {

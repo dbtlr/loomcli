@@ -46,6 +46,7 @@ import {
 import type { WritingVerb } from './messages.js';
 import { manPages } from './page.js';
 import type { ManPage } from './page.js';
+import { recordName as plugin } from './pages.js';
 
 /** What a child reads from its action: the application, the run, and the lanes it writes. */
 interface ChildRun {
@@ -59,9 +60,6 @@ interface ChildRun {
   readonly success: (message: string) => Promise<void>;
   readonly warn: (message: string) => Promise<void>;
 }
-
-/** The plugin's file in the installation record, `manpage.json`. */
-const plugin = 'manpage';
 
 /** The permission bits of a folder the plugin creates and of a page it writes, whatever the umask. */
 const folderMode = 0o755;

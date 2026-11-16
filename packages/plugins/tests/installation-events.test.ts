@@ -9,6 +9,7 @@
  *   `File removed.`. A skill folder records one event under its path.
  * - A leftover staging file the plugin removes beside a file it writes records `File removed.`.
  * - A file already there with the digest it would hold, which the install leaves, records nothing.
+ * - An uninstall with nothing installed records no `File removed.`.
  * - `manpage generate` records each page it writes.
  * - The Commands print no line of their own at -vv.
  */
@@ -122,6 +123,19 @@ test('completion records its script, startup file, and record file, and removes 
     ['File written.', startup],
     ['File removed.', record],
   ]);
+});
+
+test('an uninstall with nothing installed records no File removed.', async () => {
+  const box = sandbox();
+  for (const argv of [
+    ['manpage', 'uninstall'],
+    ['completion', 'uninstall', 'bash'],
+    ['completion', 'uninstall'],
+    ['skills', 'uninstall', '--agent', 'agents'],
+  ]) {
+    const { changes } = await run(box, argv);
+    expect(changes.filter(([message]) => message === 'File removed.')).toEqual([]);
+  }
 });
 
 test('a leftover staging file beside a written file records File removed.', async () => {

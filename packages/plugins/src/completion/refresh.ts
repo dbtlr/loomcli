@@ -1,6 +1,6 @@
 import { refreshByRunning } from '../refresh.js';
 import type { RefreshContext } from '../refresh.js';
-import { shells } from './shell-names.js';
+import { recordName, shells } from './shell-names.js';
 
 /**
  * An `afterReplace` function for the self-update plugin: it runs the new binary with
@@ -30,7 +30,7 @@ async function refreshCompletion(context: RefreshContext): Promise<void> {
     await import('./messages.js');
   await refreshByRunning(context, {
     notStarted: completionNotRefreshed,
-    records: shells.map((shell) => `completion.${shell}`),
+    records: shells.map(recordName),
     refreshed: completionRefreshed,
     skipped: completionRefreshSkipped,
     warning: 'Completion was not refreshed after the update.',

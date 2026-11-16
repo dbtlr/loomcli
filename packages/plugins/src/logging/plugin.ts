@@ -2,6 +2,7 @@ import { plugin } from '@loomcli/core';
 import type { LogDestination, LogHook, Plugin } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
+import { say } from '../lane-writes.js';
 import { resolveLogFile } from './directory.js';
 import { LoggingError } from './error.js';
 import { writeRecord } from './file.js';
@@ -20,14 +21,6 @@ function reportTo(onError: ((error: LoggingError) => undefined) | undefined): Re
   };
 }
 
-/**
- * Leaves a lane's failed write to core: the hook returns `undefined`, so it awaits no line, and
- * core's output contract reports a write that fails.
- */
-function passOver(): undefined {
-  return undefined;
-}
-
 /** What the lines of one record's write read: the runs already told, and this run's destination. */
 interface Telling {
   /** The outermost runs whose `Logging to` line is written, so each run says it once. */
@@ -42,11 +35,11 @@ interface Telling {
  */
 function sayWritten(path: string, written: Written, { announced, destination }: Telling): void {
   if (written.rotated) {
-    destination.out.trace(rotated(path)).catch(passOver);
+    void say(destination.out.trace(rotated(path)));
   }
   if (written.appended && !announced.has(destination)) {
     announced.add(destination);
-    destination.out.debug(loggingTo(path)).catch(passOver);
+    void say(destination.out.debug(loggingTo(path)));
   }
 }
 

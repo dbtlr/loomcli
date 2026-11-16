@@ -16,6 +16,7 @@ import type { Host, Log, Out } from '@loomcli/core';
 import { programRun } from './change-events.js';
 import { exists } from './installation/disk.js';
 import { pluginFilePath } from './installation/record.js';
+import { say } from './lane-writes.js';
 
 /**
  * What a refresh reads from a self-update's `afterReplace` context.
@@ -79,20 +80,6 @@ function nothingInstalled({ host, name }: RefreshContext, records: readonly stri
   return !records.some((record) => exists(pluginFilePath(directory.path, record)));
 }
 
-/** Leaves a lane's failed write to core's output contract, so the refresh still resolves. */
-function passOver(): undefined {
-  return undefined;
-}
-
-/** Writes one line through the context's `out` lane, when the context carries one. */
-async function say(
-  out: RefreshContext['out'],
-  lane: 'debug' | 'trace',
-  message: string,
-): Promise<void> {
-  await out?.[lane](message).catch(passOver);
-}
-
 /**
  * Runs the new binary with the refresh's words, the host's environment and working directory, no
  * input, and its output piped into the host's streams as `Writable`s, so the child reads neither as
@@ -104,7 +91,7 @@ async function say(
 async function refreshByRunning(context: RefreshContext, refresh: Refresh): Promise<void> {
   const { host, path, signal } = context;
   if (nothingInstalled(context, refresh.records)) {
-    await say(context.out, 'trace', refresh.skipped);
+    await say(context.out?.trace(refresh.skipped));
     return;
   }
   const answer = await host.spawn(path, refresh.words, {
@@ -142,7 +129,7 @@ async function settle(context: RefreshContext, refresh: Refresh, answer: Answer)
 async function refreshed(context: RefreshContext, refresh: Refresh): Promise<void> {
   const { log, out, path } = context;
   programRun(log, { arguments: refresh.words, code: succeeded, program: path });
-  await say(out, 'debug', refresh.refreshed);
+  await say(out?.debug(refresh.refreshed));
 }
 
 export type { RefreshContext };

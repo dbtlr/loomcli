@@ -21,7 +21,10 @@ import {
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
+import type { Log } from '@loomcli/core';
+
 import { nodeCrypto } from '../built-ins.js';
+import { fileRemoved } from '../change-events.js';
 
 /** The permission bits of a file mode, without its file type. */
 const permissionBits = 0o7777;
@@ -223,6 +226,17 @@ function removeStagingFiles(path: string): string[] {
 }
 
 /**
+ * Records each leftover a removal answered as `File removed.`, so every site that removes leftover
+ * staging files or folders records them one way, as in
+ * `recordLeftovers(log, removeStagingFiles(path))`.
+ */
+function recordLeftovers(log: Log, removed: readonly string[]): void {
+  for (const path of removed) {
+    fileRemoved(log, { path });
+  }
+}
+
+/**
  * Creates one directory whose parent exists, with the permission bits `mode` names whatever the
  * umask, when it names any; one another process created first is no error and keeps its own mode.
  */
@@ -305,6 +319,7 @@ export {
   observe,
   permissionBits,
   realPath,
+  recordLeftovers,
   removeEmptyDirectory,
   removeStagingFiles,
   replaceFile,

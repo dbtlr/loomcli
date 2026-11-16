@@ -14,6 +14,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { Application, Command } from '@loomcli/core';
+import { completion, refreshCompletion } from '@loomcli/plugins/completion';
+import { manpage, refreshManpages } from '@loomcli/plugins/manpage';
+import { refreshSkills, skills } from '@loomcli/plugins/skills';
+import { verbose as verbosePlugin } from '@loomcli/plugins/verbose';
 import type { Program } from '@loomcli/testing';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
@@ -144,3 +149,63 @@ describe.each(kinds)('$kind', ({ kind, record, refreshed, skipped, words }) => {
     expect(silent).toMatchObject({ started: [], stderr: '' });
   });
 });
+
+/** Each plugin, the Command words that install it, and the refresh a self-update calls after. */
+const installers = [
+  {
+    afterReplace: refreshCompletion,
+    install: ['completion', 'install', 'bash'],
+    kind: 'completion',
+    plugin: completion(),
+  },
+  {
+    afterReplace: refreshManpages,
+    install: ['manpage', 'install'],
+    kind: 'manpage',
+    plugin: manpage(),
+  },
+  {
+    afterReplace: refreshSkills,
+    install: ['skills', 'install', '--agent', 'agents'],
+    kind: 'skills',
+    plugin: skills({
+      skills: [{ files: async () => [{ content: '# Notes\n', path: 'SKILL.md' }], name: 'notes' }],
+    }),
+  },
+] as const;
+
+describe.each(installers)(
+  '$kind after its install Command',
+  ({ afterReplace, install, kind, plugin }) => {
+    it('runs the child, because the refresh reads the record file the Command wrote', async () => {
+      const { state } = stateHome();
+      const home = join(state, 'home');
+      mkdirSync(home);
+      const started: string[][] = [];
+      const app = new Application('notes', { plugins: [verbosePlugin(), plugin] }).command(
+        new Command('refresh').action(async ({ graph, host, log, out, signal }) => {
+          await afterReplace({ host, log, name: graph.name, out, path: binary, signal });
+        }),
+      );
+      const fields = {
+        env: { HOME: home, SHELL: '', XDG_DATA_HOME: join(state, 'data'), XDG_STATE_HOME: state },
+        home,
+        platform: 'linux',
+        programs: {
+          [binary]: (call: { readonly args: readonly string[] }) => {
+            started.push([...call.args]);
+            return {};
+          },
+        },
+        // The startup file is the test user's own, so the plugin may change it.
+        uid: process.getuid?.() ?? 0,
+      };
+      const installed = await runOnMock(app, { ...fields, argv: install });
+      expect(installed.status).toBe(0);
+      const result = await runOnMock(app, { ...fields, argv: ['-vv', 'refresh'] });
+      const { refreshed, words } = kinds.find((entry) => entry.kind === kind) ?? kinds[0];
+      expect(result).toMatchObject({ status: 0, stderr: `› ${refreshed}\n` });
+      expect(started).toEqual([words]);
+    });
+  },
+);

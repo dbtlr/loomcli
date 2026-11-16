@@ -19,6 +19,7 @@ import {
   exists,
   missingParents,
   observe,
+  recordLeftovers,
   removeEmptyDirectory,
   removeStagingFiles,
   replaceFile,
@@ -152,13 +153,6 @@ function writeRecordFile(path: string, file: Committed | Pending, log: Log): voi
   fileWritten(log, { path });
 }
 
-/** Removes the leftover staging files beside `path` and records each one removed. */
-function removeLeftovers(path: string, log: Log): void {
-  for (const staging of removeStagingFiles(path)) {
-    fileRemoved(log, { path: staging });
-  }
-}
-
 /** Deletes a file when it is there and records the removal; one already gone records nothing. */
 function removeIfPresent(path: string, log: Log): void {
   if (exists(path)) {
@@ -195,12 +189,10 @@ interface InstallRequest extends UninstallRequest {
  */
 function recover(path: string, pending: Pending, log: Log): Committed {
   for (const entry of pending.files) {
-    removeLeftovers(entry.path, log);
+    recordLeftovers(log, removeStagingFiles(entry.path));
   }
   for (const folder of pending.folders) {
-    for (const leftover of removeFolderLeftovers(folder.path)) {
-      fileRemoved(log, { path: leftover });
-    }
+    recordLeftovers(log, removeFolderLeftovers(folder.path));
   }
   const committed: Committed = {
     directories: pending.directories.filter((directory) => observe(directory).kind === 'directory'),
@@ -244,7 +236,7 @@ function recorded(
   if (read.kind === 'refused') {
     return { refused: { path, reason: read.reason } };
   }
-  removeLeftovers(path, log);
+  recordLeftovers(log, removeStagingFiles(path));
   if (read.kind === 'missing') {
     return { committed: nothingRecorded };
   }
@@ -527,9 +519,7 @@ function writeTargets(plan: InstallPlan, { listed, log }: Carrying): void {
     fileWritten(log, { path: file.path });
   }
   for (const folder of listed.folders) {
-    for (const leftover of writeFolder(folder.path, folder.files)) {
-      fileRemoved(log, { path: leftover });
-    }
+    recordLeftovers(log, writeFolder(folder.path, folder.files));
     fileWritten(log, { path: folder.path });
   }
   applyLines(plan.lines, log);
@@ -808,7 +798,7 @@ function writePendingRegistration(request: PendingRegistrationRequest): void {
  * recording each one removed.
  */
 function removeStagingOfPluginFile(request: RecordChange): void {
-  removeLeftovers(pluginFilePath(request.record, request.plugin), request.log);
+  recordLeftovers(request.log, removeStagingFiles(pluginFilePath(request.record, request.plugin)));
 }
 
 /** Writes the plugin's file committed, once the agent's call settled, with what it holds now. */

@@ -36,7 +36,7 @@ import {
   updatedSkill,
 } from './messages.js';
 import type { Declared } from './settings.js';
-import { globalPlaces, selectedTargets } from './targets.js';
+import { globalPlaces, recordName, selectedTargets } from './targets.js';
 import type { Place, Target } from './targets.js';
 
 /** What a child reads from its action: the application, the run, and the lanes it writes. */
@@ -56,11 +56,6 @@ const none = 0;
 
 /** The Commands that write the skills of a target. */
 type WritingVerb = 'install' | 'update';
-
-/** The plugin's file in the installation record for a target, `skills.<target>.json`. */
-function recordName(target: Target): string {
-  return `skills.${target}`;
-}
 
 /** A folder an install writes, with the name of the skill it holds. */
 interface NamedFolder extends InstalledFolder {

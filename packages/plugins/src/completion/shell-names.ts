@@ -8,5 +8,13 @@ const shells = ['bash', 'zsh', 'fish', 'pwsh'] as const;
 
 type Shell = (typeof shells)[number];
 
+/**
+ * The plugin's file in the installation record for a shell, `completion.<shell>.json`. The Commands
+ * and the refresh read it from here, so both name the same file.
+ */
+function recordName(shell: Shell): string {
+  return `completion.${shell}`;
+}
+
 export type { Shell };
-export { shells };
+export { recordName, shells };

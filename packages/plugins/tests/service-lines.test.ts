@@ -11,6 +11,7 @@
  *   unit file and the plugin's record file record `File written.` and `File removed.`. A read
  *   records nothing, and no event carries the environment.
  * - A program that cannot start writes no line and records no event.
+ * - A call that runs while the run is cancelled writes no line.
  */
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -69,6 +70,8 @@ interface Scenario {
   readonly answers?: Answers;
   /** The managers that cannot start. */
   readonly missing?: readonly string[];
+  /** The joined words of a call that cancels the run while it runs, then exits 0. */
+  readonly cancelOn?: string;
 }
 
 /** Runs `notes ...argv` in the sandbox and answers its status, stderr, events, and calls. */
@@ -86,31 +89,39 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
     plugins: [observer, verbose(), service({ label, run: ['serve'] })],
   }).command(new Command('serve').action(() => {}));
   const programs: Record<string, Program> = {};
+  const controller = new AbortController();
   for (const name of ['systemctl', 'loginctl', 'launchctl']) {
     if (scenario.missing?.includes(name) !== true) {
       programs[name] = (call) => {
         const words = [name, ...call.args].join(' ');
         calls.push(words);
+        if (words === scenario.cancelOn) {
+          controller.abort(new Error('The test cancelled the run.'));
+        }
         return scenario.answers?.[words] ?? {};
       };
     }
   }
-  const result = await runOnMock(app, {
-    argv,
-    env: {
-      API_TOKEN: secret,
-      HOME: box.home,
-      XDG_CONFIG_HOME: box.config,
-      XDG_RUNTIME_DIR: '/run/user/501',
-      XDG_STATE_HOME: box.state,
+  const result = await runOnMock(
+    app,
+    {
+      argv,
+      env: {
+        API_TOKEN: secret,
+        HOME: box.home,
+        XDG_CONFIG_HOME: box.config,
+        XDG_RUNTIME_DIR: '/run/user/501',
+        XDG_STATE_HOME: box.state,
+      },
+      home: box.home,
+      platform: scenario.platform ?? 'linux',
+      program: ['/opt/notes/bin/notes'],
+      programs,
+      release: { build: 'distributed' },
+      uid,
     },
-    home: box.home,
-    platform: scenario.platform ?? 'linux',
-    program: ['/opt/notes/bin/notes'],
-    programs,
-    release: { build: 'distributed' },
-    uid,
-  });
+    { signal: controller.signal },
+  );
   return { calls, events, status: result.status, stderr: result.stderr };
 }
 
@@ -247,6 +258,18 @@ describe('systemd', () => {
       `Ran loginctl show-user ${String(uid)} --property=Linger.`,
     ]);
     expect(status.events).toEqual([]);
+  });
+
+  it('a call that runs while the run is cancelled writes no Ran line', async () => {
+    const box = sandbox();
+    const reload = 'systemctl --user daemon-reload';
+    const installed = await run(box, ['-v', 'service', 'install'], { cancelOn: reload });
+    expect(installed.calls).toEqual([reload]);
+    expect(ran(installed.stderr)).toEqual([]);
+    const show = `systemctl --user show ${unitName} --property=ActiveState,MainPID`;
+    const status = await run(box, ['-v', 'service', 'status'], { cancelOn: show });
+    expect(status.calls).toEqual([show]);
+    expect(ran(status.stderr)).toEqual([]);
   });
 
   it('a call that exits with a code the plugin refuses is named and records nothing', async () => {

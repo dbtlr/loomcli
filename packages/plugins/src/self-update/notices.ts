@@ -9,6 +9,7 @@ import type { Host, Log, Middleware, Out } from '@loomcli/core';
 
 import { fileWritten } from '../change-events.js';
 import { underCI } from '../ci.js';
+import { passOver, say } from '../lane-writes.js';
 import { releaseBinary } from './binary.js';
 import { cachePath, findCache, stale, writeCache } from './cache.js';
 import type { CacheEntry, CacheReading, Lookup } from './cache.js';
@@ -148,16 +149,6 @@ function noticeLine({ channel, name, running }: Qualified, newer: Version): stri
   return updateNotice({ channel, found: newer.text, name, running: running.text });
 }
 
-/** Passes over a fault the update notices never report. */
-function passOver(): void {
-  // A notice is a courtesy: its own faults are not the run's.
-}
-
-/** Writes one line, letting a write that fails go, so core's output contract alone reports it. */
-async function say(written: Promise<void>): Promise<void> {
-  await written.catch(passOver);
-}
-
 /**
  * Starts `[...program, 'self-update', '--refresh-notice']` through `host.spawn` as a detached
  * child, in the cache directory, with every stream ignored, and releases it, answering whether
@@ -175,6 +166,7 @@ function startRefresh(host: Host, directory: string): boolean {
       .exited;
     return true;
   } catch {
+    // A notice is a courtesy: its own faults are not the run's.
     passOver();
     return false;
   }

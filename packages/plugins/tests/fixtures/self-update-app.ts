@@ -182,6 +182,14 @@ function selfUpdateApplication(
     if (rule === 'offsite') {
       return redirect(302, 'https://example.com/elsewhere');
     }
+    if (rule === 'signed') {
+      // An asset store's signed redirect carries a credential, a signature, and a fragment.
+      const [tag, file] = new URL(text).pathname.split('/').slice(-2);
+      return redirect(
+        302,
+        `https://user:pass@release-assets.example/${tag}/${file}?X-Amz-Signature=abc&token=def#frag`,
+      );
+    }
     if (typeof rule === 'object' && rule !== null) {
       return hop(rule.hops, text);
     }

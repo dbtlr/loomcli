@@ -8,8 +8,8 @@ import { dirname, join, resolve } from 'node:path';
 
 import { FatalError, InputError } from '@loomcli/core';
 
-import { fileRemoved, fileWritten } from '../change-events.js';
-import { exists } from '../installation/disk.js';
+import { fileWritten } from '../change-events.js';
+import { exists, recordLeftovers } from '../installation/disk.js';
 import { writeFolder } from '../installation/folders.js';
 import type { ChildRun } from './global.js';
 import { loadSkills } from './load.js';
@@ -118,9 +118,7 @@ async function replaceFolder(
 ): Promise<void> {
   const replacing = exists(folder);
   mkdirSync(dirname(folder), { recursive: true });
-  for (const leftover of writeFolder(folder, loaded.files)) {
-    fileRemoved(run.log, { path: leftover });
-  }
+  recordLeftovers(run.log, writeFolder(folder, loaded.files));
   fileWritten(run.log, { path: folder });
   await run.success((replacing ? installedSkillOver : installedSkill)(loaded.name, target, folder));
 }

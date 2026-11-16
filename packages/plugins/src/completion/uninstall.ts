@@ -27,14 +27,13 @@ import {
 import {
   hasPluginFile,
   readShell,
-  recordName,
   refuseWindows,
   removeNotice,
   reportLines,
   writeNotices,
 } from './run.js';
 import type { ChildRun, ShellRecord } from './run.js';
-import { shells } from './shell-names.js';
+import { recordName, shells } from './shell-names.js';
 import type { Shell } from './shell-names.js';
 import { judgeStartup, mustRelease } from './startup.js';
 

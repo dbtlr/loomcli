@@ -122,6 +122,19 @@ test("a name the settings' list leaves out names its list first, before the envi
   );
 });
 
+test('a name a more specific file also assigns names the list, then the environment, before that file', async () => {
+  const files = {
+    '.env': 'API_TOKEN=two\nPATH=/opt/two\n',
+    '.env.local': 'API_TOKEN=one\nPATH=/opt/one\n',
+  };
+  const stderr = await stderrOf(files, ['-vv'], {
+    env: { API_TOKEN: 'set' },
+    settings: { except: ['PATH'] },
+  });
+  expect(stderr).toContain('  ┆ Skipped API_TOKEN from .env: already set.\n');
+  expect(stderr).toContain('  ┆ Skipped PATH from .env: on the except list.\n');
+});
+
 test('an empty value in the environment is already set, and a file that imports none writes its -vv lines alone', async () => {
   await expect(
     stderrOf({ '.env': 'API_TOKEN=a\n' }, ['-vv'], { env: { API_TOKEN: '' } }),

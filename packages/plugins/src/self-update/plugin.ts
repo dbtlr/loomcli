@@ -4,9 +4,15 @@ import { applicationDirectory, Command, DeclarationError, InputError, plugin } f
 import type { FatalError, Host, Log, Out, Plugin } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
-import { binaryReplaced, fileRemoved, fileWritten } from '../change-events.js';
+import { binaryReplaced, fileWritten } from '../change-events.js';
 import { packageName } from '../constants.js';
-import { digestOf, observe, removeStagingFiles, replaceFile } from '../installation/disk.js';
+import {
+  digestOf,
+  observe,
+  recordLeftovers,
+  removeStagingFiles,
+  replaceFile,
+} from '../installation/disk.js';
 import { selfUpdateSettings } from '../rules.js';
 import { isVariableName } from '../variable-name.js';
 import { releaseBinary } from './binary.js';
@@ -320,20 +326,13 @@ interface Placement {
   readonly log: Log;
 }
 
-/** Removes the leftover staging files beside `path`, recording each one removed. */
-function removeLeftovers(path: string, log: Log): void {
-  for (const staging of removeStagingFiles(path)) {
-    fileRemoved(log, { path: staging });
-  }
-}
-
 /**
  * Places the verified bytes over the binary, removing leftover staging files first, and records
  * the replacement.
  */
 function placeBinary({ name, checked, bytes, signal, log, version }: Placement): void {
   try {
-    removeLeftovers(checked.path, log);
+    recordLeftovers(log, removeStagingFiles(checked.path));
     replaceFile(checked.path, bytes, { durable: true, mode: checked.mode, signal });
   } catch (error) {
     if (signal.aborted) {
@@ -349,7 +348,7 @@ function writeRecord({ name, checked, version, bytes, log }: Placement): void {
   const line = recordLine(checked.path, digestOf(bytes));
   const record = join(checked.record, 'install.json');
   try {
-    removeLeftovers(record, log);
+    recordLeftovers(log, removeStagingFiles(record));
     replaceFile(record, line, { durable: true, mode: recordMode });
   } catch (error) {
     throw fatal(recordUnwritable(name, version.text), error);

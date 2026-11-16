@@ -139,7 +139,7 @@ The Command's lines fall between the lines it already prints:
 
 | Level | Line | When |
 | --- | --- | --- |
-| `-vv` | `Requested <url>.` | Before each request the Command sends, each redirect it follows included, under `--check` and `--refresh-notice` too. |
+| `-vv` | `Requested <url>.` | Before each request the Command sends, each redirect it follows included, under `--check` and `--refresh-notice` too. The line shows the URL's scheme, host, and path, and leaves out its userinfo, query, and fragment, which may carry a credential or a signature, as an asset store's signed redirect does. |
 | `-v` | `Resolved v1.5.1 on the stable channel.` | A run without a version found the newest release on the channel it follows, and that release is newer, so the run goes on to replace. It is written once the lookup ends and before the `Downloading` line. On the stable channel the `SHA256SUMS` request follows it; on any other channel the lookup has already requested each candidate's `SHA256SUMS`, newest first, until one answered, and no request follows. A newer-only line or a `--check` line already names the release, so those runs write none, and a named version writes none. |
 | `-v` | `Verified notes-linux-x64 against SHA256SUMS.` | The downloaded asset's digest matches the one `SHA256SUMS` lists. |
 | `-v` | `Replaced /home/me/.local/bin/notes.` | The verified bytes were renamed over the recorded path, before the record is rewritten. |

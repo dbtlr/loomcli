@@ -84,14 +84,16 @@ test("under an action's invoke the hook's lanes follow the outer run, not the ne
       }),
     )
     .command(
-      new Command('outer').action(async ({ invoke, out }) => {
+      new Command('outer').action(async ({ invoke, log, out }) => {
+        log.info('Outer.');
         const outcome = await invoke(['inner'], {});
         await out.print(JSON.stringify(outcome.status === 'completed' ? outcome.messages : null));
       }),
     );
   await app.run({ process: mock });
-  expect(mock.stderr.text).toBe('› Saw Nested.\n');
+  expect(mock.stderr.text).toBe('› Saw Outer.\n› Saw Nested.\n');
   expect(mock.stdout.text).toBe('""\n');
+  expect(seen).toHaveLength(2);
   expect(new Set(seen).size).toBe(1);
 });
 

@@ -31,6 +31,7 @@ import {
   scriptsInTheWay,
   updatedLine,
 } from './messages.js';
+import { recordName } from './shell-names.js';
 import type { Shell } from './shell-names.js';
 
 /** What a child reads from its action: the application, the run, and the lanes it writes. */
@@ -66,11 +67,6 @@ function refuseWindows(run: ChildRun, shell?: Shell): void {
     const printer = shell === undefined || shell === 'pwsh' ? 'powershell' : shell;
     throw new FatalError(installsNotOnWindows(run.name, printer));
   }
-}
-
-/** The plugin's file in the installation record for a shell, `completion.<shell>.json`. */
-function recordName(shell: Shell): string {
-  return `completion.${shell}`;
 }
 
 /** Whether a shell's plugin's file exists in the record's directory. */
@@ -278,7 +274,6 @@ export {
   hasPluginFile,
   outcomeFailure,
   readShell,
-  recordName,
   refuseInTheWay,
   refuseWindows,
   removeNotice,

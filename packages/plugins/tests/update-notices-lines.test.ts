@@ -229,6 +229,20 @@ test('-vv names the first reason the middleware did nothing, in the contract ord
   expect(stderr).toContain('  ┆ Skipped the update check: self-update is running.\n');
 });
 
+test('when two reasons hold at once, -vv names the one first in the contract order', async () => {
+  const box = sandbox();
+  writeCache(box, cacheLine(1));
+  const checked = await run(box, ['-vv', 'self-update', '--check'], { env: { CI: '1' } });
+  expect(checked.stderr.split('\n').filter((line) => line.includes('Skipped'))).toEqual([
+    '  ┆ Skipped the update check: CI is set.',
+  ]);
+  const source = await run(box, ['-vv', 'add'], {
+    env: { NO_UPDATE_NOTIFIER: '1' },
+    release: { build: 'source' },
+  });
+  expect(source.stderr).toBe(skipped('NO_UPDATE_NOTIFIER is set.'));
+});
+
 test('a run whose action failed writes no Skipped line', async () => {
   const box = sandbox();
   const { stderr } = await run(box, ['-vv', 'fail'], { env: { CI: '1' } });

@@ -22,7 +22,6 @@ import {
   directoryMode,
   outcomeFailure,
   readShell,
-  recordName,
   refuseInTheWay,
   refuseWindows,
   removeNotice,
@@ -32,6 +31,7 @@ import {
   writeNotices,
 } from './run.js';
 import type { ChildRun, ShellRecord } from './run.js';
+import { recordName } from './shell-names.js';
 import type { Shell } from './shell-names.js';
 import { scriptContent, scriptPath, selectedShell, startupLine, startupPath } from './shells.js';
 import { judgeStartup, mustRelease, placeLine } from './startup.js';
