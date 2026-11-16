@@ -962,8 +962,10 @@ interface ProgressLine {
    */
   readonly estimate?: boolean | undefined;
   /**
-   * Units done per second over the line's last 10 seconds of reports, or `undefined` until there
-   * is enough progress. A line always supplies it, whether or not `estimate` is set.
+   * Units done per second over the line's window: from the latest report at least 10 seconds older
+   * than the newest, or the first report while none is that old, to the newest, so reports a
+   * minute apart are measured over that minute. It is `undefined` until there is enough
+   * progress. A line always supplies it, whether or not `estimate` is set.
    */
   readonly rate?: number | undefined;
   /**

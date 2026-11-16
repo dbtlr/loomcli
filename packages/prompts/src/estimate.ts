@@ -22,6 +22,10 @@ interface Estimate {
   readonly rate: () => number | undefined;
   /** Milliseconds left at `now` for `total` units, held at 0, or `undefined` when none follows. */
   readonly remaining: (total: number | undefined, now: number) => number | undefined;
+  /** How many samples the estimate holds, read by tests that pin its bookkeeping. */
+  readonly held: () => number;
+  /** How many times the estimate has dropped its unread samples, read by tests. */
+  readonly drops: () => number;
 }
 
 /**
@@ -33,6 +37,7 @@ function estimate(): Estimate {
   let samples: Sample[] = [];
   // The anchor's index. The samples before it are never read again, and drop once they are half.
   let anchor = 0;
+  let drops = 0;
   const span = (): { first: Sample; last: Sample } | undefined => {
     const first = samples[anchor];
     const last = samples.at(-1);
@@ -41,6 +46,8 @@ function estimate(): Estimate {
       : { first, last };
   };
   return {
+    drops: () => drops,
+    held: () => samples.length,
     rate: () => {
       const known = span();
       return known === undefined
@@ -72,6 +79,7 @@ function estimate(): Estimate {
       if (anchor * 2 > samples.length) {
         samples = samples.slice(anchor);
         anchor = 0;
+        drops += 1;
       }
     },
   };

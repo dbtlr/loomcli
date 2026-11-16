@@ -837,7 +837,7 @@ One line of work in flight that an action shows through `progress()` from `@loom
 _Avoid_: Spinner (for the whole line), progress bar (for the whole line), task, step
 
 **Progress estimate**:
-The rate and the time left a running progress line shows after its elapsed time when its author sets `estimate`, such as `3.3 files/s · about 24s left`. The line computes both from the counts its author reports and the clock it reads for the elapsed time, the rate over its last 10 seconds of reports, and the time left counting down between reports, so it adds no timer. Neither shows until the reports span a second, and neither shows on an end line or where the line does not draw. The progress view receives both whether or not `estimate` is set, and no progress event carries them.
+The rate and the time left a running progress line shows after its elapsed time when its author sets `estimate`, such as `3.3 files/s · about 24s left`. The line computes both from the counts its author reports and the clock it reads for the elapsed time, the rate over its window, which reaches back to the latest report at least 10 seconds older than the newest, so reports a minute apart are measured over that minute, and the time left counting down between reports, so it adds no timer. Neither shows until the reports span a second, and neither shows on an end line or where the line does not draw. The progress view receives both whether or not `estimate` is set, and no progress event carries them.
 _Avoid_: ETA (a moment, where the time left is a span), speed, throughput
 
 **Progress style**:

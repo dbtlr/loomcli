@@ -29,6 +29,7 @@ import type { ActionContext } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test, vi } from 'vite-plus/test';
 
+import { estimate } from '../src/estimate.js';
 import { progress, progressStyle } from '../src/index.js';
 import type { ProgressSettings } from '../src/index.js';
 import { progressLine } from '../src/views.js';
@@ -205,7 +206,13 @@ test('a line that reports no count never shows either part', async () => {
     await line.end('Done');
   });
   expect(reportFrames(frames)).toEqual(['◐ Building the index again · 5.0s']);
-  expect(frames.map(({ data }) => data.rate)).toEqual([undefined, undefined, undefined]);
+  expect(frames.map(({ data }) => data)).toMatchObject(
+    Array.from({ length: 3 }, () => ({ estimate: true, rate: undefined, remaining: undefined })),
+  );
+  for (const { data } of frames) {
+    expect(data).toHaveProperty('rate');
+    expect(data).toHaveProperty('remaining');
+  }
 });
 
 test('a count that stalls reads a rate of 0 and no time left', async () => {
@@ -416,4 +423,88 @@ test('the default view formats rates and times left, and fits 80 columns where t
     '* Work · 0.0s',
     '* Work · 0.0s',
   ]);
+});
+
+test('a rate or time left that float noise would misread prints the digits the counts state', async () => {
+  const settings = { ...copying, total: 1 };
+  const oneSecond = await drawn(
+    reporting(settings, [
+      [1000, 0.1],
+      [2000, 0.3],
+    ]),
+  );
+  // The counts differ by 0.19999999999999998, which is 12 a minute and not 11.
+  expect(reportFrames(oneSecond.frames)[1]).toContain('· 12/min ·');
+  const twoSeconds = await drawn(
+    reporting(settings, [
+      [1000, 0.1],
+      [3000, 0.3],
+    ]),
+  );
+  // The same counts two seconds apart are 6.0 a minute, and 7 seconds left, not 5.9 and 8.
+  expect(reportFrames(twoSeconds.frames)[1]).toContain('· 6.0/min · about 7s left');
+});
+
+test('the format boundaries: 10 a second has no decimal, 1 a minute is not per hour, and 4000 seconds is 1h', async () => {
+  const mock = mockProcess({ env: { NO_COLOR: '1' } });
+  const base = {
+    bar: { complete: '#', incomplete: '-' },
+    completed: undefined,
+    elapsed: 0,
+    estimate: true,
+    frame: '*',
+    label: 'Work',
+    state: 'running',
+    total: undefined,
+  } as const;
+  const rows: ProgressLine[] = [
+    { ...base, rate: 10 },
+    { ...base, rate: 1 / 60 },
+    { ...base, rate: 1, remaining: 4_000_000 },
+  ];
+  await new Application('boundaries', { description: 'Draw progress data.' })
+    .action(async ({ out }) => {
+      for (const row of rows) {
+        await out.render(row, {
+          render: (data, context) => `${progressLine.render(data, context)}\n`,
+        });
+      }
+    })
+    .run({ process: mock });
+  expect(mock.stdout.text.split('\n').slice(0, -1)).toEqual([
+    '* Work · 0.0s · 10/s',
+    '* Work · 0.0s · 1.0/min',
+    '* Work · 0.0s · 1.0/s · about 1h left',
+  ]);
+});
+
+test('a count that goes backward after a long steady run restarts the window at that report', async () => {
+  const steadyRun = Array.from({ length: 20 }, (_unused, index): readonly [number, number] => [
+    (index + 1) * 1000,
+    index + 1,
+  ]);
+  const { frames } = await drawn(
+    reporting(copying, [...steadyRun, [21_000, 0], [21_500, 3], [22_000, 5]]),
+  );
+  // The rate is unknown until a second after the restart, then measured from it.
+  expect(runningAt(frames, 21_000)?.data.rate).toBeUndefined();
+  expect(runningAt(frames, 21_500)?.data.rate).toBeUndefined();
+  expect(runningAt(frames, 22_000)?.data.rate).toBe(5);
+});
+
+test('the estimate drops the samples it no longer reads in batches, and holds no more than twice those it reads', () => {
+  const pace = estimate();
+  // One hour of reports at 1000 a second: 10 001 samples fall in the window and its anchor.
+  const reads = 10_001;
+  let mostHeld = 0;
+  for (let time = 0; time < 3_600_000; time += 1) {
+    pace.report(time, time);
+    mostHeld = Math.max(mostHeld, pace.held());
+  }
+  expect(mostHeld).toBeLessThanOrEqual(2 * reads);
+  expect(pace.held()).toBeGreaterThanOrEqual(reads);
+  // Dropping runs about once for every 10 000 reports, not at every report.
+  expect(pace.drops()).toBeGreaterThan(100);
+  expect(pace.drops()).toBeLessThan(1000);
+  expect(pace.rate()).toBe(1000);
 });
