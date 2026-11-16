@@ -1,6 +1,7 @@
 import { nowrap, pad, readExtension } from '@loomcli/core';
-import type { ArgumentNode, OptionNode, ViewContext } from '@loomcli/core';
+import type { ArgumentNode, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
+import { aliasSpellings } from '../aliases.js';
 import { isStrings } from '../closed-set.js';
 import { configInput } from '../config/extension.js';
 import { singleLine, singleLineOf, terminators } from '../lines.js';
@@ -447,13 +448,53 @@ function deprecatedFacts(member: { readonly deprecated: string | undefined }): F
     : [{ text: `deprecated: ${singleLine(member.deprecated)}`, tone: 'warning' }];
 }
 
+/** How the alias fact and a Command's `Alias:` line join several names. */
+const aliasSeparator = ', ';
+
+/**
+ * The labels visible aliases print under, by how many names follow: the fact's in a row's
+ * parenthesis, and the line's under a Command's masthead and in its man page DESCRIPTION.
+ */
+function aliasLabels(names: readonly string[]): { readonly fact: string; readonly line: string } {
+  const [, second] = names;
+  return second === undefined
+    ? { fact: 'alias: ', line: 'Alias: ' }
+    : { fact: 'aliases: ', line: 'Aliases: ' };
+}
+
+/**
+ * The alias fact of a member with visible aliases, `alias: ls` or `aliases: ls, dir`, which the
+ * right-cell rule prints first; a member with none contributes no fact.
+ */
+function aliasFacts(names: readonly string[]): Fact[] {
+  return isEmpty(names) ? [] : [dimFact(`${aliasLabels(names).fact}${names.join(aliasSeparator)}`)];
+}
+
+/**
+ * The alias fact of an option row, which names each visible alias by its first long spelling: the
+ * positive form, or `--no-<alias>` on a `negative` Boolean option, whose only form it is.
+ */
+function optionAliasFacts(option: OptionNode): Fact[] {
+  return aliasFacts(
+    option.visibleAliases.flatMap((alias) => {
+      const [first] = aliasSpellings(option, alias);
+      return first === undefined ? [] : [first];
+    }),
+  );
+}
+
+/** The facts a Command's row carries: its visible aliases, then its deprecation. */
+function commandFacts(command: CommandNode): Fact[] {
+  return [...aliasFacts(command.visibleAliases), ...deprecatedFacts(command)];
+}
+
 /**
  * The facts one option row carries, in the order the right-cell rule names them. A counted option's
  * `...` already says it repeats, and a count has no presence rule or default, so it carries none
- * but its deprecation.
+ * but its visible aliases and its deprecation.
  */
 function optionFacts(option: OptionNode): Fact[] {
-  return [...kindFacts(option), ...deprecatedFacts(option)];
+  return [...optionAliasFacts(option), ...kindFacts(option), ...deprecatedFacts(option)];
 }
 
 /**
@@ -461,7 +502,12 @@ function optionFacts(option: OptionNode): Fact[] {
  * option's bindings between them and the deprecation, unless its `helpInput` hides them.
  */
 function pageOptionFacts(option: OptionNode): Fact[] {
-  return [...kindFacts(option), ...bindingFacts(option), ...deprecatedFacts(option)];
+  return [
+    ...optionAliasFacts(option),
+    ...kindFacts(option),
+    ...bindingFacts(option),
+    ...deprecatedFacts(option),
+  ];
 }
 
 /**
@@ -605,12 +651,14 @@ export type {
   ValueParts,
 };
 export {
+  aliasLabels,
+  aliasSeparator,
   argumentFacts,
   argumentForm,
   column,
+  commandFacts,
   delimiterLiteral,
   splitNoun,
-  deprecatedFacts,
   isEmpty,
   oneLine,
   optionCell,

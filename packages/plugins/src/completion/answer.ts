@@ -1,5 +1,6 @@
 import type { CommandGraph, CommandNode, OptionNode, WordPosition } from '@loomcli/core';
 
+import { aliasSpellings } from '../aliases.js';
 import { closedSet } from '../closed-set.js';
 import type { Schema } from '../closed-set.js';
 import { singleLine } from '../lines.js';
@@ -65,12 +66,31 @@ function isListed(member: { readonly hidden: boolean; readonly deprecated: strin
   return !member.hidden && member.deprecated === undefined;
 }
 
-/** The canonical names of a Command's listed children. */
-function childOffers(command: CommandNode): Offer[] {
+/**
+ * The words one listed member offers in its place: its own words when one starts with the prefix,
+ * and otherwise each word of its visible aliases that does. A visible alias is offered only where
+ * the canonical name does not match, so the menu never shows a name and its alias side by side.
+ */
+function inPlace(
+  own: readonly string[],
+  aliases: readonly string[],
+  { description, prefix }: { readonly description: string | undefined; readonly prefix: string },
+): Offer[] {
+  const matching = own.some((word) => word.startsWith(prefix));
+  return (matching ? own : aliases.filter((word) => word.startsWith(prefix))).map((word) => ({
+    description,
+    word,
+  }));
+}
+
+/** The canonical names of a Command's listed children, or a child's visible alias in its place. */
+function childOffers(command: CommandNode, prefix: string): Offer[] {
   return command.children
     .filter((child) => isListed(child))
     .flatMap((child) =>
-      child.name === null ? [] : [{ description: child.description, word: child.name }],
+      child.name === null
+        ? []
+        : inPlace([child.name], child.visibleAliases, { description: child.description, prefix }),
     );
 }
 
@@ -87,8 +107,10 @@ function given(option: OptionNode, position: Extract<WordPosition, { kind: 'opti
 
 /**
  * The spellings of the options in scope that the word may still name: each long spelling, a
- * Boolean's negative spelling, and the short spelling when the word is exactly `-`. An option the
- * earlier words gave is left out unless another occurrence still adds anything.
+ * Boolean's negative spelling, and the short spelling when the word is exactly `-`, or, for an
+ * option none of whose own spellings starts with the prefix, each spelling of its visible aliases
+ * that does. An option the earlier words gave is left out under every spelling unless another
+ * occurrence still adds anything.
  */
 function optionOffers(
   graph: CommandGraph,
@@ -120,10 +142,12 @@ function optionOffers(
         option.long,
         ...(option.type === 'boolean' ? [option.negative] : []),
         ...(position.prefix === '-' ? [option.short] : []),
-      ];
-      return spellings.flatMap((word) =>
-        word === null ? [] : [{ description: option.description, word }],
-      );
+      ].filter((word) => word !== null);
+      const aliases = option.visibleAliases.flatMap((alias) => aliasSpellings(option, alias));
+      return inPlace(spellings, aliases, {
+        description: option.description,
+        prefix: position.prefix,
+      });
     });
 }
 
@@ -144,7 +168,7 @@ function valueOffers(schema: Schema | null, lead: string, prefix: string): Offer
  * offers. An argument with no closed set leaves the shell its file names, which the directive says.
  */
 function commandOffers(position: Extract<WordPosition, { kind: 'command' }>): Offers {
-  const children = childOffers(position.command);
+  const children = childOffers(position.command, position.prefix);
   if (position.argument === null) {
     return { directive: filesOff, offers: children };
   }

@@ -36,6 +36,8 @@ interface ManifestCommand {
   readonly stdin: { readonly description: string | null; readonly required: boolean } | null;
   readonly passthrough: { readonly description: string | null } | null;
   readonly name: string | null;
+  /** The visible aliases, as bare names; an alias that is not visible never appears. */
+  readonly aliases: readonly string[];
   readonly path: readonly string[];
   readonly description: string | null;
   readonly details: readonly string[];
@@ -84,6 +86,7 @@ type ManifestOption =
       readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
+      readonly aliases: readonly string[];
       readonly required: boolean;
       readonly requiredWhen: 'non-interactive' | null;
       readonly multiple: boolean;
@@ -110,6 +113,7 @@ type ManifestOption =
       readonly long: string | null;
       readonly short: string | null;
       readonly negative: string | null;
+      readonly aliases: readonly string[];
       readonly interaction: boolean;
       readonly color: boolean;
       /** Whether the option carries the plain mark, whose spellings turn the run's plain switch on. */
@@ -126,6 +130,7 @@ type ManifestOption =
       readonly control: boolean;
       readonly long: string | null;
       readonly short: string | null;
+      readonly aliases: readonly string[];
       readonly verbose: boolean;
       readonly quiet: boolean;
       readonly schema: null;
@@ -177,7 +182,11 @@ function lineOf(text: string | undefined): string | null {
   return singleLineOf(text) ?? null;
 }
 
-/** One option's entry: its node without `hidden`, `aliases`, `extensions`, and the schema-run flags. */
+/**
+ * One option's entry: its node without `hidden`, `extensions`, `visibleAliases`, and the schema-run
+ * flags, with `aliases` holding the visible aliases alone, after `short`, or after `negative` on the
+ * Boolean variant.
+ */
 function optionEntry(node: OptionNode): ManifestOption {
   const common = {
     name: node.name,
@@ -187,12 +196,14 @@ function optionEntry(node: OptionNode): ManifestOption {
     long: node.long,
     short: node.short,
   };
+  const aliases = node.visibleAliases;
   switch (node.type) {
     case 'boolean': {
       return {
         type: 'boolean',
         ...common,
         negative: node.negative,
+        aliases,
         polarity: node.polarity,
         interaction: node.interaction,
         color: node.color,
@@ -205,6 +216,7 @@ function optionEntry(node: OptionNode): ManifestOption {
       return {
         type: 'count',
         ...common,
+        aliases,
         verbose: node.verbose,
         quiet: node.quiet,
         schema: node.schema,
@@ -219,6 +231,7 @@ function optionEntry(node: OptionNode): ManifestOption {
           ? { stdin: node.stdin, min: node.min ?? null, max: node.max ?? null }
           : {}),
         ...common,
+        aliases,
         required: node.required,
         requiredWhen: node.requiredWhen,
         multiple: node.multiple,
@@ -382,7 +395,8 @@ function exitCodeTable(root: CommandNode): Readonly<Record<string, string>> {
 }
 
 /**
- * One Command's entry, with its visible descendants nested under `children`. `details`,
+ * One Command's entry, with its visible descendants nested under `children` and its visible
+ * aliases under `aliases`, never an entry of their own. `details`,
  * `examples`, and `failures` are the Command's collected `manifestCommand` values, in collection
  * order.
  */
@@ -396,6 +410,7 @@ function commandEntry(node: CommandNode): ManifestCommand {
     passthrough:
       node.passthrough === null ? null : { description: lineOf(node.passthrough.description) },
     name: node.name,
+    aliases: node.visibleAliases,
     path: node.path,
     description: lineOf(node.description),
     details: values.flatMap((value) => (value.details === undefined ? [] : [value.details])),

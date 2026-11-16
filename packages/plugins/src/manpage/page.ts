@@ -9,10 +9,12 @@ import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomc
 import { configInput } from '../config/extension.js';
 import { argumentAccepts, optionAccepts } from '../help/accepted.js';
 import {
+  aliasLabels,
+  aliasSeparator,
   argumentFacts,
+  commandFacts,
   delimiterLiteral,
   splitNoun,
-  deprecatedFacts,
   isEmpty,
   optionCellParts,
   optionFacts,
@@ -162,23 +164,38 @@ function synopsis({ children, command, graph }: Subject): string[] {
       ]);
 }
 
-/** The deprecation paragraph, then the details. */
+/**
+ * The alias paragraph of a Command with visible aliases, joined as help's masthead joins them, or
+ * none for a Command without one.
+ */
+function aliasParagraph(command: CommandNode): string[] {
+  const names = command.visibleAliases;
+  return isEmpty(names)
+    ? []
+    : [textLine(escapeText(`${aliasLabels(names).line}${names.join(aliasSeparator)}`))];
+}
+
+/** The alias paragraph, then the deprecation paragraph, then the details, `.PP` between them. */
 function description({ command }: Subject): string[] {
+  const aliases = aliasParagraph(command);
   const deprecation =
     command.deprecated === undefined
       ? []
       : [textLine(escapeText(`Deprecated: ${singleLine(command.deprecated)}`))];
+  const opening =
+    isEmpty(aliases) || isEmpty(deprecation)
+      ? [...aliases, ...deprecation]
+      : [...aliases, '.PP', ...deprecation];
   const source = commandHelp(command)?.details;
-  const details =
-    source === undefined ? [] : detailsLines(source, { preceded: !isEmpty(deprecation) });
-  return headed('DESCRIPTION', [...deprecation, ...details]);
+  const details = source === undefined ? [] : detailsLines(source, { preceded: !isEmpty(opening) });
+  return headed('DESCRIPTION', [...opening, ...details]);
 }
 
 /** One child's entry: its name in bold and help's suffix, and help's right cell for the row. */
 function childEntry(child: CommandNode): string[] {
   const suffix = childSuffix(child);
   const tag = `${inFont(child.name ?? '', 'bold')}${suffix === undefined ? '' : ` ${escapeText(suffix)}`}`;
-  return entry(tag, entryText({ description: child.description }, deprecatedFacts(child)));
+  return entry(tag, entryText({ description: child.description }, commandFacts(child)));
 }
 
 function argumentEntry(argument: ArgumentNode): string[] {
