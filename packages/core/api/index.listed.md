@@ -39,6 +39,9 @@ declare class ApplicationBuilder<Args, Options, Globals, State extends Applicati
     stdin(config: StdinConfig): Application<Args, Options, Globals, State, Plugins, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided, Requires>;
     argument<const Name extends string, const Config extends ArgumentConfig>(name: Name, config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>> & NoInfer<ArgumentKeyConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Application<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>, Plugins, Result, Stdin, Provided, Requires>;
     option<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & Unmarked & NameConstraint<Name> & GlobalNameConstraint<Name, Globals> & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
+    options<Configs extends Readonly<Record<string, OptionConfig>>>(set: OptionSet<Configs> & NoInfer<OptionSetNameConstraint<Configs, Options, Globals>>): Application<Args, Options & {
+        [Name in Extract<keyof Configs, string>]: OptionValue<Configs[Name]>;
+    }, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
     exclusive(...names: [
         Extract<keyof Options, string>,
         Extract<keyof Options, string>,
@@ -204,6 +207,9 @@ export declare class CommandBuilder<Args, Options, Globals, State extends Comman
     stdin(config: StdinConfig): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided>;
     argument<const Name extends string, const Config extends ArgumentConfig>(name: Name, config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>> & NoInfer<ArgumentKeyConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>, Result, Stdin, Provided>;
     option<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & Unmarked & NameConstraint<Name> & GlobalNameConstraint<Name, Globals> & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result, Stdin, Provided>;
+    options<Configs extends Readonly<Record<string, OptionConfig>>>(set: OptionSet<Configs> & NoInfer<OptionSetNameConstraint<Configs, Options, Globals>>): Command<Args, Options & {
+        [Name in Extract<keyof Configs, string>]: OptionValue<Configs[Name]>;
+    }, Globals, State, Result, Stdin, Provided>;
     exclusive(...names: [
         Extract<keyof Options, string>,
         Extract<keyof Options, string>,
@@ -435,6 +441,24 @@ type OptIn<Uses extends readonly AnyProvider[]> = Uses & ([
 interface OptionExtensions {
     extensions?: readonly ExtensionValue<'option'>[];
 }
+
+type OptionSetConstraint<Configs> = {
+    readonly [Name in keyof Configs]: Unmarked & NameConstraint<Name & string> & DefaultConstraint<Configs[Name]> & ImpliedConstraint<Configs[Name]> & PerValueConstraint<Configs[Name]> & ValidateOmittedConstraint<Configs[Name]>;
+};
+
+type OptionSetNameConstraint<Configs, Options, Globals> = ([
+    Extract<keyof Configs, keyof Options>
+] extends [
+    never
+] ? unknown : {
+    'This option name is already declared on this Command': Extract<keyof Configs, keyof Options>;
+}) & ([
+    Extract<keyof Configs, keyof Globals>
+] extends [
+    never
+] ? unknown : {
+    'This option name is already declared as a global option': Extract<keyof Configs, keyof Globals>;
+});
 
 type OptionSpelling = {
     short?: ShortAlias;

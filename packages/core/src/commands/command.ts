@@ -67,6 +67,7 @@ import {
   configUnread,
   declaringSite,
   inputPlace,
+  markApplied,
   rejectsGlobal,
   validateValues,
   ValidationLedger,
@@ -137,7 +138,7 @@ import type {
   ProviderGlobals,
   WithProviderGlobals,
 } from '../plugins/providers.js';
-import { brokenAttachHook } from '../plugins/rules.js';
+import { brokenAttachHook, foreignValue, foreignValueCorrection } from '../plugins/rules.js';
 import type { AttachedCommand, attachedCommand, CommandAttachHook } from '../plugins/types.js';
 import type { LaneHandlers } from '../signals/signal-lane.js';
 import { echoesCancellation } from '../signals/signals.js';
@@ -151,6 +152,13 @@ import type {
   TableEntry,
 } from './globals.js';
 import { buildGlobals, checkLocalOptions, frozenValues } from './globals.js';
+import { setFacts } from './option-sets.js';
+import type {
+  AppliedSet,
+  OptionSet,
+  OptionSetNameConstraint,
+  OptionSetValues,
+} from './option-sets.js';
 import {
   argumentDeclaredTwice,
   commandAttachedTwice,
@@ -273,6 +281,7 @@ export type CommandMethod =
   | 'argument'
   | 'command'
   | 'option'
+  | 'options'
   | 'exclusive'
   | 'oneRequired'
   | 'requiredTogether'
@@ -754,10 +763,11 @@ function recordInput(
     };
   }
   const descriptors = new Map(state.descriptors);
+  const site = inputSite(name, pathOf(name), input);
   const record = buildExtensions({
     declared: input.config.extensions,
     descriptors,
-    site: { ...inputSite(name, pathOf(name), input), at: '1.extensions' },
+    site: { ...site, at: `${site.at}.extensions` },
     subject: {
       phrase: `on ${commandSubject(name)} ${input.kind} "${input.name}"`,
       sentence: `${commandSentence(name)} ${input.kind} "${input.name}"`,
@@ -865,9 +875,24 @@ export function declareOption<
   table: GlobalTable = noGlobals,
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
   // The call's own input is judged before the receiver's state, as alias() judges its names.
-  const path = pathOf(state.name);
-  checkOptionName(declared.name, () => configUnread(inputSite(state.name, path, declared)));
+  checkOptionName(declared.name, () =>
+    configUnread(inputSite(state.name, pathOf(state.name), declared)),
+  );
   const input = { ...declared, config: { ...declared.config } };
+  return { ...state, ...admitOption(state, input, table), bind: bindOption(state.bind, input) };
+}
+
+/**
+ * One local option joining a declaration, with every rule `option()` judges once the name has
+ * passed: its extension values, its settings alone and beside the options before it, the globals
+ * table, and the stdin claim. It answers the parts of the declaration the option changes.
+ */
+function admitOption(
+  state: Declared,
+  input: OptionInput,
+  table: GlobalTable,
+): Pick<Declared, 'descriptors' | 'inputs' | 'records'> {
+  const path = pathOf(state.name);
   const recorded = recordInput(state, input);
   const scope = localScope(state.name, path);
   const inputs = [...state.inputs, input];
@@ -882,7 +907,63 @@ export function declareOption<
   if (claimsStdin(input)) {
     checkStdinClaims(inputs, { path, stdin: state.stdin });
   }
-  return { ...state, ...recorded, bind: bindOption(state.bind, input), inputs };
+  return { ...recorded, inputs };
+}
+
+/**
+ * Each option of a set joins the declaration as a local option, in the set's order, then each of
+ * the set's groups, as one `option()` call per option and one group call per group would. A fault
+ * about one of the set's options rebuilds the `options()` call that applied it. The set's values
+ * join `options` under the set's own types.
+ */
+export function declareOptionSet<
+  Args,
+  Options,
+  Globals,
+  Configs extends Readonly<Record<string, OptionConfig>>,
+>(
+  state: CommandState<Args, Options, Globals>,
+  set: OptionSet<Configs>,
+  table: GlobalTable = noGlobals,
+): CommandState<Args, Options & OptionSetValues<Configs>, Globals> {
+  const held = setFacts(set);
+  if (held === undefined) {
+    throw new DeclarationError(foreignValue, {
+      correction: foreignValueCorrection,
+      findings: [{ arguments: [set], call: 'options', mark: '0', path: pathOf(state.name) }],
+      sentence: `${commandSentence(state.name)} applies an option set another installed copy of @loomcli/core built.`,
+    });
+  }
+  // A working copy of the receiver's state takes each option in turn; the receiver stays unchanged.
+  const declared: CommandState<Args, Options, Globals> = { ...state };
+  const inputs: OptionInput[] = [];
+  for (const entry of held.entries) {
+    const input = { ...entry, config: { ...entry.config } };
+    markApplied(input);
+    Object.assign(declared, admitOption(declared, input, table));
+    inputs.push(input);
+  }
+  for (const group of held.groups) {
+    Object.assign(declared, declareOptionGroup(declared, group.kind, group.options));
+  }
+  return { ...declared, bind: bindOptionSet(state.bind, { inputs, set }) };
+}
+
+/**
+ * The bind one `options(set)` call answers: the earlier bind's values, then the set's own. It is
+ * built outside the call for the reason `bindOption` states.
+ */
+function bindOptionSet<Args, Options, Configs extends Readonly<Record<string, OptionConfig>>>(
+  previous: (values: ValidatedInputs) => { args: Args; options: Options },
+  applied: AppliedSet<Configs>,
+): (values: ValidatedInputs) => {
+  args: Args;
+  options: Options & OptionSetValues<Configs>;
+} {
+  return (values) => {
+    const bound = previous(values);
+    return { ...bound, options: { ...bound.options, ...values.optionSet(applied) } };
+  };
 }
 
 /**
@@ -2462,6 +2543,28 @@ export class CommandBuilder<
       name,
     };
     return this.#derive(declareOption(this.#state, input));
+  }
+
+  /**
+   * Declares each option of a set as a local option, in the set's order, then each of the set's
+   * option groups, as one `option()` call per option and one group call per group would. The
+   * action reads each option under `options`. Nothing inherits: a child that shares the options
+   * applies the set itself.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#sharing-options
+   */
+  options<Configs extends Readonly<Record<string, OptionConfig>>>(
+    set: OptionSet<Configs> & NoInfer<OptionSetNameConstraint<Configs, Options, Globals>>,
+  ): Command<
+    Args,
+    Options & { [Name in Extract<keyof Configs, string>]: OptionValue<Configs[Name]> },
+    Globals,
+    State,
+    Result,
+    Stdin,
+    Provided
+  > {
+    return this.#derive(declareOptionSet(this.#state, set));
   }
 
   /**

@@ -7,6 +7,7 @@ import { text } from '@loomcli/validators';
 import { selectFields } from '../actions/select-fields.js';
 import { documentInput } from '../document-input.js';
 import { readFailures } from '../failures.js';
+import { jsonLayout } from '../json-layout.js';
 
 export const select = new Command('select', {
   description: 'Keep the named fields of the document.',
@@ -26,4 +27,5 @@ export const select = new Command('select', {
     // A field names a key, so the empty string can never name one.
     validate: text(),
   })
+  .options(jsonLayout)
   .action(selectFields);

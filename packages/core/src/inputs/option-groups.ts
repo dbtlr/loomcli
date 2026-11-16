@@ -30,12 +30,16 @@ const groupDeclaration = registerRule('@loomcli/core/option-group', {
 
 type Fault = (sentence: string, correction: string) => never;
 
-interface Declaration {
-  readonly name: string | null;
+/** One group call: the options its receiver holds, the groups before it, and the call's own names. */
+interface GroupCall {
   readonly inputs: readonly InputDeclaration[];
   readonly groups: readonly OptionGroup[];
   readonly kind: OptionGroup['kind'];
   readonly names: readonly string[];
+}
+
+interface Declaration extends GroupCall {
+  readonly name: string | null;
 }
 
 function checkMembers({ inputs, kind, names, name }: Declaration, fail: Fault): void {
@@ -69,8 +73,16 @@ function requiresPresence(input: InputDeclaration): boolean {
   return input.config.type === 'string' && Boolean(input.config.required);
 }
 
-/** Only pairs involving the new rule need checking; earlier declarations were already checked. */
-function checkConflicts(declaration: Declaration, group: OptionGroup, fail: Fault): void {
+/**
+ * Only pairs involving the new rule need checking; earlier declarations were already checked.
+ * `subject` opens each sentence, the Command's or the option set's.
+ */
+function checkConflicts(
+  declaration: GroupCall & { readonly subject: string },
+  group: OptionGroup,
+  fail: Fault,
+): void {
+  const { subject } = declaration;
   const exclusive =
     group.kind === 'exclusive'
       ? [group]
@@ -79,7 +91,6 @@ function checkConflicts(declaration: Declaration, group: OptionGroup, fail: Faul
     group.kind === 'requiredTogether'
       ? [group]
       : declaration.groups.filter((each) => each.kind === 'requiredTogether');
-  const subject = commandSentence(declaration.name);
   for (const rule of exclusive) {
     const required = declaration.inputs.find(
       (input) =>
@@ -113,8 +124,40 @@ function declareGroup(declaration: Declaration): OptionGroup {
   };
   checkMembers(declaration, fail);
   const group: OptionGroup = Object.freeze({ kind, options: Object.freeze([...names]) });
-  checkConflicts(declaration, group, fail);
+  checkConflicts({ ...declaration, subject: commandSentence(name) }, group, fail);
   return group;
+}
+
+/**
+ * One group call on an option set, over the set's own members. The types name only members and at
+ * least two of them, so the call judges what no type expresses: a repeated member and the
+ * conflicts with the set's earlier groups. `options(set)` declares the group on a Command, where
+ * every rule `declareGroup` states applies to it.
+ */
+function declareSetGroup(declaration: GroupCall, finding: Finding): OptionGroup {
+  const { kind, names } = declaration;
+  const judged = { ...declaration, subject: 'An option set' };
+  const fail: Fault = (sentence, correction) => {
+    throw new DeclarationError(groupDeclaration, { correction, findings: [finding], sentence });
+  };
+  checkRepeats(judged, fail);
+  const group: OptionGroup = Object.freeze({ kind, options: Object.freeze([...names]) });
+  checkConflicts(judged, group, fail);
+  return group;
+}
+
+/** A group names each member once, so a repeated name is a fault. */
+function checkRepeats(
+  { kind, names, subject }: GroupCall & { readonly subject: string },
+  fail: Fault,
+): void {
+  const seen = new Set<string>();
+  for (const member of names) {
+    if (seen.has(member)) {
+      fail(`${subject} ${kind} repeats option ${quoted(member)}.`, 'Name each option once.');
+    }
+    seen.add(member);
+  }
 }
 
 /** The input tier that supplied an option's value. `tierRanks` orders them, argv highest. */
@@ -302,4 +345,4 @@ function groupReports(
 }
 
 export type { OptionGroup, Tier };
-export { absentBooleans, claims, declareGroup, groupReports, losingMembers };
+export { absentBooleans, claims, declareGroup, declareSetGroup, groupReports, losingMembers };

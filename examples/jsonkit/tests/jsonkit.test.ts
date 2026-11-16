@@ -76,6 +76,33 @@ test("select's repeated --field rejects an empty value through the catalog's tex
   });
 });
 
+test('each Command that prints JSON applies one layout set, with its exclusive group', async () => {
+  await expect(run(['get', 'nested', '--compact', '-f', 'doc.json'])).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: '{"deep":{"value":"found"}}\n',
+  });
+  await expect(run(['fetch', 'tags', '--indent', '4', '-f', 'doc.json'])).resolves.toMatchObject({
+    stdout: '[\n    "a",\n    "b"\n]\n',
+  });
+  await expect(run(['select', '-F', 'name', '--compact', '-f', 'doc.json'])).resolves.toMatchObject(
+    {
+      stdout: '{"name":"loom"}\n',
+    },
+  );
+  await expect(run(['debug', '--indent', '0', '-f', 'doc.json'])).resolves.toMatchObject({
+    stdout: '{"name":"loom","tags":["a","b"],"nested":{"deep":{"value":"found"}}}\n',
+  });
+  await expect(
+    run(['get', 'name', '--compact', '--indent', '4', '-f', 'doc.json']),
+  ).resolves.toEqual({
+    status: 2,
+    stderr:
+      'jsonkit: Options "--compact" and "--indent" cannot be used together. Supply only one of them.\nRun "jsonkit get --help" to see the usage.\n',
+    stdout: '',
+  });
+});
+
 test('an alias, a deprecated Command, and a path three levels deep all route', async () => {
   const keys = await run(['keys', '-f', 'doc.json']);
   await expect(run(['ls', '-f', 'doc.json'])).resolves.toEqual(keys);

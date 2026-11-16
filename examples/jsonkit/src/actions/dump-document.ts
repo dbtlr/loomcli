@@ -6,5 +6,5 @@ import { readJson } from '../read-json.js';
 
 export const dumpDocument: ActionHandler<typeof debug> = async ({ options, out, style }) => {
   const document = await readJson({ options, out, style });
-  await out.print(style.escape(formatJson(document)));
+  await out.print(style.escape(formatJson(document, options)));
 };

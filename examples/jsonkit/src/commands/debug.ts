@@ -4,6 +4,7 @@ import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { dumpDocument } from '../actions/dump-document.js';
 import { documentInput } from '../document-input.js';
 import { readFailures } from '../failures.js';
+import { jsonLayout } from '../json-layout.js';
 
 // `debug` is a hidden Command, so no listing shows it.
 // It routes, runs, and prints its own page when an invocation routes to it directly.
@@ -13,4 +14,5 @@ export const debug = new Command('debug', {
   hidden: true,
 })
   .option('file', documentInput)
+  .options(jsonLayout)
   .action(dumpDocument);

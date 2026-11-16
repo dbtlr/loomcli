@@ -26,8 +26,14 @@ const configModule = '@loomcli/plugins/config';
 const constructorNames: ReadonlySet<string> = new Set(['Application', 'Command']);
 
 /**
- * The calls on an Application or a Command that return a new declaration. Declarations are
- * immutable, so a result nothing uses is a call that did nothing.
+ * The function of `@loomcli/core` that builds an option set, which is immutable like a Command, so
+ * its group calls return a new set.
+ */
+const optionSetName = 'optionSet';
+
+/**
+ * The calls on an Application, a Command, or an option set that return a new declaration.
+ * Declarations are immutable, so a result nothing uses is a call that did nothing.
  */
 const authoringMethods: ReadonlySet<string> = new Set([
   'action',
@@ -39,6 +45,7 @@ const authoringMethods: ReadonlySet<string> = new Set([
   'globalOption',
   'oneRequired',
   'option',
+  'options',
   'requiredTogether',
   'result',
   'rows',
@@ -248,8 +255,9 @@ function authoringCallOf(
 
 /**
  * Whether a node is a Loom declaration: a `new Command` or `new Application` from `@loomcli/core`,
- * an authoring call on one, or an identifier whose `const` holds one. `traced` holds the constants
- * already followed, so a constant that names itself ends the walk.
+ * an `optionSet()` call from it, an authoring call on one, or an identifier whose `const` holds
+ * one. `traced` holds the constants already followed, so a constant that names itself ends the
+ * walk.
  */
 function isDeclaration(
   sourceCode: SourceCode,
@@ -262,7 +270,10 @@ function isDeclaration(
       return constructorOf(sourceCode, target.callee) !== undefined;
     }
     case 'CallExpression': {
-      return authoringCallOf(sourceCode, target, traced) !== undefined;
+      return (
+        coreCalleeOf(sourceCode, target.callee) === optionSetName ||
+        authoringCallOf(sourceCode, target, traced) !== undefined
+      );
     }
     case 'Identifier': {
       const followed = followConstant(sourceCode, target, traced);

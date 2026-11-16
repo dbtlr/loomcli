@@ -59,6 +59,8 @@ export const surfacePackages = [
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
           OptionExtensions:
             'Fragment of an exported option or argument configuration; the author names the whole configuration.',
+          OptionSetConstraint:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
           OptionSpelling:
             'Fragment of an exported option or argument configuration; the author names the whole configuration.',
           OptionValue:
