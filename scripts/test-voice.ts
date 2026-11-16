@@ -70,8 +70,10 @@ interface VoiceSite {
  * operator, which the gathering check also reads: calls of the named functions, or of a named
  * member on a named receiver, such as `run.line`; assignments to the named variables or members;
  * object members by the named keys; the named error classes, such as JavaScript's own `Error`,
- * counted as failure constructors; and the `return` statements inside the arguments of a call of
- * the named functions, such as the `loom` bin's `report`, which prints what its work returns.
+ * counted as failure constructors; the `return` statements and concise arrow bodies inside the
+ * arguments of a call of the named functions, such as the `loom` bin's `report`, which prints what
+ * its work returns; and the same inside the body of a function declared with a name in `functions`,
+ * whose returned text such a call prints.
  *
  * @example
  * ```ts
@@ -82,6 +84,7 @@ interface VoiceSinks {
   readonly assignments?: readonly string[];
   readonly calls?: readonly string[];
   readonly classes?: readonly string[];
+  readonly functions?: readonly string[];
   readonly properties?: readonly string[];
   readonly returns?: readonly string[];
 }
@@ -821,6 +824,52 @@ function sentences(tokens: readonly Token[]): string[] {
   return found;
 }
 
+/** The literal sentences a function body's tokens return: a `return` value or a concise arrow body. */
+function returnedSentences(tokens: readonly Token[]): string[] {
+  return tokens.flatMap((token, at) => {
+    if (named(token, 'return') || (is(token, '=>') && !is(tokens[at + 1], '{'))) {
+      return sentences(valueAfter(tokens, at + 1));
+    }
+    return [];
+  });
+}
+
+/** Whether a `{` after a function's parameters opens its body, not an object type of its return type. */
+function opensBody(tokens: readonly Token[], at: number): boolean {
+  const before = tokens[at - 1];
+  return (
+    is(tokens[at], '{') &&
+    !(before?.kind === 'punctuator' && [':', '<', '|', '&', ',', '('].includes(before.text))
+  );
+}
+
+/**
+ * The tokens of the body of the function a name at `index` declares, either `function name(...) {}`
+ * or `name = (...) => ...`, or none when the name declares neither.
+ */
+function bodyDeclaredAt(tokens: readonly Token[], index: number): readonly Token[] {
+  const next = tokens[index + 1];
+  if (named(tokens[index - 1], 'function') && is(next, '(')) {
+    const open = tokens.findIndex(
+      (candidate, at) =>
+        at > closing(tokens, index + 1) && is(candidate, '{') && opensBody(tokens, at),
+    );
+    return open === -1 ? [] : tokens.slice(open + 1, closing(tokens, open));
+  }
+  if (is(next, '=')) {
+    const arrow = tokens.findIndex(
+      (candidate, at) => at > index && (is(candidate, '=>') || is(candidate, ';')),
+    );
+    if (arrow === -1 || !is(tokens[arrow], '=>')) {
+      return [];
+    }
+    return is(tokens[arrow + 1], '{')
+      ? tokens.slice(arrow + 2, closing(tokens, arrow + 1))
+      : tokens.slice(arrow, arrow + 1 + valueAfter(tokens, arrow + 1).length);
+  }
+  return [];
+}
+
 /** The tokens of an assigned or member value: up to the comma, semicolon, or bracket that ends it. */
 function valueAfter(tokens: readonly Token[], start: number): readonly Token[] {
   let depth = 0;
@@ -870,15 +919,12 @@ function gatheringSites(tokens: readonly Token[], sinks: VoiceSinks): string[] {
   const assignments = new Set(['message', ...(sinks.assignments ?? [])]);
   const properties = new Set<string>(sinks.properties);
   const returns = new Set<string>(sinks.returns);
+  const functions = new Set<string>(sinks.functions);
   const bodies = failureClassBodies(tokens);
   const sites: string[] = [];
   const argumentsAt = (open: number) => sentences(tokens.slice(open + 1, closing(tokens, open)));
   const returnedAt = (open: number) =>
-    tokens
-      .slice(open + 1, closing(tokens, open))
-      .flatMap((token, at, inner) =>
-        named(token, 'return') ? sentences(valueAfter(inner, at + 1)) : [],
-      );
+    returnedSentences(tokens.slice(open + 1, closing(tokens, open)));
   tokens.forEach((token, index) => {
     const previous = tokens[index - 1];
     const next = tokens[index + 1];
@@ -916,6 +962,9 @@ function gatheringSites(tokens: readonly Token[], sinks: VoiceSinks): string[] {
       (is(previous, '{') || is(previous, ','))
     ) {
       sites.push(...sentences(valueAfter(tokens, index + 2)));
+    }
+    if (token.kind === 'identifier' && functions.has(token.text)) {
+      sites.push(...returnedSentences(bodyDeclaredAt(tokens, index)));
     }
     if (token.kind === 'template') {
       for (const expression of token.expressions) {

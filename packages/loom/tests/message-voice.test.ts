@@ -7,7 +7,8 @@
  * rule 5's escaping, and rule 6's ban on outside text, and holds the rest of the bin's sources to
  * gathering. The bin's `report()` prints a thrown error's message through `out.fatal`, so
  * JavaScript's own `Error` counts as a failure constructor, and it prints what a command's work
- * returns, so each `return` inside a `report(...)` call is the route a command's confirmation takes.
+ * returns, so each `return` or concise arrow body inside a `report(...)` call is the route a
+ * command's confirmation takes, and so is each `return` of a function that call prints the result of.
  * An issue's `message` is the line a rejected value prints, the `failure` an application reader
  * answers is a sentence the bin prints, and `run.line(...)` writes each line `loom init` prints for
  * a file it writes.
@@ -24,6 +25,8 @@ const src = new URL('../src/', import.meta.url);
 const sinks: VoiceSinks = {
   calls: ['optionError', 'run.line'],
   classes: ['Error'],
+  // The functions whose returned text a `report(...)` call prints.
+  functions: ['cutSummary', 'packageNotes', 'recordRelease', 'renderPlan'],
   properties: ['failure', 'message'],
   returns: ['report'],
 };

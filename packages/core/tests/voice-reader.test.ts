@@ -311,7 +311,6 @@ test('a literal sentence handed to a named wrapper call, or returned to a named 
     "other.line('A line of another receiver.');",
     "line('A plain call, not the member.');",
     'await report({ out, signal }, async () => {',
-    "  const unused = () => 'Not returned to report';",
     "  return done ? 'The check passed. Nothing to fix.' : summary(count);",
     '});',
     "await other(async () => { return 'A call no sink names.'; });",
@@ -324,6 +323,63 @@ test('a literal sentence handed to a named wrapper call, or returned to a named 
     "'The channel conflicts. Pick one.'",
     "'Wrote the file. Commit it.'",
     "'The check passed. Nothing to fix.'",
+  ]);
+});
+
+test('a concise arrow body in a call a returns sink names is read as a returned sentence', () => {
+  const source = [
+    "await report({ out, signal }, () => 'Checked the fragments now.');",
+    'await report({ out, signal }, () => summary(count));',
+    "await other(() => 'A call no sink names.');",
+  ].join('\n');
+  expect(gathered(source)).toEqual([]);
+  expect(gathered(source, { returns: ['report'] })).toEqual(["'Checked the fragments now.'"]);
+});
+
+test('a literal returned from a function a functions sink names is reported, in either form', () => {
+  const source = [
+    'function cutSummary(cut: Cut): string {',
+    "  if (cut.empty) { return 'Cut no version for this package.'; }",
+    '  return summary(cut);',
+    '}',
+    "const renderPlan = (plan: Plan) => 'Planned nothing to release.';",
+    "const recordRelease = async (request: Request): Promise<string> => { return 'Recorded the release now.'; };",
+    "function other(): string { return 'A function no sink names.'; }",
+    "const call = cutSummary(cut) + 'A call is not a declaration.';",
+  ].join('\n');
+  expect(gathered(source)).toEqual([]);
+  expect(gathered(source, { functions: ['cutSummary', 'renderPlan', 'recordRelease'] })).toEqual([
+    "'Cut no version for this package.'",
+    "'Planned nothing to release.'",
+    "'Recorded the release now.'",
+  ]);
+});
+
+test('a table without the Do not write and Write columns is refused as the banned words', () => {
+  const page = [
+    '## Voice',
+    '',
+    '### Banned words',
+    '',
+    '| Word | Meaning |',
+    '| --- | --- |',
+    '| `later` | never |',
+  ].join('\n');
+  expect(() => bannedWordsOf(page)).toThrow('has no "Do not write" and "Write" columns');
+});
+
+test('a message assigned to a bare name is not a sentence, and one assigned to a member is', () => {
+  const source = [
+    "const message = 'A local name, not an error. Nothing is raised.';",
+    "failure.message = 'The failure says this. Fix it.';",
+  ].join('\n');
+  expect(gathered(source)).toEqual(["'The failure says this. Fix it.'"]);
+});
+
+test('a sink inside an interpolation of a template is read', () => {
+  const source = "const text = `${run.line('A line inside a template. Fix it.')}`;";
+  expect(gathered(source, { calls: ['run.line'] })).toEqual([
+    "'A line inside a template. Fix it.'",
   ]);
 });
 
