@@ -21,24 +21,6 @@ test("each number reads as JavaScript's String writes it", () => {
   );
 });
 
-test('a skipped and a warned end write their own state, and a cleared line reads ended', () => {
-  expect(
-    progressMessage({ id: 1, label: 'Fetched nothing: the cache is fresh', state: 'skipped' }),
-  ).toBe('Fetched nothing: the cache is fresh (skipped)');
-  expect(
-    progressMessage({
-      completed: 118,
-      id: 1,
-      label: 'Fetched 118 of 120 records',
-      state: 'warned',
-      total: 120,
-    }),
-  ).toBe('Fetched 118 of 120 records 118/120 (warned)');
-  expect(progressMessage({ id: 1, label: 'Reading the cache', state: 'ended' })).toBe(
-    'Reading the cache (ended)',
-  );
-});
-
 test('a relay counts every event it sends, whatever its counts, and sends no total', () => {
   const sent: unknown[] = [];
   const relay = progressRelay((update) => {

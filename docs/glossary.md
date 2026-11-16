@@ -829,7 +829,7 @@ The span in which a run hands the terminal to a child program that draws on it, 
 _Avoid_: Handoff, pause, suspend (which stops the process)
 
 **Progress line**:
-One line of work in flight that an action shows through `progress()` from `@loomcli/prompts`, drawn in its own live region: a spinner while the work has no total, and a bar with counts once it has one. It ends as a success line, a failure line, a skipped line, a warned line, or a cancelled line that stays in scrollback, or, when its author calls `clear()`, leaves nothing. When its region is not live it writes one start line and, unless it is cancelled or cleared, one end line through the semantic lanes. Only the author clears a line: a line that fails or is cancelled keeps its text. It reports each change as a progress event, and a cleared line reports as ended.
+One line of work in flight that an action shows through `progress()` from `@loomcli/prompts`, drawn in its own live region: a spinner while the work has no total, and a bar with counts once it has one. It ends as a success line, a failure line, a skipped line, a warned line, or a cancelled line that stays in scrollback, or, when its author calls `clear()`, leaves nothing, except that a frame drawn before the terminal was lent stays where it was drawn, so a line cleared during or after a lend leaves that frame. When its region is not live it writes one start line and, unless it is cancelled or cleared, one end line through the semantic lanes. Only the author clears a line: a line that fails or is cancelled keeps its text. It reports each change as a progress event, and a cleared line reports as ended.
 _Avoid_: Spinner (for the whole line), progress bar (for the whole line), task, step
 
 **Progress style**:

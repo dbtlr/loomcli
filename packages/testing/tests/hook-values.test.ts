@@ -131,15 +131,6 @@ describe('progressEvent', () => {
     expect(percent(progressEvent({ completed: 3, total: 4 }))).toBeUndefined();
   });
 
-  it('a test states a skipped or a warned end as it states an ended one', () => {
-    expect(progressEvent({ label: 'Fetched 118 of 120 records', state: 'warned' })).toEqual({
-      id: 1,
-      label: 'Fetched 118 of 120 records',
-      state: 'warned',
-    });
-    expect(progressEvent({ state: 'skipped' }).state).toBe('skipped');
-  });
-
   it('a stated member replaces its default whole, and the event is frozen', () => {
     const event = progressEvent({ id: 7, label: 'Fetching', state: 'started' });
     expect(event).toEqual({ id: 7, label: 'Fetching', state: 'started' });

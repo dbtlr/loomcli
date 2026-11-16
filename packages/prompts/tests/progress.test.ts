@@ -310,6 +310,18 @@ const scenarios: Record<string, (scene: Scene) => Scenario> = {
       scene.lingering = after(100);
     },
   }),
+  /** A line cleared after the terminal was lent, which leaves the frame drawn before the lend. */
+  lendClear: () => ({
+    action: async (context) => {
+      const line = progress(context, { label: 'Preparing the release' });
+      // The first frame queues as the line opens, so the scenario waits for it to reach the terminal.
+      await after(10);
+      await context.out.lendTerminal(async () => {
+        await line.clear();
+      });
+    },
+    plugins: [progressStyle({ spinner: still })],
+  }),
   /** A counted line and a spinner line, a lane line between their frames, then each end. */
   look: (scene) => ({
     action: async (context) => {
@@ -627,6 +639,13 @@ test('a cleared line leaves the rows above and below it as they were, with no bl
   const ended = await screen(run);
   expect(ended.slice(1).map((row) => row.split(' · ')[0])).toEqual(['✔ Above', '✔ Below']);
   expect(ended).toHaveLength(3);
+});
+
+test('a line cleared during a lend leaves the frame drawn before the lend, and nothing more', async () => {
+  const run = await lines('lendClear');
+  // The lend's start and end each write one line break, and the cleared line draws nothing between.
+  expect(run.stderr).toMatch(new RegExp(`^◐ Preparing the release · ${seconds}\\n\\n$`, 'u'));
+  await expect(screen(run)).resolves.toHaveLength(1);
 });
 
 test('after any end, every end method and an update do nothing more', async () => {

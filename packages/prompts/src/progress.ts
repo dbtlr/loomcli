@@ -8,6 +8,7 @@ import type {
   StandardSchemaV1,
 } from '@loomcli/core';
 
+import { controls } from './controls.js';
 import { progressLine } from './views.js';
 import type { ProgressLine } from './views.js';
 
@@ -80,11 +81,18 @@ interface Progress {
   end(message?: string): Promise<void>;
   /** Ends the line as a failure, with an optional message in place of the label. */
   fail(message?: string): Promise<void>;
-  /** Ends the line as skipped, a dim line with an optional message in place of the label. */
+  /**
+   * Ends the line as skipped, with an optional message in place of the label. Where the line draws,
+   * it leaves a dim line. Where it does not draw, it writes the line through `out.info`.
+   */
   skip(message?: string): Promise<void>;
   /** Ends the line with a warning, with an optional message in place of the label. */
   warn(message?: string): Promise<void>;
-  /** Ends the line and removes it, so it leaves nothing. */
+  /**
+   * Ends the line and removes it. Where the line draws, it leaves nothing, except a frame drawn
+   * before the terminal was lent, which stays where it was drawn. Where the line does not draw, it
+   * writes nothing after the start line, which stays.
+   */
   clear(): Promise<void>;
   /** Ends the line by how the work settles and returns the work's value, or rethrows its rejection. */
   track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
@@ -225,7 +233,7 @@ async function settle<Value>(
 }
 
 /** The state a line takes when core closes its region. */
-const closedState: Readonly<Record<RegionCloser, ProgressLine['state']>> = {
+const closedState: Readonly<Record<RegionCloser, Exclude<ProgressLine['state'], 'running'>>> = {
   cancellation: 'cancelled',
   completion: 'ended',
   end: 'ended',
@@ -234,9 +242,6 @@ const closedState: Readonly<Record<RegionCloser, ProgressLine['state']>> = {
 
 /** The state a line's own end takes, each of which draws its own last line. */
 type EndState = Exclude<ProgressLine['state'], 'running' | 'cancelled'>;
-
-/** A cleared line's last frame: empty, so its region leaves nothing. */
-const clearedFrame = { render: () => '' };
 
 /** What one line shows and how it changes, which its view reads at each frame. */
 interface LineState {
@@ -313,6 +318,13 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
   } else {
     void context.out.info(label);
   }
+  // Where the region is not live, each end writes its line through the lane of its level.
+  const plainLine: Readonly<Record<EndState, (text: string) => Promise<void>>> = {
+    ended: (text) => context.out.success(text),
+    failed: (text) => context.out.error(text),
+    skipped: (text) => context.out.info(text),
+    warned: (text) => context.out.warn(text),
+  };
   // Core closes the region for the action's return, a failure, or cancellation.
   // The line draws its closing frame inside the abort, so that frame is the region's last.
   region.signal.addEventListener(
@@ -325,21 +337,12 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
       line.state = closedState[region.closedBy ?? 'completion'];
       if (region.live) {
         void region.draw(frame(), progressLine);
-      } else if (line.state === 'ended') {
-        void context.out.success(line.label);
-      } else if (line.state === 'failed') {
-        void context.out.error(line.label);
+      } else if (line.state !== 'cancelled') {
+        void plainLine[line.state](line.label);
       }
     },
     { once: true },
   );
-  // Where the region is not live, each end writes its line through the lane of its level.
-  const plainLine: Readonly<Record<EndState, (text: string) => Promise<void>>> = {
-    ended: (text) => context.out.success(text),
-    failed: (text) => context.out.error(text),
-    skipped: (text) => context.out.info(text),
-    warned: (text) => context.out.warn(text),
-  };
   const finish = async (state: EndState, message: string | undefined): Promise<void> => {
     if (line.state !== 'running') {
       return;
@@ -359,7 +362,7 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
       line.state = 'ended';
       clearInterval(timer);
       if (region.live) {
-        await region.draw(undefined, clearedFrame);
+        await region.draw('', controls);
       }
       await region.end('ended');
     },
