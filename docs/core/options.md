@@ -1,10 +1,10 @@
 ---
-description: "Local options: string, boolean, and counted options, short groups, repeated values, option value arity, last-occurrence-wins options, implied values, aliases, declared option groups, sharing options across Commands with a settings constant or an option set, and passthrough."
+description: "Local options: string, boolean, and counted options, short groups, repeated values, option value arity, last-occurrence-wins options, implied values, aliases and visible aliases, declared option groups, sharing options across Commands with a settings constant or an option set, and passthrough."
 ---
 
 # Local options
 
-This page states how an author declares local options: string, Boolean, and counted options, short groups, repeated values, value arity, the last occurrence winning, implied values, aliases, option groups, sharing options across Commands, and passthrough. An author uses it to shape the options a Command accepts.
+This page states how an author declares local options: string, Boolean, and counted options, short groups, repeated values, value arity, the last occurrence winning, implied values, aliases and visible aliases, option groups, sharing options across Commands, and passthrough. An author uses it to shape the options a Command accepts.
 
 ```ts
 import { Application } from '@loomcli/core';
@@ -264,8 +264,28 @@ const app = new Application('textstat')
 - **Spellings.** An alias takes every long form the option's polarity generates. A string option, a counted option, and a positive Boolean option gain `--<alias>`, a `both` Boolean option gains `--<alias>` and `--no-<alias>`, and a `negative` Boolean option gains `--no-<alias>`, so a renamed Boolean option keeps its negative form. `shortOnly` removes every long spelling, so it cannot combine with `aliases`, an empty list included: TypeScript rejects the pair.
 - **One option.** An alias's spelling reads every value form the option's long spelling reads, `--minimum 5` and `--minimum=5` alike. It binds the option in every other respect: an option that is neither multiple, counted, nor last-wins can occur only once across every spelling, so `--min-bytes 1 --minimum 2` fails with `Option "--minimum" can be supplied only once`, a `multiple` option collects across them in supplied order, a [counted option](#counted-options) counts across them, and a [last-wins option](#last-occurrence-wins) takes the last of them. An [input source](input-sources.md) fills the option only when no spelling supplied it, so `TEXTSTAT_MIN_BYTES=5 textstat --minimum 1 one.txt` applies 1.
 - **Diagnostics.** A fault the parser finds names the spelling the operator typed, as it does for a short alias, so a missing value reads `Option "--minimum" requires a value. Supply a value after "--minimum".` Validation and every reported problem name the option by its own long spelling, as `Option "--min-bytes"`, because the problem belongs to the option.
-- **Unadvertised.** An alias is a synonym the application accepts, never a second name it advertises. Help, the [manifest](../plugins/manifest.md), [completion](../plugins/completion.md), the [suggestions](../plugins/suggestions.md) plugin, and every other listing omit it. [`locate`](graph-inspection.md#locating-a-word) reads a typed alias as the parser does, and [`inspect()`](graph-inspection.md) publishes the declared names under `aliases` on the option's node. An alias carries no `deprecated` message of its own, because no listing shows it; an option that is itself retired declares `deprecated` on its own config.
-- **Every option.** `aliases` applies to a local option, a global option, an option a plugin declares, and an option a lifecycle hook declares, under the same rules, because they are one kind of option.
+- **Unadvertised.** An alias `aliases` declares is a synonym the application accepts, never a second name it advertises. Help, the [manifest](../plugins/manifest.md), [completion](../plugins/completion.md), the [suggestions](../plugins/suggestions.md) plugin, and every other listing omit it. [`locate`](graph-inspection.md#locating-a-word) reads a typed alias as the parser does, and [`inspect()`](graph-inspection.md) publishes the declared names under `aliases` on the option's node. An alias carries no `deprecated` message of its own; an option that is itself retired declares `deprecated` on its own config.
+- **Every option.** `aliases` applies to a local option, a global option, an option a plugin declares, an option a lifecycle hook declares, and an entry of an [option set](#sharing-options), under the same rules, because they are one kind of option.
+
+### Visible option aliases
+
+```ts
+const app = new Application('textstat')
+  .option('min-bytes', {
+    default: '0',
+    description: 'Skip files below this size.',
+    type: 'string',
+    visibleAliases: ['minimum'],
+  })
+  .action(({ options, out }) => out.print(options['min-bytes']));
+```
+
+`visibleAliases` lists aliases that the listings show beside the option, for a short form or a second name the author wants operators to learn. A visible alias is an alias in every other respect, under every rule of [Option aliases](#option-aliases): the name rule, the long forms its option's polarity generates, the negative form included where the option has one, the binding to the one option, the diagnostics, and the declaration faults, whose findings mark it in `visibleAliases`. `shortOnly` cannot combine with `visibleAliases`, an empty list included: TypeScript rejects the pair. It applies to every option `aliases` applies to. [ADR-0168](../decisions/0168-a-command-or-an-option-may-declare-a-visible-alias-that-every-listing-shows-beside-its-canonical-name.md) records the decision.
+
+- **Repeats.** A visible alias that repeats the option's own name or a spelling the option already accepts adds nothing, as an alias does. A name both lists hold is one alias, and it is visible.
+- **What shows it.** [Help](../plugins/help-page.md#the-help-page) prints the fact `(alias: --minimum)` on the option's row, naming each alias's positive long spelling, so a `both` option's alias reads `--colour` and not `--[no-]colour`, while a `negative` Boolean option, whose only long spellings are negative, names `--no-<alias>`; the [man page](../plugins/manpage.md) follows help; [completion](../plugins/completion.md) offers a visible alias's spellings where none of the option's own spellings matches what was typed; and the [manifest](../plugins/manifest.md) lists the names in the `aliases` field of the option's entry. Usage lines and every reported problem keep the option's own spelling, an [MCP](../plugins/mcp.md) tool's input schema adds no property for it, and [suggestions](../plugins/suggestions.md) never match an alias.
+- **Inspection.** The option's node holds every alias under `aliases`, the config's `aliases` and then its `visibleAliases`, each in its list's order, without a repeat, and the visible ones under `visibleAliases`, in that order.
+- **No message.** An alias of either kind carries no migration message. A renamed option keeps its old name in `aliases`, and an option that is itself retired declares `deprecated`.
 
 ## Declaration and invocation errors
 
@@ -277,8 +297,8 @@ Each option that is neither multiple, counted, nor last-wins can occur only once
 
 Each rule below is a `DeclarationError` with code 1 that throws at the moment [Declaration faults](declaration-faults.md) assigns it. Each rule's identity links to its headline and explanation in the [diagnostics reference](diagnostics.md). A fault about one key of an input's config marks that key in its finding, a fault about the input as a whole marks its name, and a fault between two inputs carries a finding for each. The finding for an option a plugin declares rebuilds its entry in the `options` record of its `plugin()` call, and its sentences name it `Plugin "@loomcli/log" option "level"`. The rules for an environment binding and a global option read in [Input source declaration errors](input-sources.md#input-source-declaration-errors) and [Command declaration errors](commands.md#command-declaration-errors).
 
-- **Names.** An option name and an alias name are nonempty and have no leading hyphen, whitespace, or `=`: [`@loomcli/core/declared-name`](diagnostics.md#loomclicoredeclared-name).
-- **Spellings.** Two options of one scope never share a spelling. A generated negative form counts, and its finding marks the `polarity` that generates it. An alias's spelling counts, its negative form included, and its finding marks that alias in `aliases`: [`@loomcli/core/spelling-taken`](diagnostics.md#loomclicorespelling-taken).
+- **Names.** An option name and an alias name, a visible alias's included, are nonempty and have no leading hyphen, whitespace, or `=`: [`@loomcli/core/declared-name`](diagnostics.md#loomclicoredeclared-name).
+- **Spellings.** Two options of one scope never share a spelling. A generated negative form counts, and its finding marks the `polarity` that generates it. An alias's spelling counts, its negative form included, and its finding marks that alias in `aliases`, or in `visibleAliases` for a [visible alias](#visible-option-aliases): [`@loomcli/core/spelling-taken`](diagnostics.md#loomclicorespelling-taken).
 - **Keys.** Two options of one scope never share a key. The scope reads `the root Command`, `the global options`, or `plugin "@loomcli/log"`: [`@loomcli/core/option-declared-twice`](diagnostics.md#loomclicoreoption-declared-twice).
 - **An option a plugin declares.** Its key and spelling stay apart from every other global option and every local option. A key reports under [`@loomcli/core/option-declared-twice`](diagnostics.md#loomclicoreoption-declared-twice) and a spelling under [`@loomcli/core/spelling-taken`](diagnostics.md#loomclicorespelling-taken), the rules of a collision between the application's own options, and the sentence names the plugin. The rules of [Plugin declaration errors](plugin-contract.md#plugin-declaration-errors) give each pairing.
 - **A default.** A default passes its validator: [`@loomcli/core/invalid-default`](diagnostics.md#loomclicoreinvalid-default). `run()` raises the fault before it reads a token.

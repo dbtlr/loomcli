@@ -34,6 +34,7 @@ interface ConfigurationNode {
 interface CommandNode {
   readonly name: string | null;
   readonly aliases: readonly string[];
+  readonly visibleAliases: readonly string[]; // see Visible aliases
   readonly path: readonly string[];
   readonly description: string | undefined;
   readonly hidden: boolean;
@@ -91,6 +92,7 @@ type OptionNode =
       readonly long: string | null;
       readonly short: string | null;
       readonly aliases: readonly string[];
+      readonly visibleAliases: readonly string[]; // see Visible option aliases
       readonly required: boolean;
       readonly requiredWhen: 'non-interactive' | null; // see Interaction
       readonly multiple: boolean;
@@ -118,6 +120,7 @@ type OptionNode =
       readonly short: string | null;
       readonly negative: string | null;
       readonly aliases: readonly string[];
+      readonly visibleAliases: readonly string[];
       readonly polarity: 'positive' | 'negative' | 'both';
       readonly interaction: boolean; // see Interaction
       readonly color: boolean; // see Color
@@ -136,6 +139,7 @@ type OptionNode =
       readonly long: string | null;
       readonly short: string | null;
       readonly aliases: readonly string[];
+      readonly visibleAliases: readonly string[];
       readonly verbose: boolean; // see Verbosity
       readonly quiet: boolean; // see Verbosity
       readonly schema: null;
@@ -145,10 +149,10 @@ type OptionNode =
 ```
 
 - `name` is `null` for the root, and `path` is the route from the root: `[]` for the root and `['cache', 'clear']` for a nested leaf. Children and declarations appear in authoring order.
-- `aliases` holds the Command's [aliases](commands.md#aliases) in declaration order, and `[]` for the root and for a Command that declares none. A Command appears once, under its canonical name, so `path` never holds an alias. Help, the manifest, and [completion](../plugins/completion.md) omit them, because an alias is unadvertised; routing and [`locate`](#locating-a-word) resolve them.
+- `aliases` holds every one of the Command's [aliases](commands.md#aliases), the visible ones included, in the order the `alias()` and `visibleAlias()` calls declared them, and `[]` for the root and for a Command that declares none. `visibleAliases` holds the [visible aliases](commands.md#visible-aliases) alone, in the order `aliases` holds them, so `.alias('get').visibleAlias('ls')` reads `aliases: ['get', 'ls']` and `visibleAliases: ['ls']`. A Command appears once, under its canonical name, so `path` never holds an alias. Help, the man page, [completion](../plugins/completion.md), and the manifest read `visibleAliases` and never `aliases`, because an alias that is not visible is unadvertised; routing and [`locate`](#locating-a-word) resolve every alias.
 - `hidden` and `deprecated` are the core facts [Hidden and deprecated members](commands.md#hidden-and-deprecated-members) describes: `hidden` is `false` unless the declaration says `true`, and `deprecated` is the declared message or `undefined`. The root reads `hidden: false` and `deprecated: undefined`. A listing projection omits a hidden node and marks a deprecated one; the candidate list of a routing error omits both, as completion does; routing selects and parsing binds without reading either.
 - The globals appear once on the graph and never inside a `CommandNode`. A help or manifest consumer combines the two sets for display.
-- Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone, and each reports the spelling the declared name derives, never an alias's. `aliases` holds the option's declared [aliases](options.md#option-aliases) as bare names in declaration order, such as `['minimum']`, and `[]` when it declares none. Help, the manifest, and completion omit them, because an alias is unadvertised; parsing and `locate` resolve them. `env` holds the variables the option's [environment binding](input-sources.md#environment-bindings) names, in declaration order, and is `[]` when it declares none, whoever declared the option. A binding declared as one name publishes a one-element array. `envDelimiter`, on the string variant and the content variant, is the delimiter a multiple option's or a scalar arity option's binding declares, under [Environment lists](input-sources.md), and `null` when the option declares none. `envAllowEmpty`, on the string variant alone, is `true` when the binding lets a defined empty variable supply the option, under [Empty values](input-sources.md), and otherwise `false`.
+- Spellings are the accepted CLI forms, read from the table the parser reads. `long` is `'--dry-run'` for the declared name `dry-run` and `null` under `shortOnly`, `short` is `'-f'`, and `negative` is `'--no-total'` for `both` and `negative` polarity alone, and each reports the spelling the declared name derives, never an alias's. `aliases` holds every one of the option's declared [aliases](options.md#option-aliases) as bare names, its config's `aliases` and then its `visibleAliases`, each in its list's order, without a repeat, such as `['minimum']`, and `[]` when it declares none. `visibleAliases` holds the [visible ones](options.md#visible-option-aliases) alone, as bare names in the order `aliases` holds them. Help, the man page, completion, and the manifest read `visibleAliases` and never `aliases`, because an alias that is not visible is unadvertised; parsing and `locate` resolve every alias. `env` holds the variables the option's [environment binding](input-sources.md#environment-bindings) names, in declaration order, and is `[]` when it declares none, whoever declared the option. A binding declared as one name publishes a one-element array. `envDelimiter`, on the string variant and the content variant, is the delimiter a multiple option's or a scalar arity option's binding declares, under [Environment lists](input-sources.md), and `null` when the option declares none. `envAllowEmpty`, on the string variant alone, is `true` when the binding lets a defined empty variable supply the option, under [Empty values](input-sources.md), and otherwise `false`.
 - `arity`, on the string variant alone, is the count of separate words each occurrence takes, under [Option value arity](options.md#option-value-arity), and `null` on a string option that declares none. An arity option's `schema` is the schema of one word, and its `default` wraps a tuple, or a list of tuples on a multiple option.
 - `lastWins`, on the string variant alone, is `true` when the declaration says `true`, under which a later occurrence on the command line replaces an earlier one, as [Last occurrence wins](options.md#last-occurrence-wins) states, and `false` otherwise.
 - A content option's node is the string variant with `type: 'content'`, `stdin`, `min`, and `max`, and without `arity`, `background`, `envAllowEmpty`, and `lastWins`. A content argument's node carries the same four facts, which a plain argument's node omits, and `min` and `max` are `undefined` when the declaration states no bound. A Command that declares a standalone [`.stdin()`](validation.md#content-inputs) carries it as `stdin`, its `description` and whether it is `required`, and a Command that declares none omits the field. [Content inputs](validation.md#content-inputs) describe them.
