@@ -5,6 +5,8 @@
  */
 import { escapeControlCharacters } from '@loomcli/core';
 
+import { codeNote, systemCause } from '../../helpers/messages.js';
+
 const escaped = escapeControlCharacters;
 
 // Changelogs and fragments.
@@ -30,7 +32,7 @@ function sectionExists(file: string, version: string): string {
 }
 
 function unclosedBlock(label: string): string {
-  return `${escaped(label)}: unclosed Markdown block would swallow later release entries.`;
+  return `${escaped(label)}: unclosed Markdown block would swallow later release entries, so close the block, such as a code fence, before the text ends.`;
 }
 
 function carriageReturnHeld(name: string, source: string): string {
@@ -73,6 +75,12 @@ function expectedFragmentFile(path: string, folder: string): string {
   return `${escaped(path)}: expected a fragment file. Keep fragments directly in ${escaped(folder)}/.`;
 }
 
+function fragmentUnreadable(path: string, code: string): string {
+  return code === 'EACCES' || code === 'EPERM'
+    ? `Cannot read ${escaped(path)}${systemCause(code)}. Give your user read access to it, and execute access to each folder above it, then run the command again.`
+    : `Cannot read ${escaped(path)}${codeNote(code)}. Check that you can read it, then run the command again.`;
+}
+
 function expectedFragmentName(path: string): string {
   return `${escaped(path)}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`;
 }
@@ -84,7 +92,7 @@ function minimumAboveRelease(minimum: string, release: string, current: string):
 }
 
 function versionCannotAdvance(version: string): string {
-  return `The version ${escaped(version)} cannot advance.`;
+  return `The version ${escaped(version)} cannot advance, because the part a cut raises is too large to count up, so set a smaller version in package.json.`;
 }
 
 function targetNotVersion(target: string, minimum: string): string {
@@ -132,7 +140,7 @@ function notCurrentVersion(version: string, current: string): string {
 }
 
 function noPendingFragments(changes: string, version: string): string {
-  return `No fragments are pending in ${escaped(changes)}/ for ${escaped(version)}.`;
+  return `No fragments are pending in ${escaped(changes)}/ for ${escaped(version)}, so add a fragment there first.`;
 }
 
 // Shared versions.
@@ -143,8 +151,14 @@ function sharedVersionRefused(entry: string, problem: string): string {
 
 const sharedFileMissing = 'does not exist';
 
-function sharedFileUnreadable(reason: string): string {
-  return `cannot be read: ${escaped(reason)}`;
+const sharedFileIrregular = 'is not a regular file';
+
+function sharedFileDenied(entry: string, code: string): string {
+  return `sharedVersion lists ${escaped(entry)}, which cannot be read${systemCause(code)}. Give your user read access to it, and execute access to each folder above it, then cut again.`;
+}
+
+function sharedFileUnreadable(entry: string, code: string | undefined): string {
+  return `sharedVersion lists ${escaped(entry)}, which cannot be read${codeNote(code)}. Check that you can read it, then cut again.`;
 }
 
 function sharedFileUnparsed(reason: string): string {
@@ -185,6 +199,7 @@ export {
   expectedMigrationAfterBullets,
   expectedOneMigration,
   formatCharacterHeld,
+  fragmentUnreadable,
   invalidPackageVersion,
   invalidUtf8Line,
   migrationLabels,
@@ -201,6 +216,8 @@ export {
   restoreFailed,
   sectionExists,
   shallowHistory,
+  sharedFileDenied,
+  sharedFileIrregular,
   sharedFileMissing,
   sharedFileOtherVersion,
   sharedFileUnparsed,

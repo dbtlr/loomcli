@@ -234,7 +234,9 @@ test('an explicit target retains the clean-checkout and existing-tag safeguards'
   rmSync(join(root, 'local.md'));
   git(root, ['tag', 'v0.13.0']);
   const runResult2 = await cut(root, '--target', '0.13.0');
-  expect(runResult2.stderr).toContain('Tag v0.13.0 already exists');
+  expect(runResult2.stderr).toBe(
+    'Tag v0.13.0 already exists, so cut a version no tag names with loom release cut --target <version>.\n',
+  );
   expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
@@ -541,8 +543,31 @@ test('the cut refuses dirty inputs and existing tags without edits', async () =>
   rmSync(join(root, 'local.txt'));
   git(root, ['tag', 'v0.1.0']);
   const runResult2 = await cut(root);
-  expect(runResult2.stderr).toContain('Tag v0.1.0 already exists');
+  expect(runResult2.stderr).toBe(
+    'Tag v0.1.0 already exists, so cut a version no tag names with loom release cut --target <version>.\n',
+  );
   expect(git(root, ['status', '--porcelain'])).toBe('');
+});
+
+test('a checkout that changes while pnpm prepares the lockfile fails, and nothing is written', async () => {
+  const root = repository();
+  put(root, '.changes/add.md', '- Add.\n');
+  commit(root);
+  const result = await run(['release', 'cut'], {
+    cwd: root,
+    pnpm: (call) => {
+      put(root, 'local.txt', 'another writer\n');
+      put(call.cwd, 'pnpm-lock.yaml', 'lockfileVersion: "9.0"\n');
+      return { code: 0 };
+    },
+  });
+  expect(result).toEqual({
+    status: 1,
+    stderr:
+      'Checkout changed during release preparation, so nothing was written. Wait for any other writer to finish, then run loom release cut again from a clean checkout.\n',
+    stdout: '',
+  });
+  expect(git(root, ['status', '--porcelain'])).toBe('?? local.txt');
 });
 
 test('Git history treats bracketed fragment names literally', async () => {

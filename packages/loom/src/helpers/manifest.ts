@@ -73,21 +73,29 @@ export function withVersion(source: string, version: string) {
 }
 
 /**
+ * Parses the source of a JSON file, such as a dependency's `package.json`, with a leading byte order
+ * mark ignored. A source that is not JSON fails with the file's path, the line and column where the
+ * JSON breaks, and the fix.
+ */
+export function parseJsonFile(source: string, path: string): unknown {
+  const text = withoutByteOrderMark(source);
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const fault = jsonFault(text);
+    const sentence = fault === undefined ? manifestNotJson(path) : manifestNotJsonAt(path, fault);
+    throw new Error(sentence, { cause: error });
+  }
+}
+
+/**
  * Parses a `package.json` source into its object, every key kept in its order and a leading byte
  * order mark ignored. Every loom command reads a manifest through it, so a source that is not JSON
  * fails with the file's path, the line and column where the JSON breaks, and the fix, and one that
  * is not a JSON object fails with its path and the fix.
  */
 export function parseManifest(source: string, path: string): Record<string, unknown> {
-  const text = withoutByteOrderMark(source);
-  let document: unknown = undefined;
-  try {
-    document = JSON.parse(text);
-  } catch (error) {
-    const fault = jsonFault(text);
-    const sentence = fault === undefined ? manifestNotJson(path) : manifestNotJsonAt(path, fault);
-    throw new Error(sentence, { cause: error });
-  }
+  const document = parseJsonFile(source, path);
   const parsed = safeParse(jsonObject, document);
   if (!parsed.success) {
     throw new Error(manifestNotObject(path));

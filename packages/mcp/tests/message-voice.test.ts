@@ -2,9 +2,9 @@
 /*
  * The MCP server's voice test, under ADR-0164. The plugin pack ships this server, and the error
  * text it returns to a client is an operator message, so every sentence of it lives in
- * `src/messages.ts`. This test holds that module to the banned words of the voice page, rule 5's
- * escaping, and rule 6's ban on outside text, and holds the rest of the package's sources to
- * gathering, where each `ProtocolError` counts as a failure constructor.
+ * `src/messages.ts`. This test holds that module to the banned words of the voice page and rule 5's
+ * escaping, the rest of the package's sources to gathering, where each `ProtocolError` counts as a
+ * failure constructor, and every source file to rule 6's ban on outside text.
  */
 import { expect, test } from 'vite-plus/test';
 
@@ -30,6 +30,15 @@ const exceptions: VoiceExceptions = {
       '${method}': { reason: ownConstant, sites: 1 },
       '${revision}': { reason: ownConstant, sites: 3 },
       '${versionKey}': { reason: ownConstant, sites: 1 },
+    },
+  },
+  'outside-text': {
+    'json-rpc.ts': {
+      'error.message': {
+        reason:
+          "A ProtocolError's own message, which the server's message module words, written as the message of the JSON-RPC error response.",
+        sites: 1,
+      },
     },
   },
 };

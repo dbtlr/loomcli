@@ -63,7 +63,7 @@ function onlyVersionField(path: string): string {
 }
 
 function outsideCut(path: string): string {
-  return `${escaped(path)}: outside the release cut.`;
+  return `${escaped(path)}: outside the release cut, so make the change in an ordinary PR.`;
 }
 
 function fileModeChanged(path: string): string {

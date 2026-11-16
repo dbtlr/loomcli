@@ -632,7 +632,7 @@ A folder directly under a Loom package's `src`, which holds the code of one conc
 _Avoid_: Feature folder, layer
 
 **Voice test**:
-The test of Loom's own repository, `tests/message-voice.test.ts` in each package whose sentences reach an operator, that reads the package's message modules and holds them to the banned words, the escaping rule, and the rule against outside text, and scans the package's other sources for a sentence written outside a message module. Each known exception is pinned in it with the reason it holds. It checks Loom's sentences, never an application's.
+The test of Loom's own repository, `tests/message-voice.test.ts` in each package whose sentences reach an operator, that reads the package's message modules and holds them to the banned words, the escaping rule, and the rule against outside text, and scans the package's other sources for a sentence written outside a message module and for a read of an error's text that could reach one. Each known exception is pinned in it with the reason it holds. It checks Loom's sentences, never an application's.
 _Avoid_: Message lint, voice rule (for the test), message check
 
 **Failure view**:

@@ -2,9 +2,9 @@
 /*
  * The validators package's voice test, under ADR-0164. Every catalog sentence lives in
  * `src/messages.ts`, and each public issue code in `src/codes.ts` calls one. This test holds the
- * message module to the banned words of the voice page, rule 5's escaping, and rule 6's ban on
- * outside text, and holds the rest of the package's sources to gathering, reading an issue code's
- * `message` member as a route a sentence takes to the operator.
+ * message module to the banned words of the voice page and rule 5's escaping, the rest of the
+ * package's sources to gathering, reading an issue code's `message` member as a route a sentence
+ * takes to the operator, and every source file to rule 6's ban on outside text.
  */
 import { expect, test } from 'vite-plus/test';
 

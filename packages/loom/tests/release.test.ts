@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterEach, expect, test, vi } from 'vite-plus/test';
@@ -814,6 +814,93 @@ test('a stalled registry read under plan fails with the url it waited on', async
   expect(deadlines).toEqual([50]);
 });
 
+test("a registry that cannot be reached fails plan in the bin's words, with no runtime text", async () => {
+  const { root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { published: true } },
+    repository: owner,
+    version: '0.2.0',
+  });
+  const unreachable = `${endpoints.registry}/${library}`;
+  const originalFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (
+      decodeURIComponent(input instanceof Request ? input.url : input.toString()) === unreachable
+    ) {
+      throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9'), {
+          code: 'ECONNREFUSED',
+        }),
+      });
+    }
+    return originalFetch(input, init);
+  });
+  await expect(plan(root, endpoints)).resolves.toEqual({
+    status: 1,
+    stderr: `GET ${unreachable} could not be reached. Check your network connection, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
+test("an answer whose body breaks off fails plan in the bin's words, with no runtime text", async () => {
+  const { root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { published: true } },
+    repository: owner,
+    version: '0.2.0',
+  });
+  const broken = `${endpoints.registry}/${library}`;
+  const originalFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (decodeURIComponent(input instanceof Request ? input.url : input.toString()) === broken) {
+      const body = new ReadableStream({
+        start(controller) {
+          controller.error(new TypeError('terminated'));
+        },
+      });
+      return new Response(body, { status: 200 });
+    }
+    return originalFetch(input, init);
+  });
+  await expect(plan(root, endpoints)).resolves.toEqual({
+    status: 1,
+    stderr: `GET ${broken} stopped before its answer ended. Check your network connection, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
+test('a provenance statement that is not JSON names the request it came from', async () => {
+  const { cut, root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { provenanceCommit: cut, published: true } },
+    repository: owner,
+    version: '0.2.0',
+  });
+  const attestations = `${endpoints.registry}/-/npm/v1/attestations/${library}@0.2.0`;
+  const originalFetch = globalThis.fetch;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (
+      decodeURIComponent(input instanceof Request ? input.url : input.toString()) === attestations
+    ) {
+      const payload = Buffer.from('not json', 'utf8').toString('base64');
+      return Response.json({
+        attestations: [
+          {
+            bundle: { dsseEnvelope: { payload } },
+            predicateType: 'https://slsa.dev/provenance/v1',
+          },
+        ],
+      });
+    }
+    return originalFetch(input, init);
+  });
+  await expect(plan(root, endpoints)).resolves.toEqual({
+    status: 1,
+    stderr: `GET ${attestations} answered with a provenance statement that is not JSON, so check that --registry names an npm registry, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
 test('a tarball that does not match its integrity fails before any write', async () => {
   const { packages, root } = recordFixture({ integrity: 'sha512-Ym9ndXM=' });
   const endpoints = await startServices({ packages, repository: owner, version: '0.2.0' });
@@ -913,3 +1000,117 @@ test('a release plan with wrong values names each key and prints each problem on
     ]),
   );
 });
+
+/** One `loom release record` run whose `--plan` is the path as typed, against services no case reaches. */
+async function recordPlanAt(root: string, path: string) {
+  return await run(
+    [
+      'release',
+      'record',
+      '--repository',
+      owner,
+      '--plan',
+      path,
+      '--registry',
+      'http://127.0.0.1:9',
+      '--github-api',
+      'http://127.0.0.1:9',
+    ],
+    { cwd: root, env: { GH_TOKEN: 'test-token' } },
+  );
+}
+
+test.each([
+  [
+    'missing',
+    () => undefined,
+    'Cannot read plan.json, because it does not exist. Check the path and each folder on the way to it, then run the command again.',
+  ],
+  [
+    'a folder',
+    (root: string) => {
+      mkdirSync(join(root, 'plan.json'));
+    },
+    'Cannot read plan.json, because it is a folder. Name a file, not a folder, then run the command again.',
+  ],
+  [
+    'empty',
+    (root: string) => {
+      writeFileSync(join(root, 'plan.json'), '');
+    },
+    'plan.json is not valid JSON: line 1, column 1 needs a value, so write the plan again with loom release plan, then run loom release record again.',
+  ],
+  [
+    'not JSON',
+    (root: string) => {
+      writeFileSync(join(root, 'plan.json'), 'not json\n');
+    },
+    'plan.json is not valid JSON: line 1, column 1 needs a value, so write the plan again with loom release plan, then run loom release record again.',
+  ],
+])(
+  'a --plan that is %s names the file as typed, the cause, and a step',
+  async (_shape, setup, sentence) => {
+    const { root } = recordRepository();
+    setup(root);
+    await expect(recordPlanAt(root, 'plan.json')).resolves.toEqual({
+      status: 1,
+      stderr: `${sentence}\n`,
+      stdout: '',
+    });
+  },
+);
+
+test('an --output whose folder is missing names the path and the cause', async () => {
+  const { root } = releaseRepository();
+  const endpoints = await startServices({
+    packages: { [library]: { published: false } },
+    repository: owner,
+    version: '0.2.0',
+  });
+  const output = join(root, 'out/plan.json');
+  await expect(
+    run(
+      [
+        'release',
+        'plan',
+        '--repository',
+        owner,
+        '--output',
+        output,
+        '--registry',
+        endpoints.registry,
+        '--github-api',
+        endpoints.githubApi,
+      ],
+      { cwd: root },
+    ),
+  ).resolves.toEqual({
+    status: 1,
+    stderr: `Cannot write ${output}, because its folder does not exist. Create the folder, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
+test.each([
+  ['plan', '--registry', ['--output', 'plan.json']],
+  ['plan', '--github-api', ['--output', 'plan.json']],
+  ['record', '--registry', ['--plan', 'plan.json']],
+  ['record', '--github-api', ['--plan', 'plan.json']],
+])(
+  'release %s refuses a %s that is not an http or https URL before any request',
+  async (command, option, rest) => {
+    const { root } = releaseRepository();
+    const fetched = vi.spyOn(globalThis, 'fetch');
+    await expect(
+      run(['release', command, '--repository', owner, ...rest, option, 'registry.npmjs.org'], {
+        cwd: root,
+        env: { GH_TOKEN: 'test-token' },
+      }),
+    ).resolves.toEqual({
+      status: 2,
+      stderr: `loom: Option "${option}": Use an http or https URL.\nRun "loom release ${command} --help" to see the usage.\n`,
+      stdout: '',
+    });
+    expect(fetched).not.toHaveBeenCalled();
+  },
+);

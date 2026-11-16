@@ -28,7 +28,10 @@
  *   new minimum. A stable version without its section cannot cut a prerelease, and `0.0.0` can.
  * - `sharedVersion`. Every listed manifest is set in the one replacement; a missing, versionless,
  *   unparsable, or differently versioned file, and a malformed value, fail naming the key and
- *   change no file, `--dry-run` included.
+ *   change no file, `--dry-run` included. An entry that is not a regular file, and a file that
+ *   cannot be read, fail with the whole sentence that names the cause and a step.
+ * - System errors. A fragment the reader cannot read names the fragment and the code, and a system
+ *   error no sentence names prints the general sentence with its code, never the runtime's text.
  * - `notes`. A stable version prints its section's body, a prerelease prints the pending
  *   fragments, and a version that is not cut, a prerelease other than the current one, and an
  *   argument that is not a version fail.
@@ -40,6 +43,7 @@ import fs, {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -48,14 +52,19 @@ import { afterEach, expect, test, vi } from 'vite-plus/test';
 
 import { commit, git, migration, put, removeRoots, repository, temporaryRoot } from './fixture.js';
 import { run as runLoom } from './run.js';
+import { failAt, restoreFs, systemError } from './system-errors.js';
 
 // Mock the named exports through the test runner; Bun does not synchronize builtin ESM exports.
 // The toolchain's walks up from a fixture stop at the sandbox (see ./ceiling.ts).
+// A case may fail a read of one file with a system error (see ./system-errors.ts).
 vi.mock(import('node:fs'), async (importOriginal) => {
   const { ceiled } = await import('./ceiling.js');
+  const { failing } = await import('./system-errors.js');
   const actual = ceiled(await importOriginal());
   return {
     ...actual,
+    lstatSync: failing('lstatSync', actual.lstatSync),
+    readFileSync: failing('readFileSync', actual.readFileSync),
     renameSync: vi.fn(actual.renameSync),
     writeFileSync: vi.fn(actual.writeFileSync),
   };
@@ -70,6 +79,7 @@ async function runCeiled(ceiling: string, cwd: string, ...args: string[]) {
 }
 afterEach(() => {
   vi.restoreAllMocks();
+  restoreFs();
   vi.mocked(writeFileSync).mockReset();
   vi.mocked(renameSync).mockReset();
   removeRoots();
@@ -262,6 +272,20 @@ test.each(['directory', 'README.md'])('check refuses a directory named %s', asyn
   await expect(run(root, 'check')).resolves.toEqual({
     status: 1,
     stderr: `.changes/${name}: expected a fragment file. Keep fragments directly in .changes/.\n`,
+    stdout: '',
+  });
+});
+
+test('check names a fragment it cannot read and the code', async () => {
+  const root = directory({
+    '.changes/fix.md': '- Fix output.\n',
+    '.changes/other.md': '- Other.\n',
+  });
+  failAt('readFileSync', join(root, '.changes/fix.md'), 'EACCES');
+  await expect(run(root, 'check')).resolves.toEqual({
+    status: 1,
+    stderr:
+      'Cannot read .changes/fix.md, because permission was denied. Give your user read access to it, and execute access to each folder above it, then run the command again.\n',
     stdout: '',
   });
 });
@@ -1385,6 +1409,82 @@ test.each([
   }
 });
 
+test.each([
+  [
+    'a directory',
+    '../hub',
+    'sharedVersion lists ../hub, which is not a regular file, so correct the entry or the file and cut again.',
+  ],
+  [
+    'a symbolic link',
+    '../link/package.json',
+    'sharedVersion lists ../link/package.json, which is not a regular file, so correct the entry or the file and cut again.',
+  ],
+])(
+  'a cut refuses a sharedVersion entry that is %s with the whole sentence',
+  async (_label, entry, sentence) => {
+    const { collector, root } = sharedRepository([entry]);
+    mkdirSync(join(root, 'packages/link'));
+    symlinkSync(join(root, 'packages/hub/package.json'), join(root, 'packages/link/package.json'));
+    for (const flags of [[], ['--dry-run']]) {
+      await expect(run(collector, 'write', ...flags)).resolves.toEqual({
+        status: 1,
+        stderr: `${sentence}\n`,
+        stdout: '',
+      });
+    }
+  },
+);
+
+test.each([
+  [
+    'EACCES',
+    'sharedVersion lists ../hub/package.json, which cannot be read, because permission was denied. Give your user read access to it, and execute access to each folder above it, then cut again.',
+  ],
+  [
+    'EPERM',
+    'sharedVersion lists ../hub/package.json, which cannot be read, because permission was denied. Give your user read access to it, and execute access to each folder above it, then cut again.',
+  ],
+  [
+    'ENOENT',
+    'sharedVersion lists ../hub/package.json, which does not exist, so correct the entry or the file and cut again.',
+  ],
+  [
+    'EIO',
+    'sharedVersion lists ../hub/package.json, which cannot be read (EIO). Check that you can read it, then cut again.',
+  ],
+])(
+  'a sharedVersion file that cannot be read on %s names the cause and a step',
+  async (code, sentence) => {
+    const { collector, root } = sharedRepository(['../hub/package.json']);
+    const before = snapshot(root);
+    failAt('readFileSync', join(root, 'packages/hub/package.json'), code);
+    for (const flags of [[], ['--dry-run']]) {
+      await expect(run(collector, 'write', ...flags)).resolves.toEqual({
+        status: 1,
+        stderr: `${sentence}\n`,
+        stdout: '',
+      });
+    }
+    restoreFs();
+    expect(snapshot(root)).toEqual(before);
+  },
+);
+
+test('a sharedVersion entry whose file type cannot be read names the entry and the cause', async () => {
+  const { collector, root } = sharedRepository(['../hub/package.json']);
+  const before = snapshot(root);
+  failAt('lstatSync', join(root, 'packages/hub/package.json'), 'EACCES');
+  await expect(run(collector, 'write', '--dry-run')).resolves.toEqual({
+    status: 1,
+    stderr:
+      'sharedVersion lists ../hub/package.json, which cannot be read, because permission was denied. Give your user read access to it, and execute access to each folder above it, then cut again.\n',
+    stdout: '',
+  });
+  restoreFs();
+  expect(snapshot(root)).toEqual(before);
+});
+
 test('a cut refuses a sharedVersion file that is not JSON and changes no file', async () => {
   const { collector, root } = sharedRepository(['../hub/package.json'], {
     'packages/hub/package.json': '{ "version": \n',
@@ -1448,6 +1548,103 @@ test('a failure while replacing a sharedVersion manifest restores every file', a
   expect(result.status).toBe(1);
   expect(result.stderr).toContain('induced');
   expect(snapshot(root)).toEqual(before);
+});
+
+test('a system error no sentence names prints its path, the call, and its code', async () => {
+  const { collector, root } = sharedRepository(['../hub/package.json']);
+  const before = snapshot(root);
+  const { renameSync: rename } = fs;
+  let failed: string | undefined = undefined;
+  vi.mocked(renameSync).mockImplementation((from, to) => {
+    if (failed === undefined && String(to) === join(root, 'packages/hub/package.json')) {
+      failed = String(from);
+      throw systemError(failed, 'EIO', 'rename');
+    }
+    return rename(from, to);
+  });
+  const result = await run(collector, 'write', '--date', '2026-10-07');
+  expect(result).toEqual({
+    status: 1,
+    stderr: `Cannot use ${String(failed)} (EIO). Check that you can use it, then run the command again.\n`,
+    stdout: '',
+  });
+  expect(snapshot(root)).toEqual(before);
+});
+
+test('a system error that names no path prints the general sentence with its code', async () => {
+  const { collector, root } = sharedRepository(['../hub/package.json']);
+  mkdirSync(join(root, 'packages/collector/narrative.md'));
+  await expect(
+    run(collector, 'write', '--date', '2026-10-07', '--narrative', 'narrative.md'),
+  ).resolves.toEqual({
+    status: 1,
+    stderr:
+      'The command failed on a system error (EISDIR). Check the files it reads and writes, then run it again.\n',
+    stdout: '',
+  });
+});
+
+test('a missing --narrative file names the path and the cause', async () => {
+  const { collector } = sharedRepository(['../hub/package.json']);
+  await expect(
+    run(collector, 'write', '--date', '2026-10-07', '--narrative', 'notes.md'),
+  ).resolves.toEqual({
+    status: 1,
+    stderr: `Cannot open ${join(collector, 'notes.md')}, because it does not exist. Check the path and each folder on the way to it, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
+/*
+ * Each cause the shared table words, read where report() names a system error no code caught, for
+ * a --narrative file whose open fails with the code.
+ */
+test.each([
+  ['ENOENT', 'because it does not exist. Check the path and each folder on the way to it'],
+  ['EISDIR', 'because it is a folder. Name a file, not a folder'],
+  ['ENOTDIR', 'because a path on the way is a file. Check each folder on the way to it'],
+  [
+    'EACCES',
+    'because permission was denied. Check that your user can open it and has execute access to each folder above it',
+  ],
+  [
+    'EPERM',
+    'because permission was denied. Check that your user can open it and has execute access to each folder above it',
+  ],
+  ['EROFS', 'because the file system is read-only. Name a path on a writable file system'],
+  ['ENOSPC', 'because no space is left. Free some space'],
+])('a --narrative file whose open fails on %s names the cause and a step', async (code, words) => {
+  const { collector } = sharedRepository(['../hub/package.json']);
+  const narrative = join(collector, 'notes.md');
+  failAt('readFileSync', narrative, code);
+  await expect(
+    run(collector, 'write', '--date', '2026-10-07', '--narrative', 'notes.md'),
+  ).resolves.toEqual({
+    status: 1,
+    stderr: `Cannot open ${narrative}, ${words}, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
+test('a --narrative file whose open fails on a code the table does not name gives the code', async () => {
+  const { collector } = sharedRepository(['../hub/package.json']);
+  const narrative = join(collector, 'notes.md');
+  failAt('readFileSync', narrative, 'EIO');
+  await expect(
+    run(collector, 'write', '--date', '2026-10-07', '--narrative', 'notes.md'),
+  ).resolves.toEqual({
+    status: 1,
+    stderr: `Cannot open ${narrative} (EIO). Check that you can open it, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
+test("a runtime's internal code is no file error, so report() words no file for it", async () => {
+  const { collector } = sharedRepository(['../hub/package.json']);
+  failAt('readFileSync', join(collector, 'notes.md'), 'ERR_INVALID_ARG_VALUE');
+  const result = await run(collector, 'write', '--date', '2026-10-07', '--narrative', 'notes.md');
+  expect(result.status).toBe(1);
+  expect(result.stderr).not.toMatch(/^Cannot|system error/u);
 });
 
 // A package whose changelog records 1.5.0 and 1.4.0, and whose current version is the supplied one.

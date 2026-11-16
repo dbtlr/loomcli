@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join, posix, resolve } from 'node:path';
@@ -56,6 +57,7 @@ import {
   scaffoldLayout,
 } from '../../helpers/scaffold.js';
 import type { ScaffoldLayout } from '../../helpers/scaffold.js';
+import { systemErrorCode } from '../../helpers/system-error.js';
 import {
   defaultTooling,
   existingLinter,
@@ -69,9 +71,11 @@ import type { Linter, TestRunner, Tooling } from '../../helpers/tooling.js';
 import type { init, Piece } from './command.js';
 import {
   addedKey,
+  cannotRead,
   cannotRemove,
   cannotWrite,
   createPackageQuestion,
+  fileInTheWay,
   installerWithoutRepository,
   invalidDirectoryName,
   linterQuestion,
@@ -206,9 +210,47 @@ function checkManifest(target: Place, only: readonly Piece[]) {
   }
 }
 
+/** What a path is, or `undefined` when it is missing or cannot be read. */
+function statOf(absolute: string) {
+  try {
+    return statSync(absolute, { throwIfNoEntry: false });
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The first path on the way to `path`, from the package directory, that exists and is not a
+ * directory, or `undefined` when every path on the way is a directory, missing, or unreadable.
+ */
+function fileOnTheWay(run: Run, path: string): string | undefined {
+  const parts = path.split('/').slice(0, -1);
+  for (let index = 1; index <= parts.length; index += 1) {
+    const on = parts.slice(0, index).join('/');
+    const stats = statOf(join(run.directory, on));
+    if (stats === undefined) {
+      return undefined;
+    }
+    if (!stats.isDirectory()) {
+      return on;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The sentence of a write that failed: the file on the way when a folder could not be made because
+ * of it, else the cause the system error's code names.
+ */
+function writeFailure(run: Run, path: string, error: unknown): string {
+  const code = systemErrorCode(error);
+  const file = code === 'ENOTDIR' || code === 'EEXIST' ? fileOnTheWay(run, path) : undefined;
+  return file === undefined ? cannotWrite(path, code) : fileInTheWay(path, file);
+}
+
 /**
  * Writes a file under the package directory, creating its directory, and sets its mode when one is
- * given, whether the file is new or rewritten. A failure names the file.
+ * given, whether the file is new or rewritten. A failure names the file and the cause.
  */
 function writeFile(run: Run, path: string, text: string, mode?: number) {
   const absolute = join(run.directory, path);
@@ -219,8 +261,16 @@ function writeFile(run: Run, path: string, text: string, mode?: number) {
       chmodSync(absolute, mode);
     }
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(cannotWrite(path, reason), { cause: error });
+    throw new Error(writeFailure(run, path, error), { cause: error });
+  }
+}
+
+/** Reads a file under the package directory that init manages. A failure names the file and the cause. */
+function readFile(run: Run, path: string): string {
+  try {
+    return readFileSync(join(run.directory, path), 'utf8');
+  } catch (error) {
+    throw new Error(cannotRead(path, systemErrorCode(error)), { cause: error });
   }
 }
 
@@ -242,7 +292,7 @@ function writeManaged(run: Run, path: string, content: string, mode?: number) {
     write(run, path, rendered, mode);
     return;
   }
-  const text = readFileSync(absolute, 'utf8');
+  const text = readFile(run, path);
   const file = readManaged(text);
   if (file === undefined || text.replaceAll('\r\n', '\n') === rendered) {
     return;
@@ -303,8 +353,7 @@ function removeManaged(run: Run, path: string) {
       rmdirSync(join(run.directory, folder));
     }
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(cannotRemove(path, reason), { cause: error });
+    throw new Error(cannotRemove(path, systemErrorCode(error)), { cause: error });
   }
   run.line(removedFile(path));
 }
@@ -316,9 +365,7 @@ function removeManaged(run: Run, path: string) {
  */
 function sweepStaleSkillFiles(run: Run, rendered: ReadonlySet<string>) {
   for (const path of authoringSkillFiles(run)) {
-    const file = rendered.has(path)
-      ? undefined
-      : readManaged(readFileSync(join(run.directory, path), 'utf8'));
+    const file = rendered.has(path) ? undefined : readManaged(readFile(run, path));
     if (file === undefined) {
       // Rendered by this run, or a file of the author's, which init never touches.
     } else if (hasDrifted(file) && !run.force) {
@@ -403,6 +450,15 @@ function writeKeys(run: Run) {
 }
 
 /**
+ * Why a read of the application module failed, for the warning: the sentence the read failed with,
+ * which a system error does not have, so it gives the general reason with its code.
+ */
+function unloadedReason(error: unknown): string {
+  const code = systemErrorCode(error);
+  return error instanceof Error && code === undefined ? error.message : unreadReason(code);
+}
+
+/**
  * What an application module the author already holds gives, learned by loading it: the name the
  * entry and the test import its one Application under, else its default export. A module that
  * could not be loaded, because core does not resolve, Bun is missing, or the module throws, reads
@@ -420,7 +476,7 @@ async function authoredRead(run: Run, name: string): Promise<ApplicationRead> {
   } catch (error) {
     // A cancelled read stops init where it is, with no warning and nothing more written.
     run.signal.throwIfAborted();
-    return { kind: 'unloaded', reason: error instanceof Error ? error.message : String(error) };
+    return { kind: 'unloaded', reason: unloadedReason(error) };
   }
   if ('failure' in result) {
     return result.loaded ? { kind: 'unexported' } : { kind: 'unloaded', reason: result.failure };
@@ -439,7 +495,7 @@ async function authoredRead(run: Run, name: string): Promise<ApplicationRead> {
  */
 function reasonLine(reason: string) {
   const line = reason.split('\n').find((text) => text.trim() !== '' && !text.startsWith('-- '));
-  return (line ?? unreadReason).trim().replace(/\.$/u, '');
+  return (line ?? unreadReason(undefined)).trim().replace(/\.$/u, '');
 }
 
 /**

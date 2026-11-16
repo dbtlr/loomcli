@@ -1,9 +1,29 @@
 import type { Out } from '@loomcli/core';
 
+import { cannotUseFile, systemFailure, systemVerb } from './messages.js';
+import { systemErrorFacts } from './system-error.js';
+
 /** What a command's report reads from its action context. */
 interface Reporting {
   readonly out: Out;
   readonly signal: AbortSignal;
+}
+
+/**
+ * The sentence of a failure a command's work threw. A system error no code on the way caught is
+ * worded from its facts: the path, what the call was doing to it, and the cause, or the general
+ * sentence with its code when it carries no path. Any other throw prints its own message, which is
+ * the bin's sentence for every failure the bin raises, and a runtime's text only for a defect of the
+ * bin's own inputs, which ADR-0164 lists.
+ */
+function failureSentence(error: unknown): string {
+  const facts = systemErrorFacts(error);
+  if (facts === undefined) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return facts.path === undefined
+    ? systemFailure(facts.code)
+    : cannotUseFile(systemVerb(facts.syscall), facts.path, facts.code);
 }
 
 /**
@@ -20,6 +40,6 @@ export async function report({ out, signal }: Reporting, work: () => Promise<str
     await out.render(text, { render: (value) => value });
   } catch (error) {
     signal.throwIfAborted();
-    out.fatal(error instanceof Error ? error.message : String(error));
+    out.fatal(failureSentence(error));
   }
 }

@@ -1,7 +1,7 @@
 import { Command } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
-import { useWholeNumber } from '../../helpers/messages.js';
+import { useHttpUrl, useWholeNumber } from '../../helpers/messages.js';
 
 /*
  * Each action imports its work when it runs, so a run of any other command, help included, loads
@@ -17,6 +17,22 @@ const count = createValidator({
   inputSchema: { type: 'string', pattern: wholeNumber.source },
   parse: (raw) =>
     wholeNumber.test(raw) ? { value: Number(raw) } : { issues: [{ message: useWholeNumber }] },
+});
+
+// Whether a value is an http or https URL, which a request can be sent to.
+function isHttpUrl(raw: string) {
+  if (!URL.canParse(raw)) {
+    return false;
+  }
+  const { protocol } = new URL(raw);
+  return protocol === 'http:' || protocol === 'https:';
+}
+
+/** An http or https URL, which `--registry` and `--github-api` name before any request is sent. */
+const httpUrl = createValidator({
+  // The scheme is case-free, as the URL parser reads it, and a JSON Schema pattern has no flags.
+  inputSchema: { format: 'uri', pattern: '^[hH][tT][tT][pP][sS]?:', type: 'string' },
+  parse: (raw) => (isHttpUrl(raw) ? { value: raw } : { issues: [{ message: useHttpUrl }] }),
 });
 
 /** This repository's synchronized cut under ADR-0012. */
@@ -70,11 +86,13 @@ export const releasePlan = new Command('plan', {
     default: defaultRegistry,
     description: 'Name the package registry URL.',
     type: 'string',
+    validate: httpUrl,
   })
   .option('github-api', {
     default: defaultGitHubApi,
     description: 'Name the GitHub API URL.',
     type: 'string',
+    validate: httpUrl,
   })
   .option('head', {
     default: 'HEAD',
@@ -109,11 +127,13 @@ export const releaseRecord = new Command('record', {
     default: defaultRegistry,
     description: 'Name the package registry URL.',
     type: 'string',
+    validate: httpUrl,
   })
   .option('github-api', {
     default: defaultGitHubApi,
     description: 'Name the GitHub API URL.',
     type: 'string',
+    validate: httpUrl,
   })
   .option('request-timeout-ms', {
     default: '30000',

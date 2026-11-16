@@ -7,8 +7,10 @@ import type { InferOutput } from 'valibot';
 import { stringMap } from './json-object.js';
 import { parseManifest } from './manifest.js';
 import {
+  cannotRun,
   expectedRegularFile,
   gitFailed,
+  gitMissing,
   libraryNamesRepeat,
   libraryVersionsDiffer,
   noLibraries,
@@ -18,6 +20,7 @@ import {
 } from './messages.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { RunHost } from './run-host.js';
+import { systemErrorCode } from './system-error.js';
 import { parseVersion } from './version.js';
 
 const dependencyMap = optional(stringMap);
@@ -41,10 +44,20 @@ const manifestSchema = looseObject({
 const neutralSettings = ['-c', 'log.showSignature=false', '-c', 'log.follow=false'];
 
 /**
+ * The failure of a git that could not start, in the bin's words: the sentence for a git that is not
+ * on the PATH, else the general one with the system error's code. It carries the runtime's error as
+ * its cause.
+ */
+function unstartedGit(error: Error) {
+  const code = systemErrorCode(error);
+  return new Error(code === 'ENOENT' ? gitMissing : cannotRun('git', code), { cause: error });
+}
+
+/**
  * Runs git in the checkout through the run's host and waits for it. The run's signal ends git once
  * the run is cancelled, and a cancelled run starts no git and fails with the signal's reason,
- * which core keeps silent. A git that cannot start fails with the runtime's error, and one that exits
- * with a failure fails with what it wrote to stderr. A tracked file read at a commit can be large,
+ * which core keeps silent. A git that cannot start fails with the sentence that names why, and one
+ * that exits with a failure fails with what it wrote to stderr. A tracked file read at a commit can be large,
  * as a reference document is, and the output is unbounded.
  */
 async function gitOutput(checkout: Checkout, args: string[]) {
@@ -56,7 +69,7 @@ async function gitOutput(checkout: Checkout, args: string[]) {
   }).exited;
   signal.throwIfAborted();
   if (exit.kind === 'unstarted') {
-    throw exit.error;
+    throw unstartedGit(exit.error);
   }
   if (exit.code !== 0) {
     throw new Error(gitFailed(args[0] ?? '', exit.stderr.text.trim()));
@@ -153,7 +166,7 @@ export async function isRepository(checkout: Checkout) {
   }).exited;
   signal.throwIfAborted();
   if (exit.kind === 'unstarted') {
-    throw exit.error;
+    throw unstartedGit(exit.error);
   }
   return exit.code === 0;
 }
