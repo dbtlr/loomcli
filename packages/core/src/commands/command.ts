@@ -232,7 +232,10 @@ export interface BuiltCommand {
   passthrough: { description: string | undefined } | undefined;
   optionGroups: readonly OptionGroup[];
   stdin: (StdinConfig & { readonly position: number }) | undefined;
+  /** Every alias, visible ones included, in the order the Command's calls declared them. */
   aliases: readonly string[];
+  /** The visible aliases, in the order `aliases` holds them. */
+  visibleAliases: readonly string[];
   arguments: readonly ArgumentSlot[];
   /**
    * The identity of the plugin whose `onCommandAttach` hook declared each of this Command's inputs
@@ -282,6 +285,7 @@ export declare const commandValue: unique symbol;
 export type CommandMethod =
   | 'action'
   | 'alias'
+  | 'visibleAlias'
   | 'argument'
   | 'command'
   | 'option'
@@ -430,13 +434,22 @@ export function isPortableName(name: string): boolean {
 export const portableNameCorrection =
   'Use a nonempty name of A-Z, a-z, 0-9, ".", "_", and "-" that does not start with "-" or ".".';
 
-/** An alias is typed at the prompt the way a Command name is, so it answers to the portable rule. */
-function checkAliasNames(command: string | null, names: readonly string[]): void {
+/**
+ * The call that declares an alias of each kind: `alias()` an unadvertised one, and
+ * `visibleAlias()` a visible one.
+ */
+type AliasCall = 'alias' | 'visibleAlias';
+
+/**
+ * An alias of either kind is typed at the prompt the way a Command name is, so it answers to the
+ * portable rule, and the finding rebuilds the one call that named it.
+ */
+function checkAliasNames(command: string | null, names: readonly string[], call: AliasCall): void {
   for (const [index, alias] of names.entries()) {
     if (!isPortableName(alias)) {
       throw new DeclarationError(portableName, {
         correction: portableNameCorrection,
-        findings: [{ arguments: names, call: 'alias', mark: String(index), path: pathOf(command) }],
+        findings: [{ arguments: names, call, mark: String(index), path: pathOf(command) }],
         sentence: `${commandSentence(command)} declares an alias named ${quoted(alias)}.`,
       });
     }
@@ -444,16 +457,26 @@ function checkAliasNames(command: string | null, names: readonly string[]): void
 }
 
 /**
- * The finding for the `alias()` call that declared one alias on the Command at `path`, rebuilt from
- * every alias the Command holds.
+ * The finding for the call that declared one alias on the Command at `path`: `visibleAlias()`,
+ * rebuilt from every visible alias the Command holds, for a visible alias, and `alias()`, rebuilt
+ * from every alias that is not visible, for any other.
  */
 function aliasFinding(
-  command: { path: readonly string[]; aliases: readonly string[] },
+  command: {
+    path: readonly string[];
+    aliases: readonly string[];
+    visibleAliases: readonly string[];
+  },
   alias: string,
   note: string,
 ): Finding {
-  const { aliases, path } = command;
-  return { arguments: aliases, call: 'alias', mark: String(aliases.indexOf(alias)), note, path };
+  const { aliases, path, visibleAliases } = command;
+  const visible = visibleAliases.includes(alias);
+  const declared = visible
+    ? visibleAliases
+    : aliases.filter((name) => !visibleAliases.includes(name));
+  const call: AliasCall = visible ? 'visibleAlias' : 'alias';
+  return { arguments: declared, call, mark: String(declared.indexOf(alias)), note, path };
 }
 
 /**
@@ -505,7 +528,13 @@ export interface CommandState<Args, Options, Globals> {
         BuiltValues
       >
     | undefined;
+  /**
+   * Every alias, visible ones included, in the order the `alias()` and `visibleAlias()` calls
+   * declared them.
+   */
   aliases: readonly string[];
+  /** The aliases a `visibleAlias()` call declared, in the order `aliases` holds them. */
+  visibleAliases: readonly string[];
   bind: (values: ValidatedInputs) => { args: Args; options: Options };
   children: readonly AttachedChild[];
   /**
@@ -539,6 +568,7 @@ export type Declared = Pick<
   | 'passthrough'
   | 'stdin'
   | 'optionGroups'
+  | 'visibleAliases'
 >;
 
 /** How the extension diagnostics of one Command's own layers name it. */
@@ -571,6 +601,7 @@ export function freshState<Globals>(declaration: {
     records: new Map(),
     results: [],
     uses: Object.freeze([...(declaration.uses ?? [])]),
+    visibleAliases: [],
   };
 }
 
@@ -1008,21 +1039,26 @@ export function declareOptionGroup<Args, Options, Globals>(
 
 /**
  * One call's names join the Command's aliases. An alias that repeats the Command's own name or an
- * alias it already holds adds no name, so it is skipped.
+ * alias it already holds adds no name, so it is skipped. A `visibleAlias()` call also makes each of
+ * its names visible, one `alias()` declared first included, in the place `aliases` holds it.
  */
 export function declareAlias<Args, Options, Globals>(
   state: CommandState<Args, Options, Globals>,
   names: readonly string[],
+  call: AliasCall,
 ): CommandState<Args, Options, Globals> {
   const { name } = state;
-  checkAliasNames(name, names);
+  checkAliasNames(name, names, call);
   const aliases = [...state.aliases];
   for (const alias of names) {
     if (alias !== name && !aliases.includes(alias)) {
       aliases.push(alias);
     }
   }
-  return { ...state, aliases };
+  const visible = new Set(
+    call === 'visibleAlias' ? [...state.visibleAliases, ...names] : state.visibleAliases,
+  );
+  return { ...state, aliases, visibleAliases: aliases.filter((alias) => visible.has(alias)) };
 }
 
 /**
@@ -1168,7 +1204,11 @@ function checkSiblings(parent: AttachParent, child: AttachedChild): void {
   const { children } = parent;
   const aliased = (entry: AttachedChild, alias: string): Finding =>
     aliasFinding(
-      { aliases: entry.node.declared.aliases, path: childPath(parent, entry.name) },
+      {
+        aliases: entry.node.declared.aliases,
+        path: childPath(parent, entry.name),
+        visibleAliases: entry.node.declared.visibleAliases,
+      },
       alias,
       `alias of child "${entry.name}"`,
     );
@@ -2308,6 +2348,7 @@ export function buildCommand<Args, Options, Globals>(
     stdin: state.stdin,
     table,
     uses: state.uses,
+    visibleAliases: state.visibleAliases,
   };
 }
 
@@ -2643,7 +2684,30 @@ export class CommandBuilder<
   alias(
     ...names: [string, ...string[]]
   ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
-    return this.#derive(declareAlias(this.#state, names));
+    return this.#derive(declareAlias(this.#state, names, 'alias'));
+  }
+
+  /**
+   * Visible aliases are other portable names that route to this Command, as `alias()` declares,
+   * and that help, the man page, completion, and the manifest show beside its canonical name:
+   * `.visibleAlias('ls')` on `list` prints `(alias: ls)` on its row. They invalidate no call, and
+   * the tuple rest parameter rejects a call that names none.
+   *
+   * @example
+   * ```ts
+   * import { Command } from '@loomcli/core';
+   *
+   * export const list = new Command('list', { description: 'List the cache.' })
+   *   .visibleAlias('ls')
+   *   .action(({ out }) => out.print('cache.db'));
+   * ```
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#visible-aliases
+   */
+  visibleAlias(
+    ...names: [string, ...string[]]
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+    return this.#derive(declareAlias(this.#state, names, 'visibleAlias'));
   }
 
   /**

@@ -48,13 +48,17 @@ export function emptyValues(): OptionValues {
   };
 }
 
+/** The two config lists an option declares its aliases in. */
+type AliasList = 'aliases' | 'visibleAliases';
+
 /**
  * Which accepted form a table entry is, and for an alias's spelling, positive or negative, its place
- * in `aliases`. The table owns the convention, so readers never re-derive it.
+ * in `aliases`, or in `visibleAliases` for a visible alias. The table owns the convention, so
+ * readers never re-derive it.
  */
 export type SpellingOrigin =
   | { role: 'long' | 'negative' | 'short' }
-  | { role: 'alias'; index: number };
+  | { role: 'alias'; list: AliasList; index: number };
 
 /**
  * How one option reads words: its kind, and its value class: a Boolean option, a counted option, a
@@ -142,7 +146,7 @@ export function reportedOf({ long, negative, short }: Spellings, name: string): 
 /**
  * The part of one declaration that yields a spelling of the given origin, which a spelling fault
  * marks: the declared name for the long form, `short` for the short alias, the `polarity` that
- * generates a negative form, and the alias in `aliases` for either form of an alias.
+ * generates a negative form, and the alias in its list for either form of an alias.
  */
 export function spellingMark(site: InputSite, origin: SpellingOrigin): string {
   switch (origin.role) {
@@ -156,7 +160,7 @@ export function spellingMark(site: InputSite, origin: SpellingOrigin): string {
       return `${site.at}.polarity`;
     }
     case 'alias': {
-      return `${site.at}.aliases.${String(origin.index)}`;
+      return `${site.at}.${origin.list}.${String(origin.index)}`;
     }
     default: {
       const exhaustive: never = origin;
@@ -205,16 +209,26 @@ export function isDeclaredName(name: string): boolean {
 export const declaredNameCorrection =
   'Use a nonempty name without a leading hyphen, whitespace, or "=".';
 
-/** Each alias answers the declared-name rule, because an operator types it as a long spelling. */
+/** One alias list of an option's config, which a config without long spellings leaves out. */
+function aliasList(config: OptionConfig, list: AliasList): readonly string[] {
+  return (list === 'aliases' ? config.aliases : config.visibleAliases) ?? [];
+}
+
+/**
+ * Each alias of either list answers the declared-name rule, because an operator types it as a long
+ * spelling. The finding marks the name in its own list.
+ */
 function checkAliases(config: OptionConfig, siteOf: () => InputSite, name: string): void {
-  for (const [index, alias] of (config.aliases ?? []).entries()) {
-    if (!isDeclaredName(alias)) {
-      const site = siteOf();
-      throw new DeclarationError(declaredName, {
-        correction: declaredNameCorrection,
-        findings: [siteFinding(site, `${site.at}.aliases.${String(index)}`)],
-        sentence: `Option ${quoted(name)} declares an alias named ${quoted(alias)}.`,
-      });
+  for (const list of ['aliases', 'visibleAliases'] as const) {
+    for (const [index, alias] of aliasList(config, list).entries()) {
+      if (!isDeclaredName(alias)) {
+        const site = siteOf();
+        throw new DeclarationError(declaredName, {
+          correction: declaredNameCorrection,
+          findings: [siteFinding(site, `${site.at}.${list}.${String(index)}`)],
+          sentence: `Option ${quoted(name)} declares an alias named ${quoted(alias)}.`,
+        });
+      }
     }
   }
 }
@@ -252,23 +266,59 @@ function checkArity(config: OptionConfig, siteOf: () => InputSite, name: string)
   }
 }
 
+/** One alias an option declares, whether it is visible, and the place a fault about it marks. */
+interface DistinctAlias {
+  readonly alias: string;
+  readonly origin: SpellingOrigin & { role: 'alias' };
+  readonly visible: boolean;
+}
+
 /**
- * The aliases one option declares, each with its place in `aliases`, without a repeat: an alias
- * that names the option or an alias before it adds no spelling, so it is skipped.
+ * The long spellings one name yields for an option: its positive form unless the polarity is
+ * negative, and its negative form for `both` and `negative` polarity.
  */
-export function distinctAliases(
-  name: string,
-  config: OptionConfig,
-): readonly { readonly alias: string; readonly index: number }[] {
-  const seen = new Set([name]);
-  const distinct: { alias: string; index: number }[] = [];
-  for (const [index, alias] of (config.aliases ?? []).entries()) {
-    if (!seen.has(alias)) {
-      seen.add(alias);
-      distinct.push({ alias, index });
-    }
+function longSpellingsOf(name: string, config: OptionConfig): readonly string[] {
+  const spellings: string[] = [];
+  if (config.type !== 'boolean' || config.polarity !== 'negative') {
+    spellings.push(`--${name}`);
   }
-  return distinct;
+  if (config.type === 'boolean' && (config.polarity === 'both' || config.polarity === 'negative')) {
+    spellings.push(`--no-${name}`);
+  }
+  return spellings;
+}
+
+/**
+ * The aliases one option declares, its config's `aliases` and then its `visibleAliases`, without a
+ * repeat: an alias whose own long spelling the option already accepts, through its name or an alias
+ * before it, adds nothing, so it is skipped, and one whose own spelling is new is kept. A name `visibleAliases` holds is visible, in the place
+ * of its first declaration, and a fault marks it in `visibleAliases`, where the author declared it
+ * visible.
+ */
+export function distinctAliases(name: string, config: OptionConfig): readonly DistinctAlias[] {
+  const hidden = aliasList(config, 'aliases');
+  const visible = aliasList(config, 'visibleAliases');
+  const accepted = new Set(longSpellingsOf(name, config));
+  const names = [...new Set([...hidden, ...visible])].filter((alias) => {
+    if (alias === name) {
+      return false;
+    }
+    const spellings = longSpellingsOf(alias, config);
+    // Only the alias's own spelling decides: a negative form another name already holds drops nothing.
+    const [own] = spellings;
+    if (own === undefined || accepted.has(own)) {
+      return false;
+    }
+    for (const spelling of spellings) {
+      accepted.add(spelling);
+    }
+    return true;
+  });
+  return names.map((alias) => {
+    const list: AliasList = visible.includes(alias) ? 'visibleAliases' : 'aliases';
+    const index = aliasList(config, list).indexOf(alias);
+    return { alias, origin: { index, list, role: 'alias' }, visible: list === 'visibleAliases' };
+  });
 }
 
 /**
@@ -456,8 +506,7 @@ function addOption<Declaration extends OptionDeclaration>(
       negative: { role: 'negative' },
       positive: { role: 'long' },
     });
-    for (const { alias, index } of distinctAliases(name, config)) {
-      const origin: SpellingOrigin = { index, role: 'alias' };
+    for (const { alias, origin } of distinctAliases(name, config)) {
       addLongForms(compiling, option, { name: alias, negative: origin, positive: origin });
     }
   }

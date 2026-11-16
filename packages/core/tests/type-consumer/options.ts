@@ -85,3 +85,31 @@ new Application('alias-short-only').option('metric', {
 });
 // @ts-expect-error TS2322: Aliases are a list of names, never one string.
 new Application('alias-string').option('metric', { aliases: 'measure', type: 'string' });
+
+// Visible aliases sit beside aliases on every option kind that declares long spellings.
+const advertised = { type: 'string', visibleAliases: ['minimum'] } satisfies StringOption;
+const advertisedColour = {
+  aliases: ['color'],
+  polarity: 'both',
+  type: 'boolean',
+  visibleAliases: ['colour'],
+} satisfies BooleanOption;
+new Application('visible-aliases')
+  .option('min-bytes', advertised)
+  .option('tint', advertisedColour)
+  .option('verbose', { type: 'count', visibleAliases: ['loud'] })
+  .action(({ options }) => {
+    const threshold: string | undefined = options['min-bytes'];
+    // @ts-expect-error TS2339: Visible aliases are not handler keys.
+    options.minimum;
+    return threshold;
+  });
+// @ts-expect-error TS2345: shortOnly removes every long spelling, so it declares no visible alias.
+new Application('visible-short-only').option('metric', {
+  short: 'm',
+  shortOnly: true,
+  type: 'string',
+  visibleAliases: [],
+});
+// @ts-expect-error TS2322: Visible aliases are a list of names, never one string.
+new Application('visible-string').option('metric', { type: 'string', visibleAliases: 'measure' });

@@ -102,7 +102,7 @@ test('an alias an option already answers to adds nothing, and the option keeps e
     status: 0,
     stderr: '',
     stdout: [
-      '[["minimum"],["no-color","colour"]]',
+      '[["minimum"],["colour"]]',
       '{"command":[],"options":{"min-bytes":"5","color":false}}',
       '',
     ].join('\n'),

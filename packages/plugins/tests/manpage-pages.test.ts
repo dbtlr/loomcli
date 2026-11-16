@@ -424,6 +424,20 @@ describe('sections', () => {
     );
   });
 
+  it('a Command that is not deprecated opens its DESCRIPTION with its alias, then its details after a paragraph break', () => {
+    const app = new Application('kit', { description: 'A kit.', plugins: [manpage()] }).command(
+      new Command('list', {
+        description: 'List.',
+        extensions: [helpCommand({ details: 'Lists every entry in the cache.' })],
+      })
+        .visibleAlias('ls')
+        .action(noop),
+    );
+    expect(pagesOf(app).get('kit-list.1')).toContain(
+      ['.SH "DESCRIPTION"', 'Alias: ls', '.PP', 'Lists every entry in the cache.'].join('\n'),
+    );
+  });
+
   it('a line break in a description, a deprecation, or the stdin description reads as a space', () => {
     const app = new Application('kit', {
       description: 'First line.\nSecond line.',

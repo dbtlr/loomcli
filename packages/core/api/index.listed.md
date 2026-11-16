@@ -159,6 +159,7 @@ export type BackgroundOption = Described & Listed & Controlled & OptionExtension
     type: 'string';
     background: true;
     aliases?: readonly string[];
+    visibleAliases?: readonly string[];
     validate?: StandardSchemaV1;
     short?: never;
     shortOnly?: never;
@@ -235,6 +236,10 @@ export declare class CommandBuilder<Args, Options, Globals, State extends Comman
         ...Extract<keyof Options, string>[]
     ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
     alias(...names: [
+        string,
+        ...string[]
+    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
+    visibleAlias(...names: [
         string,
         ...string[]
     ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
@@ -473,10 +478,12 @@ type OptionSpelling = {
     short?: ShortAlias;
     shortOnly?: false;
     aliases?: readonly string[];
+    visibleAliases?: readonly string[];
 } | {
     short: ShortAlias;
     shortOnly: true;
     aliases?: never;
+    visibleAliases?: never;
 };
 
 export type OptionValue<Config extends OptionConfig> = Config extends StringOption | ContentOption ? Config extends {
@@ -641,6 +648,7 @@ interface StringOptionNode {
     readonly long: string | null;
     readonly short: string | null;
     readonly aliases: readonly string[];
+    readonly visibleAliases: readonly string[];
     readonly required: boolean;
     readonly requiredWhen: 'non-interactive' | null;
     readonly multiple: boolean;

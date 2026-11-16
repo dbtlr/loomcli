@@ -26,6 +26,7 @@ import { Application, DeclarationError } from '@loomcli/core';
 import type { Out } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { help } from '@loomcli/plugins/help';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
@@ -93,6 +94,23 @@ test('ACCESSIBLE turns the switch on in an Application that marks no option', as
     await expect(app.run({ process: mock })).resolves.toBe(0);
   }
   expect(lives).toEqual([true, false]);
+});
+
+test('a visible alias of the plain-marked option turns the switch on, and help lists it', async () => {
+  const facts: Record<string, unknown> = {};
+  const app = new Application('notes', { plugins: [help()] })
+    .globalOption('plain', { ...marked, visibleAliases: ['simple'] })
+    .action(({ out }) => {
+      facts.live = out.region().live;
+    });
+  const env = { TERM: 'xterm-256color' };
+  const terminal = { columns: 40, keys: [], rows: 24 };
+  const running = mockProcess({ argv: ['--simple'], env, terminal });
+  await expect(app.run({ process: running })).resolves.toBe(0);
+  expect(facts.live).toBe(false);
+  const listing = mockProcess({ argv: ['--help'], env });
+  await expect(app.run({ process: listing })).resolves.toBe(0);
+  expect(listing.stdout.text).toContain('(alias: --simple)');
 });
 
 test('options.plain reads what the operator typed, never whether the switch is on', async () => {

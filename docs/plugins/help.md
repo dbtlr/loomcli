@@ -313,8 +313,9 @@ The default help view applies this mapping. A style named below is a member of t
 | Option spelling separator `,` | `dim` |
 | Descriptions in right cells | `primary` |
 | Accepted-values sentences in right cells | `primary` |
-| Fact parentheses, fact separators, `required`, `repeatable`, `default: <value>`, `implied: <value>`, `env: <names>`, and `config: <path>` | `dim` |
+| Fact parentheses, fact separators, `alias: <names>`, `aliases: <names>`, `required`, `repeatable`, `default: <value>`, `implied: <value>`, `env: <names>`, and `config: <path>` | `dim` |
 | `deprecated: <message>` inside a fact list | `warning` |
+| The entire `Alias: <names>` or `Aliases: <names>` line below a masthead, excluding indentation | `dim` |
 | The entire `Deprecated: <message>` line below a masthead, excluding indentation | `warning` |
 | Example `$` prompt | `dim` |
 | Application name added before an authored example | `highlight` |

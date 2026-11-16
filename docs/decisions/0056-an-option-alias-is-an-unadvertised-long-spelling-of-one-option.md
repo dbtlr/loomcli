@@ -27,3 +27,7 @@ An alias name follows the rule the option's own declared name follows, because b
 ## Status
 
 Accepted in 0.8.0.
+
+## Changelog
+
+- 2026-11-16: [ADR-0168](0168-a-command-or-an-option-may-declare-a-visible-alias-that-every-listing-shows-beside-its-canonical-name.md), proposed, supersedes in part the sentence that help, the manifest, completion, and suggestions never list an alias, for a visible alias: `visibleAliases` on an option's config declares aliases that help, the man page, completion, and the manifest show beside the option, while suggestions still never list one. A visible alias is an alias in every other respect: the name rule, the spellings its option's polarity generates, the binding, the reported spelling, and the declaration faults, and it carries no deprecation message. An alias `aliases` declares keeps this record's decision. `inspect()` keeps `aliases` as every alias and adds `visibleAliases`. It binds when that record is accepted.

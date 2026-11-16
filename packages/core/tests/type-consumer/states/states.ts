@@ -68,6 +68,8 @@ application.option;
 application.command;
 // @ts-expect-error TS2339: The unnamed root answers to no bare token, so it has no name to alias.
 freshApplication.alias;
+// @ts-expect-error TS2339: The unnamed root declares no visible alias either.
+freshApplication.visibleAlias;
 
 // A group keeps `option()` and `command()` open and publishes `run()`.
 // A root group builds; selecting no child is an input error, so this reads the member alone.

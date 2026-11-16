@@ -72,7 +72,7 @@ The rules read source text and scope analysis. They use no type information. A v
 
 - `new Command(...)` or `new Application(...)`, where the binding is imported from `@loomcli/core`. A renamed import (`import { Command as Cmd }`) and a namespace import (`new core.Command(...)`) count.
 - `optionSet(...)`, where the binding is imported from `@loomcli/core`, under the same import forms. An [option set](../core/options.md#sharing-options) is immutable like a Command, and its group calls, `exclusive`, `oneRequired`, `requiredTogether`, and `requires`, are authoring calls on it.
-- An authoring call on a Loom declaration. The authoring calls are `option`, `options`, `argument`, `globalOption`, `command`, `alias`, `action`, `stdin`, `exclusive`, `oneRequired`, `requiredTogether`, `requires`, `result`, `rows`, `views`, and `extend`.
+- An authoring call on a Loom declaration. The authoring calls are `option`, `options`, `argument`, `globalOption`, `command`, `alias`, `visibleAlias`, `action`, `stdin`, `exclusive`, `oneRequired`, `requiredTogether`, `requires`, `result`, `rows`, `views`, and `extend`.
 - An identifier whose `const` declaration is initialized with a Loom declaration.
 
 Type assertions around a value (`as`, `satisfies`, `!`) do not change what it is.
@@ -137,9 +137,9 @@ A statement that begins with `void` is a deliberate discard and is not reported.
 
 Reports a literal name that core rejects when the module loads. The rule calls the predicates `isPortableName` and `isDeclaredName`, which `@loomcli/core` exports and core's own declaration rules call. Each message ends with the correction core's diagnostic gives.
 
-- The name of a `new Command(...)` or `new Application(...)`, and each name in an `alias(...)` call, must be a portable name: A-Z, a-z, 0-9, `.`, `_`, and `-`, nonempty, and not starting with `-` or `.`.
-- The name of an `option(...)`, `argument(...)`, or `globalOption(...)` call, and each literal in an option's `aliases` array, must be a declared name: nonempty, with no leading hyphen, whitespace, or `=`.
-- The key of each entry of an `optionSet({...})` record from `@loomcli/core`, and each literal in that entry's `aliases` array, answer the same declared-name rule, under any import of `optionSet`.
+- The name of a `new Command(...)` or `new Application(...)`, and each name in an `alias(...)` or `visibleAlias(...)` call, must be a portable name: A-Z, a-z, 0-9, `.`, `_`, and `-`, nonempty, and not starting with `-` or `.`.
+- The name of an `option(...)`, `argument(...)`, or `globalOption(...)` call, and each literal in an option's `aliases` or `visibleAliases` array, must be a declared name: nonempty, with no leading hyphen, whitespace, or `=`.
+- The key of each entry of an `optionSet({...})` record from `@loomcli/core`, and each literal in that entry's `aliases` or `visibleAliases` array, answer the same declared-name rule, under any import of `optionSet`.
 
 ```ts
 // Reported: a space is not a portable name character.
@@ -149,7 +149,7 @@ new Command('deploy now', { description: 'Deploy.' });
 base.option('--verbose', { description: 'Print more.', type: 'boolean' });
 ```
 
-The rule judges a string literal and a template literal with no substitution. It skips a name held in a variable, and it skips an `aliases` array that holds a spread or is not a literal.
+The rule judges a string literal and a template literal with no substitution. It skips a name held in a variable, and it skips an `aliases` or `visibleAliases` array that holds a spread or is not a literal.
 
 ### `host-bypass`
 

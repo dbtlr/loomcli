@@ -53,6 +53,7 @@ const authoringMethods: ReadonlySet<string> = new Set([
   'rows',
   'stdin',
   'views',
+  'visibleAlias',
 ]);
 
 /** The TypeScript syntax that changes the type of a value and leaves the value as it was. */

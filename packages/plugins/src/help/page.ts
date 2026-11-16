@@ -6,10 +6,12 @@ import { groupSentences } from '../option-groups.js';
 import { continuation } from '../text-lines.js';
 import { argumentAccepts, optionAccepts } from './accepted.js';
 import {
+  aliasLabels,
+  aliasSeparator,
   argumentFacts,
   argumentForm,
   column,
-  deprecatedFacts,
+  commandFacts,
   isEmpty,
   optionCell,
   optionForm,
@@ -51,46 +53,66 @@ function pathOf(graph: CommandGraph, command: CommandNode): string {
   return [graph.name, ...command.path].join(' ');
 }
 
-/** The label of the line under a deprecated Command's masthead, ahead of its message. */
-const deprecationLabel = 'Deprecated: ';
-
-/** The indent of the deprecation line. */
-const deprecationIndent = '  ';
+/** The indent of each labeled line under a masthead: the alias line and the deprecation line. */
+const labeledIndent = '  ';
 
 /** Where a masthead description continues when its hang after the path cannot fit. */
 const mastheadBase = 2;
 
+/** One labeled line under a masthead: its label, its text, and the tone the whole line prints in. */
+interface LabeledLine {
+  readonly label: string;
+  readonly text: string;
+  readonly tone: 'dim' | 'warning';
+}
+
 /**
- * The deprecation line under a masthead. On a terminal its message wraps and continues under its
- * first character, after the label, or at the line's indent when that hang cannot fit. Each line
- * is one warning value, so the first line's label and message stay one value, as they are off a
- * terminal.
+ * A labeled line under a masthead, such as `Deprecated: <message>`. On a terminal its text wraps
+ * and continues under its first character, after the label, or at the line's indent when that hang
+ * cannot fit. Each line is one value in the line's tone, so the first line's label and text stay
+ * one value, as they are off a terminal.
  */
-function deprecation(message: string, context: ViewContext): string[] {
+function labeled({ label, text, tone }: LabeledLine, context: ViewContext): string[] {
   const { style } = context;
-  const label = style.escape(deprecationLabel);
-  const text = style.escape(message);
+  const styled = style[tone];
+  const head = style.escape(label);
+  const body = style.escape(text);
   if (!onTerminal(context)) {
-    return [`${deprecationIndent}${style.warning(label + text)}`];
+    return [`${labeledIndent}${styled(head + body)}`];
   }
-  const base = context.width(deprecationIndent);
+  const base = context.width(labeledIndent);
   const { first, indent, rest } = hangLines(
-    text,
-    { base, columns: context.columns, lead: base + context.width(label) },
+    body,
+    { base, columns: context.columns, lead: base + context.width(head) },
     context,
   );
   return [
-    `${deprecationIndent}${style.warning(label + first)}`,
-    ...rest.map((line) => continuation(style.warning(line), ' '.repeat(indent), context)),
+    `${labeledIndent}${styled(head + first)}`,
+    ...rest.map((line) => continuation(styled(line), ' '.repeat(indent), context)),
   ];
+}
+
+/**
+ * The line under the masthead of a Command with visible aliases, `Alias: ls` or
+ * `Aliases: ls, dir`, printed dim; a Command with none prints no line.
+ */
+function aliasLine(command: CommandNode, context: ViewContext): string[] {
+  const names = command.visibleAliases;
+  if (isEmpty(names)) {
+    return [];
+  }
+  return labeled(
+    { label: aliasLabels(names).line, text: names.join(aliasSeparator), tone: 'dim' },
+    context,
+  );
 }
 
 /**
  * `<path> · <description>`, or `<path>` alone when the node has no description. The description
  * and the migration message each print as one line of prose, a line break the author wrote read as
  * a space. On a terminal the description wraps and continues under its first character, or at
- * indent 2 when that hang cannot fit. A deprecated Command follows it with its migration message on
- * the next line of the same block.
+ * indent 2 when that hang cannot fit. A Command with visible aliases follows it with its alias
+ * line, and a deprecated Command with its migration message, in the same block.
  */
 function masthead(path: string, command: CommandNode, context: ViewContext): string[] {
   const { style } = context;
@@ -105,7 +127,11 @@ function masthead(path: string, command: CommandNode, context: ViewContext): str
           { base: mastheadBase, lead: `${name} ${style.dim('·')} ` },
           context,
         );
-  return deprecated === undefined ? opening : [...opening, ...deprecation(deprecated, context)];
+  const deprecation =
+    deprecated === undefined
+      ? []
+      : labeled({ label: 'Deprecated: ', text: deprecated, tone: 'warning' }, context);
+  return [...opening, ...aliasLine(command, context), ...deprecation];
 }
 
 /**
@@ -197,10 +223,10 @@ function childSuffix(child: CommandNode): string | undefined {
 function childRow(child: CommandNode, context: ViewContext): Row {
   const { style } = context;
   const suffix = childSuffix(child);
-  // `deprecated` is this row's one possible fact.
+  // The alias fact and `deprecated` are this row's possible facts.
   return {
     left: `${style.highlight(style.escape(child.name ?? ''))}${suffix === undefined ? '' : ` ${style.dim.italic(suffix)}`}`,
-    right: rightCell({ description: child.description }, deprecatedFacts(child), context),
+    right: rightCell({ description: child.description }, commandFacts(child), context),
   };
 }
 

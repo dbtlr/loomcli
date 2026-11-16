@@ -32,6 +32,12 @@ tester.run('discarded-declaration', discardedDeclaration, {
       errors: [discarded('stdin')],
     },
     {
+      code: `${coreImport}
+        const base = new Command('base', { description: 'Base.' });
+        base.visibleAlias('b');`,
+      errors: [discarded('visibleAlias')],
+    },
+    {
       code: `import { Command as Cmd } from '@loomcli/core';
         const base = new Cmd('base', { description: 'Base.' });
         const again = base;

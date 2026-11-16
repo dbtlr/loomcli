@@ -50,7 +50,7 @@ The immutable value an authoring call returns. Each authoring call returns a new
 _Avoid_: Builder, definition object, config
 
 **Authoring call**:
-One of the calls that produce a new declaration: `argument()`, `option()`, `options()`, `globalOption()`, `exclusive()`, `oneRequired()`, `requiredTogether()`, `requires()`, `stdin()`, `alias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule for an author; a plugin's lifecycle hook makes the same calls but `options()`, with their types erased, and the closures `action()` applies do not bind it. A hook declares its options one by one.
+One of the calls that produce a new declaration: `argument()`, `option()`, `options()`, `globalOption()`, `exclusive()`, `oneRequired()`, `requiredTogether()`, `requires()`, `stdin()`, `alias()`, `visibleAlias()`, `result()`, `rows()`, `views()`, `command()`, `action()`, and `extend()`. The set a declaration still offers is part of its type, so the calling order is a compile-time rule for an author; a plugin's lifecycle hook makes the same calls but `options()`, with their types erased, and the closures `action()` applies do not bind it. A hook declares its options one by one.
 _Avoid_: Builder method, chain step
 
 **Action**:
@@ -237,8 +237,12 @@ The one rule for every name an operator types as a command at a shell prompt: th
 _Avoid_: Safe name, shell-safe name, identifier
 
 **Alias**:
-An unadvertised synonym for a Command or an option: another name for a common mistype, an inference, or a former name, so a guessed or retired spelling still succeeds. A Command's alias routes to that Command, and every canonical name and alias under one parent shares one set of names that must not repeat. An option's alias is one more long spelling of that option, in the table its other spellings share. An alias is not a second advertised name, not an option's short alias, and not a hidden member.
+A synonym for a Command or an option. An unadvertised alias is another name for a common mistype, an inference, or a former name, so a guessed or retired spelling still succeeds; a visible alias is a short form or a second name the author wants operators to learn. A Command's alias routes to that Command, and every canonical name and alias under one parent shares one set of names that must not repeat. An option's alias is one more long spelling of that option, in the table its other spellings share. An alias is unadvertised unless the author declares it a visible alias. An alias of either kind is never a second member of the graph, not an option's short alias, and not a hidden member.
 _Avoid_: Hidden alias, alternate command, shortcut
+
+**Visible alias**:
+An alias the author declares with `visibleAlias()` on a Command or `visibleAliases` on an option, which the listings show beside its member's canonical name: a fact on the member's row in help and the man page, a line on a Command's own page, a word completion offers where the canonical name does not match, and the `aliases` field of the member's manifest entry. It is an alias in every other respect, and every routed path, diagnostic, candidate list, and usage line still names the canonical name.
+_Avoid_: Advertised alias, public alias, second name
 
 **Hidden Command**:
 A full Command kept off every listing. It routes, runs, and has its own help page; only the listings omit it. A hidden option follows the same rule: it parses as any other option and no listing shows it.
