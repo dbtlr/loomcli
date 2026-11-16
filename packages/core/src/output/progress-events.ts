@@ -1,4 +1,7 @@
-import type { ProgressEvent, ProgressReport, RegionCloser } from './types.js';
+import type { ProgressEvent, ProgressReport, Region, RegionCloser } from './types.js';
+
+/** The state a region's own `end()` takes, which its end event reads. */
+type EndState = NonNullable<Parameters<Region['end']>[0]>;
 
 /** How a run's ledger reads a label and hands an event on. */
 interface LedgerSinks {
@@ -8,11 +11,10 @@ interface LedgerSinks {
   deliver: (event: ProgressEvent) => void;
 }
 
-/** The end state each closer builds, for a region whose own `end()` asked for `ended`. */
-const builtBy: Readonly<Record<RegionCloser, ProgressEvent['state']>> = {
+/** The end state each closer builds when core, not the region's own `end()`, closes the region. */
+const builtBy: Readonly<Record<Exclude<RegionCloser, 'end'>, ProgressEvent['state']>> = {
   cancellation: 'cancelled',
   completion: 'ended',
-  end: 'ended',
   failure: 'failed',
 };
 
@@ -38,13 +40,14 @@ class RegionReports {
   }
 
   /**
-   * The end event of a region that reported: `failed` after `end('failed')` and after a failure,
-   * `cancelled` after cancellation, and `ended` otherwise. It carries the label `end()` received,
-   * and the last reported label without one. A region that never reported builds none.
+   * The end event of a region that reported: the state `end()` received after the region's own
+   * `end()`, `failed` after a failure, `cancelled` after cancellation, and `ended` after
+   * completion. It carries the label `end()` received, and the last reported label without one. A
+   * region that never reported builds none.
    */
-  close(closer: RegionCloser, state: 'ended' | 'failed', label?: string): void {
+  close(closer: RegionCloser, state: EndState, label?: string): void {
     if (this.#id !== undefined) {
-      this.#build(closer === 'end' && state === 'failed' ? 'failed' : builtBy[closer], label);
+      this.#build(closer === 'end' ? state : builtBy[closer], label);
     }
   }
 
@@ -92,4 +95,4 @@ class ProgressLedger {
 }
 
 export { ProgressLedger };
-export type { RegionReports };
+export type { EndState, RegionReports };

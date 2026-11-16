@@ -9,7 +9,8 @@ import { Application } from '@loomcli/core';
  * - The stack. Two regions draw, an `out.info` and an `out.debug` at verbosity 1 between their
  *   frames land above both, and the screen holds both frames below them in open order. A frame that
  *   grows by a row moves the region below it down. Closing the top region moves its last frame into
- *   scrollback above the other region, and a region whose last frame is empty leaves no row. An
+ *   scrollback above the other region, and a region whose last frame is empty leaves no row. A
+ *   region ended `'skipped'` or `'warned'` closes as `end()` does, `closedBy` reading `'end'`. An
  *   `out.draw` that writes `partial` with no line break before the first region draws leaves
  *   `partial` on its own row above the frame.
  * - Stdout. With stdout a terminal too, a result written while a region is drawn lands above the
@@ -112,6 +113,16 @@ test('closing the top region moves its last frame into scrollback above the othe
     'first frame',
     'second frame',
     'third frame',
+  ]);
+});
+
+test("a region ended skipped or warned closes as end() does: closedBy reads 'end' and its last frame moves into scrollback above the open region", async () => {
+  const run = await regions('endStates');
+  expect(run.notes).toEqual({ skipped: 'end', warned: 'end' });
+  await expect(screen(run, 'ended')).resolves.toEqual([
+    'skipped frame',
+    'warned frame',
+    'open frame',
   ]);
 });
 

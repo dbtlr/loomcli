@@ -157,6 +157,20 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         },
         verbose: true,
       },
+      /** Two regions ended skipped and warned above a region still open. */
+      endStates: {
+        action: async ({ out }) => {
+          const skipped = watch('skipped', out.region());
+          const warned = watch('warned', out.region());
+          const open = out.region();
+          await skipped.draw('skipped frame', text);
+          await warned.draw('warned frame', text);
+          await open.draw('open frame', text);
+          await skipped.end('skipped');
+          await warned.end('warned', 'Fetched 118 of 120 records');
+          mark('ended');
+        },
+      },
       /** A failure with a region open in the action, a middleware, and a configuration source. */
       failure: {
         action: async ({ out }) => {

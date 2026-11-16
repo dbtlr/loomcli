@@ -1,5 +1,5 @@
 import { handled } from '../support/thenable.js';
-import type { ProgressLedger, RegionReports } from './progress-events.js';
+import type { EndState, ProgressLedger, RegionReports } from './progress-events.js';
 import type { ProgressReport, Region, RegionCloser, RegionOptions, View } from './types.js';
 
 /*
@@ -518,7 +518,7 @@ class LiveRegion implements Region {
     return this.#regions.draw(this, data, view);
   }
 
-  end(state: 'ended' | 'failed' = 'ended', label?: string): Promise<void> {
+  end(state: EndState = 'ended', label?: string): Promise<void> {
     return this.close('end', state, label);
   }
 
@@ -534,7 +534,7 @@ class LiveRegion implements Region {
    * stack. The close resolves once that is written, and a later close resolves at once. A `label`
    * from `end()` replaces the reported label on the end event.
    */
-  close(closer: RegionCloser, state: 'ended' | 'failed', label?: string): Promise<void> {
+  close(closer: RegionCloser, state: EndState, label?: string): Promise<void> {
     if (this.#closedBy !== undefined) {
       return Promise.resolve();
     }

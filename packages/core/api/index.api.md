@@ -1455,7 +1455,7 @@ interface ProgressEvent_2 {
     readonly completed?: number;
     readonly id: number;
     readonly label: string;
-    readonly state: 'started' | 'updated' | 'ended' | 'failed' | 'cancelled';
+    readonly state: 'started' | 'updated' | 'ended' | 'failed' | 'cancelled' | 'skipped' | 'warned';
     readonly total?: number;
 }
 export { ProgressEvent_2 as ProgressEvent }
@@ -1542,7 +1542,7 @@ export function readExtension<Target extends ExtensionTarget, Schema extends Sta
 export interface Region {
     readonly closedBy: RegionCloser | undefined;
     draw<Data>(data: Data, view: View<Data>): Promise<void>;
-    end(state?: 'ended' | 'failed', label?: string): Promise<void>;
+    end(state?: 'ended' | 'failed' | 'skipped' | 'warned', label?: string): Promise<void>;
     readonly live: boolean;
     report(progress: ProgressReport): void;
     readonly signal: AbortSignal;
