@@ -10,9 +10,12 @@ import {
   brokenFileLine,
   exclusiveFileOptions,
   isSilent,
+  lookedFor,
   namedFileFailure,
   namedFileIssue,
+  noFileFound,
   noFileNotice,
+  readFrom,
   skippedCandidates,
   skippedUnusable,
 } from './messages.js';
@@ -269,12 +272,28 @@ async function namedFile(named: string, lookup: Lookup): Promise<UsableFile> {
   return { file, object: reading.object };
 }
 
-/** The candidates something is at, in candidate order, each checked without reading it. */
-async function presentFiles(files: readonly ConfigFile[]): Promise<ConfigFile[]> {
+/** Writes the `-vv` line for one place the lookup looked and found nothing. */
+async function traceAbsent(file: ConfigFile, { out, style }: Channels): Promise<void> {
+  await out.trace(lookedFor(file.shown, style));
+}
+
+const nothingFound = 0;
+
+/**
+ * The candidates something is at, in candidate order, each checked without reading it. Each
+ * absent candidate before the first present one writes its `-vv` line; the lookup has found its
+ * file once one is present, so a later absent candidate writes none.
+ */
+async function presentFiles(
+  files: readonly ConfigFile[],
+  channels: Channels,
+): Promise<ConfigFile[]> {
   const present: ConfigFile[] = [];
   for (const file of files) {
     if (await isPresent(file.path)) {
       present.push(file);
+    } else if (present.length === nothingFound) {
+      await traceAbsent(file, channels);
     }
   }
   return present;
@@ -299,8 +318,14 @@ async function warnSkipped(
   );
 }
 
-/** How a step of the lookup ended: with a file, or with no configuration and no later step. */
-type Outcome = { readonly kind: 'ended' } | { readonly kind: 'file'; readonly usable: UsableFile };
+/**
+ * How a step of the lookup ended: with a file, with a broken file's warning and no configuration,
+ * or with the variable's missing file, which ends the lookup having found nothing.
+ */
+type Outcome =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'ended' }
+  | { readonly kind: 'file'; readonly usable: UsableFile };
 
 /**
  * A discovered file read once: its object, or the end of the lookup after one warning when it
@@ -317,6 +342,7 @@ async function discoveredFile(
     return { kind: 'file', usable: { file, object: reading.object } };
   }
   if (isSilent(reading.clause)) {
+    await traceAbsent(file, channels);
     return undefined;
   }
   if (lookup.strict) {
@@ -336,7 +362,7 @@ async function directoryFile(
   lookup: Lookup,
   channels: Channels,
 ): Promise<Outcome | undefined> {
-  const [found, ...skipped] = await presentFiles(files);
+  const [found, ...skipped] = await presentFiles(files, channels);
   if (found === undefined) {
     return undefined;
   }
@@ -344,10 +370,10 @@ async function directoryFile(
   return discoveredFile(found, lookup, channels);
 }
 
-/** The file the variable names, read alone: a missing one ends the lookup silently. */
+/** The file the variable names, read alone: a missing one ends the lookup with no notice. */
 async function variableFile(value: string, lookup: Lookup, channels: Channels): Promise<Outcome> {
   const file = configFile(resolve(lookup.host.cwd, value), value);
-  return (await discoveredFile(file, lookup, channels)) ?? { kind: 'ended' };
+  return (await discoveredFile(file, lookup, channels)) ?? { kind: 'absent' };
 }
 
 /** One directory a discovered step looks in, with the candidates it tries there, in order. */
@@ -433,16 +459,43 @@ function noticeStep(lookup: Lookup): Step | undefined {
   return first;
 }
 
-/** Writes the line that says no file was found, naming the first candidate where the lookup starts. */
-async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise<void> {
+/**
+ * Writes the line that says no file was found, naming the first candidate where the lookup starts,
+ * and answers whether it wrote one: a lookup that looks nowhere names no file, so it writes none.
+ */
+async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise<boolean> {
   const step = noticeStep(lookup);
   const [first] =
     step === undefined
       ? []
       : filesIn(step.directory, step.candidates, { host: lookup.host, walked: step.walked });
-  if (first !== undefined) {
-    await out.info(noFileNotice(first.shown, lookup.app, style));
+  if (first === undefined) {
+    return false;
   }
+  await out.info(noFileNotice(first.shown, lookup.app, style));
+  return true;
+}
+
+/**
+ * Says that the lookup found no file: the notice when `notice` asks for it and the search found
+ * none, and else the `-v` line, which the notice opens with.
+ */
+async function reportNoFile(
+  lookup: Lookup,
+  outcome: Outcome | undefined,
+  channels: Channels,
+): Promise<void> {
+  const noticed =
+    outcome === undefined && lookup.notice && (await announceNoFile(lookup, channels));
+  if (!noticed) {
+    await channels.out.debug(noFileFound);
+  }
+}
+
+/** Writes the `-v` line that names the file the run reads, and answers it. */
+async function announceRead(usable: UsableFile, { out, style }: Channels): Promise<UsableFile> {
+  await out.debug(readFrom(usable.file.shown, style));
+  return usable;
 }
 
 /** The outcome of the first discovered step that holds a file, or `undefined` when none does. */
@@ -473,18 +526,31 @@ async function findFile(lookup: Lookup, channels: Channels): Promise<UsableFile 
     return ignoredFile(lookup);
   }
   if (lookup.named !== undefined) {
-    return namedFile(lookup.named, lookup);
+    return announceRead(await namedFile(lookup.named, lookup), channels);
   }
+  return discoveredOne(lookup, channels);
+}
+
+/**
+ * The file the variable names, or else the first one the search finds, named at `-v`. A lookup
+ * that finds none says so, at `-v` or through the notice, unless a broken file's warning already
+ * said the run reads no configuration.
+ */
+async function discoveredOne(lookup: Lookup, channels: Channels): Promise<UsableFile | undefined> {
   const { fromVariable } = lookup;
   // The variable's file always ends the lookup, so only a search that finds nothing is noticed.
   const outcome =
     fromVariable === undefined || fromVariable === ''
       ? await searched(lookup, channels)
       : await variableFile(fromVariable, lookup, channels);
-  if (outcome === undefined && lookup.notice) {
-    await announceNoFile(lookup, channels);
+  if (outcome?.kind === 'file') {
+    return announceRead(outcome.usable, channels);
   }
-  return outcome?.kind === 'file' ? outcome.usable : undefined;
+  // A broken file's warning already says the run reads no configuration.
+  if (outcome?.kind !== 'ended') {
+    await reportNoFile(lookup, outcome, channels);
+  }
+  return undefined;
 }
 
 export { findFile };

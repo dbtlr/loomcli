@@ -5,6 +5,7 @@ import { packageName } from '../constants.js';
 import { dotenvVariableName } from '../rules.js';
 import { isVariableName } from '../variable-name.js';
 import { readDotenv } from './read.js';
+import type { ListedOut } from './read.js';
 
 /**
  * Which names the plugin imports. With no settings it imports every name the dotenv files define;
@@ -33,17 +34,20 @@ function listedNames(key: 'except' | 'only', names: readonly string[]): Readonly
   return new Set(names);
 }
 
-/** Whether the plugin imports a name, from the one list the settings give. */
-function importedNames(settings: DotenvSettings | undefined): (name: string) => boolean {
+/**
+ * The list that leaves a name out, from the one list the settings give, or `undefined` when the
+ * plugin imports the name.
+ */
+function leftOutBy(settings: DotenvSettings | undefined): ListedOut {
   if (settings?.only !== undefined) {
     const only = listedNames('only', settings.only);
-    return (name) => only.has(name);
+    return (name) => (only.has(name) ? undefined : 'only');
   }
   if (settings?.except !== undefined) {
     const except = listedNames('except', settings.except);
-    return (name) => !except.has(name);
+    return (name) => (except.has(name) ? 'except' : undefined);
   }
-  return () => true;
+  return () => undefined;
 }
 
 /**
@@ -63,9 +67,9 @@ function importedNames(settings: DotenvSettings | undefined): (name: string) => 
  * @public
  */
 export function dotenv(settings?: DotenvSettings): Plugin {
-  const imports = importedNames(settings);
+  const listedOut = leftOutBy(settings);
   return plugin(`${packageName}/dotenv`, {
-    onEnvironment: (context) => readDotenv(context, imports),
+    onEnvironment: (context) => readDotenv(context, listedOut),
   });
 }
 

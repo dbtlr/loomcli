@@ -122,8 +122,21 @@ function brokenFileLine(file: string, { at, clause }: Unusable): string {
   return `Configuration file ${shown(file)} ${withoutStop(clause)}${where(at)}. ${discoveredStep(clause)}`;
 }
 
+/** The `-v` line of a lookup that found no file, which the notice opens with too. */
+const noFileFound = 'Found no configuration file.';
+
 function noFileNotice(file: string, app: string, style: ContextualStyle): string {
   return `Found no configuration file. Create ${warned(file, style)} to configure ${shown(app)}.`;
+}
+
+/** The `-v` line that names the file the run read. */
+function readFrom(file: string, style: ContextualStyle): string {
+  return `Read configuration from ${warned(file, style)}.`;
+}
+
+/** The `-vv` line for one place the lookup looked and found nothing. */
+function lookedFor(file: string, style: ContextualStyle): string {
+  return `Looked for ${warned(file, style)}: not found.`;
 }
 
 const stops = ['.', '!', '?'];
@@ -211,9 +224,12 @@ export {
   ignoredOption,
   ignoredValue,
   isSilent,
+  lookedFor,
   namedFileFailure,
   namedFileIssue,
+  noFileFound,
   noFileNotice,
+  readFrom,
   skippedCandidates,
   skippedUnusable,
   stringListIssue,

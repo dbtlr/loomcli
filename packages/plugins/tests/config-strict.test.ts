@@ -15,6 +15,7 @@ import { z } from 'zod';
 
 import type { Settings } from './fixtures/config-run.ts';
 import { settingsFault } from './fixtures/config-settings.ts';
+import { withoutLookupLines } from './fixtures/lookup-lines.ts';
 
 /**
  * The `strict` setting under "The strict setting" in the plugin's reference: what fails the run
@@ -95,7 +96,11 @@ async function ran({ argv = [], file, provided = false, schema, strict }: Case):
     writeFileSync(join(root, '.app.json'), JSON.stringify(file));
     const mock = mockProcess({ argv, cwd: root, env: { HOME: root } });
     await build({ schema, strict }, provided).run({ process: mock });
-    return { status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
+    return {
+      status: mock.exitCode,
+      stderr: withoutLookupLines(mock.stderr.text),
+      stdout: mock.stdout.text,
+    };
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
@@ -780,7 +785,11 @@ async function ranBroken({
     await new Application('app', { plugins: [config.plugin], uses: [config.values] })
       .action(({ out }) => out.print('ran'))
       .run({ process: mock });
-    return { status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
+    return {
+      status: mock.exitCode,
+      stderr: withoutLookupLines(mock.stderr.text),
+      stdout: mock.stdout.text,
+    };
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
@@ -966,7 +975,11 @@ test('a broken YAML file in the user folder fails the run under strict, with its
         env: { HOME: join(root, 'home'), XDG_CONFIG_HOME: join(root, 'xdg') },
       });
       await app.run({ process: mock });
-      return { status: mock.exitCode, stderr: mock.stderr.text, stdout: mock.stdout.text };
+      return {
+        status: mock.exitCode,
+        stderr: withoutLookupLines(mock.stderr.text),
+        stdout: mock.stdout.text,
+      };
     };
     const shown = join(folder, 'config.yaml');
     await expect(runIn('- 1\n')).resolves.toEqual({

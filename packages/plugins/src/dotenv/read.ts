@@ -5,7 +5,8 @@ import type { EnvironmentContext } from '@loomcli/core';
 
 import { expandValue } from './expand.js';
 import type { Lookup } from './expand.js';
-import { fileUnreadable, lineMalformed } from './messages.js';
+import { fileUnreadable, imported, lineMalformed, skippedName } from './messages.js';
+import type { SkipReason } from './messages.js';
 import { parseDotenv } from './parse.js';
 import type { DotenvAssignment } from './parse.js';
 
@@ -78,25 +79,114 @@ async function readLayer(
   return expandFile(assignments, outer);
 }
 
+/** The settings' list that leaves a name out, or `undefined` when the plugin imports it. */
+type ListedOut = (name: string) => 'except' | 'only' | undefined;
+
+/** What the files read so far hold: each name's first value, and the file that supplied it. */
+interface Layers {
+  readonly values: Map<string, string>;
+  readonly files: Map<string, string>;
+}
+
+/** What judging a file's names reads: the hook's environment, the files read so far, and the list. */
+interface Judging {
+  readonly env: EnvironmentContext['host']['env'];
+  readonly layers: Layers;
+  readonly listedOut: ListedOut;
+}
+
+/** Keeps a name's value and the file that supplied it, when no more specific file did. */
+function keepFirst(layers: Layers, [name, value]: readonly [string, string], file: string): void {
+  if (!layers.values.has(name)) {
+    layers.values.set(name, value);
+    layers.files.set(name, file);
+  }
+}
+
+/**
+ * Why a file's name is not imported from it, with the first reason that holds: the settings'
+ * list, then the environment, an empty value included, then a more specific file. `undefined` is
+ * a name the file imports.
+ */
+function skipReason(name: string, reading: Judging): SkipReason | undefined {
+  const { env, layers, listedOut } = reading;
+  const listed = listedOut(name);
+  if (listed !== undefined) {
+    return { kind: listed };
+  }
+  if (Object.hasOwn(env, name) && env[name] !== undefined) {
+    return { kind: 'set' };
+  }
+  const from = layers.files.get(name);
+  return from === undefined ? undefined : { from, kind: 'supplied' };
+}
+
+/** What one file's names came to: the ones it imports, and each one passed over with why. */
+interface LayerOutcome {
+  readonly imported: string[];
+  readonly skipped: [string, SkipReason][];
+}
+
+/**
+ * Sorts one file's names, in the order the file first assigns them, into the ones it imports and
+ * the ones it passes over, and keeps each name's first value and the file that supplied it.
+ */
+function judgeLayer(
+  file: string,
+  names: ReadonlyMap<string, string>,
+  reading: Judging,
+): LayerOutcome {
+  const outcome: LayerOutcome = { imported: [], skipped: [] };
+  for (const entry of names) {
+    const [name] = entry;
+    const reason = skipReason(name, reading);
+    if (reason === undefined) {
+      outcome.imported.push(name);
+    } else {
+      outcome.skipped.push([name, reason]);
+    }
+    keepFirst(reading.layers, entry, file);
+  }
+  return outcome;
+}
+
+const noNames = 0;
+
+/**
+ * Writes one file's lines: at `-v` how many names it imported, when any, and at `-vv` each name
+ * it passed over and why, in the order the file first assigns them. No line holds a value.
+ */
+async function reportLayer(
+  file: string,
+  outcome: LayerOutcome,
+  out: EnvironmentContext['out'],
+): Promise<void> {
+  if (outcome.imported.length > noNames) {
+    await out.debug(imported(outcome.imported.length, file));
+  }
+  for (const [name, reason] of outcome.skipped) {
+    await out.trace(skippedName(name, file, reason));
+  }
+}
+
 /**
  * Reads the layered files from the most specific, as Bun loads them, so a name keeps the first
  * value read and a later file only fills names still unset. That order decides what a reference
  * reads.
  */
-async function readDotenv(context: EnvironmentContext, imports: (name: string) => boolean) {
+async function readDotenv(context: EnvironmentContext, listedOut: ListedOut) {
   const { env } = context.host;
-  const known = new Map<string, string>();
+  const imports = (name: string) => listedOut(name) === undefined;
+  const layers: Layers = { files: new Map(), values: new Map() };
   // A name the environment holds as undefined is unset, as core's merge reads it.
   const outer: Lookup = (name) =>
-    (Object.hasOwn(env, name) ? env[name] : undefined) ?? known.get(name);
+    (Object.hasOwn(env, name) ? env[name] : undefined) ?? layers.values.get(name);
   for (const file of dotenvFiles(env.NODE_ENV)) {
-    for (const [name, value] of await readLayer(file, context, { imports, outer })) {
-      if (!known.has(name)) {
-        known.set(name, value);
-      }
-    }
+    const names = await readLayer(file, context, { imports, outer });
+    await reportLayer(file, judgeLayer(file, names, { env, layers, listedOut }), context.out);
   }
-  return Object.fromEntries([...known].filter(([name]) => imports(name)));
+  return Object.fromEntries([...layers.values].filter(([name]) => imports(name)));
 }
 
+export type { ListedOut };
 export { readDotenv };

@@ -61,7 +61,8 @@ async function configRun(argv: readonly string[], strict: boolean) {
 test("the configuration plugin's lines escape the spelling of the option a file value fills", async () => {
   await expect(configRun(['-L'], false)).resolves.toEqual({
     status: 0,
-    stderr: '› Ignored option "--fla\\u202eg" from flag in .app.json: Use true or false.\n',
+    stderr:
+      '› Read configuration from .app.json.\n› Ignored option "--fla\\u202eg" from flag in .app.json: Use true or false.\n',
   });
   await expect(configRun([], true)).resolves.toEqual({
     status: 2,

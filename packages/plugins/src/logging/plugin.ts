@@ -1,11 +1,12 @@
 import { plugin } from '@loomcli/core';
-import type { LogHook, Plugin } from '@loomcli/core';
+import type { LogDestination, LogHook, Plugin } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { resolveLogFile } from './directory.js';
 import { LoggingError } from './error.js';
 import { writeRecord } from './file.js';
-import type { Report } from './file.js';
+import type { Report, Written } from './file.js';
+import { loggingTo, rotated } from './messages.js';
 import { isWritten, recordOf } from './record.js';
 import { planOf } from './settings.js';
 import type { LoggingPlan, LoggingSettings } from './settings.js';
@@ -17,6 +18,36 @@ function reportTo(onError: ((error: LoggingError) => undefined) | undefined): Re
   return (error) => {
     onError?.(error);
   };
+}
+
+/**
+ * Leaves a lane's failed write to core: the hook returns `undefined`, so it awaits no line, and
+ * core's output contract reports a write that fails.
+ */
+function passOver(): undefined {
+  return undefined;
+}
+
+/** What the lines of one record's write read: the runs already told, and this run's destination. */
+interface Telling {
+  /** The outermost runs whose `Logging to` line is written, so each run says it once. */
+  readonly announced: WeakSet<LogDestination>;
+  /** The outermost run's destination, one object for that run and every run nested in it. */
+  readonly destination: LogDestination;
+}
+
+/**
+ * Writes the lines one record's write earns on the outermost run's lanes: `Rotated` at `-vv` for a
+ * rotation that moved the file, and `Logging to` at `-v` after the first record of that run lands.
+ */
+function sayWritten(path: string, written: Written, { announced, destination }: Telling): void {
+  if (written.rotated) {
+    destination.out.trace(rotated(path)).catch(passOver);
+  }
+  if (written.appended && !announced.has(destination)) {
+    announced.add(destination);
+    destination.out.debug(loggingTo(path)).catch(passOver);
+  }
 }
 
 /** The hook that writes each record, from the settings with their defaults filled. */
@@ -31,6 +62,7 @@ function hookOf(plan: LoggingPlan): LogHook {
   }
   const { keep, maxBytes } = plan;
   const report = reportTo(plan.onError);
+  const announced = new WeakSet<LogDestination>();
   return (event, destination) => {
     if (!isWritten(event.level, plan.level)) {
       return undefined;
@@ -39,7 +71,8 @@ function hookOf(plan: LoggingPlan): LogHook {
     if (path instanceof LoggingError) {
       report(path);
     } else {
-      writeRecord({ keep, maxBytes, path, report }, recordOf(event));
+      const written = writeRecord({ keep, maxBytes, path, report }, recordOf(event));
+      sayWritten(path, written, { announced, destination });
     }
     return undefined;
   };
