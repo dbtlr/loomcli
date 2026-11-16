@@ -4,7 +4,7 @@ title: ADR-0090 - An operator's -v or -q settles the run's verbosity right after
 description: Out gains debug and trace beside info, warn, and error, and core settles each run's verbosity once, right after graph build and before environment preparation, by reading host.argv with the parser's own word reader against the built graph. The verbosity is the occurrences of the one verbose-marked counted global option, read as 2 above 2, less those of the one quiet-marked option, read as 1 above 1. Verbosity 1 shows debug, 2 shows trace too, and -1 hides info and success, while print, render, results, warn, error, and every failure always print. Each marked option binds no variable or configuration key, an invocation by name settles its own verbosity from the values it lowers, and @loomcli/plugins/verbose declares marked -v, --verbose and -q, --quiet as control options.
 status: accepted
 created: 2026-10-19
-modified: 2026-11-13
+modified: 2026-11-16
 ---
 
 # ADR-0090 - An operator's -v or -q settles the run's verbosity right after graph build
@@ -67,3 +67,4 @@ Accepted in 0.14.0.
 - 2026-10-19: Help prints the quiet-marked option with no `...` after its spellings, because a further `-q` adds nothing. This narrows [ADR-0057](0057-a-counted-option-counts-its-occurrences-and-an-implied-value-fills-a-bare-spelling.md)'s help row for that one option.
 - 2026-10-19: Completion reads help's rule for a further occurrence: it stops offering the quiet-marked option once given and the verbose-marked option once given twice. `locate`'s `option` position gains `counts`, which [ADR-0042](0042-core-reads-a-partial-invocation-with-the-parsers-own-grammar.md) records in a dated entry.
 - 2026-11-13: [ADR-0148](0148-a-semantic-method-takes-a-view-for-its-message-and-ends-it-with-one-line-break.md), proposed, lets `out.debug` and `out.trace`, like the other semantic methods, take an optional `View<string>` after the message, and extends the hidden call's rule: a call the verbosity hides calls no view, neither its lane view nor the one it passed.
+- 2026-11-16: [ADR-0163](0163-a-semantic-method-takes-a-stream-of-text-and-shows-each-chunk-as-it-arrives.md), proposed, lets each semantic method take an async iterable of its message's text, and extends the hidden call's rule to it: a streamed message the verbosity hides calls no view and writes nothing, core reads it to its end and discards its text, and the call resolves when the iterable ends and rejects when it throws, at every verbosity. It binds when that record is accepted.

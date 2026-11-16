@@ -73,7 +73,7 @@ describe('providerContext', () => {
     const context = providerContext(open, {
       options: { token: undefined },
       out: {
-        warn: async (message) => {
+        warn: async (message: string) => {
           lines.push(message);
         },
       },

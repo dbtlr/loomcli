@@ -68,13 +68,20 @@ interface Measure {
 }
 
 /**
- * The stack of open regions at the bottom of stderr, as the terminal shows it. Each method answers
- * the bytes that move the terminal from what it shows to what it should show, and updates the model
- * to match, so a caller writes those bytes in the order it asked for them.
+ * The stack of open regions at the bottom of the terminal, as the terminal shows it, with the
+ * unfinished row of each open streamed message above it. Each method answers the bytes that move
+ * the terminal from what it shows to what it should show, and updates the model to match, so a
+ * caller writes those bytes in the order it asked for them.
  */
 class Screen {
   readonly #slots: Slot[] = [];
+  /** The unfinished rows of the open streamed messages, above the regions, in the order each first showed. */
+  readonly #rows: Slot[] = [];
   readonly #closedMeanwhile: Slot[] = [];
+  /** The streamed messages whose unfinished rows were left on the screen as drawn, which draw no row again. */
+  readonly #left = new Set<Slot>();
+  /** The streamed `print` messages whose line is unfinished at the cursor. */
+  readonly #lines = new Set<Slot>();
   /** The column the last write above the stack left the cursor at, 0 when it ended a row. */
   #column = 0;
   /**
@@ -124,7 +131,7 @@ class Screen {
     for (const slot of closed) {
       this.#slots.splice(this.#slots.indexOf(slot), 1);
     }
-    for (const slot of this.#slots) {
+    for (const slot of [...this.#rows, ...this.#slots]) {
       slot.shown = slot.latest;
     }
     const held = closed.map(({ latest }) => scrollback(latest)).join('');
@@ -145,17 +152,22 @@ class Screen {
     return this.reclaim();
   }
 
-  /** Whether any region is open on the screen. */
+  /** Whether any region is open on the screen, or any streamed message keeps an unfinished row there. */
   get holding(): boolean {
-    return this.#slots.length > 0;
+    return this.#slots.length > 0 || this.#rows.length > 0;
   }
 
   /**
-   * Whether any region holds a frame: one drew, and its last frame has not yet moved into
-   * scrollback, which waits for the end of a lend or of an input region that holds it still.
+   * Whether the screen holds what a write that does not pass through core would tear: a region's
+   * frame, from its first draw until its last frame moves into scrollback, which waits for the end
+   * of a lend or of an input region that holds it still, a streamed message's unfinished row, or a
+   * streamed `print`'s unfinished line.
    */
   get holdsFrame(): boolean {
-    return this.#slots.some((slot) => slot.latest !== undefined);
+    return (
+      this.#lines.size > 0 ||
+      [...this.#rows, ...this.#slots].some((slot) => slot.latest !== undefined)
+    );
   }
 
   /** Whether an input region is open, which holds every other region's frame still. */
@@ -168,7 +180,7 @@ class Screen {
     if (this.lending > 0 || this.#suspended) {
       return undefined;
     }
-    const frames = this.#slots.flatMap(({ shown }) =>
+    const frames = [...this.#rows, ...this.#slots].flatMap(({ shown }) =>
       shown === undefined || shown.text === '' ? [] : [shown],
     );
     if (frames.length === 0) {
@@ -185,14 +197,42 @@ class Screen {
     return { marked: marked.join(''), text: text.join('') };
   }
 
-  /** Returns the cursor to the stack's first row and erases to the end of the screen. */
+  /**
+   * Returns the cursor to the stack's first row and erases to the end of the screen. When an
+   * unfinished row is wider than the screen, as one becomes when the terminal narrows, no erase can
+   * place it, so every unfinished row is left on the screen as drawn and only the regions below them
+   * are erased; with none below, a line break moves the cursor off the row it ends.
+   */
   #erase(): string {
+    const left = this.#leaveWide();
     const stack = this.#stack();
     if (stack === undefined) {
-      return '';
+      if (left) {
+        this.#column = 0;
+      }
+      return left ? '\n' : '';
     }
     const rows = this.measure.rows(stack.marked);
     return `\r${rows > 0 ? `${escape}[${String(rows)}A` : ''}${escape}[J`;
+  }
+
+  /**
+   * Leaves every unfinished row on the screen as drawn when any of them is wider than the screen
+   * now: each leaves the stack, its message draws no unfinished row again, and the text above the
+   * stack ends with them. Answers whether it left any.
+   */
+  #leaveWide(): boolean {
+    const wide = this.#rows.some(
+      ({ shown }) => shown !== undefined && shown.text !== '' && !this.fits(shown),
+    );
+    if (this.lending > 0 || this.#suspended || !wide) {
+      return false;
+    }
+    for (const slot of this.#rows.splice(0)) {
+      this.#left.add(slot);
+    }
+    this.#opened = undefined;
+    return true;
   }
 
   /**
@@ -256,15 +296,62 @@ class Screen {
     return this.#draw();
   }
 
-  /** Text written to the terminal above the stack: what to write before it and after it. */
-  around(text: string): { before: string; after: string } {
+  /**
+   * Text written to the terminal above the stack: what to write before it and after it. `between`
+   * changes the model once the stack is erased and the text is written, before the stack is drawn
+   * again, as a streamed message's write changes its unfinished row.
+   */
+  around(text: string, between?: () => void): { before: string; after: string } {
     if (this.lending > 0) {
       this.note(text);
+      between?.();
       return { after: '', before: '' };
     }
     const before = this.#uncover();
     this.note(text);
+    between?.();
     return { after: this.#draw(), before };
+  }
+
+  /**
+   * A streamed message's unfinished row, which joins the rows above the regions the first time it
+   * is set. A write calls it between its erase and its draw. While the terminal is lent, the row is
+   * kept and drawn once the lend ends.
+   */
+  row(slot: Slot, frame: Frame | undefined): void {
+    if (this.#left.has(slot)) {
+      return;
+    }
+    if (!this.#rows.includes(slot)) {
+      this.#rows.push(slot);
+    }
+    slot.latest = frame;
+    if (this.lending === 0) {
+      slot.shown = frame;
+    }
+  }
+
+  /** Whether a frame drawn now takes no more than one row of the screen. */
+  fits(frame: Frame): boolean {
+    return this.measure.rows(frame.marked) === 0;
+  }
+
+  /** Whether a streamed `print`'s line is unfinished at the cursor after the write that calls it. */
+  line(slot: Slot, open: boolean): void {
+    if (open) {
+      this.#lines.add(slot);
+    } else {
+      this.#lines.delete(slot);
+    }
+  }
+
+  /** A streamed message that ended, whose unfinished row leaves the stack, called as `row` is. */
+  dropRow(slot: Slot): void {
+    this.#left.delete(slot);
+    const index = this.#rows.indexOf(slot);
+    if (index !== -1) {
+      this.#rows.splice(index, 1);
+    }
   }
 
   /** Text written to the terminal while no region is open, which moves the row the stack starts on. */
@@ -280,6 +367,7 @@ class Screen {
     return (
       slot.shown === slot.latest &&
       this.#closedMeanwhile.length === 0 &&
+      this.#rows.every((row) => row.shown === undefined || row.shown.text === '') &&
       this.#slots.every(
         (other) =>
           other === slot ||
@@ -565,6 +653,11 @@ class Regions {
     void release();
   }
 
+  /** Whether a live region is open, which may draw a frame on the screen. */
+  get drawing(): boolean {
+    return this.#live > 0;
+  }
+
   /** A live region opened: the first one makes a suspend erase the regions. */
   #enterLive(): void {
     this.#live += 1;
@@ -583,5 +676,5 @@ class Regions {
   }
 }
 
-export { endsWithLineBreak, Regions, Screen };
-export type { Frame, LiveRegion, RegionHost };
+export { controlSequences, endsWithLineBreak, Regions, Screen, visible };
+export type { Frame, LiveRegion, RegionHost, Slot };

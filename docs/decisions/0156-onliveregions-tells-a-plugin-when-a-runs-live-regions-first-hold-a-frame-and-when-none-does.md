@@ -4,7 +4,7 @@ title: ADR-0156 - onLiveRegions tells a plugin when a run's live regions first h
 description: A plugin definition gains a sixth lifecycle hook, onLiveRegions(state, context). Core calls it with 'drawn' at the write that gives a region of the run a frame while none holds one, and with 'closed' at the write after which none does, in stderr's write order, for every live region of the run wherever it was opened. The context carries the run's out with the default destinations. A failure, a cancellation, a shutdown's end, and the run's end all close the span; a run that invoke starts, and a stderr that is not a terminal, never open one. A throw is reported once after the run, as onLog's is.
 status: proposed
 created: 2026-11-14
-modified: 2026-11-15
+modified: 2026-11-16
 ---
 
 # ADR-0156 - onLiveRegions tells a plugin when a run's live regions first hold a frame and when none does
@@ -56,3 +56,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-14: Proposed with the patch-console plugin's contract (LM-390). It adds a sixth lifecycle hook under ADR-0028's rule, which carries a dated entry, and gives ADR-0091's regions two observed points, which that record's dated entry states.
+- 2026-11-16: [ADR-0163](0163-a-semantic-method-takes-a-stream-of-text-and-shows-each-chunk-as-it-arrives.md), proposed, adds two things the span reports beside a region's frame, as the owner ruled on 2026-11-16: a streamed message's unfinished row, and a streamed `print`'s unfinished line on a terminal. The hook reports `'drawn'` at the write that puts the run's first frame, unfinished row, or unfinished line on the screen, and `'closed'` at the write after which none is left, in the write order of the stream that write takes, so a streamed `print`'s line on a terminal stdout opens a span even when stderr is not a terminal. With the patch-console plugin installed, a routed console write then lands above an unfinished row and waits for an unfinished line's end. It binds when that record is accepted.

@@ -11,7 +11,7 @@ new Application('inline')
     const invalidFiles: number[] = args.files;
     // @ts-expect-error TS2339: Only declared arguments exist.
     args.unknown;
-    // @ts-expect-error TS2345: Output requires a string.
+    // @ts-expect-error TS2769: Output requires a string.
     await out.print(123);
     // @ts-expect-error TS2339: The Host cannot set an exit code.
     host.setExitCode(5);

@@ -442,12 +442,28 @@ The output channel object an action or a middleware receives, carrying the seman
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
-A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. The method is the message's level: its fixed default destination and the verbosity it writes at. Its look is the method's lane view, or a view over the message the call passes, and the method ends the message with one line break. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
+A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. The method is the message's level: its fixed default destination and the verbosity it writes at. Its look is the method's lane view, or a view over the message the call passes, and the method ends the message with one line break. The message is a string, or an async iterable of its text, which makes it a streamed message. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
 _Avoid_: Log level (a log level belongs to a log event), styled output
 
 **Message level**:
 What a semantic method decides about its message apart from its look: the destination it writes to and the verbosity it writes at. The method names it, so `out.info(text, step())` writes a step at `info`'s message level, hidden under `-q`, and a view the call passes changes the look alone.
 _Avoid_: Log level (a log level belongs to a log event), lane (for the level), severity
+
+**Streamed message**:
+A semantic message whose text arrives as an async iterable of chunks, such as a model's answer, passed in place of the string. It keeps the method's message level, draws through the lane view and never through a passed view, and once its iterable ends has written what the method writes for the joined text. On a terminal that redraws, each chunk shows as it arrives: a `print` grows its unfinished line at the cursor, and every other method redraws its unfinished row. Elsewhere, a captured run included, each line is written once it completes. A hidden one is read to its end.
+_Avoid_: Stream (for the message; a stream is stdout or stderr), live message, partial message, chunked output
+
+**Unfinished row**:
+The last row of a streamed message on a terminal, for every semantic method but `print`, which core redraws as chunks arrive, above the open live regions. The rows before it are finished and permanent, and it becomes a finished row, with the message's closing line break, when the iterable ends. Core never draws or erases one wider than the screen: the message then writes each row once it is finished. It is not a live region, but it holds an `onLiveRegions` span as a frame does.
+_Avoid_: Live row, pending line, frame (a frame belongs to a live region)
+
+**Unfinished line**:
+The line a streamed `print` is writing on a terminal, which grows at the cursor as chunks arrive and is never erased or redrawn, so the terminal wraps it as it wraps a whole `print`. While it is unfinished, every other write to that terminal waits for its line break, and it holds an `onLiveRegions` span as a frame does. It is not a live region.
+_Avoid_: Unfinished row (for `print`), partial line
+
+**Captured run**:
+A run whose stdout and stderr core writes to streams a caller reads back rather than to a terminal: an invocation by name, whose `output` and `messages` hold what it wrote, an MCP tool call, and a run on a mock process whose streams are its recording streams. Its streams are not terminals, so its output follows the rules for a pipe.
+_Avoid_: Headless run, captured output (for the run)
 
 **Rendered output**:
 Text a view produces from one value and `out.render` writes, after core resolves its markup for the destination stream. It has no semantic identity and no destination parameter, and from an action it goes to stderr on a Command that declares a result.
@@ -510,7 +526,7 @@ The pairing of a key, a declared view or a failure class, with a replacement vie
 _Avoid_: Failure renderer, registration, hook
 
 **Lane view**:
-The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the line break the method appends when the view's text does not end with one is outside the view. A call that passes its own view replaces the lane view for that call alone. The bare word lane also names an output area of core, as in the results lane.
+The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the line break the method appends when the view's text does not end with one is outside the view. A call that passes its own view replaces the lane view for that call alone, and a streamed message always draws through it. The bare word lane also names an output area of core, as in the results lane.
 _Avoid_: Channel, log level (a log level belongs to a log event), stream (for the lane view)
 
 **Columns**:
@@ -829,7 +845,7 @@ One thing a plugin adds to an Application: an option, a middleware, a lifecycle 
 _Avoid_: Registration, feature
 
 **Lifecycle hook**:
-A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure a run renders after graph build, an invocation by name's included, and returns hints. `onGraphBuilt` is the third: it receives the frozen graph once per build and may reject it, and it never contributes to it. `onLog` is the fourth: it receives each log event and its log destination during a run, and it observes and returns nothing. `onLiveRegions` observes the run's live regions: core calls it, in stderr's write order, when the first region of the run draws a frame and when the last frame leaves the stack, wherever each region was opened, and it returns nothing. `onEnvironment` prepares additions to the captured environment before inputs are read, with merging and process writes owned by core. A hook runs in sequence at its point, and middleware is not one. No hook runs before or after an action, or at the start or end of a run: middleware runs around every dispatched action, and core's failure log events report a run that fails before the chain, such as an unknown command.
+A function on a plugin definition that core calls at one named point of an Application's life, named `on` followed by the event, with the event's subject where it carries meaning. `onCommandAttach` is the first: it receives each Command's declaration at graph build, unlocked with its types erased, and returns the declaration to build. `onFailure` is the second: it receives each failure a run renders after graph build, an invocation by name's included, and returns hints. `onGraphBuilt` is the third: it receives the frozen graph once per build and may reject it, and it never contributes to it. `onLog` is the fourth: it receives each log event and its log destination during a run, and it observes and returns nothing. `onLiveRegions` observes what the run keeps on the screen: core calls it, in write order, when the run's first live region frame, unfinished row, or unfinished line is on the screen and when none is left, wherever each region was opened, and it returns nothing. `onEnvironment` prepares additions to the captured environment before inputs are read, with merging and process writes owned by core. A hook runs in sequence at its point, and middleware is not one. No hook runs before or after an action, or at the start or end of a run: middleware runs around every dispatched action, and core's failure log events report a run that fails before the chain, such as an unknown command.
 _Avoid_: Event handler, listener, callback, plugin API
 
 **Slot**:

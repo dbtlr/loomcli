@@ -130,7 +130,13 @@ import { RunLog } from '../output/log.js';
 import type { LogDestination } from '../output/log.js';
 import { Output, reportPlainly } from '../output/output.js';
 import type { WriteState } from '../output/output.js';
-import type { ProgressEvent, ResultViews, ResultViewsOf, RowViews } from '../output/types.js';
+import type {
+  MessageArguments,
+  ProgressEvent,
+  ResultViews,
+  ResultViewsOf,
+  RowViews,
+} from '../output/types.js';
 import { buildViews, viewIdentities } from '../output/view.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from '../output/view.js';
 import { carriesBinding, storeCommandLayers } from '../plugins/extension.js';
@@ -1254,7 +1260,7 @@ class ApplicationBuilder<
           await prepareEnvironment({
             host,
             log: (identity) => logs().bind(identity),
-            out: { warn: (message, view) => invocationOutput.out.warn(message, view) },
+            out: { warn: (...call: MessageArguments) => invocationOutput.out.warn(...call) },
             plugins: built.plugins,
             publish: entered.publishEnvironment,
             signal: controller.signal,

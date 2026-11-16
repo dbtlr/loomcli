@@ -1120,6 +1120,9 @@ export abstract class LoomError extends Error {
 }
 
 // @public
+export type MessageArguments = [message: string, view?: View<string> | undefined] | [message: AsyncIterable<string>];
+
+// @public
 export type Middleware<Contributor extends Plugin_2 | ((...args: never[]) => Plugin_2)> = (context: MiddlewareContext<OptionsOf<Contributor>>) => Promise<void> | void;
 
 // @public @sealed
@@ -1291,19 +1294,26 @@ export type OptionsOf<Contributor> = Contributor extends Plugin_2<infer Options>
 // @public @sealed
 export interface Out<Result = unknown> {
     debug(message: string, view?: View<string>): Promise<void>;
+    debug(...call: MessageArguments): Promise<void>;
     draw<Data>(data: Data, view: View<Data>): Promise<number>;
     error(message: string, view?: View<string>): Promise<void>;
+    error(...call: MessageArguments): Promise<void>;
     fatal(message: string): never;
     info(message: string, view?: View<string>): Promise<void>;
+    info(...call: MessageArguments): Promise<void>;
     lendTerminal<Value>(work: () => Value | PromiseLike<Value>): Promise<Value>;
     print(message: string, view?: View<string>): Promise<void>;
+    print(...call: MessageArguments): Promise<void>;
     region(options?: RegionOptions): Region;
     render<Data, Row = never>(data: RenderedData<Data, Row>, view: View<Data> | ([Row] extends [never] ? RowViewOver<Data> : RowView<Row>)): Promise<void>;
     results: (value: ResultInput<Result>) => Promise<void>;
     success(message: string, view?: View<string>): Promise<void>;
+    success(...call: MessageArguments): Promise<void>;
     text<Data>(data: Data, view: View<Data>): string;
     trace(message: string, view?: View<string>): Promise<void>;
+    trace(...call: MessageArguments): Promise<void>;
     warn(message: string, view?: View<string>): Promise<void>;
+    warn(...call: MessageArguments): Promise<void>;
 }
 
 // @public

@@ -577,6 +577,12 @@ function resolveView<Data>(
   return (data, context) => value.render(data, context);
 }
 
+/** Whether a contributor overrides one declared view, so `resolveView` answers another function. */
+function overridden<Data>(registry: ViewRegistry, value: View<Data>): boolean {
+  const declared = declarations.get(value);
+  return declared !== undefined && registry.some(({ views }) => views.has(declared));
+}
+
 /** The three functions one sequence writes through: `head`, `row` per item, and `tail`. */
 interface ResolvedRowView<Row> {
   row: (row: Row, index: number, context: ViewContext) => unknown;
@@ -687,4 +693,13 @@ export type {
   ViewOverride,
   ViewRegistry,
 };
-export { buildViews, describeFailure, override, resolveRowView, resolveView, view, viewIdentities };
+export {
+  buildViews,
+  describeFailure,
+  overridden,
+  override,
+  resolveRowView,
+  resolveView,
+  view,
+  viewIdentities,
+};
