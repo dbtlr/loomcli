@@ -4,7 +4,7 @@ title: ADR-0079 - The manpage plugin writes a roff page per Command and installs
 description: The manpage plugin contributes manpage generate, install, update, and uninstall. It writes one section-1 roff page for the root and each Command that is neither hidden nor under a hidden Command, named like git's pages, from the graph and the help and configuration values each Command carries, with no date and no host fact, so a graph gives the same bytes everywhere. Details render from help's Markdown parser in roff's own way, filled by man. generate writes the set to a folder for a packager and records nothing; install writes it to ~/.local/share/man/man1, which man finds when ~/.local/bin is on PATH, through the installation record under ADR-0071 as written, and advises on MANPATH when man will not find it. refreshManpages refreshes after a self-update.
 status: accepted
 created: 2026-10-13
-modified: 2026-10-24
+modified: 2026-11-16
 ---
 
 # ADR-0079 - The manpage plugin writes a roff page per Command and installs the set in the home folder
@@ -62,3 +62,4 @@ Accepted in 0.12.0.
 - 2026-10-20: [ADR-0100](0100-acceptance-plans-live-beside-the-tests.md), proposed, removes the `win32` refusal of `install` and the `win32` skips in `update` and `uninstall`, because no CI job runs Windows. Each child resolves its folder from `HOME` on every platform. It binds when that record is accepted.
 - 2026-10-24: [ADR-0107](0107-a-run-reads-the-process-through-one-process-handle.md), proposed, reads `<home>` from `host.home` in place of `HOME`, and `update` still derives no page path from it. It binds when that record is accepted.
 - 2026-11-09: [ADR-0143](0143-a-help-page-ends-with-the-epilogs-of-the-routed-command-and-its-ancestors.md), proposed, adds a NOTES section after ENVIRONMENT and before SEE ALSO, holding the epilogs of the Command and its ancestors as the help page prints them, rendered under the page's Markdown rules. A page with no epilog on its path is unchanged. It binds when that record is accepted.
+- 2026-11-16: [ADR-0165](0165-first-party-plugins-say-what-they-did-at-v-and-record-each-change-they-make-as-a-log-event.md), proposed, has `refreshManpages` skip its child when the installation record holds no man page file, writing `Skipped the man page refresh: nothing is installed.` at `-vv`, and write `Refreshed the man pages after the update.` at `-v` when the child exits 0, as `refreshSkills` does under ADR-0076's entry. Each page written or removed, `generate`'s included, records `File written.` or `File removed.` It binds when that record is accepted.

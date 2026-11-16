@@ -203,6 +203,17 @@ $ jsonkit mcp config
 
 The `Registered`, `Removed`, and nothing-to lines go through `out.success`; the `Skipped`, `Replaced`, `no longer recorded`, and build lines through `out.info`; and the held-name, agent-output, and could-not-start lines through `out.warn`, so stdout stays empty for `install` and `uninstall`, and `config` writes stdout alone. The examples above omit the glyph each lane view adds. Every path, name, and line of an agent's output a sentence repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition), and a command line is shown as its words joined by single spaces. Every refusal and check failure above is a `FatalError` that exits 1.
 
+## At -v and in the log
+
+| Level | Line | When |
+| --- | --- | --- |
+| `-vv` | `Checked /home/me/.local/state/notes/mcp.claude.json.` | Once for each selected agent's record file that `install` or `uninstall` reads, in table order, whether or not it exists. The path is shown as the record's other sentences show it. |
+
+The `Registered`, `Removed`, `Replaced`, and `Skipped` lines confirm every registration a child changes, so the plugin has no `-v` line. Serving and `config` write no line.
+
+- **Log events.** Each is an `info` [change event](../core/logging.md#change-events) that names `@loomcli/plugins/mcp`. Each agent's record file records `File written.` at each write, the pending, committed, and restored ones, and `File removed.` when deleted. Each `claude` or `codex` call with `mcp add` or `mcp remove` that exits 0 records `Program run.`, with `arguments` holding the words the plugin passes, such as `['mcp', 'add', '-s', 'user', 'notes', '--', '/home/me/.local/bin/notes', 'mcp']`: the registration's name, `host.program`, and `mcp`, never a secret. A `claude mcp remove` before an `add` that exits otherwise falls through to `add` and records nothing, and the `--version` and `codex mcp get` reads record nothing.
+- **The lanes.** Each `-v` line is one `out.debug` call and each `-vv` line one `out.trace` call, rendered by the lane's own view, under the run's [verbosity](../core/verbosity.md): `-v -q` writes none, both lanes write to stderr whether or not it is a terminal, an [invocation by name](../core/invocation.md#invocation-by-name) shows them in its `messages` when its values ask for them, and an [MCP](mcp.md) tool call runs at verbosity 0 and shows none. Each value a line repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition). [ADR-0165](../decisions/0165-first-party-plugins-say-what-they-did-at-v-and-record-each-change-they-make-as-a-log-event.md) records the lines and the events.
+
 ## The protocol package
 
 The protocol is written in this repository, in the private workspace package `@loom/mcp` at `packages/mcp`, which is never published. It knows MCP and nothing of Loom, and the plugin speaks MCP only through it.

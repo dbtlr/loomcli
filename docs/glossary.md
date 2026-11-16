@@ -680,7 +680,7 @@ One entry in an input error: an omitted required input, a rejected value togethe
 
 ## Logging
 
-Log, Log event, and Log destination follow the [logging contract](core/logging.md) and the [`onLog` hook](core/lifecycle-hooks.md#observing-log-events); Log record follows the [logging plugin](plugins/logging.md).
+Log, Log event, Change event, and Log destination follow the [logging contract](core/logging.md) and the [`onLog` hook](core/lifecycle-hooks.md#observing-log-events); Log record follows the [logging plugin](plugins/logging.md).
 
 **Log**:
 The member of the action, middleware, source, and `onFailure` contexts that records what happened for a reader later, with the methods `trace`, `debug`, `info`, `warn`, and `error`. It writes nothing: each call becomes a log event, and with no `onLog` installed it does nothing. It is separate from Out, which renders for the person at the terminal.
@@ -695,8 +695,12 @@ The severity of a log event: `trace`, `debug`, `info`, `warn`, `error`, or `fata
 _Avoid_: Severity class, verbosity (for the level), message level (a semantic method's destination and verbosity)
 
 **Log destination**:
-The outermost run's `env`, `home`, `platform`, and `stderr` that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. A log record never enters an invocation's captured output.
+The outermost run's `env`, `home`, `platform`, `stderr`, and `debug` and `trace` lanes, its `out`, that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. A log record never enters an invocation's captured output.
 _Avoid_: Sink, transport, target
+
+**Change event**:
+An `info` log event a first-party plugin records for one change it makes outside the process, from four shared messages: `File written.` and `File removed.` with `path`, `Program run.` with `program`, `arguments`, and `code`, and `Binary replaced.` with `path`, `from`, and `to`. A read and a failed change record none.
+_Avoid_: Audit event, side-effect log, change record
 
 **Log record**:
 One log event as the logging plugin writes it: one JSON line, the same in a file and on the console.

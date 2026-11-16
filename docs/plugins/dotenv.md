@@ -107,3 +107,26 @@ An unterminated quote of either kind consumes the rest of its file and warns onc
 Warnings come in the order the plugin reads the files, the most specific first.
 These rules and the exact warning-name boundaries are specified in [ADR-0084](../decisions/0084-dotenv-prepares-an-allowlisted-environment-before-inputs.md), [ADR-0102](../decisions/0102-dotenv-imports-every-variable-the-process-has-not-set.md) carries them forward, and [ADR-0125](../decisions/0125-dotenv-layers-mode-and-local-files-in-buns-order-expands-references-and-ends-an-unquoted-value-at-any-hash.md) adds the file to each warning.
 Warnings do not change the exit code and are captured in a named invocation's `messages`.
+
+## At -v and in the log
+
+| Level | Line | When |
+| --- | --- | --- |
+| `-v` | `Imported 3 variables from .env.local.`, or `Imported 1 variable from .env.` | Once for each file that supplies at least one name to the plugin's answer, after the plugin reads that file, in reading order, the most specific first. The count is the names that file supplies. |
+| `-vv` | `Skipped <name> from <file>: on the except list.` | A name the file assigns that `except` lists. |
+| `-vv` | `Skipped <name> from <file>: not on the only list.` | A name the file assigns that `only` does not list. |
+| `-vv` | `Skipped <name> from <file>: already set.` | A name the hook's environment already defines, an empty value included, which core keeps. |
+| `-vv` | `Skipped <name> from <file>: already set from <specific>.` | A name a more specific file, `<specific>`, already supplied. |
+
+`<file>` is the file's name, as the warnings name it. A line names variables and counts them, and never holds a value. Each name passed over writes one line, after its file's `-v` line, in the order the file first assigns the names, with the first reason that holds, in the table's order. A name on a malformed line keeps its warning or its silence, under **Warnings**, and gets no line. A missing file writes nothing, and a file that supplies no name writes no `-v` line while its names still write theirs. The lines go through the hook's `out`, whose `debug` and `trace` follow the run's verbosity, settled before [environment preparation](../core/plugin-contract.md#environment-preparation), so they appear once per outer run.
+
+```text
+$ NODE_ENV=development API_TOKEN=set notes sync -vv
+› Imported 2 variables from .env.development.
+  ┆ Skipped API_TOKEN from .env.development: already set.
+› Imported 1 variable from .env.
+  ┆ Skipped DATABASE_URL from .env: already set from .env.development.
+```
+
+- **Log events.** Core merges the variables into the run's environment, inside the process, so the plugin records no [change event](../core/logging.md#change-events).
+- **The lanes.** Each `-v` line is one `out.debug` call and each `-vv` line one `out.trace` call, rendered by the lane's own view, under the run's [verbosity](../core/verbosity.md): `-v -q` writes none, both lanes write to stderr whether or not it is a terminal, an [invocation by name](../core/invocation.md#invocation-by-name) shows them in its `messages` when its values ask for them, and an [MCP](mcp.md) tool call runs at verbosity 0 and shows none. Each value a line repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition). [ADR-0165](../decisions/0165-first-party-plugins-say-what-they-did-at-v-and-record-each-change-they-make-as-a-log-event.md) records the lines and the events.

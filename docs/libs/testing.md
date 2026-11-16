@@ -638,6 +638,7 @@ An `onLog` hook takes a log event and a log destination, and a progress observer
   | | `home` | `'/loom-test/home'` |
   | | `platform` | `'linux'` |
   | | `stderr` | `null`, as under an invocation by name |
+  | | `out` | `debug` and `trace` lanes that resolve and write nothing |
   | `progressEvent` | `id` | `1` |
   | | `label` | `''` |
   | | `state` | `'updated'` |

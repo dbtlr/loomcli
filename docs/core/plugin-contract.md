@@ -230,12 +230,13 @@ type EnvironmentHook = (context: EnvironmentContext) =>
 
 interface EnvironmentContext {
 	readonly host: { readonly cwd: Host['cwd']; readonly env: Readonly<Host['env']> };
-	readonly out: Pick<Out, 'warn'>;
+	readonly out: Pick<Out, 'warn' | 'debug' | 'trace'>;
 	readonly log: Log;
 }
 ```
 
 Each hook sees a read-only environment snapshot containing earlier additions.
+A hook's `out` warns the operator, and its `debug` and `trace` follow the run's [verbosity](verbosity.md), which settles before preparation, so a hook says at `-v` and `-vv` what it imported and passed over, as [dotenv](../plugins/dotenv.md#at--v-and-in-the-log) does.
 Core merges the returned record as it is. A record whose names or values the hook's type rejects gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md).
 Defined variables, including empty strings, win. The first hook that fills a missing variable wins.
 The report host and log destination share the merged map, even if logging was initialized earlier.
