@@ -86,7 +86,7 @@ const cache = new Command('cache').command(clear).command(list);
 
 `visibleAlias(...names)` on a named Command declares one or more visible aliases: aliases that the listings show beside the Command's canonical name, for a short form the author wants operators to learn, such as `ls` for `list`. A visible alias is an alias in every other respect. It routes as an alias does and is never in the routed path, a diagnostic, the validation context, or a candidate list. It follows the portable-name rule and shares the one namespace under its parent with every canonical name and alias of either kind, so attach rejects a visible alias that repeats a sibling's name, alias, or visible alias, under the rules [Command declaration errors](#command-declaration-errors) lists, whose sentences call it an alias. The call is variadic and repeatable like `alias()`, a call with no names does not compile, the types close it once `action()` is called, and the unnamed root has neither call. [ADR-0168](../decisions/0168-a-command-or-an-option-may-declare-a-visible-alias-that-every-listing-shows-beside-its-canonical-name.md) records the decision.
 
-- **Repeats.** A visible alias that repeats its Command's canonical name adds nothing. A name declared by both calls, in either order, is one alias, and it is visible, in the place of its first declaration.
+- **Repeats.** A visible alias that repeats its Command's canonical name adds nothing. A name declared by both calls, in either order, is one alias, and it is visible, in the place of its first declaration. A fault about it rebuilds the `visibleAlias()` call, from every visible alias the Command holds, and a fault about another alias rebuilds the `alias()` call, from every alias that is not visible.
 - **What shows it.** [Help](../plugins/help-page.md#the-help-page) prints the fact `(alias: ls)` on the Command's row, `(aliases: ls, dir)` for several, and the line `Alias: ls` in the masthead of the Command's own page; the [man page](../plugins/manpage.md) follows help; [completion](../plugins/completion.md) offers a visible alias where the canonical name does not match what was typed; and the [manifest](../plugins/manifest.md) lists it in the `aliases` field of the Command's entry. Usage lines and failure sentences keep the canonical name, an [MCP](../plugins/mcp.md) tool keeps one name per Command, and [suggestions](../plugins/suggestions.md) never match an alias.
 - **No message.** An alias of either kind carries no migration message. A renamed Command keeps its old name with `alias()`, and a Command that is itself retired declares `deprecated`.
 
@@ -96,7 +96,7 @@ const list = new Command('list', { description: 'List the cache.' })
   .action(listCache);
 ```
 
-`store cache ls` dispatches `list` as before, and the row in `store cache --help` reads `list  List the cache.  (alias: ls)`.
+`store cache ls` dispatches `list` as before, and the row in `store cache --help` reads `  list   List the cache.  (alias: ls)`: two spaces of indent, and `list` padded to `clear`, the longest name in the block, plus two spaces.
 
 ## Hidden and deprecated members
 
