@@ -1,5 +1,5 @@
-import { Application, validationContext } from '@loomcli/core';
 // Acceptance plan: see packages/core/tests/options.test.ts.
+import { Application, validationContext } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';

@@ -738,6 +738,5 @@ test('an option declared with lastWins false inspects as lastWins false', () => 
     .option('editor', { lastWins: false, type: 'string' })
     .action(() => {})
     .inspect();
-  const editor = graph.root.options[0];
-  expect(editor?.type === 'string' && editor.lastWins).toBe(false);
+  expect(graph.root.options[0]).toMatchObject({ lastWins: false, name: 'editor', type: 'string' });
 });
