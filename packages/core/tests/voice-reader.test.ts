@@ -336,6 +336,23 @@ test('a concise arrow body in a call a returns sink names is read as a returned 
   expect(gathered(source, { returns: ['report'] })).toEqual(["'Checked the fragments now.'"]);
 });
 
+test("a concise arrow nested in a returns sink call is read only when it is the call's own argument", () => {
+  const source = [
+    "await report({ out, signal }, items.filter((item) => item === 'two words'));",
+    "await report({ out, signal }, async () => names.map((name) => name === 'other words'));",
+    "await report({ out, signal }, () => 'Checked the fragments now.');",
+  ].join('\n');
+  expect(gathered(source, { returns: ['report'] })).toEqual(["'Checked the fragments now.'"]);
+});
+
+test('a function whose return type is an object type is read by its body, not by the type', () => {
+  const source = [
+    "function f(): { a: string } { return 'Two words here.'; }",
+    "function other(): { a: string } { return 'A function no sink names.'; }",
+  ].join('\n');
+  expect(gathered(source, { functions: ['f'] })).toEqual(["'Two words here.'"]);
+});
+
 test('a literal returned from a function a functions sink names is reported, in either form', () => {
   const source = [
     'function cutSummary(cut: Cut): string {',

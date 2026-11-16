@@ -826,8 +826,12 @@ function sentences(tokens: readonly Token[]): string[] {
 
 /** The literal sentences a function body's tokens return: a `return` value or a concise arrow body. */
 function returnedSentences(tokens: readonly Token[]): string[] {
+  let depth = 0;
   return tokens.flatMap((token, at) => {
-    if (named(token, 'return') || (is(token, '=>') && !is(tokens[at + 1], '{'))) {
+    const own = depth === 0;
+    depth += depthChange(token);
+    // A concise arrow counts only outside any bracket, so it is the argument itself, not one nested in it.
+    if (named(token, 'return') || (own && is(token, '=>') && !is(tokens[at + 1], '{'))) {
       return sentences(valueAfter(tokens, at + 1));
     }
     return [];

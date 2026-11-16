@@ -23,10 +23,18 @@ const src = new URL('../src/', import.meta.url);
 
 /** The routes the bin's sentences take beside failure constructors and out calls. */
 const sinks: VoiceSinks = {
-  calls: ['optionError', 'run.line'],
+  calls: ['lines.push', 'optionError', 'run.line'],
   classes: ['Error'],
   // The functions whose returned text a `report(...)` call prints.
-  functions: ['cutSummary', 'packageNotes', 'recordRelease', 'renderPlan'],
+  functions: [
+    'cutSummary',
+    'packageNotes',
+    'prereleaseNotes',
+    'readUpload',
+    'recordRelease',
+    'renderPlan',
+    'stableNotes',
+  ],
   properties: ['failure', 'message'],
   returns: ['report'],
 };
