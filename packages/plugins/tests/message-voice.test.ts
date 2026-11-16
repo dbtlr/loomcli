@@ -52,6 +52,11 @@ const exceptions: VoiceExceptions = {
   escaping: {
     'config/messages.ts': {
       '${issueSentence}': { reason: issue, sites: 2 },
+      '${noFileFound}': {
+        reason:
+          'The fixed `-v` sentence the module declares, which the notice opens with and which repeats no value.',
+        sites: 1,
+      },
     },
   },
   gathering: {

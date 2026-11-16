@@ -574,7 +574,7 @@ test('an unset region defaults to us-east-1', async () => {
 
 - **The hook.** An `onEnvironment` hook takes its context alone, and the test calls `hook(context)` and reads the additions it returns.
 - **The host.** `host` is stated member by member, so `host: { env: {} }` states the environment and leaves `cwd` unstated. An unstated `host.cwd` or `host.env` throws its sentence when the hook reads it. A run hands the hook a frozen copy of the environment; the builder holds the `env` the test stated.
-- **The rest.** `log`'s levels do nothing and `out.warn` resolves and writes nothing, unless stated, under the rules above.
+- **The rest.** `log`'s levels do nothing, and `out.warn`, `out.debug`, and `out.trace` each resolve and write nothing, unless stated, under the rules above.
 
 ### Functions with no builder
 
@@ -638,6 +638,7 @@ An `onLog` hook takes a log event and a log destination, and a progress observer
   | | `home` | `'/loom-test/home'` |
   | | `platform` | `'linux'` |
   | | `stderr` | `null`, as under an invocation by name |
+  | | `out` | `debug` and `trace` lanes that resolve and write nothing |
   | `progressEvent` | `id` | `1` |
   | | `label` | `''` |
   | | `state` | `'updated'` |

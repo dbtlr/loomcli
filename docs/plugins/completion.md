@@ -8,13 +8,15 @@ This page documents the completion plugin, which prints shell completion scripts
 
 ```ts
 // @loomcli/plugins/completion
-import type { Host, Log, Plugin } from '@loomcli/core';
+import type { Host, Log, Out, Plugin } from '@loomcli/core';
 
 export interface RefreshContext {
   readonly path: string; // the binary that replaced this one
   readonly host: Host; // the run's host
   readonly signal: AbortSignal; // the run signal
   readonly log: Log; // the run's log
+  readonly name?: string; // the application's name, which finds the installation record; absent, the child always runs
+  readonly out?: Pick<Out, 'debug' | 'trace'>; // where the -v and -vv lines go; absent, none is written
 }
 export declare function completion(): Plugin;
 export declare function refreshCompletion(context: RefreshContext): Promise<void>;
@@ -161,3 +163,17 @@ A binary that a package manager, npm, or the installer script replaced runs no `
 
 - **Output.** The `Installed`, `Updated`, `Added a line`, `Updated the line`, and nothing-to lines go through `out.success`; the `is unchanged`, `already loads`, `Removed`, `already gone`, `no longer holds`, and `Open a new shell` lines through `out.info`; the refused-file, left-in-place, and cannot-change lines through `out.warn`; and a line the operator adds or removes by hand through `out.print`, the only thing `install`, `update`, or `uninstall` writes to stdout. The examples above omit the glyph each lane view adds. Every path a sentence repeats passes through `escapeControlCharacters`. Every refusal and check failure above is a `FatalError` that exits 1, and an unknown shell is the `InputError` above.
 - **Names.** `completion`, `refreshCompletion`, and `RefreshContext` are exported from `@loomcli/plugins/completion`. `RefreshContext` is the same declaration `@loomcli/plugins/skills` exports.
+
+## At -v and in the log
+
+The Commands print a confirmation for each file they write or remove, so they write no line of their own. The refresh after a self-update writes these:
+
+| Level | Line | When |
+| --- | --- | --- |
+| `-v` | `Refreshed completion after the update.` | The refresh child exited 0. |
+| `-vv` | `Skipped the completion refresh: nothing is installed.` | The refresh did not run, because the installation record holds none of the plugin's files. |
+
+- **Nothing is installed.** Before it starts the child, a refresh whose context carries `name` looks in `applicationDirectory('installation', name, host)` for `completion.<shell>` for any shell. When none exists, it starts no child, writes its `-vv` line, and resolves. It reads only whether each file exists, so an unreadable or damaged record still runs the child, whose failure names the fix. A directory that does not resolve, and a context without `name`, run the child. This is the one reason a refresh does not run.
+- **Its lines.** A child that fails or cannot start writes no `-v` line and keeps its `warn` event and its line on `host.stderr`. A context without `out` writes no line. The self-update plugin passes its action's `out` and the graph's `name`.
+- **Log events.** Each script, startup file, and shell's record file the Commands write records `File written.`, and each one they delete `File removed.`, a startup file whose line was added, replaced, or removed counting as written, under the path the plugin's file records for it. A run that finds everything in place writes nothing and records nothing. A refresh child that exits 0 records `Program run.` with `{ program: path, arguments: ['completion', 'update'], code: 0 }` through the context's `log`, the self-update action's, so its `plugin` reads `@loomcli/plugins/self-update`. Each event is an `info` [change event](../core/logging.md#change-events), and a Command's events name `@loomcli/plugins/completion`. A leftover staging file the plugin removes beside a file it writes, which a run that was stopped mid-write left, records `File removed.` too.
+- **The lanes.** Each `-v` line is one `out.debug` call and each `-vv` line one `out.trace` call, rendered by the lane's own view, under the run's [verbosity](../core/verbosity.md): `-v -q` writes none, both lanes write to stderr whether or not it is a terminal, an [invocation by name](../core/invocation.md#invocation-by-name) shows them in its `messages` when its values ask for them, and an [MCP](mcp.md) tool call runs at verbosity 0 and shows none. Each value a line repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition). [ADR-0165](../decisions/0165-first-party-plugins-say-what-they-did-at-v-and-record-each-change-they-make-as-a-log-event.md) records the lines and the events.

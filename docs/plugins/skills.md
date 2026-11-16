@@ -8,7 +8,7 @@ This page documents the skills plugin, which installs an application's agent ski
 
 ```ts
 // @loomcli/plugins/skills
-import type { Host, Log, Plugin } from '@loomcli/core';
+import type { Host, Log, Out, Plugin } from '@loomcli/core';
 
 export interface SkillFile {
   readonly path: string; // relative to the skill's folder, such as references/commands.md
@@ -30,6 +30,8 @@ export interface RefreshContext {
   readonly host: Host; // the run's host
   readonly signal: AbortSignal; // the run signal
   readonly log: Log; // the run's log
+  readonly name?: string; // the application's name, which finds the installation record; absent, the child always runs
+  readonly out?: Pick<Out, 'debug' | 'trace'>; // where the -v and -vv lines go; absent, none is written
 }
 export declare function skills(settings: SkillsSettings): Plugin;
 export declare function refreshSkills(context: RefreshContext): Promise<void>;
@@ -142,14 +144,28 @@ The `folder` setting names a folder whose subfolders are the application's skill
 
 ## Refreshing after a self-update
 
-`refreshSkills` is an `afterReplace` function for the [self-update plugin](self-update.md), which passes it a context that holds every member `RefreshContext` names. It runs in the replaced process, which holds the old version's skills, so it runs the new binary, and `update` decides what to refresh:
+`refreshSkills` is an `afterReplace` function for the [self-update plugin](self-update.md), which passes it a context that holds every member `RefreshContext` names. It runs in the replaced process, which holds the old version's skills, so it runs the new binary, and `update` decides what to refresh, unless the installation record holds none of the plugin's files, under [At -v and in the log](#at--v-and-in-the-log):
 
 - **The child.** It runs `path` with the words `skills update` as a child program through [`host.spawn`](../core/host.md#child-programs), with `host.env` as its environment and `host.cwd` as its working directory, no shell, no input, and its standard output and standard error piped into `host.stdout` and `host.stderr`, so the child reads neither as a terminal. It adds no time limit; the run signal ends the child with `SIGTERM`.
 - **Never a failure.** A child that exits with any code but 0, or that cannot be started, adds a `warn` [log event](../core/logging.md), `Skills were not refreshed after the update.`, with the fields `path` and `code`, or `error` for a child that cannot start, and `refreshSkills` resolves. The child's own failure sentence, which says what to do, has already reached `host.stderr`. A child that cannot be started writes none, so `refreshSkills` writes one line to `host.stderr` itself: `The skills were not refreshed because /home/me/.local/bin/notes could not start. Run notes skills update.`, with the path passed through `escapeControlCharacters` and the program named by the path's last segment. A child ended by the run signal resolves the same way, and the run resolves its cancellation code under [Signals, cancellation, and shutdown](../core/signals.md).
 
-- **Composing.** An application that runs more after a replace calls `refreshSkills(context)` from its own `afterReplace` and awaits it. With nothing recorded, the child prints `update`'s nothing-to-update line, which names the install Command.
+- **Composing.** An application that runs more after a replace calls `refreshSkills(context)` from its own `afterReplace` and awaits it. With nothing recorded, the refresh starts no child and prints nothing at the default verbosity, under [At -v and in the log](#at--v-and-in-the-log).
 - **Output.** The per-skill `Installed` and `Updated` lines and the nothing-to lines go through `out.success`; the `is unchanged`, `Replaced`, `Removed`, and `already gone` lines through `out.info`; and the refused-folder lines through `out.warn`, so stdout stays empty for every child. The examples above omit the glyph each lane view adds. Every path, folder, and name a sentence repeats passes through `escapeControlCharacters`. Every refusal and check failure above is a `FatalError` that exits 1, and the option conflicts are the `InputError`s above.
 - **Names.** `skills`, `refreshSkills`, `SkillsSettings`, `Skill`, `SkillFile`, and `RefreshContext` are exported from `@loomcli/plugins/skills`.
+
+## At -v and in the log
+
+The Commands print a confirmation for each file they write or remove, so they write no line of their own. The refresh after a self-update writes these:
+
+| Level | Line | When |
+| --- | --- | --- |
+| `-v` | `Refreshed the skills after the update.` | The refresh child exited 0. |
+| `-vv` | `Skipped the skills refresh: nothing is installed.` | The refresh did not run, because the installation record holds none of the plugin's files. |
+
+- **Nothing is installed.** Before it starts the child, a refresh whose context carries `name` looks in `applicationDirectory('installation', name, host)` for the plugin's file for any target. When none exists, it starts no child, writes its `-vv` line, and resolves. It reads only whether each file exists, so an unreadable or damaged record still runs the child, whose failure names the fix. A directory that does not resolve, and a context without `name`, run the child. This is the one reason a refresh does not run.
+- **Its lines.** A child that fails or cannot start writes no `-v` line and keeps its `warn` event and its line on `host.stderr`. A context without `out` writes no line. The self-update plugin passes its action's `out` and the graph's `name`.
+- **Log events.** Each skill folder the Commands place records one `File written.` under the folder's path, global and project installs alike, and each one they remove one `File removed.`; each target's record file records `File written.` at each write and `File removed.` when deleted. A refresh child that exits 0 records `Program run.` with `{ program: path, arguments: ['skills', 'update'], code: 0 }` through the context's `log`, the self-update action's, so its `plugin` reads `@loomcli/plugins/self-update`. Each event is an `info` [change event](../core/logging.md#change-events), and a Command's events name `@loomcli/plugins/skills`. A leftover staging file the plugin removes beside a file it writes, which a run that was stopped mid-write left, records `File removed.` too, and so does each leftover staging or retired folder beside a skill folder, one event under its path.
+- **The lanes.** Each `-v` line is one `out.debug` call and each `-vv` line one `out.trace` call, rendered by the lane's own view, under the run's [verbosity](../core/verbosity.md): `-v -q` writes none, both lanes write to stderr whether or not it is a terminal, an [invocation by name](../core/invocation.md#invocation-by-name) shows them in its `messages` when its values ask for them, and an [MCP](mcp.md) tool call runs at verbosity 0 and shows none. Each value a line repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition). [ADR-0165](../decisions/0165-first-party-plugins-say-what-they-did-at-v-and-record-each-change-they-make-as-a-log-event.md) records the lines and the events.
 
 ## When author code fails
 

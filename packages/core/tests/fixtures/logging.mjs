@@ -35,6 +35,13 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
     /** The key a source binds, so the source below is asked about an option that carries it. */
     const key = extension('@fixture/logging/key', { schema: z.string(), target: 'option' });
 
+    /** A child of the plugin Command, whose action logs as the plugin that listed its parent. */
+    const deep = new Command('deep', { description: 'A child of the plugin command.' }).action(
+      ({ log }) => {
+        log.info('from plugin child');
+      },
+    );
+
     /** A plugin that logs from its middleware, its source, and its `onFailure` hook, and collects. */
     const reaching = plugin('fixture/reaching', {
       extensions: [key],
@@ -204,9 +211,11 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
             reaching,
             plugin('fixture/commands', {
               commands: [
-                new Command('plug', { description: 'The plugin command.' }).action(({ log }) => {
-                  log.info('from plugin command');
-                }),
+                new Command('plug', { description: 'The plugin command.' })
+                  .action(({ log }) => {
+                    log.info('from plugin command');
+                  })
+                  .command(deep),
               ],
             }),
           ],

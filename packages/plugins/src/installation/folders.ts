@@ -40,16 +40,20 @@ function removeWhole(path: string): boolean {
 
 /**
  * Removes each leftover `.<name>.<random>.loom-staging` and `.<name>.<random>.loom-retired` beside
- * the folder at `path`, for that folder's own name alone.
+ * the folder at `path`, for that folder's own name alone, and answers the paths it removed.
  */
-function removeFolderLeftovers(path: string): void {
+function removeFolderLeftovers(path: string): string[] {
   const directory = dirname(path);
+  const removed: string[] = [];
   for (const entry of entriesOf(directory)) {
     const name = basename(path);
     if (isMarkedEntry(entry, name, stagingSuffix) || isMarkedEntry(entry, name, retiredSuffix)) {
-      removeWhole(join(directory, entry));
+      const leftover = join(directory, entry);
+      removeWhole(leftover);
+      removed.push(leftover);
     }
   }
+  return removed;
 }
 
 /**
@@ -107,10 +111,10 @@ function swapIn(staging: string, path: string): void {
  * renames the staging folder into place, and removes the retired one whole. The directory above the
  * path exists. A failure removes the staging folder and throws the runtime's error; one between
  * the two renames can leave the path empty and a retired folder beside it, which the next write
- * of that folder removes.
+ * of that folder removes. It answers the leftovers it removed.
  */
-function writeFolder(path: string, files: readonly FolderFile[]): void {
-  removeFolderLeftovers(path);
+function writeFolder(path: string, files: readonly FolderFile[]): string[] {
+  const leftovers = removeFolderLeftovers(path);
   const staging = stagingPath(path);
   mkdirSync(staging);
   try {
@@ -120,6 +124,7 @@ function writeFolder(path: string, files: readonly FolderFile[]): void {
     removeWhole(staging);
     throw error;
   }
+  return leftovers;
 }
 
 /** Every directory above a file of the list, as the relative paths the folder holds. */

@@ -31,6 +31,7 @@ import type { Answer } from './registration.js';
 import {
   namesOf,
   none,
+  changeAgent,
   readRecords,
   recordOf,
   refuseWindows,
@@ -141,19 +142,20 @@ async function refuseNameInTheWay(
  * the registration recorded before the run, or no file when it recorded none or when `claude`'s
  * `remove` already took it away.
  */
-function restoreRecord({ agent, record, recorded }: Registering, removed: boolean): void {
+function restoreRecord({ agent, record, recorded, run }: Registering, removed: boolean): void {
   const plugin = recordName(agent);
   if (recorded === undefined || removed) {
-    deletePluginFile({ plugin, record });
+    deletePluginFile({ log: run.log, plugin, record });
     return;
   }
-  writeCommittedRegistration({ ...recorded, plugin, record });
+  writeCommittedRegistration({ ...recorded, log: run.log, plugin, record });
 }
 
 /** Writes the agent's plugin's file pending: the command line it held, and the one it will hold. */
 function recordPending({ agent, command, record, recorded, run }: Registering): void {
   writePendingRegistration({
     intended: command,
+    log: run.log,
     name: namesOf(run).registration,
     plugin: recordName(agent),
     prior: recorded?.command,
@@ -171,10 +173,10 @@ async function removeFirst(registering: Registering, force: boolean): Promise<bo
   if (agent.name !== 'claude' || (recorded === undefined && !force)) {
     return false;
   }
-  const names = namesOf(run);
-  const removed = succeededAt(await callAgent(run, agent.name, agent.remove(names.registration)));
+  const words = agent.remove(namesOf(run).registration);
+  const removed = succeededAt(await changeAgent(run, agent, words));
   if (removed && recorded === undefined) {
-    await run.info(replacedServer(names, agent.name));
+    await run.info(replacedServer(namesOf(run), agent.name));
   }
   return removed;
 }
@@ -184,6 +186,7 @@ async function commit({ agent, command, record, run }: Registering): Promise<voi
   const names = namesOf(run);
   writeCommittedRegistration({
     command,
+    log: run.log,
     name: names.registration,
     plugin: recordName(agent),
     record,
@@ -203,7 +206,7 @@ async function registerWith(registering: Registering, force: boolean): Promise<v
   const { agent, command, run } = registering;
   recordPending(registering);
   const removed = await removeFirst(registering, force);
-  const answer = await callAgent(run, agent.name, agent.add(namesOf(run).registration, command));
+  const answer = await changeAgent(run, agent, agent.add(namesOf(run).registration, command));
   if (succeededAt(answer)) {
     await commit(registering);
     return;
@@ -224,7 +227,7 @@ async function noteBuild(run: ChildRun): Promise<void> {
 }
 
 /** The checks `install` makes, in order, before it starts any program. */
-function checkFirst(run: ChildRun, named: AgentName | undefined) {
+async function checkFirst(run: ChildRun, named: AgentName | undefined) {
   refuseWindows(run, 'install');
   const command = commandLine(run.host);
   if (command.some(holdsControlCharacter)) {
@@ -236,7 +239,7 @@ function checkFirst(run: ChildRun, named: AgentName | undefined) {
     agents,
     command,
     record,
-    recorded: readRecords(run, { agents, child: 'install', record }),
+    recorded: await readRecords(run, { agents, child: 'install', record }),
   };
 }
 
@@ -254,7 +257,7 @@ async function registerStarted(
 
 /** `install`: the checks, then each agent in table order registered, or skipped when it cannot start. */
 async function installRegistrations(run: ChildRun, request: InstallRequest): Promise<void> {
-  const { agents, command, record, recorded } = checkFirst(run, request.agent);
+  const { agents, command, record, recorded } = await checkFirst(run, request.agent);
   const started = await startedAgents(run, agents, request.agent);
   const held = await agentsInTheWay(run, started, recorded);
   await refuseNameInTheWay(run, held, request.force);

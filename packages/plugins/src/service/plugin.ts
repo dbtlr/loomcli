@@ -17,12 +17,14 @@ type ChildContext = Pick<
 
 /** The run a child acts on, read from its action context. */
 function childRun(label: string, context: ChildContext): ChildRun {
-  const { graph, host, onShutdown, out, signal } = context;
+  const { graph, host, log, onShutdown, out, signal } = context;
   return {
+    debug: (message) => out.debug(message),
     description: graph.description,
     host,
     info: (message) => out.info(message),
     label,
+    log,
     name: graph.name,
     onShutdown,
     signal,

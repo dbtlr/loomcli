@@ -1,5 +1,5 @@
 import { applicationDirectory, FatalError } from '@loomcli/core';
-import type { Host, OnShutdown } from '@loomcli/core';
+import type { Host, Log, OnShutdown } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
 import { holdsControlCharacter } from '../control-character.js';
@@ -47,7 +47,10 @@ interface ChildRun {
   readonly label: string;
   readonly host: Host;
   readonly signal: AbortSignal;
+  /** The action's log, which records each file the child writes or removes. */
+  readonly log: Log;
   readonly onShutdown: OnShutdown;
+  readonly debug: (message: string) => Promise<void>;
   readonly info: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
 }
@@ -121,11 +124,12 @@ function unitHome(run: ChildRun): string {
  * which selects the backend, and an absolute home.
  */
 function prepare(run: ChildRun): Prepared {
-  const { host, label, name, onShutdown, signal } = run;
+  const { debug, host, label, log, name, onShutdown, signal } = run;
   const backend = backendOf(run);
   const home = unitHome(run);
   const uid = userId(name, host);
-  const manager = { env: managerEnv(host, uid), name, onShutdown, signal, spawn: host.spawn };
+  const env = managerEnv(host, uid);
+  const manager = { debug, env, log, name, onShutdown, signal, spawn: host.spawn };
   const unit = backend.unitPath(label, home, host.env);
   const service = { label, manager, name, uid, unit };
   return { backend, home, record: recordDirectory(run), run, service };
@@ -235,6 +239,7 @@ async function writeUnit(prepared: Prepared, text: string, files: readonly Commi
   await retireEarlier(prepared, files);
   const outcome = install({
     files: [{ content: text, mode: unitMode, path: service.unit }],
+    log: run.log,
     plugin: recordName,
     record,
     signal: run.signal,
@@ -275,7 +280,7 @@ async function removeUnits(prepared: Prepared, files: readonly CommittedFile[]):
   for (const file of files) {
     await backend.retire(service, file.path);
   }
-  const outcome = uninstall({ plugin: recordName, record, signal: run.signal });
+  const outcome = uninstall({ log: run.log, plugin: recordName, record, signal: run.signal });
   if (outcome.status === 'refused') {
     const [refusal] = outcome.refused;
     throw new FatalError(recordUnreadable(run.name, refusal?.path ?? record, 'uninstall'));

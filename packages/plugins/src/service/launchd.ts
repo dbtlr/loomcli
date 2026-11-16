@@ -2,7 +2,14 @@ import { basename, join } from 'node:path';
 
 import { unknownReading } from './backend.js';
 import type { Backend, Reading, Service } from './backend.js';
-import { expectCall, pause, readCall, readLimitSeconds, succeeded } from './manager.js';
+import {
+  expectChange,
+  expectRead,
+  pause,
+  readCall,
+  readLimitSeconds,
+  succeeded,
+} from './manager.js';
 import type { Call, Read } from './manager.js';
 import { callUnreadableNote, managerMissing, noSessionNote, timedOutNote } from './messages.js';
 import { launchdPlist } from './unit.js';
@@ -43,7 +50,7 @@ function launchctl(service: Service, label: string, ...args: string[]): Call {
 /** Whether `label`'s agent is loaded: `print` exits 0 when it is and 113 when it is not. */
 async function isLoaded(service: Service, label: string): Promise<boolean> {
   const call = launchctl(service, label, 'print', target(service, label));
-  const { code } = await expectCall(service.manager, call, [succeeded, notLoaded]);
+  const { code } = await expectRead(service.manager, call, [succeeded, notLoaded]);
   return code === succeeded;
 }
 
@@ -53,7 +60,7 @@ async function isLoaded(service: Service, label: string): Promise<boolean> {
  */
 async function unload(service: Service, label: string): Promise<void> {
   const call = launchctl(service, label, 'bootout', target(service, label));
-  await expectCall(service.manager, call, unloaded);
+  await expectChange(service.manager, call, unloaded);
   while (await isLoaded(service, label)) {
     await pause(pollInterval, service.manager.signal);
   }
@@ -62,7 +69,7 @@ async function unload(service: Service, label: string): Promise<void> {
 /** Loads the plist at the unit's path into the user's domain. */
 async function bootstrap(service: Service): Promise<void> {
   const call = launchctl(service, service.label, 'bootstrap', domain(service), service.unit);
-  await expectCall(service.manager, call);
+  await expectChange(service.manager, call);
 }
 
 /** Runs `kickstart` on the label's agent, with `-k` to kill a running process first. */
@@ -74,7 +81,7 @@ async function kickstart(service: Service, ...flags: string[]): Promise<void> {
     ...flags,
     target(service, service.label),
   );
-  await expectCall(service.manager, call);
+  await expectChange(service.manager, call);
 }
 
 /** Kickstarts a loaded agent with `flags`, or bootstraps one that is not loaded. */
@@ -152,7 +159,7 @@ const launchd: Backend = {
   // An earlier install that stopped between its write and its bootstrap is finished this way.
   install: async (service) => {
     const call = launchctl(service, service.label, 'enable', target(service, service.label));
-    await expectCall(service.manager, call);
+    await expectChange(service.manager, call);
     await unload(service, service.label);
     await bootstrap(service);
   },

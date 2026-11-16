@@ -2,6 +2,7 @@ import { Application, Command, plugin } from '@loomcli/core';
 import { refreshCompletion } from '@loomcli/plugins/completion';
 import { refreshManpages } from '@loomcli/plugins/manpage';
 import { refreshSkills } from '@loomcli/plugins/skills';
+import { verbose } from '@loomcli/plugins/verbose';
 
 /** One log event the observer saw. */
 interface Observed {
@@ -18,14 +19,25 @@ const refreshes = {
 };
 
 /**
- * An application whose `refresh` Command calls `refreshSkills`, `refreshManpages`, or
- * `refreshCompletion` with the binary at `path`, as a self-update's `afterReplace` would. `observe` receives every log event, and
- * `resolved` is called once the refresh has resolved.
+ * What the `refresh` Command hands the refresh beside the binary, as a self-update's context
+ * carries them: the graph's name, which finds the installation record, and the action's `out`.
+ */
+interface Handed {
+  readonly name?: boolean;
+  readonly out?: boolean;
+}
+
+/**
+ * An application, with the verbose plugin, whose `refresh` Command calls `refreshSkills`,
+ * `refreshManpages`, or `refreshCompletion` with the binary at `path`, as a self-update's
+ * `afterReplace` would, and the graph's name and its `out` when `handed` asks. `observe` receives
+ * every log event, and `resolved` is called once the refresh has resolved.
  */
 function refreshApplication(
   kind: keyof typeof refreshes,
   path: string,
   effects: { readonly observe: (event: Observed) => void; readonly resolved: () => void },
+  handed: Handed = {},
 ) {
   const observer = plugin('observer', {
     onLog: ({ fields, level, message }) => {
@@ -33,9 +45,16 @@ function refreshApplication(
     },
   });
   const { description, refresh } = refreshes[kind];
-  return new Application('notes', { description, plugins: [observer] }).command(
-    new Command('refresh', { description }).action(async ({ host, log, out, signal }) => {
-      await refresh({ host, log, path, signal });
+  return new Application('notes', { description, plugins: [observer, verbose()] }).command(
+    new Command('refresh', { description }).action(async ({ graph, host, log, out, signal }) => {
+      await refresh({
+        host,
+        log,
+        path,
+        signal,
+        ...(handed.name === true ? { name: graph.name } : {}),
+        ...(handed.out === true ? { out } : {}),
+      });
       effects.resolved();
       await out.print('resolved');
     }),
@@ -43,4 +62,4 @@ function refreshApplication(
 }
 
 export { refreshApplication };
-export type { Observed };
+export type { Handed, Observed };

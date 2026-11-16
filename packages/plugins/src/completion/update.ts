@@ -12,7 +12,6 @@ import {
   directoryMode,
   outcomeFailure,
   readShell,
-  recordName,
   refuseInTheWay,
   refuseWindows,
   reportWritten,
@@ -20,7 +19,7 @@ import {
   scriptState,
 } from './run.js';
 import type { ChildRun, ShellRecord } from './run.js';
-import { shells } from './shell-names.js';
+import { recordName, shells } from './shell-names.js';
 import type { Shell } from './shell-names.js';
 import { scriptContent, startupLine } from './shells.js';
 import { judgeStartup, placeLine } from './startup.js';
@@ -86,6 +85,7 @@ function rewrite(
     directoryMode,
     files: [scriptFile(script, content)],
     lines: steps.flatMap((step) => step.lines),
+    log: run.log,
     plugin: recordName(recorded.shell),
     record,
     release: steps.flatMap((step) => step.release),

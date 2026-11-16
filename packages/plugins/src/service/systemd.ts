@@ -3,7 +3,7 @@ import { basename, isAbsolute, join } from 'node:path';
 import { observe } from '../installation/disk.js';
 import { unknownReading } from './backend.js';
 import type { Backend, Reading, Service } from './backend.js';
-import { expectCall, readCall, readLimitSeconds, succeeded } from './manager.js';
+import { expectChange, readCall, readLimitSeconds, succeeded } from './manager.js';
 import type { Call, Read } from './manager.js';
 import { callUnreadableNote, lingerNote, managerMissing, timedOutNote } from './messages.js';
 import { systemdUnit } from './unit.js';
@@ -28,13 +28,13 @@ function systemctl(name: string, ...args: string[]): Call {
 
 /** Reloads the manager's units, its failure pointing at the label's unit. */
 async function reload(service: Service): Promise<void> {
-  await expectCall(service.manager, systemctl(unitName(service.label), 'daemon-reload'));
+  await expectChange(service.manager, systemctl(unitName(service.label), 'daemon-reload'));
 }
 
 /** Runs one `systemctl --user` call about the label's unit. */
 async function unitCall(service: Service, verb: string): Promise<void> {
   const name = unitName(service.label);
-  await expectCall(service.manager, systemctl(name, verb, name));
+  await expectChange(service.manager, systemctl(name, verb, name));
 }
 
 /** The unit's path: `<config>/systemd/user/<label>.service`. */
@@ -124,9 +124,9 @@ const systemd: Backend = {
   restart: (service) => unitCall(service, 'restart'),
   retire: async (service, path) => {
     const name = basename(path);
-    await expectCall(service.manager, systemctl(name, 'stop', name), [succeeded, notLoaded]);
+    await expectChange(service.manager, systemctl(name, 'stop', name), [succeeded, notLoaded]);
     if (observe(path).kind !== 'absent') {
-      await expectCall(service.manager, systemctl(name, 'disable', name));
+      await expectChange(service.manager, systemctl(name, 'disable', name));
     }
   },
   start: (service) => unitCall(service, 'start'),

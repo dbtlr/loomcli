@@ -2357,6 +2357,12 @@ export interface BuiltGraph {
   extensions: ExtensionRecords;
   globals: BuiltGlobals;
   root: BuiltCommand;
+  /**
+   * The plugin whose `commands` list contributed each of the root's Commands, by the Command's
+   * name. It is kept beside the root, so nothing a hook, `inspect()`, or help reads holds it, and an
+   * action under one of these Commands logs as that plugin (ADR-0165).
+   */
+  listedBy: ReadonlyMap<string, string>;
 }
 
 /**
@@ -2380,7 +2386,10 @@ export function buildGraph<Args, Options, Globals>(
     placement: undefined,
     plugins,
   };
-  return { extensions, globals: context.globals, root: buildCommand(root, context) };
+  const listedBy = new Map(
+    plugins.flatMap(({ commands, identity }) => commands.map(({ name }) => [name, identity])),
+  );
+  return { extensions, globals: context.globals, listedBy, root: buildCommand(root, context) };
 }
 
 /** A required source reaches this accessor only after preparation accepted its presence. */
@@ -3341,7 +3350,7 @@ function ownRecord(routed: ParsedInvocation, validated: ValidatedInputs): Prepar
  * dispatch.
  */
 function readyDispatch(
-  { invocation, interactive, routed }: Preparation,
+  { graph, invocation, interactive, routed }: Preparation,
   local: LocalPhase & { kind: 'parsed' },
   {
     options,
@@ -3354,6 +3363,9 @@ function readyDispatch(
   },
 ): { dispatch: (view: string | null) => Promise<DispatchOutcome>; request: Request } {
   const { command, path } = routed;
+  const [top] = path;
+  // An action under a plugin Command logs as that plugin, and the application's own as none.
+  const plugin = (top === undefined ? undefined : graph.listedBy.get(top)) ?? null;
   return {
     dispatch: async (view) => {
       const { signal } = invocation;
@@ -3392,7 +3404,7 @@ function readyDispatch(
           host: invocation.host,
           interactive,
           invoke: invocation.invoke,
-          log: invocation.logFor(null),
+          log: invocation.logFor(plugin),
           ...invocation.laneHandlers(null),
           out: channel.out,
           passthrough: local.passthrough,

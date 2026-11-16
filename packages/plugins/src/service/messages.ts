@@ -8,6 +8,9 @@ const shown = escapeControlCharacters;
 
 const shownPath = (path: string): string => nowrap(shown(path));
 
+/** A call's words joined by single spaces, each escaped and kept whole. */
+const shownCall = (words: readonly string[]): string => words.map(shownPath).join(' ');
+
 type Child = 'install' | 'uninstall';
 
 function serviceFromBuild(name: string, build: string): string {
@@ -100,6 +103,14 @@ function wroteUnit(path: string): string {
   return `Wrote ${shownPath(path)}.`;
 }
 
+/**
+ * The `-v` line once a service manager call that started ends, whatever its code: the program and
+ * its words joined by single spaces, each word kept whole, as a failure repeats the call.
+ */
+function ranCall(program: string, args: readonly string[]): string {
+  return `Ran ${shownCall([program, ...args])}.`;
+}
+
 interface UnreadableCall {
   readonly manager: string;
   readonly target: string;
@@ -132,6 +143,7 @@ export {
   noServiceToRemove,
   noSessionNote,
   platformUnsupported,
+  ranCall,
   recordUnreadable,
   removedFile,
   restartedService,

@@ -79,6 +79,12 @@ function skillsNotRefreshed(path: string, name: string): string {
   return `The skills were not refreshed because ${shown(path)} could not start. Run ${shown(name)} skills update.\n`;
 }
 
+/** The refresh's `-v` line once its child exited 0. */
+const skillsRefreshed = 'Refreshed the skills after the update.';
+
+/** The refresh's `-vv` line when the installation record holds none of the plugin's files. */
+const skillsRefreshSkipped = 'Skipped the skills refresh: nothing is installed.';
+
 export {
   directoryMissing,
   directoryMissingIssue,
@@ -98,5 +104,7 @@ export {
   sameSkillsFolder,
   skillsInTheWay,
   skillsNotRefreshed,
+  skillsRefreshed,
+  skillsRefreshSkipped,
   updatedSkill,
 };

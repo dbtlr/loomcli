@@ -21,7 +21,10 @@ import {
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
+import type { Log } from '@loomcli/core';
+
 import { nodeCrypto } from '../built-ins.js';
+import { fileRemoved } from '../change-events.js';
 
 /** The permission bits of a file mode, without its file type. */
 const permissionBits = 0o7777;
@@ -205,13 +208,31 @@ function isStagingFile(entry: string, name: string): boolean {
   return isMarkedEntry(entry, name, stagingSuffix);
 }
 
-/** Removes every staging file a run left beside `path`, and nothing else in its directory. */
-function removeStagingFiles(path: string): void {
+/**
+ * Removes every staging file a run left beside `path`, and nothing else in its directory, and
+ * answers the paths it removed.
+ */
+function removeStagingFiles(path: string): string[] {
   const directory = dirname(path);
+  const removed: string[] = [];
   for (const entry of entriesOf(directory)) {
     if (isStagingFile(entry, basename(path))) {
-      rmSync(join(directory, entry), { force: true });
+      const staging = join(directory, entry);
+      rmSync(staging, { force: true });
+      removed.push(staging);
     }
+  }
+  return removed;
+}
+
+/**
+ * Records each leftover a removal answered as `File removed.`, so every site that removes leftover
+ * staging files or folders records them one way, as in
+ * `recordLeftovers(log, removeStagingFiles(path))`.
+ */
+function recordLeftovers(log: Log, removed: readonly string[]): void {
+  for (const path of removed) {
+    fileRemoved(log, { path });
   }
 }
 
@@ -298,6 +319,7 @@ export {
   observe,
   permissionBits,
   realPath,
+  recordLeftovers,
   removeEmptyDirectory,
   removeStagingFiles,
   replaceFile,

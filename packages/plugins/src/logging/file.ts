@@ -42,14 +42,19 @@ function sizeOf(path: string): number {
   }
 }
 
-/** Runs a file operation that a missing source does not fail: the file it names is already gone. */
-function unlessMissing(operation: () => void): void {
+/**
+ * Runs a file operation that a missing source does not fail: the file it names is already gone.
+ * It answers whether the operation ran, and `false` when the source was missing.
+ */
+function unlessMissing(operation: () => void): boolean {
   try {
     operation();
+    return true;
   } catch (error) {
     if (!isMissing(error)) {
       throw error;
     }
+    return false;
   }
 }
 
@@ -57,31 +62,34 @@ function unlessMissing(operation: () => void): void {
  * Deletes the copy past `keep`, shifts each older copy up one, and renames the file to the first
  * copy. With `keep` 0 the file is deleted, as logrotate's `rotate 0` does. A copy that is not there
  * is skipped, and so is a file that is not there: another process rotated it first, and the record
- * then goes to the file now at the path.
+ * then goes to the file now at the path. It answers whether it renamed or deleted the file itself.
  */
-function rotate(path: string, keep: number): void {
+function rotate(path: string, keep: number): boolean {
   if (keep < FIRST) {
-    unlessMissing(() => unlinkSync(path));
-    return;
+    return unlessMissing(() => unlinkSync(path));
   }
   unlessMissing(() => unlinkSync(copyName(path, keep)));
   for (let number = keep - FIRST; number >= FIRST; number -= FIRST) {
     unlessMissing(() => renameSync(copyName(path, number), copyName(path, number + FIRST)));
   }
-  unlessMissing(() => renameSync(path, copyName(path, FIRST)));
+  return unlessMissing(() => renameSync(path, copyName(path, FIRST)));
 }
 
-/** Rotates the file when the record would take it past `maxBytes`, reporting a failure. */
-function rotateWhenFull({ keep, maxBytes, path, report }: FileSink, bytes: number): void {
+/**
+ * Rotates the file when the record would take it past `maxBytes`, reporting a failure. It answers
+ * whether a rotation renamed or deleted the file.
+ */
+function rotateWhenFull({ keep, maxBytes, path, report }: FileSink, bytes: number): boolean {
   const size = sizeOf(path);
   // A file with nothing in it has nothing to rotate, so an oversize record lands whole in it.
   if (size === EMPTY || size + bytes <= maxBytes) {
-    return;
+    return false;
   }
   try {
-    rotate(path, keep);
+    return rotate(path, keep);
   } catch (error) {
     report(new LoggingError('rotate', { cause: error, path }));
+    return false;
   }
 }
 
@@ -130,13 +138,20 @@ function append(path: string, record: string): LoggingError | undefined {
  * `maxBytes`, then appends. A failed step goes to the sink's `report`, and the next record tries
  * again. A failed rotation still appends, so a record goes unwritten only when the append itself fails.
  */
-function writeRecord(sink: FileSink, record: string): void {
-  rotateWhenFull(sink, Buffer.byteLength(record));
+function writeRecord(sink: FileSink, record: string): Written {
+  const rotated = rotateWhenFull(sink, Buffer.byteLength(record));
   const failure = append(sink.path, record);
   if (failure !== undefined) {
     sink.report(failure);
   }
+  return { appended: failure === undefined, rotated };
 }
 
-export type { FileSink, Report };
+/** What writing one record did: whether a rotation moved the file, and whether the record landed. */
+interface Written {
+  readonly rotated: boolean;
+  readonly appended: boolean;
+}
+
+export type { FileSink, Report, Written };
 export { writeRecord };

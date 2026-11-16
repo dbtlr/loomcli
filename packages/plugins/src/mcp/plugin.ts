@@ -13,16 +13,18 @@ import type { ChildRun } from './run.js';
 const agentInput = oneOf(agentNames);
 
 /** What every registering child reads from its action context. */
-type ChildContext = Pick<ActionContext<unknown>, 'graph' | 'host' | 'out' | 'signal'>;
+type ChildContext = Pick<ActionContext<unknown>, 'graph' | 'host' | 'log' | 'out' | 'signal'>;
 
 /** The run a registering child acts on, read from its action context. */
-function childRun({ graph, host, out, signal }: ChildContext): ChildRun {
+function childRun({ graph, host, log, out, signal }: ChildContext): ChildRun {
   return {
     host,
     info: (message) => out.info(message),
+    log,
     name: graph.name,
     signal,
     success: (message) => out.success(message),
+    trace: (message) => out.trace(message),
     warn: (message) => out.warn(message),
   };
 }

@@ -8,9 +8,10 @@ import type { Stats } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import { FatalError } from '@loomcli/core';
-import type { CommandGraph, Host } from '@loomcli/core';
+import type { CommandGraph, Host, Log } from '@loomcli/core';
 
 import { recordDirectory, requiredHome } from '../application-folders.js';
+import { fileWritten } from '../change-events.js';
 import { isEmpty } from '../help/cells.js';
 import {
   createDirectory,
@@ -45,20 +46,20 @@ import {
 import type { WritingVerb } from './messages.js';
 import { manPages } from './page.js';
 import type { ManPage } from './page.js';
+import { recordName as plugin } from './pages.js';
 
 /** What a child reads from its action: the application, the run, and the lanes it writes. */
 interface ChildRun {
   readonly graph: CommandGraph;
   readonly host: Host;
   readonly signal: AbortSignal;
+  /** The action's log, which records each file the child writes or removes. */
+  readonly log: Log;
   readonly info: (message: string) => Promise<void>;
   readonly print: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
   readonly warn: (message: string) => Promise<void>;
 }
-
-/** The plugin's file in the installation record, `manpage.json`. */
-const plugin = 'manpage';
 
 /** The permission bits of a folder the plugin creates and of a page it writes, whatever the umask. */
 const folderMode = 0o755;
@@ -126,6 +127,7 @@ async function generatePages(run: ChildRun, out: string): Promise<void> {
   }
   for (const page of pages) {
     replaceFile(page.path, page.content, { mode: pageMode });
+    fileWritten(run.log, { path: page.path });
   }
   await run.success(wrotePages(pages.length, folder));
 }
@@ -211,6 +213,7 @@ async function installed(
   const outcome = install({
     directoryMode: folderMode,
     files: wanted,
+    log: run.log,
     plugin,
     record: recorded.record,
     signal: run.signal,
@@ -286,7 +289,7 @@ function uninstalled(run: ChildRun): {
   readonly removed: readonly string[];
 } {
   const { record } = readRecord(run, 'uninstall');
-  const outcome = uninstall({ plugin, record, signal: run.signal });
+  const outcome = uninstall({ log: run.log, plugin, record, signal: run.signal });
   if (outcome.status === 'refused') {
     const [refused] = outcome.refused;
     throw new FatalError(recordUnreadable(run.graph.name, refused?.path ?? record, 'uninstall'));

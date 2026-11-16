@@ -6,6 +6,7 @@
 import { dirname, sep } from 'node:path';
 
 import { FatalError } from '@loomcli/core';
+import type { Log } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
 import { realPath } from '../installation/disk.js';
@@ -26,14 +27,13 @@ import {
 import {
   hasPluginFile,
   readShell,
-  recordName,
   refuseWindows,
   removeNotice,
   reportLines,
   writeNotices,
 } from './run.js';
 import type { ChildRun, ShellRecord } from './run.js';
-import { shells } from './shell-names.js';
+import { recordName, shells } from './shell-names.js';
 import type { Shell } from './shell-names.js';
 import { judgeStartup, mustRelease } from './startup.js';
 
@@ -75,6 +75,7 @@ async function reportScripts(
 async function removeShell(run: ChildRun, record: string, planned: Planned): Promise<void> {
   const { recorded, released } = planned;
   const outcome = uninstall({
+    log: run.log,
     plugin: recordName(recorded.shell),
     record,
     release: [...new Set(released.map(({ path }) => path))],
@@ -135,7 +136,7 @@ function sitsUnder(script: string, folder: string): boolean {
  * still holds the other shell's script, or its folders, after this uninstall, and the other
  * shell's uninstall removes it once it is empty.
  */
-function handOverFolders(record: string, shell: Shell): void {
+function handOverFolders(log: Log, record: string, shell: Shell): void {
   const remaining = new Set(recordedDirectories({ plugin: recordName(shell), record }));
   for (const heir of shells.filter((other) => other !== shell)) {
     const scripts = scriptsOf(record, heir);
@@ -144,7 +145,7 @@ function handOverFolders(record: string, shell: Shell): void {
     );
     if (
       held.length > none &&
-      adoptDirectories({ directories: held, plugin: recordName(heir), record })
+      adoptDirectories({ directories: held, log, plugin: recordName(heir), record })
     ) {
       for (const folder of held) {
         remaining.delete(folder);
@@ -165,7 +166,7 @@ async function uninstallShells(run: ChildRun, argument: Shell | undefined): Prom
   const selected = selectedShells(run, record, argument);
   const planned = selected.map((recorded) => planShell(run, recorded));
   for (const entry of planned) {
-    handOverFolders(record, entry.recorded.shell);
+    handOverFolders(run.log, record, entry.recorded.shell);
     await removeShell(run, record, entry);
   }
   if (!selected.some(recordsAnything)) {

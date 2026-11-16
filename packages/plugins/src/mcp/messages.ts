@@ -71,6 +71,11 @@ function registersNotOnWindows(name: string, child: Child): string {
   return `${shown(name)} mcp ${shown(child)} registers with claude and codex on Linux and macOS. Print a client configuration with ${shown(name)} mcp config and add it to your agent yourself.`;
 }
 
+/** The `-vv` line once `install` or `uninstall` read one agent's record file, there or not. */
+function checkedRecord(path: string): string {
+  return `Checked ${shownPath(path)}.`;
+}
+
 function recordUnreadable(name: string, record: string, child: Child): string {
   return `${shownPath(record)} cannot be read, so ${shown(name)} will not change the registration it lists. Remove it, then run ${shown(name)} mcp ${shown(child)} again.`;
 }
@@ -137,6 +142,7 @@ export {
   argumentsNotObject,
   buildNote,
   cannotTell,
+  checkedRecord,
   nameHeld,
   noAgent,
   noLongerRecorded,

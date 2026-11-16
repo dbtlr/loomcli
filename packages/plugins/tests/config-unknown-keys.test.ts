@@ -11,6 +11,8 @@ import { object, optional, string } from 'valibot';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
+import { withoutLookupLines } from './fixtures/lookup-lines.ts';
+
 /**
  * The lines the configuration plugin writes at -v for a key the file holds that the published JSON
  * Schema does not describe, under "Naming unknown keys" in the plugin's reference.
@@ -64,7 +66,7 @@ async function stderrOfText(
       })
       .action(() => {})
       .run({ process: mock });
-    return mock.stderr.text;
+    return withoutLookupLines(mock.stderr.text);
   } finally {
     rmSync(root, { force: true, recursive: true });
   }

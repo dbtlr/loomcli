@@ -86,6 +86,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { setTimeout as after } from 'node:timers/promises';
 
+import type { Log } from '@loomcli/core';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { invoke, start } from '../../../scripts/test-process.js';
@@ -110,6 +111,9 @@ import type {
   StartupLinesOutcome,
 } from '../src/installation/files.js';
 import { fillFolder, folderHoldsExactly, writeFolder } from '../src/installation/folders.js';
+
+/** A log that keeps nothing: these cases read the files the module leaves, not its change events. */
+const log: Log = { debug() {}, error() {}, info() {}, trace() {}, warn() {} };
 
 /** The SHA-256 digests of the bytes `test`, `abc`, and `new`, from independent sources. */
 const digests = {
@@ -155,12 +159,17 @@ function installed(
   files: readonly InstalledFile[],
   signal = new AbortController().signal,
 ) {
-  return install({ files, plugin: 'skill', record: box.record, signal });
+  return install({ files, log, plugin: 'skill', record: box.record, signal });
 }
 
 /** One uninstall by the skill plugin. */
 function uninstalled(box: Box) {
-  return uninstall({ plugin: 'skill', record: box.record, signal: new AbortController().signal });
+  return uninstall({
+    log,
+    plugin: 'skill',
+    record: box.record,
+    signal: new AbortController().signal,
+  });
 }
 
 /** The skill plugin's file, as bytes. */
@@ -248,6 +257,7 @@ test('a named directory mode holds on each created parent under umask 077, and a
     const outcome = install({
       directoryMode: 0o755,
       files: [{ content: 'test', mode: 0o644, path: deep }],
+      log,
       plugin: 'skill',
       record: box.record,
       signal: new AbortController().signal,
@@ -482,7 +492,7 @@ test('an uninstall reads the run signal before the first removal and throws its 
   const reason = new Error('Cancelled.');
   controller.abort(reason);
   expect(() =>
-    uninstall({ plugin: 'skill', record: box.record, signal: controller.signal }),
+    uninstall({ log, plugin: 'skill', record: box.record, signal: controller.signal }),
   ).toThrow(reason);
   expect(readFileSync(box.first, 'utf8')).toBe('test');
   expect(readFileSync(box.second, 'utf8')).toBe('abc');
@@ -826,6 +836,7 @@ function installedFolders(
   return install({
     files: extra.files ?? [],
     folders,
+    log,
     plugin: 'skill',
     record: box.record,
     signal: new AbortController().signal,
@@ -1370,11 +1381,12 @@ type HomeBox = ReturnType<typeof homeBox>;
 function installedLines(
   box: Box,
   lines: readonly InstalledLine[],
-  extra: Partial<Omit<InstallRequest, 'plugin' | 'record' | 'signal'>> = {},
+  extra: Partial<Omit<InstallRequest, 'log' | 'plugin' | 'record' | 'signal'>> = {},
 ) {
   return install({
     files: [],
     lines,
+    log,
     plugin: 'skill',
     record: box.record,
     signal: new AbortController().signal,
@@ -1385,6 +1397,7 @@ function installedLines(
 /** One uninstall by the skill plugin, releasing the named startup files' lines. */
 function uninstalledLines(box: Box, release: readonly string[] = []) {
   return uninstall({
+    log,
     plugin: 'skill',
     record: box.record,
     release,
@@ -1473,6 +1486,7 @@ test('a created directory takes the named mode whatever the umask, and follows t
     install({
       directoryMode: 0o755,
       files: [{ content: 'abc', path: join(named, 'a.md') }],
+      log,
       plugin: 'other',
       record: box.record,
       signal: new AbortController().signal,
@@ -2140,7 +2154,7 @@ const mcpCommand = ['/home/me/.local/bin/notes', 'mcp'];
 
 test('a pending registration is written and a committed one replaces it, as the contract spells them', () => {
   const box = sandbox();
-  const request = { plugin: 'mcp.claude', record: box.record };
+  const request = { log, plugin: 'mcp.claude', record: box.record };
   const file = join(box.record, 'mcp.claude.json');
   writePendingRegistration({ ...request, intended: mcpCommand, name: 'notes', prior: undefined });
   expect(readFileSync(file, 'utf8')).toBe(
@@ -2159,7 +2173,7 @@ test('a pending registration is written and a committed one replaces it, as the 
 
 test('a pending registration resolves to its intended command line, or its prior one when removing', () => {
   const box = sandbox();
-  const request = { plugin: 'mcp.codex', record: box.record };
+  const request = { log, plugin: 'mcp.codex', record: box.record };
   writePendingRegistration({
     ...request,
     intended: mcpCommand,
@@ -2180,7 +2194,7 @@ test('a pending registration resolves to its intended command line, or its prior
 
 test('a missing plugin file lists no registration, and deleting one removes it', () => {
   const box = sandbox();
-  const request = { plugin: 'mcp.codex', record: box.record };
+  const request = { log, plugin: 'mcp.codex', record: box.record };
   expect(readRegistration(request)).toEqual({ registration: undefined, status: 'read' });
   writeCommittedRegistration({ ...request, command: mcpCommand, name: 'notes' });
   deletePluginFile(request);

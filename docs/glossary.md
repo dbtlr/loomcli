@@ -680,7 +680,7 @@ One entry in an input error: an omitted required input, a rejected value togethe
 
 ## Logging
 
-Log, Log event, and Log destination follow the [logging contract](core/logging.md) and the [`onLog` hook](core/lifecycle-hooks.md#observing-log-events); Log record follows the [logging plugin](plugins/logging.md).
+Log, Log event, Change event, and Log destination follow the [logging contract](core/logging.md) and the [`onLog` hook](core/lifecycle-hooks.md#observing-log-events); Log record follows the [logging plugin](plugins/logging.md).
 
 **Log**:
 The member of the action, middleware, source, and `onFailure` contexts that records what happened for a reader later, with the methods `trace`, `debug`, `info`, `warn`, and `error`. It writes nothing: each call becomes a log event, and with no `onLog` installed it does nothing. It is separate from Out, which renders for the person at the terminal.
@@ -695,8 +695,12 @@ The severity of a log event: `trace`, `debug`, `info`, `warn`, `error`, or `fata
 _Avoid_: Severity class, verbosity (for the level), message level (a semantic method's destination and verbosity)
 
 **Log destination**:
-The outermost run's `env`, `home`, `platform`, and `stderr` that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. A log record never enters an invocation's captured output.
+The outermost run's `env`, `home`, `platform`, `stderr`, and `debug` and `trace` lanes, its `out`, that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. A log record never enters an invocation's captured output.
 _Avoid_: Sink, transport, target
+
+**Change event**:
+An `info` log event a first-party plugin records for one change it makes outside the process, from four shared messages: `File written.` and `File removed.` with `path`, `Program run.` with `program`, `arguments`, and `code`, and `Binary replaced.` with `path`, `from`, and `to`. A read and a failed change record none.
+_Avoid_: Audit event, side-effect log, change record
 
 **Log record**:
 One log event as the logging plugin writes it: one JSON line, the same in a file and on the console.
@@ -957,7 +961,7 @@ A declaration fact core owns and every projection reads without any plugin insta
 _Avoid_: Built-in metadata, reserved field
 
 **Plugin Command**:
-A Command a plugin lists under its definition's `commands`, which core attaches to the root ahead of the application's own Commands. It is an ordinary Command in every other way: every Command rule applies to it, every projection reads it without a special case, and the graph does not record which plugin attached it. The application cannot rename or remove it.
+A Command a plugin lists under its definition's `commands`, which core attaches to the root ahead of the application's own Commands. It is an ordinary Command in every other way: every Command rule applies to it, every projection reads it without a special case, and the graph does not record which plugin attached it. Its action's `log` alone names that plugin, from a record core keeps beside the graph. The application cannot rename or remove it.
 _Avoid_: Plugin subcommand, built-in command, contributed command
 
 **Core**:
@@ -1045,6 +1049,10 @@ _Avoid_: Auto-update, upgrade (for the Command), updater
 **Update notice**:
 The one `out.info` message the self-update plugin prints on stderr after the action of a run at a terminal, when its cache names a newer release on the running binary's release channel. A detached copy of the application refreshes the cache about once a day, so no run waits on the network, and the author or the operator can turn notices off.
 _Avoid_: Update check (for the line), nag, banner
+
+**Update check**:
+The self-update plugin's look for a newer release behind the update notice: the middleware reads the cache, `update.json`, and starts a detached refresh of it when it is stale. The `-v` and `-vv` lines name it, such as `Read the update check from <cache>.` and `Skipped the update check: CI is set.`; the line the check may print is the update notice.
+_Avoid_: Update notice (for the check), version check, update poll
 
 **Service unit**:
 The file that has the platform supervise one of the application's own Commands for the user: a systemd user unit on Linux or a launchd user agent on macOS, named by the application's reverse-DNS label. The service plugin writes it through the installation record, runs `host.program` with the declared argument words from home, and starts, stops, restarts, reports, and removes it.

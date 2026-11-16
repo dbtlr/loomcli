@@ -15,6 +15,8 @@ import { mockProcess } from '@loomcli/testing';
 import { path } from '@loomcli/validators';
 import { z } from 'zod';
 
+import { withoutLookupLines } from './lookup-lines.ts';
+
 const digits = z.string().regex(/^[0-9]+$/u, 'Supply a whole number.');
 
 const print =
@@ -249,7 +251,7 @@ async function run({
     const code = await application(declared).run({ process: mock });
     return {
       status: mock.exitCode,
-      stderr: mock.stderr.text,
+      stderr: withoutLookupLines(mock.stderr.text),
       stdout: `${mock.stdout.text}resolved:${code}\n`,
     };
   } catch (error) {
@@ -275,7 +277,7 @@ async function invoked({
   });
   return structuredClone({
     exitCode: 'exitCode' in outcome ? outcome.exitCode : undefined,
-    messages: 'messages' in outcome ? outcome.messages : undefined,
+    messages: 'messages' in outcome ? withoutLookupLines(outcome.messages) : undefined,
     output: 'output' in outcome ? outcome.output : undefined,
     status: outcome.status,
   });

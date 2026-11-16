@@ -76,13 +76,22 @@ interface Walk {
   readonly redirects: number;
 }
 
+/**
+ * What every request reads: the run signal, and the call that names a URL's address before it is
+ * requested, which the Command answers with its `-vv` line.
+ */
+interface Requesting {
+  readonly signal: AbortSignal;
+  readonly requested: (url: string) => Promise<void>;
+}
+
 /** One request of a walk, then the rest of the walk after the redirect it was answered with. */
 async function walk(
   state: Walk,
-  signal: AbortSignal,
+  requesting: Requesting,
   stop: (location: URL) => boolean,
 ): Promise<Followed> {
-  const response = await request(state.url, state.start, signal);
+  const response = await request(state.url, state.start, requesting);
   const next = await redirectOf(response, state.url, state.start);
   if (next === undefined) {
     return { github: state.github, response };
@@ -95,7 +104,11 @@ async function walk(
   if (stop(next)) {
     return { github, stopped: next };
   }
-  return walk({ ...state, github, redirects: state.redirects + oneMore, url: next }, signal, stop);
+  return walk(
+    { ...state, github, redirects: state.redirects + oneMore, url: next },
+    requesting,
+    stop,
+  );
 }
 
 /**
@@ -106,14 +119,28 @@ async function walk(
  */
 function follow(
   start: URL,
-  signal: AbortSignal,
+  requesting: Requesting,
   stop: (location: URL) => boolean = () => false,
 ): Promise<Followed> {
-  return walk({ github: start, redirects: 0, start, url: start }, signal, stop);
+  return walk({ github: start, redirects: 0, start, url: start }, requesting, stop);
 }
 
-/** One request with no redirect followed, its failure before a response named for `start`. */
-async function request(url: URL, start: URL, signal: AbortSignal): Promise<Response> {
+/**
+ * The address a `-vv` line names: the URL's scheme, host, and path. The userinfo, query, and
+ * fragment are left out, because they may carry a credential or a signature, as an asset store's
+ * signed redirect does.
+ */
+function shownAddress(url: URL): string {
+  return `${url.protocol}//${url.host}${url.pathname}`;
+}
+
+/**
+ * One request with no redirect followed, named by its address before it is sent, its failure
+ * before a response named for `start`.
+ */
+async function request(url: URL, start: URL, requesting: Requesting): Promise<Response> {
+  const { requested, signal } = requesting;
+  await requested(shownAddress(url));
   try {
     return await fetch(url, { redirect: 'manual', signal });
   } catch (error) {
@@ -125,8 +152,11 @@ async function request(url: URL, start: URL, signal: AbortSignal): Promise<Respo
 }
 
 /** The response at the end of the redirects from `url`, when its status is 200; any other fails. */
-async function okResponse(url: URL, signal: AbortSignal): Promise<{ body: Response; github: URL }> {
-  const followed = await follow(url, signal);
+async function okResponse(
+  url: URL,
+  requesting: Requesting,
+): Promise<{ body: Response; github: URL }> {
+  const followed = await follow(url, requesting);
   if ('stopped' in followed) {
     throw new RequestError('status', url.href);
   }
@@ -157,17 +187,17 @@ async function readBody<Body>(
 }
 
 /** The text at `url` after its redirects, and the last github.com URL they visited. */
-async function fetchText(url: URL, signal: AbortSignal): Promise<{ text: string; github: URL }> {
-  const { body, github } = await okResponse(url, signal);
-  return { github, text: await readBody(url, signal, () => body.text()) };
+async function fetchText(url: URL, requesting: Requesting): Promise<{ text: string; github: URL }> {
+  const { body, github } = await okResponse(url, requesting);
+  return { github, text: await readBody(url, requesting.signal, () => body.text()) };
 }
 
 /** The bytes at `url` after its redirects. */
-async function fetchBytes(url: URL, signal: AbortSignal): Promise<Uint8Array> {
-  const { body } = await okResponse(url, signal);
-  const buffer = await readBody(url, signal, () => body.arrayBuffer());
+async function fetchBytes(url: URL, requesting: Requesting): Promise<Uint8Array> {
+  const { body } = await okResponse(url, requesting);
+  const buffer = await readBody(url, requesting.signal, () => body.arrayBuffer());
   return new Uint8Array(buffer);
 }
 
-export type { Followed };
+export type { Followed, Requesting };
 export { fetchBytes, fetchText, follow, notFound, ok, RequestError };

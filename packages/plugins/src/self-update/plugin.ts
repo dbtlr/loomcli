@@ -1,11 +1,18 @@
 import { join } from 'node:path';
 
 import { applicationDirectory, Command, DeclarationError, InputError, plugin } from '@loomcli/core';
-import type { FatalError, Host, Log, Plugin } from '@loomcli/core';
+import type { FatalError, Host, Log, Out, Plugin } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
+import { binaryReplaced, fileWritten } from '../change-events.js';
 import { packageName } from '../constants.js';
-import { digestOf, observe, removeStagingFiles, replaceFile } from '../installation/disk.js';
+import {
+  digestOf,
+  observe,
+  recordLeftovers,
+  removeStagingFiles,
+  replaceFile,
+} from '../installation/disk.js';
 import { selfUpdateSettings } from '../rules.js';
 import { isVariableName } from '../variable-name.js';
 import { releaseBinary } from './binary.js';
@@ -36,13 +43,18 @@ import {
   recordUnwritable,
   refreshNoticeConflict,
   refreshNoticeConflictIssue,
+  replacedBinary,
+  requested,
   requestFailed,
+  resolvedRelease,
   updated,
+  verifiedAsset,
   versionIssue,
 } from './messages.js';
 import { unwritable } from './place.js';
 import { refreshNotice } from './refresh.js';
 import { fetchBytes, notFound, RequestError } from './request.js';
+import type { Requesting } from './request.js';
 import { downloadUrl, fetchSums, latestRelease } from './resolve.js';
 import type { Release } from './resolve.js';
 import { listingOf } from './sums.js';
@@ -67,12 +79,16 @@ interface AfterReplaceContext {
   readonly current: string;
   /** The recorded path, as `install.json` holds it. */
   readonly path: string;
+  /** The application's name, as the graph holds it. */
+  readonly name: string;
   /** The run's host, whose release facts still describe the replaced binary. */
   readonly host: Host;
   /** The run signal. */
   readonly signal: AbortSignal;
   /** The run's log. */
   readonly log: Log;
+  /** The run's output channel, the self-update action's own. */
+  readonly out: Out;
 }
 
 /**
@@ -196,16 +212,16 @@ interface Lookup {
   readonly checked: Checked;
   readonly named: Version | undefined;
   readonly channel: string;
-  readonly signal: AbortSignal;
+  readonly requesting: Requesting;
 }
 
 /** The release a run installs: the named version, or the newest on the channel. */
-async function target({ name, checked, named, channel, signal }: Lookup): Promise<Release> {
+async function target({ name, checked, named, channel, requesting }: Lookup): Promise<Release> {
   if (named !== undefined) {
-    const { repository, sums } = await fetchSums(checked.repository, named, signal);
+    const { repository, sums } = await fetchSums(checked.repository, named, requesting);
     return { repository, sums, version: named };
   }
-  const found = await latestRelease(checked.repository, channel, signal);
+  const found = await latestRelease(checked.repository, channel, requesting);
   if (found === undefined) {
     throw fatal(noRelease(name, channel, checked.repository));
   }
@@ -213,11 +229,14 @@ async function target({ name, checked, named, channel, signal }: Lookup): Promis
 }
 
 /** The release's `SHA256SUMS`, downloaded now unless finding the release already did. */
-async function sumsOf(release: Release, signal: AbortSignal): Promise<Release & { sums: string }> {
+async function sumsOf(
+  release: Release,
+  requesting: Requesting,
+): Promise<Release & { sums: string }> {
   if (release.sums !== undefined) {
     return { ...release, sums: release.sums };
   }
-  const fetched = await fetchSums(release.repository, release.version, signal);
+  const fetched = await fetchSums(release.repository, release.version, requesting);
   return { ...fetched, version: release.version };
 }
 
@@ -254,23 +273,37 @@ function notNewerLine({ name, running, found, channel }: NotNewer): string {
     : newerThanNewest({ channel, found: found.text, name, running: running.text });
 }
 
-/** What downloading the asset needs: the run's binary, the release, and the digest it lists. */
+/**
+ * What downloading the asset needs: the run's binary, the release, the digest it lists, the
+ * requests' signal and naming, and the run's `out`.
+ */
 interface Download {
   readonly checked: Checked;
   readonly release: Release;
   readonly digest: string;
-  readonly signal: AbortSignal;
+  readonly requesting: Requesting;
+  readonly out: Out;
 }
 
-/** Downloads the asset and returns its bytes once their digest matches the listed one. */
-async function download({ checked, release, digest, signal }: Download): Promise<Uint8Array> {
+/**
+ * Downloads the asset and returns its bytes once their digest matches the listed one, naming the
+ * match at `-v`.
+ */
+async function download({
+  checked,
+  release,
+  digest,
+  requesting,
+  out,
+}: Download): Promise<Uint8Array> {
   const bytes = await fetchBytes(
     downloadUrl(release.repository, release.version, checked.asset),
-    signal,
+    requesting,
   );
   if (digestOf(bytes) !== `sha256:${digest}`) {
     throw fatal(digestMismatch(checked.asset, `v${release.version.text}`, release.repository));
   }
+  await out.debug(verifiedAsset(checked.asset));
   return bytes;
 }
 
@@ -280,19 +313,26 @@ function recordLine(path: string, digest: string): string {
   return `{"format":1,"method":"script","path":${JSON.stringify(path)},"digest":"${digest}"}\n`;
 }
 
-/** What placing the verified bytes needs: the run's binary, the version, and the bytes. */
+/**
+ * What placing the verified bytes needs: the run's binary, the version, the bytes, and the run's
+ * signal and log.
+ */
 interface Placement {
   readonly name: string;
   readonly checked: Checked;
   readonly version: Version;
   readonly bytes: Uint8Array;
   readonly signal: AbortSignal;
+  readonly log: Log;
 }
 
-/** Places the verified bytes over the binary, removing leftover staging files first. */
-function placeBinary({ name, checked, bytes, signal }: Placement): void {
+/**
+ * Places the verified bytes over the binary, removing leftover staging files first, and records
+ * the replacement.
+ */
+function placeBinary({ name, checked, bytes, signal, log, version }: Placement): void {
   try {
-    removeStagingFiles(checked.path);
+    recordLeftovers(log, removeStagingFiles(checked.path));
     replaceFile(checked.path, bytes, { durable: true, mode: checked.mode, signal });
   } catch (error) {
     if (signal.aborted) {
@@ -300,28 +340,40 @@ function placeBinary({ name, checked, bytes, signal }: Placement): void {
     }
     throw fatal(binaryUnwritable(name, join(checked.path, '..')), error);
   }
+  binaryReplaced(log, { from: checked.running.text, path: checked.path, to: version.text });
 }
 
-/** Rewrites the installation record for the binary now at the recorded path. */
-function writeRecord({ name, checked, version, bytes }: Placement): void {
+/** Rewrites the installation record for the binary now at the recorded path, and records it. */
+function writeRecord({ name, checked, version, bytes, log }: Placement): void {
   const line = recordLine(checked.path, digestOf(bytes));
   const record = join(checked.record, 'install.json');
   try {
-    removeStagingFiles(record);
+    recordLeftovers(log, removeStagingFiles(record));
     replaceFile(record, line, { durable: true, mode: recordMode });
   } catch (error) {
     throw fatal(recordUnwritable(name, version.text), error);
   }
+  fileWritten(log, { path: record });
 }
 
 /**
  * Places the verified bytes over the binary, then rewrites the record. An abort read before the
  * rename propagates as it is. From the rename to the record no signal is read: the span is
- * synchronous, so no abort can arrive inside it, and it must stay so.
+ * synchronous, so no abort can arrive inside it, and it must stay so. The `Replaced` line is asked
+ * for inside the span and awaited after it, so the line comes before the record's rewrite in the
+ * run's output and the span stays synchronous. A record that cannot be written is the failure
+ * the run reports, whatever became of the line.
  */
-function place(placement: Placement): void {
+async function place(placement: Placement, out: Out): Promise<void> {
   placeBinary(placement);
-  writeRecord(placement);
+  const said = out.debug(replacedBinary(placement.checked.path));
+  try {
+    writeRecord(placement);
+  } catch (error) {
+    await Promise.allSettled([said]);
+    throw error;
+  }
+  await said;
 }
 
 /** The Command's action, once its inputs are read. */
@@ -333,8 +385,9 @@ interface Request {
   readonly named: Version | undefined;
   readonly channel: string | undefined;
   readonly checkOnly: boolean;
-  readonly info: (message: string) => Promise<void>;
-  readonly success: (message: string) => Promise<void>;
+  readonly out: Out;
+  /** The run signal, and the `-vv` line each request is named by. */
+  readonly requesting: Requesting;
 }
 
 /** The channel a run follows: the one the operator named, or the running binary's own. */
@@ -363,7 +416,7 @@ async function reportInstalled(request: Request, checked: Checked): Promise<bool
   if (request.checkOnly || !namesRunning(request, checked)) {
     return false;
   }
-  await request.success(installedLine(request, checked));
+  await request.out.success(installedLine(request, checked));
   return true;
 }
 
@@ -377,7 +430,7 @@ async function reportNotNewer(
     return false;
   }
   const channel = channelFor(request, checked);
-  await request.success(
+  await request.out.success(
     notNewerLine({ channel, found, name: request.name, running: checked.running }),
   );
   return true;
@@ -389,19 +442,38 @@ interface Resolved {
   readonly digest: string;
 }
 
-/** The refusals and reports that end a run before any download, or the release it goes on with. */
+/**
+ * The refusals and reports that end a run before any download, or the release it goes on with. A
+ * run without a version that goes on to replace names the release it resolved at `-v`.
+ */
 async function resolve(request: Request, checked: Checked): Promise<Resolved | undefined> {
-  const { name, named, signal } = request;
+  const { name, named, requesting } = request;
   if (await reportInstalled(request, checked)) {
     return undefined;
   }
   const channel = channelFor(request, checked);
-  const found = await target({ channel, checked, name, named, signal });
+  const found = await target({ channel, checked, name, named, requesting });
   if (await reportNotNewer(request, checked, found.version)) {
     return undefined;
   }
-  const release = await sumsOf(found, signal);
+  await sayResolved(request, found.version, channel);
+  const release = await sumsOf(found, requesting);
   return { digest: listedDigest(checked.asset, release), release };
+}
+
+/**
+ * Names at `-v` the release a run without a version resolved, once it goes on to replace. A named
+ * version is the operator's own and a `--check` line names the release, so neither writes it.
+ */
+async function sayResolved(request: Request, found: Version, channel: string): Promise<void> {
+  if (request.named === undefined && !request.checkOnly) {
+    await request.out.debug(resolvedRelease(found.text, channel));
+  }
+}
+
+/** The run signal, and the `-vv` line that names each request before it is sent. */
+function requestingOf(out: Out, signal: AbortSignal): Requesting {
+  return { requested: (url) => out.trace(requested(url)), signal };
 }
 
 /** The line a `--check` run prints for the release it resolved. */
@@ -422,12 +494,12 @@ function checkLine(request: Request, checked: Checked, found: Version): string {
 
 /** Downloads the resolved release, places it, and reports the update. */
 async function install(request: Request, checked: Checked, resolved: Resolved): Promise<void> {
-  const { name, signal } = request;
+  const { log, name, out, requesting, signal } = request;
   const { digest, release } = resolved;
-  await request.info(downloading(checked.asset, release.version.text, release.repository));
-  const bytes = await download({ checked, digest, release, signal });
-  place({ bytes, checked, name, signal, version: release.version });
-  await request.success(updated(name, checked.running.text, release.version.text));
+  await out.info(downloading(checked.asset, release.version.text, release.repository));
+  const bytes = await download({ checked, digest, out, release, requesting });
+  await place({ bytes, checked, log, name, signal, version: release.version }, out);
+  await out.success(updated(name, checked.running.text, release.version.text));
 }
 
 /** The Command's run, in the contract's order: refusals, resolving, `--check`, replacing. */
@@ -438,7 +510,7 @@ async function update(request: Request, settings: SelfUpdateSettings | undefined
     return;
   }
   if (request.checkOnly) {
-    await request.success(checkLine(request, checked, resolved.release.version));
+    await request.out.success(checkLine(request, checked, resolved.release.version));
     return;
   }
   await install(request, checked, resolved);
@@ -446,6 +518,8 @@ async function update(request: Request, settings: SelfUpdateSettings | undefined
     current: resolved.release.version.text,
     host: request.host,
     log: request.log,
+    name: request.name,
+    out: request.out,
     path: checked.path,
     previous: checked.running.text,
     signal: request.signal,
@@ -535,7 +609,12 @@ function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
       });
       try {
         if (refreshing) {
-          await refreshNotice({ host, name: graph.name, signal });
+          await refreshNotice({
+            host,
+            log,
+            name: graph.name,
+            requesting: requestingOf(out, signal),
+          });
           return;
         }
         await update(
@@ -543,12 +622,12 @@ function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
             channel: options.channel,
             checkOnly: options.check,
             host,
-            info: (message) => out.info(message),
             log,
             name: graph.name,
             named: args.version === undefined ? undefined : versionOfArgument(args.version),
+            out,
+            requesting: requestingOf(out, signal),
             signal,
-            success: (message) => out.success(message),
           },
           settings,
         );

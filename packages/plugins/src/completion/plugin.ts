@@ -38,13 +38,14 @@ const answerCommand = new Command('__complete', {
 const shellInput = oneOf(shells);
 
 /** What every installing child reads from its action context. */
-type ChildContext = Pick<ActionContext<unknown>, 'graph' | 'host' | 'out' | 'signal'>;
+type ChildContext = Pick<ActionContext<unknown>, 'graph' | 'host' | 'log' | 'out' | 'signal'>;
 
 /** The run an installing child acts on, read from its action context. */
-function childRun({ graph, host, out, signal }: ChildContext): ChildRun {
+function childRun({ graph, host, log, out, signal }: ChildContext): ChildRun {
   return {
     host,
     info: (message) => out.info(message),
+    log,
     name: graph.name,
     print: (message) => out.print(message),
     signal,

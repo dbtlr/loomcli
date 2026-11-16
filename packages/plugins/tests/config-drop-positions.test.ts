@@ -11,6 +11,8 @@ import { number, object, optional, string, tuple } from 'valibot';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
+import { withoutLookupLines } from './fixtures/lookup-lines.ts';
+
 /**
  * The position a dropped-value line and a strict failure name for an array item: its position in
  * the file as read, in every round, under "What a path removes" in the plugin's reference.
@@ -68,7 +70,7 @@ async function ran(
             problem.reason === 'invalid' ? problem.issues.map((issue) => issue.message) : [],
           )
         : [];
-    return { issues, status: mock.exitCode, stderr: mock.stderr.text };
+    return { issues, status: mock.exitCode, stderr: withoutLookupLines(mock.stderr.text) };
   } finally {
     rmSync(root, { force: true, recursive: true });
   }

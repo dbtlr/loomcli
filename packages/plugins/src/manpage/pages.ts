@@ -1,12 +1,17 @@
 /*
  * The page set: one page for the root and for every Command that is not hidden and has no hidden
- * ancestor, named like git's pages, and the judgment that no two Commands give one name.
+ * ancestor, named like git's pages, and the judgment that no two Commands give one name. It also
+ * names the plugin's file in the installation record, because the plugin's entry already loads
+ * this module, so the Commands and the refresh read that name from one place.
  */
 import { DeclarationError } from '@loomcli/core';
 import type { CommandGraph, CommandNode, GraphBuiltHook } from '@loomcli/core';
 
 import { visible } from '../help/page.js';
 import { manpagePageNameTaken } from '../rules.js';
+
+/** The plugin's file in the installation record, `manpage.json`. */
+const recordName = 'manpage';
 
 /** One findable Command with the Command it is under, `undefined` for the root. */
 interface Findable {
@@ -63,4 +68,4 @@ const judgePageNames: GraphBuiltHook = (graph) => {
 };
 
 export type { Findable };
-export { findable, judgePageNames, pageFile, pageName };
+export { findable, judgePageNames, pageFile, pageName, recordName };

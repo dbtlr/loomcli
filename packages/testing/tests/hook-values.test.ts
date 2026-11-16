@@ -86,14 +86,28 @@ describe('logEvent', () => {
 });
 
 describe('logDestination', () => {
-  it('an unstated member takes its fixed default', () => {
-    expect(logDestination()).toEqual({
+  it('an unstated member takes its fixed default', async () => {
+    const destination = logDestination();
+    expect(destination).toEqual({
       env: {},
       home: '/loom-test/home',
+      out: { debug: expect.any(Function), trace: expect.any(Function) },
       platform: 'linux',
       stderr: null,
     });
+    await expect(destination.out.debug('Logging to a file.')).resolves.toBeUndefined();
+    await expect(destination.out.trace('Rotated a file.')).resolves.toBeUndefined();
     expect(logDestination().env).not.toBe(logDestination().env);
+  });
+
+  it('stated lanes receive the lines a hook writes', async () => {
+    const lines: string[] = [];
+    const debug = async (message: string) => {
+      lines.push(message);
+    };
+    const destination = logDestination({ out: { debug, trace: debug } });
+    await destination.out.debug('Logging to a file.');
+    expect(lines).toEqual(['Logging to a file.']);
   });
 
   it('a stated stream is the stream the hook writes to', () => {
@@ -113,7 +127,7 @@ describe('logDestination', () => {
   it('a stated member replaces its default whole, and the destination is frozen', () => {
     const env = { XDG_STATE_HOME: '/state' };
     const destination = logDestination({ env, home: '/home/ada', platform: 'darwin' });
-    expect(destination).toEqual({ env, home: '/home/ada', platform: 'darwin', stderr: null });
+    expect(destination).toMatchObject({ env, home: '/home/ada', platform: 'darwin', stderr: null });
     expect(Object.isFrozen(destination)).toBe(true);
     expect(destination.env).toBe(env);
   });
