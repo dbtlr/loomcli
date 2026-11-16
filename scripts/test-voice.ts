@@ -70,10 +70,11 @@ interface VoiceSite {
  * operator, which the gathering check also reads: calls of the named functions, or of a named
  * member on a named receiver, such as `run.line`; assignments to the named variables or members;
  * object members by the named keys; the named error classes, such as JavaScript's own `Error`,
- * counted as failure constructors; the `return` statements and concise arrow bodies inside the
- * arguments of a call of the named functions, such as the `loom` bin's `report`, which prints what
- * its work returns; and the same inside the body of a function declared with a name in `functions`,
- * whose returned text such a call prints.
+ * counted as failure constructors; the `return` statements inside the arguments of a call of the
+ * named functions, such as the `loom` bin's `report`, which prints what its work returns, and a
+ * concise arrow body that is itself one of those arguments; and each `return` statement and concise
+ * arrow body inside the body of a function declared with a name in `functions`, whose returned text
+ * such a call prints.
  *
  * @example
  * ```ts
@@ -824,14 +825,18 @@ function sentences(tokens: readonly Token[]): string[] {
   return found;
 }
 
-/** The literal sentences a function body's tokens return: a `return` value or a concise arrow body. */
-function returnedSentences(tokens: readonly Token[]): string[] {
+/**
+ * The literal sentences a run of tokens returns: a `return` value or a concise arrow body. In a
+ * call's arguments, `own` counts a concise arrow only outside any bracket, so it is the argument
+ * itself and not an arrow nested in it. In a named function's body, `every` counts each concise
+ * arrow, because an arrow nested in brackets there, such as a `map` callback, builds returned text.
+ */
+function returnedSentences(tokens: readonly Token[], arrows: 'every' | 'own'): string[] {
   let depth = 0;
   return tokens.flatMap((token, at) => {
-    const own = depth === 0;
+    const counts = arrows === 'every' || depth === 0;
     depth += depthChange(token);
-    // A concise arrow counts only outside any bracket, so it is the argument itself, not one nested in it.
-    if (named(token, 'return') || (own && is(token, '=>') && !is(tokens[at + 1], '{'))) {
+    if (named(token, 'return') || (counts && is(token, '=>') && !is(tokens[at + 1], '{'))) {
       return sentences(valueAfter(tokens, at + 1));
     }
     return [];
@@ -928,7 +933,7 @@ function gatheringSites(tokens: readonly Token[], sinks: VoiceSinks): string[] {
   const sites: string[] = [];
   const argumentsAt = (open: number) => sentences(tokens.slice(open + 1, closing(tokens, open)));
   const returnedAt = (open: number) =>
-    returnedSentences(tokens.slice(open + 1, closing(tokens, open)));
+    returnedSentences(tokens.slice(open + 1, closing(tokens, open)), 'own');
   tokens.forEach((token, index) => {
     const previous = tokens[index - 1];
     const next = tokens[index + 1];
@@ -968,7 +973,7 @@ function gatheringSites(tokens: readonly Token[], sinks: VoiceSinks): string[] {
       sites.push(...sentences(valueAfter(tokens, index + 2)));
     }
     if (token.kind === 'identifier' && functions.has(token.text)) {
-      sites.push(...returnedSentences(bodyDeclaredAt(tokens, index)));
+      sites.push(...returnedSentences(bodyDeclaredAt(tokens, index), 'every'));
     }
     if (token.kind === 'template') {
       for (const expression of token.expressions) {

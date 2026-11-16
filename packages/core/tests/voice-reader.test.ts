@@ -372,6 +372,21 @@ test('a literal returned from a function a functions sink names is reported, in 
   ]);
 });
 
+test('a concise arrow nested in brackets in a named function body is read', () => {
+  const source = [
+    'function renderPlan(plan: Plan): string {',
+    '  const lines = [',
+    '    heading(plan),',
+    '    ...plan.libraries.map((library) => `Library ${quoted(library.name)} is planned.`),',
+    '  ];',
+    "  return lines.join(', ');",
+    '}',
+  ].join('\n');
+  expect(gathered(source, { functions: ['renderPlan'] })).toEqual([
+    '`Library ${quoted(library.name)} is planned.`',
+  ]);
+});
+
 test('a table without the Do not write and Write columns is refused as the banned words', () => {
   const page = [
     '## Voice',
