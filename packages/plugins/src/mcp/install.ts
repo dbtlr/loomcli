@@ -141,19 +141,20 @@ async function refuseNameInTheWay(
  * the registration recorded before the run, or no file when it recorded none or when `claude`'s
  * `remove` already took it away.
  */
-function restoreRecord({ agent, record, recorded }: Registering, removed: boolean): void {
+function restoreRecord({ agent, record, recorded, run }: Registering, removed: boolean): void {
   const plugin = recordName(agent);
   if (recorded === undefined || removed) {
-    deletePluginFile({ plugin, record });
+    deletePluginFile({ log: run.log, plugin, record });
     return;
   }
-  writeCommittedRegistration({ ...recorded, plugin, record });
+  writeCommittedRegistration({ ...recorded, log: run.log, plugin, record });
 }
 
 /** Writes the agent's plugin's file pending: the command line it held, and the one it will hold. */
 function recordPending({ agent, command, record, recorded, run }: Registering): void {
   writePendingRegistration({
     intended: command,
+    log: run.log,
     name: namesOf(run).registration,
     plugin: recordName(agent),
     prior: recorded?.command,
@@ -184,6 +185,7 @@ async function commit({ agent, command, record, run }: Registering): Promise<voi
   const names = namesOf(run);
   writeCommittedRegistration({
     command,
+    log: run.log,
     name: names.registration,
     plugin: recordName(agent),
     record,

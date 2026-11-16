@@ -40,13 +40,14 @@ async function removeFrom({ agent, record, recorded, run }: RecordedTarget): Pro
   const plugin = recordName(agent);
   writePendingRegistration({
     intended: undefined,
+    log: run.log,
     name: names.registration,
     plugin,
     prior: recorded.command,
     record,
   });
   const answer = await callAgent(run, agent.name, agent.remove(names.registration));
-  deletePluginFile({ plugin, record });
+  deletePluginFile({ log: run.log, plugin, record });
   if (succeededAt(answer)) {
     await run.success(removedRegistration(names, agent.name));
     return;

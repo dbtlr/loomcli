@@ -68,7 +68,13 @@ test('runs the binary with completion update, host.env, and host.cwd, pipes its 
   expect(JSON.parse(printed ?? '{}').cwd).toMatch(/work$/u);
   expect(result.stderr).toContain('child says hello\n');
   expect(result.resolved).toBe(true);
-  expect(result.events).toEqual([]);
+  expect(result.events).toEqual([
+    {
+      fields: { arguments: ['completion', 'update'], code: 0, program: refreshed },
+      level: 'info',
+      message: 'Program run.',
+    },
+  ]);
 });
 
 test('adds the warn event with the exit code for a child that exits 1, and resolves', async () => {
@@ -128,10 +134,10 @@ test('a self-update rewrites a recorded script to the replaced binary’s versio
   const script = join(data, 'jsonkit', 'completion', 'jsonkit.bash');
   mkdirSync(join(data, 'jsonkit', 'completion'), { recursive: true });
   writeFileSync(script, 'old script\n');
-  writeFileSync(
-    join(installation, 'completion.bash.json'),
-    `{"format":1,"state":"committed","directories":[],"files":[{"path":${JSON.stringify(script)},"digest":"sha256:${digestOf('old script\n')}"}]}\n`,
-  );
+  const bashRecord = `{"format":1,"state":"committed","directories":[],"files":[{"path":${JSON.stringify(script)},"digest":"sha256:${digestOf('old script\n')}"}]}\n`;
+  writeFileSync(join(installation, 'completion.bash.json'), bashRecord);
+  // The refresh finds the record by the updating application's name, so notes records the script too.
+  writeFileSync(join(updating, 'completion.bash.json'), bashRecord);
   // The replacing binary runs the completion fixture application with the arguments it was given.
   // It does so once the update wrote its bytes at the recorded path.
   const bytes = 'jsonkit 1.5.0 binary\n';

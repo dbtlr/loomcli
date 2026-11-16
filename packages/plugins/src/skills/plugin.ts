@@ -14,14 +14,15 @@ import type { SkillsSettings } from './types.js';
 const agentInput = oneOf(['claude', 'agents']);
 
 /** What every child reads from its action context. */
-type ChildContext = Pick<ActionContext<unknown>, 'graph' | 'host' | 'out' | 'signal'>;
+type ChildContext = Pick<ActionContext<unknown>, 'graph' | 'host' | 'log' | 'out' | 'signal'>;
 
 /** The run a child acts on, read from its action context. */
 function childRun(context: ChildContext): ChildRun {
-  const { graph, host, out, signal } = context;
+  const { graph, host, log, out, signal } = context;
   return {
     host,
     info: (message) => out.info(message),
+    log,
     name: graph.name,
     signal,
     success: (message) => out.success(message),

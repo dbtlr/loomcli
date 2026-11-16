@@ -199,6 +199,7 @@ function installThrough(
     directoryMode,
     files: [scriptFile(place.script, content)],
     lines: plan.lines,
+    log: run.log,
     plugin: recordName(place.shell),
     record,
     release: plan.release,

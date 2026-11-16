@@ -3,7 +3,7 @@
  * in the installation record, and the lines they write about startup lines.
  */
 import { FatalError } from '@loomcli/core';
-import type { Host } from '@loomcli/core';
+import type { Host, Log } from '@loomcli/core';
 
 import { digestOf, exists } from '../installation/disk.js';
 import { hasPendingRecord, readRecorded, targetRefusals } from '../installation/files.js';
@@ -38,6 +38,8 @@ interface ChildRun {
   readonly name: string;
   readonly host: Host;
   readonly signal: AbortSignal;
+  /** The action's log, which records each file the child writes or removes. */
+  readonly log: Log;
   readonly info: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
   readonly warn: (message: string) => Promise<void>;

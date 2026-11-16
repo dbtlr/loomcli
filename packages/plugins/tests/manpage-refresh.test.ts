@@ -48,7 +48,13 @@ test('runs the binary with manpage update, host.env, and host.cwd, pipes its out
   expect(JSON.parse(printed ?? '{}').cwd).toMatch(/work$/u);
   expect(result.stderr).toContain('child says hello\n');
   expect(result.resolved).toBe(true);
-  expect(result.events).toEqual([]);
+  expect(result.events).toEqual([
+    {
+      fields: { arguments: ['manpage', 'update'], code: 0, program: binary },
+      level: 'info',
+      message: 'Program run.',
+    },
+  ]);
 });
 
 test('adds the warn event with the exit code for a child that exits 1, and resolves', async () => {

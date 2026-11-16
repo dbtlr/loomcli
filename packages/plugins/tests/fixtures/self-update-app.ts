@@ -2,14 +2,15 @@ import { appendFileSync, chmodSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { Writable } from 'node:stream';
 
-import { Application, Command, FatalError, lanes, override } from '@loomcli/core';
-import type { ReleaseFacts } from '@loomcli/core';
+import { Application, Command, FatalError, lanes, override, plugin } from '@loomcli/core';
+import type { LogEvent, ReleaseFacts } from '@loomcli/core';
 import { refreshCompletion } from '@loomcli/plugins/completion';
 import { help } from '@loomcli/plugins/help';
 import { refreshManpages } from '@loomcli/plugins/manpage';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import type { NoticeSettings, SelfUpdateSettings } from '@loomcli/plugins/self-update';
 import { refreshSkills } from '@loomcli/plugins/skills';
+import { verbose } from '@loomcli/plugins/verbose';
 
 interface GitHub {
   repository: string;
@@ -30,6 +31,8 @@ interface UpdateScenario {
   help?: 'before' | 'after' | undefined;
   restyle?: boolean | undefined;
   abortAfterRename?: boolean | undefined;
+  /** Installs the verbose plugin, so `-v` and `-vv` settle the run's verbosity. */
+  verbose?: boolean | undefined;
 }
 function redirect(status: number, location: string) {
   return new Response(null, { headers: { location }, status });
@@ -62,6 +65,8 @@ function selfUpdateApplication(
     /** Receives the URL of each request the fake answers. */
     requested: (url: string) => void;
     writeStderr: (chunk: string | Uint8Array) => void;
+    /** Receives each log event the run raises, through an `onLog` observer. */
+    observe?: ((event: LogEvent) => void) | undefined;
   },
 ) {
   const { requested } = effects;
@@ -238,7 +243,7 @@ function selfUpdateApplication(
       return { afterReplace: refreshManpages };
     }
     return {
-      afterReplace: ({ current, host, path, previous, signal }) => {
+      afterReplace: async ({ current, host, name, out, path, previous, signal }) => {
         writeFileSync(
           scenario.hookLog ?? '',
           `${JSON.stringify({ aborted: signal.aborted, current, host: host.release.release?.version, path, previous })}\n`,
@@ -247,6 +252,8 @@ function selfUpdateApplication(
         if (scenario.hook === 'throw') {
           throw new Error('The service did not restart.');
         }
+        // The context carries the graph's name and the action's out, which the hook writes through.
+        await out.debug(`The hook ran for ${name}.`);
       },
     };
   }
@@ -268,13 +275,30 @@ function selfUpdateApplication(
     return scenario.notices === undefined ? hook : { ...hook, notices: scenario.notices };
   }
 
+  /** The verbose plugin and the observer, when the scenario and the effects ask for them. */
+  function extras() {
+    const { observe } = effects;
+    const observer =
+      observe === undefined
+        ? []
+        : [
+            plugin('fixture/observer', {
+              onLog: (event) => {
+                observe(event);
+                return undefined;
+              },
+            }),
+          ];
+    return [...(scenario.verbose === true ? [verbose()] : []), ...observer];
+  }
+
   /** `selfUpdate()`, with the help plugin before or after it when the scenario names where. */
   function plugins() {
     const update = selfUpdate(settings());
     if (scenario.help === 'before') {
-      return [help(), update];
+      return [help(), update, ...extras()];
     }
-    return scenario.help === 'after' ? [update, help()] : [update];
+    return scenario.help === 'after' ? [update, help(), ...extras()] : [update, ...extras()];
   }
 
   const app = new Application('notes', {

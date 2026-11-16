@@ -1,5 +1,5 @@
 import { applicationDirectory, FatalError } from '@loomcli/core';
-import type { Host, OnShutdown } from '@loomcli/core';
+import type { Host, Log, OnShutdown } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
 import { holdsControlCharacter } from '../control-character.js';
@@ -47,6 +47,8 @@ interface ChildRun {
   readonly label: string;
   readonly host: Host;
   readonly signal: AbortSignal;
+  /** The action's log, which records each file the child writes or removes. */
+  readonly log: Log;
   readonly onShutdown: OnShutdown;
   readonly info: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
@@ -235,6 +237,7 @@ async function writeUnit(prepared: Prepared, text: string, files: readonly Commi
   await retireEarlier(prepared, files);
   const outcome = install({
     files: [{ content: text, mode: unitMode, path: service.unit }],
+    log: run.log,
     plugin: recordName,
     record,
     signal: run.signal,
@@ -275,7 +278,7 @@ async function removeUnits(prepared: Prepared, files: readonly CommittedFile[]):
   for (const file of files) {
     await backend.retire(service, file.path);
   }
-  const outcome = uninstall({ plugin: recordName, record, signal: run.signal });
+  const outcome = uninstall({ log: run.log, plugin: recordName, record, signal: run.signal });
   if (outcome.status === 'refused') {
     const [refusal] = outcome.refused;
     throw new FatalError(recordUnreadable(run.name, refusal?.path ?? record, 'uninstall'));

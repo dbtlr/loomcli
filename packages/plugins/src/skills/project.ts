@@ -8,6 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import { FatalError, InputError } from '@loomcli/core';
 
+import { fileRemoved, fileWritten } from '../change-events.js';
 import { exists } from '../installation/disk.js';
 import { writeFolder } from '../installation/folders.js';
 import type { ChildRun } from './global.js';
@@ -110,14 +111,17 @@ interface ProjectRequest {
   readonly directory: string | undefined;
 }
 
-/** Replaces one skill's folder under the root whole and states it. */
+/** Replaces one skill's folder under the root whole, records it, and states it. */
 async function replaceFolder(
   run: ChildRun,
   { folder, loaded, target }: { folder: string; loaded: LoadedSkill; target: Target },
 ): Promise<void> {
   const replacing = exists(folder);
   mkdirSync(dirname(folder), { recursive: true });
-  writeFolder(folder, loaded.files);
+  for (const leftover of writeFolder(folder, loaded.files)) {
+    fileRemoved(run.log, { path: leftover });
+  }
+  fileWritten(run.log, { path: folder });
   await run.success((replacing ? installedSkillOver : installedSkill)(loaded.name, target, folder));
 }
 

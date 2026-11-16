@@ -86,6 +86,7 @@ function rewrite(
     directoryMode,
     files: [scriptFile(script, content)],
     lines: steps.flatMap((step) => step.lines),
+    log: run.log,
     plugin: recordName(recorded.shell),
     record,
     release: steps.flatMap((step) => step.release),

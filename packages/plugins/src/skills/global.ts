@@ -6,7 +6,7 @@
 import { join } from 'node:path';
 
 import { FatalError } from '@loomcli/core';
-import type { Host } from '@loomcli/core';
+import type { Host, Log } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
 import { realPath } from '../installation/disk.js';
@@ -44,6 +44,8 @@ interface ChildRun {
   readonly name: string;
   readonly host: Host;
   readonly signal: AbortSignal;
+  /** The action's log, which records each file the child writes or removes. */
+  readonly log: Log;
   readonly info: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
   readonly warn: (message: string) => Promise<void>;
@@ -219,6 +221,7 @@ async function writeTarget(writing: Writing, entry: Wanted): Promise<void> {
     files: [],
     folders: entry.wanted,
     force: writing.force,
+    log: run.log,
     plugin: recordName(entry.place.target),
     record,
     signal: run.signal,
@@ -288,7 +291,12 @@ async function installGlobal(run: ChildRun, request: InstallRequest): Promise<vo
 /** Removes one target's recorded folders through the module and states each. */
 async function removeTarget(where: Where, entry: Recorded): Promise<void> {
   const { record, run } = where;
-  const outcome = uninstall({ plugin: recordName(entry.place.target), record, signal: run.signal });
+  const outcome = uninstall({
+    log: run.log,
+    plugin: recordName(entry.place.target),
+    record,
+    signal: run.signal,
+  });
   if (outcome.status === 'refused') {
     const [refused] = outcome.refused;
     throw new FatalError(recordUnreadable(run.name, refused?.path ?? record, 'uninstall'));

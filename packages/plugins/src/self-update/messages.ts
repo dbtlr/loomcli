@@ -160,8 +160,94 @@ function updateNotice({ channel, found, name, running }: FoundRelease): string {
   return `${shown(name)} ${shown(found)} is available on the ${shown(channel)} channel. Run ${shown(name)} self-update to update from ${shown(running)}.`;
 }
 
-export type { FailedRequest, FoundRelease };
+/**
+ * The first condition of the update notices' middleware that fails: an opt-out variable is set, an
+ * output stream is not a terminal, CI is set, `self-update` itself is running, the run is not a
+ * release binary or not one install.sh placed, or the cache directory's variable is not absolute.
+ */
+type UpdateCheckSkip =
+  | { readonly kind: 'opted-out'; readonly variable: string }
+  | { readonly kind: 'stdout' | 'stderr' | 'ci' | 'self-update' }
+  | { readonly kind: 'not-release' | 'not-script'; readonly name: string }
+  | { readonly kind: 'not-absolute'; readonly variable: string };
+
+/** The sentence that names why the middleware did nothing. */
+function skipReason(skip: UpdateCheckSkip): string {
+  switch (skip.kind) {
+    case 'opted-out': {
+      return `${shown(skip.variable)} is set.`;
+    }
+    case 'stdout': {
+      return 'stdout is not a terminal.';
+    }
+    case 'stderr': {
+      return 'stderr is not a terminal.';
+    }
+    case 'ci': {
+      return 'CI is set.';
+    }
+    case 'self-update': {
+      return 'self-update is running.';
+    }
+    case 'not-release': {
+      return `${shown(skip.name)} is not a release binary.`;
+    }
+    case 'not-script': {
+      return `${shown(skip.name)} was not installed by install.sh.`;
+    }
+    default: {
+      return `${shown(skip.variable)} is not an absolute path.`;
+    }
+  }
+}
+
+/** The `-vv` line of a middleware that did nothing, naming the first reason. */
+function skippedUpdateCheck(skip: UpdateCheckSkip): string {
+  return `Skipped the update check: ${skipReason(skip)}`;
+}
+
+/** The `-v` line that names the cache the middleware read. */
+function readUpdateCheck(path: string): string {
+  return `Read the update check from ${shownPlace(path)}.`;
+}
+
+/** The `-vv` line for something at the cache's path that is not a cache this version reads. */
+function ignoredUpdateCache(path: string): string {
+  return `Ignored ${shownPlace(path)}: it is not an update cache this version reads.`;
+}
+
+const startedRefresh = 'Started a refresh of the update check.';
+
+/** The `-vv` line before each request the Command sends. */
+function requested(url: string): string {
+  return `Requested ${shownPlace(url)}.`;
+}
+
+/** The `-v` line once a run without a version found a newer release on its channel. */
+function resolvedRelease(version: string, channel: string): string {
+  return `Resolved v${shown(version)} on the ${shown(channel)} channel.`;
+}
+
+/** The `-v` line once the downloaded asset matches its listed digest. */
+function verifiedAsset(asset: string): string {
+  return `Verified ${shown(asset)} against SHA256SUMS.`;
+}
+
+/** The `-v` line once the verified bytes are renamed over the recorded path. */
+function replacedBinary(path: string): string {
+  return `Replaced ${shownPlace(path)}.`;
+}
+
+export type { FailedRequest, FoundRelease, UpdateCheckSkip };
 export {
+  ignoredUpdateCache,
+  readUpdateCheck,
+  replacedBinary,
+  requested,
+  resolvedRelease,
+  skippedUpdateCheck,
+  startedRefresh,
+  verifiedAsset,
   alreadyInstalled,
   assetNotListed,
   binaryChanged,

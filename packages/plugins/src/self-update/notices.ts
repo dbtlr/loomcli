@@ -1,16 +1,25 @@
 /**
  * The update notices' middleware: after the action of a run at a terminal, it prints one line when
  * the cache names a newer release on the running binary's channel, and refreshes a stale cache
- * through a detached copy of the application, which the run never waits for.
+ * through a detached copy of the application, which the run never waits for. At `-v` it names the
+ * cache it read and the refresh it started, and at `-vv` why it did nothing and a cache it ignored.
  */
 import { applicationDirectory } from '@loomcli/core';
-import type { Host, Middleware, Out } from '@loomcli/core';
+import type { Host, Log, Middleware, Out } from '@loomcli/core';
 
+import { fileWritten } from '../change-events.js';
 import { underCI } from '../ci.js';
 import { releaseBinary } from './binary.js';
-import { readCache, writeCache } from './cache.js';
+import { cachePath, findCache, stale, writeCache } from './cache.js';
 import type { CacheEntry, CacheReading, Lookup } from './cache.js';
-import { updateNotice } from './messages.js';
+import {
+  ignoredUpdateCache,
+  readUpdateCheck,
+  skippedUpdateCheck,
+  startedRefresh,
+  updateNotice,
+} from './messages.js';
+import type { UpdateCheckSkip } from './messages.js';
 import type { selfUpdate } from './plugin.js';
 import { compareVersions, equalPrecedence, parseVersion } from './version.js';
 import type { Version } from './version.js';
@@ -41,26 +50,54 @@ interface Candidate {
 }
 
 /**
- * Whether conditions 2 to 5 of the contract hold, in its order: no opt-out variable, both output
- * streams at a terminal, not CI, and not `self-update` itself.
+ * The reason the first of conditions 2 to 5 of the contract that fails names, in its order: no
+ * opt-out variable, both output streams at a terminal, not CI, and not `self-update` itself; or
+ * `undefined` when all hold.
  */
-function isEligible({ host, optOut, routed }: Candidate): boolean {
-  const { env, terminal } = host;
-  return !(
-    isSet(env, operatorOptOut) ||
-    (optOut !== undefined && isSet(env, optOut)) ||
-    !terminal.stdout.isTTY ||
-    !terminal.stderr.isTTY ||
-    underCI(env) ||
-    routed.join(' ') === commandName
-  );
+function ineligibility({ host, optOut, routed }: Candidate): UpdateCheckSkip | undefined {
+  const { env } = host;
+  const reason = optedOut(env, optOut) ?? notTerminal(host.terminal);
+  if (reason !== undefined) {
+    return reason;
+  }
+  if (underCI(env)) {
+    return { kind: 'ci' };
+  }
+  return routed.join(' ') === commandName ? { kind: 'self-update' } : undefined;
 }
 
-/** The running binary's version and lookup, when a release binary the installer script placed. */
-function scriptRelease(host: Host): (Lookup & { readonly running: Version }) | undefined {
+/** The opt-out variable that is set, the operator's before the author's, as its reason. */
+function optedOut(env: Host['env'], optOut: string | undefined): UpdateCheckSkip | undefined {
+  if (isSet(env, operatorOptOut)) {
+    return { kind: 'opted-out', variable: operatorOptOut };
+  }
+  return optOut !== undefined && isSet(env, optOut)
+    ? { kind: 'opted-out', variable: optOut }
+    : undefined;
+}
+
+/** The first output stream that is not a terminal, stdout before stderr, as its reason. */
+function notTerminal(terminal: Host['terminal']): UpdateCheckSkip | undefined {
+  if (!terminal.stdout.isTTY) {
+    return { kind: 'stdout' };
+  }
+  return terminal.stderr.isTTY ? undefined : { kind: 'stderr' };
+}
+
+/**
+ * The running binary's version and lookup, when a release binary the installer script placed, or
+ * the reason it is not one.
+ */
+function scriptRelease(
+  host: Host,
+  name: string,
+): (Lookup & { readonly running: Version }) | { readonly skipped: UpdateCheckSkip } {
   const binary = releaseBinary(host);
-  if (binary === undefined || host.release.installation?.method !== 'script') {
-    return undefined;
+  if (binary === undefined) {
+    return { skipped: { kind: 'not-release', name } };
+  }
+  if (host.release.installation?.method !== 'script') {
+    return { skipped: { kind: 'not-script', name } };
   }
   const { channel, repository, running } = binary;
   return { channel, repository, running };
@@ -79,17 +116,22 @@ interface Qualified extends Lookup {
 
 /**
  * The run's binary and cache directory when conditions 2 to 7 of the contract hold, in its order;
- * the last two are a script-installed release binary and a cache directory that resolves.
+ * the last two are a script-installed release binary and a cache directory that resolves. A run
+ * that fails one answers the reason the first that fails names.
  */
-function qualified(candidate: Candidate): Qualified | undefined {
-  const release = isEligible(candidate) ? scriptRelease(candidate.host) : undefined;
-  if (release === undefined) {
-    return undefined;
+function qualified(candidate: Candidate): Qualified | { readonly skipped: UpdateCheckSkip } {
+  const reason = ineligibility(candidate);
+  if (reason !== undefined) {
+    return { skipped: reason };
   }
   const { host, name } = candidate;
+  const release = scriptRelease(host, name);
+  if ('skipped' in release) {
+    return release;
+  }
   const directory = applicationDirectory('cache', name, host);
   return 'variable' in directory
-    ? undefined
+    ? { skipped: { kind: 'not-absolute', variable: directory.variable } }
     : { ...release, directory: directory.path, host, name };
 }
 
@@ -111,53 +153,77 @@ function passOver(): void {
   // A notice is a courtesy: its own faults are not the run's.
 }
 
+/** Writes one line, letting a write that fails go, so core's output contract alone reports it. */
+async function say(written: Promise<void>): Promise<void> {
+  await written.catch(passOver);
+}
+
 /**
  * Starts `[...program, 'self-update', '--refresh-notice']` through `host.spawn` as a detached
- * child, in the cache directory, with every stream ignored, and releases it. A child that cannot
- * start, at the call, as a mock with no script for it throws, or through `exited`, is passed over.
+ * child, in the cache directory, with every stream ignored, and releases it, answering whether
+ * `host.spawn` returned it. A child that cannot start, at the call, as a mock with no script for it
+ * throws, or through `exited`, is passed over.
  */
-function startRefresh(host: Host, directory: string): void {
+function startRefresh(host: Host, directory: string): boolean {
   const [command, ...words] = host.program;
   if (command === undefined) {
-    return;
+    return false;
   }
   try {
     // The run never waits for the refresh, and `exited` never rejects, so its answer is released.
     void host.spawn(command, [...words, ...refreshWords], { cwd: directory, detached: true })
       .exited;
+    return true;
   } catch {
     passOver();
+    return false;
   }
 }
 
 /**
- * Writes `checked` first, then starts the child; a `checked` that cannot be written starts none.
+ * Writes `checked` first, recording the write, then starts the child, answering whether it
+ * started; a `checked` that cannot be written starts none.
  */
-function refresh(host: Host, directory: string, entry: CacheEntry): void {
+function refresh(run: Qualified, entry: CacheEntry, log: Log): boolean {
   try {
-    writeCache(directory, entry);
+    fileWritten(log, { path: writeCache(run.directory, entry) });
   } catch {
-    return;
+    return false;
   }
-  startRefresh(host, directory);
+  return startRefresh(run.host, run.directory);
+}
+
+/** Reads the cache, naming it at `-v` when it is one this version reads, or at `-vv` when not. */
+async function readNamed(run: Qualified, out: Out, now: number): Promise<CacheReading> {
+  const found = findCache(run.directory, run, now);
+  const path = cachePath(run.directory);
+  if (found.kind === 'ignored') {
+    await say(out.trace(ignoredUpdateCache(path)));
+  }
+  if (found.kind !== 'read') {
+    return stale;
+  }
+  await say(out.debug(readUpdateCheck(path)));
+  return found.reading;
 }
 
 /**
  * Prints the notice when the cache names a newer version, then refreshes a stale cache, writing the
  * cached `latest` back when only its `checked` was at fault.
  */
-async function notify(run: Qualified, out: Out): Promise<void> {
+async function notify(run: Qualified, { log, out }: { log: Log; out: Out }): Promise<void> {
   const now = Date.now();
-  const reading = readCache(run.directory, run, now);
+  const reading = await readNamed(run, out, now);
   const newer = newerVersion(reading, run.running);
   if (newer !== undefined) {
-    // Core's output contract alone reports a write that fails; the notice lets it go.
-    await out.info(noticeLine(run, newer)).catch(passOver);
+    await say(out.info(noticeLine(run, newer)));
   }
   if (!reading.fresh) {
     const { channel, repository } = run;
     const entry = { channel, checked: new Date(now), latest: reading.latest, repository };
-    refresh(run.host, run.directory, entry);
+    if (refresh(run, entry, log)) {
+      await say(out.debug(startedRefresh));
+    }
   }
 }
 
@@ -171,11 +237,13 @@ function noticeMiddleware(optOut: string | undefined): Middleware<typeof selfUpd
     if (outcome !== 'dispatched' || context.signal.aborted) {
       return;
     }
-    const { command, graph, host, out } = context;
+    const { command, graph, host, log, out } = context;
     const run = qualified({ host, name: graph.name, optOut, routed: command.path });
-    if (run !== undefined) {
-      await notify(run, out);
+    if ('skipped' in run) {
+      await say(out.trace(skippedUpdateCheck(run.skipped)));
+      return;
     }
+    await notify(run, { log, out });
   };
 }
 

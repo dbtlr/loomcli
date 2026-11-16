@@ -1,4 +1,5 @@
 import { fetchText, follow, notFound, ok, RequestError } from './request.js';
+import type { Requesting } from './request.js';
 import { channelOf, compareVersions, equalPrecedence, versionOfTag } from './version.js';
 import type { Version } from './version.js';
 
@@ -39,9 +40,12 @@ function downloadUrl(repository: string, version: Version, file: string): URL {
 async function fetchSums(
   repository: string,
   version: Version,
-  signal: AbortSignal,
+  requesting: Requesting,
 ): Promise<{ repository: string; sums: string }> {
-  const { github, text } = await fetchText(downloadUrl(repository, version, 'SHA256SUMS'), signal);
+  const { github, text } = await fetchText(
+    downloadUrl(repository, version, 'SHA256SUMS'),
+    requesting,
+  );
   return { repository: repositoryOf(github, repository), sums: text };
 }
 
@@ -63,11 +67,14 @@ function stableAt(page: URL): Release | undefined {
  * A redirect that leaves github.com, a tag page whose version is not stable, or a 200 at the end
  * of the redirects means there is none; any other status fails the request.
  */
-async function latestStable(repository: string, signal: AbortSignal): Promise<Release | undefined> {
+async function latestStable(
+  repository: string,
+  requesting: Requesting,
+): Promise<Release | undefined> {
   const start = new URL(`https://github.com/${repository}/releases/latest`);
   const followed = await follow(
     start,
-    signal,
+    requesting,
     (location) => location.origin !== 'https://github.com' || tagPage.test(location.pathname),
   );
   if ('response' in followed) {
@@ -104,16 +111,16 @@ function feedVersions(feed: string, repository: string, channel: string): Versio
 async function latestOnChannel(
   repository: string,
   channel: string,
-  signal: AbortSignal,
+  requesting: Requesting,
 ): Promise<Release | undefined> {
   const { github, text } = await fetchText(
     new URL(`https://github.com/${repository}/releases.atom`),
-    signal,
+    requesting,
   );
   const named = repositoryOf(github, repository);
   for (const version of feedVersions(text, named, channel)) {
     try {
-      const { repository: found, sums } = await fetchSums(named, version, signal);
+      const { repository: found, sums } = await fetchSums(named, version, requesting);
       return { repository: found, sums, version };
     } catch (error) {
       if (!(error instanceof RequestError && error.status === notFound)) {
@@ -128,11 +135,11 @@ async function latestOnChannel(
 function latestRelease(
   repository: string,
   channel: string,
-  signal: AbortSignal,
+  requesting: Requesting,
 ): Promise<Release | undefined> {
   return channel === 'stable'
-    ? latestStable(repository, signal)
-    : latestOnChannel(repository, channel, signal);
+    ? latestStable(repository, requesting)
+    : latestOnChannel(repository, channel, requesting);
 }
 
 export type { Release };

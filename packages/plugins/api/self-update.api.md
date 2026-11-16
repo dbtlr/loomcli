@@ -6,6 +6,7 @@
 
 import type { Host } from '@loomcli/core';
 import type { Log } from '@loomcli/core';
+import type { Out } from '@loomcli/core';
 import type { Plugin as Plugin_2 } from '@loomcli/core';
 
 // @public @sealed
@@ -13,6 +14,8 @@ export interface AfterReplaceContext {
     readonly current: string;
     readonly host: Host;
     readonly log: Log;
+    readonly name: string;
+    readonly out: Out;
     readonly path: string;
     readonly previous: string;
     readonly signal: AbortSignal;

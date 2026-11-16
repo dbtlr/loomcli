@@ -4,8 +4,9 @@ import type { RefreshContext } from '../refresh.js';
 /**
  * An `afterReplace` function for the self-update plugin: a page is fixed text and the replaced
  * process holds the old version's graph, so it runs the new binary with `manpage update` and passes
- * the child's output through. A child that fails or cannot start adds a `warn` log event and
- * resolves, because the binary update succeeded.
+ * the child's output through. A context that carries the application's name starts no child when
+ * the installation record holds no file of the plugin's. A child that fails or cannot start adds a
+ * `warn` log event and resolves, because the binary update succeeded.
  *
  * @example
  * ```ts
@@ -24,9 +25,13 @@ import type { RefreshContext } from '../refresh.js';
  */
 async function refreshManpages(context: RefreshContext): Promise<void> {
   // The sentence loads with the refresh, so the entry that exports it loads no message module.
-  const { manpagesNotRefreshed } = await import('./messages.js');
+  const { manpagesNotRefreshed, manpagesRefreshed, manpagesRefreshSkipped } =
+    await import('./messages.js');
   await refreshByRunning(context, {
     notStarted: manpagesNotRefreshed,
+    records: ['manpage'],
+    refreshed: manpagesRefreshed,
+    skipped: manpagesRefreshSkipped,
     warning: 'Man pages were not refreshed after the update.',
     words: ['manpage', 'update'],
   });

@@ -1,11 +1,13 @@
 import { refreshByRunning } from '../refresh.js';
 import type { RefreshContext } from '../refresh.js';
+import { shells } from './shell-names.js';
 
 /**
  * An `afterReplace` function for the self-update plugin: it runs the new binary with
  * `completion update`, because the replaced process holds the old version's scripts, and passes
- * the child's output through. A child that fails or cannot start adds a `warn` log event and
- * resolves, because the binary update succeeded.
+ * the child's output through. A context that carries the application's name starts no child when
+ * the installation record holds no shell's file. A child that fails or cannot start adds a `warn`
+ * log event and resolves, because the binary update succeeded.
  *
  * @example
  * ```ts
@@ -24,9 +26,13 @@ import type { RefreshContext } from '../refresh.js';
  */
 async function refreshCompletion(context: RefreshContext): Promise<void> {
   // The sentence loads with the refresh, so the entry that exports it loads no message module.
-  const { completionNotRefreshed } = await import('./messages.js');
+  const { completionNotRefreshed, completionRefreshed, completionRefreshSkipped } =
+    await import('./messages.js');
   await refreshByRunning(context, {
     notStarted: completionNotRefreshed,
+    records: shells.map((shell) => `completion.${shell}`),
+    refreshed: completionRefreshed,
+    skipped: completionRefreshSkipped,
     warning: 'Completion was not refreshed after the update.',
     words: ['completion', 'update'],
   });

@@ -3,6 +3,9 @@
  * startup file's line, decided from the recorded lines and what each startup file holds, and the
  * writes that carry it out. A released line is decided without reading its startup file.
  */
+import type { Log } from '@loomcli/core';
+
+import { fileRemoved } from '../change-events.js';
 import { missingParents, removeStagingFiles } from './disk.js';
 import type { PendingLine, StartupLine } from './record.js';
 import {
@@ -271,9 +274,9 @@ function addLine(listed: InstalledLine, found: StartupText | undefined): void {
 /**
  * Carries out one action: an append or a created file for an added line, and a rewrite for a
  * replaced or removed one. A held, present, no longer held, or released line changes no startup
- * file.
+ * file. It answers the startup file's path when it changed one.
  */
-function applyLine(action: LineAction): void {
+function applyLine(action: LineAction): string | undefined {
   if (action.kind === 'add') {
     addLine(action.listed, action.found);
   } else if (action.kind === 'replace') {
@@ -283,7 +286,10 @@ function applyLine(action: LineAction): void {
     });
   } else if (action.kind === 'remove') {
     rewriteLines(action.path, action.found, { prior: action.prior, replacement: null });
+  } else {
+    return undefined;
   }
+  return pathOf(action);
 }
 
 /** The outcome list each action reports in. */
@@ -330,10 +336,12 @@ function heldLine(entry: PendingLine): StartupLine[] {
 
 /**
  * Resolves a pending startup line as `heldLine` reads it, after removing the leftover staging files
- * beside its startup file's real path.
+ * beside its startup file's real path, each recorded as removed.
  */
-function recoveredLine(entry: PendingLine): StartupLine[] {
-  removeStagingFiles(realPathOf(entry.path));
+function recoveredLine(entry: PendingLine, log: Log): StartupLine[] {
+  for (const staging of removeStagingFiles(realPathOf(entry.path))) {
+    fileRemoved(log, { path: staging });
+  }
   return heldLine(entry);
 }
 

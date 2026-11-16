@@ -3,7 +3,7 @@
  * program starts, the plugin's files read, and the agent output a failure repeats.
  */
 import { escapeControlCharacters, FatalError } from '@loomcli/core';
-import type { Host } from '@loomcli/core';
+import type { Host, Log } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
 import { readRegistration, removeStagingOfPluginFile } from '../installation/files.js';
@@ -20,6 +20,8 @@ interface ChildRun {
   readonly name: string;
   readonly host: Host;
   readonly signal: AbortSignal;
+  /** The action's log, which records each file the child writes or removes. */
+  readonly log: Log;
   readonly info: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
   readonly warn: (message: string) => Promise<void>;
@@ -78,7 +80,7 @@ function readRecords(run: ChildRun, { agents, child, record }: Reading): Recorde
     recorded.set(agent, read.registration);
   }
   for (const agent of agents) {
-    removeStagingOfPluginFile({ plugin: recordName(agent), record });
+    removeStagingOfPluginFile({ log: run.log, plugin: recordName(agent), record });
   }
   return recorded;
 }

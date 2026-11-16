@@ -113,12 +113,15 @@ const folders = request.folders ?? [];
 const lines = request.lines ?? [];
 const plugin = request.plugin ?? 'skill';
 const signal = new AbortController().signal;
+// The process cases read the files the module leaves, not its change events.
+const log = { debug() {}, error() {}, info() {}, trace() {}, warn() {} };
 for (let round = 0; round < (request.rounds ?? 1); round += 1) {
   try {
     const outcome = install({
       files,
       folders,
       lines,
+      log,
       plugin,
       record: request.record,
       signal,

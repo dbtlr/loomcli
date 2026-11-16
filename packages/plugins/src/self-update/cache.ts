@@ -5,7 +5,7 @@
 import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { replaceFile } from '../installation/disk.js';
+import { errorCode, replaceFile } from '../installation/disk.js';
 import { isRecord } from '../plain-data.js';
 import { parseVersion } from './version.js';
 
@@ -85,20 +85,45 @@ function judgeCache(content: string, lookup: Lookup, now: number): CacheReading 
   return isLatest(latest) ? { fresh: isFresh(checked, now), latest } : stale;
 }
 
-/** The text of the cache in `directory`, or `undefined` when it is not a regular file that reads. */
-function cacheText(directory: string): string | undefined {
-  const path = join(directory, cacheFile);
+/**
+ * What the cache path holds: nothing, something this version does not read as an update cache, or
+ * a cache it reads, with its reading for the running binary's repository and channel.
+ */
+type CacheFound =
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'ignored' }
+  | { readonly kind: 'read'; readonly reading: CacheReading };
+
+/** The cache file's path in `directory`. */
+function cachePath(directory: string): string {
+  return join(directory, cacheFile);
+}
+
+/** The text of the cache file, or what keeps it from being read. */
+function cacheText(path: string): { readonly text: string } | CacheFound {
   try {
-    return statSync(path).isFile() ? readFileSync(path, 'utf8') : undefined;
-  } catch {
-    return undefined;
+    return statSync(path).isFile() ? { text: readFileSync(path, 'utf8') } : { kind: 'ignored' };
+  } catch (error) {
+    return errorCode(error) === 'ENOENT' ? { kind: 'missing' } : { kind: 'ignored' };
   }
 }
 
-/** Reads and judges the cache in `directory`; one that cannot be read is stale. */
-function readCache(directory: string, lookup: Lookup, now: number): CacheReading {
-  const content = cacheText(directory);
-  return content === undefined ? stale : judgeCache(content, lookup, now);
+/**
+ * Finds and judges the cache in `directory`. Something at the path that cannot be read, is not a
+ * regular file, does not hold the cache's object, or holds another `format` is ignored; a `format`
+ * 1 object is read, and stale when it is for another repository or channel, or its `latest` is not
+ * a version.
+ */
+function findCache(directory: string, lookup: Lookup, now: number): CacheFound {
+  const found = cacheText(cachePath(directory));
+  if (!('text' in found)) {
+    return found;
+  }
+  const value = parsed(found.text);
+  if (!isRecord(value) || value.format !== knownFormat) {
+    return { kind: 'ignored' };
+  }
+  return { kind: 'read', reading: judgeCache(found.text, lookup, now) };
 }
 
 /** What one cache line records: when it looked, where, and the newest version, if any. */
@@ -116,12 +141,15 @@ function cacheLine({ channel, checked, latest, repository }: CacheEntry): string
 
 /**
  * Replaces the cache in `directory` whole, creating the directory and its missing parents, through a
- * staging file in the directory and a rename. A failure throws the runtime's error.
+ * staging file in the directory and a rename, and answers the file's path. A failure throws the
+ * runtime's error.
  */
-function writeCache(directory: string, entry: CacheEntry): void {
+function writeCache(directory: string, entry: CacheEntry): string {
   mkdirSync(directory, { recursive: true });
-  replaceFile(join(directory, cacheFile), cacheLine(entry));
+  const path = cachePath(directory);
+  replaceFile(path, cacheLine(entry));
+  return path;
 }
 
-export type { CacheEntry, CacheReading, Lookup };
-export { judgeCache, readCache, writeCache };
+export type { CacheEntry, CacheFound, CacheReading, Lookup };
+export { cachePath, findCache, judgeCache, stale, writeCache };
