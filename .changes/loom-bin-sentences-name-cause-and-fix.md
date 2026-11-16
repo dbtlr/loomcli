@@ -1,0 +1,1 @@
+- Fix the `loom` bin's own sentences, which no longer quote a Node.js reason and now name the cause and a fix.

@@ -44,10 +44,14 @@ A sentence Loom says to an operator goes in the internal `messages.ts` beside th
 
 Each package's `tests/message-voice.test.ts` holds these rules, the banned words of [Failure message voice](docs/core/failures.md#banned-words), and the rule that no failure constructor or out call outside a message module takes a literal sentence. A site that breaks a check and is right is pinned there, per file, by its source text and its count of sites, with the reason it holds.
 
-The rule 6 check reads message modules only, so it cannot see code outside one that reads an error's text and passes it to a message function as a value. The `loom` bin has sentences that quote text it did not write, all as they did before message modules, and how far rule 6 binds the bin is an open question in ADR-0164:
+The rule 6 check reads every source file, not only message modules, so it reaches the code that calls a message function. Code outside a message module that reads a member named `message`, `stack`, or `cause` reads a fact in its place, such as a system error's `code`, or the read is pinned in that package's voice test with the reason it is right, such as a failure's own message that core prints or a validator's issue sentence. The scan reads no types, so a read of another value's member by one of those names is pinned with that reason too.
 
-- Nine sentences repeat text whole, unescaped, as `output`: another program's output in `gitFailed`, `bunCouldNotRead`, whose Bun report carries the error an author's module threw, `bunBuildFailed`, `skillMissing`, `skillInvalidYaml`, `lockfilePreparationFailed`, and `refusedRequest`, the plugin pack's judging of a skills folder in `skillsFolderJudged`, and the bin's own sentence about a skill's frontmatter in `skillVersionUnset`. The bin's voice test pins each site with the reason it holds.
-- `cannotWrite`, `cannotRemove`, and `sharedFileUnreadable` repeat a Node.js reason, and `unloadedApplication` the first line of the error an author's application module threw. Their callers read that text from an error, which the check does not see.
+The `loom` bin may relay what another program or the author's code said, and its voice test pins each site with its reason:
+
+- Nine sentences repeat text whole, unescaped, as `output`: another program's output in `gitFailed`, `bunCouldNotRead`, whose Bun report carries the error an author's module threw, `bunBuildFailed`, `skillMissing`, `skillInvalidYaml`, `lockfilePreparationFailed`, and `refusedRequest`, the plugin pack's judging of a skills folder in `skillsFolderJudged`, and the bin's own sentence about a skill's frontmatter in `skillVersionUnset`.
+- `unloadedApplication` repeats, escaped, the first line of the error an author's application module threw.
+
+The bin's own sentences never quote a Node.js or engine reason. A sentence about a file the bin cannot write, remove, or read takes the system error's code from the code that caught it and names the cause in Loom's words, with a step: `Cannot write .changes/README.md, because .changes is a file. Remove or rename it, then run loom init again.` Every failure sentence states a step or what is accepted, under voice rule 2.
 
 [ADR-0164](docs/decisions/0164-looms-operator-messages-live-in-message-modules-and-a-voice-test-per-package-reads-them.md) records the decision.
 
