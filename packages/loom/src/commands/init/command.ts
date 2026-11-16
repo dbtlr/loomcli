@@ -2,6 +2,7 @@ import { Command } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
 import { loomConfig } from '../../helpers/loom-config.js';
+import { useLinter, usePiece, useTestRunner } from '../../helpers/messages.js';
 import { defaultTooling, linters, testRunners } from '../../helpers/tooling.js';
 
 /*
@@ -38,16 +39,13 @@ function choiceOption<const Value extends string>(values: readonly Value[], mess
 }
 
 /** One `--only` value. */
-const pieceOption = choiceOption(
-  pieces,
-  'Use application, entry, tsconfig, test, lint, package, changes, skill, or install.',
-);
+const pieceOption = choiceOption(pieces, usePiece);
 
 /** One `--linter` value. */
-const linterOption = choiceOption(linters, 'Use oxlint or eslint.');
+const linterOption = choiceOption(linters, useLinter);
 
 /** One `--test-runner` value. */
-const runnerOption = choiceOption(testRunners, 'Use bun or vitest.');
+const runnerOption = choiceOption(testRunners, useTestRunner);
 
 export const init = new Command('init', {
   description:

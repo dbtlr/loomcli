@@ -3,6 +3,14 @@ import { resolve } from 'node:path';
 
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
+import {
+  changelogWithoutTitle,
+  narrativeHeadings,
+  notCalendarDate,
+  sectionExists,
+  uncommittedFragment,
+  unreleasedSection,
+} from '../commands/changelog/messages.js';
 import { withoutByteOrderMark } from './byte-order-mark.js';
 import { conventionalChangelog, conventionalFragments } from './conventions.js';
 import type { FragmentKind } from './fragments.js';
@@ -52,7 +60,7 @@ export function releaseDate(input: string | undefined) {
     Number.isNaN(Date.parse(date)) ||
     new Date(date).toISOString().slice(0, 10) !== date
   ) {
-    throw new Error('Expected a calendar date: YYYY-MM-DD.');
+    throw new Error(notCalendarDate);
   }
   return date;
 }
@@ -88,7 +96,7 @@ export async function landedFragments(
     ]);
     const added = positions.get(commit);
     if (added === undefined) {
-      throw new Error(`${path}: commit the fragment before preparing a release.`);
+      throw new Error(uncommittedFragment(path));
     }
     landed.push({
       added,
@@ -117,7 +125,7 @@ export function requireNarrative(narrative: string) {
     !narrative.trim() ||
     fromMarkdown(narrative).children.some((node) => node.type === 'heading' && node.depth <= 2)
   ) {
-    throw new Error('Narrative must contain prose without level-one or level-two headings.');
+    throw new Error(narrativeHeadings);
   }
 }
 
@@ -192,21 +200,15 @@ export function releaseInsertion(
   requireClosedBlocks(body, file);
   const headings = nodes.filter((node) => node.type === 'heading');
   if (!headings.some((node) => node.depth === 1)) {
-    throw new Error(
-      `${file} needs a level-one title, so add one such as # Changelog above its release sections.`,
-    );
+    throw new Error(changelogWithoutTitle(file));
   }
   // An Unreleased heading without a link definition keeps its brackets as text.
   const titles = headings.map((node) => headingText(node).trim());
   if (titles.some((title) => /^\[?unreleased\]?$/iu.test(title))) {
-    throw new Error(
-      `${file} has an Unreleased section, so move its entries into fragments in ${changes}/ and delete the section.`,
-    );
+    throw new Error(unreleasedSection(file, changes));
   }
   if (index !== -1) {
-    throw new Error(
-      `${file} already has a v${version} section, so set the version in package.json to the latest release it records and cut again.`,
-    );
+    throw new Error(sectionExists(file, version));
   }
   const offset = releases[0]?.position?.start.offset;
   const before = offset === undefined ? changelog : changelog.slice(0, frontmatter.length + offset);

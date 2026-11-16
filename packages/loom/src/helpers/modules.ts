@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import { relative } from 'node:path';
 
+import { missingModule } from '../commands/build/messages.js';
+
 /** A path as the operator reads it: relative to the working directory. */
 export function shown(cwd: string, path: string) {
   return relative(cwd, path) || '.';
@@ -13,9 +15,7 @@ export function shown(cwd: string, path: string) {
  */
 export function existingModule(cwd: string, path: string, naming: string): string {
   if (!existsSync(path)) {
-    throw new Error(
-      `${shown(cwd, path)} does not exist, so create it or name the module with ${naming}.`,
-    );
+    throw new Error(missingModule(shown(cwd, path), naming));
   }
   return path;
 }

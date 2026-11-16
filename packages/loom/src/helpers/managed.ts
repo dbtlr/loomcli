@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { driftedManagedFile } from '../commands/init/messages.js';
+
 /** The header line of a managed Markdown file, which records the checksum of the file's content. */
 const markdownHeader = /^<!-- Managed by loom init\. sha256:(?<checksum>[\da-f]{64}) -->$/u;
 
@@ -91,7 +93,7 @@ export function renderManaged(content: string): string {
  * init` prints.
  */
 export function driftWarning(path: string) {
-  return `warning: ${path} differs from what loom init wrote. Run loom init --force to restore it, or delete its header to keep your edits.`;
+  return driftedManagedFile(path);
 }
 
 /** Whether a managed file has drifted: its content no longer matches the checksum its header records. */

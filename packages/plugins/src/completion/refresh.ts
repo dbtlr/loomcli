@@ -23,9 +23,10 @@ import type { RefreshContext } from '../refresh.js';
  * @public
  */
 async function refreshCompletion(context: RefreshContext): Promise<void> {
+  // The sentence loads with the refresh, so the entry that exports it loads no message module.
+  const { completionNotRefreshed } = await import('./messages.js');
   await refreshByRunning(context, {
-    notStarted: (path, name) =>
-      `Completion was not refreshed because ${path} could not start. Run ${name} completion update.\n`,
+    notStarted: completionNotRefreshed,
     warning: 'Completion was not refreshed after the update.',
     words: ['completion', 'update'],
   });

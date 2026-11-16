@@ -1,15 +1,12 @@
-import { escapeControlCharacters, FatalError, InputError, nowrap } from '@loomcli/core';
+/*
+ * The operator sentences of the completion plugin, under ADR-0164. `tests/message-voice.test.ts`
+ * holds this module to the failure message voice.
+ */
+import { escapeControlCharacters, nowrap } from '@loomcli/core';
 
-/** Every path, name, and answer a sentence repeats, escaped as a failure message quotes text. */
 const shown = escapeControlCharacters;
 
-/** A filesystem path escaped as a failure message quotes text, and kept whole when a lane wraps. */
 const shownPath = (path: string): string => nowrap(shown(path));
-
-/** One failure a child reports, which exits 1. */
-function fatal(sentence: string): FatalError {
-  return new FatalError(sentence);
-}
 
 /** Why PowerShell could not answer with its profile, as the failure sentence states it. */
 type ProfileFault =
@@ -17,89 +14,156 @@ type ProfileFault =
   | { readonly kind: 'exited'; readonly code: number }
   | { readonly kind: 'reported'; readonly answer: string };
 
-/** The clause and the correction of a profile failure. */
+function installShell(shell: string): string {
+  return `Install ${shown(shell)}, or name the shell you use.`;
+}
+
+function shellExited(shell: string, code: number): string {
+  return `${shown(shell)} exited with code ${String(code)}. ${installShell(shell)}`;
+}
+
 function profileFault(shell: string, fault: ProfileFault): string {
-  const install = `Install ${shell}, or name the shell you use.`;
   switch (fault.kind) {
     case 'not-started': {
-      return `${shell} could not start. ${install}`;
+      return `${shown(shell)} could not start. ${installShell(shell)}`;
     }
     case 'exited': {
-      return `${shell} exited with code ${fault.code}. ${install}`;
+      return shellExited(shell, fault.code);
     }
     default: {
-      return `${shell} reported ${shown(fault.answer)}. Check that ${shell} -NoProfile -Command $PROFILE prints the path of your profile.`;
+      return `${shown(shell)} reported ${shown(fault.answer)}. Check that ${shown(shell)} -NoProfile -Command $PROFILE prints the path of your profile.`;
     }
   }
 }
 
-const refusals = {
-  inTheWay: (name: string, verb: 'install' | 'update', shell: string) =>
-    fatal(
-      `${shown(name)} completion ${verb} changed nothing, because files it did not install are in the way. Remove them, then run ${shown(name)} completion install ${shell} again.`,
-    ),
-  notAFile: (name: string, startup: string) =>
-    fatal(
-      `${shownPath(startup)} is not a file, so ${shown(name)} cannot add its startup line. Remove it, then run ${shown(name)} completion install again.`,
-    ),
-  notOnWindows: (name: string, printer: string) =>
-    fatal(
-      `${shown(name)} completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with ${shown(name)} completion ${printer} and load it yourself.`,
-    ),
-  profile: (name: string, shell: string, fault: ProfileFault) =>
-    fatal(
-      `${shown(name)} cannot find the profile of ${shell}, because ${profileFault(shell, fault)}`,
-    ),
-  record: (name: string, record: string, verb: 'install' | 'uninstall') =>
-    fatal(
-      `${shownPath(record)} cannot be read, so ${shown(name)} will not change the files and line it lists. Remove it, the files it lists, and the line it added, then run ${shown(name)} completion ${verb} again.`,
-    ),
-  unknownShell: (name: string, login: string | undefined) => {
-    const value = login === undefined ? '(unset)' : shown(login);
-    return new InputError(
-      `${shown(name)} cannot tell your shell from SHELL (${value}). Name it: ${shown(name)} completion install bash, zsh, fish, or pwsh.`,
-      [
-        {
-          input: { global: false, kind: 'argument', name: 'shell' },
-          reason: 'missing',
-          spelling: 'shell',
-        },
-      ],
-    );
-  },
-};
+function scriptsInTheWay(name: string, verb: 'install' | 'update', shell: string): string {
+  return `${shown(name)} completion ${shown(verb)} changed nothing, because files it did not install are in the way. Remove them, then run ${shown(name)} completion install ${shown(shell)} again.`;
+}
 
-/** The lines each child writes about its work. */
-const lines = {
-  addInPlace: (startup: string) => `Add this line to ${shownPath(startup)} in its place:`,
-  addYourself: (name: string, startup: string) =>
-    `${shown(name)} cannot change ${shownPath(startup)}, so add this line to it yourself:`,
-  added: (startup: string) => `Added a line to ${shownPath(startup)} that loads it.`,
-  alreadyLoads: (startup: string) => `${shownPath(startup)} already loads it.`,
-  changed: (name: string, script: string) =>
-    `${shownPath(script)} changed since ${shown(name)} completion install wrote it.`,
-  gone: (script: string) => `${shownPath(script)} was already gone.`,
-  installed: (shell: string, script: string) =>
-    `Installed the ${shell} completion script in ${shownPath(script)}.`,
-  leftInPlace: (name: string, script: string) =>
-    `${shownPath(script)} changed since ${shown(name)} completion install wrote it, so it was left in place.`,
-  noLongerHolds: (name: string, startup: string) =>
-    `${shownPath(startup)} no longer holds the line ${shown(name)} completion install added, so it was left as it is.`,
-  noneToRemove: (name: string) =>
-    `${shown(name)} has no completion installed, so there is nothing to remove.`,
-  noneToUpdate: (name: string) =>
-    `${shown(name)} has no completion installed, so there is nothing to update. Run ${shown(name)} completion install to install it.`,
-  notInstalled: (name: string, script: string) =>
-    `${shownPath(script)} was not installed by ${shown(name)} completion install.`,
-  openShell: 'Open a new shell to use it.',
-  removeYourself: (name: string, startup: string) =>
-    `${shown(name)} cannot change ${shownPath(startup)}, so remove this line from it yourself:`,
-  removed: (path: string) => `Removed ${shownPath(path)}.`,
-  removedLine: (startup: string) => `Removed the line from ${shownPath(startup)}.`,
-  unchanged: (script: string) => `${shownPath(script)} is unchanged.`,
-  updated: (shell: string, script: string) =>
-    `Updated the ${shell} completion script in ${shownPath(script)}.`,
-  updatedLine: (startup: string) => `Updated the line in ${shownPath(startup)}.`,
-};
+function startupNotAFile(name: string, startup: string): string {
+  return `${shownPath(startup)} is not a file, so ${shown(name)} cannot add its startup line. Remove it, then run ${shown(name)} completion install again.`;
+}
 
-export { lines, refusals };
+function installsNotOnWindows(name: string, printer: string): string {
+  return `${shown(name)} completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with ${shown(name)} completion ${shown(printer)} and load it yourself.`;
+}
+
+function profileNotFound(name: string, shell: string, fault: ProfileFault): string {
+  return `${shown(name)} cannot find the profile of ${shown(shell)}, because ${profileFault(shell, fault)}`;
+}
+
+function recordUnreadable(name: string, record: string, verb: 'install' | 'uninstall'): string {
+  return `${shownPath(record)} cannot be read, so ${shown(name)} will not change the files and line it lists. Remove it, the files it lists, and the line it added, then run ${shown(name)} completion ${shown(verb)} again.`;
+}
+
+function shellUnknown(name: string, login: string | undefined): string {
+  return `${shown(name)} cannot tell your shell from SHELL (${login === undefined ? '(unset)' : shown(login)}). Name it: ${shown(name)} completion install bash, zsh, fish, or pwsh.`;
+}
+
+function addLineInPlace(startup: string): string {
+  return `Add this line to ${shownPath(startup)} in its place:`;
+}
+
+function addLineYourself(name: string, startup: string): string {
+  return `${shown(name)} cannot change ${shownPath(startup)}, so add this line to it yourself:`;
+}
+
+function addedLine(startup: string): string {
+  return `Added a line to ${shownPath(startup)} that loads it.`;
+}
+
+function alreadyLoads(startup: string): string {
+  return `${shownPath(startup)} already loads it.`;
+}
+
+function scriptChanged(name: string, script: string): string {
+  return `${shownPath(script)} changed since ${shown(name)} completion install wrote it.`;
+}
+
+function scriptGone(script: string): string {
+  return `${shownPath(script)} was already gone.`;
+}
+
+function installedScript(shell: string, script: string): string {
+  return `Installed the ${shown(shell)} completion script in ${shownPath(script)}.`;
+}
+
+function scriptLeftInPlace(name: string, script: string): string {
+  return `${shownPath(script)} changed since ${shown(name)} completion install wrote it, so it was left in place.`;
+}
+
+function lineNoLongerHeld(name: string, startup: string): string {
+  return `${shownPath(startup)} no longer holds the line ${shown(name)} completion install added, so it was left as it is.`;
+}
+
+function noCompletionToRemove(name: string): string {
+  return `${shown(name)} has no completion installed, so there is nothing to remove.`;
+}
+
+function noCompletionToUpdate(name: string): string {
+  return `${shown(name)} has no completion installed, so there is nothing to update. Run ${shown(name)} completion install to install it.`;
+}
+
+function scriptNotInstalled(name: string, script: string): string {
+  return `${shownPath(script)} was not installed by ${shown(name)} completion install.`;
+}
+
+const openNewShell = 'Open a new shell to use it.';
+
+function removeLineYourself(name: string, startup: string): string {
+  return `${shown(name)} cannot change ${shownPath(startup)}, so remove this line from it yourself:`;
+}
+
+function removedFile(path: string): string {
+  return `Removed ${shownPath(path)}.`;
+}
+
+function removedLine(startup: string): string {
+  return `Removed the line from ${shownPath(startup)}.`;
+}
+
+function scriptUnchanged(script: string): string {
+  return `${shownPath(script)} is unchanged.`;
+}
+
+function updatedScript(shell: string, script: string): string {
+  return `Updated the ${shown(shell)} completion script in ${shownPath(script)}.`;
+}
+
+function updatedLine(startup: string): string {
+  return `Updated the line in ${shownPath(startup)}.`;
+}
+
+function completionNotRefreshed(path: string, name: string): string {
+  return `Completion was not refreshed because ${shown(path)} could not start. Run ${shown(name)} completion update.\n`;
+}
+
+export type { ProfileFault };
+export {
+  addedLine,
+  addLineInPlace,
+  addLineYourself,
+  alreadyLoads,
+  completionNotRefreshed,
+  installedScript,
+  installsNotOnWindows,
+  lineNoLongerHeld,
+  noCompletionToRemove,
+  noCompletionToUpdate,
+  openNewShell,
+  profileNotFound,
+  recordUnreadable,
+  removedFile,
+  removedLine,
+  removeLineYourself,
+  scriptChanged,
+  scriptGone,
+  scriptLeftInPlace,
+  scriptNotInstalled,
+  scriptsInTheWay,
+  scriptUnchanged,
+  shellUnknown,
+  startupNotAFile,
+  updatedLine,
+  updatedScript,
+};

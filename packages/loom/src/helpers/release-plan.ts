@@ -11,6 +11,23 @@ import {
 } from 'valibot';
 import type { InferOutput } from 'valibot';
 
+import {
+  abandonedVersion,
+  changedSinceCut,
+  libraryState,
+  noChangelogSection,
+  planDecision,
+  planHeading,
+  planWithoutNotes,
+  provenanceConflict,
+  releaseState,
+  sectionWithoutNotes,
+  tagAwayFromPublication,
+  tagNamesOther,
+  tagState,
+  tagWithoutProvenance,
+  unreleasedPlan,
+} from '../commands/release/messages.js';
 import { isUploadedAsset, readRelease, readTagCommit } from './github.js';
 import type { HttpPolicy } from './http.js';
 import { locateRelease } from './markdown.js';
@@ -52,7 +69,7 @@ function changelogSection(changelog: string, version: string) {
   const { body, index, nodes, releases } = locateRelease(changelog, version);
   const start = releases[index]?.position?.end.offset;
   if (start === undefined) {
-    throw new Error(`CHANGELOG.md has no v${version} section.`);
+    throw new Error(noChangelogSection(version));
   }
   const end = releases[index + 1]?.position?.start.offset ?? body.length;
   const carries = nodes.some((node) => {
@@ -60,7 +77,7 @@ function changelogSection(changelog: string, version: string) {
     return offset !== undefined && offset >= start && offset < end && !decorations.has(node.type);
   });
   if (!carries) {
-    throw new Error(`CHANGELOG.md: the v${version} section has no notes.`);
+    throw new Error(sectionWithoutNotes(version));
   }
   return body.slice(start, end).trim();
 }
@@ -78,9 +95,7 @@ function releaseComplete(assets: ReleaseAssets, expected: string[]) {
 }
 
 function abandon(version: string, reason: string) {
-  return new Error(
-    `Version ${version} is absent from the registry and ${reason} Publication attests the head, so ${version} must be abandoned as unpublished and superseded by the next cut.`,
-  );
+  return new Error(abandonedVersion(version, reason));
 }
 
 // Every participating library, named without a registry read, because the unreleased version is never published.
@@ -119,9 +134,7 @@ async function publishedCommit(
       return undefined;
     }
     if (commit !== undefined && provenance.commit !== commit) {
-      throw new Error(
-        `${library.name}@${version} was published from ${provenance.commit}, but an earlier library names ${commit}.`,
-      );
+      throw new Error(provenanceConflict(library.name, version, provenance.commit, commit));
     }
     commit = provenance.commit;
   }
@@ -139,14 +152,10 @@ function requireTagAtPublication(
     return;
   }
   if (provenanceCommit === null) {
-    throw new Error(
-      `Tag ${tag} names ${tagCommit}, but the registry reports no provenance for ${version}, so the commit it was published from is unknown.`,
-    );
+    throw new Error(tagWithoutProvenance(tag, tagCommit, version));
   }
   if (tagCommit !== provenanceCommit) {
-    throw new Error(
-      `Tag ${tag} names ${tagCommit}, but ${version} was published from ${provenanceCommit}; recording never moves a tag.`,
-    );
+    throw new Error(tagAwayFromPublication(tag, tagCommit, version, provenanceCommit));
   }
 }
 
@@ -177,10 +186,7 @@ export const planSchema = pipe(
   }),
   // The notes are the body of the Release, so only the unreleased version plans without them.
   forward(
-    check(
-      (plan) => plan.notes !== '' || plan.version === unreleasedVersion,
-      'A plan for a released version carries notes.',
-    ),
+    check((plan) => plan.notes !== '' || plan.version === unreleasedVersion, planWithoutNotes),
     ['notes'],
   ),
 );
@@ -258,14 +264,10 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
     ]);
     const changed = diff.split('\0').filter(Boolean);
     if (changed.length > 0) {
-      const paths = changed.join(', ');
-      throw abandon(
-        version,
-        `${paths} changed between the cut commit ${cutCommit} and the head ${head}.`,
-      );
+      throw abandon(version, changedSinceCut(changed, cutCommit, head));
     }
     if (tagCommit !== undefined && tagCommit !== head) {
-      throw abandon(version, `tag ${tag} already names ${tagCommit} instead of the head ${head}.`);
+      throw abandon(version, tagNamesOther(tag, tagCommit, head));
     }
   } else {
     provenanceCommit = (await publishedCommit(registry, libraries, version)) ?? null;
@@ -292,17 +294,14 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
 export function renderPlan(plan: ReleasePlan) {
   const tag = `v${plan.version}`;
   if (plan.version === unreleasedVersion) {
-    return `${plan.version} is the unreleased version at head ${plan.head}, so there is nothing to reconcile.\nPublish: no. Record: no.\n`;
+    return `${unreleasedPlan(plan.version, plan.head)}\n`;
   }
   const lines = [
-    `Plan ${tag} at head ${plan.head}, cut commit ${plan.cutCommit}.`,
-    ...plan.libraries.map(
-      (library) =>
-        `${library.name}: ${library.published ? 'published' : 'absent from the registry'}.`,
-    ),
-    `Tag ${tag}: ${plan.tag.commit === null ? 'absent' : `present at ${plan.tag.commit}`}.`,
-    `Release ${tag}: ${plan.release.present ? 'present' : 'absent'}.`,
-    `Publish: ${plan.publish ? 'yes' : 'no'}. Record: ${plan.record ? 'yes' : 'no'}.`,
+    planHeading(tag, plan.head, plan.cutCommit),
+    ...plan.libraries.map((library) => libraryState(library.name, library.published)),
+    tagState(tag, plan.tag.commit),
+    releaseState(tag, plan.release.present),
+    planDecision(plan.publish, plan.record),
   ];
   return `${lines.join('\n')}\n`;
 }

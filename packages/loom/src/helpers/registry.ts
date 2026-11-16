@@ -2,6 +2,12 @@ import { createHash } from 'node:crypto';
 
 import { array, looseObject, minLength, pipe, record, string, unknown } from 'valibot';
 
+import {
+  integrityMismatch,
+  provenanceElsewhere,
+  provenanceWithoutSource,
+  unsupportedIntegrity,
+} from '../commands/release/messages.js';
 import { readJson } from './http.js';
 import type { HttpPolicy } from './http.js';
 import { parseOrThrow } from './parse-or-throw.js';
@@ -83,14 +89,12 @@ export async function readProvenance(target: RegistryTarget, name: string, versi
   const provenance = parseOrThrow(provenanceSchema, payload);
   const purl = packageUrl(name, version);
   if (!provenance.subject.some((subject) => subject.name === purl)) {
-    const attested = provenance.subject.map((subject) => subject.name).join(', ');
-    throw new Error(
-      `${name}@${version}: its provenance attests ${attested || 'nothing'}, not ${purl}.`,
-    );
+    const attested = provenance.subject.map((subject) => subject.name);
+    throw new Error(provenanceElsewhere(name, version, attested, purl));
   }
   const [source] = provenance.predicate.buildDefinition.resolvedDependencies;
   if (source === undefined) {
-    throw new Error(`${name}@${version}: its provenance resolves no source repository.`);
+    throw new Error(provenanceWithoutSource(name, version));
   }
   return { commit: source.digest.gitCommit, uri: source.uri };
 }
@@ -103,12 +107,10 @@ export function tarballName(name: string, version: string) {
 export function verifyIntegrity(subject: string, bytes: Buffer, integrity: string) {
   const expected = /^sha512-(?<digest>[\w+/=]+)$/u.exec(integrity)?.groups?.digest;
   if (expected === undefined) {
-    throw new Error(`${subject}: the registry reports unsupported integrity ${integrity}.`);
+    throw new Error(unsupportedIntegrity(subject, integrity));
   }
   const actual = createHash('sha512').update(bytes).digest('base64');
   if (actual !== expected) {
-    throw new Error(
-      `${subject}: the downloaded tarball hashes to sha512-${actual}, not ${integrity}.`,
-    );
+    throw new Error(integrityMismatch(subject, actual, integrity));
   }
 }

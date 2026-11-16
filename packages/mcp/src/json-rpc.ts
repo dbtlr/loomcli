@@ -1,3 +1,4 @@
+import { batchUnsupported, lineNotJson, notJsonRpcRequest } from './messages.js';
 import type { JsonValue } from './protocol.js';
 
 /** A request's id, which its response and any cancellation name. */
@@ -50,18 +51,9 @@ function isRequestId(value: unknown): value is RequestId {
   return typeof value === 'string' || typeof value === 'number';
 }
 
-const notJson = new ProtocolError(
-  errorCodes.parseError,
-  'The line is not JSON. Send one JSON-RPC message as one line of JSON.',
-);
-const batch = new ProtocolError(
-  errorCodes.invalidRequest,
-  'A batch is not a message this server reads. Send each JSON-RPC message as its own line.',
-);
-const notRequest = new ProtocolError(
-  errorCodes.invalidRequest,
-  'The message is not a JSON-RPC 2.0 request or notification. Send an object with "jsonrpc": "2.0", a "method", and an "id" for a request.',
-);
+const notJson = new ProtocolError(errorCodes.parseError, lineNotJson);
+const batch = new ProtocolError(errorCodes.invalidRequest, batchUnsupported);
+const notRequest = new ProtocolError(errorCodes.invalidRequest, notJsonRpcRequest);
 
 /** The parsed line, or `notJson` when it does not parse. */
 function parse(line: string): { readonly value: unknown } | ProtocolError {

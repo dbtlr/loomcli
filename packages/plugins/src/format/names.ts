@@ -1,5 +1,7 @@
 import { createValidator } from '@loomcli/validators';
 
+import { formatIssue } from './messages.js';
+
 /** The unadvertised alias `--format` accepts for `jsonl`, unless a record names it directly. */
 const ndjsonAlias = 'ndjson';
 
@@ -10,16 +12,14 @@ const ndjsonAlias = 'ndjson';
  * names alone and the unadvertised alias stays out of it.
  */
 export function formatName(names: readonly string[]) {
-  const list = names.join(', ');
+  const issue = formatIssue(names);
   const aliased = !names.includes(ndjsonAlias);
   return createValidator({
     inputSchema: { type: 'string', enum: [...names] },
     parse: (raw) => {
       const name = aliased && raw === ndjsonAlias ? 'jsonl' : raw;
       const match = names.find((each) => each === name);
-      return match === undefined
-        ? { issues: [{ message: `Supply one of ${list}.` }] }
-        : { value: match };
+      return match === undefined ? { issues: [{ message: issue }] } : { value: match };
     },
   });
 }

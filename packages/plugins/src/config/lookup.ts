@@ -1,16 +1,25 @@
 import { lstat, readFile, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-import { escapeControlCharacters, InputError, nowrap } from '@loomcli/core';
+import { escapeControlCharacters, InputError } from '@loomcli/core';
 import type { ContextualStyle, Host, Out } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
 import { parseFile } from './formats.js';
+import {
+  brokenFileLine,
+  exclusiveFileOptions,
+  isSilent,
+  namedFileFailure,
+  namedFileIssue,
+  noFileNotice,
+  skippedCandidates,
+  skippedUnusable,
+} from './messages.js';
 import { splitExtension } from './names.js';
 import type { Clause, Reading } from './reading.js';
 import type { Reach } from './scopes.js';
 import { strictFailure } from './strict.js';
-import type { Position } from './text.js';
 
 /**
  * The configuration plugin's lookup: the one file a run reads. `--config` names it, or else the
@@ -67,54 +76,8 @@ interface Channels {
   readonly style: ContextualStyle;
 }
 
-/** What the operator does about one clause: for the file `--config` named, and for a discovered file. */
-interface Fix {
-  readonly named: string;
-  /** Absent for a clause a discovered file is silent about. */
-  readonly discovered?: string;
-}
-
-/** The one table of fixes, so each sentence the plugin writes ends with its step. */
-const fixes: Readonly<Record<Clause, Fix>> = {
-  'could not be read.': {
-    discovered: 'Make it readable, or remove it.',
-    named: 'Supply a file this process can read.',
-  },
-  'does not exist.': { named: 'Supply the path of an existing file.' },
-  'does not hold a JSON object.': {
-    discovered: 'Write its settings as one JSON object, or remove it.',
-    named: 'Write its settings as one JSON object.',
-  },
-  'does not hold a YAML mapping.': {
-    discovered: 'Write its settings as one YAML mapping, or remove it.',
-    named: 'Write its settings as one YAML mapping.',
-  },
-  'is not valid JSON.': {
-    discovered: 'Correct its syntax, or remove it.',
-    named: 'Correct its syntax, or supply another file.',
-  },
-  'is not valid TOML.': {
-    discovered: 'Correct its syntax, or remove it.',
-    named: 'Correct its syntax, or supply another file.',
-  },
-  'is not valid YAML.': {
-    discovered: 'Correct its syntax, or remove it.',
-    named: 'Correct its syntax, or supply another file.',
-  },
-};
-
 /** A reading that cannot be used: the clause that says why, and where the file breaks when known. */
 type Unusable = Extract<Reading, { kind: 'unusable' }>;
-
-/** A clause without its closing full stop, so the sentence can go on. */
-function withoutStop(clause: Clause): string {
-  return clause.replace(/\.$/u, '');
-}
-
-/** Where a file stops parsing, as the sentence names it, or nothing when the parser named no place. */
-function where(at: Position | undefined): string {
-  return at === undefined ? '' : ` at line ${at.line}, column ${at.column}`;
-}
 
 /** Whether a failure means nothing is at the path, a missing directory or a file in its place included. */
 function isAbsent(error: unknown): boolean {
@@ -257,15 +220,14 @@ async function read(file: ConfigFile): Promise<Reading> {
  */
 function namedFailure(
   file: ConfigFile,
-  { at, clause }: Unusable,
+  unusable: Unusable,
   invokedBy: Lookup['invokedBy'],
 ): InputError {
-  const message = `File "${file.shown}" ${withoutStop(clause)}${where(at)}. ${fixes[clause].named}`;
   const spelling = invokedBy === 'name' ? 'config' : '--config';
-  return new InputError(`Option "${spelling}": ${message}`, [
+  return new InputError(namedFileFailure(spelling, file.shown, unusable), [
     {
       input: { global: true, kind: 'option', name: 'config' },
-      issues: [{ message }],
+      issues: [{ message: namedFileIssue(file.shown, unusable) }],
       reason: 'invalid',
       spelling,
     },
@@ -279,8 +241,7 @@ function namedFailure(
 function bothFailure(invokedBy: Lookup['invokedBy']): InputError {
   const names = ['config', 'no-config'];
   const spellings = names.map((name) => (invokedBy === 'name' ? name : `--${name}`));
-  const members = spellings.map((spelling) => `"${spelling}"`).join(' and ');
-  return new InputError(`Options ${members} cannot be used together. Supply only one of them.`, [
+  return new InputError(exclusiveFileOptions(spellings), [
     {
       inputs: names.map((name) => ({ global: true, kind: 'option', name })),
       reason: 'exclusive',
@@ -319,11 +280,6 @@ async function presentFiles(files: readonly ConfigFile[]): Promise<ConfigFile[]>
   return present;
 }
 
-/** The file as a warning shows it: escaped for the terminal, and kept on one line. */
-function warned(file: ConfigFile, style: ContextualStyle): string {
-  return nowrap(style.escape(file.shown));
-}
-
 /** The one warning about the later present candidates a directory skips unread, when there are any. */
 async function warnSkipped(
   found: ConfigFile,
@@ -334,27 +290,17 @@ async function warnSkipped(
   if (first === undefined) {
     return;
   }
-  const names = skipped.map((file) => warned(file, style)).join(', ');
   await out.warn(
-    `Skipped ${names}: ${warned(found, style)} matches the same pattern first. Keep one of the files, and remove the others.`,
+    skippedCandidates(
+      skipped.map((file) => file.shown),
+      found.shown,
+      style,
+    ),
   );
 }
 
 /** How a step of the lookup ended: with a file, or with no configuration and no later step. */
 type Outcome = { readonly kind: 'ended' } | { readonly kind: 'file'; readonly usable: UsableFile };
-
-/** The warning text for a clause: the file's fault, and that the run then reads no configuration. */
-function skippedSentence(shown: string, { at, clause }: Unusable, fix: string): string {
-  return `Skipped ${shown}: the file ${withoutStop(clause)}${where(at)}, so this run reads no configuration. ${fix}`;
-}
-
-/**
- * The one line of the failure a discovered file that cannot be used raises under `strict`: the
- * warning's clause and fix, naming the file as a strict line's label does.
- */
-function brokenLine(shown: string, { at, clause }: Unusable, fix: string): string {
-  return `Configuration file ${shown} ${withoutStop(clause)}${where(at)}. ${fix}`;
-}
 
 /**
  * A discovered file read once: its object, or the end of the lookup after one warning when it
@@ -370,14 +316,13 @@ async function discoveredFile(
   if (reading.kind === 'usable') {
     return { kind: 'file', usable: { file, object: reading.object } };
   }
-  const fix = fixes[reading.clause].discovered;
-  if (fix === undefined) {
+  if (isSilent(reading.clause)) {
     return undefined;
   }
   if (lookup.strict) {
-    throw strictFailure([brokenLine(file.shown, reading, fix)], [], lookup.invokedBy);
+    throw strictFailure([brokenFileLine(file.shown, reading)], [], lookup.invokedBy);
   }
-  await channels.out.warn(skippedSentence(warned(file, channels.style), reading, fix));
+  await channels.out.warn(skippedUnusable(file.shown, reading, channels.style));
   return { kind: 'ended' };
 }
 
@@ -496,9 +441,7 @@ async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise
       ? []
       : filesIn(step.directory, step.candidates, { host: lookup.host, walked: step.walked });
   if (first !== undefined) {
-    await out.info(
-      `Found no configuration file. Create ${warned(first, style)} to configure ${lookup.app}.`,
-    );
+    await out.info(noFileNotice(first.shown, lookup.app, style));
   }
 }
 

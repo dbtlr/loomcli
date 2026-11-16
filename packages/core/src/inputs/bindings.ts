@@ -1,6 +1,7 @@
 import { siteFinding } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
-import { DeclarationError, quoted } from '../failures/errors.js';
+import { DeclarationError } from '../failures/errors.js';
+import { quoted } from '../failures/messages.js';
 import { variableBoundTwice } from './rules.js';
 
 /**

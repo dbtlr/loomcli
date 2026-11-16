@@ -1,4 +1,4 @@
-import { routedSubject } from '../failures/errors.js';
+import { routedSubject } from '../failures/messages.js';
 import { handled } from '../support/thenable.js';
 import type { IncompleteResult } from './lanes.js';
 import type { ViewContext } from './types.js';

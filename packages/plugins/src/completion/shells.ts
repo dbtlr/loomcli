@@ -4,13 +4,14 @@
  */
 import { dirname, join } from 'node:path';
 
+import { InputError } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
 import { absoluteVariable, requiredHome } from '../application-folders.js';
 import { exists } from '../installation/disk.js';
 import { bashScript } from './bash.js';
 import { fishScript } from './fish.js';
-import { refusals } from './messages.js';
+import { shellUnknown } from './messages.js';
 import { identifier, posixQuoted, powershellQuoted } from './name.js';
 import { powershellScript } from './powershell.js';
 import { shells } from './shell-names.js';
@@ -25,6 +26,17 @@ function shellNamed(name: string): Shell | undefined {
   return shells.find((shell) => shell === name);
 }
 
+/** The usage error of a `SHELL` that names none of the four shells, on the `shell` argument. */
+function unknownShell(name: string, login: string | undefined): InputError {
+  return new InputError(shellUnknown(name, login), [
+    {
+      input: { global: false, kind: 'argument', name: 'shell' },
+      reason: 'missing',
+      spelling: 'shell',
+    },
+  ]);
+}
+
 /**
  * The shell `SHELL` names by its last segment, none when it is unset or empty, or the operator's
  * usage error for any other value.
@@ -36,7 +48,7 @@ function loginShell(name: string, host: Host): Shell | undefined {
   }
   const shell = shellNamed(login.split('/').pop() ?? '');
   if (shell === undefined) {
-    throw refusals.unknownShell(name, login);
+    throw unknownShell(name, login);
   }
   return shell;
 }
@@ -48,7 +60,7 @@ function loginShell(name: string, host: Host): Shell | undefined {
 function selectedShell(name: string, host: Host, argument: Shell | undefined): Shell {
   const shell = argument ?? loginShell(name, host);
   if (shell === undefined) {
-    throw refusals.unknownShell(name, undefined);
+    throw unknownShell(name, undefined);
   }
   return shell;
 }

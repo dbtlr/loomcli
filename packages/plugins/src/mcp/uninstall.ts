@@ -3,11 +3,19 @@
  * the agent's own CLI, and deletes the file whatever the agent answers, except a removal the run
  * signal ends, which leaves the file pending.
  */
+import { FatalError } from '@loomcli/core';
+
 import { deletePluginFile, writePendingRegistration } from '../installation/files.js';
 import type { RecordedRegistration } from '../installation/record.js';
 import { recordName, selectedAgents } from './agents.js';
 import type { Agent, AgentName } from './agents.js';
-import { lines, refusals } from './messages.js';
+import {
+  noLongerRecorded,
+  nothingToRemove,
+  removedRegistration,
+  staysRegistered,
+  uninstallIncomplete,
+} from './messages.js';
 import { callAgent } from './registration.js';
 import {
   namesOf,
@@ -40,11 +48,11 @@ async function removeFrom({ agent, record, recorded, run }: RecordedTarget): Pro
   const answer = await callAgent(run, agent.name, agent.remove(names.registration));
   deletePluginFile({ plugin, record });
   if (succeededAt(answer)) {
-    await run.success(lines.removed(names, agent.name));
+    await run.success(removedRegistration(names, agent.name));
     return;
   }
   await warnOutput(run, answer);
-  await run.info(lines.noLongerRecorded(names, agent.name));
+  await run.info(noLongerRecorded(names, agent.name));
 }
 
 /** The agents whose plugin's file records a registration, in table order. */
@@ -71,7 +79,7 @@ async function removeEach(
       await removeFrom(target);
     } else {
       unstarted.push(target.agent.name);
-      await run.warn(lines.staysRegistered(namesOf(run), target.agent.name));
+      await run.warn(staysRegistered(namesOf(run), target.agent.name));
     }
   }
   return unstarted;
@@ -82,12 +90,12 @@ async function uninstallRegistrations(run: ChildRun, named: AgentName | undefine
   refuseWindows(run, 'uninstall');
   const targets = recordedTargets(run, recordOf(run), selectedAgents(named));
   if (targets.length === none) {
-    await run.success(lines.nothingToRemove(namesOf(run), named));
+    await run.success(nothingToRemove(namesOf(run), named));
     return;
   }
   const unstarted = await removeEach(run, targets);
   if (unstarted.length > none) {
-    throw refusals.uninstallIncomplete(namesOf(run), unstarted);
+    throw new FatalError(uninstallIncomplete(namesOf(run), unstarted));
   }
 }
 

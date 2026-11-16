@@ -3,6 +3,12 @@ import { safeParse } from 'valibot';
 import { withoutByteOrderMark } from './byte-order-mark.js';
 import { jsonFault } from './json-fault.js';
 import { jsonObject } from './json-object.js';
+import {
+  expectedVersionString,
+  manifestNotJson,
+  manifestNotJsonAt,
+  manifestNotObject,
+} from './messages.js';
 
 // The end of the JSON string that opens at the index, past its closing quote.
 function stringEnd(source: string, start: number) {
@@ -61,7 +67,7 @@ function versionSpan(source: string) {
 export function withVersion(source: string, version: string) {
   const span = versionSpan(source);
   if (span === undefined) {
-    throw new Error('package.json: expected a version string.');
+    throw new Error(expectedVersionString);
   }
   return source.slice(0, span.start) + JSON.stringify(version) + source.slice(span.end);
 }
@@ -79,19 +85,12 @@ export function parseManifest(source: string, path: string): Record<string, unkn
     document = JSON.parse(text);
   } catch (error) {
     const fault = jsonFault(text);
-    const place =
-      fault === undefined
-        ? ''
-        : `: line ${fault.line}, column ${fault.column} needs ${fault.expected}`;
-    throw new Error(`${path} is not valid JSON${place}, so fix it there and run loom again.`, {
-      cause: error,
-    });
+    const sentence = fault === undefined ? manifestNotJson(path) : manifestNotJsonAt(path, fault);
+    throw new Error(sentence, { cause: error });
   }
   const parsed = safeParse(jsonObject, document);
   if (!parsed.success) {
-    throw new Error(
-      `${path} is not a JSON object, so write its fields between { and } and run loom again.`,
-    );
+    throw new Error(manifestNotObject(path));
   }
   return parsed.output;
 }

@@ -2,6 +2,26 @@ import { isDeepStrictEqual } from 'node:util';
 
 import { parse } from 'yaml';
 
+import {
+  changelogRewritten,
+  fileModeChanged,
+  librariesChanged,
+  librariesOffTitle,
+  lockfileMismatch,
+  noCompiledHeading,
+  oneCompiledSection,
+  onlyVersionField,
+  outsideCut,
+  sectionNotCompiled,
+  skillInvalidYaml,
+  skillMissing,
+  skillVersionMismatch,
+  skillVersionNotString,
+  skillVersionUnset,
+  skillWithoutFrontmatter,
+  skillWithoutVersion,
+} from '../commands/pr/messages.js';
+import { tagExists } from '../commands/release/messages.js';
 import { authoringSkillSource } from '../content/authoring-skill.js';
 import { placedSection, releaseDate, releaseInsertion } from './changelog.js';
 import { requireSafeCharacters } from './fragments.js';
@@ -26,13 +46,13 @@ const authoringSkillPath = `${authoringSkillSource}/SKILL.md`;
 function skillVersion(text: string): { reason: string } | { version: string } {
   const source = frontmatter.exec(text)?.groups?.yaml;
   if (source === undefined) {
-    return { reason: 'has no YAML frontmatter' };
+    return { reason: skillWithoutFrontmatter };
   }
   let data: unknown = undefined;
   try {
     data = parse(source);
   } catch (error) {
-    return { reason: `has frontmatter that is not valid YAML: ${String(error)}` };
+    return { reason: skillInvalidYaml(String(error)) };
   }
   const metadata =
     typeof data === 'object' && data !== null && 'metadata' in data ? data.metadata : undefined;
@@ -41,11 +61,9 @@ function skillVersion(text: string): { reason: string } | { version: string } {
       ? metadata.version
       : undefined;
   if (version === undefined || version === null) {
-    return { reason: 'has no metadata.version' };
+    return { reason: skillWithoutVersion };
   }
-  return typeof version === 'string'
-    ? { version }
-    : { reason: 'has a metadata.version that is not a string, so quote it' };
+  return typeof version === 'string' ? { version } : { reason: skillVersionNotString };
 }
 
 /**
@@ -58,21 +76,15 @@ async function checkSkillVersion(checkout: Checkout, head: string, version: stri
     text = await readRegularFile(checkout, authoringSkillPath, head);
   } catch (error) {
     checkout.signal.throwIfAborted();
-    throw new Error(
-      `${authoringSkillPath} must exist at the head of a release PR as a regular file, so add it in an ordinary PR before the cut: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(skillMissing(authoringSkillPath, reason), { cause: error });
   }
   const found = skillVersion(text);
   if ('reason' in found) {
-    throw new Error(
-      `${authoringSkillPath} ${found.reason}. Set its metadata.version to "${version}" in an ordinary PR before the cut.`,
-    );
+    throw new Error(skillVersionUnset(authoringSkillPath, found.reason, version));
   }
   if (found.version !== version) {
-    throw new Error(
-      `${authoringSkillPath} carries metadata.version ${found.version}, not title version ${version}. Review the skill against the release and set its metadata.version to "${version}" in an ordinary PR before the cut.`,
-    );
+    throw new Error(skillVersionMismatch(authoringSkillPath, found.version, version));
   }
 }
 
@@ -116,7 +128,7 @@ export async function checkRelease(
     !changelog.endsWith(after) ||
     changelog.length <= before.length + after.length
   ) {
-    throw new Error('CHANGELOG.md must preserve its introduction and earlier releases.');
+    throw new Error(changelogRewritten);
   }
   const placed = changelog.slice(before.length, changelog.length - after.length);
   // A section that ends the file lands with one newline; the compiler's own form ends with a blank line.
@@ -124,7 +136,7 @@ export async function checkRelease(
   const dateInput = /^## v0\.\d+\.\d+ - (?<date>\d{4}-\d{2}-\d{2})\n\n/u.exec(section)?.groups
     ?.date;
   if (dateInput === undefined) {
-    throw new Error('CHANGELOG.md requires a compiled release heading and date.');
+    throw new Error(noCompiledHeading);
   }
   const options = {
     date: releaseDate(dateInput),
@@ -135,11 +147,11 @@ export async function checkRelease(
   };
   const release = await prepareRelease(checkout, options, base);
   if (currentVersion(libraries).text !== version) {
-    throw new Error(`Every participating library must carry title version ${version}.`);
+    throw new Error(librariesOffTitle(version));
   }
   await checkSkillVersion(checkout, head, version);
   if (await gitLine(checkout, ['tag', '--list', `v${version}`])) {
-    throw new Error(`Tag v${version} already exists.`);
+    throw new Error(tagExists(version));
   }
   if (
     !isDeepStrictEqual(
@@ -147,12 +159,12 @@ export async function checkRelease(
       previous.map((library) => library.path).toSorted(),
     )
   ) {
-    throw new Error('Release cuts cannot change participating libraries.');
+    throw new Error(librariesChanged);
   }
   for (const library of libraries) {
     const original = previous.find((candidate) => candidate.path === library.path);
     if (!isDeepStrictEqual(library.manifest, { ...original?.manifest, version })) {
-      throw new Error(`${library.path}: release cuts change only the version field.`);
+      throw new Error(onlyVersionField(library.path));
     }
   }
   const decisions = await checkDecisions(
@@ -171,28 +183,26 @@ export async function checkRelease(
   ]);
   for (const path of changed) {
     if (!allowed.has(path)) {
-      throw new Error(`${path}: outside the release cut.`);
+      throw new Error(outsideCut(path));
     }
     const oldEntry = await git(checkout, ['ls-tree', base, '--', path]);
     const newEntry = await git(checkout, ['ls-tree', head, '--', path]);
     const oldMode = oldEntry.slice(0, 6);
     const newMode = newEntry.slice(0, 6);
     if (oldMode && newMode && oldMode !== newMode) {
-      throw new Error(`${path}: release cuts cannot change a file mode.`);
+      throw new Error(fileModeChanged(path));
     }
   }
   if (
     (await readRegularFile(checkout, 'pnpm-lock.yaml', head)) !==
     (await prepareLockfile(checkout, release, base))
   ) {
-    throw new Error(
-      'pnpm-lock.yaml must match the version writer; unrelated lockfile changes need an ordinary PR.',
-    );
+    throw new Error(lockfileMismatch);
   }
   const heading = `## v${release.version} - ${options.date}\n\n`;
   const entries = release.section.slice(heading.length);
   if (!section.startsWith(heading) || !section.endsWith(entries)) {
-    throw new Error('CHANGELOG.md must contain the compiler output for the consumed fragments.');
+    throw new Error(sectionNotCompiled);
   }
   const narrative = section.slice(heading.length, section.length - entries.length);
   requireSafeNarrative(changelogBytes, changelog, before.length + heading.length, narrative);
@@ -202,7 +212,7 @@ export async function checkRelease(
     base,
   );
   if (placed !== placedSection(compiled.section, after)) {
-    throw new Error('CHANGELOG.md must contain exactly one compiled release section.');
+    throw new Error(oneCompiledSection);
   }
   requireReleaseNotes(compiled);
 }

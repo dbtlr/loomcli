@@ -5,16 +5,14 @@ import { declarerNote, siteFinding, callSite } from '../diagnostics/facts.js';
 import type { FactSite, InputSite } from '../diagnostics/facts.js';
 import {
   asSentence,
-  commandSentence,
-  commandSubject,
   DeclarationError,
   NonCallableCommandError,
-  quoted,
   ResultError,
   toFailure,
   reasonOf,
 } from '../failures/errors.js';
 import type { InvokedBy, LoomError } from '../failures/errors.js';
+import { commandSentence, commandSubject, quoted } from '../failures/messages.js';
 import { underCI } from '../host/host.js';
 import type { Host } from '../host/types.js';
 import { claimsStdin, stdinClaimedTwice } from '../inputs/content-rules.js';

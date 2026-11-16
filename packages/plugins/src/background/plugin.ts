@@ -3,6 +3,7 @@ import type { Plugin, PluginOptions } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
+import { backgroundIssue } from './messages.js';
 
 const identity = `${packageName}/background`;
 
@@ -13,9 +14,7 @@ const backgroundInput = createValidator({
   inputSchema: { type: 'string', enum: [...backgrounds] },
   parse: (raw) => {
     const match = backgrounds.find((each) => each === raw);
-    return match === undefined
-      ? { issues: [{ message: 'Supply dark or light.' }] }
-      : { value: match };
+    return match === undefined ? { issues: [{ message: backgroundIssue }] } : { value: match };
   },
 });
 

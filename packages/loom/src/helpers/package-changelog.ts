@@ -13,6 +13,13 @@ import { basename, dirname, join } from 'node:path';
 import { object, safeParse, string } from 'valibot';
 
 import {
+  invalidPackageVersion,
+  noFragmentsToCut,
+  notInRepository,
+  restoreFailed,
+  shallowHistory,
+} from '../commands/changelog/messages.js';
+import {
   highestKind,
   insertSection,
   landedFragments,
@@ -27,6 +34,7 @@ import {
   requireReleaseSection,
 } from './cut-version.js';
 import { parseManifest, withVersion } from './manifest.js';
+import { expectedVersionString } from './messages.js';
 import { isRepository, isShallow, readWorkingFile } from './repository.js';
 import type { Checkout } from './repository.js';
 import { sharedManifests } from './shared-version.js';
@@ -41,7 +49,7 @@ interface Replacement {
 function manifestVersion(source: string, path: string) {
   const parsed = safeParse(object({ version: string() }), parseManifest(source, path));
   if (!parsed.success) {
-    throw new Error('package.json: expected a version string.');
+    throw new Error(expectedVersionString);
   }
   return parsed.output.version;
 }
@@ -51,9 +59,7 @@ export function packageVersion(source: string, path: string) {
   const text = manifestVersion(source, path);
   const version = parseSemVer(text);
   if (version === undefined) {
-    throw new Error(
-      `package.json version ${JSON.stringify(text)} is not MAJOR.MINOR.PATCH with an optional prerelease part, so set a version such as 1.2.0 or 1.2.0-rc.1.`,
-    );
+    throw new Error(invalidPackageVersion(text));
   }
   return version;
 }
@@ -64,14 +70,10 @@ export function packageVersion(source: string, path: string) {
  */
 export async function requireHistory(checkout: Checkout, command: string) {
   if (!(await isRepository(checkout))) {
-    throw new Error(
-      `loom changelog ${command} orders fragments by the commits that added them, so run it inside a git repository with the fragments committed.`,
-    );
+    throw new Error(notInRepository(command));
   }
   if (await isShallow(checkout)) {
-    throw new Error(
-      `loom changelog ${command} needs full git history to order the fragments, so fetch it with git fetch --unshallow and run it again.`,
-    );
+    throw new Error(shallowHistory(command));
   }
 }
 
@@ -105,7 +107,7 @@ export async function preparePackageCut(
   await requireHistory(checkout, 'write');
   const { fragments } = await landedFragments(checkout, undefined, files.changes);
   if (fragments.length === 0) {
-    throw new Error(`No fragments to release, so add a fragment to ${files.changes}/ first.`);
+    throw new Error(noFragmentsToCut(files.changes));
   }
   const existing = existsSync(join(directory, files.changelog))
     ? readWorkingFile(directory, files.changelog)
@@ -212,10 +214,7 @@ export function writePackageCut(directory: string, cut: PackageCut) {
     }
     if (failed.length > 0) {
       keep = true;
-      throw new Error(
-        `Restoring ${failed.join(', ')} failed, so copy the originals back from ${stage}.`,
-        { cause: error },
-      );
+      throw new Error(restoreFailed(failed, stage), { cause: error });
     }
     if (created !== undefined) {
       rmSync(created, { force: true, recursive: true });

@@ -1,6 +1,7 @@
 import { array, looseObject, minLength, number, pipe, string, transform } from 'valibot';
 import type { InferOutput } from 'valibot';
 
+import { tagObjectMissing, uploadOriginRefused } from '../commands/release/messages.js';
 import { readJson, removeResource, writeBytes, writeJson } from './http.js';
 import type { HttpPolicy } from './http.js';
 import { parseOrThrow } from './parse-or-throw.js';
@@ -80,7 +81,7 @@ export async function readTagCommit(target: GitHubTarget, tag: string) {
   // The reference exists, so an absent tag object is a damaged record rather than an absent tag.
   // Reporting it as an absent tag would let recording create a second tag over the first.
   if (dereferenced.data === undefined) {
-    throw new Error(`Tag ${tag} names tag object ${object.sha}, which the API does not return.`);
+    throw new Error(tagObjectMissing(tag, object.sha));
   }
   return parseOrThrow(tagObjectSchema, dereferenced.data).object.sha;
 }
@@ -144,9 +145,7 @@ export async function uploadAsset(
 ) {
   const origin = new URL(uploadUrl).origin;
   if (origin !== new URL(target.api).origin && origin !== uploadOrigin) {
-    throw new Error(
-      `The Release publishes its upload endpoint at ${origin}, which is neither ${new URL(target.api).origin} nor ${uploadOrigin}.`,
-    );
+    throw new Error(uploadOriginRefused(origin, new URL(target.api).origin, uploadOrigin));
   }
   const endpoint = `${uploadUrl.replace('{?name,label}', '')}?name=${encodeURIComponent(name)}`;
   await writeBytes(target.policy, endpoint, target.token, bytes, 'application/gzip');

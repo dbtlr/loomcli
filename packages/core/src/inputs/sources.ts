@@ -13,10 +13,10 @@ import {
   foreignFailure,
   InternalError,
   LoomError,
-  quoted,
   reasonOf,
 } from '../failures/errors.js';
 import type { InvokedBy } from '../failures/errors.js';
+import { quoted } from '../failures/messages.js';
 import type { Host } from '../host/types.js';
 import type { CommandGraph, OptionNode } from '../inspection/inspect.js';
 import type { LogBinder } from '../output/log.js';

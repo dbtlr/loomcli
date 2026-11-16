@@ -1,10 +1,19 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { escapeControlCharacters, FatalError } from '@loomcli/core';
+import { FatalError } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 
 import { controls, pasteOff, showCursor } from './controls.js';
+import {
+  answerFileRemoved,
+  answerFileUnreadable,
+  answerNotUtf8,
+  editorExited,
+  editorFileUnwritable,
+  editorNotStarted,
+  invalidAnswer,
+} from './messages.js';
 import { asking, validateAnswer } from './question.js';
 import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
@@ -68,7 +77,6 @@ async function askEditor<Options, Output>(
 ): Promise<string | Output> {
   const command =
     [context.host.env.VISUAL, context.host.env.EDITOR].find((value) => value?.trim()) ?? 'vi';
-  const quoted = escapeControlCharacters(command);
   const reader = openReader(context);
   const draw = asking(context, { kind: 'editor', message: settings.message }, reader);
   const signal = AbortSignal.any([context.signal, draw.signal]);
@@ -123,7 +131,7 @@ async function askEditor<Options, Output>(
         }
       } catch (error) {
         throw new EditorError(
-          `Cannot write the editor's file in "${escapeControlCharacters(context.host.tmpdir)}" (${systemCode(error)}). Set TMPDIR to a folder you can write to, then run the command again.`,
+          editorFileUnwritable(context.host.tmpdir, systemCode(error)),
           command,
           undefined,
         );
@@ -157,18 +165,10 @@ async function askEditor<Options, Output>(
         signal.throwIfAborted();
         const status = exit.kind === 'exited' ? exit.code : undefined;
         if (status === undefined || status === 126 || status === 127) {
-          throw new EditorError(
-            `The editor "${quoted}" could not start. Set VISUAL or EDITOR to an editor you have installed, then run the command again.`,
-            command,
-            status,
-          );
+          throw new EditorError(editorNotStarted(command), command, status);
         }
         if (status !== 0) {
-          throw new EditorError(
-            `The editor "${quoted}" exited with code ${status}, so the question has no answer. To answer it, set VISUAL or EDITOR to another editor if you need one, then run the command again.`,
-            command,
-            status,
-          );
+          throw new EditorError(editorExited(command, status), command, status);
         }
         let bytes: Buffer | undefined = undefined;
         try {
@@ -176,17 +176,14 @@ async function askEditor<Options, Output>(
         } catch (error) {
           lost = true;
           const code = systemCode(error);
-          issue =
-            code === 'ENOENT'
-              ? "The editor removed the answer's file. Save the answer before you close the editor."
-              : `The question cannot read the answer's file (${code}). Save the answer as a file before you close the editor.`;
+          issue = code === 'ENOENT' ? answerFileRemoved : answerFileUnreadable(code);
         }
         if (bytes !== undefined) {
           held = bytes;
           try {
             saved = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
           } catch {
-            issue = 'The saved answer is not UTF-8 text. Save it as UTF-8.';
+            issue = answerNotUtf8;
           }
         }
         if (issue === undefined) {
@@ -200,7 +197,7 @@ async function askEditor<Options, Output>(
             };
             return result.value;
           }
-          issue = result.issues[0]?.message ?? 'The answer is invalid.';
+          issue = result.issues[0]?.message ?? invalidAnswer;
         }
       } finally {
         draw.lend(false);

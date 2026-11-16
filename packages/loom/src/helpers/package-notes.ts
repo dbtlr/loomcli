@@ -1,6 +1,11 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+import {
+  noPendingFragments,
+  notCurrentVersion,
+  versionNotCut,
+} from '../commands/changelog/messages.js';
 import { landedFragments, renderGroups } from './changelog.js';
 import type { ChangelogFiles } from './changelog.js';
 import { releaseBody } from './markdown.js';
@@ -16,9 +21,7 @@ function stableNotes(directory: string, version: SemVer, files: ChangelogFiles) 
     : '';
   const body = releaseBody(changelog, version.text);
   if (body === undefined) {
-    throw new Error(
-      `${files.changelog} holds no v${version.text} section, so the version has not been cut; run loom changelog write first.`,
-    );
+    throw new Error(versionNotCut(files.changelog, version.text));
   }
   return body === '' ? '' : `${body}\n`;
 }
@@ -31,14 +34,12 @@ async function prereleaseNotes(checkout: Checkout, version: SemVer, files: Chang
     join(directory, 'package.json'),
   );
   if (current.text !== version.text) {
-    throw new Error(
-      `${version.text} is not the package's current version ${current.text}, so its fragments are not the ones pending; preview a candidate with loom changelog write --target ${version.text} --dry-run.`,
-    );
+    throw new Error(notCurrentVersion(version.text, current.text));
   }
   await requireHistory(checkout, 'notes');
   const { fragments } = await landedFragments(checkout, undefined, files.changes);
   if (fragments.length === 0) {
-    throw new Error(`No fragments are pending in ${files.changes}/ for ${version.text}.`);
+    throw new Error(noPendingFragments(files.changes, version.text));
   }
   // The groups close with a blank line between sections; the notes end with one newline, as a stable body does.
   return renderGroups(fragments).replace(/\n+$/u, '\n');

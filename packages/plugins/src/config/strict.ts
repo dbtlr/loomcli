@@ -123,38 +123,6 @@ function coversRemoval(
   );
 }
 
-/** A period unless the message already ends in one, as the `empty-file` sentence adds one. */
-function stopped(message: string): string {
-  const text = escapeControlCharacters(message);
-  return /[.!?]$/u.test(text) ? text : `${text}.`;
-}
-
-/** The place a line names: ` in <file>`, or nothing when the run read no file. */
-function placeOf(file: string | undefined): string {
-  return file === undefined ? '' : ` in ${file}`;
-}
-
-/**
- * The line for a value the schema rejected, naming the issue's own path. An issue with no path
- * rejected the whole file, and its line names the file. `file` is the file as its labels show it,
- * already escaped.
- */
-function valueLine(
-  removal: { readonly path: string | undefined; readonly message: string },
-  file: string | undefined,
-): string {
-  const { message, path } = removal;
-  if (path === undefined) {
-    return `Configuration file${file === undefined ? '' : ` ${file}`}: ${stopped(message)} Correct the file, or remove it.`;
-  }
-  return `Configuration value ${escapeControlCharacters(path)}${placeOf(file)}: ${stopped(message)} Correct the value, or remove it.`;
-}
-
-/** The line for an unknown key. */
-function unknownLine(path: string, file: string | undefined): string {
-  return `Unknown key ${escapeControlCharacters(path)}${placeOf(file)}. Check its spelling, or remove it.`;
-}
-
 /** One linked option's value the source could not take, as the failure holds it. */
 interface LinkedProblem {
   readonly problem: Extract<InputProblem, { reason: 'invalid' }>;
@@ -290,7 +258,5 @@ export {
   judgeStrict,
   judgeStrictPaths,
   strictFailure,
-  unknownLine,
-  valueLine,
 };
 export type { LinkedProblem, StrictSetting, Strictness };

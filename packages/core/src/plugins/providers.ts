@@ -1,6 +1,7 @@
 import { partFinding } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
-import { DeclarationError, quoted } from '../failures/errors.js';
+import { DeclarationError } from '../failures/errors.js';
+import { quoted } from '../failures/messages.js';
 import type { Host } from '../host/types.js';
 import type { CommandGraph } from '../inspection/inspect.js';
 import type { Log } from '../output/log.js';

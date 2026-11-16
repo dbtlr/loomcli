@@ -67,6 +67,24 @@ import {
 } from '../../helpers/tooling.js';
 import type { Linter, TestRunner, Tooling } from '../../helpers/tooling.js';
 import type { init, Piece } from './command.js';
+import {
+  addedKey,
+  cannotRemove,
+  cannotWrite,
+  createPackageQuestion,
+  installerWithoutRepository,
+  invalidDirectoryName,
+  linterQuestion,
+  notEmptyWithoutPackage,
+  plainTypescript,
+  removedFile,
+  staleSkillFile,
+  testRunnerQuestion,
+  unexportedApplication,
+  unloadedApplication,
+  unreadReason,
+  wroteFile,
+} from './messages.js';
 
 /** The pieces that read the application's name from `package.json`. */
 const namedPieces: readonly Piece[] = ['package', 'application', 'entry', 'test', 'install'];
@@ -127,9 +145,7 @@ type Place = Omit<Target, 'layout' | 'postInstall'>;
 function newPackageDirectory(directory: string): Place {
   const name = basename(directory);
   if (!isNewPackageName(name)) {
-    throw new Error(
-      `The directory name "${name}" is not a valid package name, so rename the directory or write a package.json with the name to use.`,
-    );
+    throw new Error(invalidDirectoryName(name));
   }
   return { directory, fresh: true };
 }
@@ -161,16 +177,14 @@ async function chosenPlace(context: QuestionContext, cwd: string): Promise<Place
   if (target !== undefined) {
     return target;
   }
-  const refusal = new Error(
-    `${cwd} is not empty and no package.json is at or above it, so create one with npm init -y, or your package manager's equivalent, and run loom init again.`,
-  );
+  const refusal = new Error(notEmptyWithoutPackage(cwd));
   if (!context.interactive) {
     throw refusal;
   }
   const created = newPackageDirectory(resolve(cwd));
   const accepted = await confirm(context, {
     default: true,
-    message: 'No package.json is here or above it. Create one in this directory?',
+    message: createPackageQuestion,
   });
   if (!accepted) {
     throw refusal;
@@ -206,14 +220,14 @@ function writeFile(run: Run, path: string, text: string, mode?: number) {
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`Cannot write ${path}: ${reason}.`, { cause: error });
+    throw new Error(cannotWrite(path, reason), { cause: error });
   }
 }
 
 /** Writes a file and the line that says so. */
 function write(run: Run, path: string, text: string, mode?: number) {
   writeFile(run, path, text, mode);
-  run.line(`Wrote ${path}.`);
+  run.line(wroteFile(path));
 }
 
 /**
@@ -290,9 +304,9 @@ function removeManaged(run: Run, path: string) {
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`Cannot remove ${path}: ${reason}.`, { cause: error });
+    throw new Error(cannotRemove(path, reason), { cause: error });
   }
-  run.line(`Removed ${path}.`);
+  run.line(removedFile(path));
 }
 
 /**
@@ -308,9 +322,7 @@ function sweepStaleSkillFiles(run: Run, rendered: ReadonlySet<string>) {
     if (file === undefined) {
       // Rendered by this run, or a file of the author's, which init never touches.
     } else if (hasDrifted(file) && !run.force) {
-      run.warn(
-        `warning: ${path} differs from what loom init wrote, and the running loom no longer ships it. Run loom init --force to remove it, or delete its header to keep it.`,
-      );
+      run.warn(staleSkillFile(path));
     } else {
       removeManaged(run, path);
     }
@@ -343,9 +355,7 @@ function writeInstaller(run: Run, postInstall: PostInstall | undefined) {
   const manifest = readManifest(run.directory);
   const repository = githubRepository(manifest);
   if (repository === undefined) {
-    run.warn(
-      `warning: ${run.layout.installer} was not written because package.json names no GitHub repository. Set repository to a GitHub address such as owner/name, then run loom init again.`,
-    );
+    run.warn(installerWithoutRepository(run.layout.installer));
     return;
   }
   writeManaged(
@@ -373,9 +383,7 @@ function warnPlainTypescript(run: Run, target: Place) {
   if (range === undefined || isTypescriptAlias(range)) {
     return;
   }
-  run.warn(
-    `warning: package.json declares typescript as ${range}, and typescript-eslint supports TypeScript below 6.1, so eslint . fails on TypeScript 7. Set typescript to npm:@typescript/typescript6@${toolRanges['@typescript/typescript6']} and add @typescript/native as npm:typescript@${range}, which keeps tsc on your compiler. See ${eslintPluginGuide}.`,
-  );
+  run.warn(plainTypescript(range, toolRanges['@typescript/typescript6'], eslintPluginGuide));
 }
 
 /** Adds the scaffold's `package.json` keys the package lacks, one line for each key added. */
@@ -390,7 +398,7 @@ function writeKeys(run: Run) {
     writeFile(run, 'package.json', text);
   }
   for (const key of added) {
-    run.line(`Added ${key} to package.json.`);
+    run.line(addedKey(key));
   }
 }
 
@@ -431,7 +439,7 @@ async function authoredRead(run: Run, name: string): Promise<ApplicationRead> {
  */
 function reasonLine(reason: string) {
   const line = reason.split('\n').find((text) => text.trim() !== '' && !text.startsWith('-- '));
-  return (line ?? 'it could not be read').trim().replace(/\.$/u, '');
+  return (line ?? unreadReason).trim().replace(/\.$/u, '');
 }
 
 /**
@@ -468,13 +476,9 @@ function importedApplication(
   const { noun, path } = file;
   const { application } = run.layout;
   if (outcome.kind === 'unloaded') {
-    run.warn(
-      `warning: ${path} was not written because ${application} could not be loaded: ${reasonLine(outcome.reason)}. Install the package and run loom init again, or write the ${noun} by hand.`,
-    );
+    run.warn(unloadedApplication(path, application, reasonLine(outcome.reason), noun));
   } else {
-    run.warn(
-      `warning: ${path} was not written because ${application} exports no Application loom can read. Write the ${noun} by hand.`,
-    );
+    run.warn(unexportedApplication(path, application, noun));
   }
   return undefined;
 }
@@ -671,7 +675,7 @@ export const initPackage: ActionHandler<typeof init> = async (context) => {
     } else if (needed.linter && context.interactive) {
       linter = await select(context, {
         choices: linters,
-        message: 'Which linter should the scaffold use?',
+        message: linterQuestion,
         option: 'linter',
         skipIfSupplied: true,
       });
@@ -682,7 +686,7 @@ export const initPackage: ActionHandler<typeof init> = async (context) => {
     } else if (needed.runner && context.interactive) {
       runner = await select(context, {
         choices: testRunners,
-        message: 'Which test runner should the scaffold use?',
+        message: testRunnerQuestion,
         option: 'test-runner',
         skipIfSupplied: true,
       });

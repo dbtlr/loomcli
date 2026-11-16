@@ -11,13 +11,8 @@ import type { FactSite } from '../diagnostics/facts.js';
 import { pluginLoaderFailed } from '../diagnostics/rules.js';
 import { readEncodings } from '../failures/encoders.js';
 import type { FailureEncoder, FailureEncoding } from '../failures/encoders.js';
-import {
-  DeclarationError,
-  InternalError,
-  midSentence,
-  quoted,
-  reasonOf,
-} from '../failures/errors.js';
+import { DeclarationError, InternalError, midSentence, reasonOf } from '../failures/errors.js';
+import { quoted } from '../failures/messages.js';
 import { readTranslations } from '../failures/translators.js';
 import type { Translation, TranslationContributor } from '../failures/translators.js';
 import type { Host } from '../host/types.js';

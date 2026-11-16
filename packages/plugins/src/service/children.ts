@@ -1,4 +1,4 @@
-import { applicationDirectory } from '@loomcli/core';
+import { applicationDirectory, FatalError } from '@loomcli/core';
 import type { Host, OnShutdown } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
@@ -10,7 +10,27 @@ import type { CommittedFile } from '../installation/record.js';
 import { singleLineOf } from '../lines.js';
 import type { Backend, Service } from './backend.js';
 import { launchd } from './launchd.js';
-import { lines, refusals } from './messages.js';
+import {
+  fileGone,
+  fileKept,
+  noServiceToRemove,
+  platformUnsupported,
+  recordUnreadable,
+  removedFile,
+  restartedService,
+  serviceFromBuild,
+  serviceNotInstalled,
+  startedService,
+  stoppedService,
+  unitChanged,
+  unitHoldsControl,
+  unitHomeNotAbsolute,
+  unitNotRegular,
+  unitUnchanged,
+  unitUnrecorded,
+  unitUnrecordedUninstall,
+  wroteUnit,
+} from './messages.js';
 import type { Child } from './messages.js';
 import { systemd } from './systemd.js';
 
@@ -53,7 +73,7 @@ const backends: Readonly<Record<string, Backend>> = { darwin: launchd, linux: sy
 /** The run's user id, or the platform refusal where the process has none. */
 function userId(name: string, host: Host): number {
   if (host.uid === undefined) {
-    throw refusals.platform(name, host.platform);
+    throw new FatalError(platformUnsupported(name, host.platform));
   }
   return host.uid;
 }
@@ -73,7 +93,7 @@ function managerEnv(host: Host, uid: number): Host['env'] {
 function recordDirectory(run: ChildRun): string {
   const directory = applicationDirectory('installation', run.name, run.host);
   if ('variable' in directory) {
-    throw refusals.home(run.name);
+    throw new FatalError(unitHomeNotAbsolute(run.name));
   }
   return directory.path;
 }
@@ -82,7 +102,7 @@ function recordDirectory(run: ChildRun): string {
 function backendOf(run: ChildRun): Backend {
   const backend = backends[run.host.platform];
   if (backend === undefined) {
-    throw refusals.platform(run.name, run.host.platform);
+    throw new FatalError(platformUnsupported(run.name, run.host.platform));
   }
   return backend;
 }
@@ -91,7 +111,7 @@ function backendOf(run: ChildRun): Backend {
 function unitHome(run: ChildRun): string {
   const home = homeOf(run.host);
   if (home === undefined) {
-    throw refusals.home(run.name);
+    throw new FatalError(unitHomeNotAbsolute(run.name));
   }
   return home;
 }
@@ -120,7 +140,7 @@ function isPresent(path: string): boolean {
 function requireDistributed(run: ChildRun): void {
   const { build } = run.host.release;
   if (build !== 'distributed') {
-    throw refusals.build(run.name, build);
+    throw new FatalError(serviceFromBuild(run.name, build));
   }
 }
 
@@ -128,7 +148,7 @@ function requireDistributed(run: ChildRun): void {
 function recordedFiles(prepared: Prepared, child: Child): readonly CommittedFile[] {
   const read = readRecorded({ plugin: recordName, record: prepared.record });
   if (read.status === 'refused') {
-    throw refusals.record(prepared.run.name, read.refused.path, child);
+    throw new FatalError(recordUnreadable(prepared.run.name, read.refused.path, child));
   }
   return read.files;
 }
@@ -137,17 +157,17 @@ function recordedFiles(prepared: Prepared, child: Child): readonly CommittedFile
 function refusalOf(run: ChildRun, refusal: Refusal): Error {
   switch (refusal.reason) {
     case 'unrecorded': {
-      return refusals.unrecorded(run.name, refusal.path);
+      return new FatalError(unitUnrecorded(run.name, refusal.path));
     }
     case 'changed': {
-      return refusals.changed(run.name, refusal.path);
+      return new FatalError(unitChanged(run.name, refusal.path));
     }
     case 'damaged':
     case 'unknown-format': {
-      return refusals.record(run.name, refusal.path, 'install');
+      return new FatalError(recordUnreadable(run.name, refusal.path, 'install'));
     }
     default: {
-      return refusals.irregular(run.name, refusal.path);
+      return new FatalError(unitNotRegular(run.name, refusal.path));
     }
   }
 }
@@ -169,7 +189,7 @@ function renderUnit(prepared: Prepared, words: readonly string[]): string {
   const description = singleLineOf(run.description) ?? run.name;
   const { program } = run.host;
   if ([...program, description, home].some(holdsControlCharacter)) {
-    throw refusals.controlCharacter(run.name);
+    throw new FatalError(unitHoldsControl(run.name));
   }
   return prepared.backend.render({
     description,
@@ -191,10 +211,10 @@ function isUnchanged(unit: string, text: string, files: readonly CommittedFile[]
 /** States the recorded files the module removed, and those it kept because they changed. */
 async function reportRemovals(run: ChildRun, removals: Removals): Promise<void> {
   for (const path of removals.removed) {
-    await run.info(lines.removed(path));
+    await run.info(removedFile(path));
   }
   for (const path of removals.kept) {
-    await run.info(lines.kept(run.name, path));
+    await run.info(fileKept(run.name, path));
   }
 }
 
@@ -223,7 +243,7 @@ async function writeUnit(prepared: Prepared, text: string, files: readonly Commi
     refuse(run, outcome.refused);
     return;
   }
-  await run.info(lines.wrote(service.unit));
+  await run.info(wroteUnit(service.unit));
   await reportRemovals(run, outcome);
 }
 
@@ -236,17 +256,17 @@ async function installChild(run: ChildRun, words: readonly string[]): Promise<vo
   const files = recordedFiles(prepared, 'install');
   refuse(run, targetRefusals([service.unit], files));
   const unchanged = isUnchanged(service.unit, text, files);
-  await (unchanged ? run.info(lines.unchanged(service.unit)) : writeUnit(prepared, text, files));
+  await (unchanged ? run.info(unitUnchanged(service.unit)) : writeUnit(prepared, text, files));
   await prepared.backend.install(service, !unchanged);
-  await run.success(lines.started(run.label));
+  await run.success(startedService(run.label));
 }
 
 /** The line one recorded file's removal states: removed, kept because it changed, or already gone. */
 function removalLine(run: ChildRun, path: string, removals: Removals): string {
   if (removals.removed.includes(path)) {
-    return lines.removed(path);
+    return removedFile(path);
   }
-  return removals.kept.includes(path) ? lines.kept(run.name, path) : lines.gone(path);
+  return removals.kept.includes(path) ? fileKept(run.name, path) : fileGone(path);
 }
 
 /** Stops every recorded unit, removes the recorded files, and states each one. */
@@ -258,7 +278,7 @@ async function removeUnits(prepared: Prepared, files: readonly CommittedFile[]):
   const outcome = uninstall({ plugin: recordName, record, signal: run.signal });
   if (outcome.status === 'refused') {
     const [refusal] = outcome.refused;
-    throw refusals.record(run.name, refusal?.path ?? record, 'uninstall');
+    throw new FatalError(recordUnreadable(run.name, refusal?.path ?? record, 'uninstall'));
   }
   await backend.afterRemoval(service);
   for (const file of files) {
@@ -272,11 +292,11 @@ async function uninstallChild(run: ChildRun): Promise<void> {
   const { unit } = prepared.service;
   const files = recordedFiles(prepared, 'uninstall');
   if (isPresent(unit) && !files.some(({ path }) => path === unit)) {
-    throw refusals.unrecordedUninstall(run.name, unit);
+    throw new FatalError(unitUnrecordedUninstall(run.name, unit));
   }
   const [recorded] = files;
   await (recorded === undefined
-    ? run.success(lines.nothingToRemove(run.label))
+    ? run.success(noServiceToRemove(run.label))
     : removeUnits(prepared, files));
 }
 
@@ -284,13 +304,13 @@ async function uninstallChild(run: ChildRun): Promise<void> {
 function installedService(run: ChildRun): Prepared {
   const prepared = prepare(run);
   if (!isPresent(prepared.service.unit)) {
-    throw refusals.notInstalled(run.name, run.label);
+    throw new FatalError(serviceNotInstalled(run.name, run.label));
   }
   return prepared;
 }
 
 /** The line each control child states once its call succeeded. */
-const controlLines = { restart: lines.restarted, start: lines.started, stop: lines.stopped };
+const controlLines = { restart: restartedService, start: startedService, stop: stoppedService };
 
 /** `start`, `stop`, and `restart`: the manager's call for an installed unit, then its line. */
 async function control(run: ChildRun, verb: keyof typeof controlLines): Promise<void> {

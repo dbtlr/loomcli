@@ -1,3 +1,10 @@
+import {
+  initialNeedsZero,
+  noFragments,
+  releaseWithoutEntries,
+  stableTargetOnly,
+  targetBelowRelease,
+} from '../commands/release/messages.js';
 import { highestKind, landedFragments, renderSection } from './changelog.js';
 import { materialBaseline, unchangedLibraries } from './material.js';
 import { currentVersion, readLibraries } from './repository.js';
@@ -22,23 +29,21 @@ export async function prepareRelease(
   const libraries = await readLibraries(checkout, ref);
   const current = currentVersion(libraries);
   if (options.initial && current.text !== '0.0.0') {
-    throw new Error('--initial requires library version 0.0.0.');
+    throw new Error(initialNeedsZero);
   }
   if (fragments.length === 0 && !options.initial) {
-    throw new Error('No fragments to release.');
+    throw new Error(noFragments);
   }
   const minimum = nextVersion(current, highestKind(fragments));
   const version = options.target ?? minimum;
   if (options.target !== undefined) {
     const target = parseVersion(options.target);
     if (target?.major !== 0) {
-      throw new Error('Release target must be a stable 0.x version.');
+      throw new Error(stableTargetOnly);
     }
     const required = parseVersion(minimum);
     if (required === undefined || compareReleases(target, required) < 0) {
-      throw new Error(
-        `Release target must be at least ${minimum}; current version is ${current.text}.`,
-      );
+      throw new Error(targetBelowRelease(minimum, current.text));
     }
   }
   let section = renderSection({
@@ -67,8 +72,6 @@ export async function prepareRelease(
 export function requireReleaseNotes(release: Release) {
   const body = release.section.slice(release.section.indexOf('\n') + 1);
   if (body.trim() === '') {
-    throw new Error(
-      `Release v${release.version} carries no entries, so it requires a narrative for its notes.`,
-    );
+    throw new Error(releaseWithoutEntries(release.version));
   }
 }

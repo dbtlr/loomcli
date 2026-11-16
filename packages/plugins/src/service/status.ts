@@ -1,8 +1,7 @@
-import { nowrap } from '@loomcli/core';
+import { escapeControlCharacters, nowrap } from '@loomcli/core';
 import type { ContextualStyle } from '@loomcli/core';
 
 import type { Reading } from './backend.js';
-import { shown } from './messages.js';
 import type { ServiceDetail, ServiceState, ServiceStatus } from './types.js';
 
 /** The spaces between the longest row name and every row's value. */
@@ -51,7 +50,7 @@ function summaryOf(status: ServiceStatus): string {
  * values are printed as the author gives them.
  */
 function statusText(status: Readonly<ServiceStatus>, style: ContextualStyle): string {
-  const quoted = (text: string) => style.escape(shown(text));
+  const quoted = (text: string) => style.escape(escapeControlCharacters(text));
   const rows: (readonly [string, string])[] = [
     ['unit', nowrap(quoted(status.unit))],
     ...status.details.map(({ name, value }): readonly [string, string] => [name, value]),

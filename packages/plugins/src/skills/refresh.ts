@@ -26,9 +26,10 @@ import type { RefreshContext } from '../refresh.js';
  * @public
  */
 async function refreshSkills(context: RefreshContext): Promise<void> {
+  // The sentence loads with the refresh, so the entry that exports it loads no message module.
+  const { skillsNotRefreshed } = await import('./messages.js');
   await refreshByRunning(context, {
-    notStarted: (path, name) =>
-      `The skills were not refreshed because ${path} could not start. Run ${name} skills update.\n`,
+    notStarted: skillsNotRefreshed,
     warning: 'Skills were not refreshed after the update.',
     words: ['skills', 'update'],
   });

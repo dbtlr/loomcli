@@ -4,8 +4,9 @@ import { brokenFailureEncoder } from '../diagnostics/rules.js';
 import { pluginSentence } from '../plugins/plugin.js';
 import type { BuiltPlugin } from '../plugins/plugin.js';
 import { failureEncoderTaken, foreignValue, foreignValueCorrection } from '../plugins/rules.js';
-import { DeclarationError, InternalError, quoted, reasonOf } from './errors.js';
+import { DeclarationError, InternalError, reasonOf } from './errors.js';
 import type { FailureForm } from './form.js';
+import { quoted } from './messages.js';
 
 /** Phantom key. It brands a failure encoding and holds no runtime value. */
 declare const failureEncoding: unique symbol;

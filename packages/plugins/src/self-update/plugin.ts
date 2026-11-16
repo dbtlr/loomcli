@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 
 import { applicationDirectory, Command, DeclarationError, InputError, plugin } from '@loomcli/core';
-import type { Host, Log, Plugin } from '@loomcli/core';
+import type { FatalError, Host, Log, Plugin } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
@@ -10,10 +10,39 @@ import { selfUpdateSettings } from '../rules.js';
 import { isVariableName } from '../variable-name.js';
 import { releaseBinary } from './binary.js';
 import type { ReleaseBinary } from './binary.js';
-import { failures, refusals, requestFailed, shown } from './messages.js';
+import { fatal } from './fatal.js';
+import {
+  alreadyInstalled,
+  assetNotListed,
+  binaryChanged,
+  binaryIsLink,
+  binaryMissing,
+  binaryUnwritable,
+  canInstall,
+  canUpdate,
+  channelConflict,
+  channelConflictIssue,
+  channelIssue,
+  digestConflict,
+  digestMismatch,
+  directoryUnwritable,
+  downloading,
+  newerThanNewest,
+  newestRelease,
+  noRelease,
+  notReleaseBinary,
+  otherInstaller,
+  recordNotAbsolute,
+  recordUnwritable,
+  refreshNoticeConflict,
+  refreshNoticeConflictIssue,
+  requestFailed,
+  updated,
+  versionIssue,
+} from './messages.js';
 import { unwritable } from './place.js';
 import { refreshNotice } from './refresh.js';
-import { fetchBytes, RequestError } from './request.js';
+import { fetchBytes, notFound, RequestError } from './request.js';
 import { downloadUrl, fetchSums, latestRelease } from './resolve.js';
 import type { Release } from './resolve.js';
 import { listingOf } from './sums.js';
@@ -89,15 +118,9 @@ function stringInput(accepts: (text: string) => boolean, message: string) {
   });
 }
 
-const versionInput = stringInput(
-  (text) => versionOfArgument(text) !== undefined,
-  'Supply a semantic version, such as 1.4.0.',
-);
+const versionInput = stringInput((text) => versionOfArgument(text) !== undefined, versionIssue);
 
-const channelInput = stringInput(
-  isChannelName,
-  'Supply stable or a prerelease identifier, such as next.',
-);
+const channelInput = stringInput(isChannelName, channelIssue);
 
 /** What a run checked before any request: the binary to replace and where its record lives. */
 interface Checked extends ReleaseBinary {
@@ -110,7 +133,7 @@ interface Checked extends ReleaseBinary {
 function recordDirectory(name: string, host: Host): string {
   const directory = applicationDirectory('installation', name, host);
   if ('variable' in directory) {
-    throw refusals.record(name, directory.variable);
+    throw fatal(recordNotAbsolute(name, directory.variable));
   }
   return directory.path;
 }
@@ -121,7 +144,7 @@ type Installation = NonNullable<Host['release']['installation']>;
 /** The installation, or the refusal when something other than the installer script placed it. */
 function scriptInstallation(name: string, installation: Installation | undefined): Installation {
   if (installation?.method !== 'script') {
-    throw refusals.otherInstaller(name);
+    throw fatal(otherInstaller(name));
   }
   return installation;
 }
@@ -130,13 +153,13 @@ function scriptInstallation(name: string, installation: Installation | undefined
 function intactMode(name: string, installation: Installation): number {
   const found = observe(installation.path);
   if (found.kind === 'link') {
-    throw refusals.link(name, installation.path);
+    throw fatal(binaryIsLink(name, installation.path));
   }
   if (found.kind !== 'file') {
-    throw refusals.missing(name, installation.path);
+    throw fatal(binaryMissing(name, installation.path));
   }
   if (found.digest !== installation.digest) {
-    throw refusals.changed(name, installation.path);
+    throw fatal(binaryChanged(name, installation.path));
   }
   return found.mode;
 }
@@ -145,7 +168,7 @@ function intactMode(name: string, installation: Installation): number {
 function requireWritable(name: string, path: string, record: string): void {
   const blocked = unwritable([join(path, '..'), record]);
   if (blocked !== undefined) {
-    throw refusals.unwritable(name, blocked.directory, blocked.cause);
+    throw fatal(directoryUnwritable(name, blocked.directory), blocked.cause);
   }
 }
 
@@ -158,7 +181,7 @@ function requireWritable(name: string, path: string, record: string): void {
 function check(name: string, host: Host): Checked {
   const binary = releaseBinary(host);
   if (binary === undefined) {
-    throw refusals.notBuilt(name);
+    throw fatal(notReleaseBinary(name));
   }
   const record = recordDirectory(name, host);
   const installation = scriptInstallation(name, host.release.installation);
@@ -184,7 +207,7 @@ async function target({ name, checked, named, channel, signal }: Lookup): Promis
   }
   const found = await latestRelease(checked.repository, channel, signal);
   if (found === undefined) {
-    throw failures.noRelease(name, channel, checked.repository);
+    throw fatal(noRelease(name, channel, checked.repository));
   }
   return found;
 }
@@ -203,10 +226,10 @@ function listedDigest(asset: string, release: Release & { sums: string }): strin
   const listing = listingOf(release.sums, asset);
   const tag = `v${release.version.text}`;
   if ('missing' in listing) {
-    throw failures.notListed(asset, tag, release.repository);
+    throw fatal(assetNotListed(asset, tag, release.repository));
   }
   if ('conflict' in listing) {
-    throw failures.conflict(asset, tag, release.repository);
+    throw fatal(digestConflict(asset, tag, release.repository));
   }
   return listing.digest;
 }
@@ -227,8 +250,8 @@ interface NotNewer {
 /** The line a resolved release that is not newer prints, which replaces nothing. */
 function notNewerLine({ name, running, found, channel }: NotNewer): string {
   return compareVersions(found, running) === equalPrecedence
-    ? `${name} ${shown(running.text)} is the newest release on the ${shown(channel)} channel.`
-    : `${name} ${shown(running.text)} is newer than the newest release on the ${shown(channel)} channel, ${shown(found.text)}. Name that version to install it: ${name} self-update ${shown(found.text)}.`;
+    ? newestRelease(name, running.text, channel)
+    : newerThanNewest({ channel, found: found.text, name, running: running.text });
 }
 
 /** What downloading the asset needs: the run's binary, the release, and the digest it lists. */
@@ -246,7 +269,7 @@ async function download({ checked, release, digest, signal }: Download): Promise
     signal,
   );
   if (digestOf(bytes) !== `sha256:${digest}`) {
-    throw failures.mismatch(checked.asset, `v${release.version.text}`, release.repository);
+    throw fatal(digestMismatch(checked.asset, `v${release.version.text}`, release.repository));
   }
   return bytes;
 }
@@ -275,7 +298,7 @@ function placeBinary({ name, checked, bytes, signal }: Placement): void {
     if (signal.aborted) {
       throw signal.reason;
     }
-    throw failures.write(name, join(checked.path, '..'), error);
+    throw fatal(binaryUnwritable(name, join(checked.path, '..')), error);
   }
 }
 
@@ -287,7 +310,7 @@ function writeRecord({ name, checked, version, bytes }: Placement): void {
     removeStagingFiles(record);
     replaceFile(record, line, { durable: true, mode: recordMode });
   } catch (error) {
-    throw failures.record(name, version.text, error);
+    throw fatal(recordUnwritable(name, version.text), error);
   }
 }
 
@@ -329,7 +352,7 @@ function namesRunning(request: Request, checked: Checked): boolean {
 
 /** The line a run that named the running version prints, which replaces nothing. */
 function installedLine(request: Request, checked: Checked): string {
-  return `${request.name} ${shown(checked.running.text)} is already installed.`;
+  return alreadyInstalled(request.name, checked.running.text);
 }
 
 /**
@@ -388,27 +411,23 @@ function checkLine(request: Request, checked: Checked, found: Version): string {
     return installedLine(request, checked);
   }
   if (named !== undefined) {
-    return `${name} can install ${shown(named.text)} in place of ${shown(checked.running.text)}.`;
+    return canInstall(name, named.text, checked.running.text);
   }
   const channel = channelFor(request, checked);
   if (isNotNewer(found, checked.running)) {
     return notNewerLine({ channel, found, name, running: checked.running });
   }
-  return `${name} can update from ${shown(checked.running.text)} to ${shown(found.text)} on the ${shown(channel)} channel.`;
+  return canUpdate({ channel, found: found.text, name, running: checked.running.text });
 }
 
 /** Downloads the resolved release, places it, and reports the update. */
 async function install(request: Request, checked: Checked, resolved: Resolved): Promise<void> {
   const { name, signal } = request;
   const { digest, release } = resolved;
-  await request.info(
-    `Downloading ${shown(checked.asset)} from v${shown(release.version.text)} of ${shown(release.repository)}.`,
-  );
+  await request.info(downloading(checked.asset, release.version.text, release.repository));
   const bytes = await download({ checked, digest, release, signal });
   place({ bytes, checked, name, signal, version: release.version });
-  await request.success(
-    `Updated ${name} from ${shown(checked.running.text)} to ${shown(release.version.text)}.`,
-  );
+  await request.success(updated(name, checked.running.text, release.version.text));
 }
 
 /** The Command's run, in the contract's order: refusals, resolving, `--check`, replacing. */
@@ -441,12 +460,29 @@ interface Given {
   readonly refreshing: boolean;
 }
 
+/**
+ * The failure of a request, with the runtime's error kept as its cause for a download that got no
+ * response or a status it does not accept. A 404 for a version the operator named asks them to
+ * check that release.
+ */
+function requestFailure(name: string, error: RequestError, named: string | undefined): FatalError {
+  const { kind, status, url } = error;
+  const sentence = requestFailed(
+    name,
+    { kind, status, url },
+    status === notFound ? named : undefined,
+  );
+  return kind === 'insecure' || kind === 'too-many'
+    ? fatal(sentence)
+    : fatal(sentence, error.cause);
+}
+
 /** The usage error for an option given beside an input it cannot be given with. */
-function conflict(option: string, sentence: string, correction: string): InputError {
-  return new InputError(`${sentence} ${correction}`, [
+function conflict(option: string, sentence: string, issue: string): InputError {
+  return new InputError(sentence, [
     {
       input: { global: false, kind: 'option', name: option },
-      issues: [{ message: correction }],
+      issues: [{ message: issue }],
       reason: 'invalid',
       spelling: `--${option}`,
     },
@@ -459,18 +495,10 @@ function conflict(option: string, sentence: string, correction: string): InputEr
  */
 function refuseConflicts({ channel, checkOnly, refreshing, version }: Given): void {
   if (refreshing && (version !== undefined || channel !== undefined || checkOnly)) {
-    throw conflict(
-      'refresh-notice',
-      'Option "--refresh-notice" cannot be given with other inputs.',
-      'Leave out the other inputs.',
-    );
+    throw conflict('refresh-notice', refreshNoticeConflict, refreshNoticeConflictIssue);
   }
   if (channel !== undefined && version !== undefined) {
-    throw conflict(
-      'channel',
-      'Option "--channel" cannot be given with a version.',
-      'Leave out --channel, or the version.',
-    );
+    throw conflict('channel', channelConflict, channelConflictIssue);
   }
 }
 
@@ -526,7 +554,7 @@ function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
         );
       } catch (error) {
         if (error instanceof RequestError && !signal.aborted) {
-          throw requestFailed(
+          throw requestFailure(
             graph.name,
             error,
             args.version === undefined ? undefined : versionOfArgument(args.version)?.text,

@@ -4,7 +4,7 @@ import { unknownReading } from './backend.js';
 import type { Backend, Reading, Service } from './backend.js';
 import { expectCall, pause, readCall, readLimitSeconds, succeeded } from './manager.js';
 import type { Call, Read } from './manager.js';
-import { notes } from './messages.js';
+import { callUnreadableNote, managerMissing, noSessionNote, timedOutNote } from './messages.js';
 import { launchdPlist } from './unit.js';
 
 /** `launchctl`'s code for a service or domain that is not loaded. */
@@ -117,19 +117,19 @@ async function sessionNotes(service: Service): Promise<readonly string[]> {
     report: '',
   });
   return answer.kind === 'exited' && answer.code === notLoaded
-    ? [notes.noSession(service.label)]
+    ? [noSessionNote(service.label)]
     : [];
 }
 
 /** The note of a `print` call that could not report the agent. */
 function unreadableNote(service: Service, name: string, answer: Read): string {
   if (answer.kind === 'missing') {
-    return notes.missing(service.manager.name, 'launchctl');
+    return managerMissing(service.manager.name, 'launchctl');
   }
   const call = { manager: 'launchctl', report: `launchctl print ${name}`, target: name };
   return answer.kind === 'timedOut'
-    ? notes.timedOut(call, readLimitSeconds)
-    : notes.unreadable(call, answer.code);
+    ? timedOutNote(call, readLimitSeconds)
+    : callUnreadableNote(call, answer.code);
 }
 
 /** The state `print` reports for the label's agent, and the session note for an installed one. */

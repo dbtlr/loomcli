@@ -3,6 +3,15 @@ import { basename, dirname, resolve } from 'node:path';
 
 import { array, minLength, pipe, safeParse, string } from 'valibot';
 
+import {
+  sharedFileMissing,
+  sharedFileOtherVersion,
+  sharedFileUnparsed,
+  sharedFileUnreadable,
+  sharedFileWithoutVersion,
+  sharedVersionNotList,
+  sharedVersionRefused,
+} from '../commands/changelog/messages.js';
 import { parseManifest } from './manifest.js';
 import { readWorkingFile } from './repository.js';
 
@@ -10,9 +19,7 @@ import { readWorkingFile } from './repository.js';
 const entryList = array(pipe(string(), minLength(1)));
 
 function refuse(entry: string, problem: string): never {
-  throw new Error(
-    `sharedVersion lists ${entry}, which ${problem}, so correct the entry or the file and cut again.`,
-  );
+  throw new Error(sharedVersionRefused(entry, problem));
 }
 
 function describe(error: unknown) {
@@ -22,12 +29,12 @@ function describe(error: unknown) {
 // The source of a listed file, or the failure naming why the entry cannot carry the version.
 function sharedSource(entry: string, path: string) {
   if (!existsSync(path)) {
-    return refuse(entry, 'does not exist');
+    return refuse(entry, sharedFileMissing);
   }
   try {
     return readWorkingFile(dirname(path), basename(path));
   } catch (error) {
-    return refuse(entry, `cannot be read: ${describe(error)}`);
+    return refuse(entry, sharedFileUnreadable(describe(error)));
   }
 }
 
@@ -37,10 +44,10 @@ function sharedVersion(entry: string, source: string, path: string) {
   try {
     parsed = parseManifest(source, path);
   } catch (error) {
-    return refuse(entry, `does not parse: ${describe(error)}`);
+    return refuse(entry, sharedFileUnparsed(describe(error)));
   }
   const { version } = parsed;
-  return typeof version === 'string' ? version : refuse(entry, 'has no version string');
+  return typeof version === 'string' ? version : refuse(entry, sharedFileWithoutVersion);
 }
 
 /** A `package.json` that carries the package's version: its absolute path and its source. */
@@ -60,9 +67,7 @@ export function sharedEntries(value: unknown): string[] {
   }
   const parsed = safeParse(entryList, value);
   if (!parsed.success) {
-    throw new Error(
-      'sharedVersion must be a list of nonempty strings, so list package.json files such as ["../hub/package.json"] in the configuration file.',
-    );
+    throw new Error(sharedVersionNotList);
   }
   return parsed.output;
 }
@@ -87,7 +92,7 @@ export function sharedManifests(
       const source = sharedSource(entry, path);
       const version = sharedVersion(entry, source, path);
       if (version !== current) {
-        refuse(entry, `holds version ${version}, not ${current}`);
+        refuse(entry, sharedFileOtherVersion(version, current));
       }
       manifests.push({ path, source });
     }

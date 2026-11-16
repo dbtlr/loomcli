@@ -4,6 +4,7 @@ import { createValidator } from '@loomcli/validators';
 import { ownerName } from '../../helpers/build-facts.js';
 import { targetOption } from '../../helpers/build-target.js';
 import { loomConfig } from '../../helpers/loom-config.js';
+import { useBuild, useOwnerName } from '../../helpers/messages.js';
 
 /*
  * The action imports its work when it runs, so a run of any other command, help included, loads
@@ -16,18 +17,13 @@ const buildOption = createValidator({
   inputSchema: { type: 'string', enum: [...builds] },
   parse: (raw) => {
     const match = builds.find((each) => each === raw);
-    return match === undefined
-      ? { issues: [{ message: 'Use development or distributed.' }] }
-      : { value: match };
+    return match === undefined ? { issues: [{ message: useBuild }] } : { value: match };
   },
 });
 
 const repositoryOption = createValidator({
   inputSchema: { type: 'string', pattern: ownerName.source },
-  parse: (raw) =>
-    ownerName.test(raw)
-      ? { value: raw }
-      : { issues: [{ message: 'Use owner/name, such as acme/notes.' }] },
+  parse: (raw) => (ownerName.test(raw) ? { value: raw } : { issues: [{ message: useOwnerName }] }),
 });
 
 export const buildCommand = new Command('build', {

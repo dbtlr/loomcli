@@ -8,6 +8,7 @@ import { planSchema } from '../../helpers/release-plan.js';
 import { recordRelease } from '../../helpers/release-record.js';
 import { report } from '../../helpers/report.js';
 import type { releaseRecord } from './command.js';
+import { tokenRequired } from './messages.js';
 
 /** Records a planned release as a tag and a GitHub release. */
 export const recordPlannedRelease: ActionHandler<typeof releaseRecord> = async ({
@@ -20,7 +21,7 @@ export const recordPlannedRelease: ActionHandler<typeof releaseRecord> = async (
   await report({ out, signal }, async () => {
     const token = host.env.GH_TOKEN;
     if (token === undefined || token === '') {
-      throw new Error('Recording a release requires GH_TOKEN.');
+      throw new Error(tokenRequired);
     }
     const source: unknown = JSON.parse(readFileSync(resolve(host.cwd, options.plan), 'utf8'));
     return recordRelease({

@@ -1,5 +1,13 @@
 import { object, string } from 'valibot';
 
+import {
+  expectedReleaseTitle,
+  fragmentRequired,
+  fragmentsAfterCut,
+  prShallow,
+  releaseBranchBehind,
+  versionMustStay,
+} from '../commands/pr/messages.js';
 import { readFragments } from './fragments.js';
 import { parseManifest } from './manifest.js';
 import { isBuildAffectingPath } from './material.js';
@@ -18,7 +26,7 @@ export async function checkPullRequest(
   options: { base: string; head: string; title: string; labels: string[] },
 ) {
   if ((await gitLine(checkout, ['rev-parse', '--is-shallow-repository'])) === 'true') {
-    throw new Error('PR checks require full Git history.');
+    throw new Error(prShallow);
   }
   const base = await commitOf(checkout, options.base);
   const head = await commitOf(checkout, options.head);
@@ -40,15 +48,13 @@ export async function checkPullRequest(
         options.title,
       )?.groups?.version;
     if (version === undefined) {
-      throw new Error('Expected release title: chore(release): Release v<version> - <description>');
+      throw new Error(expectedReleaseTitle);
     }
     if (ancestor !== base) {
-      throw new Error(
-        'Release branch must include the current base commit. Update the release cut.',
-      );
+      throw new Error(releaseBranchBehind);
     }
     if (fragments.length > 0) {
-      throw new Error('No fragments may remain after a release cut.');
+      throw new Error(fragmentsAfterCut);
     }
     await checkRelease(checkout, base, head, version, changed);
     return;
@@ -59,7 +65,7 @@ export async function checkPullRequest(
   currentVersion(libraries);
   for (const library of libraries) {
     if (library.manifest.version !== current.text) {
-      throw new Error(`${library.path}: ordinary PR version must stay ${current.text}.`);
+      throw new Error(versionMustStay(library.path, current.text));
     }
   }
   for (const library of previous) {
@@ -69,7 +75,7 @@ export async function checkPullRequest(
         parseManifest(await readRegularFile(checkout, library.path, head), library.path),
       );
       if (manifest.version !== library.manifest.version) {
-        throw new Error(`${library.path}: ordinary PR version must stay ${current.text}.`);
+        throw new Error(versionMustStay(library.path, current.text));
       }
     }
   }
@@ -78,6 +84,6 @@ export async function checkPullRequest(
     !fragments.some((fragment) => changed.includes(`.changes/${fragment.name}`)) &&
     !options.labels.includes('skip-changelog')
   ) {
-    throw new Error('Build-affecting PRs require an added or modified fragment or skip-changelog.');
+    throw new Error(fragmentRequired);
   }
 }

@@ -1,9 +1,11 @@
 import { registerRule } from '../diagnostics/diagnostic-text.js';
-import { DeclarationError, InputError, quoted } from '../failures/errors.js';
+import { DeclarationError, InputError } from '../failures/errors.js';
+import { quoted } from '../failures/messages.js';
 import type { Host } from '../host/types.js';
 import { reportedSpelling } from '../inspection/inspect.js';
 import type { ActionContext } from '../invocation/types.js';
-import { missingValues } from './validation.js';
+import { requiredArgument, requiredOption } from './messages.js';
+import type { OptionFix } from './messages.js';
 
 /** Hosts belong to one invocation, so naming stays private while the action context is copied. */
 const missingInput = registerRule('@loomcli/core/missing-input-name', {
@@ -63,24 +65,21 @@ function missingInputError(
           ...(option.long === null && option.negative === null ? [option.short] : []),
         ].filter((form) => form !== null)
       : [];
-  const valueFix =
+  const valueFix: OptionFix =
     option.type === 'string'
-      ? `Supply ${missingValues(option.multiple, option.arity ?? undefined)}.`
-      : 'Supply a value.';
-  const fix =
+      ? { arity: option.arity ?? undefined, collected: option.multiple, kind: 'values' }
+      : { kind: 'value' };
+  const fix: OptionFix =
     !named.has(context.host) && forms.length > 0
-      ? `Supply ${forms.map((form) => quoted(form)).join(' or ')}.`
+      ? { kind: 'spellings', spellings: forms }
       : valueFix;
-  return new InputError(
-    `Option ${quoted(spelling)} is required${context.interactive ? '' : ' when input is not interactive'}. ${fix}`,
-    [
-      {
-        input: { global: false, kind: 'option', name: input },
-        reason: 'missing',
-        spelling,
-      },
-    ],
-  );
+  return new InputError(requiredOption({ kind: 'option', spelling }, !context.interactive, fix), [
+    {
+      input: { global: false, kind: 'option', name: input },
+      reason: 'missing',
+      spelling,
+    },
+  ]);
 }
 
 function missingArgument(
@@ -95,10 +94,9 @@ function missingArgument(
       sentence: `missingInputError() received argument ${quoted(name)}, which ${context.command.name === null ? 'the root Command' : `Command ${quoted(context.command.name)}`} does not declare.`,
     });
   }
-  return new InputError(
-    `Argument ${quoted(name)} requires ${argument.variadic ? 'at least one value' : 'a value'}${context.interactive ? '' : ' when input is not interactive'}. Supply a value for ${quoted(name)}.`,
-    [{ input: { global: false, kind: 'argument', name }, reason: 'missing', spelling: name }],
-  );
+  return new InputError(requiredArgument(name, argument.variadic, !context.interactive), [
+    { input: { global: false, kind: 'argument', name }, reason: 'missing', spelling: name },
+  ]);
 }
 
 export { missingInputError, rememberInputNames };

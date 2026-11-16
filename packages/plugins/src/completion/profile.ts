@@ -6,9 +6,10 @@
 import { accessSync, constants, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 
+import { FatalError } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
-import { refusals } from './messages.js';
+import { profileNotFound } from './messages.js';
 
 /** The program the profile query runs, and the shell its failures name. */
 const shell = 'pwsh';
@@ -107,10 +108,10 @@ async function answerOf(request: ProfileRequest, program: string): Promise<strin
     .exited;
   signal.throwIfAborted();
   if (answer.kind === 'unstarted') {
-    throw refusals.profile(name, shell, { kind: 'not-started' });
+    throw new FatalError(profileNotFound(name, shell, { kind: 'not-started' }));
   }
   if (answer.code !== succeeded) {
-    throw refusals.profile(name, shell, { code: answer.code, kind: 'exited' });
+    throw new FatalError(profileNotFound(name, shell, { code: answer.code, kind: 'exited' }));
   }
   return answer.stdout.text.replace(trailingLineBreak, '');
 }
@@ -123,12 +124,12 @@ async function askProfile(request: ProfileRequest): Promise<string> {
   const { host, name } = request;
   const program = programOf(host);
   if (program === undefined) {
-    throw refusals.profile(name, shell, { kind: 'not-started' });
+    throw new FatalError(profileNotFound(name, shell, { kind: 'not-started' }));
   }
   const answer = await answerOf(request, program);
   const profile = profileOf(answer);
   if (profile === undefined) {
-    throw refusals.profile(name, shell, { answer, kind: 'reported' });
+    throw new FatalError(profileNotFound(name, shell, { answer, kind: 'reported' }));
   }
   return profile;
 }

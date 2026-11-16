@@ -4,6 +4,14 @@ import { object, safeParse, string, union } from 'valibot';
 
 import type { BuildTarget } from './build-target.js';
 import { parseManifest } from './manifest.js';
+import {
+  invalidVersionField,
+  noApplicationName,
+  noBinName,
+  noRepositoryField,
+  noVersionField,
+  unreadableRepositoryField,
+} from './messages.js';
 import { readWorkingFile } from './repository.js';
 
 /** A semantic version, as semver.org's grammar states it and core reads it. */
@@ -89,15 +97,11 @@ function releaseRepository(manifest: Manifest, option: string | undefined): stri
   }
   const field = manifest.repository;
   if (field === undefined) {
-    throw new Error(
-      'package.json has no repository field, so pass --repository <owner/name> to name the repository the release belongs to.',
-    );
+    throw new Error(noRepositoryField);
   }
   const repository = addressOf(repositoryField(field) ?? '')?.repository;
   if (repository === undefined) {
-    throw new Error(
-      'The package.json repository field does not read as owner/name, so pass --repository <owner/name>.',
-    );
+    throw new Error(unreadableRepositoryField);
   }
   return repository;
 }
@@ -106,12 +110,10 @@ function releaseRepository(manifest: Manifest, option: string | undefined): stri
 function releaseVersion(manifest: Manifest): string {
   const { version } = manifest;
   if (version === undefined) {
-    throw new Error('package.json has no version field, so set version to build a release.');
+    throw new Error(noVersionField);
   }
   if (typeof version !== 'string' || !semanticVersion.test(version)) {
-    throw new Error(
-      `The package.json version field ${JSON.stringify(version)} is not a semantic version, so set it to one, such as 1.0.0.`,
-    );
+    throw new Error(invalidVersionField(version));
   }
   return version;
 }
@@ -190,9 +192,7 @@ export function applicationName(manifest: Manifest, option: string | undefined):
     singleBinKey(manifest.bin) ??
     (typeof manifest.bin === 'string' ? unscopedName(manifest.name) : undefined);
   if (name === undefined) {
-    throw new Error(
-      'package.json names no application in bin, a string or an object with one key, so pass --name <name>.',
-    );
+    throw new Error(noBinName);
   }
   return name;
 }
@@ -204,9 +204,7 @@ export function applicationName(manifest: Manifest, option: string | undefined):
 export function scaffoldName(manifest: Manifest): string {
   const name = singleBinKey(manifest.bin) ?? unscopedName(manifest.name);
   if (name === undefined) {
-    throw new Error(
-      'package.json names no application in bin or name, so set its name field and run loom init again.',
-    );
+    throw new Error(noApplicationName);
   }
   return name;
 }

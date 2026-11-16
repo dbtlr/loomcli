@@ -3,13 +3,14 @@
  * the cache names a newer release on the running binary's channel, and refreshes a stale cache
  * through a detached copy of the application, which the run never waits for.
  */
-import { applicationDirectory, escapeControlCharacters } from '@loomcli/core';
+import { applicationDirectory } from '@loomcli/core';
 import type { Host, Middleware, Out } from '@loomcli/core';
 
 import { underCI } from '../ci.js';
 import { releaseBinary } from './binary.js';
 import { readCache, writeCache } from './cache.js';
 import type { CacheEntry, CacheReading, Lookup } from './cache.js';
+import { updateNotice } from './messages.js';
 import type { selfUpdate } from './plugin.js';
 import { compareVersions, equalPrecedence, parseVersion } from './version.js';
 import type { Version } from './version.js';
@@ -100,10 +101,9 @@ function newerVersion(reading: CacheReading, running: Version): Version | undefi
     : undefined;
 }
 
-/** The notice line, each value it repeats passed through `escapeControlCharacters`. */
+/** The notice line, which names the newer version and the running one. */
 function noticeLine({ channel, name, running }: Qualified, newer: Version): string {
-  const shown = escapeControlCharacters;
-  return `${shown(name)} ${shown(newer.text)} is available on the ${shown(channel)} channel. Run ${shown(name)} self-update to update from ${shown(running.text)}.`;
+  return updateNotice({ channel, found: newer.text, name, running: running.text });
 }
 
 /** Passes over a fault the update notices never report. */

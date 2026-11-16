@@ -6,14 +6,22 @@
 import { lstatSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-import { InputError } from '@loomcli/core';
+import { FatalError, InputError } from '@loomcli/core';
 
 import { exists } from '../installation/disk.js';
 import { writeFolder } from '../installation/folders.js';
 import type { ChildRun } from './global.js';
 import { loadSkills } from './load.js';
 import type { LoadedSkill } from './load.js';
-import { lines, refusals, shown } from './messages.js';
+import {
+  directoryMissing,
+  directoryMissingIssue,
+  directoryWithoutProject,
+  directoryWithoutProjectIssue,
+  installedSkill,
+  installedSkillOver,
+  projectIsGlobal,
+} from './messages.js';
 import type { Declared } from './settings.js';
 import { realFolder, selectedTargets, skillsDirectory } from './targets.js';
 import type { Target } from './targets.js';
@@ -32,20 +40,14 @@ function directoryProblem(message: string, issue: string): InputError {
 
 /** The refusal of `--directory` without `--project`, which the action throws before anything else. */
 function directoryNeedsProject(): InputError {
-  return directoryProblem(
-    'Option "--directory" needs --project. Add --project, or leave out --directory.',
-    'Add --project, or leave out --directory.',
-  );
+  return directoryProblem(directoryWithoutProject, directoryWithoutProjectIssue);
 }
 
 /** The directory the walk starts at: the working directory, or `--directory` resolved against it. */
 function startOf(run: ChildRun, directory: string | undefined): string {
   const start = directory === undefined ? run.host.cwd : resolve(run.host.cwd, directory);
   if (statSync(start, { throwIfNoEntry: false })?.isDirectory() !== true) {
-    throw directoryProblem(
-      `Option "--directory" names ${shown(start)}, which is not a directory. Name a directory that exists.`,
-      'Name a directory that exists.',
-    );
+    throw directoryProblem(directoryMissing(start), directoryMissingIssue);
   }
   return start;
 }
@@ -96,7 +98,7 @@ function guardGlobal(
   for (const target of selectedTargets(agent)) {
     const clash = clashOf(run, root, { names, target });
     if (clash !== undefined) {
-      throw refusals.neverGlobal(run.name, clash);
+      throw new FatalError(projectIsGlobal(run.name, clash));
     }
   }
 }
@@ -116,9 +118,7 @@ async function replaceFolder(
   const replacing = exists(folder);
   mkdirSync(dirname(folder), { recursive: true });
   writeFolder(folder, loaded.files);
-  await run.success(
-    (replacing ? lines.installedOver : lines.installed)(loaded.name, target, folder),
-  );
+  await run.success((replacing ? installedSkillOver : installedSkill)(loaded.name, target, folder));
 }
 
 /**

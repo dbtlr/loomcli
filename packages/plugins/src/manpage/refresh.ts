@@ -23,9 +23,10 @@ import type { RefreshContext } from '../refresh.js';
  * @public
  */
 async function refreshManpages(context: RefreshContext): Promise<void> {
+  // The sentence loads with the refresh, so the entry that exports it loads no message module.
+  const { manpagesNotRefreshed } = await import('./messages.js');
   await refreshByRunning(context, {
-    notStarted: (path, name) =>
-      `The man pages were not refreshed because ${path} could not start. Run ${name} manpage update.\n`,
+    notStarted: manpagesNotRefreshed,
     warning: 'Man pages were not refreshed after the update.',
     words: ['manpage', 'update'],
   });

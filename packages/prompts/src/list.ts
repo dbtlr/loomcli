@@ -1,16 +1,21 @@
-import { escapeControlCharacters, validateLinkedValue } from '@loomcli/core';
+import { validateLinkedValue } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 
 import { TypedLine, graphemes } from './line.js';
 import { invalid, resolveLink } from './link.js';
+import {
+  choiceIssue,
+  chooseAtLeast,
+  invalidAnswer,
+  noSelectableChoice,
+  overLimit,
+  unselectable,
+} from './messages.js';
 import { asking } from './question.js';
 import { openReader } from './reader.js';
 import type { ChoiceEntry, ChoiceSource, PromptContext } from './types.js';
 import type { ChoiceRow, SeparatorRow } from './views.js';
 
-function quoted(list: unknown[]): string {
-  return list.map((value) => `"${escapeControlCharacters(String(value))}"`).join(', ');
-}
 interface Item {
   value: unknown;
   row: ChoiceRow;
@@ -252,10 +257,8 @@ async function askList<Options, Args>(
     }
     issue =
       [
-        missing.length ? `Cannot select ${quoted(missing)}. Choose from the list.` : '',
-        limited.length
-          ? `Cannot select ${quoted(limited)}: at most ${max} can be selected. Deselect a choice to select ${limited.length === 1 ? 'it' : 'one'}.`
-          : '',
+        missing.length ? unselectable(missing) : '',
+        limited.length > 0 && max !== undefined ? overLimit(limited, max) : '',
       ]
         .filter(Boolean)
         .join(' ') || undefined;
@@ -341,12 +344,12 @@ async function askList<Options, Args>(
           highlighted === undefined ? undefined : item(entries[highlighted] ?? { separator: '' });
         const current = highlightedItem?.row.disabled === false ? highlightedItem : undefined;
         if (!multiple && !current) {
-          issue = 'No choice can be selected. Change the search.';
+          issue = noSelectableChoice;
           await frame();
           continue;
         }
         if (multiple && selection.length < min) {
-          issue = `Choose at least ${min}.`;
+          issue = chooseAtLeast(min);
           await frame();
           continue;
         }
@@ -373,7 +376,8 @@ async function askList<Options, Args>(
           }
           context.signal.throwIfAborted();
           if (result.issues !== undefined) {
-            issue = `${multiple ? `${choice.row.label}: ` : ''}${result.issues[0]?.message ?? 'The answer is invalid.'}`;
+            const sentence = result.issues[0]?.message ?? invalidAnswer;
+            issue = multiple ? choiceIssue(choice.row.label, sentence) : sentence;
             break;
           }
           outputs.push(result.value);

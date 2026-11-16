@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
+import { noPackageJson } from './messages.js';
+
 /**
  * The directory of the nearest `package.json` at or above the working directory, or `undefined`
  * when no `package.json` is at or above it.
@@ -24,7 +26,7 @@ export function nearestPackageDirectory(cwd: string): string | undefined {
 export function packageDirectory(cwd: string) {
   const directory = nearestPackageDirectory(cwd);
   if (directory === undefined) {
-    throw new Error(`No package.json at or above ${cwd}. Run loom inside a package directory.`);
+    throw new Error(noPackageJson(cwd));
   }
   return directory;
 }

@@ -1,3 +1,4 @@
+import { decisionIndexChanged, decisionRecordChanged } from '../commands/pr/messages.js';
 import { git, readRegularFile } from './repository.js';
 import type { Checkout } from './repository.js';
 
@@ -100,9 +101,7 @@ export async function checkDecisions(
         ? acceptedRecord(await readRegularFile(checkout, path, base), release.version, release.date)
         : undefined;
     if (expected === undefined || (await readRegularFile(checkout, path, head)) !== expected) {
-      throw new Error(
-        `${path}: a release cut changes a decision record only to mark a proposed decision accepted, with status accepted, modified ${release.date}, and a Status section that reads "Accepted in ${release.version}.". Make any other change in an ordinary PR.`,
-      );
+      throw new Error(decisionRecordChanged(path, release.date, release.version));
     }
   }
   if (records.length === 0 && !changed.includes(decisionIndex)) {
@@ -119,9 +118,7 @@ export async function checkDecisions(
     !(await present(checkout, head, decisionIndex)) ||
     (await readRegularFile(checkout, decisionIndex, head)) !== expected
   ) {
-    throw new Error(
-      `${decisionIndex}: a release cut changes the decision index only to mark each decision it accepts from proposed to accepted. Make any other change in an ordinary PR.`,
-    );
+    throw new Error(decisionIndexChanged(decisionIndex));
   }
   return [...records, decisionIndex];
 }

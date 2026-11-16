@@ -1,7 +1,7 @@
 import { registerRule } from '../diagnostics/diagnostic-text.js';
 import { factFault } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
-import { quoted } from '../failures/errors.js';
+import { quoted } from '../failures/messages.js';
 import type { OptionSpelling } from '../inputs/options.js';
 import type { OptionConfig } from '../inputs/types.js';
 import type { RenderingPolicy } from '../style/rendering.js';
