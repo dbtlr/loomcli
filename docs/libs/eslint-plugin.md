@@ -71,7 +71,8 @@ typescript-eslint supports TypeScript below 6.1 and reads the TypeScript 6 API, 
 The rules read source text and scope analysis. They use no type information. A value is a Loom declaration when it is one of these:
 
 - `new Command(...)` or `new Application(...)`, where the binding is imported from `@loomcli/core`. A renamed import (`import { Command as Cmd }`) and a namespace import (`new core.Command(...)`) count.
-- An authoring call on a Loom declaration. The authoring calls are `option`, `argument`, `globalOption`, `command`, `alias`, `action`, `stdin`, `exclusive`, `oneRequired`, `requiredTogether`, `result`, `rows`, `views`, and `extend`.
+- `optionSet(...)`, where the binding is imported from `@loomcli/core`, under the same import forms. An [option set](../core/options.md#sharing-options) is immutable like a Command, and its group calls, `exclusive`, `oneRequired`, and `requiredTogether`, are authoring calls on it.
+- An authoring call on a Loom declaration. The authoring calls are `option`, `options`, `argument`, `globalOption`, `command`, `alias`, `action`, `stdin`, `exclusive`, `oneRequired`, `requiredTogether`, `result`, `rows`, `views`, and `extend`.
 - An identifier whose `const` declaration is initialized with a Loom declaration.
 
 Type assertions around a value (`as`, `satisfies`, `!`) do not change what it is.
@@ -112,6 +113,21 @@ base.option('verbose', { description: 'Print more.', type: 'boolean' });
 
 // Not reported: the result is assigned.
 const verbose = base.option('verbose', { description: 'Print more.', type: 'boolean' });
+```
+
+The rule reads an `options(set)` call like any other authoring call, and a group call on an [option set](../core/options.md#sharing-options) the same way, because it returns a new set and leaves its receiver unchanged.
+
+```ts
+const output = optionSet({
+  json: { description: 'Print JSON.', type: 'boolean' },
+  yaml: { description: 'Print YAML.', type: 'boolean' },
+});
+
+// Reported: the call returns a new set, and nothing uses it.
+output.exclusive('json', 'yaml');
+
+// Reported: the call returns a new Command, and nothing uses it.
+base.options(output);
 ```
 
 A statement that begins with `void` is a deliberate discard and is not reported.

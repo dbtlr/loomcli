@@ -26,7 +26,7 @@ A global option declares no presence rule. Its validation runs on every Command,
 
 ## Declaring a Command
 
-`new Command(name, options?)` declares a named Command with `argument()`, `option()`, `alias()`, `command()`, `action()`, and `extend()`. A Command name is a portable name, the rule [Application declarations](application.md) states, because an operator types it at the prompt the way the application name is typed. Names stay plain strings; no handler object is keyed by command name. `configured.command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth, as [Nested Commands and groups](#nested-commands-and-groups) states. A Command takes one options object like the Application does: `description` is the core fact every projection reads under the rule [Extensions](extensions.md) states, `hidden` and `deprecated` are the two core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes, and `extensions` carries the [extension values](extensions.md) plugins define. Globals are declared on the Application, which registers its environment as shown below.
+`new Command(name, options?)` declares a named Command with `argument()`, `option()`, [`options()`](options.md#sharing-options), `alias()`, `command()`, `action()`, and `extend()`. A Command name is a portable name, the rule [Application declarations](application.md) states, because an operator types it at the prompt the way the application name is typed. Names stay plain strings; no handler object is keyed by command name. `configured.command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth, as [Nested Commands and groups](#nested-commands-and-groups) states. A Command takes one options object like the Application does: `description` is the core fact every projection reads under the rule [Extensions](extensions.md) states, `hidden` and `deprecated` are the two core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes, and `extensions` carries the [extension values](extensions.md) plugins define. Globals are declared on the Application, which registers its environment as shown below.
 
 ```ts
 interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
@@ -40,7 +40,7 @@ interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
 
 `uses` lists the [providers](providers.md) whose values the Command's action reads under `provided`, and adds the global options those providers read to the Command's global requirements.
 
-The action `options` object is the intersection of the global values and the selected Command's local values. A sibling Command's local options never appear in it. `.option()` rejects a name the globals already own. `.globalOption()` rejects a name already declared as a root-local option. Both checks apply at compile time and at the call.
+The action `options` object is the intersection of the global values and the selected Command's local values. A sibling Command's local options never appear in it, and neither does a parent's, even when both apply one [option set](options.md#sharing-options). `.option()` and `.options()` reject a name the globals already own. `.globalOption()` rejects a name already declared as a root-local option. Both checks apply at compile time and at the call.
 
 ## Nested Commands and groups
 
