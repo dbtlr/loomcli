@@ -7,6 +7,19 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { withoutByteOrderMark } from './byte-order-mark.js';
 import { conventionalFragments } from './conventions.js';
 import { requireClosedBlocks } from './markdown.js';
+import {
+  carriageReturnHeld,
+  controlCharacterHeld,
+  expectedBullets,
+  expectedFragmentFile,
+  expectedFragmentName,
+  expectedMigrationAfterBullets,
+  expectedOneMigration,
+  formatCharacterHeld,
+  invalidUtf8Line,
+  migrationLabels,
+  unsafeLine,
+} from './messages.js';
 import { readDirectory, readRegularFileBytes } from './repository.js';
 import type { Checkout } from './repository.js';
 
@@ -65,12 +78,12 @@ function unsafeCharacter(character: string, source: ProseSource) {
   }
   const name = codePointName(character);
   if (character === '\r') {
-    return `holds the carriage return ${name}. Save the ${source} with LF line endings.`;
+    return carriageReturnHeld(name, source);
   }
   if (/\p{Cc}/u.test(character)) {
-    return `holds the control character ${name}. Remove it, because a ${source} accepts no control character but tab and line feed.`;
+    return controlCharacterHeld(name, source);
   }
-  return `holds the invisible format character ${name}. Remove it.`;
+  return formatCharacterHeld(name);
 }
 
 // A fatal decoder throws on bytes that are not UTF-8.
@@ -90,14 +103,12 @@ function decodedLine(bytes: Uint8Array) {
 function requireSafeLine(path: string, line: number, bytes: Buffer, source: ProseSource) {
   const text = decodedLine(bytes);
   if (text === undefined) {
-    throw new Error(
-      `${path}: line ${String(line)} is not valid UTF-8. Save the ${source} as UTF-8.`,
-    );
+    throw new Error(invalidUtf8Line(path, line, source));
   }
   for (const character of text) {
     const sentence = unsafeCharacter(character, source);
     if (sentence !== undefined) {
-      throw new Error(`${path}: line ${String(line)} ${sentence}`);
+      throw new Error(unsafeLine(path, line, sentence));
     }
   }
 }
@@ -125,7 +136,7 @@ function validateBody(path: string, kind: FragmentKind, body: string) {
         node.children.some((item) => item.children.length === 0),
     )
   ) {
-    throw new Error(`${path}: expected top-level change bullets.`);
+    throw new Error(expectedBullets(path));
   }
   if (!breaking) {
     return;
@@ -138,11 +149,11 @@ function validateBody(path: string, kind: FragmentKind, body: string) {
     heading.children[0]?.type !== 'text' ||
     heading.children[0].value !== 'Migration'
   ) {
-    throw new Error(`${path}: expected one ### Migration section after the bullets.`);
+    throw new Error(expectedMigrationAfterBullets(path));
   }
   const migrationNodes = nodes.slice(migrationIndex + 1);
   if (migrationNodes.some((node) => node.type === 'heading')) {
-    throw new Error(`${path}: expected one ### Migration section.`);
+    throw new Error(expectedOneMigration(path));
   }
   const labels = ['Affected surface.', 'Why.', 'Before and after.', 'Steps.', 'Validation.'];
   const found = migrationNodes.flatMap((node) => {
@@ -157,7 +168,7 @@ function validateBody(path: string, kind: FragmentKind, body: string) {
     return labels.includes(first.children[0].value) ? [first.children[0].value] : [];
   });
   if (labels.some((label) => found.filter((item) => item === label).length !== 1)) {
-    throw new Error(`${path}: Migration requires each label once: ${labels.join(', ')}`);
+    throw new Error(migrationLabels(path, labels));
   }
 }
 
@@ -171,11 +182,11 @@ async function readFragment(
   const { name } = entry;
   const path = `${folder}/${name}`;
   if (!entry.isFile()) {
-    throw new Error(`${path}: expected a fragment file. Keep fragments directly in ${folder}/.`);
+    throw new Error(expectedFragmentFile(path, folder));
   }
   const kind = fragmentKind(name);
   if (kind === undefined) {
-    throw new Error(`${path}: expected <slug>.md, feature.<slug>.md, or breaking.<slug>.md.`);
+    throw new Error(expectedFragmentName(path));
   }
   const bytes = await readRegularFileBytes(checkout, path, ref);
   requireSafeCharacters(path, bytes, 'fragment');

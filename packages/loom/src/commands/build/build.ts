@@ -18,6 +18,19 @@ import { build, carriedFolder, watch } from '../../helpers/build.js';
 import type { BuildPlan } from '../../helpers/build.js';
 import { packagePaths } from '../../helpers/loom-config.js';
 import type { PackagePaths } from '../../helpers/loom-config.js';
+import {
+  applicationNeedsBundle,
+  built,
+  carriedFolderOverlap,
+  factsWithDefine,
+  optionLine,
+  outputIsDirectory,
+  repositoryNeedsRelease,
+  sameEntryFile,
+  skillsNotCalled,
+  skillsNotLoaded,
+  watchIsDevelopment,
+} from '../../helpers/messages.js';
 import { existingModule, shown } from '../../helpers/modules.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
@@ -28,7 +41,7 @@ import type { buildCommand } from './command.js';
 
 /** The option error one option draws from another it cannot be passed with, with exit code 2. */
 function optionError(name: string, message: string): InputError {
-  return new InputError(`Option "--${name}": ${message}`, [
+  return new InputError(optionLine(name, message), [
     {
       input: { global: false, kind: 'option', name },
       issues: [{ message }],
@@ -81,9 +94,7 @@ function applicationModule(
 function separateEntryFiles(cwd: string, entry: string, application: string | undefined) {
   const file = `${parse(entry).name}.js`;
   if (application !== undefined && `${parse(application).name}.js` === file) {
-    throw new Error(
-      `The entry ${shown(cwd, entry)} and the application module ${shown(cwd, application)} both build to ${file}, so rename one of them or name another module with --entry or --application.`,
-    );
+    throw new Error(sameEntryFile(shown(cwd, entry), shown(cwd, application), file));
   }
 }
 
@@ -99,9 +110,7 @@ function outputPath(
 ): string {
   const output = out === undefined ? defaultOutput(paths.out, target, name) : resolve(cwd, out);
   if (target.kind === 'compile' && statSync(output, { throwIfNoEntry: false })?.isDirectory()) {
-    throw new Error(
-      `${shown(cwd, output)} is a directory, and a binary is one file, so name the binary's file with --out.`,
-    );
+    throw new Error(outputIsDirectory(shown(cwd, output)));
   }
   return output;
 }
@@ -171,7 +180,7 @@ function separateCarriedFolder(cwd: string, plan: BuildPlan): void {
   const relation = relationOf(real.carried, real.folder);
   if (relation !== undefined) {
     throw new Error(
-      `${shown(cwd, carried)}, where the bundle carries the skills, ${relation} the skills folder ${shown(cwd, plan.skills.folder)}, and loom build never writes into the source tree, so name another directory with --out.`,
+      carriedFolderOverlap(shown(cwd, carried), relation, shown(cwd, plan.skills.folder)),
     );
   }
 }
@@ -196,9 +205,7 @@ function warningName(manifest: Manifest, option: string | undefined, directory: 
  * not load the application module, or `skills()` did not run while it loaded.
  */
 function uncarriedWarning(name: string, skills: SkillsCarry): string {
-  return skills.kind === 'uncalled'
-    ? `${name} carries the skills plugin, but skills() did not run while loom build loaded the application module, so it carried no skills folder. Call skills() as the module paths.application names loads, src/application.ts by convention, if it names a folder.`
-    : `${name} carries the skills plugin, but loom build could not load the application module, so it carried no skills folder. Export the Application from the module paths.application names, src/application.ts by convention, if skills() names a folder.`;
+  return skills.kind === 'uncalled' ? skillsNotCalled(name) : skillsNotLoaded(name);
 }
 
 /** Reads what the build carries of the skills folder, in the run's own process. */
@@ -225,25 +232,16 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
   signal,
 }) => {
   if (options.facts && options.define) {
-    throw optionError('define', '--facts and --define exclude each other, so pass one of them.');
+    throw optionError('define', factsWithDefine);
   }
   if (options.application !== undefined && options.target?.kind !== 'bundle') {
-    throw optionError(
-      'application',
-      '--application applies to a node or bun bundle, so pass --target node or --target bun with it.',
-    );
+    throw optionError('application', applicationNeedsBundle);
   }
   if (options.repository !== undefined && !options.release) {
-    throw optionError(
-      'repository',
-      '--repository applies to a --release build, so pass --release with it.',
-    );
+    throw optionError('repository', repositoryNeedsRelease);
   }
   if (options.watch && options.build === 'distributed') {
-    throw optionError(
-      'build',
-      '--watch builds development, so pass --watch or --build distributed.',
-    );
+    throw optionError('build', watchIsDevelopment);
   }
   await report({ out, signal }, async () => {
     const { cwd } = host;
@@ -290,6 +288,6 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
     if (outcome.uncarriedSkillsPlugin) {
       await out.warn(uncarriedWarning(warningName(manifest, options.name, directory), skills));
     }
-    return `Built ${shown(cwd, output)} for ${target.name}.\n`;
+    return `${built(shown(cwd, output), target.name)}\n`;
   });
 };

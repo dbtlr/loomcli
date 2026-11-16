@@ -3,6 +3,7 @@ import { createValidator } from '@loomcli/validators';
 import type { ParseResult } from '@loomcli/validators';
 
 import { loomConfig } from '../../helpers/loom-config.js';
+import { useVersion } from '../../helpers/messages.js';
 import { parseSemVer } from '../../helpers/version.js';
 import type { SemVer } from '../../helpers/version.js';
 
@@ -18,12 +19,7 @@ const versionArgument = createValidator({
     const version = parseSemVer(raw);
     return version === undefined
       ? {
-          issues: [
-            {
-              message:
-                'Use MAJOR.MINOR.PATCH with an optional -prerelease part, such as 1.5.0 or 1.5.0-rc.1, and no leading v or build metadata.',
-            },
-          ],
+          issues: [{ message: useVersion }],
         }
       : { value: version };
   },

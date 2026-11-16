@@ -3,6 +3,7 @@ import type { StandardSchemaV1 } from '@loomcli/core';
 
 import { controls, hideCursor, pasteOff, showCursor } from './controls.js';
 import { TypedLine, graphemes } from './line.js';
+import { invalidAnswer } from './messages.js';
 import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
 import { answeredLine, cancelledLine, questionFrame } from './views.js';
@@ -166,7 +167,7 @@ async function askText<Options, Output>(
           };
           return result.value;
         }
-        issue = result.issues[0]?.message ?? 'The answer is invalid.';
+        issue = result.issues[0]?.message ?? invalidAnswer;
         await frame();
       } else {
         if (

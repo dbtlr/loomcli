@@ -1,6 +1,7 @@
 import { askEditor } from './editor.js';
 import { resolveLink } from './link.js';
 import { askList } from './list.js';
+import { yesOrNo } from './messages.js';
 import { askText } from './question.js';
 import type {
   Answer,
@@ -258,7 +259,7 @@ async function confirm<Options, Key extends LinkKey<Options>>(
               return { value: false };
             }
           }
-          return { issues: [{ message: 'Type y or n.' }] };
+          return { issues: [{ message: yesOrNo }] };
         },
         vendor: '@loomcli/prompts',
         version: 1,

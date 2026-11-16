@@ -15,6 +15,7 @@ import {
 import type { InferOutput } from 'valibot';
 
 import { conventionalChangelog, conventionalFragments } from './conventions.js';
+import { notAWordList } from './messages.js';
 
 /**
  * One path the configuration file names. An empty string or a value of another type is an issue at
@@ -36,7 +37,7 @@ const postInstallWords = pipe(
     if (words.success) {
       return words.output;
     }
-    addIssue({ message: 'Expected a non-empty array of strings' });
+    addIssue({ message: notAWordList });
     return NEVER;
   }),
 );

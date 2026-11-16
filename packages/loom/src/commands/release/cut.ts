@@ -5,6 +5,15 @@ import type { ActionHandler } from '@loomcli/core';
 
 import { insertSection, readNarrative, releaseDate } from '../../helpers/changelog.js';
 import { withVersion } from '../../helpers/manifest.js';
+import {
+  changedDuringPreparation,
+  checkoutChanged,
+  cleanCheckoutRequired,
+  cutFromRoot,
+  lockExists,
+  rollbackIncomplete,
+  tagExists,
+} from '../../helpers/messages.js';
 import { prepareLockfile } from '../../helpers/release-files.js';
 import { prepareRelease, requireReleaseNotes } from '../../helpers/release.js';
 import type { Release } from '../../helpers/release.js';
@@ -29,13 +38,13 @@ async function checkoutMoved(checkout: Checkout, release: Release) {
 async function installRelease(checkout: Checkout, release: Release) {
   const { root } = checkout;
   if ((await gitLine(checkout, ['rev-parse', '--show-prefix'])) !== '') {
-    throw new Error('Run release cut from the repository root.');
+    throw new Error(cutFromRoot);
   }
   if (await gitLine(checkout, ['status', '--porcelain', '--untracked-files=all'])) {
-    throw new Error('release cut requires a clean checkout. Commit the release inputs first.');
+    throw new Error(cleanCheckoutRequired);
   }
   if (await gitLine(checkout, ['tag', '--list', `v${release.version}`])) {
-    throw new Error(`Tag v${release.version} already exists.`);
+    throw new Error(tagExists(release.version));
   }
   const original = new Map<string, string | undefined>();
   const updates = new Map<string, string | undefined>();
@@ -59,13 +68,13 @@ async function installRelease(checkout: Checkout, release: Release) {
   const installed: string[] = [];
   updates.set('pnpm-lock.yaml', await prepareLockfile(checkout, release));
   if (await checkoutMoved(checkout, release)) {
-    throw new Error('Checkout changed during release preparation.');
+    throw new Error(checkoutChanged);
   }
   try {
     for (const [path, contents] of original) {
       const current = existsSync(join(root, path)) ? readWorkingFile(root, path) : undefined;
       if (current !== contents) {
-        throw new Error(`${path}: changed during release preparation.`);
+        throw new Error(changedDuringPreparation(path));
       }
     }
     for (const [path, contents] of updates) {
@@ -94,10 +103,7 @@ async function installRelease(checkout: Checkout, release: Release) {
       }
     }
     if (failed.length > 0) {
-      throw new Error(
-        `Release rollback incomplete for ${failed.join(', ')}. Use a fresh isolated checkout.`,
-        { cause: error },
-      );
+      throw new Error(rollbackIncomplete(failed), { cause: error });
     }
     throw error;
   }
@@ -114,10 +120,7 @@ async function writeRelease(checkout: Checkout, release: Release) {
     mkdirSync(lock);
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
-      throw new Error(
-        `Release lock already exists at ${lock}. Another writer may be active. After an interrupted write, use a fresh isolated checkout.`,
-        { cause: error },
-      );
+      throw new Error(lockExists(lock), { cause: error });
     }
     throw error;
   }

@@ -14,7 +14,8 @@ import type { SkillsRead } from './helpers/skills-declaration.js';
  * the folder exactly as the plugin does. It applies none of init's checks of the module's exports.
  * The arguments name the result file, the package directory, the module, and the module as the
  * operator reads it. The result file receives one `SkillsRead` as JSON, and the process ends once
- * it is written, whatever the module left running when it loaded.
+ * it is written, whatever the module left running when it loaded. It bundles no message module, so
+ * it answers facts, and the `loom` process words each one.
  */
 
 /** The global symbol the skills plugin records its calls under. */
@@ -26,9 +27,8 @@ const registryFormat = 2;
 /** The count of an empty registry. */
 const none = 0;
 
-/** The failure of a registry whose format this `loom` does not know. */
-const versions =
-  'This @loomcli/loom cannot read the skills() calls the installed @loomcli/plugins recorded, so install @loomcli/plugins and @loomcli/loom at one version, and build again.';
+/** The fact of a registry whose format this `loom` does not know, which the `loom` process words. */
+const versions: SkillsRead = { problem: 'registry-format' };
 
 /**
  * Whether a value is the package's own `DeclarationError`, read from the `@loomcli/core` the
@@ -68,29 +68,23 @@ function registryEntries(): readonly unknown[] {
   return Array.isArray(registry) ? registry : [];
 }
 
-/** What the plugin's read of the folder answered, or the fault it raised, as one sentence. */
+/** What the plugin's read of the folder answered, or the fault it raised, with the folder. */
 async function judgedFolder(entry: unknown, folder: string): Promise<SkillsRead> {
   const read = member(entry, 'read');
   if (typeof read !== 'function') {
-    return { failure: versions };
+    return versions;
   }
   try {
     const answer: unknown = await Reflect.apply(read, undefined, [folder]);
     return { folder, kind: 'read', skills: member(answer, 'skills') };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    return {
-      failure: `${reason}\n\nloom build judged the skills folder ${folder} and built nothing.`,
-    };
+    return { folder, problem: 'judged', reason };
   }
 }
 
 /** Imports the application module and reads the folder `skills()` was given, or why it cannot. */
-async function readDeclaration(
-  directory: string,
-  path: string,
-  module: string,
-): Promise<SkillsRead> {
+async function readDeclaration(directory: string, path: string): Promise<SkillsRead> {
   const isDeclarationError = await declarationErrorTest(directory);
   try {
     await import(pathToFileURL(path).href);
@@ -102,11 +96,11 @@ async function readDeclaration(
     return { kind: 'uncalled' };
   }
   if (entries.some((entry) => member(entry, 'format') !== registryFormat)) {
-    return { failure: versions };
+    return versions;
   }
   const folders = entries.map((entry) => ({ entry, folder: folderOf(entry, path) }));
   if (folders.some(({ folder }) => folder === false)) {
-    return { failure: versions };
+    return versions;
   }
   const naming = folders.flatMap(({ entry, folder }) =>
     typeof folder === 'string' ? [{ entry, folder }] : [],
@@ -116,16 +110,11 @@ async function readDeclaration(
     return { kind: 'none' };
   }
   if (second !== undefined) {
-    return {
-      failure: `${module} calls skills() with two folders, ${first.folder} and ${second.folder}, and a build carries one, so name one folder.`,
-    };
+    return { first: first.folder, problem: 'two-folders', second: second.folder };
   }
   return await judgedFolder(first.entry, first.folder);
 }
 
-const { directory, module, path, resultFile } = readerArguments(
-  process.argv.slice(2),
-  'read-skills',
-);
-writeFileSync(resultFile, JSON.stringify(await readDeclaration(directory, path, module)));
+const { directory, path, resultFile } = readerArguments(process.argv.slice(2), 'read-skills');
+writeFileSync(resultFile, JSON.stringify(await readDeclaration(directory, path)));
 process.exit(0);

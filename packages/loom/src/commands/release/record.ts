@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import type { ActionHandler } from '@loomcli/core';
 
+import { tokenRequired } from '../../helpers/messages.js';
 import { parseOrThrow } from '../../helpers/parse-or-throw.js';
 import { planSchema } from '../../helpers/release-plan.js';
 import { recordRelease } from '../../helpers/release-record.js';
@@ -20,7 +21,7 @@ export const recordPlannedRelease: ActionHandler<typeof releaseRecord> = async (
   await report({ out, signal }, async () => {
     const token = host.env.GH_TOKEN;
     if (token === undefined || token === '') {
-      throw new Error('Recording a release requires GH_TOKEN.');
+      throw new Error(tokenRequired);
     }
     const source: unknown = JSON.parse(readFileSync(resolve(host.cwd, options.plan), 'utf8'));
     return recordRelease({

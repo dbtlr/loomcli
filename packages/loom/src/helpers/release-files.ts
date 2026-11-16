@@ -6,6 +6,12 @@ import { number, object, string, union } from 'valibot';
 import { parseAllDocuments } from 'yaml';
 
 import { withVersion } from './manifest.js';
+import {
+  lockfileInvalidYaml,
+  lockfilePreparationFailed,
+  lockfileTimedOut,
+  pnpmMissing,
+} from './messages.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { Release } from './release.js';
 import { git, readRegularFileBytes, readWorkingFile } from './repository.js';
@@ -22,10 +28,7 @@ function pnpmManifestPath(
   try {
     return fileURLToPath(resolve('pnpm/package.json'));
   } catch (error) {
-    throw new Error(
-      'Preparing pnpm-lock.yaml requires pnpm, an optional peer dependency of @loomcli/loom. Install pnpm 12.16.1 beside @loomcli/loom and run the command again.',
-      { cause: error },
-    );
+    throw new Error(pnpmMissing, { cause: error });
   }
 }
 
@@ -46,7 +49,7 @@ async function updateLockfile(run: RunHost, root: string) {
   if (existsSync(lock)) {
     for (const document of parseAllDocuments(readWorkingFile(root, 'pnpm-lock.yaml'))) {
       if (document.errors.length > 0) {
-        throw new Error('pnpm-lock.yaml is invalid YAML.');
+        throw new Error(lockfileInvalidYaml);
       }
       parseOrThrow(lockfile, document.toJS());
     }
@@ -79,12 +82,10 @@ async function updateLockfile(run: RunHost, root: string) {
     throw exit.error;
   }
   if (limit.aborted) {
-    throw new Error(
-      `Lockfile preparation did not finish within ${lockfileLimit / 1000} seconds, so pnpm was stopped.`,
-    );
+    throw new Error(lockfileTimedOut(lockfileLimit / 1000));
   }
   if (exit.code !== 0) {
-    throw new Error(`Lockfile preparation failed:\n${exit.stdout.text}${exit.stderr.text}`);
+    throw new Error(lockfilePreparationFailed(exit.stdout.text + exit.stderr.text));
   }
   return readWorkingFile(root, 'pnpm-lock.yaml');
 }

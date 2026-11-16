@@ -1,6 +1,14 @@
 import type { FragmentKind } from './fragments.js';
 import { releaseVersions } from './markdown.js';
 import {
+  minimumAboveRelease,
+  prereleaseNeedsSection,
+  targetBelowMinimum,
+  targetNotAbove,
+  targetNotVersion,
+  versionCannotAdvance,
+} from './messages.js';
+import {
   compareReleases,
   compareSemVer,
   nextVersion,
@@ -17,9 +25,7 @@ function finalVersion(current: SemVer, minimum: Version): SemVer {
     return { prerelease: [], release: minimum, text: minimum.text };
   }
   if (compareReleases(current.release, minimum) < 0) {
-    throw new Error(
-      `The pending fragments need at least ${minimum.text}, which is above ${current.release.text}, the release of ${current.text}, so pass --target ${minimum.text} or a higher version.`,
-    );
+    throw new Error(minimumAboveRelease(minimum.text, current.release.text, current.text));
   }
   return { prerelease: [], release: current.release, text: current.release.text };
 }
@@ -46,7 +52,7 @@ export function lastRelease(current: SemVer, changelog: string | undefined): Ver
 export function fragmentMinimum(last: Version, highest: FragmentKind | undefined): Version {
   const minimum = parseVersion(nextVersion(last, highest));
   if (minimum === undefined) {
-    throw new Error(`The version ${last.text} cannot advance.`);
+    throw new Error(versionCannotAdvance(last.text));
   }
   return minimum;
 }
@@ -67,19 +73,13 @@ export function chooseVersion(
   }
   const chosen = parseSemVer(target);
   if (chosen === undefined) {
-    throw new Error(
-      `Target ${JSON.stringify(target)} is not MAJOR.MINOR.PATCH with an optional -prerelease part, such as 1.2.0 or 1.2.0-rc.1, and the version must be at least ${minimum.text}.`,
-    );
+    throw new Error(targetNotVersion(target, minimum.text));
   }
   if (compareSemVer(chosen, current) <= 0) {
-    throw new Error(
-      `Target ${target} must rank above the current version ${current.text} and be at least ${minimum.text}, the least version the pending fragments allow.`,
-    );
+    throw new Error(targetNotAbove(target, current.text, minimum.text));
   }
   if (compareReleases(chosen.release, minimum) < 0) {
-    throw new Error(
-      `Target ${target} must be at least ${minimum.text}, the least version the pending fragments allow; the current version is ${current.text}.`,
-    );
+    throw new Error(targetBelowMinimum(target, minimum.text, current.text));
   }
   return chosen;
 }
@@ -98,8 +98,6 @@ export function requireReleaseSection(
     return;
   }
   if (!releaseVersions(changelog ?? '').some((version) => version.text === current.text)) {
-    throw new Error(
-      `A prerelease cut needs ${file} to hold the v${current.text} release section, because the prerelease reads its last release there, so cut a stable release first or add the section.`,
-    );
+    throw new Error(prereleaseNeedsSection(file, current.text));
   }
 }

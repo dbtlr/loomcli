@@ -1,8 +1,14 @@
-import { array, boolean, strictObject, string, union } from 'valibot';
+import { array, boolean, literal, number, picklist, strictObject, string, union } from 'valibot';
 import type { InferOutput } from 'valibot';
 
 import { loadFailure, threw } from './application-load-failure.js';
 import { runReader } from './application-reader.js';
+import {
+  coreUnresolved,
+  coreWithoutApplication,
+  manyApplicationExports,
+  noApplicationExport,
+} from './messages.js';
 import type { RunHost } from './run-host.js';
 
 /** The names a module exports its Application under. */
@@ -18,8 +24,35 @@ const exportsResult = union([
   strictObject({ failure: string(), loaded: boolean() }),
 ]);
 
-/** What the reading process writes to its result file: the read, or the reason the module threw. */
-const readResult = union([exportsResult, threw]);
+/**
+ * Why the reading process found no single Application, as a fact this process words: the package
+ * resolves no core, its core exports no Application, or the module exports none or `count` of them.
+ */
+const readProblem = union([
+  strictObject({ problem: picklist(['core-unresolved', 'core-without-application']) }),
+  strictObject({ count: number(), problem: literal('applications') }),
+]);
+
+/**
+ * What the reading process writes to its result file: the read, a problem it found, or the reason
+ * the module threw.
+ */
+const readResult = union([exportsResult, readProblem, threw]);
+
+/** One problem a read found, as the reading process writes it. */
+type ReadProblem = InferOutput<typeof readProblem>;
+
+/** A problem the read found, worded for the module, and whether the module loaded before it. */
+function problemExports(module: string, read: ReadProblem): InferOutput<typeof exportsResult> {
+  if (read.problem === 'applications') {
+    const failure =
+      read.count === 0 ? noApplicationExport(module) : manyApplicationExports(module, read.count);
+    return { failure, loaded: true };
+  }
+  const failure =
+    read.problem === 'core-unresolved' ? coreUnresolved(module) : coreWithoutApplication(module);
+  return { failure, loaded: false };
+}
 
 /** One read of an application module, a throw while it loaded formatted as its diagnostic. */
 export type ApplicationExports = InferOutput<typeof exportsResult>;
@@ -39,7 +72,8 @@ export async function readApplicationExports(
   options: { directory: string; module: string; path: string },
 ): Promise<ApplicationExports> {
   const result = await runReader(run, { ...options, reader: 'read-application' }, readResult);
-  return 'threw' in result
-    ? { failure: loadFailure(options.module, result.threw), loaded: false }
-    : result;
+  if ('threw' in result) {
+    return { failure: loadFailure(options.module, result.threw), loaded: false };
+  }
+  return 'problem' in result ? problemExports(options.module, result) : result;
 }

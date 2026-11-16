@@ -1,5 +1,7 @@
 import { pipe, rawTransform, unknown } from 'valibot';
 
+import { notAnObject, notAString } from './messages.js';
+
 /**
  * A JSON object as `package.json` holds it, with every own key kept in its order. An array is not
  * one. Valibot's `record` skips the own keys `prototype`, `constructor`, and `__proto__`, so a
@@ -11,7 +13,7 @@ export const jsonObject = pipe(
   rawTransform(({ addIssue, dataset, NEVER }) => {
     const { value } = dataset;
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-      addIssue({ message: 'Invalid type: Expected Object' });
+      addIssue({ message: notAnObject });
       return NEVER;
     }
     return Object.fromEntries(
@@ -33,7 +35,7 @@ export const stringMap = pipe(
         // Every wrong value is an issue of its own, so the operator sees each key at once.
         failed = true;
         addIssue({
-          message: `Invalid type: Expected string but received ${JSON.stringify(value)}`,
+          message: notAString(value),
           path: [{ input: dataset.value, key, origin: 'value', type: 'object', value }],
         });
       }

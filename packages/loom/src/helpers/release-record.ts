@@ -10,6 +10,28 @@ import {
 } from './github.js';
 import { readBytes, until } from './http.js';
 import type { RetryPolicy } from './http.js';
+import {
+  commitOutsideCheckout,
+  createdRelease,
+  createdTag,
+  deletedAsset,
+  keptAsset,
+  onRegistry,
+  provenanceNotOurs,
+  provenanceOf,
+  readFromRegistry,
+  recorded,
+  reusedRelease,
+  reusedTag,
+  tagAwayFromPublication,
+  tarballOf,
+  theAsset,
+  theRelease,
+  theTag,
+  uploadedAsset,
+  uploadsDisagree,
+  verifiedTarball,
+} from './messages.js';
 import { readProvenance, readPublished, tarballName, verifyIntegrity } from './registry.js';
 import type { ReleasePlan } from './release-plan.js';
 import { git, gitLine } from './repository.js';
@@ -25,24 +47,22 @@ async function readUpload(
   const registry = { policy: retry, registry: request.registry };
   const name = library.name;
   const subject = `${name}@${plan.version}`;
-  const published = await until(retry, `${subject} on the registry`, async () =>
+  const published = await until(retry, onRegistry(subject), async () =>
     readPublished(registry, name, plan.version),
   );
-  lines.push(`Read ${subject} from the registry.`);
-  const provenance = await until(retry, `the provenance of ${subject}`, async () =>
+  lines.push(readFromRegistry(subject));
+  const provenance = await until(retry, provenanceOf(subject), async () =>
     readProvenance(registry, name, plan.version),
   );
   const source = `git+https://github.com/${request.repository}@refs/heads/main`;
   if (provenance.uri !== source) {
-    throw new Error(
-      `${subject}: its provenance names ${provenance.uri}, which is not a build of ${source}.`,
-    );
+    throw new Error(provenanceNotOurs(subject, provenance.uri, source));
   }
-  const bytes = await until(retry, `the ${subject} tarball`, async () =>
+  const bytes = await until(retry, tarballOf(subject), async () =>
     readBytes(retry, published.tarball),
   );
   verifyIntegrity(subject, bytes, published.integrity);
-  lines.push(`Verified the ${subject} tarball against ${published.integrity}.`);
+  lines.push(verifiedTarball(subject, published.integrity));
   return { bytes, commit: provenance.commit, name: tarballName(name, plan.version), subject };
 }
 
@@ -61,9 +81,7 @@ async function requireCommitInCheckout(checkout: Checkout, commit: string, subje
     await git(checkout, ['merge-base', '--is-ancestor', commit, head]);
   } catch {
     checkout.signal.throwIfAborted();
-    throw new Error(
-      `${subject} was published from ${commit}, which is neither the head ${head} of the checkout nor an ancestor of it.`,
-    );
+    throw new Error(commitOutsideCheckout(subject, commit, head));
   }
 }
 
@@ -95,9 +113,7 @@ export async function recordRelease(request: RecordRequest): Promise<string> {
   for (const library of plan.libraries.slice(1)) {
     const upload = await readUpload(request, library, lines);
     if (upload.commit !== first.commit) {
-      throw new Error(
-        `${upload.subject} was published from ${upload.commit}, but ${first.subject} was published from ${first.commit}.`,
-      );
+      throw new Error(uploadsDisagree(upload.subject, upload.commit, first.subject, first.commit));
     }
     uploads.push(upload);
   }
@@ -106,40 +122,38 @@ export async function recordRelease(request: RecordRequest): Promise<string> {
   const tagged = await readTagCommit(target, tag);
   if (tagged === undefined) {
     await createTag(target, tag, commit);
-    await until(retry, `the tag ${tag}`, async () => readTagCommit(target, tag));
-    lines.push(`Created the annotated tag ${tag} at ${commit}.`);
+    await until(retry, theTag(tag), async () => readTagCommit(target, tag));
+    lines.push(createdTag(tag, commit));
   } else if (tagged === commit) {
-    lines.push(`Reused the tag ${tag} at ${commit}.`);
+    lines.push(reusedTag(tag, commit));
   } else {
-    throw new Error(
-      `Tag ${tag} names ${tagged}, but ${version} was published from ${commit}; recording never moves a tag.`,
-    );
+    throw new Error(tagAwayFromPublication(tag, tagged, version, commit));
   }
   const found = await readRelease(target, tag);
   if (found === undefined) {
     await createRelease(target, tag, plan.notes);
   }
   const release =
-    found ?? (await until(retry, `the ${tag} Release`, async () => readRelease(target, tag)));
-  lines.push(found === undefined ? `Created the ${tag} Release.` : `Reused the ${tag} Release.`);
+    found ?? (await until(retry, theRelease(tag), async () => readRelease(target, tag)));
+  lines.push(found === undefined ? createdRelease(tag) : reusedRelease(tag));
   for (const upload of uploads) {
     const assets = await readAssets(target, release.id);
     const present = assets.find((asset) => asset.name === upload.name);
     if (present !== undefined && isUploadedAsset(present)) {
-      lines.push(`Kept the ${upload.name} asset.`);
+      lines.push(keptAsset(upload.name));
     } else {
       if (present !== undefined) {
         await removeAsset(target, present.id);
-        lines.push(`Deleted the unfinished ${upload.name} asset.`);
+        lines.push(deletedAsset(upload.name));
       }
       await uploadAsset(target, release.uploadUrl, upload.name, upload.bytes);
-      await until(retry, `the ${upload.name} asset`, async () => {
+      await until(retry, theAsset(upload.name), async () => {
         const uploaded = await readAssets(target, release.id);
         return uploaded.find((asset) => asset.name === upload.name && isUploadedAsset(asset));
       });
-      lines.push(`Uploaded the ${upload.name} asset.`);
+      lines.push(uploadedAsset(upload.name));
     }
   }
-  lines.push(`Recorded ${tag}.`);
+  lines.push(recorded(tag));
   return `${lines.join('\n')}\n`;
 }

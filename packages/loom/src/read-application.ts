@@ -10,29 +10,25 @@ import type { ApplicationRead } from './helpers/application-exports.js';
  * arguments name the result file, the package directory, the module, and the module as the
  * operator reads it. The result file receives one `ApplicationRead` as JSON, and the process
  * ends once it is written, whatever the module left running when it loaded, such as an interval.
+ * It bundles no message module, so it answers facts, and the `loom` process words each one.
  */
 
 /**
  * Imports the application module and reads the names its one exported Application is exported
- * under, or why it has none. The Application class comes from the `@loomcli/core` the package
- * itself resolves, which is the copy the module's own declarations are instances of.
+ * under, or why it has none, as a fact the `loom` process words. The Application class comes from
+ * the `@loomcli/core` the package itself resolves, which is the copy the module's own declarations
+ * are instances of.
  */
-async function read(directory: string, path: string, module: string): Promise<ApplicationRead> {
+async function read(directory: string, path: string): Promise<ApplicationRead> {
   const address = coreAddress(directory);
   if (address === undefined) {
-    return {
-      failure: `@loomcli/core does not resolve from the package, so install it before init reads ${module}.`,
-      loaded: false,
-    };
+    return { problem: 'core-unresolved' };
   }
   const core: unknown = await import(address);
   const application = coreClass(core, 'Application');
   const declarationError = coreClass(core, 'DeclarationError');
   if (application === undefined || declarationError === undefined) {
-    return {
-      failure: `The @loomcli/core the package resolves exports no Application to read ${module} with.`,
-      loaded: false,
-    };
+    return { problem: 'core-without-application' };
   }
   let namespace: unknown = undefined;
   try {
@@ -48,20 +44,11 @@ async function read(directory: string, path: string, module: string): Promise<Ap
   ];
   const [only] = found;
   if (found.length !== 1 || only === undefined) {
-    return {
-      failure:
-        found.length === 0
-          ? `${module} exports no Application, so export the Application the entry runs.`
-          : `${module} exports ${found.length} Applications, so export one Application from it.`,
-      loaded: true,
-    };
+    return { count: found.length, problem: 'applications' };
   }
   return { names: exported.filter(([, value]) => value === only).map(([name]) => name) };
 }
 
-const { directory, module, path, resultFile } = readerArguments(
-  process.argv.slice(2),
-  'read-application',
-);
-writeFileSync(resultFile, JSON.stringify(await read(directory, path, module)));
+const { directory, path, resultFile } = readerArguments(process.argv.slice(2), 'read-application');
+writeFileSync(resultFile, JSON.stringify(await read(directory, path)));
 process.exit(0);

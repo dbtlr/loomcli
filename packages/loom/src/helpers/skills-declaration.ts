@@ -7,6 +7,7 @@ import type { InferOutput } from 'valibot';
 import { loadFailure, threw } from './application-load-failure.js';
 import type { Threw } from './application-load-failure.js';
 import { runReader } from './application-reader.js';
+import { skillsFolderJudged, twoSkillsFolders, unreadableSkillsRegistry } from './messages.js';
 import type { RunHost } from './run-host.js';
 
 /** One file of a judged skill: its path relative to the skill's folder, and its executable bit. */
@@ -17,23 +18,34 @@ const judgedSkill = strictObject({ files: array(judgedFile), name: string() });
 
 /**
  * What the reading process found: no `skills()` call while the module loaded; calls that name no
- * folder; the folder, absolute, with the skills the plugin judged there; the failure the build
- * stops with; or the reason the module threw while it loaded.
+ * folder; the folder, absolute, with the skills the plugin judged there; the Developer Diagnostic
+ * of a declaration fault the module threw; a problem the build stops with, as a fact this process
+ * words; or the reason the module threw while it loaded.
  */
 const readResult = union([
   strictObject({ kind: literal('uncalled') }),
   strictObject({ kind: literal('none') }),
   strictObject({ folder: string(), kind: literal('read'), skills: array(judgedSkill) }),
   strictObject({ failure: string() }),
+  strictObject({ problem: literal('registry-format') }),
+  strictObject({ first: string(), problem: literal('two-folders'), second: string() }),
+  strictObject({ folder: string(), problem: literal('judged'), reason: string() }),
   threw,
 ]);
 
-/** One read as the reading process writes it, before the build checks its shape. */
+/**
+ * One read as the reading process writes it, before the build checks its shape. A problem is a
+ * registry this `loom` cannot read, two folders, or the fault the plugin's judging of the folder
+ * raised, with its reason.
+ */
 type SkillsRead =
   | { readonly kind: 'uncalled' }
   | { readonly kind: 'none' }
   | { readonly kind: 'read'; readonly folder: string; readonly skills: unknown }
   | { readonly failure: string }
+  | { readonly problem: 'registry-format' }
+  | { readonly problem: 'two-folders'; readonly first: string; readonly second: string }
+  | { readonly problem: 'judged'; readonly folder: string; readonly reason: string }
   | Threw;
 
 /** A skill the build carries: its name and its files' paths and executable bits. */
@@ -81,6 +93,19 @@ interface SkillsModule {
  * throws while it loads, a registry this `loom` cannot read, two folders, and any fault the
  * plugin's judging raises fail the build with the failure's text, before anything is bundled.
  */
+/** The sentence a build stops with for a problem the read found, naming the module as shown. */
+function problemSentence(
+  module: string,
+  read: Extract<SkillsRead, { readonly problem: string }>,
+): string {
+  if (read.problem === 'registry-format') {
+    return unreadableSkillsRegistry;
+  }
+  return read.problem === 'two-folders'
+    ? twoSkillsFolders(module, read.first, read.second)
+    : skillsFolderJudged(read.reason, read.folder);
+}
+
 async function readSkillsDeclaration(run: RunHost, options: SkillsModule): Promise<SkillsCarry> {
   const { directory, entry, module } = options;
   if (module === undefined || module === entry || !resolvesPlugins(directory)) {
@@ -96,6 +121,9 @@ async function readSkillsDeclaration(run: RunHost, options: SkillsModule): Promi
   }
   if ('failure' in result) {
     throw new Error(result.failure);
+  }
+  if ('problem' in result) {
+    throw new Error(problemSentence(options.shown, result));
   }
   return result;
 }

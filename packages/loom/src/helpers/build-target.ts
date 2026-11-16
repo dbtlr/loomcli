@@ -2,6 +2,8 @@ import type { Host } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 import type { ParseResult } from '@loomcli/validators';
 
+import { noHostTarget, refusedTarget } from './messages.js';
+
 /**
  * A Bun compile target, as Bun 1.4.2 documents them, for the platforms CI runs: `bun-<os>-<arch>`
  * for `linux` or `darwin` on `x64` or `arm64`, then `-musl` on Linux alone, then `-baseline` or
@@ -13,10 +15,6 @@ import type { ParseResult } from '@loomcli/validators';
 const compileTarget =
   /^bun-(?<platform>linux-(?:x64(?:-musl)?(?:-baseline|-modern)?|arm64(?:-musl)?)|darwin-(?:x64(?:-baseline|-modern)?|arm64))$/u;
 
-/** The sentence every refused target ends with, naming the targets a build accepts. */
-const acceptedTargets =
-  'Use node, bun, or a Bun compile target bun-<os>-<arch> for linux or darwin on x64 or arm64, with -musl on linux and -baseline or -modern on x64, such as bun-linux-x64.';
-
 /** Reads one `--target` value, or answers the sentence that refuses it. */
 function readTarget(value: string): BuildTarget | { readonly refused: string } {
   if (value === 'node' || value === 'bun') {
@@ -26,12 +24,7 @@ function readTarget(value: string): BuildTarget | { readonly refused: string } {
   if (platform !== undefined) {
     return { kind: 'compile', name: value, platform };
   }
-  if (value === 'browser') {
-    return {
-      refused: `browser is refused, because a Loom application runs as a command. ${acceptedTargets}`,
-    };
-  }
-  return { refused: `${JSON.stringify(value)} is not a target. ${acceptedTargets}` };
+  return { refused: refusedTarget(value) };
 }
 
 /**
@@ -61,9 +54,9 @@ export function hostTarget(host: Pick<Host, 'arch' | 'libc' | 'platform'>): Buil
   const name = `bun-${host.platform}-${host.arch}${variant}`;
   const target = readTarget(name);
   if ('refused' in target) {
-    throw new Error(`Bun compiles for no target on this host (${name}), so pass --target.`);
+    throw new Error(noHostTarget(name));
   }
   return target;
 }
 
-export { acceptedTargets };
+export { acceptedTargets } from './messages.js';

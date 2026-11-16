@@ -21,6 +21,7 @@ import { definePair } from './build-facts.js';
 import type { BuildFacts } from './build-facts.js';
 import type { BuildTarget } from './build-target.js';
 import { superviseBun } from './bun.js';
+import { bunBuildFailed, watchExited } from './messages.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { RunHost } from './run-host.js';
 import type { SkillsCarry } from './skills-declaration.js';
@@ -385,9 +386,7 @@ async function build(plan: BuildPlan, run: RunHost): Promise<BuildOutcome> {
       return { uncarriedSkillsPlugin: false };
     }
     if (result.code !== 0) {
-      throw new Error(
-        `${result.output.trim()}\n\nBun could not build the application, so no output changed.`,
-      );
+      throw new Error(bunBuildFailed(result.output.trim()));
     }
     const uncarriedSkillsPlugin = existsSync(listed) && holdsSkillsPlugin(listed, staging);
     if (plan.target.kind === 'bundle' && plan.target.name === 'node') {
@@ -440,7 +439,7 @@ async function watch(plan: BuildPlan, run: RunHost): Promise<void> {
     tidy();
   });
   if (result.code !== 0 && result.code <= signalBase && !run.signal.aborted) {
-    throw new Error(`bun build --watch exited with ${result.code}.`);
+    throw new Error(watchExited(result.code));
   }
 }
 

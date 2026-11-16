@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { BaseIssue, BaseSchema, InferOutput } from 'valibot';
 
 import { runBun } from './bun.js';
+import { bunCouldNotRead } from './messages.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { RunHost } from './run-host.js';
 
@@ -31,7 +32,7 @@ interface ReaderRequest {
   readonly directory: string;
   /** The module's absolute path, resolved against the working directory before the spawn. */
   readonly path: string;
-  /** The module as the operator reads it, which the reader's sentences name. */
+  /** The module as the operator reads it, which the sentences that `loom` words for a read name. */
   readonly module: string;
 }
 
@@ -65,7 +66,7 @@ async function runReader<Schema extends BaseSchema<unknown, unknown, BaseIssue<u
       directory,
     );
     if (read.code !== 0 || !existsSync(resultFile)) {
-      throw new Error(`${read.output.trim()}\n\nBun could not read ${module}.`.trim());
+      throw new Error(bunCouldNotRead(read.output.trim(), module).trim());
     }
     return parseOrThrow(schema, JSON.parse(readFileSync(resultFile, 'utf8')));
   } finally {

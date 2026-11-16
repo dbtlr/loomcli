@@ -1,6 +1,7 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { withoutByteOrderMark } from './byte-order-mark.js';
+import { unclosedBlock } from './messages.js';
 import { parseVersion } from './version.js';
 import type { Version } from './version.js';
 
@@ -104,6 +105,6 @@ export function requireClosedBlocks(source: string, label: string) {
     boundary.depth !== 2 ||
     headingText(boundary) !== 'Release boundary'
   ) {
-    throw new Error(`${label}: unclosed Markdown block would swallow later release entries.`);
+    throw new Error(unclosedBlock(label));
   }
 }

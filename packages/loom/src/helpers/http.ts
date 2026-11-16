@@ -1,3 +1,5 @@
+import { invalidJsonAnswer, neverAppeared, refusedRequest, requestTimedOut } from './messages.js';
+
 const maximumDelayMs = 60_000;
 
 // A tarball is larger than a JSON answer, so its deadline is four times the configured one.
@@ -15,13 +17,13 @@ function parseJson(url: string, text: string) {
     const data: unknown = JSON.parse(text);
     return data;
   } catch {
-    throw new Error(`${url} answered with invalid JSON.`);
+    throw new Error(invalidJsonAnswer(url));
   }
 }
 
 async function refuse(method: string, url: string, response: Response) {
   const text = await response.text();
-  return new Error(`${method} ${url} answered ${String(response.status)}: ${text.trim()}`);
+  return new Error(refusedRequest(method, url, response.status, text.trim()));
 }
 
 function sleep(delayMs: number) {
@@ -47,9 +49,7 @@ async function within<Value>(
     return await exchange(AbortSignal.timeout(deadlineMs));
   } catch (error) {
     if (timedOut(error)) {
-      throw new Error(`${method} ${url} did not answer within ${String(deadlineMs)} ms.`, {
-        cause: error,
-      });
+      throw new Error(requestTimedOut(method, url, deadlineMs), { cause: error });
     }
     throw error;
   }
@@ -174,5 +174,5 @@ export async function until<Value>(
   if (failure !== undefined) {
     throw failure.error;
   }
-  throw new Error(`${subject} did not appear after ${String(policy.attempts)} attempts.`);
+  throw new Error(neverAppeared(subject, policy.attempts));
 }

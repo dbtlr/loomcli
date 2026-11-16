@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 
+import { noVersionCommit } from './messages.js';
 import type { Checkout, Libraries } from './repository.js';
 import {
   currentVersion,
@@ -65,7 +66,7 @@ export async function materialBaseline(
       return commit;
     }
   }
-  throw new Error(`No first-parent commit sets version ${version}.`);
+  throw new Error(noVersionCommit(version));
 }
 
 // Root Markdown and docs do not enter the current library build.

@@ -6,6 +6,16 @@ import type { InferOutput } from 'valibot';
 
 import { stringMap } from './json-object.js';
 import { parseManifest } from './manifest.js';
+import {
+  expectedRegularFile,
+  gitFailed,
+  libraryNamesRepeat,
+  libraryVersionsDiffer,
+  noLibraries,
+  releaseShallow,
+  symlinkedPackage,
+  unstableLibraryVersions,
+} from './messages.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { RunHost } from './run-host.js';
 import { parseVersion } from './version.js';
@@ -49,7 +59,7 @@ async function gitOutput(checkout: Checkout, args: string[]) {
     throw exit.error;
   }
   if (exit.code !== 0) {
-    throw new Error(`git ${args[0]} failed: ${exit.stderr.text.trim()}`);
+    throw new Error(gitFailed(args[0] ?? '', exit.stderr.text.trim()));
   }
   return exit.stdout;
 }
@@ -104,7 +114,7 @@ export async function readDirectory(checkout: Checkout, path: string, ref?: stri
 export function readWorkingFileBytes(root: string, path: string) {
   const absolute = join(root, path);
   if (!lstatSync(absolute).isFile()) {
-    throw new Error(`${path}: expected a regular file.`);
+    throw new Error(expectedRegularFile(path));
   }
   return readFileSync(absolute);
 }
@@ -121,7 +131,7 @@ export async function readRegularFileBytes(checkout: Checkout, path: string, ref
   }
   const entry = await git(checkout, ['ls-tree', '-z', ref, '--', path]);
   if (!/^100(?:644|755) blob /u.test(entry)) {
-    throw new Error(`${path}: expected a regular file.`);
+    throw new Error(expectedRegularFile(path));
   }
   return gitBytes(checkout, ['show', `${ref}:${path}`]);
 }
@@ -155,7 +165,7 @@ export async function isShallow(checkout: Checkout) {
 // A shallow clone hides the commits the material baseline and the release notes are derived from.
 export async function requireFullHistory(checkout: Checkout) {
   if (await isShallow(checkout)) {
-    throw new Error('Release preparation requires full Git history.');
+    throw new Error(releaseShallow);
   }
 }
 
@@ -178,7 +188,7 @@ export async function readParticipants(checkout: Checkout, ref?: string) {
   const participants: Participant[] = [];
   for (const entry of await readDirectory(checkout, 'packages', ref)) {
     if (entry.isSymbolicLink()) {
-      throw new Error(`packages/${entry.name}: symlinks are not supported.`);
+      throw new Error(symlinkedPackage(entry.name));
     }
     if (entry.isDirectory()) {
       const directory = `packages/${entry.name}`;
@@ -201,11 +211,11 @@ export async function readParticipants(checkout: Checkout, ref?: string) {
 // Participating libraries share one name space and one version, because only a release cut moves them.
 export function requireCoherentLibraries(libraries: Libraries) {
   if (new Set(libraries.map((library) => library.manifest.name)).size !== libraries.length) {
-    throw new Error('Publishable library names must be unique.');
+    throw new Error(libraryNamesRepeat);
   }
   const versions = new Set(libraries.map((library) => library.manifest.version));
   if (versions.size !== 1) {
-    throw new Error('Publishable library versions must match.');
+    throw new Error(libraryVersionsDiffer);
   }
   return libraries;
 }
@@ -216,7 +226,7 @@ export type Libraries = [Participant, ...Participant[]];
 export async function readLibraries(checkout: Checkout, ref?: string): Promise<Libraries> {
   const [first, ...rest] = await readParticipants(checkout, ref);
   if (first === undefined) {
-    throw new Error('No publishable libraries in packages/*.');
+    throw new Error(noLibraries);
   }
   return requireCoherentLibraries([first, ...rest]);
 }
@@ -225,7 +235,7 @@ export async function readLibraries(checkout: Checkout, ref?: string): Promise<L
 export function currentVersion(libraries: Libraries) {
   const version = parseVersion(libraries[0]?.manifest.version ?? '');
   if (version?.major !== 0) {
-    throw new Error('Library versions must be stable 0.x versions.');
+    throw new Error(unstableLibraryVersions);
   }
   return version;
 }

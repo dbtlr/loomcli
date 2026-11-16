@@ -1,6 +1,8 @@
 import { Command } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
+import { useWholeNumber } from '../../helpers/messages.js';
+
 /*
  * Each action imports its work when it runs, so a run of any other command, help included, loads
  * none of it.
@@ -14,9 +16,7 @@ const wholeNumber = /^\d+$/u;
 const count = createValidator({
   inputSchema: { type: 'string', pattern: wholeNumber.source },
   parse: (raw) =>
-    wholeNumber.test(raw)
-      ? { value: Number(raw) }
-      : { issues: [{ message: 'Supply a whole number.' }] },
+    wholeNumber.test(raw) ? { value: Number(raw) } : { issues: [{ message: useWholeNumber }] },
 });
 
 /** This repository's synchronized cut under ADR-0012. */
