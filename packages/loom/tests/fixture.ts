@@ -76,6 +76,13 @@ export function repository(options: {
     const root = realpathSync(mkdtempSync(join(tmpdir(), options.prefix)));
     git(root, ['init', '-q']);
     git(root, ['config', 'core.autocrlf', 'false']);
+    /*
+     * A commit starts git's automatic maintenance in the background, which holds
+     * `.git/objects/maintenance.lock` and removes it when it ends, so a copy made meanwhile fails on
+     * a file that is gone. The template and each copy of it run none.
+     */
+    git(root, ['config', 'maintenance.auto', 'false']);
+    git(root, ['config', 'gc.auto', '0']);
     for (const [path, body] of Object.entries(options.files)) {
       put(root, path, body);
     }
