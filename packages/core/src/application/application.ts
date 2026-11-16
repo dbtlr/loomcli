@@ -641,6 +641,20 @@ class ApplicationBuilder<
   }
 
   /**
+   * Declares that supplying the first named local option of the root requires each further one,
+   * while a further option alone is accepted: `.requires('password', 'user')` accepts `--user`
+   * alone and refuses `--password` without `--user`.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
+   */
+  requires(
+    option: Extract<keyof Options, string>,
+    ...needed: [Extract<keyof Options, string>, ...Extract<keyof Options, string>[]]
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+    return this.derive(declareOptionGroup(this.#root, 'requires', [option, ...needed]));
+  }
+
+  /**
    * Declares a global option, which every Command of the Application reads under `options`. It
    * closes once the Application's own `command()` or `action()` has run.
    *

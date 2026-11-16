@@ -57,6 +57,10 @@ declare class ApplicationBuilder<Args, Options, Globals, State extends Applicati
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
     ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
+    requires(option: Extract<keyof Options, string>, ...needed: [
+        Extract<keyof Options, string>,
+        ...Extract<keyof Options, string>[]
+    ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
     globalOption<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & NameConstraint<Name> & (Name extends keyof Options ? {
         'This option name is already declared as a local option': Name;
     } : unknown) & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>> & NoInfer<GlobalOmissionConstraint<Config>>): Application<Args, Options, Globals & Record<Name, OptionValue<Config>>, State, Plugins, Result, Stdin, Provided, Requires>;
@@ -222,6 +226,10 @@ export declare class CommandBuilder<Args, Options, Globals, State extends Comman
     ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
     requiredTogether(...names: [
         Extract<keyof Options, string>,
+        Extract<keyof Options, string>,
+        ...Extract<keyof Options, string>[]
+    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
+    requires(option: Extract<keyof Options, string>, ...needed: [
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
     ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;

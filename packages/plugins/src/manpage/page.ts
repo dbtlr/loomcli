@@ -35,6 +35,7 @@ import type { Example } from '../help/page.js';
 import { orderedSections } from '../help/sections.js';
 import type { OrderedSection, SectionMember } from '../help/sections.js';
 import { singleLine, singleLineOf } from '../lines.js';
+import { groupSentences } from '../option-groups.js';
 import { detailsLines, notesLines } from './markdown.js';
 import { findable, pageFile, pageName } from './pages.js';
 import { escapeText, escapeUnbroken, inFont, request, textLine } from './roff.js';
@@ -280,6 +281,14 @@ function optionEntry(option: OptionNode): string[] {
   );
 }
 
+/**
+ * The option-group sentences help prints, after the entries of the page's last option section,
+ * each its own paragraph.
+ */
+function groupParagraphs({ command }: Subject): string[] {
+  return groupSentences(command).flatMap((sentence) => ['.PP', textLine(escapeText(sentence))]);
+}
+
 /** The spelling an ENVIRONMENT entry names: the tag's long spelling, or its short one. */
 function suppliedSpelling(option: OptionNode): string {
   const { long, short } = optionCellParts(option);
@@ -382,6 +391,7 @@ function renderManPage(
     ...argumentsSection(subject),
     ...stdinSection(subject),
     ...sectionLines(subject.optionSections, optionEntry),
+    ...groupParagraphs(subject),
     ...examples(subject),
     ...environment(subject),
     ...notes(subject),

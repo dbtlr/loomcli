@@ -161,6 +161,7 @@ export interface AttachedCommand {
     readonly options: readonly string[];
     readonly path: readonly string[];
     requiredTogether(...names: [string, string, ...string[]]): AttachedCommand;
+    requires(option: string, ...needed: [string, ...string[]]): AttachedCommand;
     readonly result: ResultNode | null;
     views<const Replacements extends Readonly<Record<string, ResultView>>>(replacements: Replacements, options?: {
         default?: keyof Replacements & string;
@@ -248,7 +249,7 @@ export interface CommandGraph {
 }
 
 // @public @sealed
-export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'option' | 'options' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'result' | 'rows' | 'passthrough' | 'stdin';
+export type CommandMethod = 'action' | 'alias' | 'argument' | 'command' | 'option' | 'options' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'requires' | 'result' | 'rows' | 'passthrough' | 'stdin';
 
 // @public @sealed
 export interface CommandNode {
@@ -901,7 +902,7 @@ export type InputProblem = {
     inputs: readonly InputIdentity[];
     spellings: readonly string[];
     supplied: readonly string[];
-    reason: 'exclusive' | 'oneRequired' | 'requiredTogether';
+    reason: 'exclusive' | 'oneRequired' | 'requiredTogether' | 'requires';
 } | {
     input: InputIdentity;
     spelling: string;
@@ -1211,10 +1212,14 @@ export type Opener<Declared extends AnyProvider> = (context: ProviderContext<Glo
 export type OptionConfig = StringOption | BooleanOption | CountOption | ContentOption;
 
 // @public @sealed
-export interface OptionGroup {
+export type OptionGroup = {
     readonly kind: 'exclusive' | 'oneRequired' | 'requiredTogether';
     readonly options: readonly string[];
-}
+} | {
+    readonly kind: 'requires';
+    readonly option: string;
+    readonly requires: readonly string[];
+};
 
 // @public @sealed
 export type OptionNode = StringOptionNode | (Omit<StringOptionNode, 'type' | 'arity' | 'background' | 'envAllowEmpty' | 'lastWins'> & {
@@ -1274,6 +1279,7 @@ export interface OptionSet<Configs extends Readonly<Record<string, OptionConfig>
     Extract<keyof Configs, string>,
     ...Extract<keyof Configs, string>[]
     ]): OptionSet<Configs>;
+    requires(option: Extract<keyof Configs, string>, ...needed: [Extract<keyof Configs, string>, ...Extract<keyof Configs, string>[]]): OptionSet<Configs>;
 }
 
 // @public

@@ -248,7 +248,7 @@ export type InputProblem =
       inputs: readonly InputIdentity[];
       spellings: readonly string[];
       supplied: readonly string[];
-      reason: 'exclusive' | 'oneRequired' | 'requiredTogether';
+      reason: 'exclusive' | 'oneRequired' | 'requiredTogether' | 'requires';
     }
   | { input: InputIdentity; spelling: string; reason: 'missing' }
   | {

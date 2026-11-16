@@ -1,8 +1,8 @@
-import { nowrap, reportedSpelling, readExtension } from '@loomcli/core';
+import { nowrap, readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
 import { singleLineOf } from '../lines.js';
-import { visibleOptionGroups } from '../option-groups.js';
+import { groupSentences } from '../option-groups.js';
 import { continuation } from '../text-lines.js';
 import { argumentAccepts, optionAccepts } from './accepted.js';
 import {
@@ -411,37 +411,11 @@ function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewCont
   ];
 }
 
-const pairMembers = 2;
-const listStart = 0;
-const lastMember = -1;
-
-/**
- * Rules speak about supplied options, independently of their defaults or prepared stdin. Each
- * sentence is prose, so on a terminal it wraps and continues at its indent.
- */
-function groupSentences(command: CommandNode, context: ViewContext): string[] {
-  return visibleOptionGroups(command).flatMap((group) => {
-    const nodes = command.options.filter((option) => group.options.includes(option.name));
-    const names = group.options.map((name) => {
-      const option = nodes.find((node) => node.name === name);
-      return option === undefined ? name : reportedSpelling(option);
-    });
-    const members =
-      names.length === pairMembers
-        ? names.join(' and ')
-        : `${names.slice(listStart, lastMember).join(', ')}, and ${names.at(lastMember) ?? ''}`;
-    const rules = {
-      exclusive: `Use at most one of ${members}`,
-      oneRequired: `Supply at least one of ${members}`,
-      requiredTogether: `Use ${members} together`,
-    };
-    const rule = rules[group.kind];
-    const caveat = nodes.some((option) => option.type === 'content' && option.stdin)
-      ? ' (piped stdin does not count)'
-      : '';
-    const sentence = context.style.primary(context.style.escape(`${rule}${caveat}.`));
-    return prose(sentence, { lead: '  ' }, context);
-  });
+/** Each option-group sentence is prose, so on a terminal it wraps and continues at its indent. */
+function groupLines(command: CommandNode, context: ViewContext): string[] {
+  return groupSentences(command).flatMap((sentence) =>
+    prose(context.style.primary(context.style.escape(sentence)), { lead: '  ' }, context),
+  );
 }
 
 /**
@@ -467,7 +441,7 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
     args({ children, command }, context),
     stdinInput(command, graph, context),
     ...options(command, graph, context),
-    groupSentences(command, context),
+    groupLines(command, context),
     extended ? listed : [],
     hints({ children, omitted, path, variant }, context),
     ...epilogsOf(graph, command).map((source) => renderDetails(source, context)),

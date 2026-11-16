@@ -47,6 +47,8 @@ export interface AttachedCommand {
   oneRequired(...names: [string, string, ...string[]]): AttachedCommand;
   /** Declares that the named local options are supplied together or not at all. */
   requiredTogether(...names: [string, string, ...string[]]): AttachedCommand;
+  /** Declares that supplying the first named local option requires each further one. */
+  requires(option: string, ...needed: [string, ...string[]]): AttachedCommand;
   /**
    * Reshapes the views of the Command's result: a view under a name the result already holds
    * replaces it in place, and a new name is appended. It returns a new value whose `result` lists
