@@ -1,7 +1,7 @@
 ---
 type: adr
 title: ADR-0170 - A progress line may end skipped or warned or be cleared, and a region's end event reads skipped and warned
-description: The progress handle of @loomcli/prompts gains skip(message?), warn(message?), and clear(). skip leaves a dim line with the message or else the label, under the info glyph, and off a live region writes the same text through out.info. warn leaves a warning line under the warning glyph in the warning token, and off a live region writes it through out.warn. clear draws an empty last frame, so the line leaves nothing, and off a live region prints nothing after the start line. Only the author's own call clears a line: a line that fails or is cancelled keeps its text. After any end every end method does nothing and resolves, and track() is unchanged. Core's Region.end takes 'skipped' and 'warned' beside 'ended' and 'failed', and ProgressEvent's state gains the same two, so an onProgress observer, invoke, and an MCP client, whose message reads (skipped) or (warned), tell them from a success, while a cleared line reports ended. The progress view's state gains 'skipped' and 'warned', and ProgressContext's out gains warn. It extends ADR-0091's region end, its progress events, and its progress lines.
+description: The progress handle of @loomcli/prompts gains skip(message?), warn(message?), and clear(). skip leaves a dim line with the message or else the label, under the info glyph, and off a live region writes the same text through out.info. warn leaves a warning line under the warning glyph in the warning token, and off a live region writes it through out.warn. clear draws an empty last frame, so the line leaves nothing but a frame drawn before the terminal was lent, and off a live region prints nothing after the start line. Only the author's own call clears a line: a line that fails or is cancelled keeps its text. After any end every end method does nothing and resolves, and track() is unchanged. Core's Region.end takes 'skipped' and 'warned' beside 'ended' and 'failed', and ProgressEvent's state gains the same two, so an onProgress observer, invoke, and an MCP client, whose message reads (skipped) or (warned), tell them from a success, while a cleared line reports ended. The progress view's state gains 'skipped' and 'warned', and ProgressContext's out gains warn. It extends ADR-0091's region end, its progress events, and its progress lines.
 status: proposed
 created: 2026-11-16
 modified: 2026-11-16
@@ -89,9 +89,9 @@ The owner settled the shape on 2026-11-16 (LM-388): the handle gains `skip`, `wa
     /** Ends the line with a warning, with an optional message in place of the label. */
     warn(message?: string): Promise<void>;
     /**
-     * Ends the line and removes it. Where the line draws, it leaves nothing, with one exception: a
-     * frame drawn before the terminal was lent stays where it was drawn. Where the line does not draw,
-     * it writes nothing after the start line, which stays.
+     * Ends the line and removes it. Where the line draws, it leaves nothing, except a frame drawn
+     * before the terminal was lent, which stays where it was drawn. Where the line does not draw, it
+     * writes nothing after the start line, which stays.
      */
     clear(): Promise<void>;
     /** Ends the line by how the work settles and returns the work's value, or rethrows its rejection. */
