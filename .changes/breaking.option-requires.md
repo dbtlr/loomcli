@@ -5,7 +5,7 @@
 
 ### Migration
 
-**Affected surface.** The type checker reports every affected site. The surface is code that reads `options` from an entry of `CommandNode.optionGroups`, or of the manifest's `optionGroups`, without narrowing its `kind` first.
+**Affected surface.** Two surfaces. The type checker reports every affected site in typed code: the surface is code that reads `options` from an entry of `CommandNode.optionGroups`, or of the manifest's `optionGroups` through its published type, without narrowing its `kind` first. No compile error for code that reads a manifest as parsed JSON: it fails at run time, and only on the manifest of an application that declares a requirement, where it reads `options` from an entry that has none.
 
 **Why.** A requirement names one option and the options it needs, so its entry carries `option` and `requires` in place of `options`, and `OptionGroup` became a union of the two shapes.
 
