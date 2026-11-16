@@ -92,6 +92,7 @@ export interface Progress {
     clear(): Promise<void>;
     end(message?: string): Promise<void>;
     fail(message?: string): Promise<void>;
+    log(text: string | AsyncIterable<string>): Promise<void>;
     skip(message?: string): Promise<void>;
     track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
     update(update: ProgressUpdate): void;
@@ -110,6 +111,8 @@ export type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
 export interface ProgressSettings {
     readonly estimate?: boolean;
     readonly label: string;
+    readonly logLimit?: number;
+    readonly logRows?: number;
     readonly spinner?: Spinner;
     readonly total?: number;
     readonly unit?: string;

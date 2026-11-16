@@ -77,6 +77,7 @@ export interface ProgressLine {
     readonly estimate?: boolean | undefined;
     readonly frame: string;
     readonly label: string;
+    readonly log?: readonly string[] | undefined;
     readonly rate?: number | undefined;
     readonly remaining?: number | undefined;
     readonly state: 'running' | 'ended' | 'failed' | 'cancelled' | 'skipped' | 'warned';
