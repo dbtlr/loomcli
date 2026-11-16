@@ -376,8 +376,8 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     skipped: (text) => context.out.info(text),
     warned: (text) => context.out.warn(text),
   };
-  // A failed, warned, or cancelled line writes its kept log lines as one message above its end
-  // Line, through the lane of the end's level, and a line with no kept line writes none.
+  // A failed, warned, or cancelled line writes its kept log lines as one message above its end line.
+  // The message goes through the lane of the end's level, and a line with no kept line writes none.
   const writeKept = (state: 'failed' | 'warned' | 'cancelled'): Promise<void> => {
     const { dropped, lines } = book.kept();
     if (lines.length === 0) {
@@ -418,11 +418,12 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     line.label = message ?? line.label;
     clearInterval(timer);
     book.close();
-    // The kept lines and the end line are issued together, so nothing lands between them.
+    // The kept lines, the end line, and the close are issued in one tick, so core's queue holds
+    // Them in that order and nothing another writer writes lands between them.
     const kept = state === 'failed' || state === 'warned' ? writeKept(state) : Promise.resolve();
     const ended = region.live ? region.draw(frame(), progressLine) : plainLine[state](line.label);
-    await Promise.all([kept, ended]);
-    await region.end(state, message);
+    const closed = region.end(state, message);
+    await Promise.all([kept, ended, closed]);
   };
   return {
     // A cleared line ends as ended, but its last frame is the library's empty one, never the view's.
@@ -440,8 +441,8 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     },
     end: (message) => finish('ended', message),
     fail: (message) => finish('failed', message),
-    // A string joins the log at once; an iterable is read to its end, and its text is discarded
-    // Once the line has ended. The line never stops an iterable, so a child writing into it never blocks.
+    // A string joins the log at once, and an iterable is read to its end.
+    // Its text is discarded once the line has ended, and the line never stops an iterable, so a child writing into it never blocks.
     async log(text) {
       if (typeof text === 'string') {
         book.add(text);

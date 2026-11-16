@@ -1005,3 +1005,158 @@ test('with color, the rows and the kept lines are dim, and the end line is not',
   expect(ended.dim[0]).toBe('  dim row');
   expect(ended.dim[1]).toMatch(/^ {13}· 0\.1s$/u);
 });
+
+test("when the action throws, an open iterable's unfinished line joins the kept lines above the failure line", async () => {
+  const feed = channel();
+  const outcome = await logged(async (context) => {
+    const line = progress(context, { label: 'Installing' });
+    void line.log(feed.iterable);
+    feed.push('done\npartial');
+    await flush();
+    throw new FatalError('npm could not install the dependencies.');
+  });
+  const rows = await shown(outcome);
+  expect(rows.slice(0, 2)).toEqual(['  done', '  partial']);
+  expect(rows[2]).toMatch(/^✘ Installing · /u);
+});
+
+test("when the run is cancelled, an open iterable's unfinished line joins the kept lines above the cancelled line", async () => {
+  const feed = channel();
+  const outcome = await logged(async (context, { cancel }) => {
+    const line = progress(context, { label: 'Installing' });
+    void line.log(feed.iterable);
+    feed.push('done\npartial');
+    await flush();
+    cancel();
+  });
+  expect(outcome.code).toBe(130);
+  await expect(shown(outcome)).resolves.toEqual([
+    '  done',
+    '  partial',
+    '■ Installing (cancelled)',
+  ]);
+});
+
+test("logRows: 0 hides an open iterable's unfinished line on every frame", async () => {
+  const feed = channel();
+  const outcome = await logged(async (context, { tick }) => {
+    const line = progress(context, { label: 'Installing', logRows: 0 });
+    const reading = line.log(feed.iterable);
+    feed.push('done\npartial');
+    await flush();
+    tick();
+    tick();
+    feed.end();
+    await reading;
+    await line.end();
+  });
+  const logs = runningLogs(outcome.frames);
+  expect(logs.length).toBeGreaterThan(1);
+  expect(logs).toEqual(logs.map(() => []));
+});
+
+test('a row exactly as wide as the terminal draws whole, and one column wider is clipped with the ellipsis', async () => {
+  const outcome = await logged(
+    async (context, { tick }) => {
+      const line = progress(context, { label: 'W' });
+      await line.log(`${'a'.repeat(38)}\n${'b'.repeat(39)}`);
+      tick();
+      await line.end();
+    },
+    { columns: 40 },
+  );
+  expect(outcome.frames[1]?.text.split('\n').slice(1)).toEqual([
+    `  ${'a'.repeat(38)}`,
+    `  ${'b'.repeat(37)}…`,
+  ]);
+});
+
+test('an unfinished row that ends in a whole astral character keeps it', async () => {
+  const feed = channel();
+  const outcome = await logged(async (context, { tick }) => {
+    const line = progress(context, { label: 'Writing' });
+    const reading = line.log(feed.iterable);
+    feed.push('done \u{1F600}');
+    await flush();
+    tick();
+    feed.end();
+    await reading;
+    await line.end();
+  });
+  expect(runningLogs(outcome.frames)).toEqual([['done \u{1F600}']]);
+});
+
+test('two lines that end in the same moment each keep their lines directly above their own end line', async () => {
+  const outcome = await logged(async (context) => {
+    const api = progress(context, { label: 'api' });
+    const web = progress(context, { label: 'web' });
+    await api.log('api: build step 3 of 7 failed');
+    await web.log('web: 2 deprecated packages');
+    await Promise.all([api.fail('api failed'), web.warn('web installed with warnings')]);
+  });
+  await expect(shown(outcome)).resolves.toEqual([
+    '  api: build step 3 of 7 failed',
+    '✘ api failed · 0.0s',
+    '  web: 2 deprecated packages',
+    '⚠ web installed with warnings · 0.0s',
+  ]);
+});
+
+test('two tracked works that reject together each keep their lines directly above their own failure line', async () => {
+  const outcome = await logged(async (context) => {
+    const api = progress(context, { label: 'api' });
+    const web = progress(context, { label: 'web' });
+    await api.log('api: connection refused');
+    await web.log('web: timed out');
+    const settled = await Promise.allSettled([
+      api.track(Promise.reject(new Error('api'))),
+      web.track(Promise.reject(new Error('web'))),
+    ]);
+    expect(settled.map(({ status }) => status)).toEqual(['rejected', 'rejected']);
+  });
+  await expect(shown(outcome)).resolves.toEqual([
+    '  api: connection refused',
+    '✘ api · 0.0s',
+    '  web: timed out',
+    '✘ web · 0.0s',
+  ]);
+});
+
+test('a message another writer writes while a line fails lands after its end line, not between its kept lines and it', async () => {
+  const outcome = await logged(async (context) => {
+    const api = progress(context, { label: 'api' });
+    await api.log('api: build step 3 of 7 failed');
+    const pending = api.fail('api failed');
+    void context.out.info('web: build step 3 of 7 done');
+    await pending;
+  });
+  await expect(shown(outcome)).resolves.toEqual([
+    '  api: build step 3 of 7 failed',
+    '✘ api failed · 0.0s',
+    'ℹ web: build step 3 of 7 done',
+  ]);
+});
+
+test('where the lines do not draw, two lines that end in the same moment write each its kept lines directly above its end line', async () => {
+  const outcome = await logged(
+    async (context) => {
+      const api = progress(context, { label: 'api' });
+      const web = progress(context, { label: 'web' });
+      await api.log('api: build step 3 of 7 failed');
+      await web.log('web: 2 deprecated packages');
+      await Promise.all([api.fail('api failed'), web.warn('web installed with warnings')]);
+    },
+    { terminal: 'pipe' },
+  );
+  expect(outcome.stderr).toBe(
+    [
+      'ℹ api',
+      'ℹ web',
+      '  api: build step 3 of 7 failed',
+      '✘ api failed',
+      '  web: 2 deprecated packages',
+      '⚠ web installed with warnings',
+      '',
+    ].join('\n'),
+  );
+});

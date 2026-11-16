@@ -7,6 +7,8 @@
 import type { ViewContext } from '@loomcli/core';
 import { escapeControlCharacters, glyph, style as textStyle } from '@loomcli/core';
 
+import { leading } from './line.js';
+
 /** The code points a line keeps before it shows the ellipsis and discards the rest. */
 const LINE_LIMIT = 4096;
 
@@ -221,29 +223,6 @@ function logText(entry: string, context: ViewContext): string {
 /** The indent of a log row and a kept line. */
 const LOG_INDENT = '  ';
 
-/** The leading parts whose widths, added up, fit `room` columns. */
-function leading(parts: Iterable<string>, room: number, width: (part: string) => number): string {
-  let kept = '';
-  let used = 0;
-  for (const part of parts) {
-    used += width(part);
-    if (used > room) {
-      break;
-    }
-    kept += part;
-  }
-  return kept;
-}
-
-/** The graphemes of a text, read one at a time. */
-function* graphemesOf(text: string): Generator<string> {
-  for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(
-    text,
-  )) {
-    yield segment;
-  }
-}
-
 /**
  * A log row that never wraps, as marked text: the indent and the text, or, while that is wider than
  * `columns`, the text's leading graphemes and the ellipsis, down to the ellipsis alone, and at 2
@@ -258,9 +237,9 @@ function logRow(entry: string, columns: number, context: ViewContext): string {
   const ellipsis = context.plain(glyph.ellipsis);
   const budget = columns - width(LOG_INDENT + ellipsis);
   if (budget < 0) {
-    return textStyle.escape(leading(graphemesOf(LOG_INDENT + ellipsis), columns, width));
+    return textStyle.escape(leading(LOG_INDENT + ellipsis, columns, width));
   }
-  return textStyle.escape(LOG_INDENT + leading(graphemesOf(text), budget, width) + ellipsis);
+  return textStyle.escape(LOG_INDENT + leading(text, budget, width) + ellipsis);
 }
 
 /**
@@ -276,4 +255,3 @@ const keptLines = {
 };
 
 export { keptLines, logRow, ProgressLog };
-export type { Feed };

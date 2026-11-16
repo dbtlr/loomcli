@@ -973,7 +973,7 @@ A progress line shows an operator that work is under way: a spinner while the wo
 - **Updates.** `update({ completed?, total?, label? })` changes what the line shows, reports the change, and draws the next frame, and an omitted field keeps its value. A `total` turns a spinner into a bar. It returns nothing, because the frame queues in call order. After the line has closed it checks its settings, as every call does, and then does nothing.
 - **The frame timer.** While the line is live, the library redraws it every spinner `interval` from its own `setInterval`, advancing the spinner frame and the elapsed time, and counting down the time left of a line that shows one. The timer is unref'd, so it never keeps a process alive, and the library clears it when the region's signal aborts, whatever closed the region. It cancels and limits nothing. A line that is not live runs no timer.
 - **Ending.** `end(message?)` draws the line's success line, with the message or else the label, and closes its region with `end('ended', message)`. `fail(message?)` draws its failure line and closes the region with `end('failed', message)`, so its last progress event reads `failed`. `skip(message?)` draws its skipped line, dim, and closes the region with `end('skipped', message)`, for work that had nothing to do. `warn(message?)` draws its warned line and closes the region with `end('warned', message)`, for work that finished with a problem the operator should see. Each way the end event's label is the message, so an `onProgress` observer and an MCP client read the same end text the terminal shows, and a line ended with no message keeps its last label. Each resolves once its line is written. [ADR-0170](../decisions/0170-a-progress-line-may-end-skipped-or-warned-or-be-cleared-and-a-regions-end-event-reads-skipped-and-warned.md) records the skipped, warned, and cleared ends.
-- **Clearing.** `clear()` removes the line and leaves nothing, with one exception: under [Lending the terminal](../core/output.md#lending-the-terminal), a frame drawn before the terminal was lent stays where it was drawn, so a line cleared during or after a lend leaves that frame. It draws an empty last frame, which does not pass through the [progress view](#progress-view), and closes its region with `end('ended')`, so the rows above the line stay as they were, the lines below close the gap, and no blank row is left. Its end event reads `ended` with the last label. Only the author's own `clear()` removes a line: a line that fails or is cancelled keeps its text, and nothing clears a line on its own.
+- **Clearing.** `clear()` removes the line and leaves nothing, with one exception: under [Lending the terminal](../core/output.md#lending-the-terminal), a frame drawn before the terminal was lent stays where it was drawn, so a line cleared during or after a lend leaves that frame. It draws an empty last frame, which does not pass through the [progress view](#progress-view), and closes its region with `end('ended')`, so the rows above the line stay as they were, the lines below close the gap, and no blank row is left. Its end event reads `ended` with the last label. Only the author's own `clear()` removes a line: a line that fails, warns, or is cancelled keeps its text and its log, `end` and `skip` remove the log rows and keep the end line, and nothing clears a line on its own.
 - **After an end.** Once the line has ended, failed, been cancelled, been skipped, been warned, or been cleared, `end`, `fail`, `skip`, `warn`, and `clear` do nothing and resolve. `log()` does nothing for a string and resolves, and reads an iterable to its end and discards its text, under [A line's log](#a-lines-log).
 - **Tracking work.** `track(work, { done?, failed? })` awaits `work`, and ends the line only as a success or a failure. When it resolves, the line ends with `done`, and `track` returns the value. When it rejects, the line fails with `failed`, and `track` rejects with the same rejection, unchanged. `done` is a string or a function of the resolved value, and `failed` a string or a function of the rejection, so either message can say what happened, and each defaults to the label. When the line has already closed, `track` only returns the value or rethrows.
 - **Cancellation.** The handle has no cancel method. When the run is cancelled, core closes the line's region for the cancellation, and the line draws its cancelled line in the region's abort, with its kept log lines above it. A line started after the run is cancelled finds its region already closed, so it draws and writes nothing and starts no timer.
@@ -1056,16 +1056,19 @@ import { progress } from '@loomcli/prompts';
 
 export const install = new Command('install').action(async (context) => {
   const { host, signal, style } = context;
-  const output = new PassThrough({ encoding: 'utf8' });
-  async function* text(): AsyncGenerator<string> {
-    for await (const chunk of output) {
+  const stdout = new PassThrough({ encoding: 'utf8' });
+  const stderr = new PassThrough({ encoding: 'utf8' });
+  async function* text(stream: PassThrough): AsyncGenerator<string> {
+    for await (const chunk of stream) {
       yield style.escape(String(chunk)); // the child's raw text, escaped chunk by chunk
     }
   }
   const installing = progress(context, { label: 'Installing dependencies' });
-  const logged = installing.log(text());
-  const exit = await host.spawn('npm', ['install'], { signal, stderr: output, stdout: output }).exited;
-  output.end();
+  // One log() call for each stream, so a partial line of one never joins a partial line of the other.
+  const logged = Promise.all([installing.log(text(stdout)), installing.log(text(stderr))]);
+  const exit = await host.spawn('npm', ['install'], { signal, stderr, stdout }).exited;
+  stdout.end();
+  stderr.end();
   await logged;
   if (exit.kind === 'unstarted' || exit.code !== 0) {
     await installing.fail();

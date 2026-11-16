@@ -1,8 +1,8 @@
 // @module-tag docs
 /*
- * The prompts package's voice test, under ADR-0164. Every sentence a question says to an operator
- * lives in `src/messages.ts`: a failure's sentence, and the line a question shows under an answer
- * it rejects. This test holds the message module to the banned words of the voice page and rule 5's
+ * The prompts package's voice test, under ADR-0164. Every sentence a question or a progress line
+ * says to an operator lives in `src/messages.ts`: a failure's sentence, the line a question shows
+ * under an answer it rejects, and the sentence a progress line opens its kept lines with. This test holds the message module to the banned words of the voice page and rule 5's
  * escaping, the rest of the package's sources to gathering, reading the issue line a question
  * assigns, and an issue's `message`, as routes a sentence takes to the operator, and every source
  * file to rule 6's ban on outside text.

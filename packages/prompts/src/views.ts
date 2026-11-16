@@ -1,7 +1,7 @@
 import type { ViewContext } from '@loomcli/core';
 import { escapeControlCharacters, glyph, style as textStyle, view } from '@loomcli/core';
 
-import { graphemes } from './line.js';
+import { graphemes, leading } from './line.js';
 import { logRow } from './log.js';
 
 /** Operator values stay literal even though drawing preserves the library's terminal controls. */
@@ -676,19 +676,11 @@ function editorAnswer(
       : '';
   const row = () => `${style.dim('?')} ${message} ${style.dim('·')} ${answer}${count}`;
   /** The longest run of the text's leading graphemes that fits in `budget`, unescaped. */
-  const leading = (text: string, budget: number) => {
-    let result = '';
-    for (const part of graphemes(text)) {
-      if (width(literal(result + part)) > budget) {
-        break;
-      }
-      result += part;
-    }
-    return result;
-  };
+  const clippedTo = (text: string, budget: number) =>
+    leading(text, budget, (candidate) => width(literal(candidate)));
   if (width(row()) > columns) {
     const budget = Math.max(width(glyph.ellipsis), columns - width(row()) + width(answer));
-    const kept = leading(
+    const kept = clippedTo(
       data.answer === '' ? 'empty' : data.answer,
       budget - width(glyph.ellipsis),
     );
@@ -717,7 +709,7 @@ function editorAnswer(
   let room = columns;
   let fitted = '';
   for (const [text, draw] of parts) {
-    const kept = leading(text, room);
+    const kept = clippedTo(text, room);
     if (kept !== '') {
       fitted += draw(kept);
     }
@@ -980,8 +972,9 @@ interface ProgressLine {
   readonly unit?: string | undefined;
   /**
    * The rows under the line: the newest lines `log()` gave, at most the line's `logRows`, oldest
-   * first, each the author's marked text with no line break. Empty on an end frame, because every
-   * end removes the rows. A line always supplies it; absent, no rows.
+   * first, each the author's marked text with no line break. The last entry may be an open
+   * iterable's unfinished line, and a line cut at the length bound ends with the ellipsis. Empty on
+   * an end frame, because every end removes the rows. A line always supplies it; absent, no rows.
    */
   readonly log?: readonly string[] | undefined;
 }
