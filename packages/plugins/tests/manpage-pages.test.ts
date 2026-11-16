@@ -579,3 +579,63 @@ describe('escapes', () => {
     }
   });
 });
+
+/** The Command `pick`, which holds three Boolean options and no group. */
+function pick() {
+  return new Command('pick', { description: 'Pick.' })
+    .option('json', { description: 'As JSON.', type: 'boolean' })
+    .option('yaml', { description: 'As YAML.', type: 'boolean' })
+    .option('toml', { description: 'As TOML.', type: 'boolean' });
+}
+
+/** A kit with no Command yet, for a test to attach the Command it judges. */
+function emptyKit() {
+  return new Application('kit', { description: 'A kit.' });
+}
+
+/** The lines of the man page `file`, for the kit `attach` builds. */
+function linesOf(
+  attach: (root: ReturnType<typeof emptyKit>) => Parameters<typeof pagesOf>[0],
+  file: string,
+): string[] {
+  return (pagesOf(attach(emptyKit())).get(file) ?? '').split('\n');
+}
+
+describe('option groups', () => {
+  it('prints the sentence of an exclusive group as its own paragraph', () => {
+    const lines = linesOf(
+      (root) => root.command(pick().exclusive('json', 'yaml').action(noop)),
+      'kit-pick.1',
+    );
+    const sentence = String.raw`Use at most one of \-\-json and \-\-yaml.`;
+    expect(lines).toContain(sentence);
+    expect(lines[lines.indexOf(sentence) - 1]).toBe('.PP');
+  });
+
+  it('prints the sentence of a oneRequired group', () => {
+    const lines = linesOf(
+      (root) => root.command(pick().oneRequired('json', 'yaml', 'toml').action(noop)),
+      'kit-pick.1',
+    );
+    expect(lines).toContain(String.raw`Supply at least one of \-\-json, \-\-yaml, and \-\-toml.`);
+  });
+
+  it('prints the sentence of a requiredTogether group', () => {
+    const lines = linesOf(
+      (root) => root.command(pick().requiredTogether('json', 'yaml').action(noop)),
+      'kit-pick.1',
+    );
+    expect(lines).toContain(String.raw`Use \-\-json and \-\-yaml together.`);
+  });
+
+  it('prints the stdin caveat for a group that holds a content option that accepts stdin', () => {
+    const command = new Command('read', { description: 'Read.' })
+      .option('file', { description: 'The file.', stdin: true, type: 'content' })
+      .option('url', { description: 'The address.', type: 'string' })
+      .oneRequired('file', 'url')
+      .action(noop);
+    expect(linesOf((root) => root.command(command), 'kit-read.1')).toContain(
+      String.raw`Supply at least one of \-\-file and \-\-url (piped stdin does not count).`,
+    );
+  });
+});
