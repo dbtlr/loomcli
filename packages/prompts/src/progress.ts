@@ -418,8 +418,8 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     line.label = message ?? line.label;
     clearInterval(timer);
     book.close();
-    // The kept lines, the end line, and the close are issued in one tick, so core's queue holds
-    // Them in that order and nothing another writer writes lands between them.
+    // The kept lines, the end line, and the close are issued in one tick, in that order.
+    // Core's queue keeps the order, so nothing another writer writes lands between them.
     const kept = state === 'failed' || state === 'warned' ? writeKept(state) : Promise.resolve();
     const ended = region.live ? region.draw(frame(), progressLine) : plainLine[state](line.label);
     const closed = region.end(state, message);
