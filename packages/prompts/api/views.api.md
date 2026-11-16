@@ -76,7 +76,7 @@ export interface ProgressLine {
     readonly elapsed: number;
     readonly frame: string;
     readonly label: string;
-    readonly state: 'running' | 'ended' | 'failed' | 'cancelled';
+    readonly state: 'running' | 'ended' | 'failed' | 'cancelled' | 'skipped' | 'warned';
     readonly total: number | undefined;
 }
 

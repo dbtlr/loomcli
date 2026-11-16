@@ -384,6 +384,17 @@ function progress() {
       await second.end();
     },
   );
+  const ends = new Command('ends', { description: 'Skip, warn, and clear.', ...opted }).action(
+    async (context) => {
+      await progressLine(context, { label: 'Fetching records' }).skip(
+        'Fetched nothing: the cache is fresh',
+      );
+      const short = progressLine(context, { label: 'Fetching more', total: 120 });
+      short.update({ completed: 118 });
+      await short.warn('Fetched 118 of 120 records');
+      await progressLine(context, { label: 'Reading the cache' }).clear();
+    },
+  );
   const bare = new Command('bare', { description: 'Report by hand.', ...opted }).action(
     ({ out }) => {
       out.region().report({ completed: 1 });
@@ -401,6 +412,7 @@ function progress() {
     .command(spinner)
     .command(finished)
     .command(pair)
+    .command(ends)
     .command(bare)
     .command(waiting);
 }

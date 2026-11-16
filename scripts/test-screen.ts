@@ -1,4 +1,5 @@
 import xterm from '@xterm/headless';
+import type { IBufferCell, IBufferLine } from '@xterm/headless';
 
 /** Where the cursor sits along its own line: which line it is, and the cells before it on that line. */
 interface LinePlace {
@@ -19,6 +20,21 @@ function linePlace(terminal: xterm.Terminal): LinePlace {
     line += buffer.getLine(index)?.isWrapped === true ? 0 : 1;
   }
   return { line, offset: (row - start) * terminal.cols + buffer.cursorX };
+}
+
+/** One row with only the cells `kept` accepts, every other cell a space, trimmed on the right. */
+function cellsOf(line: IBufferLine | undefined, kept: (cell: IBufferCell) => boolean): string {
+  if (line === undefined) {
+    return '';
+  }
+  let text = '';
+  for (let column = 0; column < line.length; column += 1) {
+    const cell = line.getCell(column);
+    if (cell !== undefined && cell.getWidth() > 0) {
+      text += kept(cell) ? cell.getChars() || ' ' : ' '.repeat(cell.getWidth());
+    }
+  }
+  return text.trimEnd();
 }
 
 /**
@@ -68,6 +84,10 @@ export interface Screen {
   readonly lines: readonly string[];
   /** The cursor's column and its row counted from the first row of `lines`. */
   readonly cursor: { readonly column: number; readonly row: number };
+  /** Each row of `lines` with only its dim cells kept, every other cell a space, trimmed on the right. */
+  readonly dim: readonly string[];
+  /** Each row of `lines` with only the cells drawn in a color kept, every other cell a space, trimmed on the right. */
+  readonly colored: readonly string[];
 }
 
 /**
@@ -108,15 +128,25 @@ export async function replay(
     }
     const buffer = terminal.buffer.active;
     const lines: string[] = [];
+    const dim: string[] = [];
+    const colored: string[] = [];
     for (let index = 0; index < buffer.length; index += 1) {
-      lines.push((buffer.getLine(index)?.translateToString(true) ?? '').trimEnd());
+      const line = buffer.getLine(index);
+      lines.push((line?.translateToString(true) ?? '').trimEnd());
+      dim.push(cellsOf(line, (cell) => cell.isDim() !== 0));
+      colored.push(cellsOf(line, (cell) => !cell.isFgDefault()));
     }
     const cursor = { column: buffer.cursorX, row: buffer.baseY + buffer.cursorY };
     let last = lines.length;
     while (last > 0 && lines[last - 1] === '') {
       last -= 1;
     }
-    return { cursor, lines: lines.slice(0, last) };
+    return {
+      colored: colored.slice(0, last),
+      cursor,
+      dim: dim.slice(0, last),
+      lines: lines.slice(0, last),
+    };
   } finally {
     terminal.dispose();
   }

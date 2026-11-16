@@ -1,4 +1,5 @@
 import type {
+  Out,
   ProgressEvent,
   ProgressReport,
   Region,
@@ -101,6 +102,15 @@ const tracked = new Application('tracked', {
     done: (value: number) => `Indexed ${String(value)}`,
     failed: (error: unknown) => String(error),
   });
+  const ending: Progress = progress(context, { label: 'Fetching' });
+  await ending.skip('Fetched nothing: the cache is fresh');
+  await ending.warn();
+  await ending.clear();
+  // @ts-expect-error TS2554: A cleared line leaves no text, so clear takes no message.
+  await ending.clear('Cleared');
+  const lanes: Pick<Out, 'region' | 'info' | 'success' | 'error'> = context.out;
+  // @ts-expect-error TS2741: A context passed to progress() carries the warn lane.
+  progress({ graph: context.graph, out: lanes }, { label: 'Fetching' });
   // @ts-expect-error TS2345: A done function reads the tracked work's own value type.
   await progress(context, { label: 'Indexing' }).track(Promise.resolve(3), {
     done: (value: string) => value,
@@ -122,4 +132,26 @@ const line: ProgressLine = {
 };
 const declared = progressLine;
 
-export { declared, drawn, event, line, outcome, tracked };
+/** An override's switch over every state the progress view takes, a skipped and a warned end included. */
+function drawnLine({ label, state }: ProgressLine): string {
+  switch (state) {
+    case 'running': {
+      return `… ${label}`;
+    }
+    case 'ended': {
+      return `done ${label}`;
+    }
+    case 'skipped': {
+      return `skipped ${label}`;
+    }
+    case 'warned': {
+      return `warning ${label}`;
+    }
+    case 'failed':
+    case 'cancelled': {
+      return `stopped ${label}`;
+    }
+  }
+}
+
+export { declared, drawn, drawnLine, event, line, outcome, tracked };

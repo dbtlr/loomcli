@@ -89,10 +89,13 @@ export type MultiselectSettings<Key = never, Entry extends ChoiceEntry = ChoiceE
 
 // @public @sealed
 export interface Progress {
+    clear(): Promise<void>;
     end(message?: string): Promise<void>;
     fail(message?: string): Promise<void>;
+    skip(message?: string): Promise<void>;
     track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
     update(update: ProgressUpdate): void;
+    warn(message?: string): Promise<void>;
 }
 
 // @public
@@ -100,7 +103,7 @@ export function progress(context: ProgressContext, settings: ProgressSettings): 
 
 // @public
 export type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
-    readonly out: Pick<Out, 'region' | 'info' | 'success' | 'error'>;
+    readonly out: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'>;
 };
 
 // @public
