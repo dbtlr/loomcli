@@ -4,8 +4,9 @@
  * Every case runs an Application in process on a mock process, or reads the fault a declaring call
  * throws.
  *
- * - One by one. A Command or the root built with a set reads the same values, and inspects to the
- *   same graph, groups included, as one that declared the same options and groups one by one.
+ * - One by one. A Command or the root built with a set reads the same values in the same key order,
+ *   and inspects to the same graph, groups included in call order, as one that declared the same
+ *   options and groups one by one.
  * - Groups. A set's group is enforced at run time, and a later group on the Command may name a set's
  *   option beside one of its own.
  * - A value. A group call leaves its receiver unchanged, and a later change to the record changes
@@ -15,7 +16,7 @@
  *   entries, each finding rebuilding the entry in the set's record.
  * - Faults at a set's group call. A repeated member and the conflicts no type expresses.
  * - Faults at options() and later. A fault against the receiver, at attach, or when run() starts
- *   rebuilds the options() call with the set's entry marked.
+ *   rebuilds the options() call with the set's entry marked, on the Command that applied it.
  */
 import { Application, Command, extension, optionSet } from '@loomcli/core';
 import type { OptionSet, StandardSchemaV1 } from '@loomcli/core';
@@ -125,6 +126,68 @@ test("a set's options reach the action as one-by-one declarations do", async () 
     status: 0,
     stderr: '',
   });
+});
+
+test("an option declared before a set comes first in the action's options, as one by one", async () => {
+  const formats = optionSet({ json: { type: 'boolean' }, yaml: { type: 'boolean' } });
+  const withSet = await run(
+    new Application('app').command(
+      new Command('list')
+        .option('wide', { type: 'boolean' })
+        .options(formats)
+        .action(({ options }) => {
+          seen.push(Object.keys(options));
+        }),
+    ),
+    ['list'],
+  );
+  const declared = await run(
+    new Application('app').command(
+      new Command('list')
+        .option('wide', { type: 'boolean' })
+        .option('json', { type: 'boolean' })
+        .option('yaml', { type: 'boolean' })
+        .action(({ options }) => {
+          seen.push(Object.keys(options));
+        }),
+    ),
+    ['list'],
+  );
+  expect(withSet).toEqual(declared);
+  expect(withSet.seen).toEqual([['wide', 'json', 'yaml']]);
+});
+
+/** A set with two groups, made by an exclusive call and then a required-together call. */
+const credentials = optionSet({
+  json: { type: 'boolean' },
+  password: { type: 'string' },
+  user: { type: 'string' },
+  yaml: { type: 'boolean' },
+})
+  .exclusive('json', 'yaml')
+  .requiredTogether('user', 'password');
+
+test("a set's groups inspect in the order its group calls were made, as one by one", () => {
+  const built = new Application('app')
+    .command(new Command('login').options(credentials).action(() => undefined))
+    .inspect();
+  const declared = new Application('app')
+    .command(
+      new Command('login')
+        .option('json', { type: 'boolean' })
+        .option('password', { type: 'string' })
+        .option('user', { type: 'string' })
+        .option('yaml', { type: 'boolean' })
+        .exclusive('json', 'yaml')
+        .requiredTogether('user', 'password')
+        .action(() => undefined),
+    )
+    .inspect();
+  expect(built.root.children[0]?.optionGroups).toEqual(declared.root.children[0]?.optionGroups);
+  expect(built.root.children[0]?.optionGroups).toEqual([
+    { kind: 'exclusive', options: ['json', 'yaml'] },
+    { kind: 'requiredTogether', options: ['user', 'password'] },
+  ]);
 });
 
 /** An application whose `list` applies a set that holds `json`, and records what it reads. */
@@ -529,6 +592,24 @@ test('a default its validator rejects fails when run() starts, naming the option
   expect(result.stderr).toContain(
     [
       "    new Application('app')",
+      "      .options(optionSet({ level: { default: 'high', type: 'string', validate: … } }))",
+    ].join('\n'),
+  );
+});
+
+test('a set two Commands apply names the Command that ran when its default fails', async () => {
+  // The validator's input type is any string, so the types accept the default its check rejects.
+  const low = z.string().refine((value) => value === 'low');
+  const set = optionSet({ level: { default: 'high', type: 'string', validate: low } });
+  const application = new Application('app')
+    .command(new Command('alpha').options(set).action(() => undefined))
+    .command(new Command('beta').options(set).action(() => undefined));
+  const result = await run(application, ['alpha']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(
+    [
+      '    // app alpha',
+      "    new Command('alpha')",
       "      .options(optionSet({ level: { default: 'high', type: 'string', validate: … } }))",
     ].join('\n'),
   );

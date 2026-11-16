@@ -1,3 +1,5 @@
+import { Application, Command, optionSet } from '@loomcli/core';
+import { help as helpPlugin } from '@loomcli/plugins/help';
 import { expect, test } from 'vite-plus/test';
 
 import { childEnvironment } from '../../../scripts/test-process.js';
@@ -24,6 +26,37 @@ test('help states visible groups and the manifest publishes the same graph facts
     { kind: 'exclusive', options: ['json', 'yaml'] },
     { kind: 'oneRequired', options: ['json', 'yaml'] },
     { kind: 'requiredTogether', options: ['user', 'password'] },
+  ]);
+});
+
+/** The group lines of the help page for `login`, in page order. */
+async function groupLines(login: Command): Promise<string[]> {
+  const app = new Application('app', { plugins: [helpPlugin()] }).command(login);
+  const page = await runOnMock(app, { argv: ['login', '--help'] });
+  return page.stdout.split('\n').filter((line) => /^ {2}Use /u.test(line));
+}
+
+test("help states a set's groups in the order its group calls were made, as one by one", async () => {
+  const grouped = optionSet({
+    json: { type: 'boolean' },
+    password: { type: 'string' },
+    user: { type: 'string' },
+    yaml: { type: 'boolean' },
+  })
+    .exclusive('json', 'yaml')
+    .requiredTogether('user', 'password');
+  const declared = new Command('login')
+    .option('json', { type: 'boolean' })
+    .option('password', { type: 'string' })
+    .option('user', { type: 'string' })
+    .option('yaml', { type: 'boolean' })
+    .exclusive('json', 'yaml')
+    .requiredTogether('user', 'password');
+  const withSet = await groupLines(new Command('login').options(grouped).action(() => undefined));
+  expect(withSet).toEqual(await groupLines(declared.action(() => undefined)));
+  expect(withSet).toEqual([
+    '  Use at most one of --json and --yaml.',
+    '  Use --user and --password together.',
   ]);
 });
 

@@ -167,7 +167,7 @@ function identityOf({ global, input }: ScopedInput): InputIdentity {
 
 /**
  * The validated values of one invocation, keyed by declaration. Only `validateValues` and the
- * validation ledger construct one, and its two readers are the only places where a validated value
+ * validation ledger construct one, and its three readers are the only places where a validated value
  * takes its declared type, so every binder reads through them and none asserts on its own.
  */
 class ValidatedInputs {
@@ -195,12 +195,21 @@ class ValidatedInputs {
   optionSet<Configs extends Readonly<Record<string, OptionConfig>>>(
     applied: AppliedSet<Configs>,
   ): OptionSetValues<Configs> {
-    return this.#fields(applied.inputs);
+    // Last resort: no typed path exists. The map stores every validated value as `unknown`.
+    // A record built from a list of inputs types its keys as `string`, never as the set's names.
+    // A typed accessor where a set's entries are stored needs an assertion, and so does this record.
+    // It holds because `applied.inputs` copy the entries `optionSet()` built from `Configs`.
+    // `AppliedSet` states why they belong to that set, and validation stores each one's output.
+    // `Object.fromEntries` defines each name as an own key, a name such as `__proto__` included.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return Object.fromEntries(
+      applied.inputs.map((input) => [input.name, this.#values.get(input)]),
+    ) as OptionSetValues<Configs>;
   }
 
   /**
    * One validated value read without its declared type, which is what an untyped reader such as a
-   * middleware's request receives. The declared types stay with the two readers above.
+   * middleware's request receives. The declared types stay with the three readers above.
    */
   read(input: InputDeclaration): unknown {
     return this.#values.get(input);
@@ -212,25 +221,13 @@ class ValidatedInputs {
   }
 
   #field<Name extends string, Value>(input: InputDeclaration<Name>): Record<Name, Value> {
-    return this.#fields([input]);
-  }
-
-  /**
-   * The validated value of each declaration, keyed by its name, as the shape the caller's return
-   * type names, so the type parameter appears once by design: the caller's declared return fixes it.
-   */
-  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
-  #fields<Shape>(inputs: readonly InputDeclaration[]): Shape {
     // Last resort: no typed path exists. The map stores every validated value as `unknown`.
-    // A record built from generic computed keys does not type as the declared shape either.
-    // So neither the values nor the keys can reach `Shape` without this assertion.
-    // It holds because validation stores the output each config declares under its declaration.
-    // Each caller above derives `Shape` from the configs of exactly the declarations it passes.
-    // `Object.fromEntries` defines each name as an own key, a name such as `__proto__` included.
+    // An object literal with a generic computed key does not type as `Record<Name, _>` either.
+    // So neither the value nor the key can reach `Record<Name, Value>` without this assertion.
+    // It holds because validation stores the output the config declares under this declaration.
+    // The two callers above derive `Value` from that same config.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return Object.fromEntries(
-      inputs.map((input) => [input.name, this.#values.get(input)]),
-    ) as Shape;
+    return { [input.name]: this.#values.get(input) } as Record<Name, Value>;
   }
 }
 export type { ValidatedInputs };

@@ -171,6 +171,11 @@ test('help prints the details get.md carries, and version the declared version',
   await expect(run(['--version'])).resolves.toMatchObject({ stdout: 'jsonkit v0.0.0\n' });
 });
 
+test('help names the layout set’s indent value by the placeholder the README uses', async () => {
+  const help = await run(['get', '--help']);
+  expect(help.stdout).toContain('--indent <spaces>');
+});
+
 test('the color plugin forces the theme’s colors onto a piped help page', async () => {
   const plain = await run(['--help']);
   expect(plain.stdout).not.toContain('\u001B[');

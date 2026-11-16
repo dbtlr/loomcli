@@ -3,10 +3,10 @@ import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import { DeclarationError, quoted } from '../failures/errors.js';
-import { stdinClaimedTwice } from '../inputs/content-rules.js';
+import { claimsStdin, stdinClaimedTwice } from '../inputs/content-rules.js';
 import { declareSetGroup } from '../inputs/option-groups.js';
 import type { OptionGroup } from '../inputs/option-groups.js';
-import { checkOptionName, compileNext } from '../inputs/options.js';
+import { compileNext } from '../inputs/options.js';
 import type { CompiledOptions, CompileScope } from '../inputs/options.js';
 import type {
   DefaultConstraint,
@@ -18,9 +18,8 @@ import type {
   ValidateOmittedConstraint,
 } from '../inputs/types.js';
 import type { OptionInput } from '../inputs/validation.js';
-import { buildExtensions } from '../plugins/extension.js';
-import type { DescriptorRegistry } from '../plugins/extension.js';
-import { checkLocalOptions } from './globals.js';
+import type { AdmittedDescriptor } from '../plugins/extension.js';
+import { admitLocalOption } from './globals.js';
 import type { GlobalTable } from './globals.js';
 import type { NameConstraint } from './types.js';
 
@@ -128,7 +127,9 @@ interface SetFacts {
 
 /**
  * The options one `options(set)` call declared, under the set that typed them, which the action's
- * binder reads as the set's values.
+ * binder reads as the set's values. Nothing in the types ties `inputs` to `set`: the pairing is a
+ * claim the set reader's assertion in `ValidatedInputs` rests on, and it holds because
+ * `declareOptionSet` builds each one, from copies of the entries that set's own facts hold.
  */
 interface AppliedSet<Configs extends Readonly<Record<string, OptionConfig>>> {
   readonly inputs: readonly OptionInput[];
@@ -178,9 +179,7 @@ const noGlobals: GlobalTable = { names: new Map(), options: new Map(), variables
 
 /** A set's stdin claims, of which at most one entry may make one, as on a Command. */
 function checkSetStdin(entries: readonly OptionInput[]): void {
-  const claimed = entries.filter(
-    (entry) => entry.config.type === 'content' && entry.config.stdin === true,
-  );
+  const claimed = entries.filter((entry) => claimsStdin(entry));
   if (claimed.length > 1) {
     throw new DeclarationError(stdinClaimedTwice, {
       correction: 'Keep one stdin target in the set.',
@@ -194,50 +193,55 @@ function checkSetStdin(entries: readonly OptionInput[]): void {
 }
 
 /**
- * One entry, judged at `optionSet()` as `option()` judges one option on a Command that declares the
- * entries before it and nothing else: its name, its extension values, and each rule its settings
- * answer alone or with an earlier entry.
+ * The entries admitted so far, their compile, and the descriptors their extension values name.
+ * Each later entry's extension values meet those descriptors, so two copies of one meet in the set.
  */
-function admitEntry(
-  admitted: { compiled: CompiledOptions<OptionInput>; entries: readonly OptionInput[] },
-  input: OptionInput,
-  descriptors: DescriptorRegistry,
-): { compiled: CompiledOptions<OptionInput>; entries: readonly OptionInput[] } {
-  checkOptionName(input.name, () => entryUnread(input));
-  const site = entrySite(input);
-  // The descriptors the set's entries name register together, so two copies of one meet here.
-  buildExtensions({
-    declared: input.config.extensions,
-    descriptors,
-    site: { ...site, at: `${site.at}.extensions` },
-    subject: { phrase: `on ${setPhrase} option ${quoted(input.name)}`, sentence: site.subject },
-  });
+interface Admitted {
+  readonly compiled: CompiledOptions<OptionInput>;
+  readonly descriptors: ReadonlyMap<string, AdmittedDescriptor>;
+  readonly entries: readonly OptionInput[];
+}
+
+/**
+ * One entry, judged at `optionSet()` as `option()` judges one option on a Command that declares the
+ * entries before it and nothing else: what it proves on its own through `admitLocalOption`, its
+ * name, its extension values, and each rule its settings answer alone or with an earlier entry,
+ * then the stdin claim.
+ */
+function admitEntry(admitted: Admitted, input: OptionInput): Admitted {
   let { compiled } = admitted;
   const entries = [...admitted.entries, input];
-  checkLocalOptions(
+  const { descriptors } = admitLocalOption(
+    input,
     {
       compile: () => {
         compiled = compileNext(compiled, input, setScope);
         return compiled.table;
       },
       declarations: entries,
+      descriptors: admitted.descriptors,
+      extensions: {
+        phrase: `on ${setPhrase} option ${quoted(input.name)}`,
+        sentence: `${setSentence} option ${quoted(input.name)}`,
+      },
+      scope: setScope,
+      unread: () => entryUnread(input),
     },
     noGlobals,
-    setScope,
   );
   checkSetStdin(entries);
-  return { compiled, entries };
+  return { compiled, descriptors, entries };
 }
 
 /**
  * The runtime set. Its facts sit in the registry, so the value publishes only its group calls, and
- * each call builds a new set from the facts it reads. Its phantom configuration is `never`, which
- * holds no value, so one runtime class answers to the `OptionSet` of every record: the record's
- * types travel from `optionSet()`'s argument through its return type, never through this class.
+ * each call builds a new set from the facts it reads. It is the set of some record, because its
+ * facts hold untyped inputs, so one runtime class serves every set: `optionSet()` types each value
+ * by its record with the one assertion there, and the interface carries that type to each group call.
  */
-class OptionSetValue implements OptionSet<never> {
+class OptionSetValue implements OptionSet {
   /** Type-only: it holds no runtime value. */
-  declare readonly [optionSetConfigs]: never;
+  declare readonly [optionSetConfigs]: Readonly<Record<string, OptionConfig>>;
   readonly #facts: SetFacts;
 
   constructor(held: SetFacts) {
@@ -297,15 +301,20 @@ function optionSet<const Configs extends Readonly<Record<string, OptionConfig>>>
     kind: 'option',
     name,
   }));
-  const descriptors: DescriptorRegistry = new Map();
-  let admitted: { compiled: CompiledOptions<OptionInput>; entries: readonly OptionInput[] } = {
+  let admitted: Admitted = {
     compiled: { claims: new Map(), names: new Map(), table: new Map() },
+    descriptors: new Map(),
     entries: [],
   };
   for (const input of inputs) {
-    admitted = admitEntry(admitted, input, descriptors);
+    admitted = admitEntry(admitted, input);
   }
-  return new OptionSetValue({ entries: Object.freeze(inputs), groups: [] });
+  const set: OptionSet = new OptionSetValue({ entries: Object.freeze(inputs), groups: [] });
+  // Last resort: no typed path exists. The facts hold each entry as an untyped input.
+  // So the value types as the set of some record, and only a claim names `Configs`.
+  // It holds because this call built the facts from `configs`, one entry per key in its order.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  return set as OptionSet<Configs>;
 }
 
 export type { AppliedSet, OptionSet, OptionSetNameConstraint, OptionSetValues };

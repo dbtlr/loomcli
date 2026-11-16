@@ -1,4 +1,5 @@
 import { optionSet } from '@loomcli/core';
+import { helpInput } from '@loomcli/plugins/help/extension';
 import { integer } from '@loomcli/validators';
 
 /**
@@ -12,6 +13,7 @@ export const jsonLayout = optionSet({
   indent: {
     default: '2',
     description: 'Indent nested JSON by this many spaces, from 0 to 8.',
+    extensions: [helpInput({ placeholder: 'spaces' })],
     type: 'string',
     validate: integer({ max: 8, min: 0 }),
   },

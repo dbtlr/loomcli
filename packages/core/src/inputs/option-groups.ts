@@ -42,7 +42,8 @@ interface Declaration extends GroupCall {
   readonly name: string | null;
 }
 
-function checkMembers({ inputs, kind, names, name }: Declaration, fail: Fault): void {
+function checkMembers(declaration: Declaration, fail: Fault): void {
+  const { inputs, kind, names, name } = declaration;
   const subject = commandSentence(name);
   if (names.length < 2) {
     fail(
@@ -50,12 +51,8 @@ function checkMembers({ inputs, kind, names, name }: Declaration, fail: Fault): 
       'Name at least two local options.',
     );
   }
-  const seen = new Set<string>();
+  checkRepeats({ ...declaration, subject }, fail);
   for (const member of names) {
-    if (seen.has(member)) {
-      fail(`${subject} ${kind} repeats option ${quoted(member)}.`, 'Name each option once.');
-    }
-    seen.add(member);
     if (!inputs.some((input) => input.kind === 'option' && input.name === member)) {
       fail(
         `${subject} ${kind} names undeclared local option ${quoted(member)}.`,

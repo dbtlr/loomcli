@@ -17,7 +17,7 @@ import {
 import type { InvokedBy, LoomError } from '../failures/errors.js';
 import { underCI } from '../host/host.js';
 import type { Host } from '../host/types.js';
-import { stdinClaimedTwice } from '../inputs/content-rules.js';
+import { claimsStdin, stdinClaimedTwice } from '../inputs/content-rules.js';
 import type { Content } from '../inputs/content.js';
 import { rememberInputNames } from '../inputs/missing-input.js';
 import { declareGroup } from '../inputs/option-groups.js';
@@ -111,7 +111,6 @@ import type {
 import {
   buildExtensions,
   extendStore,
-  noExtensions,
   publishStore,
   registerDescriptor,
   storeCommandLayers,
@@ -151,7 +150,13 @@ import type {
   InputRecords,
   TableEntry,
 } from './globals.js';
-import { buildGlobals, checkLocalOptions, frozenValues } from './globals.js';
+import {
+  admitLocalOption,
+  buildGlobals,
+  checkLocalOptions,
+  frozenValues,
+  inputExtensions,
+} from './globals.js';
 import { setFacts } from './option-sets.js';
 import type {
   AppliedSet,
@@ -691,11 +696,6 @@ function checkCompiledOptions(
   return checkLocalOptions({ compile, declarations: optionsOf(inputs) }, table, scope);
 }
 
-/** Whether one input claims stdin, which at most one target of a Command may. */
-function claimsStdin(input: InputDeclaration): boolean {
-  return input.config.type === 'content' && input.config.stdin === true;
-}
-
 /** The arguments an author wrote to a `passthrough()` call: none for a bare call. */
 function passthroughArguments(config: { description: string | undefined }): [] | [object] {
   return config.description === undefined ? [] : [{ description: config.description }];
@@ -755,25 +755,20 @@ function recordInput(
   input: InputDeclaration,
 ): Pick<Declared, 'descriptors' | 'records'> {
   const { name } = state;
-  // An input that declares no value registers no descriptor and needs no site.
-  if ((input.config.extensions ?? []).length === 0) {
-    return {
-      descriptors: state.descriptors,
-      records: new Map([...state.records, [input, noExtensions]]),
-    };
-  }
-  const descriptors = new Map(state.descriptors);
-  const site = inputSite(name, pathOf(name), input);
-  const record = buildExtensions({
-    declared: input.config.extensions,
-    descriptors,
-    site: { ...site, at: `${site.at}.extensions` },
-    subject: {
-      phrase: `on ${commandSubject(name)} ${input.kind} "${input.name}"`,
-      sentence: `${commandSentence(name)} ${input.kind} "${input.name}"`,
-    },
+  const { descriptors, record } = inputExtensions(input, {
+    descriptors: state.descriptors,
+    siteOf: () => inputSite(name, pathOf(name), input),
+    subject: inputSubject(name, input),
   });
   return { descriptors, records: new Map([...state.records, [input, record]]) };
+}
+
+/** How an extension fault names one input of the Command `name`. */
+function inputSubject(name: string | null, input: InputDeclaration): ExtensionSubject {
+  return {
+    phrase: `on ${commandSubject(name)} ${input.kind} "${input.name}"`,
+    sentence: `${commandSentence(name)} ${input.kind} "${input.name}"`,
+  };
 }
 
 /** Every rule one argument answers at its own call: its name, a repeated name, and its place after the arguments before it. */
@@ -874,27 +869,24 @@ export function declareOption<
   declared: OptionInput<Name, Config>,
   table: GlobalTable = noGlobals,
 ): CommandState<Args, Options & Record<Name, OptionValue<Config>>, Globals> {
-  // The call's own input is judged before the receiver's state, as alias() judges its names.
-  checkOptionName(declared.name, () =>
-    configUnread(inputSite(state.name, pathOf(state.name), declared)),
-  );
   const input = { ...declared, config: { ...declared.config } };
   return { ...state, ...admitOption(state, input, table), bind: bindOption(state.bind, input) };
 }
 
 /**
- * One local option joining a declaration, with every rule `option()` judges once the name has
- * passed: its extension values, its settings alone and beside the options before it, the globals
- * table, and the stdin claim. It answers the parts of the declaration the option changes.
+ * One local option joining a declaration, with every rule `option()` judges: what the option
+ * proves on its own through `admitLocalOption`, its name first, before the receiver's state, as
+ * alias() judges its names, then the stdin claim. It answers the parts of the declaration the
+ * option changes.
  */
 function admitOption(
   state: Declared,
   input: OptionInput,
   table: GlobalTable,
 ): Pick<Declared, 'descriptors' | 'inputs' | 'records'> {
-  const path = pathOf(state.name);
-  const recorded = recordInput(state, input);
-  const scope = localScope(state.name, path);
+  const { name } = state;
+  const path = pathOf(name);
+  const scope = localScope(name, path);
   const inputs = [...state.inputs, input];
   // The options before this one compiled at their own calls, so only this one compiles here.
   const compile = () => {
@@ -902,12 +894,23 @@ function admitOption(
     localCompiles.set(inputs, compiled);
     return compiled.table;
   };
-  checkLocalOptions({ compile, declarations: [...optionsOf(state.inputs), input] }, table, scope);
+  const { descriptors, record } = admitLocalOption(
+    input,
+    {
+      compile,
+      declarations: [...optionsOf(state.inputs), input],
+      descriptors: state.descriptors,
+      extensions: inputSubject(name, input),
+      scope,
+      unread: () => configUnread(scope.siteOf(input)),
+    },
+    table,
+  );
   // The list before this input already answered the rule, so only a claiming input can break it.
   if (claimsStdin(input)) {
     checkStdinClaims(inputs, { path, stdin: state.stdin });
   }
-  return { ...recorded, inputs };
+  return { descriptors, inputs, records: new Map([...state.records, [input, record]]) };
 }
 
 /**
