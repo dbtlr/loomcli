@@ -270,7 +270,7 @@ The owner settled the shape in grooming (LM-387): one switch turns off all redra
 
   Help lists `--plain` with its description among the global options, completion offers it, and the MCP plugin leaves it out of every tool's input schema, as it leaves out every control option.
 
-The contract for the switch, its mark, progress, and streamed messages is in [The plain switch](../core/output.md#the-plain-switch), [Live region](../core/output.md#live-region), [A streamed message](../core/output.md#a-streamed-message), [Interaction](../core/interaction.md), the [plain plugin](../plugins/plain.md), the [prompts reference's progress lines](../libs/prompts.md#progress), [Graph inspection](../core/graph-inspection.md), the [manifest plugin](../plugins/manifest.md), [Declaration faults](../core/declaration-faults.md), and the [glossary](../glossary.md#compilation-and-invocation). The line-based form of each question is stated above, and the prompts and testing references gain it with the code that asks line by line.
+The contract is in [The plain switch](../core/output.md#the-plain-switch), [Live region](../core/output.md#live-region), [A streamed message](../core/output.md#a-streamed-message), [Interaction](../core/interaction.md), the [plain plugin](../plugins/plain.md), the prompts reference's [Asking line by line](../libs/prompts.md#asking-line-by-line), [Line pieces](../libs/prompts.md#line-pieces), and [progress lines](../libs/prompts.md#progress), the testing reference's [keyboard](../libs/testing.md#mockprocess), [Graph inspection](../core/graph-inspection.md), the [manifest plugin](../plugins/manifest.md), [Declaration faults](../core/declaration-faults.md), and the [glossary](../glossary.md#compilation-and-invocation).
 
 ## Considered options
 

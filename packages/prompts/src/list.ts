@@ -1,20 +1,24 @@
 import { validateLinkedValue } from '@loomcli/core';
-import type { StandardSchemaV1 } from '@loomcli/core';
+import type { Region, StandardSchemaV1 } from '@loomcli/core';
 
 import { TypedLine, graphemes } from './line.js';
+import { askLineByLine } from './lines.js';
+import type { LineAsking } from './lines.js';
 import { invalid, resolveLink } from './link.js';
 import {
   choiceIssue,
   chooseAtLeast,
+  chooseAtMost,
   invalidAnswer,
   noSelectableChoice,
   overLimit,
+  typeNumbers,
+  typeOneNumber,
   unselectable,
 } from './messages.js';
-import { asking } from './question.js';
-import { openReader } from './reader.js';
+import { asking, liveReader } from './question.js';
 import type { ChoiceEntry, ChoiceSource, PromptContext } from './types.js';
-import type { ChoiceRow, SeparatorRow } from './views.js';
+import type { ChoiceRow, NumberedChoice, SeparatorRow } from './views.js';
 
 interface Item {
   value: unknown;
@@ -38,13 +42,14 @@ function item(entry: ChoiceEntry): Item | undefined {
     value: object.value,
   };
 }
+function separatorRow(entry: ChoiceEntry): SeparatorRow {
+  return {
+    kind: 'separator',
+    label: typeof entry !== 'string' && 'separator' in entry ? entry.separator : '',
+  };
+}
 function row(entry: ChoiceEntry): ChoiceRow | SeparatorRow {
-  return (
-    item(entry)?.row ?? {
-      kind: 'separator',
-      label: typeof entry !== 'string' && 'separator' in entry ? entry.separator : '',
-    }
-  );
+  return item(entry)?.row ?? separatorRow(entry);
 }
 /**
  * The values a prefill matches: the first of `candidates` that is present, where `undefined` is
@@ -71,6 +76,63 @@ interface ListSettings<Options, Args> {
   default?: unknown;
   min?: number;
   max?: number;
+}
+
+/**
+ * The issue a supplied value that selects nothing prints: the values no choice matches, or a
+ * disabled one does, and the values past `max`.
+ */
+function prefillIssue(
+  missing: readonly unknown[],
+  limited: readonly unknown[],
+  max: number | undefined,
+): string | undefined {
+  return (
+    [
+      missing.length ? unselectable(missing) : '',
+      limited.length > 0 && max !== undefined ? overLimit(limited, max) : '',
+    ]
+      .filter(Boolean)
+      .join(' ') || undefined
+  );
+}
+
+/**
+ * Runs each chosen value through the linked input's validator, as a linked question returns the
+ * input's own value, and answers the outputs, or the issue of the first value it refused.
+ */
+async function validateChosen<Options, Args>(
+  context: PromptContext<Options, Args>,
+  settings: ListSettings<Options, Args>,
+  picked: { readonly chosen: readonly Item[]; readonly multiple: boolean },
+): Promise<{ readonly outputs: unknown[] } | { readonly issue: string }> {
+  const { chosen, multiple } = picked;
+  const outputs: unknown[] = [];
+  for (const choice of chosen) {
+    let result: StandardSchemaV1.Result<unknown> = { value: choice.value };
+    if (typeof choice.value === 'string') {
+      if (settings.option !== undefined) {
+        result = await validateLinkedValue(
+          context,
+          { message: settings.message, option: settings.option },
+          choice.value,
+        );
+      } else if (settings.argument !== undefined) {
+        result = await validateLinkedValue(
+          context,
+          { argument: settings.argument, message: settings.message },
+          choice.value,
+        );
+      }
+    }
+    context.signal.throwIfAborted();
+    if (result.issues !== undefined) {
+      const sentence = result.issues[0]?.message ?? invalidAnswer;
+      return { issue: multiple ? choiceIssue(choice.row.label, sentence) : sentence };
+    }
+    outputs.push(result.value);
+  }
+  return { outputs };
 }
 
 /** Both list kinds share source ownership, navigation, prefill, and selection identity. */
@@ -121,9 +183,14 @@ async function askList<Options, Args>(
     multiple,
   );
   const search = settings.search === true || settings.source !== undefined;
+  // A region that is not live is a terminal that does not move its cursor, so it asks line by line.
+  const region = context.out.region({ input: true });
+  if (!region.live) {
+    return askListLines(context, settings, { multiple, region, search, supplied, values });
+  }
   const line = new TypedLine();
-  const reader = openReader(context);
-  const draw = asking(context, { kind, message: settings.message }, reader);
+  const reader = liveReader(context, region);
+  const draw = asking(context, { kind, message: settings.message }, { reader, region });
   let entries: readonly ChoiceEntry[] = settings.choices ?? [];
   let highlighted: number | undefined = undefined;
   let start = 0;
@@ -255,13 +322,7 @@ async function askList<Options, Args>(
         highlighted = entries.findIndex((entry) => Object.is(item(entry)?.value, value));
       }
     }
-    issue =
-      [
-        missing.length ? unselectable(missing) : '',
-        limited.length > 0 && max !== undefined ? overLimit(limited, max) : '',
-      ]
-        .filter(Boolean)
-        .join(' ') || undefined;
+    issue = prefillIssue(missing, limited, max);
   };
   const settle = async (found: readonly ChoiceEntry[], signal: AbortSignal) => {
     if (signal.aborted) {
@@ -355,39 +416,15 @@ async function askList<Options, Args>(
         }
         const single = current ? [current] : [];
         const chosen = multiple ? selection : single;
-        const outputs: unknown[] = [];
         issue = undefined;
-        for (const choice of chosen) {
-          let result: StandardSchemaV1.Result<unknown> = { value: choice.value };
-          if (typeof choice.value === 'string') {
-            if (settings.option !== undefined) {
-              result = await validateLinkedValue(
-                context,
-                { message: settings.message, option: settings.option },
-                choice.value,
-              );
-            } else if (settings.argument !== undefined) {
-              result = await validateLinkedValue(
-                context,
-                { argument: settings.argument, message: settings.message },
-                choice.value,
-              );
-            }
-          }
-          context.signal.throwIfAborted();
-          if (result.issues !== undefined) {
-            const sentence = result.issues[0]?.message ?? invalidAnswer;
-            issue = multiple ? choiceIssue(choice.row.label, sentence) : sentence;
-            break;
-          }
-          outputs.push(result.value);
-        }
-        if (issue !== undefined) {
+        const checked = await validateChosen(context, settings, { chosen, multiple });
+        if ('issue' in checked) {
+          issue = checked.issue;
           await frame();
           continue;
         }
         answered = { value: chosen.map((choice) => choice.row.label).join(', ') };
-        return multiple ? outputs : outputs[0];
+        return multiple ? checked.outputs : checked.outputs[0];
       }
       if (navigation) {
         const positions = selectable();
@@ -453,6 +490,291 @@ async function askList<Options, Args>(
     context.signal.removeEventListener('abort', abort);
     draw.signal.removeEventListener('abort', abort);
     await draw.finish(answered, reader.close());
+  }
+}
+
+/** A numbered list: the rows it prints, and the choice each number chooses, from 1 in order. */
+interface NumberedList {
+  readonly rows: readonly (NumberedChoice | SeparatorRow)[];
+  readonly numbered: readonly Item[];
+}
+
+/** Numbers every choice that is not disabled, from 1 in the list's order. */
+function numberedList(entries: readonly ChoiceEntry[]): NumberedList {
+  const numbered: Item[] = [];
+  const rows = entries.map((entry): NumberedChoice | SeparatorRow => {
+    const choice = item(entry);
+    if (choice === undefined) {
+      return separatorRow(entry);
+    }
+    if (!choice.row.disabled) {
+      numbered.push(choice);
+    }
+    return {
+      description: choice.row.description,
+      kind: 'choice',
+      label: choice.row.label,
+      number: choice.row.disabled ? undefined : numbered.length,
+      reason: choice.row.reason,
+    };
+  });
+  return { numbered, rows };
+}
+
+/**
+ * The numbers a line names, each comma-separated item with the spaces around it ignored and an
+ * empty item skipped, or `undefined` when an item is not a number.
+ */
+function numbersIn(typed: string): number[] | undefined {
+  const items = typed
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part !== '');
+  return items.every((part) => /^\d+$/u.test(part)) ? items.map(Number) : undefined;
+}
+
+/** The limits a line of numbers meets: one choice at a select, and `min` and `max` at a multiselect. */
+interface Limits {
+  readonly multiple: boolean;
+  readonly min: number;
+  readonly max: number | undefined;
+}
+
+/**
+ * The choices a line of numbers chooses from `list`: one number at a select, and any count at a
+ * multiselect, a number given twice counted once, in the line's order, within `min` and `max`.
+ * Answers the issue that refuses the line otherwise.
+ */
+function chosenBy(
+  numbers: readonly number[],
+  list: NumberedList,
+  limits: Limits,
+): { readonly chosen: Item[] } | { readonly issue: string } {
+  const highest = list.numbered.length;
+  if (!limits.multiple) {
+    const choice = numbers.length === 1 ? list.numbered[(numbers[0] ?? 0) - 1] : undefined;
+    return choice === undefined ? { issue: typeOneNumber(highest) } : { chosen: [choice] };
+  }
+  if (!numbers.every((number) => number >= 1 && number <= highest)) {
+    return { issue: typeNumbers(highest) };
+  }
+  const chosen = [...new Set(numbers)].flatMap((number) => list.numbered[number - 1] ?? []);
+  if (chosen.length < limits.min) {
+    return { issue: chooseAtLeast(limits.min) };
+  }
+  if (limits.max !== undefined && chosen.length > limits.max) {
+    return { issue: chooseAtMost(limits.max) };
+  }
+  return { chosen };
+}
+
+/**
+ * The choices a prefill selects in a list that does not search, and the issue a supplied value
+ * that selects nothing prints, as a question that redraws matches its prefill.
+ */
+function prefilledChoices(
+  list: NumberedList,
+  entries: readonly ChoiceEntry[],
+  facts: {
+    readonly values: readonly unknown[];
+    readonly supplied: boolean;
+    readonly multiple: boolean;
+    readonly max: number | undefined;
+  },
+): { readonly picked: Item[]; readonly issue: string | undefined } {
+  const missing: unknown[] = [];
+  const limited: unknown[] = [];
+  const picked: Item[] = [];
+  const unique = facts.values.filter(
+    (value, index) => facts.values.findIndex((other) => Object.is(value, other)) === index,
+  );
+  for (const value of unique) {
+    const match = entries
+      .map(item)
+      .find((choice) => choice !== undefined && Object.is(choice.value, value));
+    const numbered =
+      match === undefined
+        ? undefined
+        : list.numbered.find((choice) => Object.is(choice.value, match.value));
+    if (numbered === undefined) {
+      if (facts.supplied) {
+        missing.push(value);
+      }
+    } else if (!facts.multiple) {
+      picked.splice(0, picked.length, numbered);
+    } else if (facts.max !== undefined && picked.length >= facts.max) {
+      if (facts.supplied) {
+        limited.push(value);
+      }
+    } else {
+      picked.push(numbered);
+    }
+  }
+  return { issue: prefillIssue(missing, limited, facts.max), picked };
+}
+
+/** The number each choice takes in `list`, from 1. */
+function numbersFor(list: NumberedList, chosen: readonly Item[]): number[] {
+  return chosen.map((choice) => list.numbered.indexOf(choice) + 1);
+}
+
+/** What both line forms of a list use to accept the chosen values or print the issue. */
+type Answering = (
+  chosen: readonly Item[],
+  again: () => Promise<void>,
+) => Promise<{ readonly value: unknown } | undefined>;
+
+/**
+ * Asks a select or multiselect line by line: its message, its numbered list, and the row it asks
+ * on, where Enter alone takes the prefill. A search asks for a term first, prints the matches as a
+ * numbered list, and then takes a line of numbers or a new term. A rejected answer prints its
+ * sentence and the asking row again, not the list.
+ */
+async function askListLines<Options, Args>(
+  context: PromptContext<Options, Args>,
+  settings: ListSettings<Options, Args>,
+  facts: {
+    readonly multiple: boolean;
+    readonly search: boolean;
+    readonly supplied: boolean;
+    readonly values: readonly unknown[];
+    readonly region: Region;
+  },
+): Promise<unknown> {
+  const { multiple, region } = facts;
+  const limits = { max: settings.max, min: settings.min ?? 0, multiple };
+  return askLineByLine(context, { message: settings.message, region }, async (line) => {
+    const answer: Answering = async (chosen, again) => {
+      const checked = await validateChosen(context, settings, { chosen, multiple });
+      if ('issue' in checked) {
+        await line.print({ issue: checked.issue, kind: 'issue' });
+        await again();
+        return undefined;
+      }
+      return { value: multiple ? checked.outputs : checked.outputs[0] };
+    };
+    await line.print({ kind: 'title', message: settings.message });
+    if (facts.search) {
+      return searchLines(settings, line, { answer, limits });
+    }
+    const entries = settings.choices ?? [];
+    const list = numberedList(entries);
+    await line.print({ choices: list.rows, kind: 'list' });
+    const prefill = prefilledChoices(list, entries, { ...facts, max: settings.max });
+    if (prefill.issue !== undefined) {
+      await line.print({ issue: prefill.issue, kind: 'issue' });
+    }
+    const fallback = multiple ? [] : list.numbered.slice(0, 1);
+    const defaults = numbersFor(list, prefill.picked.length > 0 ? prefill.picked : fallback);
+    const askingRow = () =>
+      line.print({
+        hint: defaults.length === 0 ? undefined : defaults.join(','),
+        kind: multiple ? 'numbers' : 'number',
+      });
+    line.reasking(askingRow);
+    await askingRow();
+    while (true) {
+      const typed = await line.read();
+      const picked = chosenBy(
+        typed.trim() === '' ? defaults : (numbersIn(typed) ?? [Number.NaN]),
+        list,
+        limits,
+      );
+      if ('issue' in picked) {
+        await line.print({ issue: picked.issue, kind: 'issue' });
+        await askingRow();
+        continue;
+      }
+      const answered = await answer(picked.chosen, askingRow);
+      if (answered !== undefined) {
+        return answered.value;
+      }
+    }
+  });
+}
+
+/**
+ * The search form of a select or multiselect asked line by line: `Search: `, the matches for the
+ * term as a numbered list, and `Enter a number, or text to search again: `, where a line of
+ * numbers chooses from the list just printed and any other line is a new term. A source is called
+ * once for each term, and the next call and the question's end abort the call before.
+ */
+async function searchLines<Options, Args>(
+  settings: ListSettings<Options, Args>,
+  line: LineAsking,
+  using: { readonly answer: Answering; readonly limits: Limits },
+): Promise<unknown> {
+  let call: AbortController | undefined = undefined;
+  const stop = () => {
+    call?.abort();
+  };
+  const stopped = new Promise<never>((_resolve, reject) => {
+    line.signal.addEventListener(
+      'abort',
+      () => {
+        stop();
+        reject(line.signal.reason);
+      },
+      { once: true },
+    );
+  });
+  void stopped.catch(() => {});
+  /** The matches for one term: one call of the source, or the choices whose label holds it. */
+  const matches = async (term: string): Promise<readonly ChoiceEntry[]> => {
+    if (settings.source === undefined) {
+      const choices = settings.choices ?? [];
+      return term === ''
+        ? choices
+        : choices.filter((entry) =>
+            item(entry)?.row.label.toLowerCase().includes(term.toLowerCase()),
+          );
+    }
+    stop();
+    call = new AbortController();
+    const called = settings.source(term, { signal: call.signal });
+    return Array.isArray(called) ? called : Promise.race([Promise.resolve(called), stopped]);
+  };
+  const searchRow = () => line.print({ hint: undefined, kind: 'search' });
+  const refineRow = () => line.print({ hint: undefined, kind: 'refine' });
+  try {
+    line.reasking(searchRow);
+    await searchRow();
+    let term = await line.read();
+    while (true) {
+      const list = numberedList(await matches(term));
+      line.signal.throwIfAborted();
+      await line.print({ choices: list.rows, kind: 'list' });
+      if (list.numbered.length === 0) {
+        await line.print({ issue: noSelectableChoice, kind: 'issue' });
+        line.reasking(searchRow);
+        await searchRow();
+        term = await line.read();
+        continue;
+      }
+      line.reasking(refineRow);
+      await refineRow();
+      while (true) {
+        const typed = await line.read();
+        const numbers = numbersIn(typed);
+        // A line of numbers chooses, and any other line, Enter alone included, is a new term.
+        if (numbers === undefined || numbers.length === 0) {
+          term = typed;
+          break;
+        }
+        const picked = chosenBy(numbers, list, using.limits);
+        if ('issue' in picked) {
+          await line.print({ issue: picked.issue, kind: 'issue' });
+          await refineRow();
+          continue;
+        }
+        const answered = await using.answer(picked.chosen, refineRow);
+        if (answered !== undefined) {
+          return answered.value;
+        }
+      }
+    }
+  } finally {
+    stop();
   }
 }
 

@@ -784,6 +784,156 @@ const cancelledLine = view<CancelledLine>('@loomcli/prompts/cancelled-line', {
 });
 
 /**
+ * One choice of the numbered list a select or multiselect prints when it asks line by line.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#asking-line-by-line
+ * @public
+ */
+interface NumberedChoice {
+  /** Marks the row as a choice. */
+  readonly kind: 'choice';
+  /**
+   * The number the operator types to choose it, counted from 1 in the list's order, or
+   * `undefined` for a disabled choice, which takes none.
+   */
+  readonly number: number | undefined;
+  /** The text the row shows. */
+  readonly label: string;
+  /** The choice's description, which the row shows after its label, or `undefined` when it has none. */
+  readonly description: string | undefined;
+  /** A disabled choice's reason, when it has one. */
+  readonly reason: string | undefined;
+}
+
+/**
+ * One piece a question prints when it asks line by line, on a terminal that does not redraw in
+ * place. The question prints each piece once and never draws it again: a text, secret, or confirm
+ * question's asking row; a select's or multiselect's message, numbered list, and the row it asks
+ * on; and the issue that refused an answer, before the question asks again.
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#asking-line-by-line
+ * @public
+ */
+type QuestionLine =
+  | {
+      /** The asking row of a text, secret, or confirm question, which the operator's answer follows. */
+      readonly kind: 'text' | 'secret' | 'confirm';
+      /** The question's message. */
+      readonly message: string;
+      /**
+       * What Enter alone answers, which the row shows in brackets: a text question's prefill, or a
+       * confirm question's legend, `Y/n`, `y/N`, or `y/n`. `undefined` when there is none, and
+       * always for a secret.
+       */
+      readonly hint: string | undefined;
+    }
+  | {
+      /** A select's or multiselect's message, on a row of its own above its list. */
+      readonly kind: 'title';
+      /** The question's message. */
+      readonly message: string;
+    }
+  | {
+      /** A select's or multiselect's numbered list, one row for each entry. */
+      readonly kind: 'list';
+      /** The rows in the list's order, which is empty when a search matched nothing. */
+      readonly choices: readonly (NumberedChoice | SeparatorRow)[];
+    }
+  | {
+      /**
+       * The row a select or multiselect asks on: `number` after a select's list, `numbers` after a
+       * multiselect's, `search` before a search, and `refine` after a search's list.
+       */
+      readonly kind: 'number' | 'numbers' | 'search' | 'refine';
+      /**
+       * The numbers Enter alone answers, which the row shows in brackets, such as `1` or `1,3`, or
+       * `undefined` when there are none, and always at `search`.
+       */
+      readonly hint: string | undefined;
+    }
+  | {
+      /** The sentence that refused the last answer, on a row of its own. */
+      readonly kind: 'issue';
+      /** The sentence. */
+      readonly issue: string;
+    };
+
+/** The fixed label of each row a select or multiselect asks on. */
+const askingLabels = {
+  number: 'Enter a number',
+  numbers: 'Enter numbers separated by commas',
+  refine: 'Enter a number, or text to search again',
+  search: 'Search',
+} as const;
+
+/** One row of a numbered list, indented two columns, with its line break. */
+function numberedRow(row: NumberedChoice | SeparatorRow, context: ViewContext): string {
+  const { style } = context;
+  if (row.kind === 'separator') {
+    return row.label === '' ? '\n' : `${style.dim(`  ${literal(row.label)}`)}\n`;
+  }
+  if (row.number === undefined) {
+    return `${style.dim(`  ${literal(row.label)} (${literal(row.reason ?? 'disabled')})`)}\n`;
+  }
+  const description =
+    row.description === undefined || row.description === ''
+      ? ''
+      : `${style.dim(' · ')}${literal(row.description)}`;
+  return `  ${row.number}. ${literal(row.label)}${description}\n`;
+}
+
+/** A row the operator answers on: its text, the hint in dim brackets when there is one, and `: `. */
+function askingRow(text: string, hint: string | undefined, context: ViewContext): string {
+  const bracketed = hint === undefined ? '' : ` ${context.style.dim(`[${literal(hint)}]`)}`;
+  return `${text}${bracketed}: `;
+}
+
+/**
+ * The declared view that draws each piece a question prints when it asks line by line. Its
+ * default rendering moves no cursor and erases nothing, and an application restyles it with
+ * `override`.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { questionLine } from '@loomcli/prompts/views';
+ *
+ * export const preview = new Command('preview').action(async (context) => {
+ *   await context.out.draw({ hint: 'my-app', kind: 'text', message: 'Project name' }, questionLine);
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#asking-line-by-line
+ * @public
+ */
+const questionLine = view<QuestionLine>('@loomcli/prompts/question-line', {
+  render: (data, context) => {
+    const { style } = context;
+    switch (data.kind) {
+      case 'text':
+      case 'secret':
+      case 'confirm': {
+        return askingRow(style.bold(data.message), data.hint, context);
+      }
+      case 'title': {
+        return `${style.bold(data.message)}\n`;
+      }
+      case 'list': {
+        return data.choices.length === 0
+          ? `${style.dim('  No matches')}\n`
+          : data.choices.map((row) => numberedRow(row, context)).join('');
+      }
+      case 'issue': {
+        return `${style.error(`${glyph.cross} ${literal(data.issue)}`)}\n`;
+      }
+      default: {
+        return askingRow(askingLabels[data.kind], data.hint, context);
+      }
+    }
+  },
+});
+
+/**
  * What one progress line's view draws: its state, its counts, its spinner frame, and its time.
  *
  * @public
@@ -896,9 +1046,11 @@ const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
   },
 });
 
-export { answeredLine, cancelledLine, progressLine, questionFrame };
+export { answeredLine, cancelledLine, progressLine, questionFrame, questionLine };
 export type {
   AnsweredLine,
+  NumberedChoice,
+  QuestionLine,
   CancelledLine,
   ProgressLine,
   QuestionFrame,

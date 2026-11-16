@@ -31,7 +31,7 @@ test('help lists --plain with its description among the global options', async (
   const run = await runOnMock(kit(), { argv: ['--help'], env: {} });
   expect(run.status).toBe(0);
   expect(run.stdout).toMatch(
-    /--plain\s+Never redraw: print progress and streamed messages as plain lines\./u,
+    /--plain\s+Never redraw: print progress as plain lines and ask questions line by line\./u,
   );
 });
 

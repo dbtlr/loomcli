@@ -311,7 +311,7 @@ The `background: true` fact on the one string global option whose value carries 
 _Avoid_: Background option (for the mark), theme option
 
 **Plain switch**:
-The run's one setting that turns off redrawing in place, so a progress line and a streamed message only ever append to the screen. It is on when a word of argv before the first bare `--` is a spelling of the plain-marked option, read right after host capture, or when `ACCESSIBLE` is set and not empty, which core reads in every application, and nothing turns it off. With it on, a terminal destination does not redraw in place, as under `TERM=dumb`: no live region without input draws, and a streamed message is written a line at a time. Messages, color, verbosity, and the interaction decision are untouched.
+The run's one setting that turns off all redrawing, so the screen is only ever appended to. It is on when a word of argv before the first bare `--` is a spelling of the plain-marked option, read right after host capture, or when `ACCESSIBLE` is set and not empty, which core reads in every application, and nothing turns it off. With it on, a terminal destination neither moves its cursor nor redraws in place, as under `TERM=dumb`: no live region draws, an input region included, a streamed message is written a line at a time, and a question asks line by line. Messages, color, verbosity, and the interaction decision are untouched.
 _Avoid_: Accessible mode, plain mode, screen-reader mode, no-redraw flag (for the switch)
 
 **Plain mark**:
@@ -478,7 +478,7 @@ Text a view produces from one value and `out.render` writes, after core resolves
 _Avoid_: Formatted output, verbatim output
 
 **Live region**:
-An area at the bottom of stderr that core redraws in place while it is open, which `out.region()` opens and whose handle draws frames into it. Open regions stack in the order they opened, below every other write, which core writes above them, and a closing region's last frame stays in scrollback. Core draws one only when stderr is a terminal and, unless it is an input region, the run is not quiet, and core closes one left open when what opened it finishes: the action's return for the action's regions, and the middleware chain's unwinding for a middleware's or a configuration source's. `out.draw` is a region of one frame that core writes above the open regions, as it writes every other write, at every verbosity.
+An area at the bottom of stderr that core redraws in place while it is open, which `out.region()` opens and whose handle draws frames into it. Open regions stack in the order they opened, below every other write, which core writes above them, and a closing region's last frame stays in scrollback. Core draws one only when stderr is a terminal that moves its cursor, which it does unless the plain switch is on or `TERM` is `dumb`, and, unless it is an input region, only when the run is also neither under CI nor quiet. Core closes one left open when what opened it finishes: the action's return for the action's regions, and the middleware chain's unwinding for a middleware's or a configuration source's. `out.draw` is a region of one frame that core writes above the open regions, as it writes every other write, at every verbosity.
 _Avoid_: Status area, live area, spinner area, region broker, sticky footer
 
 **Frame**:
@@ -486,7 +486,7 @@ The text one draw of a live region renders through a view. Core keeps a region's
 _Avoid_: Screen, snapshot, render (for the text)
 
 **Input region**:
-A live region opened with `input: true`, which reads the operator's keys, as a question does. While it is open, core draws no frame of any other region and draws each latest frame once when it closes, and one input region is open at a time. It draws at every verbosity.
+A live region opened with `input: true`, which reads the operator's keys, as a question does. While it is open, core draws no frame of any other region and draws each latest frame once when it closes, and one input region is open at a time. It draws at every verbosity and under CI, and never with the plain switch on or under `TERM=dumb`, where its `live` reads `false` and a question asks line by line.
 _Avoid_: Prompt region, modal, focus
 
 **Progress event**:
@@ -777,8 +777,12 @@ The one first-party package that ships every first-party plugin as its own separ
 _Avoid_: Bundle, standard library, batteries, default set
 
 **Question**:
-One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, select, multiselect, or editor, drawn in an input region on stderr while the interaction decision is on, and answered from the operator's keys on stdin, or, for an editor question, from the file the operator's editor saves. It is part of the action, never a run stage or an input source.
+One prompt an action asks through `@loomcli/prompts`, of the kind text, secret, confirm, select, multiselect, or editor, drawn in an input region on stderr while the interaction decision is on, or asked line by line where that region is not live, and answered from the operator's keys on stdin, or, for an editor question, from the file the operator's editor saves. It is part of the action, never a run stage or an input source.
 _Avoid_: Prompt (for one question; the package is prompts), wizard step, input source
+
+**Line-based question**:
+A question asked line by line, which a question is when interaction is on and its input region is not live, under the plain switch or `TERM=dumb`. Each piece it prints, its asking row with the default in brackets, a select's or multiselect's numbered list, and a rejected answer's sentence, is printed once through the `questionLine` view and never redrawn, and the operator types the answer in the terminal's own line mode and presses Enter. A secret reads in raw mode with nothing echoed.
+_Avoid_: Accessible prompt, plain prompt, fallback prompt
 
 **Choice**:
 One answer a select or multiselect question offers: a string, which is its own value and label, or an object with a `value` the question returns, a `label` the frame draws, an optional `description`, and an optional `disabled` state with its reason. A linked question's choice values are strings. Select and multiselect take the same choices, and a separator in the list is not a choice.

@@ -1,19 +1,31 @@
 import { questionValidationOptions } from '@loomcli/core';
-import type { StandardSchemaV1 } from '@loomcli/core';
+import type { Region, StandardSchemaV1 } from '@loomcli/core';
 
 import { controls, hideCursor, pasteOff, showCursor } from './controls.js';
 import { TypedLine, graphemes } from './line.js';
+import { askLineByLine } from './lines.js';
 import { invalidAnswer } from './messages.js';
 import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
 import { answeredLine, cancelledLine, questionFrame } from './views.js';
 import type { QuestionFrame } from './views.js';
 
-function confirmHint(hint: string | undefined): string {
+/** A confirm question's legend, whose capital letter is the prefill: `Y/n`, `y/N`, or `y/n`. */
+function confirmLegend(hint: string | undefined): string {
   if (hint === 'yes') {
-    return '[Y/n]';
+    return 'Y/n';
   }
-  return hint === 'no' ? '[y/N]' : '[y/n]';
+  return hint === 'no' ? 'y/N' : 'y/n';
+}
+
+/** Opens the key reader for a live region, ending the region when the reader cannot open. */
+function liveReader<Options>(context: PromptContext<Options>, region: Region) {
+  try {
+    return openReader(context);
+  } catch (error) {
+    void region.end();
+    throw error;
+  }
 }
 function displayAnswer(kind: string, raw: string, value: unknown): string | undefined {
   if (kind === 'secret') {
@@ -35,10 +47,10 @@ function displayAnswer(kind: string, raw: string, value: unknown): string | unde
 function asking<Options>(
   context: PromptContext<Options>,
   question: { readonly message: string; readonly kind: QuestionFrame['kind'] },
-  reader: { abandon: (reason: unknown) => void },
+  held: { readonly reader: { abandon: (reason: unknown) => void }; readonly region: Region },
 ) {
+  const { reader, region } = held;
   const { message, kind } = question;
-  const region = context.out.region({ input: true });
   region.signal.addEventListener(
     'abort',
     () => {
@@ -131,16 +143,21 @@ async function askText<Options, Output>(
     validate?: StandardSchemaV1<string, Output>;
   } & ({ option?: string; argument?: never } | { argument: string; option?: never }),
 ): Promise<string | Output> {
+  // A region that is not live is a terminal that does not move its cursor, so it asks line by line.
+  const region = context.out.region({ input: true });
+  if (!region.live) {
+    return askTextLines(context, settings, region);
+  }
   // Raw mode holds from here, and the first frame resolves once this question's turn has come.
-  const reader = openReader(context);
-  const draw = asking(context, settings, reader);
+  const reader = liveReader(context, region);
+  const draw = asking(context, settings, { reader, region });
   const line = new TypedLine();
   let issue: string | undefined = undefined;
   let answered: { value: string | undefined } | undefined = undefined;
   const frame = () =>
     draw.frame({
       cursor: settings.kind === 'secret' ? 0 : line.cursor,
-      hint: settings.kind === 'confirm' ? confirmHint(settings.hint) : settings.hint,
+      hint: settings.kind === 'confirm' ? `[${confirmLegend(settings.hint)}]` : settings.hint,
       issue,
       kind: settings.kind,
       message: settings.message,
@@ -191,4 +208,62 @@ async function askText<Options, Output>(
   }
 }
 
-export { asking, askText, validateAnswer };
+/**
+ * Asks a text, secret, or confirm question line by line: its asking row, `Project name [my-app]: `,
+ * then the line the operator enters, where Enter alone takes the prefill. A rejected answer
+ * prints its sentence and the asking row again. A secret reads in raw mode, so nothing it types is
+ * echoed, and prints the line break its Enter did not.
+ */
+async function askTextLines<Options, Output>(
+  context: PromptContext<Options>,
+  settings: {
+    message: string;
+    kind: 'text' | 'secret' | 'confirm';
+    hint: string | undefined;
+    validate?: StandardSchemaV1<string, Output>;
+  } & ({ option?: string; argument?: never } | { argument: string; option?: never }),
+  region: Region,
+): Promise<string | Output> {
+  const secret = settings.kind === 'secret';
+  return askLineByLine(context, { message: settings.message, region }, async (line) => {
+    const row = () =>
+      line.print({
+        hint: settings.kind === 'confirm' ? confirmLegend(settings.hint) : settings.hint,
+        kind: settings.kind,
+        message: settings.message,
+      });
+    line.reasking(row);
+    if (secret) {
+      line.input.raw(true);
+    }
+    try {
+      await row();
+      while (true) {
+        const typed = await line.read(secret);
+        if (secret) {
+          await context.out.draw('\n', controls);
+        }
+        const raw = typed === '' ? (settings.hint ?? '') : typed;
+        const result = await validateAnswer(context, settings, raw);
+        line.signal.throwIfAborted();
+        if (result.issues === undefined) {
+          if (secret) {
+            line.input.discardRest();
+          }
+          return result.value;
+        }
+        await line.print({
+          issue: result.issues[0]?.message ?? invalidAnswer,
+          kind: 'issue',
+        });
+        await row();
+      }
+    } finally {
+      if (secret) {
+        line.input.raw(false);
+      }
+    }
+  });
+}
+
+export { asking, askText, liveReader, validateAnswer };

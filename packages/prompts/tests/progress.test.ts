@@ -23,7 +23,7 @@
  * - Off a terminal. With stderr piped, the run writes exactly the plain lines the Progress section
  *   shows. On a terminal stderr whose `TERM` is `dumb`, with `CI` set, with `ACCESSIBLE` set, or
  *   with `--plain` from the plain plugin, it writes the same plain lines and no control sequence,
- *   and under `TERM=dumb` a question asked beside two lines still asks. Under `-q` with the verbose
+ *   and under `TERM=dumb` a question asked beside two lines asks line by line. Under `-q` with the verbose
  *   plugin, it writes only failure lines. Under `app.invoke`,
  *   the lines land in `messages`, and the observer reads every progress event in order. The end
  *   event of a line ended by `end`, `fail`, or `track` with a `done` or `failed` message carries
@@ -610,17 +610,11 @@ test.each([
   },
 );
 
-test('on a terminal stderr whose TERM is dumb, a question asked beside two plain lines still asks', async () => {
+test('on a terminal stderr whose TERM is dumb, a question asked beside two plain lines asks line by line', async () => {
   const run = await lines('question', 'tty', [], { TERM: 'dumb' });
-  expect(run.notes.asked).toBe(true);
-  const shown = await screen(run);
-  expect(shown.slice(0, 5)).toEqual([
-    'ℹ First',
-    'ℹ Second',
-    '? Continue · yes',
-    '✔ First moved',
-    '✔ Second',
-  ]);
+  expect(run.code).toBe(0);
+  // The mock does not echo the answer, so the end line follows the asking row.
+  expect(run.stderr).toBe('ℹ First\nℹ Second\nContinue: ✔ First\n✔ Second\n');
 });
 
 test('under -q only the failure lines print', async () => {

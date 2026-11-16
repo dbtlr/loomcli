@@ -8,7 +8,7 @@ const identity = `${packageName}/plain`;
 const options = {
   plain: {
     control: true,
-    description: 'Never redraw: print progress and streamed messages as plain lines.',
+    description: 'Never redraw: print progress as plain lines and ask questions line by line.',
     plain: true,
     type: 'boolean',
   },
@@ -22,8 +22,9 @@ export type PlainOptions = typeof options;
 
 /**
  * Gives the operator --plain, which turns the run's plain switch on, so nothing redraws: a
- * progress line prints plain lines and a streamed message is written a line at a time. Core turns
- * the switch on for ACCESSIBLE too, with or without the plugin, so the plugin takes no settings.
+ * progress line prints plain lines, a streamed message is written a line at a time, and a
+ * question asks line by line. Core turns the switch on for ACCESSIBLE too, with or without the
+ * plugin, so the plugin takes no settings.
  *
  * @example
  * ```ts

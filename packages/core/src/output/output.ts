@@ -117,12 +117,19 @@ const unopened = (): void => undefined;
 const showCursor = '\u001B[?25h';
 
 /**
- * Whether a terminal destination redraws in place: not with the run's plain switch on, which
- * turns every redraw off, not under `TERM=dumb`, which cannot move the cursor, and not under CI,
+ * Whether a terminal destination moves its cursor: not with the run's plain switch on, which
+ * turns every redraw off, and not under `TERM=dumb`, which cannot.
+ */
+function movesCursor(env: ReportHost['env'], plain: boolean): boolean {
+  return !plain && env.TERM !== 'dumb';
+}
+
+/**
+ * Whether a terminal destination redraws in place: where it moves its cursor, and not under CI,
  * where the terminal feeds a build log.
  */
 function redraws(env: ReportHost['env'], plain: boolean): boolean {
-  return !plain && env.TERM !== 'dumb' && !underCI(env);
+  return movesCursor(env, plain) && !underCI(env);
 }
 
 /** One sequence's hold on a destination: the pieces it writes, and the end of its place. */
@@ -782,10 +789,13 @@ export class Output {
           },
           plain: (text) => this.context('stderr').plain(text),
         }),
-        // An input region draws wherever stderr is a terminal, so a question still asks.
+        // An input region draws wherever the terminal moves its cursor, under CI and -q included.
+        // Elsewhere a question reads `live` false and asks line by line.
         live: (input) =>
           this.host.terminal.stderr.isTTY &&
-          (input || (this.verbosity >= 0 && redraws(this.host.env, this.plainSwitch))),
+          (input
+            ? movesCursor(this.host.env, this.plainSwitch)
+            : this.verbosity >= 0 && redraws(this.host.env, this.plainSwitch)),
         write: (compose) => this.destination(this.host.stderr).compose(compose),
       },
       this.screen,

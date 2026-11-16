@@ -10,10 +10,11 @@
  *   word that attaches a value leave it off, and the attached value fails the parse as an ordinary
  *   Boolean option's does. A repeated spelling is the repetition error.
  * - The option still parses. `options.plain` reads what the operator typed, never the switch.
- * - What it turns off. With the switch on, a region without `input: true` on a terminal stderr
- *   reads `live` `false`, `out.draw` keeps the Application's `terminalControls` setting, a signal
- *   that ends the run shows no cursor unless the Application preserves controls, and a streamed
- *   message writes each completed line once, on a terminal stderr and on a terminal stdout.
+ * - What it turns off. With the switch on, a region on a terminal stderr, with or without
+ *   `input: true`, reads `live` `false`, `out.draw` keeps the Application's `terminalControls`
+ *   setting, a signal that ends the run shows no cursor unless the Application preserves controls,
+ *   and a streamed message writes each completed line once, on a terminal stderr and on a terminal
+ *   stdout.
  * - What it leaves alone. With the switch on, `-q` still hides the info lane, `NO_COLOR` and
  *   `FORCE_COLOR` still decide color, and `--no-input` still turns interaction off, while the
  *   switch alone leaves interaction on.
@@ -45,6 +46,7 @@ async function seen(argv: readonly string[], env: Record<string, string | undefi
   const facts: Record<string, unknown> = {};
   const app = plainApplication().action(({ interactive, options, out }) => {
     facts.live = out.region().live;
+    facts.inputLive = out.region({ input: true }).live;
     facts.option = options.plain;
     facts.interactive = interactive;
   });
@@ -67,11 +69,15 @@ test.each([
   { argv: [], env: { ACCESSIBLE: '0' }, live: false },
   { argv: [], env: { ACCESSIBLE: 'false' }, live: false },
   { argv: [], env: { ACCESSIBLE: '' }, live: true },
-])('with argv $argv and $env, a region without input reads live $live', async (scenario) => {
-  const run = await seen(scenario.argv, scenario.env);
-  expect(run.code).toBe(0);
-  expect(run.facts.live).toBe(scenario.live);
-});
+])(
+  'with argv $argv and $env, a region with or without input reads live $live',
+  async (scenario) => {
+    const run = await seen(scenario.argv, scenario.env);
+    expect(run.code).toBe(0);
+    expect(run.facts.live).toBe(scenario.live);
+    expect(run.facts.inputLive).toBe(scenario.live);
+  },
+);
 
 test('ACCESSIBLE turns the switch on in an Application that marks no option', async () => {
   const lives: boolean[] = [];

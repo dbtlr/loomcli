@@ -441,7 +441,10 @@ class Screen {
 
 /** What the run's regions need from the output that owns them. */
 interface RegionHost {
-  /** Whether a region opened now is live: stderr is a terminal, and it takes input or the run is not quiet. */
+  /**
+   * Whether a region opened now is live: stderr is a terminal, and an input region's terminal
+   * moves its cursor, or another region's terminal redraws in place and the run is not quiet.
+   */
   live: (input: boolean) => boolean;
   /** Renders one frame through its view, or answers the rejection a broken view raised. */
   frame: (data: unknown, view: View<never>) => Frame | { failed: Promise<void> };
