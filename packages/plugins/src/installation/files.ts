@@ -565,13 +565,17 @@ function carryOut(path: string, plan: InstallPlan, carrying: Carrying): InstallO
 }
 
 /**
- * Removes each recorded folder whole and answers those that were there, recording each removal; a
- * folder already gone is no error and records nothing.
+ * Removes each recorded folder whole and answers those that were there, recording each removal as
+ * it is made, so a later removal that fails leaves the earlier ones recorded; a folder already gone
+ * is no error and records nothing.
  */
 function removeFolders(folders: readonly RecordedFolder[], log: Log): string[] {
-  const removed = folders.filter(({ path }) => removeWhole(path)).map(({ path }) => path);
-  for (const path of removed) {
-    fileRemoved(log, { path });
+  const removed: string[] = [];
+  for (const { path } of folders) {
+    if (removeWhole(path)) {
+      fileRemoved(log, { path });
+      removed.push(path);
+    }
   }
   return removed;
 }

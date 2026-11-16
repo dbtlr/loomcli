@@ -13,7 +13,7 @@
  * - `manpage generate` records each page it writes.
  * - The Commands print no line of their own at -vv.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -58,8 +58,15 @@ function sandbox(): Sandbox {
   };
 }
 
-/** Runs `notes ...argv` and answers its status, stderr, and the events it raised, as message and path. */
-async function run(box: Sandbox, argv: readonly string[]) {
+/**
+ * Runs `notes ...argv` and answers its status, stderr, and the events it raised, as message and path.
+ * A run that is expected to fail names more skills than one and leaves the failure's own event out.
+ */
+async function run(
+  box: Sandbox,
+  argv: readonly string[],
+  options: { readonly skillNames?: readonly string[]; readonly fails?: boolean } = {},
+) {
   const events: LogEvent[] = [];
   const observer = plugin('fixture/observer', {
     onLog: (event) => {
@@ -74,9 +81,10 @@ async function run(box: Sandbox, argv: readonly string[]) {
       completion(),
       manpage(),
       skills({
-        skills: [
-          { files: async () => [{ content: '# Notes\n', path: 'SKILL.md' }], name: 'notes' },
-        ],
+        skills: (options.skillNames ?? ['notes']).map((name) => ({
+          files: async () => [{ content: '# Notes\n', path: 'SKILL.md' }],
+          name,
+        })),
       }),
     ],
   });
@@ -91,10 +99,12 @@ async function run(box: Sandbox, argv: readonly string[]) {
   });
   await app.run({ process: mock });
   return {
-    changes: events.map(({ fields, level, message }) => {
-      expect(level).toBe('info');
-      return [message, fields.path];
-    }),
+    changes: events
+      .filter(({ level }) => options.fails !== true || level === 'info')
+      .map(({ fields, level, message }) => {
+        expect(level).toBe('info');
+        return [message, fields.path];
+      }),
     status: mock.exitCode,
     stderr: mock.stderr.text,
   };
@@ -191,3 +201,31 @@ test('a skill folder records one event under its path, globally and in a project
     ['File written.', project],
   ]);
 });
+
+// A superuser removes any folder, so the case needs an ordinary user.
+test.skipIf(process.getuid?.() === 0)(
+  'an uninstall that fails partway records each folder it had removed',
+  async () => {
+    const box = sandbox();
+    const skillNames = ['notes', 'other'];
+    const first = join(box.home, '.agents', 'skills', 'notes');
+    const second = join(box.home, '.agents', 'skills', 'other');
+    const installed = await run(box, ['skills', 'install', '--agent', 'agents'], { skillNames });
+    expect(installed.status).toBe(0);
+    // A folder that lets nothing be removed from it makes the second removal fail.
+    const locked = join(second, 'locked');
+    mkdirSync(locked);
+    writeFileSync(join(locked, 'kept'), '');
+    chmodSync(locked, 0o555);
+    try {
+      const removed = await run(box, ['skills', 'uninstall', '--agent', 'agents'], {
+        fails: true,
+        skillNames,
+      });
+      expect(removed.status).not.toBe(0);
+      expect(removed.changes).toEqual([['File removed.', first]]);
+    } finally {
+      chmodSync(locked, 0o755);
+    }
+  },
+);
