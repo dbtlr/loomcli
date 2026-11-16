@@ -78,6 +78,14 @@ tester.run('discarded-declaration', discardedDeclaration, {
       errors: [discarded('exclusive')],
     },
     {
+      // A requirement is an authoring call on a Command and on an option set.
+      code: `import { Command, optionSet } from '@loomcli/core';
+        const login = new Command('login', { description: 'Sign in.' });
+        login.requires('password', 'user');
+        optionSet({ password: { type: 'string' }, user: { type: 'string' } }).requires('password', 'user');`,
+      errors: [discarded('requires'), discarded('requires')],
+    },
+    {
       code: `import * as loom from '@loomcli/core';
         const output = loom.optionSet({ json: { type: 'boolean' }, yaml: { type: 'boolean' } });
         const grouped = output;

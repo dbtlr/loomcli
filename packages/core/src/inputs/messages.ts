@@ -118,11 +118,19 @@ interface GroupMember {
   readonly label: string | undefined;
 }
 
-function groupMembers(members: readonly GroupMember[]): string {
-  const names = members.map((member) => quoted(member.spelling) + origin(member.label));
-  return names.length === 2
+/** Names joined for a sentence: `a`, `a and b`, or `a, b, and c`. */
+function listed(names: readonly string[]): string {
+  return names.length <= 2
     ? names.join(' and ')
     : [names.slice(0, -1).join(', '), names.at(-1) ?? ''].join(', and ');
+}
+
+function quotedNames(names: readonly string[]): string {
+  return listed(names.map((name) => quoted(name)));
+}
+
+function groupMembers(members: readonly GroupMember[]): string {
+  return listed(members.map((member) => quoted(member.spelling) + origin(member.label)));
 }
 
 /** A group has no singular subject, so each sentence states the complete relationship. */
@@ -143,6 +151,17 @@ function groupSentence(
   }
 }
 
+/**
+ * A requirement's sentence names its option and only the needed options it still lacks, then both
+ * ways out. A lacking option was supplied by no tier, so only the option carries a source label.
+ */
+function requirementSentence(option: GroupMember, lacking: readonly string[]): string {
+  const subject: InputSubject = { kind: 'option', origin: option.label, spelling: option.spelling };
+  return lacking.length === 1
+    ? `${inputSubject(subject)} requires option ${quotedNames(lacking)}. Supply it as well, or remove ${quoted(option.spelling)}.`
+    : `${inputSubject(subject)} requires options ${quotedNames(lacking)}. Supply them as well, or remove ${quoted(option.spelling)}.`;
+}
+
 export type { GroupMember, InputSubject, OptionFix };
 export {
   environmentBoolean,
@@ -157,6 +176,7 @@ export {
   pipedStdin,
   requiredArgument,
   requiredOption,
+  requirementSentence,
   silentRejection,
   stdinIssue,
   tooFewSources,

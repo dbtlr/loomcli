@@ -79,6 +79,16 @@ interface OptionSet<
       ...Extract<keyof Configs, string>[],
     ]
   ): OptionSet<Configs>;
+  /**
+   * Returns a new set that also declares that supplying the first named member requires each
+   * further one, while a further member alone is accepted.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
+   */
+  requires(
+    option: Extract<keyof Configs, string>,
+    ...needed: [Extract<keyof Configs, string>, ...Extract<keyof Configs, string>[]]
+  ): OptionSet<Configs>;
 }
 
 /**
@@ -259,6 +269,10 @@ class OptionSetValue implements OptionSet {
 
   requiredTogether(...names: [string, string, ...string[]]): OptionSetValue {
     return this.#group('requiredTogether', names);
+  }
+
+  requires(option: string, ...needed: [string, ...string[]]): OptionSetValue {
+    return this.#group('requires', [option, ...needed]);
   }
 
   /** A new set that holds one more group, after the groups this set holds. */

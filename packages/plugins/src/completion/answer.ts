@@ -106,9 +106,11 @@ function optionOffers(
     return position.supplied.includes(name) && (value === undefined || value !== absent.get(name));
   };
   const excluded = new Set(
-    position.command.optionGroups
-      .filter((group) => group.kind === 'exclusive' && group.options.some(claimed))
-      .flatMap((group) => group.options.filter((name) => !position.supplied.includes(name))),
+    position.command.optionGroups.flatMap((group) =>
+      group.kind === 'exclusive' && group.options.some(claimed)
+        ? group.options.filter((name) => !position.supplied.includes(name))
+        : [],
+    ),
   );
   return scope
     .filter((option) => isListed(option) && !excluded.has(option.name))

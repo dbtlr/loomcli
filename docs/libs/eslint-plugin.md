@@ -71,8 +71,8 @@ typescript-eslint supports TypeScript below 6.1 and reads the TypeScript 6 API, 
 The rules read source text and scope analysis. They use no type information. A value is a Loom declaration when it is one of these:
 
 - `new Command(...)` or `new Application(...)`, where the binding is imported from `@loomcli/core`. A renamed import (`import { Command as Cmd }`) and a namespace import (`new core.Command(...)`) count.
-- `optionSet(...)`, where the binding is imported from `@loomcli/core`, under the same import forms. An [option set](../core/options.md#sharing-options) is immutable like a Command, and its group calls, `exclusive`, `oneRequired`, and `requiredTogether`, are authoring calls on it.
-- An authoring call on a Loom declaration. The authoring calls are `option`, `options`, `argument`, `globalOption`, `command`, `alias`, `action`, `stdin`, `exclusive`, `oneRequired`, `requiredTogether`, `result`, `rows`, `views`, and `extend`.
+- `optionSet(...)`, where the binding is imported from `@loomcli/core`, under the same import forms. An [option set](../core/options.md#sharing-options) is immutable like a Command, and its group calls, `exclusive`, `oneRequired`, `requiredTogether`, and `requires`, are authoring calls on it.
+- An authoring call on a Loom declaration. The authoring calls are `option`, `options`, `argument`, `globalOption`, `command`, `alias`, `action`, `stdin`, `exclusive`, `oneRequired`, `requiredTogether`, `requires`, `result`, `rows`, `views`, and `extend`.
 - An identifier whose `const` declaration is initialized with a Loom declaration.
 
 Type assertions around a value (`as`, `satisfies`, `!`) do not change what it is.

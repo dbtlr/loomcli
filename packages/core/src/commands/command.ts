@@ -18,7 +18,7 @@ import type { Host } from '../host/types.js';
 import { claimsStdin, stdinClaimedTwice } from '../inputs/content-rules.js';
 import type { Content } from '../inputs/content.js';
 import { rememberInputNames } from '../inputs/missing-input.js';
-import { declareGroup } from '../inputs/option-groups.js';
+import { declareGroup, membersOf } from '../inputs/option-groups.js';
 import type { OptionGroup } from '../inputs/option-groups.js';
 import {
   booleanValue,
@@ -289,6 +289,7 @@ export type CommandMethod =
   | 'exclusive'
   | 'oneRequired'
   | 'requiredTogether'
+  | 'requires'
   | 'result'
   | 'rows'
   | 'passthrough'
@@ -949,7 +950,7 @@ export function declareOptionSet<
     inputs.push(input);
   }
   for (const group of held.groups) {
-    Object.assign(declared, declareOptionGroup(declared, group.kind, group.options));
+    Object.assign(declared, declareOptionGroup(declared, group.kind, membersOf(group)));
   }
   return { ...declared, bind: bindOptionSet(state.bind, { inputs, set }) };
 }
@@ -1638,6 +1639,10 @@ class AttachedCommandValue implements AttachedCommand {
 
   requiredTogether(...names: [string, string, ...string[]]): AttachedCommand {
     return this.#group('requiredTogether', names);
+  }
+
+  requires(option: string, ...needed: [string, ...string[]]): AttachedCommand {
+    return this.#group('requires', [option, ...needed]);
   }
 
   #group(kind: OptionGroup['kind'], names: readonly string[]): AttachedCommand {
@@ -2615,6 +2620,20 @@ export class CommandBuilder<
     ]
   ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
     return this.#derive(declareOptionGroup(this.#state, 'requiredTogether', names));
+  }
+
+  /**
+   * Declares that supplying the first named local option requires each further one, while a
+   * further option alone is accepted: `.requires('password', 'user')` accepts `--user` alone and
+   * refuses `--password` without `--user`.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
+   */
+  requires(
+    option: Extract<keyof Options, string>,
+    ...needed: [Extract<keyof Options, string>, ...Extract<keyof Options, string>[]]
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+    return this.#derive(declareOptionGroup(this.#state, 'requires', [option, ...needed]));
   }
 
   /**

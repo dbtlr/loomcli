@@ -3,24 +3,61 @@ import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { DeclarationError } from '../failures/errors.js';
 import type { InputProblem } from '../failures/errors.js';
 import { commandSentence, quoted } from '../failures/messages.js';
-import { groupSentence } from './messages.js';
+import { groupSentence, requirementSentence } from './messages.js';
+import type { GroupMember } from './messages.js';
 import { absentBoolean, isSupplied, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
 import type { InputDeclaration } from './validation.js';
 
 /**
- * A relationship over supplied local options, in declaration order.
+ * A relationship over supplied local options, in declaration order: a group that states one rule
+ * over all its members, or a requirement of one option on others.
  *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#declared-option-groups
  * @public
  * @sealed
  */
-interface OptionGroup {
-  /**
-   * Which rule the group states: at most one member, at least one member, or all members or none.
-   */
-  readonly kind: 'exclusive' | 'oneRequired' | 'requiredTogether';
-  /** The names of the local options the group relates, in declaration order. */
-  readonly options: readonly string[];
+type OptionGroup =
+  | {
+      /**
+       * Which rule the group states: at most one member, at least one member, or all members or
+       * none.
+       */
+      readonly kind: 'exclusive' | 'oneRequired' | 'requiredTogether';
+      /** The names of the local options the group relates, in declaration order. */
+      readonly options: readonly string[];
+    }
+  | {
+      /** A one-way requirement: supplying `option` requires each option `requires` names. */
+      readonly kind: 'requires';
+      /** The name of the local option that has the requirement. */
+      readonly option: string;
+      /** The names of the local options it needs, in declaration order. */
+      readonly requires: readonly string[];
+    };
+
+/** A group that states one rule over all its members. */
+type MemberGroup = Exclude<OptionGroup, { readonly kind: 'requires' }>;
+
+/** A one-way requirement of one option on others. */
+type Requirement = Extract<OptionGroup, { readonly kind: 'requires' }>;
+
+/** Every option a group names, in the order its call names them: a requirement's option first. */
+function membersOf(group: OptionGroup): readonly string[] {
+  return group.kind === 'requires' ? [group.option, ...group.requires] : group.options;
+}
+
+/**
+ * The frozen group one call declares over `names`. A requirement's first name is its option and
+ * the rest are the options it needs. A Command's call judges that it names at least two, and a
+ * set's types require two, so the first name is always there.
+ */
+function groupOf(kind: OptionGroup['kind'], names: readonly string[]): OptionGroup {
+  if (kind !== 'requires') {
+    return Object.freeze({ kind, options: Object.freeze([...names]) });
+  }
+  const [option = '', ...requires] = names;
+  return Object.freeze({ kind, option, requires: Object.freeze(requires) });
 }
 
 const groupDeclaration = registerRule('@loomcli/core/option-group', {
@@ -53,8 +90,8 @@ function checkMembers(declaration: Declaration, fail: Fault): void {
     );
   }
   const judgeRepeat = repeatJudgment({ ...declaration, subject }, fail);
-  for (const member of names) {
-    judgeRepeat(member);
+  for (const [index, member] of names.entries()) {
+    judgeRepeat(member, index);
     if (!inputs.some((input) => input.kind === 'option' && input.name === member)) {
       fail(
         `${subject} ${kind} names undeclared local option ${quoted(member)}.`,
@@ -82,14 +119,8 @@ function checkConflicts(
   fail: Fault,
 ): void {
   const { subject } = declaration;
-  const exclusive =
-    group.kind === 'exclusive'
-      ? [group]
-      : declaration.groups.filter((each) => each.kind === 'exclusive');
-  const together =
-    group.kind === 'requiredTogether'
-      ? [group]
-      : declaration.groups.filter((each) => each.kind === 'requiredTogether');
+  const exclusive = group.kind === 'exclusive' ? [group] : exclusiveGroups(declaration.groups);
+  const together = asksTogether(group) ? [group] : declaration.groups.filter(asksTogether);
   for (const rule of exclusive) {
     const required = declaration.inputs.find(
       (input) =>
@@ -101,17 +132,29 @@ function checkConflicts(
         'Remove the presence requirement or remove the exclusive group.',
       );
     }
-    if (
-      together.some(
-        (other) => rule.options.filter((name) => other.options.includes(name)).length >= 2,
-      )
-    ) {
+    const conflicting = together.find(
+      (other) => membersOf(other).filter((name) => rule.options.includes(name)).length >= 2,
+    );
+    if (conflicting) {
       fail(
-        `${subject} exclusive and requiredTogether groups share at least two options.`,
+        `${subject} exclusive and ${conflicting.kind} groups share at least two options.`,
         'Remove one of the conflicting group rules.',
       );
     }
   }
+}
+
+/** The exclusive groups among `groups`, in declaration order. */
+function exclusiveGroups(groups: readonly OptionGroup[]): MemberGroup[] {
+  return groups.flatMap((group) => (group.kind === 'exclusive' ? [group] : []));
+}
+
+/**
+ * Whether a group asks for two of its members in one run, which an exclusive group over both
+ * refuses: a required-together group or a requirement.
+ */
+function asksTogether(group: OptionGroup): boolean {
+  return group.kind === 'requiredTogether' || group.kind === 'requires';
 }
 
 /** Contradictions are direct pairs, never a transitive constraint solver. */
@@ -122,7 +165,7 @@ function declareGroup(declaration: Declaration): OptionGroup {
     throw new DeclarationError(groupDeclaration, { correction, findings: [finding], sentence });
   };
   checkMembers(declaration, fail);
-  const group: OptionGroup = Object.freeze({ kind, options: Object.freeze([...names]) });
+  const group = groupOf(kind, names);
   checkConflicts({ ...declaration, subject: commandSentence(name) }, group, fail);
   return group;
 }
@@ -140,24 +183,32 @@ function declareSetGroup(declaration: GroupCall, finding: Finding): OptionGroup 
     throw new DeclarationError(groupDeclaration, { correction, findings: [finding], sentence });
   };
   const judgeRepeat = repeatJudgment(judged, fail);
-  for (const member of names) {
-    judgeRepeat(member);
+  for (const [index, member] of names.entries()) {
+    judgeRepeat(member, index);
   }
-  const group: OptionGroup = Object.freeze({ kind, options: Object.freeze([...names]) });
+  const group = groupOf(kind, names);
   checkConflicts(judged, group, fail);
   return group;
 }
 
 /**
- * A group names each member once, so a repeated name is a fault. The judgment takes one member at
- * a time, so a caller that judges more of each member, as a Command does, keeps its order.
+ * A group names each member once, so a repeated name is a fault. A requirement that names its
+ * option again among the options it needs requires itself, the repeat's more specific sentence.
+ * The judgment takes one member at a time, with its index among the call's names, so a caller that
+ * judges more of each member, as a Command does, keeps its order.
  */
 function repeatJudgment(
-  { kind, subject }: Pick<GroupCall, 'kind'> & { readonly subject: string },
+  { kind, names, subject }: Pick<GroupCall, 'kind' | 'names'> & { readonly subject: string },
   fail: Fault,
-): (member: string) => void {
+): (member: string, index: number) => void {
   const seen = new Set<string>();
-  return (member) => {
+  return (member, index) => {
+    if (kind === 'requires' && index > 0 && member === names[0]) {
+      fail(
+        `${subject} requires names option ${quoted(member)} as its own requirement.`,
+        'Name only other local options after the first.',
+      );
+    }
     if (seen.has(member)) {
       fail(`${subject} ${kind} repeats option ${quoted(member)}.`, 'Name each option once.');
     }
@@ -210,15 +261,11 @@ interface TierContext {
  * another kind has no loser.
  */
 function losingMembers(groups: readonly OptionGroup[], context: TierContext): ReadonlySet<string> {
-  return new Set(
-    groups
-      .filter((group) => group.kind === 'exclusive')
-      .flatMap((group) => losersOf(group, context)),
-  );
+  return new Set(exclusiveGroups(groups).flatMap((group) => losersOf(group, context)));
 }
 
 /** The losing members of one exclusive group. */
-function losersOf(group: OptionGroup, context: TierContext): string[] {
+function losersOf(group: MemberGroup, context: TierContext): string[] {
   const ranked = group.options.map((name) => {
     const tier = context.tierOf(name);
     return { name, rank: tier === undefined ? 0 : tierRanks[tier] };
@@ -237,7 +284,8 @@ interface GroupContext {
   readonly groups: readonly OptionGroup[];
   /**
    * The members core withdrew as the losers of an exclusive group. The sibling that won replaced
-   * each in every other group: `oneRequired` counts it, and `requiredTogether` is not checked.
+   * each in every other group: `oneRequired` counts it, and neither a `requiredTogether` group nor
+   * a requirement that holds it is checked.
    */
   readonly withdrawn: ReadonlySet<string>;
   readonly values: OptionValues;
@@ -249,7 +297,7 @@ interface GroupContext {
 
 /**
  * Whether one member counts toward its group: for an exclusive group, a claim; for `oneRequired`, a
- * supplied or withdrawn member; for `requiredTogether`, a supplied one.
+ * supplied or withdrawn member; for `requiredTogether` and a requirement, a supplied one.
  */
 function countsFor(group: OptionGroup, name: string, context: GroupContext): boolean {
   switch (group.kind) {
@@ -259,18 +307,40 @@ function countsFor(group: OptionGroup, name: string, context: GroupContext): boo
     case 'oneRequired': {
       return isSupplied(context.values, name) || context.withdrawn.has(name);
     }
-    case 'requiredTogether': {
+    case 'requiredTogether':
+    case 'requires': {
       return isSupplied(context.values, name);
     }
     default: {
-      const exhaustive: never = group.kind;
+      const exhaustive: never = group;
       return exhaustive;
     }
   }
 }
 
+/**
+ * The needed options a requirement still lacks. There are none unless its option claims it, as a
+ * member claims an exclusive group, and none when it holds a member an exclusive group withdrew,
+ * which the sibling that won replaced. A needed option whose configuration request went unanswered
+ * may be supplied, so it is not lacking.
+ */
+function lackingOf(group: Requirement, context: GroupContext): readonly string[] {
+  if (
+    !claims(context.values, group.option, context.absent) ||
+    membersOf(group).some((name) => context.withdrawn.has(name))
+  ) {
+    return [];
+  }
+  return group.requires.filter(
+    (name) => !isSupplied(context.values, name) && !context.unanswered.has(name),
+  );
+}
+
 /** An unknown configuration answer suppresses only failures whose proof depends on that answer. */
 function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
+  if (group.kind === 'requires') {
+    return lackingOf(group, context).length > 0;
+  }
   const counted = group.options.filter((name) => countsFor(group, name, context));
   switch (group.kind) {
     case 'exclusive': {
@@ -287,7 +357,7 @@ function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
       );
     }
     default: {
-      const exhaustive: never = group.kind;
+      const exhaustive: never = group;
       return exhaustive;
     }
   }
@@ -297,21 +367,25 @@ function reportGroup(
   group: OptionGroup,
   context: GroupContext,
 ): { lines: readonly string[]; problem: InputProblem } {
-  const spellings = group.options.map((name) =>
-    context.named ? name : reportedOf(spellingsOf(context.table, name), name),
-  );
-  const members = group.options.map((name, index) => ({
+  const members = membersOf(group);
+  const spelling = (name: string): string =>
+    context.named ? name : reportedOf(spellingsOf(context.table, name), name);
+  const member = (name: string): GroupMember => ({
     label: context.labels.get(name),
-    spelling: spellings[index] ?? name,
-  }));
+    spelling: spelling(name),
+  });
   return {
-    lines: [groupSentence(group.kind, members)],
+    lines: [
+      group.kind === 'requires'
+        ? requirementSentence(member(group.option), lackingOf(group, context).map(spelling))
+        : groupSentence(group.kind, group.options.map(member)),
+    ],
     problem: {
-      inputs: group.options.map((name) => ({ global: false, kind: 'option', name })),
+      inputs: members.map((name) => ({ global: false, kind: 'option', name })),
       reason: group.kind,
-      spellings,
-      supplied: group.options.flatMap((name, index) =>
-        countsFor(group, name, context) ? [spellings[index] ?? name] : [],
+      spellings: members.map(spelling),
+      supplied: members.flatMap((name) =>
+        countsFor(group, name, context) ? [spelling(name)] : [],
       ),
     },
   };
@@ -327,4 +401,12 @@ function groupReports(
 }
 
 export type { OptionGroup, Tier };
-export { absentBooleans, claims, declareGroup, declareSetGroup, groupReports, losingMembers };
+export {
+  absentBooleans,
+  claims,
+  declareGroup,
+  declareSetGroup,
+  groupReports,
+  losingMembers,
+  membersOf,
+};

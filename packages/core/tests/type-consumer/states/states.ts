@@ -21,6 +21,8 @@ groupedCommand.exclusive;
 groupedCommand.oneRequired;
 // @ts-expect-error TS2339: action closes group declarations.
 groupedCommand.requiredTogether;
+// @ts-expect-error TS2339: action closes group declarations.
+groupedCommand.requires;
 // @ts-expect-error TS2345: Group names must already be declared locally.
 freshCommand.exclusive('a', 'b');
 // @ts-expect-error TS2345: Arguments are not group members.

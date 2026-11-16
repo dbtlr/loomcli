@@ -1,5 +1,6 @@
 import type { CommandNode, OptionNode, OptionGroup } from '@loomcli/core';
 
+import { groupMembers } from '../option-groups.js';
 import { excluded, exposed } from './exposure.js';
 import { mcpArgument, mcpInput } from './extension.js';
 
@@ -51,7 +52,48 @@ function namedClaim(option: OptionNode): Schema {
   return { properties: { [option.name]: { const: claim } }, required: [option.name] };
 }
 
-function constraints(kind: OptionGroup['kind'], options: readonly OptionNode[]): Schema[] {
+/** Whether every named value supplies the option: a scalar string or content option. */
+function scalarValue(option: OptionNode): boolean {
+  return (option.type === 'string' || option.type === 'content') && !option.multiple;
+}
+
+/**
+ * A requirement's constraint. Where property presence states each side, it is JSON Schema's
+ * `dependentRequired`: the option is a scalar string or content option, and each needed option is
+ * one too or a Boolean of `both` polarity, whose named `false` still supplies it. Otherwise a named
+ * value can lower to absence or leave a Boolean option at its absent value, which triggers
+ * nothing, so the constraint reads the option's claim, the one an exclusive group reads, and each
+ * needed option's presence through named values.
+ */
+function requirementConstraint(option: OptionNode, needed: readonly OptionNode[]): Schema {
+  if (
+    scalarValue(option) &&
+    needed.every(
+      (each) => scalarValue(each) || (each.type === 'boolean' && each.polarity === 'both'),
+    )
+  ) {
+    return { dependentRequired: { [option.name]: needed.map(({ name }) => name) } };
+  }
+  return { anyOf: [{ not: namedClaim(option) }, { allOf: needed.map(namedPresence) }] };
+}
+
+/**
+ * The constraints of one requirement. An excluded option is never supplied in a call, so its
+ * requirement constrains nothing. One that excludes a needed option is a build fault, and one with
+ * a hidden, control, or externally bound member stays a rule the run checks alone.
+ */
+function requirementSchemas(members: readonly OptionNode[]): Schema[] {
+  const [option, ...needed] = members;
+  if (option === undefined || !members.every(exposed) || !members.every(externallyUnbound)) {
+    return [];
+  }
+  return [requirementConstraint(option, needed)];
+}
+
+function constraints(
+  kind: Exclude<OptionGroup['kind'], 'requires'>,
+  options: readonly OptionNode[],
+): Schema[] {
   if (kind === 'exclusive') {
     const claims = options.map(namedClaim);
     return claims.flatMap((first, index) =>
@@ -73,15 +115,18 @@ function constraints(kind: OptionGroup['kind'], options: readonly OptionNode[]):
  * never supplied in a call, so a group constrains the members the tool lists. A group that also
  * holds a hidden or control member, which a call may still fill from the server's sources, stays a
  * rule the run checks alone, and so does a `requiredTogether` group that excludes some members,
- * which the build-fault hook rejects.
+ * which the build-fault hook rejects. A requirement follows `requirementSchemas`.
  */
 export function groupSchemas(command: CommandNode): readonly Schema[] {
   const declared = new Map(command.options.map((option) => [option.name, option]));
   return command.optionGroups.flatMap((group): Schema[] => {
-    const members = group.options.flatMap((name) => {
+    const members = groupMembers(group).flatMap((name) => {
       const option = declared.get(name);
       return option === undefined ? [] : [option];
     });
+    if (group.kind === 'requires') {
+      return requirementSchemas(members);
+    }
     const listed = members.filter((option) => !excluded(option));
     const partial = listed.length !== members.length;
     if (

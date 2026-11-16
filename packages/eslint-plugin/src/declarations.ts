@@ -48,6 +48,7 @@ const authoringMethods: ReadonlySet<string> = new Set([
   'option',
   'options',
   'requiredTogether',
+  'requires',
   'result',
   'rows',
   'stdin',
