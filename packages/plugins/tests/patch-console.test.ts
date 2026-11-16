@@ -23,6 +23,9 @@
  *   and a replacement still held after the restore calls the member it replaced.
  * - One holder. A second run whose span opens while the first holds the console patches nothing,
  *   and its writes go to the first run's streams until the first span closes.
+ * - A streamed message. A `console.warn` during a streamed `info` lands above its unfinished row,
+ *   which the screen holds once, and a `console.log` beside a streamed `print` lands after the line
+ *   the print is writing.
  */
 import { Application } from '@loomcli/core';
 import type { Region } from '@loomcli/core';
@@ -30,6 +33,8 @@ import { patchConsole } from '@loomcli/plugins/patch-console';
 import { mockProcess } from '@loomcli/testing';
 import type { MockProcess, Write } from '@loomcli/testing';
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test';
+
+import { replay } from '../../../scripts/test-screen.js';
 
 const literal = { render: (value: string) => value };
 
@@ -320,4 +325,55 @@ test("a second run's span patches nothing while the first run holds the console"
     '',
     true,
   ]);
+});
+
+/** What the emulator shows for every write the mock recorded, on a terminal `columns` wide. */
+async function screenOf(mock: MockProcess, columns: number): Promise<readonly string[]> {
+  const events = mock.transcript.map(({ text }) => ({ write: text }));
+  const screen = await replay(events, { columns });
+  return screen.lines;
+}
+
+/** An answer in two chunks, between which a dependency calls `console.warn`. */
+async function* warnedAnswer(): AsyncGenerator<string> {
+  yield 'The answer so';
+  console.warn('a dependency warned');
+  await written();
+  yield ' far is long.';
+}
+
+test('a console.warn during a streamed info lands above its unfinished row, which the screen holds once', async () => {
+  const mock = onTerminal({ env: { TERM: 'xterm-256color' } });
+  const app = new Application('ask', { plugins: [patchConsole()] }).action(async ({ out }) => {
+    await out.info(warnedAnswer());
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  await expect(screenOf(mock, 80)).resolves.toEqual([
+    'a dependency warned',
+    'ℹ The answer so far is long.',
+  ]);
+  expect(untouched()).toBe(true);
+});
+
+test('a console.log beside a streamed print lands after the line the print is writing', async () => {
+  const mock = onTerminal({ env: { TERM: 'xterm-256color' }, streams: ['stdout', 'stderr'] });
+  const screens: (readonly string[])[] = [];
+  async function* answer(): AsyncGenerator<string> {
+    yield 'The answer so';
+    console.log('a dependency logged');
+    await written();
+    screens.push(await screenOf(mock, 80));
+    yield ' far.\nMore';
+  }
+  const app = new Application('ask', { plugins: [patchConsole()] }).action(async ({ out }) => {
+    await out.print(answer());
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(screens).toEqual([['The answer so']]);
+  await expect(screenOf(mock, 80)).resolves.toEqual([
+    'The answer so far.',
+    'a dependency logged',
+    'More',
+  ]);
+  expect(untouched()).toBe(true);
 });

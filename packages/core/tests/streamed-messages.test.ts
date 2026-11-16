@@ -23,22 +23,35 @@
  *   to stop, as it is after a write fails or a lane view throws at a chunk. A stream issued after
  *   the abort reads no chunk, and a chunk that arrives after a stop is discarded.
  * - The run waits for a stream no code awaited.
- * - On a terminal. At every chunk the screen shows what the method writes for the text so far, the
- *   unfinished row sits above an open live region, a message written meanwhile lands between the
- *   finished rows and the unfinished row, a trailing space never finishes a row the joined text lays
- *   out otherwise, a row longer than the screen is written a screen row at a time, a style kept
- *   across rows leaks into no other write, a question that closes beside the unfinished row moves
- *   into scrollback above it, and the final screen equals the joined text's.
+ * - On a terminal, the lanes that wrap. At every chunk the screen shows what the method writes for
+ *   the text so far, the unfinished row sits above an open live region, a message written meanwhile
+ *   lands between the finished rows and the unfinished row, a trailing space never finishes a row
+ *   the joined text lays out otherwise, a style kept across rows leaks into no other write, a
+ *   question that closes beside the unfinished row moves into scrollback above it, and the final
+ *   screen equals the joined text's. A row that would be wider than the screen is never drawn, and
+ *   one a narrowed terminal made wider stays as drawn, with every other unfinished row, while its
+ *   message writes the rest a row at a time.
+ * - On a terminal, `print`. Each write is what a chunk adds at the cursor, and after a resize
+ *   between chunks or with VS16 and ZWJ graphemes in a long line the final screen equals the whole
+ *   print's. While its line is unfinished another message, on either stream, and a live region's
+ *   first frame wait for the line's end, two prints take the terminal in turn, an iterable that
+ *   awaits a write to the terminal waits until a stop ends its line, a stop still writes the failure
+ *   report at once, and a row sequence on stdout holds no stderr write. While a live region or
+ *   another unfinished row is shown it writes whole lines, and chunk by chunk again once none is.
+ *   A style's close waits for the next chunk, so the bytes are the whole print's.
+ * - The live-region hook. An unfinished row and a `print` line open a span when nothing else is
+ *   on the screen, with stdout alone on the terminal too.
  * - At the process's end, the text an open stream received is written with its line break, at the
  *   place its last write took among the queued writes.
  */
-import { Application, lanes, override, style } from '@loomcli/core';
+import { Application, lanes, override, plugin, style } from '@loomcli/core';
 import type { Lane, Out } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import type { MockProcess } from '@loomcli/testing';
 import { expect, test, vi } from 'vite-plus/test';
 
 import { replay } from '../../../scripts/test-screen.js';
+import type { ScreenEvent } from '../../../scripts/test-screen.js';
 
 /** An async iterable that yields each part in turn. */
 async function* chunks(...parts: readonly string[]): AsyncGenerator<string> {
@@ -385,15 +398,15 @@ test('on a terminal, the unfinished row sits above an open live region', async (
   const run = await onScreen(40, ['one two', ' three\nfour', ' five'], async (out, text) => {
     const region = out.region();
     await region.draw(null, { render: () => 'Working' });
-    await out.print(text);
+    await out.info(text);
     await region.end();
   });
   expect(run.screens).toEqual([
-    ['one two', 'Working'],
-    ['one two three', 'four', 'Working'],
-    ['one two three', 'four five', 'Working'],
+    ['ℹ one two', 'Working'],
+    ['ℹ one two three', '  four', 'Working'],
+    ['ℹ one two three', '  four five', 'Working'],
   ]);
-  expect(run.end).toEqual(['one two three', 'four five', 'Working']);
+  expect(run.end).toEqual(['ℹ one two three', '  four five', 'Working']);
 });
 
 test('on a terminal, a message written meanwhile lands between the finished rows and the unfinished row', async () => {
@@ -406,11 +419,11 @@ test('on a terminal, a message written meanwhile lands between the finished rows
       screens.push(await shown(mock, 40));
       yield ' half';
     }
-    await out.print(text());
+    await out.info(text());
   });
   await app.run({ process: mock });
-  expect(screens).toEqual([['first', '⚠ A warning.', 'second']]);
-  await expect(shown(mock, 40)).resolves.toEqual(['first', '⚠ A warning.', 'second half']);
+  expect(screens).toEqual([['ℹ first', '⚠ A warning.', '  second']]);
+  await expect(shown(mock, 40)).resolves.toEqual(['ℹ first', '⚠ A warning.', '  second half']);
 });
 
 test('on a terminal, a trailing space never finishes a row the joined text lays out otherwise', async () => {
@@ -420,18 +433,41 @@ test('on a terminal, a trailing space never finishes a row the joined text lays 
   expect(run.end).toEqual(['ℹ aaaa bbbbbbb', '  c']);
 });
 
-test('on a terminal, a print row longer than the screen is written a screen row at a time', async () => {
-  const run = await onScreen(10, ['abcdefghij', 'klmnopqrstu', 'vw'], (out, text) =>
-    out.print(text),
-  );
+test('on a terminal, a streamed print writes what each chunk adds at the cursor and never redraws it', async () => {
+  const parts = ['abcdefghij', 'klmnopqrstu', 'vw\nx', 'yz'];
+  const run = await onScreen(10, parts, (out, text) => out.print(text));
   expect(run.screens).toEqual([
     ['abcdefghij'],
     ['abcdefghij', 'klmnopqrst', 'u'],
-    ['abcdefghij', 'klmnopqrst', 'uvw'],
+    ['abcdefghij', 'klmnopqrst', 'uvw', 'x'],
+    ['abcdefghij', 'klmnopqrst', 'uvw', 'xyz'],
   ]);
-  expect(run.end).toEqual(['abcdefghij', 'klmnopqrst', 'uvw']);
-  // Only the last screen row is ever redrawn, so no write erases more than one row.
-  expect(run.mock.stdout.text).not.toContain('\u001B[1A');
+  // The writes are the chunks themselves, so the terminal wraps the line as it wraps a whole print.
+  expect(run.mock.transcript.map(({ text }) => text)).toEqual([
+    'abcdefghij',
+    'klmnopqrstu',
+    'vw\n',
+    'x',
+    'yz',
+    '\n',
+  ]);
+  expect(run.mock.stdout.text).toBe(`${parts.join('')}\n`);
+});
+
+/** The bytes a run on a terminal 40 columns wide writes to stdout, with color on. */
+async function printed(write: (out: Out) => Promise<void>): Promise<string> {
+  const mock = terminal(40);
+  await marked('styled')
+    .action(async ({ out }) => write(out))
+    .run({ process: mock, rendering: { color: 'always', modifiers: 'always' } });
+  return mock.stdout.text;
+}
+
+test("on a terminal, a streamed print holds a style's close until the next chunk, so its bytes are the whole print's", async () => {
+  const parts = [style.bold('abc '), 'x', style.bold('y')];
+  const streamed = await printed((out) => out.print(chunks(...parts)));
+  expect(streamed).toBe(await printed((out) => out.print(parts.join(''))));
+  expect(streamed).toBe('\u001B[1mabc \u001B[22mx\u001B[1my\u001B[22m\n');
 });
 
 test('on a terminal, a style a chunk keeps across rows leaks into no write between them', async () => {
@@ -442,7 +478,7 @@ test('on a terminal, a style a chunk keeps across rows leaks into no write betwe
       await out.warn('plain');
       yield 'ond';
     }
-    await out.print(text());
+    await out.info(text());
   });
   await app.run({ process: mock, rendering: colored });
   const warning = mock.transcript.findIndex(({ text }) => text.includes('plain'));
@@ -454,7 +490,7 @@ test('on a terminal, a style a chunk keeps across rows leaks into no write betwe
     .join('');
   expect(before).toContain('\u001B[1m');
   expect(before.lastIndexOf('\u001B[1m')).toBeLessThan(before.lastIndexOf('\u001B[22m'));
-  await expect(shown(mock, 40)).resolves.toEqual(['first', '⚠ plain', 'second']);
+  await expect(shown(mock, 40)).resolves.toEqual(['ℹ first', '⚠ plain', '  second']);
 });
 
 test('while an input region holds the frames still, the unfinished row goes on growing above the stack', async () => {
@@ -464,15 +500,15 @@ test('while an input region holds the frames still, the unfinished row goes on g
     const question = out.region({ input: true });
     await question.draw(null, { render: () => 'Continue?' });
     void region.draw(null, { render: () => 'Held' });
-    await out.print(text);
+    await out.info(text);
     await question.end();
     await region.end();
   });
   expect(run.screens).toEqual([
-    ['one', 'Working', 'Continue?'],
-    ['one two', 'Working', 'Continue?'],
+    ['ℹ one', 'Working', 'Continue?'],
+    ['ℹ one two', 'Working', 'Continue?'],
   ]);
-  expect(run.end).toEqual(['one two', 'Continue?', 'Held']);
+  expect(run.end).toEqual(['ℹ one two', 'Continue?', 'Held']);
 });
 
 test('while the terminal is lent, a finished row is written as it is and no unfinished row is drawn', async () => {
@@ -487,12 +523,19 @@ test('while the terminal is lent, a finished row is written as it is and no unfi
       });
       yield 'ond';
     }
-    await out.print(text());
+    await out.info(text());
   });
   await app.run({ process: mock });
-  // The row drawn before the lend stays as drawn, and the lend's end starts a row of its own, as
-  // It does for a frame, below which the unfinished row is drawn again.
-  await expect(shown(mock, 40)).resolves.toEqual(['first', 'sec', 'child', 'during', '', 'second']);
+  // The row drawn before the lend stays as drawn, and the lend's end starts a row of its own.
+  // That is what it does for a frame, and the unfinished row is drawn again below it.
+  await expect(shown(mock, 40)).resolves.toEqual([
+    'ℹ first',
+    '  sec',
+    'child',
+    'during',
+    '',
+    '  second',
+  ]);
 });
 
 test('a suspend erases the unfinished row, and the resume draws it again', async () => {
@@ -508,11 +551,11 @@ test('a suspend erases the unfinished row, and the resume draws it again', async
     yield 'ond';
   }
   const app = marked('suspend').action(async ({ out }) => {
-    await out.print(text());
+    await out.info(text());
   });
   await app.run({ process: mock });
-  expect(screens).toEqual([['first'], ['first', 'sec']]);
-  await expect(shown(mock, 40)).resolves.toEqual(['first', 'second']);
+  expect(screens).toEqual([['ℹ first'], ['ℹ first', '  sec']]);
+  await expect(shown(mock, 40)).resolves.toEqual(['ℹ first', '  second']);
 });
 
 test('at the exit event on a terminal, the unfinished row is written as a finished row', async () => {
@@ -530,20 +573,19 @@ test('at the exit event on a terminal, the unfinished row is written as a finish
   const app = marked('exit').action(async ({ out }) => {
     const region = out.region();
     await region.draw(null, { render: () => 'Working' });
-    await out.print(text());
+    await out.info(text());
   });
   await app.run({ process: mock });
-  await expect(shown(mock, 40)).resolves.toEqual(['first', 'sec', 'Working']);
+  await expect(shown(mock, 40)).resolves.toEqual(['ℹ first', '  sec', 'Working']);
 });
 
-test('with stdout alone on the terminal, a streamed print grows its unfinished row there', async () => {
+test('with stdout alone on the terminal, a stdout write waits for a streamed print line and a stderr write does not', async () => {
   const mock = terminal(40, ['stdout']);
   const screens: (readonly string[])[] = [];
   const app = marked('stdout').action(async ({ out }) => {
     async function* text(): AsyncGenerator<string> {
       yield 'first\nsec';
-      screens.push(await shown(mock, 40, ['stdout']));
-      await out.print('between');
+      void out.print('between');
       await out.info('to the log');
       screens.push(await shown(mock, 40, ['stdout']));
       yield 'ond';
@@ -551,11 +593,8 @@ test('with stdout alone on the terminal, a streamed print grows its unfinished r
     await out.print(text());
   });
   await app.run({ process: mock });
-  expect(screens).toEqual([
-    ['first', 'sec'],
-    ['first', 'between', 'sec'],
-  ]);
-  await expect(shown(mock, 40, ['stdout'])).resolves.toEqual(['first', 'between', 'second']);
+  expect(screens).toEqual([['first', 'sec']]);
+  await expect(shown(mock, 40, ['stdout'])).resolves.toEqual(['first', 'second', 'between']);
   expect(mock.stderr.text).toBe('ℹ to the log\n');
 });
 
@@ -941,8 +980,416 @@ test('a question that closes beside an unfinished row moves into scrollback abov
       await question.end();
       yield ' two';
     }
+    await out.info(text());
+  });
+  await app.run({ process: mock });
+  await expect(shown(mock, 40)).resolves.toEqual(['Continue?', 'ℹ one two']);
+});
+
+/**
+ * What a terminal `from` columns wide shows once `write` has run, with a resize to `to` columns at
+ * the point `write` calls `resize`, read on an emulator that takes the resize between the same writes.
+ */
+async function underResize(
+  from: number,
+  to: number,
+  write: (out: Out, resize: () => void) => Promise<void>,
+): Promise<readonly string[]> {
+  const mock = terminal(from);
+  const events: ScreenEvent[] = [];
+  let seen = 0;
+  const take = (): void => {
+    for (const { text } of mock.transcript.slice(seen)) {
+      events.push({ write: text });
+    }
+    seen = mock.transcript.length;
+  };
+  const resize = (): void => {
+    take();
+    mock.resize(to, 24);
+    events.push({ resize: to });
+  };
+  await marked('resize')
+    .action(async ({ out }) => write(out, resize))
+    .run({ process: mock });
+  take();
+  const screen = await replay(events, { columns: from });
+  return screen.lines;
+}
+
+/** A print line longer than the screen, in two chunks, and the widths a resize between them moves. */
+const resizes = [
+  { from: 20, parts: ['aaaaaaaaaabbbbbbbbbbcccc', 'dddd'], to: 10 },
+  { from: 10, parts: ['aaaaaaaaaabbbbbbbbbbcccc', 'dddd'], to: 30 },
+  {
+    from: 40,
+    parts: ['The model answered with a paragraph that runs past the edge', ' of the window.'],
+    to: 80,
+  },
+  {
+    from: 40,
+    parts: ['The model answered with a paragraph that runs past the edge', ' of the window.'],
+    to: 20,
+  },
+];
+
+test.each(resizes)(
+  'after a resize from $from to $to columns between two chunks, a streamed print ends on the whole print screen',
+  async ({ from, parts, to }) => {
+    const streamed = await underResize(from, to, async (out, resize) => {
+      async function* text(): AsyncGenerator<string> {
+        yield parts[0] ?? '';
+        resize();
+        yield parts[1] ?? '';
+      }
+      await out.print(text());
+    });
+    const whole = await underResize(from, to, async (out, resize) => {
+      await out.print(parts.join(''));
+      resize();
+    });
+    expect(streamed).toEqual(whole);
+    expect(streamed.join('').replaceAll(' ', '')).toBe(parts.join('').replaceAll(' ', ''));
+  },
+);
+
+/** Long lines that hold graphemes a terminal may draw at another width than core counts. */
+const graphemeLines = [
+  ...['❤️', '⚠️', '✔️', '👨‍👩‍👧'].map((grapheme) => ({
+    columns: 20,
+    parts: [`Great ${grapheme} work on this, t`, 'he tests all pass now', ' and it ships'],
+  })),
+  { columns: 16, parts: ['ab 👨‍👩‍👧 cd efg', 'hijklmnop', 'qrstuvwxyz'] },
+];
+
+test.each(graphemeLines)(
+  'a streamed print of a long line with $parts.0 ends on the whole print screen',
+  async ({ columns, parts }) => {
+    const streamed = await onScreen(columns, parts, (out, text) => out.print(text));
+    expect(streamed.end).toEqual(await wholeScreen(columns, (out) => out.print(parts.join(''))));
+  },
+);
+
+test('a message issued while a streamed print line is unfinished is written after the line', async () => {
+  const mock = terminal(40);
+  const screens: (readonly string[])[] = [];
+  const app = marked('held').action(async ({ out }) => {
+    async function* text(): AsyncGenerator<string> {
+      yield 'first li';
+      void out.warn('A warning.');
+      void out.print('A note.');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      screens.push(await shown(mock, 40));
+      yield 'ne\nsecond';
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      screens.push(await shown(mock, 40));
+      yield ' line';
+    }
     await out.print(text());
   });
   await app.run({ process: mock });
-  await expect(shown(mock, 40)).resolves.toEqual(['Continue?', 'one two']);
+  expect(screens).toEqual([['first li'], ['first line', '⚠ A warning.', 'A note.', 'second']]);
+  await expect(shown(mock, 40)).resolves.toEqual([
+    'first line',
+    '⚠ A warning.',
+    'A note.',
+    'second line',
+  ]);
+  expect(mock.stdout.text).toContain('first line\n');
+});
+
+test('a live region opened while a streamed print line is unfinished draws its first frame after the line', async () => {
+  const mock = terminal(40);
+  const screens: (readonly string[])[] = [];
+  const app = marked('region').action(async ({ out }) => {
+    async function* text(): AsyncGenerator<string> {
+      yield 'first li';
+      const region = out.region();
+      void region.draw(null, { render: () => 'Working' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      screens.push(await shown(mock, 40));
+      yield 'ne\n';
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      screens.push(await shown(mock, 40));
+    }
+    await out.print(text());
+  });
+  await app.run({ process: mock });
+  expect(screens).toEqual([['first li'], ['first line', 'Working']]);
+});
+
+test('two streamed prints take the terminal in turn, a line at a time', async () => {
+  const mock = terminal(40);
+  const app = marked('two').action(async ({ out }) => {
+    const first = out.print(slow('one ', 'two\n'));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await Promise.all([first, out.print(chunks('three ', 'four\n'))]);
+  });
+  await app.run({ process: mock });
+  await expect(shown(mock, 40)).resolves.toEqual(['one two', 'three four']);
+});
+
+test('an iterable that awaits a write to the terminal while its print line is unfinished waits until a stop ends the line', async () => {
+  const mock = terminal(40);
+  const written = vi.fn();
+  async function* answer(out: Out): AsyncGenerator<string> {
+    yield 'partial';
+    await out.warn('Waiting.');
+    written();
+    yield ' never';
+  }
+  const app = marked('waits').action(async ({ cancel, out }) => {
+    const call = out.print(answer(out));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(written).not.toHaveBeenCalled();
+    cancel();
+    await call;
+  });
+  await app.run({ process: mock });
+  await expect(shown(mock, 40)).resolves.toEqual(['partial', '⚠ Waiting.']);
+});
+
+test('an action that fails while its streamed print line is unfinished writes its failure report at once', async () => {
+  const mock = terminal(40);
+  const { iterable, returned } = stalling('Partial answer');
+  const settled = vi.fn();
+  const code = await marked('stopped')
+    .action(async ({ out }) => {
+      void out.print(iterable).then(settled, settled);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      throw new Error('The action broke.');
+    })
+    .run({ process: mock });
+  expect(code).toBe(1);
+  expect(settled).toHaveBeenCalledWith(undefined);
+  expect(returned).toHaveBeenCalledOnce();
+  const screen = await shown(mock, 40);
+  expect(screen[0]).toBe('Partial answer');
+  expect(screen.slice(1).join('\n')).toContain('The action broke.');
+});
+
+test('while a live region is open a streamed print shows a whole line at a time, and chunk by chunk once none is', async () => {
+  const mock = terminal(40);
+  const screens: (readonly string[])[] = [];
+  const app = marked('lines').action(async ({ out }) => {
+    const region = out.region();
+    await region.draw(null, { render: () => 'Working' });
+    async function* text(): AsyncGenerator<string> {
+      yield 'one';
+      screens.push(await shown(mock, 40));
+      yield ' two\nthr';
+      screens.push(await shown(mock, 40));
+      await region.end();
+      yield 'ee';
+      screens.push(await shown(mock, 40));
+      yield ' four';
+      screens.push(await shown(mock, 40));
+    }
+    await out.print(text());
+  });
+  await app.run({ process: mock });
+  expect(screens).toEqual([
+    ['Working'],
+    ['one two', 'Working'],
+    ['one two', 'Working', 'three'],
+    ['one two', 'Working', 'three four'],
+  ]);
+  await expect(shown(mock, 40)).resolves.toEqual(['one two', 'Working', 'three four']);
+});
+
+test('an unfinished row the terminal narrowed below stays as drawn, and its message writes the rest by the line rule', async () => {
+  const mock = terminal(40);
+  const events: ScreenEvent[] = [];
+  let seen = 0;
+  const take = (): void => {
+    for (const { text } of mock.transcript.slice(seen)) {
+      events.push({ write: text });
+    }
+    seen = mock.transcript.length;
+  };
+  let narrowed = 0;
+  async function* answer(): AsyncGenerator<string> {
+    yield 'one two three four five six';
+    take();
+    mock.resize(15, 24);
+    events.push({ resize: 15 });
+    narrowed = mock.transcript.length;
+    yield ' seven eight nine ten eleven';
+  }
+  const app = marked('narrowed').action(async ({ out }) => {
+    const region = out.region();
+    await region.draw(null, { render: () => 'Working' });
+    await out.info(answer());
+    await region.end();
+  });
+  await app.run({ process: mock });
+  take();
+  // No write after the resize moves the cursor up more than the one row of the region below.
+  const after = mock.transcript
+    .slice(narrowed)
+    .map(({ text }) => text)
+    .join('');
+  expect(after).not.toMatch(/\[[2-9]A/u);
+  const screen = await replay(events, { columns: 40 });
+  expect(screen.lines).toEqual([
+    // The row drawn at 40 columns stays as the terminal rewrapped it.
+    'ℹ one two three',
+    ' four five six',
+    // Its finished row follows it whole, and the rows after it are written once each is finished.
+    'ℹ one two three',
+    ' four five six',
+    'seven',
+    '  eight nine te',
+    'n eleven',
+    'Working',
+  ]);
+});
+
+test('a wrapping lane whose unfinished row would be wider than the screen draws none and writes the row once it is finished', async () => {
+  const parts = ['see https://example.com/a/', 'very/long/path/to/the/page done'];
+  const run = await onScreen(20, parts, (out, text) => out.info(text));
+  expect(run.screens[0]).toEqual(['ℹ see']);
+  expect(run.end).toEqual(await wholeScreen(20, (out) => out.info(parts.join(''))));
+});
+
+/** A plugin whose `onLiveRegions` hook records each state it is called with. */
+function recordingHook(): { installed: ReturnType<typeof plugin>; states: string[] } {
+  const states: string[] = [];
+  return {
+    installed: plugin('fixture/streamed', {
+      onLiveRegions: (state) => {
+        states.push(state);
+      },
+    }),
+    states,
+  };
+}
+
+test('a run whose only redrawn content is a streamed message opens a live-region span for it', async () => {
+  const mock = terminal(40);
+  const { installed, states } = recordingHook();
+  const during: string[][] = [];
+  async function* text(): AsyncGenerator<string> {
+    yield 'one';
+    during.push([...states]);
+    yield ' two';
+  }
+  const app = new Application('span', { plugins: [installed] }).action(async ({ out }) => {
+    await out.info(text());
+    during.push([...states]);
+  });
+  await app.run({ process: mock });
+  expect(during).toEqual([['drawn'], ['drawn', 'closed']]);
+});
+
+test('a streamed print opens a live-region span while its line is unfinished and closes it at the line end', async () => {
+  const mock = terminal(40);
+  const { installed, states } = recordingHook();
+  const during: string[][] = [];
+  async function* text(): AsyncGenerator<string> {
+    yield 'one';
+    during.push([...states]);
+    yield ' two\nthree\n';
+    during.push([...states]);
+  }
+  const app = new Application('span', { plugins: [installed] }).action(async ({ out }) => {
+    await out.print(text());
+  });
+  await app.run({ process: mock });
+  expect(during).toEqual([['drawn'], ['drawn', 'closed']]);
+  expect(states).toEqual(['drawn', 'closed']);
+});
+
+test('with stdout alone on the terminal, a streamed print opens a live-region span while its line is unfinished', async () => {
+  const mock = terminal(40, ['stdout']);
+  const { installed, states } = recordingHook();
+  const during: string[][] = [];
+  async function* text(): AsyncGenerator<string> {
+    yield 'one';
+    during.push([...states]);
+  }
+  const app = new Application('span', { plugins: [installed] }).action(async ({ out }) => {
+    await out.print(text());
+  });
+  await app.run({ process: mock });
+  expect(during).toEqual([['drawn']]);
+  expect(states).toEqual(['drawn', 'closed']);
+});
+
+test('while another streamed message keeps an unfinished row, a streamed print shows a whole line at a time', async () => {
+  const mock = terminal(40);
+  const screens: (readonly string[])[] = [];
+  const gate = Promise.withResolvers<void>();
+  async function* thinking(): AsyncGenerator<string> {
+    yield 'Thinking';
+    await gate.promise;
+  }
+  async function* text(): AsyncGenerator<string> {
+    yield 'one';
+    screens.push(await shown(mock, 40));
+    yield ' two\n';
+    screens.push(await shown(mock, 40));
+  }
+  const app = marked('beside').action(async ({ out }) => {
+    const info = out.info(thinking());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await out.print(text());
+    gate.resolve();
+    await info;
+  });
+  await app.run({ process: mock });
+  expect(screens).toEqual([['ℹ Thinking'], ['one two', 'ℹ Thinking']]);
+});
+
+test('a streamed print issued while a row sequence holds stdout holds no stderr write behind it', async () => {
+  const mock = terminal(40);
+  const gate = Promise.withResolvers<void>();
+  async function* waiting(): AsyncGenerator<string> {
+    await gate.promise;
+    yield 'row';
+  }
+  const warned = vi.fn();
+  const app = marked('sequence').action(async ({ out }) => {
+    const rows = out.render(waiting(), { row: () => 'row\n' });
+    const print = out.print(chunks('first li', 'ne\n'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await out.warn('Not held.');
+    warned();
+    gate.resolve();
+    await Promise.all([rows, print]);
+  });
+  await app.run({ process: mock });
+  expect(warned).toHaveBeenCalledOnce();
+  await expect(shown(mock, 40)).resolves.toEqual(['⚠ Not held.', 'row', 'first line']);
+});
+
+test('when an unfinished row is too wide to erase, every unfinished row stays as drawn', async () => {
+  const mock = terminal(40);
+  const gate = Promise.withResolvers<void>();
+  let narrowed = 0;
+  async function* short(): AsyncGenerator<string> {
+    yield 'Short';
+    await gate.promise;
+  }
+  async function* long(): AsyncGenerator<string> {
+    yield 'one two three four five six';
+    mock.resize(15, 24);
+    narrowed = mock.transcript.length;
+    yield ' seven';
+  }
+  const app = marked('both').action(async ({ out }) => {
+    const first = out.info(short());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await out.warn(long());
+    gate.resolve();
+    await first;
+  });
+  await app.run({ process: mock });
+  const after = mock.transcript
+    .slice(narrowed)
+    .map(({ text }) => text)
+    .join('');
+  // No write after the resize moves the cursor up to erase a row drawn before it.
+  // A line break moves the cursor off the rows left on the screen, and each message writes its row whole.
+  expect(after).toBe('\n⚠ one two three four five six seven\nℹ Short\n');
 });

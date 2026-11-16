@@ -15,10 +15,10 @@ interface LiveRegionsHookContext {
 }
 
 /**
- * A plugin's `onLiveRegions` hook: core calls it with `'drawn'` at the write that gives a live
- * region of the run a frame while none holds one, and with `'closed'` at the write after which none
- * does, in stderr's write order, for every region of the run wherever it was opened. It observes
- * and returns nothing.
+ * A plugin's `onLiveRegions` hook: core calls it with `'drawn'` at the write that puts the run's
+ * first live region frame, or a streamed message's unfinished row or line, on the screen, and with
+ * `'closed'` at the write after which none is left, in write order, for every region of the run
+ * wherever it was opened. It observes and returns nothing.
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/lifecycle-hooks.md#observing-live-regions
  * @public
@@ -26,11 +26,11 @@ interface LiveRegionsHookContext {
 type LiveRegionsHook = (state: 'drawn' | 'closed', context: LiveRegionsHookContext) => undefined;
 
 /**
- * One run's span of drawn live regions, as the installed `onLiveRegions` hooks observe it. Core
- * tells it whether a region holds a frame around each write that can change that, and it calls the
- * hooks in installation order at each change: `'drawn'` before the write's bytes, and `'closed'`
- * after them. A hook that throws is still called at every later point, and the first throw is kept
- * for the run to report.
+ * One run's span of drawn live regions and streamed messages' unfinished rows and lines, as the
+ * installed `onLiveRegions` hooks observe it. Core tells it whether the screen holds one around
+ * each write that can change that, and it calls the hooks in installation order at each change:
+ * `'drawn'` before the write's bytes, and `'closed'` after them. A hook that throws is still called
+ * at every later point, and the first throw is kept for the run to report.
  */
 class LiveRegionSpan {
   readonly #hooks: readonly LiveRegionsHook[];

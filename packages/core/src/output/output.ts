@@ -25,7 +25,7 @@ import type { Frame, LiveRegion, Slot } from './region.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
 import { StreamedMessage } from './streamed.js';
-import type { MessageSink, RowChange } from './streamed.js';
+import type { MessageSink, Piece, TerminalLayout } from './streamed.js';
 import type {
   MessageArguments,
   OpenResult,
@@ -130,6 +130,12 @@ interface Reservation {
   close: () => void;
 }
 
+/** A streamed `print`'s hold on the terminal while its line is unfinished: its writes, and its end. */
+interface LineHold {
+  write: (text: string, between: () => void) => Promise<void>;
+  release: () => void;
+}
+
 /**
  * One piece of a write as its turn hands it to a stream: the destination it goes to, its bytes, and
  * whether a failure is only recorded, as for the erase and redraw a stdout write sends to stderr.
@@ -157,8 +163,10 @@ type Passage = (text: string, between?: () => void) => Part[];
 interface Queued {
   readonly order: readonly [number, number];
   readonly start: () => Part[];
-  /** Whether it is a composition, whose write the live-region span observes. */
+  /** Whether it is a composition, which a suspend writes at once. */
   readonly composed: boolean;
+  /** Whether the live-region span observes its write: a composition's, or one that changes the screen. */
+  readonly observed: boolean;
   parts: Part[];
 }
 
@@ -264,7 +272,10 @@ class Destination {
    * screen change the write makes at its turn, as a streamed message's unfinished row.
    */
   write(text: string, between?: () => void): Promise<void> {
-    const queued = this.queue([this.ticket(), 0], () => this.parts(text, between));
+    const queued = this.queue([this.ticket(), 0], () => this.parts(text, between), {
+      composed: false,
+      observed: between !== undefined,
+    });
     const order = this.joined();
     const previous = order === undefined ? this.tail : Promise.all([this.tail, order.tail]);
     const pending = previous.then(() => this.accept(queued));
@@ -291,10 +302,19 @@ class Destination {
   }
 
   /** One write held from its call until its turn, or until an end writes it in its place. */
-  private queue(order: readonly [number, number], start: () => Part[], composed = false): Queued {
-    const queued: Queued = { composed, order, parts: [], start };
+  private queue(
+    order: readonly [number, number],
+    start: () => Part[],
+    kind: Pick<Queued, 'composed' | 'observed'> = { composed: false, observed: false },
+  ): Queued {
+    const queued: Queued = { ...kind, order, parts: [], start };
     this.#queued.add(queued);
     return queued;
+  }
+
+  /** Whether a sequence holds a place in this destination's order. */
+  get sequenced(): boolean {
+    return this.#sequences > 0;
   }
 
   /**
@@ -333,14 +353,14 @@ class Destination {
       return Promise.resolve();
     }
     queued.parts = queued.start();
-    if (queued.composed) {
+    if (queued.observed) {
       this.around?.before();
     }
     this.#started.add(queued);
     const sent = this.sendParts(queued).finally(() => {
       this.#started.delete(queued);
     });
-    if (queued.composed) {
+    if (queued.observed) {
       this.around?.after();
     }
     return sent;
@@ -394,7 +414,7 @@ class Destination {
         const text = produce();
         return text === '' ? [] : [{ destination: this, quiet: false, text }];
       },
-      true,
+      { composed: true, observed: true },
     );
     return this.run(() => this.accept(queued));
   }
@@ -481,6 +501,39 @@ class Destination {
       write: (text) => {
         pieceCount += 1;
         const queued = this.queue([place, pieceCount], () => this.parts(text));
+        const pending = pieces.then(() => this.accept(queued));
+        pieces = pending.catch(this.onError);
+        return pending;
+      },
+    };
+  }
+
+  /**
+   * A streamed `print`'s unfinished line on a terminal: from now until `release`, every later write
+   * to this destination and to `shared`, the other destination on the same terminal, waits, and only
+   * the line's own writes reach the stream. They follow every write queued on either before the hold,
+   * and the writes held behind it follow the line's last write, so another write lands between two
+   * lines and never inside one.
+   */
+  hold(shared: readonly Destination[]): LineHold {
+    const all = [this, ...shared];
+    let pieces: Promise<void> = Promise.all(all.map(({ tail }) => tail)).then(() => undefined);
+    let open: (pieces: Promise<void>) => void = unopened;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    for (const destination of all) {
+      destination.tail = destination.tail.then(() => gate);
+    }
+    return {
+      release: () => {
+        open(pieces);
+      },
+      write: (text, between) => {
+        const queued = this.queue([this.ticket(), 0], () => this.parts(text, between), {
+          composed: false,
+          observed: true,
+        });
         const pending = pieces.then(() => this.accept(queued));
         pieces = pending.catch(this.onError);
         return pending;
@@ -599,12 +652,29 @@ interface Place {
   order: readonly [number, number];
 }
 
-/** One streamed message still open: where it writes, its place, and its unfinished row's slot. */
+/**
+ * One streamed message still open: where it writes and how, its place, whether it keeps an
+ * unfinished row, and the slot that row or its `print` line takes on the screen.
+ */
 interface OpenStream {
   readonly destination: Destination;
+  readonly line: LineWriter;
   readonly message: StreamedMessage;
   readonly place: Place;
+  readonly rows: boolean;
   readonly slot: Slot;
+}
+
+/** How one streamed message's writes reach its destination, holding the terminal for a `print` line. */
+interface LineWriter {
+  /** The screen change one of its writes makes, if any. */
+  change: (piece: Piece) => (() => void) | undefined;
+  /** Whether it holds the terminal while its `print` line is unfinished. */
+  readonly holding: boolean;
+  /** Queues one write. */
+  write: (piece: Piece) => Promise<void>;
+  /** Ends the message's hold on the terminal, if it has one. */
+  release: () => void;
 }
 
 /** Where one write goes, and the channel whose failure stops a sequence written there. */
@@ -1072,15 +1142,7 @@ export class Output {
       return;
     }
     const errors = this.destination(stderr);
-    // Only a terminal stderr holds a frame, and every write that changes one is a composition there.
-    errors.around = {
-      after: () => {
-        this.span?.after(this.screen.holdsFrame);
-      },
-      before: () => {
-        this.span?.before(this.screen.holdsFrame);
-      },
-    };
+    errors.around = this.observer;
     errors.passage = (text, between) => {
       const { after, before } = this.screen.around(text, between);
       return [{ destination: errors, quiet: false, text: before + text + after }];
@@ -1089,21 +1151,21 @@ export class Output {
       return;
     }
     const output = this.destination(stdout);
+    output.around = this.observer;
     const turn = new Turn();
     errors.turn = turn;
     output.turn = turn;
-    output.order = { joins: () => this.screen.holding, shared: errors };
+    output.order = { joins: () => this.screen.holding || this.lineHeld(), shared: errors };
     output.passage = (text, between) => {
-      if (!this.screen.holding && between === undefined) {
+      if (!this.screen.holding) {
         this.screen.note(text);
+        between?.();
         return [{ destination: output, quiet: false, text }];
       }
       const { after, before } = this.screen.around(text, between);
-      // A streamed message's write that only redraws its unfinished row writes nothing to stdout.
-      const own: Part[] = text === '' ? [] : [{ destination: output, quiet: false, text }];
       return [
         { destination: errors, quiet: true, text: before },
-        ...own,
+        { destination: output, quiet: false, text },
         { destination: errors, quiet: true, text: after },
       ];
     };
@@ -1111,8 +1173,8 @@ export class Output {
 
   /**
    * A terminal stdout beside a stderr that is not one, as under `cli 2>log`, is the screen alone:
-   * no region draws there, and a streamed `print` keeps its unfinished row on stdout, erased and
-   * drawn again around every other stdout write.
+   * no region draws there and nothing is redrawn, and a streamed `print` grows its line there at
+   * the cursor, which the run's live-region span observes.
    */
   private coordinateStdout(): void {
     const { stderr, stdout, terminal } = this.host;
@@ -1120,15 +1182,27 @@ export class Output {
       return;
     }
     const output = this.destination(stdout);
+    output.around = this.observer;
     output.passage = (text, between) => {
-      if (!this.screen.holding && between === undefined) {
-        this.screen.note(text);
-        return [{ destination: output, quiet: false, text }];
-      }
-      const { after, before } = this.screen.around(text, between);
-      return [{ destination: output, quiet: false, text: before + text + after }];
+      this.screen.note(text);
+      between?.();
+      return [{ destination: output, quiet: false, text }];
     };
   }
+
+  /**
+   * What observes each write that can change what the screen holds, right before its bytes reach
+   * the stream and right after: a region's frame, a streamed message's unfinished row, and a
+   * streamed `print`'s unfinished line each hold it, and the run's live-region span reads that.
+   */
+  private readonly observer = {
+    after: (): void => {
+      this.span?.after(this.screen.holdsFrame);
+    },
+    before: (): void => {
+      this.span?.before(this.screen.holdsFrame);
+    },
+  };
 
   /**
    * The destination the screen draws through: stderr when it is a terminal, or else stdout when
@@ -1257,19 +1331,22 @@ export class Output {
   /**
    * One streamed message on its method's destination, read from here until its iterable ends. A
    * message the run's verbosity hides is read to its end and laid out never. On a terminal that
-   * redraws, its unfinished row sits above the live regions and the screen holds a suspend while it
-   * is open; elsewhere it writes each line once it completes. The view context is read once, at
-   * its first layout, so the whole message lays out at one width. A message an action issued joins
-   * its channel's live set, so the action's failure stops it.
+   * redraws, a lane that wraps keeps its unfinished row above the live regions and the screen holds
+   * a suspend while it is open, and `print` grows its line at the cursor, holding every other write
+   * to the terminal until the line ends; elsewhere it writes each line once it completes. The view
+   * context is read once, at its first layout, so the whole message lays out at one width. A
+   * message an action issued joins its channel's live set, so the action's failure stops it.
    */
   private streamed(kind: Purpose, source: AsyncIterable<string>, look: MessageLook): Promise<void> {
     const { destination } = look;
     const hidden = this.verbosity < shownFrom[kind];
     const target = this.destination(this.host[destination]);
-    const rows = !hidden && this.host.terminal[destination].isTTY && redraws(this.host.env);
+    const redrawn = !hidden && this.host.terminal[destination].isTTY && redraws(this.host.env);
+    const rows = redrawn && kind !== 'print';
     const slot: Slot = { closed: false, input: false, latest: undefined, shown: undefined };
     let context: ViewContext | undefined = undefined;
     const place: Place = { order: [this.ticket(), 0] };
+    const line = this.lineWriter(target, slot);
     const sink: MessageSink = {
       hidden,
       raise: (cause) => {
@@ -1281,58 +1358,143 @@ export class Output {
       },
       resolve: (marked) =>
         resolveText(marked, this.palette, capabilities(this.host, destination, this.policy)),
-      rows: rows ? { columns: () => this.screenColumns() } : undefined,
+      terminal: this.terminalLayout(redrawn, rows, target),
       write: (piece) => {
-        const written = target.write(piece.text, this.rowChange(slot, piece.row));
+        const written = line.write(piece);
         place.order = [this.ticket(), 0];
         return written;
       },
     };
     const release = rows ? this.holdSuspend() : undefined;
     const message = new StreamedMessage(source, sink, this.signal.aborted);
-    const open: OpenStream = { destination: target, message, place, slot };
+    const open: OpenStream = { destination: target, line, message, place, rows, slot };
     this.streams.add(open);
     look.live?.add(() => {
       message.stop();
     });
     const done = message.done.finally(() => {
       this.streams.delete(open);
+      line.release();
       release?.();
     });
     void handled(done);
     return done;
   }
 
-  /** The screen change one write of a streamed message makes to its unfinished row, if any. */
-  private rowChange(slot: Slot, change: RowChange | undefined): (() => void) | undefined {
-    if (change === undefined) {
+  /**
+   * How a streamed message lays out on a terminal that redraws, if it is on one: a lane that wraps
+   * keeps an unfinished row, and `print` grows its line at the cursor while no live region is
+   * open, no other streamed message keeps an unfinished row, and no row sequence holds its
+   * destination's order, and writes a whole line at a time otherwise.
+   */
+  private terminalLayout(
+    redrawn: boolean,
+    rows: boolean,
+    target: Destination,
+  ): TerminalLayout | undefined {
+    if (!redrawn) {
       return undefined;
     }
-    return change.kind === 'drop'
+    if (rows) {
+      return { fits: (frame) => this.screen.fits(frame), kind: 'rows' };
+    }
+    return {
+      appends: () =>
+        !this.regions.drawing && !target.sequenced && ![...this.streams].some((open) => open.rows),
+      kind: 'append',
+    };
+  }
+
+  /**
+   * How one streamed message's writes reach its destination. A `print` write that leaves its line
+   * unfinished on a terminal starts a hold on the terminal, or writes through the one it holds, and
+   * the write that ends the line ends the hold, so every other write lands after the line.
+   */
+  private lineWriter(target: Destination, slot: Slot): LineWriter {
+    let hold: LineHold | undefined = undefined;
+    const release = (): void => {
+      hold?.release();
+      hold = undefined;
+    };
+    return {
+      change: (piece) => this.pieceChange(slot, piece),
+      get holding() {
+        return hold !== undefined;
+      },
+      release,
+      write: (piece) => {
+        const between = this.pieceChange(slot, piece);
+        if (piece.open === true) {
+          hold ??= target.hold(this.sharing(target));
+        }
+        if (hold === undefined || between === undefined) {
+          return target.write(piece.text, between);
+        }
+        const written = hold.write(piece.text, between);
+        if (piece.open !== true) {
+          release();
+        }
+        return written;
+      },
+    };
+  }
+
+  /** Whether a streamed `print` holds the terminal while its line is unfinished. */
+  private lineHeld(): boolean {
+    return [...this.streams].some(({ line }) => line.holding);
+  }
+
+  /** The other destination on the terminal `target` writes to, when both streams are on it. */
+  private sharing(target: Destination): Destination[] {
+    const { stderr, stdout, terminal } = this.host;
+    if (!terminal.stderr.isTTY || !terminal.stdout.isTTY || stdout === stderr) {
+      return [];
+    }
+    const other = target === this.destination(stdout) ? stderr : stdout;
+    return [this.destination(other)];
+  }
+
+  /**
+   * The screen change one write of a streamed message makes, if any: to its unfinished row, or to
+   * whether its `print` line is unfinished.
+   */
+  private pieceChange(slot: Slot, piece: Piece): (() => void) | undefined {
+    const { open, row } = piece;
+    if (open !== undefined) {
+      return () => {
+        this.screen.line(slot, open);
+      };
+    }
+    if (row === undefined) {
+      return undefined;
+    }
+    return row.kind === 'drop'
       ? () => {
           this.screen.dropRow(slot);
         }
       : () => {
-          this.screen.row(slot, change.frame);
+          this.screen.row(slot, row.frame);
         };
   }
 
   /**
    * The rest of each open streamed message, for the process's end to write in its place: after its
    * last write, as its end would write it, its unfinished row or last line and its one closing line
-   * break. Each message reads no further chunk.
+   * break. Each message reads no further chunk, and a `print` gives up its hold on the terminal.
    */
   private streamEnds(): Queued[] {
     return [...this.streams].map((open) => ({
       composed: false,
+      observed: false,
       order: open.place.order,
       parts: [],
-      start: () =>
-        open.message
+      start: () => {
+        const parts = open.message
           .flush()
-          .flatMap((piece) =>
-            open.destination.parts(piece.text, this.rowChange(open.slot, piece.row)),
-          ),
+          .flatMap((piece) => open.destination.parts(piece.text, open.line.change(piece)));
+        open.line.release();
+        return parts;
+      },
     }));
   }
 

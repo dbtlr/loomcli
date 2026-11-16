@@ -1,16 +1,16 @@
 import { splitLines } from '../style/lines.js';
 import { close, escapeText } from '../style/style.js';
-import { graphemeWidths } from '../style/width.js';
 import { handled } from '../support/thenable.js';
 import { controlSequences, endsWithLineBreak, visible } from './region.js';
 import type { Frame } from './region.js';
 
 /*
  * One streamed message: a semantic method's text read from an async iterable, laid out through its
- * lane view as each chunk arrives. Off a terminal it is written a completed line at a time; on a
- * terminal that redraws, every row the text finishes is written for good and the last row is the
- * unfinished row, which the screen redraws above the live regions. Once the iterable ends, what was
- * written is what the method writes for the joined text.
+ * lane view as each chunk arrives. Off a terminal it is written a completed line at a time. On a
+ * terminal that redraws, a lane that wraps writes every row the text finishes for good and keeps
+ * its last row as the unfinished row, which the screen redraws above the live regions, and `print`
+ * writes what each chunk adds at the cursor and never redraws any of it. Once the iterable ends,
+ * what was written is what the method writes for the joined text.
  */
 
 /** What one write does to the message's unfinished row: sets it, or takes it off the screen. */
@@ -21,12 +21,27 @@ type RowChange =
 /** The change that takes a message's unfinished row off the screen, at its end. */
 const dropped: RowChange = { kind: 'drop' };
 
-/** One write a streamed message makes: the text written for good, and its unfinished row's change. */
+/**
+ * One write a streamed message makes: the text written for good, its unfinished row's change, and
+ * for a `print` that grows at the cursor, whether its line is still unfinished after the text.
+ */
 interface Piece {
   readonly text: string;
-  /** Absent off a terminal, where a message keeps no unfinished row. */
+  /** Absent off a terminal and for `print`, where a message keeps no unfinished row. */
   readonly row?: RowChange | undefined;
+  /** Present for a `print` on a terminal that redraws: true while the text leaves its line unfinished. */
+  readonly open?: boolean | undefined;
 }
+
+/**
+ * How a message lays out on a terminal that redraws: a lane that wraps keeps an unfinished row the
+ * screen redraws while `fits` answers that the row fits on the screen, and `print` grows its line
+ * at the cursor while `appends` answers true, read at the start of each line, and writes a whole
+ * line at a time otherwise.
+ */
+type TerminalLayout =
+  | { readonly kind: 'rows'; fits: (frame: Frame) => boolean }
+  | { readonly kind: 'append'; appends: () => boolean };
 
 /** What one streamed message draws through and writes to, supplied by the output that issued it. */
 interface MessageSink {
@@ -36,11 +51,8 @@ interface MessageSink {
   render: (text: string) => string;
   /** Marked text resolved for the message's destination. */
   resolve: (marked: string) => string;
-  /**
-   * On a terminal that redraws, the real width of the screen the unfinished row draws on, read at
-   * each chunk. Absent elsewhere, where the message writes whole lines.
-   */
-  rows: { readonly columns: () => number | undefined } | undefined;
+  /** On a terminal that redraws, how the message lays out there. Absent elsewhere, where it writes whole lines. */
+  terminal: TerminalLayout | undefined;
   /** Queues one write on the message's destination. */
   write: (piece: Piece) => Promise<void>;
   /** Records a failure the iterable or the lane view raised, which the call rejects with. */
@@ -66,97 +78,52 @@ function completeLines(text: string): { lines: string[]; tail: string } {
   return { lines, tail: text.slice(lines.join('').length) };
 }
 
-/** The columns between tab stops, as a terminal sets them. */
-const tabStop = 8;
-
-/** Where the last screen row starts in visible text written from column 0 on a screen `columns` wide. */
-function lastRowStart(text: string, columns: number): number {
-  let column = 0;
-  let start = 0;
-  for (const grapheme of graphemeWidths(text)) {
-    const tab = text.slice(grapheme.start, grapheme.end) === '\t';
-    const cells = tab
-      ? Math.min(tabStop - (column % tabStop), columns - column)
-      : Math.min(grapheme.width, columns);
-    if (cells > 0 && column + cells > columns) {
-      start = grapheme.start;
-      column = 0;
-    }
-    column += cells;
-  }
-  return start;
-}
-
-const hyperlinkClose = '\u001B]8;;\u001B\\';
-
-/** One piece of resolved text: a character or a control sequence, and the visible offset before it. */
-interface Token {
-  readonly at: number;
-  readonly kind: 'text' | 'sgr' | 'link' | 'other';
-  readonly piece: string;
-}
-
-/** Whether a control sequence sets graphic attributes, opens or closes a hyperlink, or does neither. */
-function sequenceKind(sequence: string): Token['kind'] {
-  const parameters = sequence.slice(2, -1);
-  if (sequence.startsWith('\u001B[') && sequence.endsWith('m') && /^[\d:;]*$/u.test(parameters)) {
-    return 'sgr';
-  }
-  return sequence.startsWith('\u001B]8;') ? 'link' : 'other';
-}
-
 /** Every terminal control sequence, captured, so a split keeps each one between the text around it. */
 const sequencePieces = new RegExp(`(${controlSequences.source})`, 'u');
 
-/** Resolved text read as its characters and control sequences, each at the visible offset it starts at. */
-function tokensOf(text: string): Token[] {
-  const tokens: Token[] = [];
-  let shown = 0;
-  // Splitting at a captured control sequence leaves each sequence at an odd index.
-  for (const [index, piece] of text.split(sequencePieces).entries()) {
-    if (index % 2 === 1) {
-      tokens.push({ at: shown, kind: sequenceKind(piece), piece });
-    } else {
-      for (const character of piece) {
-        tokens.push({ at: shown, kind: 'text', piece: character });
-        shown += character.length;
-      }
-    }
-  }
-  return tokens;
+/** One run of a resolved row's text, or one control sequence, and the visible offset it ends at. */
+interface RowPiece {
+  readonly end: number;
+  readonly piece: string;
+  readonly sequence: boolean;
 }
 
-/** The hyperlink the tokens leave open, if any. */
-function openLink(tokens: readonly Token[]): string | undefined {
-  let open: string | undefined = undefined;
-  for (const { kind, piece } of tokens) {
-    if (kind === 'link') {
-      open = piece === hyperlinkClose ? undefined : piece;
-    }
-  }
-  return open;
+/** A resolved row read as its runs of text and its control sequences, in order. */
+function rowPieces(row: string): RowPiece[] {
+  let shown = 0;
+  // Splitting at a captured control sequence leaves each sequence at an odd index.
+  return row.split(sequencePieces).map((piece, index) => {
+    const sequence = index % 2 === 1;
+    shown += sequence ? 0 : piece.length;
+    return { end: shown, piece, sequence };
+  });
 }
 
 /**
- * The bytes of one resolved row from visible offset `from` up to `to`. The attributes and the
- * hyperlink set before `from` are set again first, and a slice that ends before the row's end
- * resets them, so the two slices of a row each stand alone.
+ * The bytes of one resolved row from visible offset `from` on: every character at or after it, and
+ * every control sequence after the character before it. With `growing`, the control sequences
+ * after the row's last character are left out, because the next chunk's text may come before them,
+ * and `shown` is the visible offset the bytes reach.
  */
-function sliceVisible(text: string, from: number, to = Number.POSITIVE_INFINITY): string {
-  const tokens = tokensOf(text);
-  const before = tokens.filter(({ at }) => at < from);
-  const replayed = [
-    ...before.filter(({ kind }) => kind === 'sgr').map(({ piece }) => piece),
-    openLink(before) ?? '',
-  ].join('');
-  const within = tokens.filter(({ at }) => at >= from && at < to);
-  const body = within.map(({ piece }) => piece).join('');
-  if (to === Number.POSITIVE_INFINITY) {
-    return `${replayed}${body}`;
-  }
-  const upTo = [...before, ...within];
-  const reset = upTo.some(({ kind }) => kind === 'sgr') ? '\u001B[0m' : '';
-  return `${replayed}${body}${reset}${openLink(upTo) === undefined ? '' : hyperlinkClose}`;
+function visibleFrom(row: string, from: number, growing: boolean): { text: string; shown: number } {
+  const pieces = rowPieces(row);
+  const last = growing
+    ? pieces.reduce(
+        (found, { end, piece, sequence }, index) =>
+          !sequence && piece !== '' && end > from ? index : found,
+        -1,
+      )
+    : pieces.length;
+  const text = pieces
+    .slice(0, last + 1)
+    .map(({ end, piece, sequence }) => {
+      if (sequence) {
+        return end >= from ? piece : '';
+      }
+      return end > from ? piece.slice(Math.max(0, from - (end - piece.length))) : '';
+    })
+    .join('');
+  return { shown: Math.max(pieces.at(-1)?.end ?? 0, from), text };
 }
 
 /** An unfinished row as the screen keeps it: rows counted from its visible text alone. */
@@ -209,11 +176,13 @@ class StreamedMessage {
   #joined = '';
   /** The lines, or on a terminal the rows, written for good. */
   #written = 0;
-  /** The visible characters of the unfinished row already written for good, a screen row at a time. */
+  /** The visible characters of a `print`'s unfinished line already written at the cursor. */
   #head = 0;
   /** What the last layout left unwritten, which a message whose lane view broke ends with. */
   #pending = '';
   #ended = false;
+  /** Whether a lane that wraps has stopped drawing an unfinished row, and writes each row once it is finished. */
+  #byRow = false;
   /** The writes a stop issued, which the reading awaits before it resolves. */
   #stopping: Promise<unknown> = Promise.resolve();
   #wake: (value: typeof stopRequested) => void = () => undefined;
@@ -348,8 +317,13 @@ class StreamedMessage {
     try {
       closing = { pieces: this.#advance(true) };
     } catch (error) {
-      const row = this.#sink.rows === undefined ? undefined : dropped;
-      closing = { fault: { cause: error }, pieces: [{ row, text: `${this.#pending}\n` }] };
+      const layout = this.#sink.terminal?.kind;
+      const text = `${this.#pending}\n`;
+      const piece: Piece =
+        layout === 'rows'
+          ? { row: dropped, text }
+          : { open: layout === 'append' ? false : undefined, text };
+      closing = { fault: { cause: error }, pieces: [piece] };
     }
     this.#ended = true;
     return closing;
@@ -366,9 +340,13 @@ class StreamedMessage {
       return [];
     }
     const marked = this.#sink.render(text);
-    return this.#sink.rows === undefined
-      ? this.#lines(marked, end)
-      : this.#rows(marked, end, this.#sink.rows.columns());
+    const layout = this.#sink.terminal;
+    if (layout === undefined) {
+      return this.#lines(marked, end);
+    }
+    return layout.kind === 'rows'
+      ? this.#rows(marked, end, layout.fits)
+      : this.#appended(marked, end, layout.appends);
   }
 
   /**
@@ -389,54 +367,94 @@ class StreamedMessage {
     return fresh.map((line) => ({ text: line }));
   }
 
-  /**
-   * On a terminal: the rows finished since the last write, written for good, and the unfinished
-   * row, of which every screen row but the last is written for good too, so what the screen redraws
-   * is never more than one screen row a message.
-   */
-  #rows(marked: string, end: boolean, columns: number | undefined): Piece[] {
+  /** The text's rows, each resolved on its own, and whether its last row is finished too. */
+  #layout(marked: string, end: boolean): { rows: string[]; closed: boolean } {
     const rows = splitLines(marked).map((row) => this.#sink.resolve(row));
-    const closed = end || endsWithLineBreak(this.#sink.resolve(marked));
+    return { closed: end || endsWithLineBreak(this.#sink.resolve(marked)), rows };
+  }
+
+  /**
+   * On a terminal, for a lane that wraps: the rows finished since the last write, written for good,
+   * and the unfinished row, which the screen redraws. Once the unfinished row is wider than the
+   * screen, as a word longer than the row or a narrowed terminal makes it, no redraw could place
+   * it, so the row drawn last leaves the screen and the message writes each later row once it is
+   * finished, as off a terminal.
+   */
+  #rows(marked: string, end: boolean, fits: (frame: Frame) => boolean): Piece[] {
+    const { closed, rows } = this.#layout(marked, end);
     const finished = this.#finish(closed ? rows : rows.slice(0, -1));
     if (end) {
       this.#pending = '';
       return [{ row: dropped, text: finished }];
     }
-    const { head, rest } = this.#split(closed ? '' : (rows.at(-1) ?? ''), columns);
+    const rest = closed ? '' : (rows.at(-1) ?? '');
     this.#pending = rest;
-    return [{ row: { frame: frameOf(rest), kind: 'set' }, text: `${finished}${head}` }];
+    return this.#unfinishedRow(frameOf(rest), finished, fits);
   }
 
   /**
-   * The rows finished since the last write, each ended with a line break, less the head of the
-   * first one when that row was unfinished and its head already written.
+   * The write that sets the unfinished row while it fits on the screen, or, once it would not, the
+   * write that takes the row drawn last off the screen, after which only finished rows are written.
+   */
+  #unfinishedRow(
+    frame: Frame | undefined,
+    finished: string,
+    fits: (frame: Frame) => boolean,
+  ): Piece[] {
+    if (!this.#byRow && (frame === undefined || fits(frame))) {
+      return [{ row: { frame, kind: 'set' }, text: finished }];
+    }
+    const row = this.#byRow ? undefined : dropped;
+    this.#byRow = true;
+    return row === undefined && finished === '' ? [] : [{ row, text: finished }];
+  }
+
+  /**
+   * On a terminal, for `print`: the rows finished since the last write, less what of the first one
+   * was already written at the cursor, and then what the unfinished line adds at the cursor, once
+   * that line has started growing there or `appends` lets it start. Nothing written is ever drawn
+   * again, so the terminal wraps a long line as it wraps a whole message.
+   */
+  #appended(marked: string, end: boolean, appends: () => boolean): Piece[] {
+    const { closed, rows } = this.#layout(marked, end);
+    const finished = this.#finish(closed ? rows : rows.slice(0, -1));
+    const pieces: Piece[] = finished === '' ? [] : [{ open: false, text: finished }];
+    const row = closed ? '' : (rows.at(-1) ?? '');
+    this.#pending = visibleFrom(row, this.#head, false).text;
+    return [...pieces, ...this.#grow(row, appends)];
+  }
+
+  /**
+   * What the unfinished line adds at the cursor, once it has started growing there or `appends`
+   * lets it start, and nothing while it waits for its line break.
+   */
+  #grow(row: string, appends: () => boolean): Piece[] {
+    if (row === '' || (this.#head === 0 && !appends())) {
+      return [];
+    }
+    const { shown, text } = visibleFrom(row, this.#head, true);
+    if (text === '') {
+      return [];
+    }
+    this.#head = shown;
+    return [{ open: true, text }];
+  }
+
+  /**
+   * The rows finished since the last write, each ended with a line break, less what of the first
+   * one a `print` already wrote at the cursor.
    */
   #finish(finished: readonly string[]): string {
     const fresh = finished
       .slice(this.#written)
-      .map((row, index) => `${index === 0 ? sliceVisible(row, this.#head) : row}\n`);
+      .map((row, index) => `${index === 0 ? visibleFrom(row, this.#head, false).text : row}\n`);
     if (fresh.length > 0) {
       this.#written = finished.length;
       this.#head = 0;
     }
     return fresh.join('');
   }
-
-  /**
-   * The unfinished row split where its last screen row starts on a screen `columns` wide: the head
-   * not yet written, which is written for good, and the rest the screen redraws. A row that holds
-   * a carriage return redraws whole, because the return moves its own cursor.
-   */
-  #split(row: string, columns: number | undefined): { head: string; rest: string } {
-    const from = this.#head;
-    const shown = visible(row);
-    const wraps = columns !== undefined && columns > 0 && !shown.includes('\r');
-    const start = wraps ? Math.max(from, lastRowStart(shown, columns)) : from;
-    this.#head = start;
-    const head = start > from ? sliceVisible(row, from, start) : '';
-    return { head, rest: sliceVisible(row, start) };
-  }
 }
 
 export { StreamedMessage };
-export type { MessageSink, Piece, RowChange };
+export type { MessageSink, Piece, RowChange, TerminalLayout };
