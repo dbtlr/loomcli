@@ -71,7 +71,8 @@ interface Asked {
   readonly code: number;
   readonly answers: unknown[];
   readonly stderr: string;
-  readonly raw: boolean[];
+  /** Whether a reader held the keyboard in raw mode once the run ended. */
+  readonly rawAfter: boolean;
 }
 
 /**
@@ -80,7 +81,7 @@ interface Asked {
  */
 async function asked(
   keys: readonly (string | readonly string[])[],
-  ask: (context: Asking, answers: unknown[]) => Promise<void>,
+  ask: (context: Asking, answers: unknown[], raw: () => boolean) => Promise<void>,
   facts: {
     env?: Record<string, string>;
     argv?: string[];
@@ -89,29 +90,21 @@ async function asked(
   } = {},
 ): Promise<Asked> {
   const answers: unknown[] = [];
-  const raw: boolean[] = [];
   // Unstyled unless a case is about style, so a transcript reads as the plain text it prints.
   const rendering = facts.styled ? {} : ({ color: 'never', modifiers: 'never' } as const);
   const plugins = [plain(), interaction(), verbose(), ...(facts.plugins ?? [])];
   const app = new Application('setup', { plugins, rendering })
     .option('backend', { type: 'string' })
     .action(async (context) => {
-      await ask(context, answers);
+      await ask(context, answers, () => mock.stdin.isRaw);
     });
   const mock = mockProcess({
     argv: facts.argv ?? [],
     env: facts.env ?? { ACCESSIBLE: '1' },
     terminal: { columns: 80, keys, rows: 24 },
   });
-  const reading = setInterval(() => {
-    raw.push(mock.stdin.isRaw);
-  }, 1);
-  try {
-    const code = await app.run({ process: mock });
-    return { answers, code, raw, stderr: mock.stderr.text };
-  } finally {
-    clearInterval(reading);
-  }
+  const code = await app.run({ process: mock });
+  return { answers, code, rawAfter: mock.stdin.isRaw, stderr: mock.stderr.text };
 }
 
 /** Any cursor movement, erasure, cursor visibility, or bracketed paste sequence, or a lone CR. */
@@ -165,12 +158,21 @@ test('one entry answers two questions, as a terminal hands over typed-ahead line
 });
 
 test('a secret reads in raw mode, echoes nothing, and prints the line break itself', async () => {
-  const run = await asked(['s3cret\r'], async (context, answers) => {
-    answers.push(await secret(context, { message: 'Token' }));
+  const run = await asked(['s3cret\r'], async (context, answers, raw) => {
+    // The validator runs while the secret still holds the keyboard.
+    const holding = schema<string>((value) => {
+      answers.push(raw());
+      return { value: String(value) };
+    });
+    answers.push(await secret(context, { message: 'Token', validate: holding }));
+    answers.push(raw());
   });
-  expect(run).toMatchObject({ answers: ['s3cret'], code: 0, stderr: 'Token: \n' });
-  expect(run.raw).toContain(true);
-  expect(run.raw.at(-1)).toBe(false);
+  expect(run).toMatchObject({
+    answers: [true, 's3cret', false],
+    code: 0,
+    rawAfter: false,
+    stderr: 'Token: \n',
+  });
 });
 
 test('a secret refused by its validator prints the sentence and asks again', async () => {
