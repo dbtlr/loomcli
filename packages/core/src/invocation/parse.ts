@@ -92,7 +92,9 @@ function wordAt(following: Following, offset: number): string | undefined {
 
 /**
  * What one option word is read against: a table, and the values earlier words supplied, so an
- * option that does not collect and was supplied already is a repeat that ends the walk.
+ * option that was supplied already is a repeat that ends the walk, unless a later occurrence is
+ * never a repeat: a multiple option collects it, a counted option counts it, and a last-wins option
+ * replaces its value.
  */
 interface WordContext {
   table: SpellingTable;
@@ -632,7 +634,8 @@ function supply(state: ReadState, occurrence: Occurrence & { kind: 'value' }): b
   if (!values.spellings.has(option.name)) {
     note(state, { at: state.at, name: option.name });
   }
-  // A collecting option records its last occurrence, because each one overwrites the entry.
+  // A multiple, counted, or last-wins option reaches here on every occurrence.
+  // Each one overwrites the spelling entry, so it records the last occurrence.
   values.spellings.set(option.name, spelling);
   write(values, occurrence);
   return true;

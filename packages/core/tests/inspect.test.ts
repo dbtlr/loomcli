@@ -1,3 +1,4 @@
+import { Application } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
 import { invoke as invokeFixture } from './run-fixture.ts';
@@ -730,4 +731,13 @@ test('returns frozen data and builds a new graph on each call', async () => {
     ],
     repeats: 'jsonkit',
   });
+});
+
+test('an option declared with lastWins false inspects as lastWins false', () => {
+  const graph = new Application('app')
+    .option('editor', { lastWins: false, type: 'string' })
+    .action(() => {})
+    .inspect();
+  const editor = graph.root.options[0];
+  expect(editor?.type === 'string' && editor.lastWins).toBe(false);
 });

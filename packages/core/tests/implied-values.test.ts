@@ -1,5 +1,8 @@
-import { expect, test } from 'vite-plus/test';
+import { Application, validationContext } from '@loomcli/core';
 // Acceptance plan: see packages/core/tests/options.test.ts.
+import type { StandardSchemaV1 } from '@loomcli/core';
+import { mockProcess } from '@loomcli/testing';
+import { expect, test } from 'vite-plus/test';
 
 import { invoke as invokeFixture } from './run-fixture.ts';
 
@@ -228,4 +231,31 @@ test('locate reads a bare spelling as complete and an attached value as the valu
     kind: 'option',
     supplied: ['backup'],
   });
+});
+
+test('the implied value of a multiple option meets its validator in the default phase alone, and an explicit value in the invocation phase', async () => {
+  const calls: [string, string | undefined][] = [];
+  const probe: StandardSchemaV1<string, string> = {
+    '~standard': {
+      validate: (value, options) => {
+        calls.push([String(value), validationContext(options)?.phase]);
+        return { value: String(value) };
+      },
+      vendor: 'probe',
+      version: 1,
+    },
+  };
+  const read: unknown[] = [];
+  const application = new Application('app')
+    .option('level', { implied: 'fast', multiple: true, type: 'string', validate: probe })
+    .action(({ options }) => {
+      read.push(options.level);
+    });
+  const mock = mockProcess({ argv: ['--level', '--level=slow'] });
+  await expect(application.run({ process: mock })).resolves.toBe(0);
+  expect(calls.filter(([, phase]) => phase === 'invocation')).toEqual([['slow', 'invocation']]);
+  expect(calls.filter(([value]) => value === 'fast').map(([, phase]) => phase)).toEqual([
+    'default',
+  ]);
+  expect(read).toEqual([['fast', 'slow']]);
 });

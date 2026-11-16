@@ -322,6 +322,30 @@ test("a marked last-wins option's background choice follows the occurrence that 
   await expect(runOn(['--background=light', '--background'])).resolves.toMatchObject({ status: 2 });
 });
 
+test('a word after the winning occurrence of a marked last-wins option does not change the background choice', async () => {
+  const application = new Application('app')
+    .globalOption('background', { background: true, lastWins: true, type: 'string' })
+    .globalOption('name', { type: 'string' })
+    .argument('files', { variadic: true })
+    .action(({ host, options }) => {
+      seen.push([options.background, host.terminal.background]);
+    });
+  const runOn = async (argv: string[]) => {
+    seen.length = 0;
+    const mock = mockProcess({ argv, terminal: { background: 'dark', columns: 80, rows: 24 } });
+    const status = await application.run({ process: mock });
+    return { seen: [...seen], status, stderr: mock.stderr.text };
+  };
+  await expect(runOn(['--background=light', 'notes.txt'])).resolves.toMatchObject({
+    seen: [['light', 'light']],
+    status: 0,
+  });
+  await expect(runOn(['--background', 'light', '--name', 'x', 'f'])).resolves.toMatchObject({
+    seen: [['light', 'light']],
+    status: 0,
+  });
+});
+
 test("a plugin's last-wins option records the winning spelling, and a faulted occurrence leaves ownOptions without it", async () => {
   const read: unknown[] = [];
   const formatter = plugin('@fixture/fmt', {

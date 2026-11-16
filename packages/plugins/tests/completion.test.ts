@@ -407,6 +407,16 @@ describe('the answer', () => {
     expect(at('--resize', '1', '2', '--to', 'x', '--')).toBe(framed(['--editor', '--resize'], 4));
   });
 
+  it('an option declared with lastWins false is not offered again once given', () => {
+    const graph = new Application('kit')
+      .option('editor', { lastWins: false, type: 'string' })
+      .option('to', { type: 'string' })
+      .action(() => {})
+      .inspect();
+    const at = (...words: string[]) => answer(graph, locate(graph, words));
+    expect(at('--editor', 'vim', '--')).toBe(framed(['--to'], 4));
+  });
+
   it('a counted option is offered again, because another occurrence adds to its count', async () => {
     await expect(complete('backups', '-v', '--v')).resolves.toBe(
       framed(['--verbose\tSay more.'], 4),
