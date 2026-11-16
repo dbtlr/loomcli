@@ -211,6 +211,37 @@ test('an option’s node holds every alias, then the visible ones, wherever the 
   expect(local && [local.long, local.short]).toEqual(['--local', null]);
 });
 
+/** What the repeating applications printed. */
+const printed: unknown[] = [];
+
+/** One `both` Boolean option `color` that declares `spellings` as aliases of one list. */
+function repeating(list: 'aliases' | 'visibleAliases', spellings: string[]) {
+  return new Application('store')
+    .option('color', { [list]: spellings, polarity: 'both', type: 'boolean' })
+    .action(({ options }) => {
+      printed.push(options);
+    });
+}
+
+test.each(['aliases', 'visibleAliases'] as const)(
+  'an alias whose spelling the option accepts adds nothing, in %s: it is left out of inspection and its negative form is unknown',
+  async (list) => {
+    const app = repeating(list, ['no-color', 'colour', 'colour', 'no-colour']);
+    const [color] = app.inspect().root.options;
+    expect(aliasFacts(color)).toEqual({
+      aliases: ['colour'],
+      visibleAliases: list === 'visibleAliases' ? ['colour'] : [],
+    });
+    printed.length = 0;
+    const accepted = mockProcess({ argv: ['--no-color'] });
+    await expect(app.run({ process: accepted })).resolves.toBe(0);
+    expect(printed).toEqual([{ color: false }]);
+    const unknown = mockProcess({ argv: ['--no-no-color'] });
+    await expect(app.run({ process: unknown })).resolves.toBe(2);
+    expect(unknown.stderr.text).toContain('Unknown option "--no-no-color".');
+  },
+);
+
 /** The Developer Diagnostic a declaring call throws, or a note that it threw nothing. */
 function thrown(declare: () => unknown): string {
   try {

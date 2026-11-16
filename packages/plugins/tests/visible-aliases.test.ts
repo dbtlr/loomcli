@@ -13,7 +13,7 @@
  * - The man page. An entry's text carries help's alias fact, and a Command's DESCRIPTION opens with
  *   `Alias: ls` before `Deprecated: <message>`.
  * - Completion. A visible alias is offered only where the canonical name does not match, for a
- *   Command and for an option, its negative form included, and a hidden alias never.
+ *   Command and for an option, its negative form included, and an alias that is not visible never.
  * - The manifest. A Command entry and an option entry carry `aliases`, the visible aliases alone,
  *   after `name` and after `short` or `negative`, `[]` when there is none.
  * - MCP. A visible alias adds no tool, changes no tool name, and adds no input schema property.
@@ -371,4 +371,22 @@ test('the restyle prints the whole Alias line and the alias fact dim, which the 
   expect(page.stdout).toContain('\n  \u001b[35mAlias: ls\u001b[39m\n');
   const group = await run(['cache', '-h'], { styled: true });
   expect(group.stdout).toContain('List the cache.  \u001b[35m(alias: ls)\u001b[39m\n');
+});
+
+test('a visible alias whose spelling the option already accepts is listed by neither help nor the manifest', async () => {
+  const app = new Application('store', { plugins: [help(), manifest()] })
+    .option('color', {
+      polarity: 'both',
+      type: 'boolean',
+      visibleAliases: ['no-color', 'colour'],
+    })
+    .action(() => {});
+  const listed = await runOnMock(app, { argv: ['--help'] });
+  expect(listed.stdout).toMatch(/--\[no-\]color\s+\(alias: --colour\)/u);
+  expect(listed.stdout).not.toContain('--no-no-color');
+  const document = await runOnMock(app, { argv: ['--manifest'] });
+  const { command }: { command: ManifestEntry } = JSON.parse(document.stdout);
+  expect(command.options.map(({ aliases, name }) => [name, aliases])).toEqual([
+    ['color', ['colour']],
+  ]);
 });

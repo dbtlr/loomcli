@@ -44,7 +44,16 @@ The owner settled the shape in grooming (LM-368), on 2026-11-16: a visible count
    * `.visibleAlias('ls')` on `list` prints `(alias: ls)` on its row. They invalidate no call, and
    * the tuple rest parameter rejects a call that names none.
    *
-   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#aliases
+   * @example
+   * ```ts
+   * import { Command } from '@loomcli/core';
+   *
+   * export const list = new Command('list', { description: 'List the cache.' })
+   *   .visibleAlias('ls')
+   *   .action(({ out }) => out.print('cache.db'));
+   * ```
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#visible-aliases
    */
   visibleAlias(
     ...names: [string, ...string[]]
@@ -135,7 +144,7 @@ The contract is in [Commands and global options](../core/commands.md#aliases), [
 
 A declaration that compiled before compiles and runs the same, and an application that declares no visible alias shows the same in every projection but the manifest, whose Command entries and option entries gain `aliases: []`. `Command` gains `visibleAlias()`, an opt-in authoring method; `CommandMethod` gains `'visibleAlias'`, a string-literal union gaining a member in output position; `ApplicationMethod` is unchanged in what it holds; the option config types, which are input types, gain an optional member; and `CommandNode` and the three `OptionNode` variants, which are output types, gain a member. Under the [change-fragment rules](../../.changes/README.md) none of these breaks an author's code. Core gains no failure class and no rule identity.
 
-ADR-0002's considered option that rejects advertised aliases with deprecation messages is superseded in part: an advertised alias is declared with `visibleAlias()`, while an alias's deprecation message stays rejected. Its consequence that a report that shows an alias is a bug holds for an alias that is not visible, and a candidate list or a path still never shows a visible one. ADR-0056's sentence that help, the manifest, completion, and suggestions never list an alias is superseded for a visible alias, which help, the man page, completion, and the manifest list, while suggestions still never list one. ADR-0002's entry that no projection reads `aliases` holds for every listing, which reads `visibleAliases` and lists no other alias; the help plugin's help Command resolves each typed word against every alias, as routing does and as it did before this record. ADR-0043's clause that an alias is never offered, and its rejection of offering an alias when no canonical name matches, are superseded for a visible alias, which completion offers exactly then; no alias is ever rewritten. ADR-0010's rule that a Command appears once, under its canonical name, with its aliases in a separate field, holds. ADR-0063's rule that an alias is never a tool and ADR-0079's rule that an alias has no page hold. ADR-0002, ADR-0043, and ADR-0056 carry dated entries.
+ADR-0002's considered option that rejects advertised aliases with deprecation messages is superseded in part: a visible alias is declared with `visibleAlias()`, while an alias's deprecation message stays rejected. Its consequence that a report that shows an alias is a bug holds for an alias that is not visible, and a candidate list or a path still never shows a visible one. ADR-0056's sentence that help, the manifest, completion, and suggestions never list an alias is superseded for a visible alias, which help, the man page, completion, and the manifest list, while suggestions still never list one. ADR-0002's entry that no projection reads `aliases` holds for every listing, which reads `visibleAliases` and lists no other alias; the help plugin's help Command resolves each typed word against every alias, as routing does and as it did before this record. ADR-0043's clause that an alias is never offered, and its rejection of offering an alias when no canonical name matches, are superseded for a visible alias, which completion offers exactly then; no alias is ever rewritten. ADR-0010's rule that a Command appears once, under its canonical name, with its aliases in a separate field, holds. ADR-0063's rule that an alias is never a tool and ADR-0079's rule that an alias has no page hold. ADR-0002, ADR-0043, and ADR-0056 carry dated entries.
 
 ## Status
 
@@ -144,3 +153,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-16: Proposed with the contract (LM-368). It supersedes in part ADR-0002's rejection of advertised aliases and its rule that a report that shows an alias is a bug, ADR-0056's rule that no listing shows an option alias, and ADR-0043's rule that completion never offers an alias, each for a visible alias. ADR-0002, ADR-0043, and ADR-0056 carry dated entries.
+- 2026-11-16: The code now follows the Names rule: an option's alias whose long spelling the option already accepts, such as `no-color` on a `both` option `color`, is dropped from `aliases` and `visibleAliases` as a repeat, so it adds no spelling and no listing shows it.

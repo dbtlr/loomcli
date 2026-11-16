@@ -244,10 +244,11 @@ type OptionNode =
 
 /**
  * One Command in the graph. `name` is `null` for the root, and `path` is its route from it.
- * `aliases` holds every alias in declaration order and `visibleAliases` the visible ones, so a
- * Command appears once, under its canonical name, and `path` never holds an alias. The root reports the Application's description, so a
- * projection that walks nodes never special-cases it, and it reads `hidden: false` and
- * `deprecated: undefined`, the two core facts a listing reads on every other node.
+ * `aliases` holds every alias in declaration order and `visibleAliases` the visible ones. A Command
+ * appears once, under its canonical name, and `path` never holds an alias. The root reports the
+ * Application's description, so a projection that walks nodes never special-cases it. It reads
+ * `hidden: false` and `deprecated: undefined`, the two core facts a listing reads on every other
+ * node.
  *
  * @public
  * @sealed

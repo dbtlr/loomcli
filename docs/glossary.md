@@ -237,7 +237,7 @@ The one rule for every name an operator types as a command at a shell prompt: th
 _Avoid_: Safe name, shell-safe name, identifier
 
 **Alias**:
-A synonym for a Command or an option: another name for a common mistype, an inference, or a former name, so a guessed or retired spelling still succeeds. A Command's alias routes to that Command, and every canonical name and alias under one parent shares one set of names that must not repeat. An option's alias is one more long spelling of that option, in the table its other spellings share. An alias is unadvertised unless the author declares it a visible alias. An alias of either kind is never a second member of the graph, not an option's short alias, and not a hidden member.
+A synonym for a Command or an option. An unadvertised alias is another name for a common mistype, an inference, or a former name, so a guessed or retired spelling still succeeds; a visible alias is a short form or a second name the author wants operators to learn. A Command's alias routes to that Command, and every canonical name and alias under one parent shares one set of names that must not repeat. An option's alias is one more long spelling of that option, in the table its other spellings share. An alias is unadvertised unless the author declares it a visible alias. An alias of either kind is never a second member of the graph, not an option's short alias, and not a hidden member.
 _Avoid_: Hidden alias, alternate command, shortcut
 
 **Visible alias**:

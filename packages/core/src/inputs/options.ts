@@ -274,15 +274,44 @@ interface DistinctAlias {
 }
 
 /**
+ * The long spellings one name yields for an option: its positive form unless the polarity is
+ * negative, and its negative form for `both` and `negative` polarity.
+ */
+function longSpellingsOf(name: string, config: OptionConfig): readonly string[] {
+  const spellings: string[] = [];
+  if (config.type !== 'boolean' || config.polarity !== 'negative') {
+    spellings.push(`--${name}`);
+  }
+  if (config.type === 'boolean' && (config.polarity === 'both' || config.polarity === 'negative')) {
+    spellings.push(`--no-${name}`);
+  }
+  return spellings;
+}
+
+/**
  * The aliases one option declares, its config's `aliases` and then its `visibleAliases`, without a
- * repeat: an alias that names the option or an alias before it adds no spelling, so it is skipped.
- * A name `visibleAliases` holds is visible, in the place of its first declaration, and a fault marks
- * it in `visibleAliases`, where the author declared it visible.
+ * repeat: an alias whose long spelling the option already accepts, through its own name or an alias
+ * before it, adds nothing, so it is skipped. A name `visibleAliases` holds is visible, in the place
+ * of its first declaration, and a fault marks it in `visibleAliases`, where the author declared it
+ * visible.
  */
 export function distinctAliases(name: string, config: OptionConfig): readonly DistinctAlias[] {
   const hidden = aliasList(config, 'aliases');
   const visible = aliasList(config, 'visibleAliases');
-  const names = [...new Set([...hidden, ...visible])].filter((alias) => alias !== name);
+  const accepted = new Set(longSpellingsOf(name, config));
+  const names = [...new Set([...hidden, ...visible])].filter((alias) => {
+    if (alias === name) {
+      return false;
+    }
+    const spellings = longSpellingsOf(alias, config);
+    if (spellings.some((spelling) => accepted.has(spelling))) {
+      return false;
+    }
+    for (const spelling of spellings) {
+      accepted.add(spelling);
+    }
+    return true;
+  });
   return names.map((alias) => {
     const list: AliasList = visible.includes(alias) ? 'visibleAliases' : 'aliases';
     const index = aliasList(config, list).indexOf(alias);
