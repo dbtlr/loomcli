@@ -18,7 +18,7 @@
 import { mockProcess } from '@loomcli/testing';
 import { expect, test, vi } from 'vite-plus/test';
 
-import { Application, lanes, override } from '../src/index.js';
+import { Application, lanes, override, style } from '../src/index.js';
 import type { Out } from '../src/index.js';
 import { Output } from '../src/output/output.js';
 
@@ -184,4 +184,44 @@ test('a lane view an author overrode lays out the whole text so far at every chu
   await expect(app.run({ process: mock })).resolves.toBe(0);
   expect(laid).toEqual(['one\n', 'one\ntwo\n', 'one\ntwo\nthree', 'one\ntwo\nthree']);
   expect(mock.stderr.text).toBe('[one\ntwo\nthree]\n');
+});
+
+/** Everything `write` writes on a piped mock with color and modifiers forced on. */
+async function colored(write: (out: Out) => Promise<void>): Promise<string> {
+  const mock = mockProcess({ env: {} });
+  const code = await new Application('colored')
+    .action(async ({ out }) => write(out))
+    .run({ process: mock, rendering: { color: 'always', modifiers: 'always' } });
+  expect(code).toBe(0);
+  return mock.stderr.text;
+}
+
+/** The text cut after each of its line breaks, so each chunk ends one line. */
+function byLine(text: string): string[] {
+  return text.match(/[^\n]*\n|[^\n]+$/gu) ?? [];
+}
+
+/** The bytes the `info` lane writes for `text` streamed a line a chunk, and for `text` as one string. */
+async function streamedAndWhole(text: string) {
+  return {
+    streamed: await colored(async (out) => out.info(chunks(...byLine(text)))),
+    whole: await colored(async (out) => out.info(text)),
+  };
+}
+
+test('a style frame left open across chunks that each break a line writes the bytes of the whole text', async () => {
+  const { streamed, whole } = await streamedAndWhole(style.bold('aa\nbb\ncc\ndd ee ff gg'));
+  expect(streamed).toBe(whole);
+});
+
+test('nested style frames open across chunks write the bytes of the whole text', async () => {
+  const { streamed, whole } = await streamedAndWhole(
+    style.red(`x one\n${style.bold('y two\nz three\nq')}\nw four\nv`),
+  );
+  expect(streamed).toBe(whole);
+});
+
+test('a raw SGR sequence left open across line breaks writes the bytes of the whole text', async () => {
+  const { streamed, whole } = await streamedAndWhole('a\u001B[31mred\nstill\nmore\nlast');
+  expect(streamed).toBe(whole);
 });
