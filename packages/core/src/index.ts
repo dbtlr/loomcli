@@ -207,6 +207,7 @@ export type {
   Request,
 } from './invocation/types.js';
 export type {
+  MessageArguments,
   Out,
   ProgressEvent,
   ProgressReport,

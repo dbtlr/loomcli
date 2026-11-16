@@ -21,10 +21,13 @@ import type { LiveRegionsHook } from './live-regions.js';
 import type { LogDestination } from './log.js';
 import { ProgressLedger } from './progress-events.js';
 import { endsWithLineBreak, Regions, Screen } from './region.js';
-import type { Frame, LiveRegion } from './region.js';
+import type { Frame, LiveRegion, Slot } from './region.js';
 import { writeSequence } from './sequence.js';
 import type { SequenceView } from './sequence.js';
+import { StreamedMessage } from './streamed.js';
+import type { MessageSink, RowChange } from './streamed.js';
 import type {
+  MessageArguments,
   OpenResult,
   Out,
   ProgressEvent,
@@ -81,10 +84,14 @@ type Purpose = Lane;
 /** The two streams every write site names. */
 type Stream = 'stdout' | 'stderr';
 
-/** Where one semantic message goes and the view it draws through, its lane view when none is passed. */
+/**
+ * Where one semantic message goes and the view it draws through, its lane view when none is passed,
+ * and the channel whose failure stops it when it is streamed.
+ */
 interface MessageLook {
   readonly destination: Stream;
   readonly view: View<string> | undefined;
+  readonly live?: LiveSequences | undefined;
 }
 
 /** The threshold of a lane that writes at every verbosity. */
@@ -137,9 +144,10 @@ interface Part {
 /**
  * How a destination sends one text write once it reaches the stream, as the parts its turn hands to
  * the streams, produced in the call: a terminal stderr erases the live regions before it and draws
- * them after it, and a terminal stdout does the same while a region is open.
+ * them after it, and a terminal stdout does the same while a region is open. `between` changes the
+ * screen once the regions are erased and the text is written, before they are drawn again.
  */
-type Passage = (text: string) => Part[];
+type Passage = (text: string, between?: () => void) => Part[];
 
 /**
  * One write queued on a destination and not yet handed to its stream. `order` places it in the
@@ -253,10 +261,11 @@ class Destination {
 
   /**
    * One text queued behind this destination's earlier writes and, when it joins another
-   * destination's order, behind that one's too, which then waits for it in turn.
+   * destination's order, behind that one's too, which then waits for it in turn. `between` is the
+   * screen change the write makes at its turn, as a streamed message's unfinished row.
    */
-  write(text: string): Promise<void> {
-    const queued = this.queue([this.ticket(), 0], () => this.parts(text));
+  write(text: string, between?: () => void): Promise<void> {
+    const queued = this.queue([this.ticket(), 0], () => this.parts(text, between));
     const order = this.joined();
     const previous = order === undefined ? this.tail : Promise.all([this.tail, order.tail]);
     const pending = previous.then(() => this.accept(queued));
@@ -289,9 +298,16 @@ class Destination {
     return queued;
   }
 
-  /** The parts one text write hands to the streams at its turn. */
-  private parts(text: string): Part[] {
-    return this.passage ? this.passage(text) : [{ destination: this, quiet: false, text }];
+  /**
+   * The parts one text write hands to the streams at its turn, which an end also reads for a
+   * streamed message's last write.
+   */
+  parts(text: string, between?: () => void): Part[] {
+    if (this.passage) {
+      return this.passage(text, between);
+    }
+    between?.();
+    return [{ destination: this, quiet: false, text }];
   }
 
   /**
@@ -579,6 +595,19 @@ interface Emission {
   regions: Set<LiveRegion>;
 }
 
+/** The place in the run's order a streamed message's last write took, which its rest takes at an end. */
+interface Place {
+  order: readonly [number, number];
+}
+
+/** One streamed message still open: where it writes, its place, and its unfinished row's slot. */
+interface OpenStream {
+  readonly destination: Destination;
+  readonly message: StreamedMessage;
+  readonly place: Place;
+  readonly slot: Slot;
+}
+
 /** Where one write goes, and the channel whose failure stops a sequence written there. */
 interface Target {
   destination: Stream;
@@ -621,8 +650,13 @@ export class Output {
   private readonly regions: Regions;
   // The span of drawn regions the installed onLiveRegions hooks observe, once the run hands them over.
   private span: LiveRegionSpan | undefined = undefined;
-  // Closes every region at once when the run's signal aborts.
+  // The streamed messages still open, which the run waits for and an end writes the rest of.
+  private readonly streams = new Set<OpenStream>();
+  // Ends every open streamed message, then closes every region, at once when the run's signal aborts.
   private readonly onCancel = (): void => {
+    for (const open of this.streams) {
+      open.message.stop();
+    }
     this.regions.closeAll('cancellation');
   };
   // Aborts the run's signal with the closed-pipe reason, once the run has a signal bracket.
@@ -653,8 +687,8 @@ export class Output {
     private readonly signal: AbortSignal,
   ) {
     this.screen = new Screen({
-      column: (shown, column) => nextColumn(shown, this.host.terminal.stderr.columns, column),
-      rows: (marked) => this.frameRows(marked),
+      column: (shown, column) => nextColumn(shown, this.screenColumns(), column),
+      rows: (marked) => this.frameRows(marked, undefined, this.screenColumns()),
     });
     this.regions = new Regions(
       {
@@ -682,19 +716,12 @@ export class Output {
     this.coordinate();
     signal.addEventListener('abort', this.onCancel, { once: true });
     this.out = {
-      debug: (message, view) =>
-        this.hand(this.emit('debug', message, { destination: 'stderr', view })),
+      ...this.lanes({ destination: 'stdout' }),
       draw: (data: never, value: View<never>) => this.hand(this.draw(data, value)),
-      error: (message, view) =>
-        this.hand(this.emit('error', message, { destination: 'stderr', view })),
       fatal: (message) => {
         throw new FatalError(message);
       },
-      info: (message, view) =>
-        this.hand(this.emit('info', message, { destination: 'stderr', view })),
       lendTerminal: (work) => this.lendTerminal(work),
-      print: (message, view) =>
-        this.hand(this.emit('print', message, { destination: 'stdout', view })),
       // A region a middleware or a source opens closes once the chain has unwound.
       region: (options) => this.regions.open(options),
       // The data type is erased here, as it is in the registry.
@@ -703,13 +730,27 @@ export class Output {
       render: (data: never, value: View<never> | RowView<never>): Promise<void> =>
         this.hand(this.renderValue(data, value, { destination: 'stdout' })),
       results: noResult,
-      success: (message, view) =>
-        this.hand(this.emit('success', message, { destination: 'stderr', view })),
       text: (data: never, value: View<never>) => this.text(data, value, 'stdout'),
-      trace: (message, view) =>
-        this.hand(this.emit('trace', message, { destination: 'stderr', view })),
-      warn: (message, view) =>
-        this.hand(this.emit('warn', message, { destination: 'stderr', view })),
+    };
+  }
+
+  /**
+   * The seven semantic methods of one channel: `print` writes to `target.destination` and every
+   * other method to stderr, and a streamed message joins `target.live`, whose failure stops it.
+   */
+  private lanes(target: Target): Pick<Out, Lane> {
+    const lane =
+      (kind: Lane, destination: Stream) =>
+      (...call: MessageArguments): Promise<void> =>
+        this.hand(this.emit(kind, call, { destination, live: target.live }));
+    return {
+      debug: lane('debug', 'stderr'),
+      error: lane('error', 'stderr'),
+      info: lane('info', 'stderr'),
+      print: lane('print', target.destination),
+      success: lane('success', 'stderr'),
+      trace: lane('trace', 'stderr'),
+      warn: lane('warn', 'stderr'),
     };
   }
 
@@ -728,15 +769,14 @@ export class Output {
       completion.resolve = resolve;
     });
     this.lends.add(settled);
-    const destination = this.destination(this.host.stderr);
+    const screen = this.screenDestination();
+    const destination = screen ?? this.destination(this.host.stderr);
     try {
-      await destination.compose(() => (this.host.terminal.stderr.isTTY ? this.screen.lend() : ''));
+      await destination.compose(() => (screen === undefined ? '' : this.screen.lend()));
       return await work();
     } finally {
       try {
-        await destination.compose(() =>
-          this.host.terminal.stderr.isTTY ? this.screen.reclaim() : '',
-        );
+        await destination.compose(() => (screen === undefined ? '' : this.screen.reclaim()));
       } finally {
         this.lends.delete(settled);
         completion.resolve?.();
@@ -764,7 +804,7 @@ export class Output {
       },
       out: {
         ...this.out,
-        print: (message, view) => this.hand(this.emit('print', message, { destination, view })),
+        ...this.lanes(target),
         region: (options) => this.regions.open(options, emission.regions),
         // The data type is erased here, as it is in the registry.
         // One call dispatches on the shape of the view it was handed.
@@ -894,10 +934,10 @@ export class Output {
    */
   private holdSuspend(): () => void {
     const { suspension } = this;
-    if (suspension === undefined) {
+    const destination = this.screenDestination();
+    if (suspension === undefined || destination === undefined) {
       return () => undefined;
     }
-    const destination = this.destination(this.host.stderr);
     const removers = [
       suspension.onSuspend(() => {
         destination.flushComposed(() =>
@@ -959,15 +999,17 @@ export class Output {
     const taken = [...this.destinations.values()].map((destination) => destination.takeQueued());
     const started = taken.flatMap((writes) => writes.started);
     started.sort(byOrder);
-    const queued = taken.flatMap((writes) => writes.queued);
+    const queued = [...taken.flatMap((writes) => writes.queued), ...this.streamEnds()];
     queued.sort(byOrder);
     const parts = [
       ...started.flatMap((write) => write.parts.splice(0)),
       ...queued.flatMap((write) => write.start()),
     ];
-    if (this.host.terminal.stderr.isTTY) {
-      const restored = this.screen.finishLends() + this.cursorShown();
-      parts.push({ destination: this.destination(this.host.stderr), quiet: true, text: restored });
+    const screen = this.screenDestination();
+    if (screen !== undefined) {
+      // A screen on stdout alone shows the cursor nowhere, because only stderr's draws can hide it.
+      const shown = screen === this.destination(this.host.stderr) ? this.cursorShown() : '';
+      parts.push({ destination: screen, quiet: true, text: this.screen.finishLends() + shown });
     }
     writeNow(parts);
     // The process is ending, so a span still open closes after those bytes.
@@ -1027,6 +1069,7 @@ export class Output {
   private coordinate(): void {
     const { stderr, stdout, terminal } = this.host;
     if (!terminal.stderr.isTTY) {
+      this.coordinateStdout();
       return;
     }
     const errors = this.destination(stderr);
@@ -1039,8 +1082,8 @@ export class Output {
         this.span?.before(this.screen.holdsFrame);
       },
     };
-    errors.passage = (text) => {
-      const { after, before } = this.screen.around(text);
+    errors.passage = (text, between) => {
+      const { after, before } = this.screen.around(text, between);
       return [{ destination: errors, quiet: false, text: before + text + after }];
     };
     if (!terminal.stdout.isTTY || stdout === stderr) {
@@ -1051,28 +1094,73 @@ export class Output {
     errors.turn = turn;
     output.turn = turn;
     output.order = { joins: () => this.screen.holding, shared: errors };
-    output.passage = (text) => {
-      if (!this.screen.holding) {
+    output.passage = (text, between) => {
+      if (!this.screen.holding && between === undefined) {
         this.screen.note(text);
         return [{ destination: output, quiet: false, text }];
       }
-      const { after, before } = this.screen.around(text);
+      const { after, before } = this.screen.around(text, between);
+      // A streamed message's write that only redraws its unfinished row writes nothing to stdout.
+      const own: Part[] = text === '' ? [] : [{ destination: output, quiet: false, text }];
       return [
         { destination: errors, quiet: true, text: before },
-        { destination: output, quiet: false, text },
+        ...own,
         { destination: errors, quiet: true, text: after },
       ];
     };
   }
 
   /**
-   * The rows a frame's marked text takes at stderr's current width, counted as it resolves, with
-   * its control sequences kept when `controls` is true.
+   * A terminal stdout beside a stderr that is not one, as under `cli 2>log`, is the screen alone:
+   * no region draws there, and a streamed `print` keeps its unfinished row on stdout, erased and
+   * drawn again around every other stdout write.
    */
-  private frameRows(marked: string, controls = this.host.terminal.stderr.isTTY): number {
+  private coordinateStdout(): void {
+    const { stderr, stdout, terminal } = this.host;
+    if (!terminal.stdout.isTTY || stdout === stderr) {
+      return;
+    }
+    const output = this.destination(stdout);
+    output.passage = (text, between) => {
+      if (!this.screen.holding && between === undefined) {
+        this.screen.note(text);
+        return [{ destination: output, quiet: false, text }];
+      }
+      const { after, before } = this.screen.around(text, between);
+      return [{ destination: output, quiet: false, text: before + text + after }];
+    };
+  }
+
+  /**
+   * The destination the screen draws through: stderr when it is a terminal, or else stdout when
+   * that is, and none when neither is.
+   */
+  private screenDestination(): Destination | undefined {
+    const { stderr, stdout, terminal } = this.host;
+    if (terminal.stderr.isTTY) {
+      return this.destination(stderr);
+    }
+    return terminal.stdout.isTTY ? this.destination(stdout) : undefined;
+  }
+
+  /** The real width of the terminal the screen draws on, never narrowed by `COLUMNS`. */
+  private screenColumns(): number | undefined {
+    const { terminal } = this.host;
+    return terminal.stderr.isTTY ? terminal.stderr.columns : terminal.stdout.columns;
+  }
+
+  /**
+   * The rows a frame's marked text takes at stderr's current width, or at `width`, counted as it
+   * resolves, with its control sequences kept when `controls` is true.
+   */
+  private frameRows(
+    marked: string,
+    controls = this.host.terminal.stderr.isTTY,
+    width = this.host.terminal.stderr.columns,
+  ): number {
     return drawnRows(marked, {
       caps: this.drawCaps(controls),
-      columns: this.host.terminal.stderr.columns,
+      columns: width,
       palette: this.palette,
     });
   }
@@ -1148,10 +1236,15 @@ export class Output {
    * way it ends with exactly one line break: this call appends one after the resolved text unless
    * that text already ends with one, so a lane view returns none, a pack view that ends its own
    * lines gains none, and a view that returns the empty string still writes one. A call the run's
-   * verbosity hides calls no view and writes nothing.
+   * verbosity hides calls no view and writes nothing. A message that is an async iterable of its
+   * text is a streamed message, which takes no view.
    */
-  emit(kind: Purpose, message: string, look: MessageLook): Promise<void> {
-    const { destination, view = lanes[kind] } = look;
+  emit(kind: Purpose, call: MessageArguments, look: Omit<MessageLook, 'view'>): Promise<void> {
+    const [message, view = lanes[kind]] = call;
+    if (typeof message !== 'string') {
+      return this.streamed(kind, message, look);
+    }
+    const { destination } = look;
     if (this.verbosity < shownFrom[kind]) {
       return Promise.resolve();
     }
@@ -1160,6 +1253,92 @@ export class Output {
       destination,
       (text) => this.write(this.host[destination], endsWithLineBreak(text) ? text : `${text}\n`),
     );
+  }
+
+  /**
+   * One streamed message on its method's destination, read from here until its iterable ends. A
+   * message the run's verbosity hides is read to its end and laid out never. On a terminal that
+   * redraws, its unfinished row sits above the live regions and the screen holds a suspend while it
+   * is open; elsewhere it writes each line once it completes. The view context is read once, at
+   * its first layout, so the whole message lays out at one width. A message an action issued joins
+   * its channel's live set, so the action's failure stops it.
+   */
+  private streamed(
+    kind: Purpose,
+    source: AsyncIterable<string>,
+    look: Omit<MessageLook, 'view'>,
+  ): Promise<void> {
+    const { destination } = look;
+    const hidden = this.verbosity < shownFrom[kind];
+    const target = this.destination(this.host[destination]);
+    const rows = !hidden && this.host.terminal[destination].isTTY && redraws(this.host.env);
+    const slot: Slot = { closed: false, input: false, latest: undefined, shown: undefined };
+    let context: ViewContext | undefined = undefined;
+    const place: Place = { order: [this.ticket(), 0] };
+    const sink: MessageSink = {
+      hidden,
+      raise: (cause) => {
+        this.raised.add(cause);
+      },
+      render: (text) => {
+        context ??= this.context(destination);
+        return String(resolveView<string>(this.registry, lanes[kind])(text, context));
+      },
+      resolve: (marked) =>
+        resolveText(marked, this.palette, capabilities(this.host, destination, this.policy)),
+      rows: rows ? { columns: () => this.screenColumns() } : undefined,
+      write: (piece) => {
+        const written = target.write(piece.text, this.rowChange(slot, piece.row));
+        place.order = [this.ticket(), 0];
+        return written;
+      },
+    };
+    const release = rows ? this.holdSuspend() : undefined;
+    const message = new StreamedMessage(source, sink, this.signal.aborted);
+    const open: OpenStream = { destination: target, message, place, slot };
+    this.streams.add(open);
+    look.live?.add(() => {
+      message.stop();
+    });
+    const done = message.done.finally(() => {
+      this.streams.delete(open);
+      release?.();
+    });
+    void handled(done);
+    return done;
+  }
+
+  /** The screen change one write of a streamed message makes to its unfinished row, if any. */
+  private rowChange(slot: Slot, change: RowChange | undefined): (() => void) | undefined {
+    if (change === undefined) {
+      return undefined;
+    }
+    return change.kind === 'drop'
+      ? () => {
+          this.screen.dropRow(slot);
+        }
+      : () => {
+          this.screen.row(slot, change.frame);
+        };
+  }
+
+  /**
+   * The rest of each open streamed message, for the process's end to write in its place: after its
+   * last write, as its end would write it, its unfinished row or last line and its one closing line
+   * break. Each message reads no further chunk.
+   */
+  private streamEnds(): Queued[] {
+    return [...this.streams].map((open) => ({
+      composed: false,
+      order: open.place.order,
+      parts: [],
+      start: () =>
+        open.message
+          .flush()
+          .flatMap((piece) =>
+            open.destination.parts(piece.text, this.rowChange(open.slot, piece.row)),
+          ),
+    }));
   }
 
   /**
@@ -1373,10 +1552,13 @@ export class Output {
         destination,
         tail: destination.tail,
       }));
-      await Promise.all(pending.map(({ tail }) => tail));
+      // A streamed message still open is output the run waits for, as a queued write is.
+      const streams = [...this.streams].map((open) => handled(open.message.done));
+      await Promise.all([...pending.map(({ tail }) => tail), ...streams]);
       // Node reports write errors after callbacks. Those callbacks can also enqueue output.
       await setImmediate();
       drained =
+        this.streams.size === 0 &&
         pending.length === this.destinations.size &&
         pending.every(({ destination, tail }) => destination.tail === tail);
     }

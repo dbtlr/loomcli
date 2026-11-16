@@ -4,7 +4,15 @@
  * gives it, and every other member asks the test to state it.
  */
 import { FatalError } from '@loomcli/core';
-import type { Log, OnResume, OnShutdown, OnSuspend, Out, Region } from '@loomcli/core';
+import type {
+  Log,
+  MessageArguments,
+  OnResume,
+  OnShutdown,
+  OnSuspend,
+  Out,
+  Region,
+} from '@loomcli/core';
 
 /** The members a test may state beside the inputs: out and log member by member, every other member whole. */
 type OptionalMembers<Context> = {
@@ -44,6 +52,21 @@ function nothing(): void {
 /** Resolves and writes nothing. */
 function resolved(): Promise<void> {
   return Promise.resolve();
+}
+
+/**
+ * A semantic lane that writes nothing. A streamed message is read to its end first, so the call
+ * resolves when the iterable ends and rejects when it throws, as a call the verbosity hides does.
+ */
+async function readsToEnd(...call: MessageArguments): Promise<void> {
+  const [message] = call;
+  if (typeof message === 'string') {
+    return;
+  }
+  const steps = message[Symbol.asyncIterator]();
+  for (let step = await steps.next(); step.done !== true; step = await steps.next()) {
+    // Each chunk is discarded.
+  }
 }
 
 /** The width `out.draw` reports when it draws nothing. */
@@ -110,7 +133,8 @@ function unstatedText(builder: keyof typeof outBuilders): () => never {
 
 /**
  * The builder's `out`, with each member the test stated in place of its own. The semantic lanes,
- * `render`, and `results` resolve and write nothing, `draw` resolves `0`, `region()` answers an
+ * `render`, and `results` resolve and write nothing, a lane once it has read a streamed message to
+ * its end, `draw` resolves `0`, `region()` answers an
  * inert region, `text` asks to be stated, and `fatal` throws core's `FatalError`, because its type
  * is `never`.
  */
@@ -119,22 +143,22 @@ function outWith<Result>(
   builder: keyof typeof outBuilders,
 ): Out<Result> {
   return {
-    debug: resolved,
+    debug: readsToEnd,
     draw: () => Promise.resolve(nothingDrawn),
-    error: resolved,
+    error: readsToEnd,
     fatal: (message) => {
       throw new FatalError(message);
     },
-    info: resolved,
+    info: readsToEnd,
     lendTerminal: async (work) => work(),
-    print: resolved,
+    print: readsToEnd,
     region: inertRegion,
     render: resolved,
     results: resolved,
-    success: resolved,
+    success: readsToEnd,
     text: unstatedText(builder),
-    trace: resolved,
-    warn: resolved,
+    trace: readsToEnd,
+    warn: readsToEnd,
     ...stated,
   };
 }

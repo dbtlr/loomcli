@@ -158,6 +158,31 @@ export type RowViewOver<Data> = [Data] extends [Iterable<infer Row> | AsyncItera
   : never;
 
 /**
+ * The arguments a semantic method takes: a message and an optional view over it, which replaces the
+ * lane view for that call, or the message as an async iterable of its text, which takes no view and
+ * draws through the lane view as each chunk arrives.
+ *
+ * @example
+ * ```ts
+ * import type { MessageArguments } from '@loomcli/core';
+ *
+ * async function* words(): AsyncGenerator<string> {
+ *   yield 'one ';
+ *   yield 'two';
+ * }
+ *
+ * const plain: MessageArguments = ['Saved.'];
+ * const streamed: MessageArguments = [words()];
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/output.md#a-streamed-message
+ * @public
+ */
+export type MessageArguments =
+  | [message: string, view?: View<string> | undefined]
+  | [message: AsyncIterable<string>];
+
+/**
  * The output channel an action or a middleware receives: the semantic methods, the neutral render
  * call, live regions, and the fatal path.
  *
@@ -170,21 +195,59 @@ export interface Out<Result = unknown> {
    * A message on stdout at every verbosity, or on stderr from the action of a Command that declares
    * a result. Each semantic method draws its message through its lane view, or through `view` when
    * the call passes one, which replaces the lane view for that call, and ends it with exactly one
-   * line break.
+   * line break. The message may instead be an async iterable of its text, which takes no view: core
+   * shows each chunk through the lane view as it arrives, and the call resolves once the iterable
+   * has ended and its text is written.
+   *
+   * @example
+   * ```ts
+   * import { Application } from '@loomcli/core';
+   *
+   * import { answer } from './model.js'; // yields the answer's text as the service sends it
+   *
+   * const app = new Application('ask')
+   *   .argument('question', { required: true })
+   *   .action(async ({ args, out, style }) => {
+   *     async function* text(): AsyncGenerator<string> {
+   *       for await (const chunk of answer(args.question)) {
+   *         yield style.escape(chunk);
+   *       }
+   *     }
+   *     await out.print(text());
+   *   });
+   * ```
    */
   print(message: string, view?: View<string>): Promise<void>;
+  /**
+   * The stream form, or either form when the caller forwards `MessageArguments` whole. The string
+   * form is declared first, so a message a generic call returns, such as a prompt's answer, is
+   * inferred as a string.
+   */
+  print(...call: MessageArguments): Promise<void>;
   /** An informational message on stderr, hidden under `-q`. */
   info(message: string, view?: View<string>): Promise<void>;
+  /** The stream form of `info`, or either form forwarded whole. */
+  info(...call: MessageArguments): Promise<void>;
   /** A success message on stderr, hidden under `-q`. */
   success(message: string, view?: View<string>): Promise<void>;
+  /** The stream form of `success`, or either form forwarded whole. */
+  success(...call: MessageArguments): Promise<void>;
   /** A warning on stderr at every verbosity. */
   warn(message: string, view?: View<string>): Promise<void>;
+  /** The stream form of `warn`, or either form forwarded whole. */
+  warn(...call: MessageArguments): Promise<void>;
   /** An error message on stderr at every verbosity, which changes no outcome. */
   error(message: string, view?: View<string>): Promise<void>;
+  /** The stream form of `error`, or either form forwarded whole. */
+  error(...call: MessageArguments): Promise<void>;
   /** A debug line on stderr, written from verbosity 1, as an operator's `-v` asks. */
   debug(message: string, view?: View<string>): Promise<void>;
+  /** The stream form of `debug`, or either form forwarded whole. */
+  debug(...call: MessageArguments): Promise<void>;
   /** A trace line on stderr, finer than a debug line, written from verbosity 2, as an operator's `-vv` asks. */
   trace(message: string, view?: View<string>): Promise<void>;
+  /** The stream form of `trace`, or either form forwarded whole. */
+  trace(...call: MessageArguments): Promise<void>;
   /**
    * The neutral view call: a rendered value has no purpose and no destination. A row view takes an
    * iterable, and core writes each row's text as the source yields it. One signature rather than an

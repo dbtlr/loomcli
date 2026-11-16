@@ -35,6 +35,12 @@ const pool: Provider<'pool', object, {}, 'persistent'> = provider('pool', {
 });
 const open: Opener<typeof pool> = () => ({});
 
+/** A streamed message whose iterable throws after its first chunk. */
+async function* broken(): AsyncGenerator<string> {
+  yield 'partial';
+  throw new Error('The service hung up.');
+}
+
 const quiet = plugin('test/quiet', {});
 const pass: Middleware<typeof quiet> = async ({ next }) => {
   await next();
@@ -74,6 +80,20 @@ describe('an unstated member', () => {
       expect(remove()).toBeUndefined();
     }
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('that is a semantic lane reads a streamed message to its end, and rejects when it throws', async () => {
+    const context = bare();
+    const read: string[] = [];
+    async function* text(): AsyncGenerator<string> {
+      for (const part of ['one ', 'two']) {
+        read.push(part);
+        yield part;
+      }
+    }
+    await expect(context.out.info(text())).resolves.toBeUndefined();
+    expect(read).toEqual(['one ', 'two']);
+    await expect(context.out.print(broken())).rejects.toThrow('The service hung up.');
   });
 
   it('out.draw resolves 0', async () => {

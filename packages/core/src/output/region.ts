@@ -68,12 +68,15 @@ interface Measure {
 }
 
 /**
- * The stack of open regions at the bottom of stderr, as the terminal shows it. Each method answers
- * the bytes that move the terminal from what it shows to what it should show, and updates the model
- * to match, so a caller writes those bytes in the order it asked for them.
+ * The stack of open regions at the bottom of the terminal, as the terminal shows it, with the
+ * unfinished row of each open streamed message above it. Each method answers the bytes that move
+ * the terminal from what it shows to what it should show, and updates the model to match, so a
+ * caller writes those bytes in the order it asked for them.
  */
 class Screen {
   readonly #slots: Slot[] = [];
+  /** The unfinished rows of the open streamed messages, above the regions, in the order each first showed. */
+  readonly #rows: Slot[] = [];
   readonly #closedMeanwhile: Slot[] = [];
   /** The column the last write above the stack left the cursor at, 0 when it ended a row. */
   #column = 0;
@@ -124,7 +127,7 @@ class Screen {
     for (const slot of closed) {
       this.#slots.splice(this.#slots.indexOf(slot), 1);
     }
-    for (const slot of this.#slots) {
+    for (const slot of [...this.#rows, ...this.#slots]) {
       slot.shown = slot.latest;
     }
     const held = closed.map(({ latest }) => scrollback(latest)).join('');
@@ -145,9 +148,9 @@ class Screen {
     return this.reclaim();
   }
 
-  /** Whether any region is open on the screen. */
+  /** Whether any region is open on the screen, or any streamed message keeps an unfinished row there. */
   get holding(): boolean {
-    return this.#slots.length > 0;
+    return this.#slots.length > 0 || this.#rows.length > 0;
   }
 
   /**
@@ -168,7 +171,7 @@ class Screen {
     if (this.lending > 0 || this.#suspended) {
       return undefined;
     }
-    const frames = this.#slots.flatMap(({ shown }) =>
+    const frames = [...this.#rows, ...this.#slots].flatMap(({ shown }) =>
       shown === undefined || shown.text === '' ? [] : [shown],
     );
     if (frames.length === 0) {
@@ -256,15 +259,44 @@ class Screen {
     return this.#draw();
   }
 
-  /** Text written to the terminal above the stack: what to write before it and after it. */
-  around(text: string): { before: string; after: string } {
+  /**
+   * Text written to the terminal above the stack: what to write before it and after it. `between`
+   * changes the model once the stack is erased and the text is written, before the stack is drawn
+   * again, as a streamed message's write changes its unfinished row.
+   */
+  around(text: string, between?: () => void): { before: string; after: string } {
     if (this.lending > 0) {
       this.note(text);
+      between?.();
       return { after: '', before: '' };
     }
     const before = this.#uncover();
     this.note(text);
+    between?.();
     return { after: this.#draw(), before };
+  }
+
+  /**
+   * A streamed message's unfinished row, which joins the rows above the regions the first time it
+   * is set. A write calls it between its erase and its draw. While the terminal is lent, the row is
+   * kept and drawn once the lend ends.
+   */
+  row(slot: Slot, frame: Frame | undefined): void {
+    if (!this.#rows.includes(slot)) {
+      this.#rows.push(slot);
+    }
+    slot.latest = frame;
+    if (this.lending === 0) {
+      slot.shown = frame;
+    }
+  }
+
+  /** A streamed message that ended, whose unfinished row leaves the stack, called as `row` is. */
+  dropRow(slot: Slot): void {
+    const index = this.#rows.indexOf(slot);
+    if (index !== -1) {
+      this.#rows.splice(index, 1);
+    }
   }
 
   /** Text written to the terminal while no region is open, which moves the row the stack starts on. */
@@ -280,6 +312,7 @@ class Screen {
     return (
       slot.shown === slot.latest &&
       this.#closedMeanwhile.length === 0 &&
+      this.#rows.every((row) => row.shown === undefined || row.shown.text === '') &&
       this.#slots.every(
         (other) =>
           other === slot ||
@@ -583,5 +616,5 @@ class Regions {
   }
 }
 
-export { endsWithLineBreak, Regions, Screen };
-export type { Frame, LiveRegion, RegionHost };
+export { controlSequences, endsWithLineBreak, Regions, Screen, visible };
+export type { Frame, LiveRegion, RegionHost, Slot };
