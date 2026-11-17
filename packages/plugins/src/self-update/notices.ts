@@ -185,17 +185,22 @@ function refresh(run: Qualified, entry: CacheEntry, log: Log): boolean {
   return startRefresh(run.host, run.directory);
 }
 
-/** Reads the cache, naming it at `-v` when it is one this version reads, or at `-vv` when not. */
-async function readNamed(run: Qualified, out: Out, now: number): Promise<CacheReading> {
+/**
+ * Reads the cache, logging it at `debug` when it is one this version reads, or at `trace` when
+ * not.
+ */
+function readNamed(run: Qualified, log: Log, now: number): CacheReading {
   const found = findCache(run.directory, run, now);
   const path = cachePath(run.directory);
   if (found.kind === 'ignored') {
-    await say(out.trace(ignoredUpdateCache(path)));
+    const ignored = ignoredUpdateCache(path);
+    log.trace(ignored.template, ignored.fields);
   }
   if (found.kind !== 'read') {
     return stale;
   }
-  await say(out.debug(readUpdateCheck(path)));
+  const read = readUpdateCheck(path);
+  log.debug(read.template, read.fields);
   return found.reading;
 }
 
@@ -205,7 +210,7 @@ async function readNamed(run: Qualified, out: Out, now: number): Promise<CacheRe
  */
 async function notify(run: Qualified, { log, out }: { log: Log; out: Out }): Promise<void> {
   const now = Date.now();
-  const reading = await readNamed(run, out, now);
+  const reading = readNamed(run, log, now);
   const newer = newerVersion(reading, run.running);
   if (newer !== undefined) {
     await say(out.info(noticeLine(run, newer)));
@@ -214,7 +219,7 @@ async function notify(run: Qualified, { log, out }: { log: Log; out: Out }): Pro
     const { channel, repository } = run;
     const entry = { channel, checked: new Date(now), latest: reading.latest, repository };
     if (refresh(run, entry, log)) {
-      await say(out.debug(startedRefresh));
+      log.debug(startedRefresh.template);
     }
   }
 }
@@ -232,7 +237,8 @@ function noticeMiddleware(optOut: string | undefined): Middleware<typeof selfUpd
     const { command, graph, host, log, out } = context;
     const run = qualified({ host, name: graph.name, optOut, routed: command.path });
     if ('skipped' in run) {
-      await say(out.trace(skippedUpdateCheck(run.skipped)));
+      const skipped = skippedUpdateCheck(run.skipped);
+      log.trace(skipped.template, skipped.fields);
       return;
     }
     await notify(run, { log, out });

@@ -109,7 +109,6 @@ test('a refresh pipes the new binary output into the host streams as Writables, 
       {
         notStarted: () => 'not started\n',
         records: ['skills.agents'],
-        refreshed: 'refreshed',
         skipped: 'skipped',
         warning: 'The refresh failed.',
         words: ['skills', 'update'],

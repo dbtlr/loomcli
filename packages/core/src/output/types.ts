@@ -240,14 +240,6 @@ export interface Out<Result = unknown> {
   error(message: string, view?: View<string>): Promise<void>;
   /** The stream form of `error`, or either form forwarded whole. */
   error(...call: MessageArguments): Promise<void>;
-  /** A debug line on stderr, written from verbosity 1, as an operator's `-v` asks. */
-  debug(message: string, view?: View<string>): Promise<void>;
-  /** The stream form of `debug`, or either form forwarded whole. */
-  debug(...call: MessageArguments): Promise<void>;
-  /** A trace line on stderr, finer than a debug line, written from verbosity 2, as an operator's `-vv` asks. */
-  trace(message: string, view?: View<string>): Promise<void>;
-  /** The stream form of `trace`, or either form forwarded whole. */
-  trace(...call: MessageArguments): Promise<void>;
   /**
    * The neutral view call: a rendered value has no purpose and no destination. A row view takes an
    * iterable, and core writes each row's text as the source yields it. One signature rather than an

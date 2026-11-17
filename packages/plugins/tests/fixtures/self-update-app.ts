@@ -251,7 +251,7 @@ function selfUpdateApplication(
       return { afterReplace: refreshManpages };
     }
     return {
-      afterReplace: async ({ current, host, name, out, path, previous, signal }) => {
+      afterReplace: ({ current, host, log, name, path, previous, signal }) => {
         writeFileSync(
           scenario.hookLog ?? '',
           `${JSON.stringify({ aborted: signal.aborted, current, host: host.release.release?.version, path, previous })}\n`,
@@ -260,8 +260,8 @@ function selfUpdateApplication(
         if (scenario.hook === 'throw') {
           throw new Error('The service did not restart.');
         }
-        // The context carries the graph's name and the action's out, which the hook writes through.
-        await out.debug(`The hook ran for ${name}.`);
+        // The context carries the graph's name and the action's log, which the hook logs through.
+        log.debug('The hook ran for {name}.', { name });
       },
     };
   }

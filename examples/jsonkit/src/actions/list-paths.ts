@@ -48,7 +48,7 @@ export function walk(document: unknown): AsyncGenerator<Entry> {
 }
 
 /** The walk is the result, so core writes each row as the generator yields it. */
-export const listPaths: ActionHandler<typeof paths> = async ({ options, out, style }) => {
-  const document = await readJson({ options, out, style });
+export const listPaths: ActionHandler<typeof paths> = async ({ log, options, out }) => {
+  const document = await readJson({ log, options });
   await out.results(walk(document));
 };

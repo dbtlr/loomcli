@@ -3532,7 +3532,7 @@ export async function prepareDispatch(
       if (scope) {
         withdrawFill(scope.options, input.name);
       }
-      await invocation.out.debug(line);
+      invocation.logFor(null).debug(line.template, line.fields);
     }
     if (local.kind === 'held' || supplied === undefined) {
       return await held(validation.failure, options);

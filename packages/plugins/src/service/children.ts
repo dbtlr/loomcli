@@ -50,7 +50,6 @@ interface ChildRun {
   /** The action's log, which records each file the child writes or removes. */
   readonly log: Log;
   readonly onShutdown: OnShutdown;
-  readonly debug: (message: string) => Promise<void>;
   readonly info: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
 }
@@ -124,12 +123,12 @@ function unitHome(run: ChildRun): string {
  * which selects the backend, and an absolute home.
  */
 function prepare(run: ChildRun): Prepared {
-  const { debug, host, label, log, name, onShutdown, signal } = run;
+  const { host, label, log, name, onShutdown, signal } = run;
   const backend = backendOf(run);
   const home = unitHome(run);
   const uid = userId(name, host);
   const env = managerEnv(host, uid);
-  const manager = { debug, env, log, name, onShutdown, signal, spawn: host.spawn };
+  const manager = { env, log, name, onShutdown, signal, spawn: host.spawn };
   const unit = backend.unitPath(label, home, host.env);
   const service = { label, manager, name, uid, unit };
   return { backend, home, record: recordDirectory(run), run, service };

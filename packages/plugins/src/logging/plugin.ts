@@ -2,7 +2,6 @@ import { plugin } from '@loomcli/core';
 import type { LogDestination, LogHook, Plugin } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
-import { say } from '../lane-writes.js';
 import { resolveLogFile } from './directory.js';
 import { LoggingError } from './error.js';
 import { writeRecord } from './file.js';
@@ -30,16 +29,17 @@ interface Telling {
 }
 
 /**
- * Writes the lines one record's write earns on the outermost run's lanes: `Rotated` at `-vv` for a
- * rotation that moved the file, and `Logging to` at `-v` after the first record of that run lands.
+ * Logs the lines one record's write earns through the destination's `log`, which every other hook
+ * hears and this one never does: `Rotated` at `trace` for a rotation that moved the file, and
+ * `Logging to` at `debug` after the first record of that run lands.
  */
 function sayWritten(path: string, written: Written, { announced, destination }: Telling): void {
   if (written.rotated) {
-    void say(destination.out.trace(rotated(path)));
+    destination.log.trace(rotated, { path });
   }
   if (written.appended && !announced.has(destination)) {
     announced.add(destination);
-    void say(destination.out.debug(loggingTo(path)));
+    destination.log.debug(loggingTo, { path });
   }
 }
 

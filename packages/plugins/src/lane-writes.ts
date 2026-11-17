@@ -1,5 +1,5 @@
 /*
- * The lane writes a plugin makes beside its own work, such as a `-v` or `-vv` line: a write that
+ * The lane writes a plugin makes beside its own work, such as an update notice: a write that
  * fails is let go, so the plugin's caller still resolves. A stream that refused the write stays
  * broken, which the run reports as any failed write, and a lane view that threw is reported by
  * nothing else once its rejection is caught here.

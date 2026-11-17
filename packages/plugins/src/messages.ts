@@ -14,4 +14,17 @@ function recordDirectoryNotAbsolute(name: string, variable: string): string {
   return `${shown(name)} cannot find its installation record because ${shown(variable)} is not an absolute path. Set ${shown(variable)} to an absolute path, then run the command again.`;
 }
 
-export { homeNotAbsolute, recordDirectoryNotAbsolute };
+/** The four shared change-event templates, shown on screen at -v. */
+const fileWrittenMessage = 'File written.';
+const fileRemovedMessage = 'File removed.';
+const programRunMessage = 'Program run.';
+const binaryReplacedMessage = 'Binary replaced.';
+
+export {
+  binaryReplacedMessage,
+  fileRemovedMessage,
+  fileWrittenMessage,
+  homeNotAbsolute,
+  programRunMessage,
+  recordDirectoryNotAbsolute,
+};

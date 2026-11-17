@@ -58,6 +58,9 @@ test('--version loads each plugin Command declaration, no Command implementation
     new Set([
       'completion/plugin.js',
       'completion/shell-names.js',
+      // Bun shares these helpers with the change-event templates in the common message module.
+      'installation/disk.js',
+      'installation/record.js',
       'manpage/pages.js',
       'manpage/plugin.js',
       'mcp/agents.js',

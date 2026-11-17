@@ -26,12 +26,10 @@ import { recordName, shells } from './shell-names.js';
  */
 async function refreshCompletion(context: RefreshContext): Promise<void> {
   // The sentence loads with the refresh, so the entry that exports it loads no message module.
-  const { completionNotRefreshed, completionRefreshed, completionRefreshSkipped } =
-    await import('./messages.js');
+  const { completionNotRefreshed, completionRefreshSkipped } = await import('./messages.js');
   await refreshByRunning(context, {
     notStarted: completionNotRefreshed,
     records: shells.map(recordName),
-    refreshed: completionRefreshed,
     skipped: completionRefreshSkipped,
     warning: 'Completion was not refreshed after the update.',
     words: ['completion', 'update'],

@@ -89,9 +89,6 @@ function manpagesNotRefreshed(path: string, name: string): string {
   return `The man pages were not refreshed because ${shown(path)} could not start. Run ${shown(name)} manpage update.\n`;
 }
 
-/** The refresh's `-v` line once its child exited 0. */
-const manpagesRefreshed = 'Refreshed the man pages after the update.';
-
 /** The refresh's `-vv` line when the installation record holds none of the plugin's files. */
 const manpagesRefreshSkipped = 'Skipped the man page refresh: nothing is installed.';
 
@@ -99,7 +96,6 @@ export type { WritingVerb };
 export {
   installedPages,
   manpagesNotRefreshed,
-  manpagesRefreshed,
   manpagesRefreshSkipped,
   manpathAdvice,
   noPagesToRemove,

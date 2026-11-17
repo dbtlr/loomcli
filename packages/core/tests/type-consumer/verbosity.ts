@@ -1,18 +1,16 @@
-import type { Out, OptionConfig, PluginOptions } from '@loomcli/core';
-import { Application, Command, lanes, plugin } from '@loomcli/core';
+import type { LogLine, OptionConfig, Out, PluginOptions } from '@loomcli/core';
+import { Application, Command, logLine, plugin } from '@loomcli/core';
 import { verbose } from '@loomcli/plugins/verbose';
 import type { VerboseOptions } from '@loomcli/plugins/verbose';
 
 /** The plugin's marked options, whose counts the action reads typed. */
-const fetchit = new Application('fetchit', { plugins: [verbose()] }).action(
-  async ({ options, out }) => {
-    const louder: number = options.verbose;
-    const quieter: number = options.quiet;
-    await out.debug('GET https://example.com/records');
-    await out.trace('Reusing the open connection.');
-    return { louder, quieter };
-  },
-);
+const fetchit = new Application('fetchit', { plugins: [verbose()] }).action(({ log, options }) => {
+  const louder: number = options.verbose;
+  const quieter: number = options.quiet;
+  log.debug('GET {url}', { url: 'https://example.com/records' });
+  log.trace('Reusing the open connection.');
+  return { louder, quieter };
+});
 
 /** An application's own marked options, with short aliases, an alias, and a short-only spelling. */
 const own = new Application('own')
@@ -31,10 +29,12 @@ const marking = plugin('@fixture/loud', {
   options: { loud: { type: 'count', verbose: true } },
 } satisfies { options: PluginOptions });
 
-/** The debug and trace lanes are declared views, and out writes through them. */
-const declared = [lanes.debug, lanes.trace];
-const writes: Pick<Out, 'debug' | 'trace'>['debug'] = async () => undefined;
+/** The log line is a declared view over the line core shows for a log event. */
+const declared = logLine;
+const writes: LogLine['fields'][number] = { name: 'url', value: 'https://example.com' };
 
+// @ts-expect-error TS2344: Out has no debug or trace lane; diagnostic detail is logged through log.
+type NoLane = Pick<Out, 'debug' | 'trace'>;
 // @ts-expect-error TS2554: The verbose plugin takes no settings.
 verbose({});
 
@@ -71,3 +71,4 @@ new Application('bad', {
 });
 
 export { declared, fetchit, marked, marking, own, writes };
+export type { NoLane };

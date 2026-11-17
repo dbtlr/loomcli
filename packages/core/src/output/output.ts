@@ -18,7 +18,9 @@ import { incompleteResult, lanes } from './lanes.js';
 import type { IncompleteResult, Lane } from './lanes.js';
 import { LiveRegionSpan } from './live-regions.js';
 import type { LiveRegionsHook } from './live-regions.js';
-import type { LogDestination } from './log.js';
+import { logLine, logLineOf } from './log-line.js';
+import type { LogLine, LogLineLevel } from './log-line.js';
+import type { DestinationFacts, LogEvent } from './log.js';
 import { ProgressLedger } from './progress-events.js';
 import { endsWithLineBreak, Regions, Screen } from './region.js';
 import type { Frame, LiveRegion, Slot } from './region.js';
@@ -98,17 +100,20 @@ const always = Number.NEGATIVE_INFINITY;
 
 /**
  * The lowest verbosity at which each lane writes: `info` and `success` from the default, so one
- * quiet step hides them, `debug` from `-v`, `trace` from `-vv`, and the rest at every verbosity.
+ * quiet step hides them, and the rest at every verbosity.
  */
 const shownFrom: Readonly<Record<Lane, number>> = {
-  debug: 1,
   error: always,
   info: 0,
   print: always,
   success: 0,
-  trace: 2,
   warn: always,
 };
+
+/** The lowest verbosity at which a log event shows as a log line: `trace` from `-vv`, the rest from `-v`. */
+function logShownFrom(level: LogLineLevel): number {
+  return level === 'trace' ? 2 : 1;
+}
 
 /** The opener a reservation holds until its own gate publishes the real one. */
 const unopened = (): void => undefined;
@@ -824,7 +829,7 @@ export class Output {
   }
 
   /**
-   * The seven semantic methods of one channel: `print` writes to `target.destination` and every
+   * The five semantic methods of one channel: `print` writes to `target.destination` and every
    * other method to stderr, and a streamed message joins `target.live`, whose failure stops it.
    */
   private lanes(target: Target): Pick<Out, Lane> {
@@ -833,12 +838,10 @@ export class Output {
       (...call: MessageArguments): Promise<void> =>
         this.hand(this.emit(kind, call, { destination, live: target.live }));
     return {
-      debug: lane('debug', 'stderr'),
       error: lane('error', 'stderr'),
       info: lane('info', 'stderr'),
       print: lane('print', target.destination),
       success: lane('success', 'stderr'),
-      trace: lane('trace', 'stderr'),
       warn: lane('warn', 'stderr'),
     };
   }
@@ -1133,7 +1136,7 @@ export class Output {
    * chunk joins stderr's order when the hook writes it and is acknowledged at once, so records a
    * hook writes together stay together, ahead of any write core queues after them.
    */
-  logDestination(destination: LogDestination): LogDestination {
+  logDestination(destination: DestinationFacts): DestinationFacts {
     const { stderr } = destination;
     if (stderr !== this.host.stderr || !this.host.terminal.stderr.isTTY) {
       return destination;
@@ -1146,6 +1149,35 @@ export class Output {
       },
     });
     return Object.freeze({ ...destination, stderr: carried });
+  }
+  /** Whether the run's verbosity shows a log event at `level` as a log line. */
+  showsLog(level: LogLineLevel): boolean {
+    return this.verbosity >= logShownFrom(level);
+  }
+
+  /**
+   * Shows one log event as a log line on stderr, through the log-line view, when the run's
+   * verbosity shows its level. A failure event never shows, because the run reports the failure
+   * itself. The write is an output call no code observes, so a log-line view that throws is
+   * reported once the chain settles, and a stream that refuses the write is a broken destination.
+   * A view that returns the empty string writes nothing.
+   */
+  showLog(event: LogEvent): void {
+    const line = logLineOf(event);
+    if (line === undefined || !this.showsLog(line.level)) {
+      return;
+    }
+    void this.hand(
+      this.rendered(
+        () => resolveView<LogLine>(this.registry, logLine)(line, this.context('stderr')),
+        'stderr',
+        async (text) => {
+          if (text !== '') {
+            await this.write(this.host.stderr, endsWithLineBreak(text) ? text : `${text}\n`);
+          }
+        },
+      ),
+    );
   }
 
   /**

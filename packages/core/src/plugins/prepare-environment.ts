@@ -19,10 +19,10 @@ interface EnvironmentContext {
     readonly env: Readonly<Host['env']>;
   };
   /**
-   * The output channel: `warn` for the operator, and `debug` and `trace`, which follow the run's
-   * verbosity, settled before environment preparation.
+   * The output channel's `warn`, for the operator. A hook records what it did through `log`, which
+   * shows at the run's verbosity, settled before environment preparation.
    */
-  readonly out: Pick<Out, 'warn' | 'debug' | 'trace'>;
+  readonly out: Pick<Out, 'warn'>;
   /** Records a log event under the identity of the plugin whose hook is running. */
   readonly log: Log;
 }

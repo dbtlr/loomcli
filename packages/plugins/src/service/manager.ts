@@ -11,7 +11,6 @@ import { FatalError } from '@loomcli/core';
 import type { ChildExit, Host, Log, OnShutdown } from '@loomcli/core';
 
 import { programRun } from '../change-events.js';
-import { say } from '../lane-writes.js';
 import { managerExited, managerMissing, ranCall } from './messages.js';
 
 /** What one call answered: the code it exited with and its standard output, or that it never started. */
@@ -40,7 +39,6 @@ interface Manager {
   readonly signal: AbortSignal;
   readonly onShutdown: OnShutdown;
   readonly spawn: Host['spawn'];
-  readonly debug: (message: string) => Promise<void>;
   readonly log: Log;
 }
 
@@ -62,14 +60,11 @@ function answerOf(exit: ChildExit): Answer {
     : { error: exit.error, kind: 'missing' };
 }
 
-/**
- * Names a call that started once it ends, whatever its code; one that could not start names none.
- * A line that cannot be written is let go, so the change the call made is still answered and
- * recorded, and the steps after it still run.
- */
-async function sayRan(manager: Manager, call: Call, started: boolean): Promise<void> {
+/** Logs a call that started once it ends, whatever its code; one that could not start logs none. */
+function sayRan(manager: Manager, call: Call, started: boolean): void {
   if (started) {
-    await say(manager.debug(ranCall(call.program, call.args)));
+    const ran = ranCall(call.program, call.args);
+    manager.log.debug(ran.template, ran.fields);
   }
 }
 
@@ -77,7 +72,7 @@ async function sayRan(manager: Manager, call: Call, started: boolean): Promise<v
  * Runs one call from the run's working directory, its standard output captured and its standard
  * error discarded, until it exits, or until the run signal ends it, whose reason it then throws.
  */
-async function run(manager: Manager, call: Call): Promise<Answer> {
+async function run(manager: Manager, call: Call, changes: readonly number[] = []): Promise<Answer> {
   const { signal } = manager;
   signal.throwIfAborted();
   const exit = await manager.spawn(call.program, call.args, {
@@ -86,7 +81,7 @@ async function run(manager: Manager, call: Call): Promise<Answer> {
     stderr: 'ignore',
   }).exited;
   signal.throwIfAborted();
-  await sayRan(manager, call, exit.kind === 'exited');
+  sayRan(manager, call, exit.kind === 'exited' && !changes.includes(exit.code));
   return answerOf(exit);
 }
 
@@ -117,7 +112,7 @@ async function readCall(manager: Manager, call: Call): Promise<Read> {
     removeKill();
   });
   signal.throwIfAborted();
-  await sayRan(manager, call, ranOut || exit.kind === 'exited');
+  sayRan(manager, call, ranOut || exit.kind === 'exited');
   return ranOut ? { kind: 'timedOut' } : answerOf(exit);
 }
 
@@ -133,9 +128,11 @@ function callText(call: Call): string {
 async function expectRead(
   manager: Manager,
   call: Call,
-  accepted: readonly number[] = [succeeded],
+  selection: readonly number[] | { readonly changes: readonly number[] } = [succeeded],
 ): Promise<{ readonly code: number; readonly stdout: string }> {
-  const answer = await run(manager, call);
+  const changing = 'changes' in selection;
+  const accepted = 'changes' in selection ? selection.changes : selection;
+  const answer = await run(manager, call, changing ? accepted : []);
   if (answer.kind === 'missing') {
     throw new FatalError(
       managerMissing(manager.name, call.program),
@@ -158,7 +155,7 @@ async function expectChange(
   call: Call,
   accepted: readonly number[] = [succeeded],
 ): Promise<{ readonly code: number; readonly stdout: string }> {
-  const answer = await expectRead(manager, call, accepted);
+  const answer = await expectRead(manager, call, { changes: accepted });
   programRun(manager.log, { arguments: call.args, code: answer.code, program: call.program });
   return answer;
 }

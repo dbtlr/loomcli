@@ -5,7 +5,7 @@ import type { LogDefect } from '../diagnostics/defect.js';
 import { isAuthorFault } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import type { FailureForm } from '../failures/form.js';
-import type { Out } from './types.js';
+import type { LogLineLevel } from './log-line.js';
 
 /**
  * The levels a log event carries. `fatal` is core's alone: `Log` has no method for it.
@@ -88,8 +88,8 @@ interface Log {
 
 /**
  * Where a hook writes: the outermost run's environment, home, platform, and stderr, which is
- * `null` under an invocation by name, because that writes to no process stream, and its `debug`
- * and `trace` lanes.
+ * `null` under an invocation by name, because that writes to no process stream, and a `log` that
+ * records under the hook's own plugin.
  *
  * @public
  * @sealed
@@ -104,11 +104,52 @@ interface LogDestination {
   /** The outermost run's stderr stream, or `null` under an invocation by name. */
   readonly stderr: Writable | null;
   /**
-   * The outermost run's `debug` and `trace` lanes, which follow that run's verbosity and write to
-   * its stderr, or to its captured messages under an invocation by name. A hook calls a lane without
-   * awaiting it and catches its rejection, because the hook returns `undefined`.
+   * Records a log event under the identity of the plugin whose hook receives this destination. The
+   * event reaches every other installed `onLog` hook, and shows as a log line when the outermost
+   * run's verbosity shows its level, but never reaches this hook, so a hook that says what it did
+   * does not recurse into itself.
    */
-  readonly out: Pick<Out, 'debug' | 'trace'>;
+  readonly log: Log;
+}
+
+/** The outermost run's facts every hook's destination shares, before each hook's own `log`. */
+type DestinationFacts = Omit<LogDestination, 'log'>;
+
+/** Where the outermost run shows a log event as a log line, at its verbosity. */
+interface LogScreen {
+  /** Whether the outermost run's verbosity shows an event at `level`, read at each call. */
+  readonly shows: (level: LogLineLevel) => boolean;
+  /** Shows one event as a log line, unless the verbosity hides it or it is a failure event. */
+  readonly show: (event: LogEvent) => void;
+}
+
+/** One installed `onLog` hook with the identity of the plugin that declares it. */
+interface PluginLogHook {
+  readonly hook: LogHook;
+  readonly plugin: string;
+}
+
+/** One hook and the destination it receives, whose `log` reaches every hook but this one. */
+interface Receiver {
+  readonly hook: LogHook;
+  readonly destination: LogDestination;
+}
+
+/**
+ * Where every event of the outermost run and the runs nested in it goes: each hook with its
+ * destination, and the screen. The outermost run builds it and a nested run takes it whole, so a
+ * hook receives one destination object for the outermost run and every run nested in it.
+ */
+interface LogOutlet {
+  readonly receivers: readonly Receiver[];
+  readonly screen: LogScreen;
+}
+
+/** What the outermost run builds its outlet from. */
+interface OutletParts {
+  readonly facts: DestinationFacts;
+  readonly hooks: readonly PluginLogHook[];
+  readonly screen: LogScreen;
 }
 
 /**
@@ -124,7 +165,8 @@ type LogBinder = (plugin: string | null) => Log;
 /** What one run's events read beside the call itself. */
 interface LogScene {
   readonly application: { readonly name: string; readonly version: string };
-  readonly destination: LogDestination;
+  /** The outermost run's outlet, which a nested run takes from its parent, or the parts to build it. */
+  readonly outlet: LogOutlet | OutletParts;
   /** The path a failure view reads, which routing publishes as it walks. */
   readonly path: () => readonly string[];
 }
@@ -268,7 +310,7 @@ function logOf(
   });
 }
 
-/** The `log` of a run with no `onLog` hook: a call creates no event and reads nothing. */
+/** A `log` whose calls create no event and read nothing. */
 const silentLog: Log = logOf(() => undefined);
 
 /** What the parts of one event are, before the facts every event of the run shares are added. */
@@ -283,24 +325,24 @@ interface EventParts {
 
 /**
  * One run's log events: the `log` each context receives, the delivery of every event to the
- * installed `onLog` hooks in installation order, core's failure events, and the first throw a hook
- * raised. A hook that throws is still called for every later event, and the throw ends neither the
- * delivery of that event to a later hook nor the call that created it.
+ * screen and to the installed `onLog` hooks in installation order, core's failure events, and the
+ * first throw a hook raised. A hook that throws is still called for every later event, and the
+ * throw ends neither the delivery of that event to a later hook nor the call that created it.
  */
 class RunLog {
   readonly #scene: LogScene;
-  readonly #hooks: readonly LogHook[];
+  readonly #outlet: LogOutlet;
   #thrown: { readonly value: unknown } | undefined = undefined;
   #run: string | undefined = undefined;
 
-  constructor(scene: LogScene, hooks: readonly LogHook[]) {
+  constructor(scene: LogScene) {
     this.#scene = scene;
-    this.#hooks = hooks;
+    this.#outlet = 'receivers' in scene.outlet ? scene.outlet : this.#outletOf(scene.outlet);
   }
 
-  /** Where the run's events are delivered, which the runs nested under it deliver to as well. */
-  get destination(): LogDestination {
-    return this.#scene.destination;
+  /** Where the run's events go, which the runs nested under it send theirs to as well. */
+  get outlet(): LogOutlet {
+    return this.#outlet;
   }
 
   /** The first value a hook threw in the run, which the run reports once after its outcome. */
@@ -310,20 +352,16 @@ class RunLog {
 
   /** The `log` of one context, bound to the plugin core is calling, or to none. */
   bind(plugin: string | null): Log {
-    if (this.#hooks.length === 0) {
-      return silentLog;
-    }
-    return logOf((level, message, fields) => {
-      this.#deliver({ fields: copyFields(fields), level, message, plugin });
-    });
+    return this.#logFor(plugin, undefined);
   }
 
   /**
    * Logs one failure the run reports: `error`, or `fatal` with the defect the run caught for an
-   * `InternalError`, a `ResultError`, or a `DeclarationError`.
+   * `InternalError`, a `ResultError`, or a `DeclarationError`. It reaches the hooks alone: the run
+   * already reports the failure, so it never shows as a log line.
    */
   failure(failure: LoomError, form: FailureForm): void {
-    if (this.#hooks.length === 0) {
+    if (this.#outlet.receivers.length === 0) {
       return;
     }
     const base = { failure: form, fields: noFields, message: form.message, plugin: null };
@@ -331,7 +369,33 @@ class RunLog {
       isAuthorFault(failure)
         ? { ...base, defect: Object.freeze(defectDetail(failure)), level: 'fatal' }
         : { ...base, level: 'error' },
+      undefined,
     );
+  }
+
+  /** Each hook with its destination, whose `log` this run's events go through. */
+  #outletOf({ facts, hooks, screen }: OutletParts): LogOutlet {
+    const receivers = hooks.map(({ hook, plugin }) =>
+      Object.freeze({
+        destination: Object.freeze({ ...facts, log: this.#logFor(plugin, hook) }),
+        hook,
+      }),
+    );
+    return Object.freeze({ receivers: Object.freeze(receivers), screen });
+  }
+
+  /**
+   * A `log` bound to `plugin` whose events reach every hook but `except`. A call creates an event
+   * only when a hook hears it or the verbosity shows its level, and reads nothing otherwise.
+   */
+  #logFor(plugin: string | null, except: LogHook | undefined): Log {
+    return logOf((level, message, fields) => {
+      const { receivers, screen } = this.#outlet;
+      if (!screen.shows(level) && receivers.every(({ hook }) => hook === except)) {
+        return;
+      }
+      this.#deliver({ fields: copyFields(fields), level, message, plugin }, except);
+    });
   }
 
   #runId(): string {
@@ -349,20 +413,27 @@ class RunLog {
     });
   }
 
-  /** Hands one event to every hook, in installation order, before returning. */
-  #deliver(parts: EventParts): void {
+  /**
+   * Shows one event on the screen, then hands it to every hook but `except`, in installation
+   * order, before returning. The screen and every hook read the same frozen event.
+   */
+  #deliver(parts: EventParts, except: LogHook | undefined): void {
     const event = this.#event(parts);
-    for (const hook of this.#hooks) {
-      try {
-        hook(event, this.#scene.destination);
-      } catch (error) {
-        this.#thrown ??= { value: error };
+    this.#outlet.screen.show(event);
+    for (const { destination, hook } of this.#outlet.receivers) {
+      if (hook !== except) {
+        try {
+          hook(event, destination);
+        } catch (error) {
+          this.#thrown ??= { value: error };
+        }
       }
     }
   }
 }
 
 export type {
+  DestinationFacts,
   JsonValue,
   Log,
   LogBinder,
@@ -371,7 +442,10 @@ export type {
   LogFields,
   LogHook,
   LogLevel,
+  LogOutlet,
   LogScene,
+  LogScreen,
+  PluginLogHook,
 };
 export { RunLog, silentLog };
 export type { LogDefect } from '../diagnostics/defect.js';

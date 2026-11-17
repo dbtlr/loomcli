@@ -8,8 +8,8 @@
  * - The look. A passed bare view replaces the lane view, glyph and gutter included, on stderr for
  *   `info` and on stdout for `print`, and `print` on a Command that declares a result moves to
  *   stderr with its view.
- * - The level. A call `-q` hides calls no view, the passed one included, and `out.debug(text,
- *   lanes.warn)` draws a warning's look from `-v` alone.
+ * - The level. A call `-q` hides calls no view, the passed one included, and `out.info(text,
+ *   lanes.warn)` draws a warning's look that `-q` still hides.
  * - Resolution. A declared view passed to a call resolves through the application's override,
  *   and an override of the method's own lane plays no part when the call passes a view.
  * - One line break. Every message ends with exactly one line break, whichever view drew it: a
@@ -72,7 +72,7 @@ test('a call the verbosity hides calls no view, the passed one included', async 
   };
   const app = marked('hidden').action(async ({ out }) => {
     await out.info('Building', throwing);
-    await out.debug('Detail', throwing);
+    await out.success('Built', throwing);
     await out.warn('Kept', bracketed);
   });
   await expect(written(app, ['-q'])).resolves.toEqual({
@@ -82,12 +82,12 @@ test('a call the verbosity hides calls no view, the passed one included', async 
   });
 });
 
-test("a debug call drawn in a warning's look writes from -v alone", async () => {
+test("an info call drawn in a warning's look is still hidden by -q", async () => {
   const app = marked('level').action(async ({ out }) => {
-    await out.debug('The cache is stale.', lanes.warn);
+    await out.info('The cache is stale.', lanes.warn);
   });
-  await expect(written(app)).resolves.toMatchObject({ stderr: '' });
-  await expect(written(app, ['-v'])).resolves.toMatchObject({
+  await expect(written(app, ['-q'])).resolves.toMatchObject({ stderr: '' });
+  await expect(written(app)).resolves.toMatchObject({
     stderr: '⚠ The cache is stale.\n',
   });
 });

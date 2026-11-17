@@ -797,7 +797,7 @@ try {
     const unchosen = run(runtimes.get(name), [shading], temporary);
     assert.equal(unchosen.output, 'undefined\n', `${name}: packed run without a background`);
   }
-  // The packed verbose plugin's -vv reveals the debug and trace lines, and -q hides info.
+  // The packed verbose plugin's -vv shows the debug and trace log lines, and -q hides info.
   const verbosity = join(temporary, 'dist/verbose.js');
   for (const name of selected) {
     const loud = run(runtimes.get(name), [verbosity, '-vv'], temporary);

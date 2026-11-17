@@ -458,7 +458,7 @@ export interface EnvironmentContext {
         readonly env: Readonly<Host['env']>;
     };
     readonly log: Log;
-    readonly out: Pick<Out, 'warn' | 'debug' | 'trace'>;
+    readonly out: Pick<Out, 'warn'>;
 }
 
 // @public
@@ -1030,7 +1030,7 @@ export type JsonValue = null | boolean | number | string | readonly JsonValue[] 
 };
 
 // @public @sealed
-export type Lane = 'debug' | 'error' | 'info' | 'print' | 'success' | 'trace' | 'warn';
+export type Lane = 'error' | 'info' | 'print' | 'success' | 'warn';
 
 // @public
 export const lanes: Readonly<Record<Lane, DeclaredView<string>>>;
@@ -1099,7 +1099,7 @@ export interface LogDefect {
 export interface LogDestination {
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly home: string;
-    readonly out: Pick<Out, 'debug' | 'trace'>;
+    readonly log: Log;
     readonly platform: string;
     readonly stderr: Writable | null;
 }
@@ -1129,6 +1129,26 @@ export type LogHook = (event: LogEvent, destination: LogDestination) => undefine
 
 // @public @sealed
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
+// @public @sealed
+export interface LogLine {
+    readonly event: LogEvent;
+    readonly fields: readonly LogLineField[];
+    readonly level: LogLineLevel;
+    readonly text: string;
+}
+
+// @public
+export const logLine: DeclaredView<LogLine>;
+
+// @public @sealed
+export interface LogLineField {
+    readonly name: string;
+    readonly value: string;
+}
+
+// @public
+export type LogLineLevel = Exclude<LogLevel, 'fatal'>;
 
 // @public
 export abstract class LoomError extends Error {
@@ -1315,8 +1335,6 @@ export type OptionsOf<Contributor> = Contributor extends Plugin_2<infer Options>
 
 // @public @sealed
 export interface Out<Result = unknown> {
-    debug(message: string, view?: View<string>): Promise<void>;
-    debug(...call: MessageArguments): Promise<void>;
     draw<Data>(data: Data, view: View<Data>): Promise<number>;
     error(message: string, view?: View<string>): Promise<void>;
     error(...call: MessageArguments): Promise<void>;
@@ -1332,8 +1350,6 @@ export interface Out<Result = unknown> {
     success(message: string, view?: View<string>): Promise<void>;
     success(...call: MessageArguments): Promise<void>;
     text<Data>(data: Data, view: View<Data>): string;
-    trace(message: string, view?: View<string>): Promise<void>;
-    trace(...call: MessageArguments): Promise<void>;
     warn(message: string, view?: View<string>): Promise<void>;
     warn(...call: MessageArguments): Promise<void>;
 }

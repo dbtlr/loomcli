@@ -6,7 +6,7 @@ import { Application } from '@loomcli/core';
  * against a headless terminal emulator fed what core writes to a host whose stderr reports a
  * terminal:
  *
- * - The stack. Two regions draw, an `out.info` and an `out.debug` at verbosity 1 between their
+ * - The stack. Two regions draw, a `log.debug` line at verbosity 1 and an `out.info` between their
  *   frames land above both, and the screen holds both frames below them in open order. A frame that
  *   grows by a row moves the region below it down. Closing the top region moves its last frame into
  *   scrollback above the other region, and a region whose last frame is empty leaves no row. An
@@ -85,11 +85,11 @@ function written(run: Run): string {
   return run.events.map((event) => ('write' in event ? event.write : '')).join('');
 }
 
-test('two regions stack in open order below a lane line and a debug line written between their frames', async () => {
+test('two regions stack in open order below a debug log line and a lane line written between their frames', async () => {
   const run = await regions('stack', 'tty', ['-v']);
   await expect(screen(run, 'lines')).resolves.toEqual([
-    'ℹ info line',
     '› debug line',
+    'ℹ info line',
     'first frame',
     'second frame',
   ]);
@@ -98,8 +98,8 @@ test('two regions stack in open order below a lane line and a debug line written
 test('a frame that grows by a row moves the region below it down', async () => {
   const run = await regions('stack', 'tty', ['-v']);
   await expect(screen(run, 'grown')).resolves.toEqual([
-    'ℹ info line',
     '› debug line',
+    'ℹ info line',
     'first frame',
     'first grown row',
     'second frame',

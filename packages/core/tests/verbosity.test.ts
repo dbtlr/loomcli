@@ -6,9 +6,10 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
  * a fixture Application that marks its own options, with the verbose plugin's own cases in
  * packages/plugins/tests/verbose.test.ts:
  *
- * - The lanes. A fixture action that writes every lane prints `info`, `success`, `warn`, and
- *   `error` and no debug or trace line with no spelling, adds the debug line under `-v`, adds the
- *   trace line under `-vv`, and prints the same under `-vvv` as under `-vv`. Under `-q` and `-qq`
+ * - The lanes. A fixture action that writes every lane and logs one debug and one trace event
+ *   prints `info`, `success`, `warn`, and `error` and no log line with no spelling, adds the debug
+ *   log line under `-v`, adds the trace log line under `-vv`, and prints the same under `-vvv` as
+ *   under `-vv`. Under `-q` and `-qq`
  *   it prints `warn` and `error` alone, and `print`, `render`, `draw`, a result, the
  *   incomplete-result line of a sequence that stops early, and a failure print at every verbosity.
  *   `-v -q` prints what no spelling prints, and `-vv -q` what `-v` prints.
@@ -16,23 +17,22 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
  *   an `onCommandAttach` hook declared on the routed Command beside `-v` in one group, an alias, a
  *   `shortOnly` marked option's letter, occurrences on both sides of the Command name, and a
  *   spelling after the bare `--`, which counts nothing, each settle what the ordinary parse reads.
- * - Destinations. Debug and trace lines reach stderr with stdout piped and on a Command that
+ * - Destinations. Debug and trace log lines reach stderr with stdout piped and on a Command that
  *   declares a result, whose stdout holds the result alone. Piped, with neither color variable set,
  *   each line is its gutter and its message, unwrapped and with no escape. On a capable terminal
  *   the gutters and styles match the lines the reference shows, a long message wraps at the columns
  *   right of its gutter with every continuation line under the message, and `NO_COLOR=1` keeps
  *   `faint` on a trace line.
- * - Not logging. Under `-vv`, a fixture plugin's `onLog` hook receives no event for an `out.debug`
- *   or `out.trace` call, and the logging plugin's console destination writes no record for one.
- * - Hidden calls. A hidden `out.debug(42)` from JavaScript rejects as `out.info(42)` does, and a
- *   hidden call calls no override of its lane view.
- * - Before the chain. A configuration source's `out.debug` line prints under `-v` and not without
- *   it, and a dotenv warning prints under `-q`. A fixture middleware's `out.debug` line prints
+ * - Hidden events. An event the verbosity hides calls no override of the log-line view, and one it
+ *   shows calls the override, whose throw fails the run.
+ * - Before the chain. A configuration source's `log.debug` line prints under `-v` and not without
+ *   it, and a dotenv warning prints under `-q`. A fixture middleware's `log.debug` line prints
  *   under `-v` and not without it, and its `out.info` line prints without a spelling and not under
  *   `-q`. A declaration error from graph build prints under `-q`, and an unknown command's failure
  *   prints under `-q`.
  * - By name. `invoke` with `verbose: 2` captures the debug and trace lines in `messages`, a call
- *   without it captures neither inside a parent run started with `-vv`, and `verbose: 1.5` fails
+ *   inside a parent run started with `-vv` captures neither, because they follow the parent, and
+ *   `verbose: 1.5` fails
  *   with its counted-option issue and exit 2. An MCP tool call that names `verbose` is rejected,
  *   and a tool call writes no debug line.
  * - No mark. An Application with neither mark writes no debug or trace line under any argv, and
@@ -167,10 +167,10 @@ test('a failure prints under -q', async () => {
 /** One SGR sequence. */
 const escape = String.fromCodePoint(27);
 
-test('on a terminal a debug line is dim and a trace line nests deeper and adds faint', async () => {
+test('on a terminal a debug line dims its glyph and a trace line nests deeper and fades whole', async () => {
   const result = await fetchit('themed', 'tty', ['-vv', 'show']);
   expect(result.stderr).toBe(
-    `${escape}[90m›${escape}[39m ${escape}[90mdebug${escape}[39m\n  ${escape}[90;2m┆${escape}[39;22m ${escape}[90;2mtrace${escape}[39;22m\n`,
+    `${escape}[90m›${escape}[39m debug\n  ${escape}[90;2m┆${escape}[39;22m ${escape}[90;2mtrace${escape}[39;22m\n`,
   );
 });
 
@@ -192,24 +192,7 @@ test('a long message wraps at the columns right of its gutter, continuations und
   ]);
 });
 
-test('a debug or trace call creates no log event', async () => {
-  await expect(
-    fetchit('logged', 'pipe', ['-vv', 'get', 'u']).then((fixtureResult) => fixtureResult.stdout),
-  ).resolves.toContain('heard []\n');
-});
-
-test("the logging plugin's console destination writes no record for a debug or trace call", async () => {
-  // The action logs one event of its own, so the one record shows the destination writes.
-  const lines = await fetchit('console', 'pipe', ['-vv', 'get', 'u']).then((fixtureResult) =>
-    fixtureResult.stderr.split('\n'),
-  );
-  const records = lines.filter((line) => line.startsWith('{'));
-  expect(records).toHaveLength(1);
-  expect(records[0]).toContain('"logged"');
-  expect(lines.filter((line) => !line.startsWith('{')).join('\n')).toBe(shown.trace);
-});
-
-test('a hidden call calls no override of its lane view', async () => {
+test('a hidden event calls no override of the log-line view, and a shown one calls it', async () => {
   await expect(
     fetchit('override', 'pipe', ['get', 'u']).then((fixtureResult) => fixtureResult.status),
   ).resolves.toBe(0);
@@ -270,9 +253,10 @@ test('invoke with verbose: 2 captures the debug and trace lines in messages', as
   });
 });
 
-test('a call inherits nothing from a parent run started with -vv', async () => {
+test('a call inside a parent run started with -vv captures no log line, which follows the parent', async () => {
   const result = await fetchit('own', 'pipe', ['-vv', 'nested']);
   expect(result.stdout).toBe(`${JSON.stringify(shown.default)}\n`);
+  expect(result.stderr).toBe('  ┆ trace\n› debug\n');
 });
 
 test('verbose: 1.5 fails with its counted-option issue and exit 2', async () => {

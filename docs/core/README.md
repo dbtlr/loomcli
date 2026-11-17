@@ -25,7 +25,7 @@ Every `Invalid declaration: ` and `Internal error: ` line a page shows quotes th
 - [Host](host.md): open it when you give a run its process handle, read what core captures from it into the host, such as the working directory, the home folder, the environment, and the streams, or start a child program.
 - [Interaction](interaction.md): open it when a run decides whether it may ask the operator, or an input is required only when it cannot ask.
 - [Color](color.md): open it when you need to know how the operator's color choice settles for a run.
-- [Verbosity](verbosity.md): open it when you write debug or trace lines, or mark an option that raises or lowers the run's verbosity.
+- [Verbosity](verbosity.md): open it when you show log lines, or mark an option that raises or lowers the run's verbosity.
 - [Background](background.md): open it when output adapts to the terminal's light or dark background.
 - [Signals, cancellation, and shutdown](signals.md): open it when an action or a plugin reacts to Ctrl-C, a signal, cancellation, or a closed pipe, registers a handler that restores the terminal or a child program when a signal ends the process, or restores the terminal on suspend and resume.
 

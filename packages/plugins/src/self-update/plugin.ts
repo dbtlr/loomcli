@@ -43,7 +43,6 @@ import {
   recordUnwritable,
   refreshNoticeConflict,
   refreshNoticeConflictIssue,
-  replacedBinary,
   requested,
   requestFailed,
   resolvedRelease,
@@ -87,8 +86,6 @@ interface AfterReplaceContext {
   readonly signal: AbortSignal;
   /** The run's log. */
   readonly log: Log;
-  /** The run's output channel, the self-update action's own. */
-  readonly out: Out;
 }
 
 /**
@@ -275,26 +272,26 @@ function notNewerLine({ name, running, found, channel }: NotNewer): string {
 
 /**
  * What downloading the asset needs: the run's binary, the release, the digest it lists, the
- * requests' signal and naming, and the run's `out`.
+ * requests' signal and naming, and the run's `log`.
  */
 interface Download {
   readonly checked: Checked;
   readonly release: Release;
   readonly digest: string;
   readonly requesting: Requesting;
-  readonly out: Out;
+  readonly log: Log;
 }
 
 /**
- * Downloads the asset and returns its bytes once their digest matches the listed one, naming the
- * match at `-v`.
+ * Downloads the asset and returns its bytes once their digest matches the listed one, logging the
+ * match at `debug`.
  */
 async function download({
   checked,
   release,
   digest,
   requesting,
-  out,
+  log,
 }: Download): Promise<Uint8Array> {
   const bytes = await fetchBytes(
     downloadUrl(release.repository, release.version, checked.asset),
@@ -303,7 +300,8 @@ async function download({
   if (digestOf(bytes) !== `sha256:${digest}`) {
     throw fatal(digestMismatch(checked.asset, `v${release.version.text}`, release.repository));
   }
-  await out.debug(verifiedAsset(checked.asset));
+  const verified = verifiedAsset(checked.asset);
+  log.debug(verified.template, verified.fields);
   return bytes;
 }
 
@@ -359,21 +357,12 @@ function writeRecord({ name, checked, version, bytes, log }: Placement): void {
 /**
  * Places the verified bytes over the binary, then rewrites the record. An abort read before the
  * rename propagates as it is. From the rename to the record no signal is read: the span is
- * synchronous, so no abort can arrive inside it, and it must stay so. The `Replaced` line is asked
- * for inside the span and awaited after it, so the line comes before the record's rewrite in the
- * run's output and the span stays synchronous. A record that cannot be written is the failure
- * the run reports, whatever became of the line.
+ * synchronous, so no abort can arrive inside it, and it must stay so. The binary change event
+ * comes before the record's rewrite, and a record that cannot be written is the failure the run reports.
  */
-async function place(placement: Placement, out: Out): Promise<void> {
+function place(placement: Placement): void {
   placeBinary(placement);
-  const said = out.debug(replacedBinary(placement.checked.path));
-  try {
-    writeRecord(placement);
-  } catch (error) {
-    await Promise.allSettled([said]);
-    throw error;
-  }
-  await said;
+  writeRecord(placement);
 }
 
 /** The Command's action, once its inputs are read. */
@@ -386,7 +375,7 @@ interface Request {
   readonly channel: string | undefined;
   readonly checkOnly: boolean;
   readonly out: Out;
-  /** The run signal, and the `-vv` line each request is named by. */
+  /** The run signal, and the `trace` log line each request is named by. */
   readonly requesting: Requesting;
 }
 
@@ -456,24 +445,31 @@ async function resolve(request: Request, checked: Checked): Promise<Resolved | u
   if (await reportNotNewer(request, checked, found.version)) {
     return undefined;
   }
-  await sayResolved(request, found.version, channel);
+  sayResolved(request, found.version, channel);
   const release = await sumsOf(found, requesting);
   return { digest: listedDigest(checked.asset, release), release };
 }
 
 /**
- * Names at `-v` the release a run without a version resolved, once it goes on to replace. A named
- * version is the operator's own and a `--check` line names the release, so neither writes it.
+ * Logs at `debug` the release a run without a version resolved, once it goes on to replace. A
+ * named version is the operator's own and a `--check` line names the release, so neither logs it.
  */
-async function sayResolved(request: Request, found: Version, channel: string): Promise<void> {
+function sayResolved(request: Request, found: Version, channel: string): void {
   if (request.named === undefined && !request.checkOnly) {
-    await request.out.debug(resolvedRelease(found.text, channel));
+    const resolved = resolvedRelease(found.text, channel);
+    request.log.debug(resolved.template, resolved.fields);
   }
 }
 
-/** The run signal, and the `-vv` line that names each request before it is sent. */
-function requestingOf(out: Out, signal: AbortSignal): Requesting {
-  return { requested: (url) => out.trace(requested(url)), signal };
+/** The run signal, and the `trace` log line that names each request before it is sent. */
+function requestingOf(log: Log, signal: AbortSignal): Requesting {
+  return {
+    requested: (url) => {
+      const line = requested(url);
+      log.trace(line.template, line.fields);
+    },
+    signal,
+  };
 }
 
 /** The line a `--check` run prints for the release it resolved. */
@@ -497,8 +493,8 @@ async function install(request: Request, checked: Checked, resolved: Resolved): 
   const { log, name, out, requesting, signal } = request;
   const { digest, release } = resolved;
   await out.info(downloading(checked.asset, release.version.text, release.repository));
-  const bytes = await download({ checked, digest, out, release, requesting });
-  await place({ bytes, checked, log, name, signal, version: release.version }, out);
+  const bytes = await download({ checked, digest, log, release, requesting });
+  place({ bytes, checked, log, name, signal, version: release.version });
   await out.success(updated(name, checked.running.text, release.version.text));
 }
 
@@ -519,7 +515,6 @@ async function update(request: Request, settings: SelfUpdateSettings | undefined
     host: request.host,
     log: request.log,
     name: request.name,
-    out: request.out,
     path: checked.path,
     previous: checked.running.text,
     signal: request.signal,
@@ -613,7 +608,7 @@ function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
             host,
             log,
             name: graph.name,
-            requesting: requestingOf(out, signal),
+            requesting: requestingOf(log, signal),
           });
           return;
         }
@@ -626,7 +621,7 @@ function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
             name: graph.name,
             named: args.version === undefined ? undefined : versionOfArgument(args.version),
             out,
-            requesting: requestingOf(out, signal),
+            requesting: requestingOf(log, signal),
             signal,
           },
           settings,

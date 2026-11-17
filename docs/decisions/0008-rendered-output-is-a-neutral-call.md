@@ -4,7 +4,7 @@ title: ADR-0008 - Rendered output is a separate neutral call with a pure synchro
 description: out.render(value, renderer) is the one presentation call. A Renderer turns one value into the exact bytes core writes and holds no output handle. The five semantic methods stay string-only with fixed destinations.
 status: accepted
 created: 2026-09-07
-modified: 2026-11-13
+modified: 2026-11-17
 ---
 
 # ADR-0008 - Rendered output is a separate neutral call with a pure synchronous renderer
@@ -45,3 +45,4 @@ Formatters, tables, and terminal styling live in the application or in future pl
 - 2026-11-13: [ADR-0148](0148-a-semantic-method-takes-a-view-for-its-message-and-ends-it-with-one-line-break.md), proposed, narrows the semantic methods' string-only signatures: each takes a marked string message and an optional `View<string>` that replaces its lane view for that call. The message stays a string, so the split between a message with a purpose and a value with a presentation holds, and a value still goes through `out.render`.
 
 - 2026-11-16: [ADR-0163](0163-a-semantic-method-takes-a-stream-of-text-and-shows-each-chunk-as-it-arrives.md), proposed, narrows two clauses. The semantic methods' string-only signatures gain a second form, which takes an async iterable of the message's text and no view, and call order within a destination does not hold for that form: each line of a streamed message takes its place in its destination's order when it completes, so a write issued after the call can land before the message's later lines. A streamed message is a message's text with a purpose, not a value with a presentation, so the split between a semantic method and `out.render` holds. It binds when that record is accepted.
+- 2026-11-17: [ADR-0174](0174-v-shows-the-log-through-message-templates-and-out-keeps-what-the-operator-is-told.md), proposed, narrows the semantic methods back to five, `print`, `info`, `success`, `warn`, and `error`: `out.debug` and `out.trace` are removed, and detail an operator asks for with `-v` is logged through `log` and shown as a log line. It binds when that record is accepted.

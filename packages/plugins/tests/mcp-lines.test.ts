@@ -5,8 +5,9 @@
  * their words, with the installation record under a fresh state folder below the temporary
  * directory, which it removes after.
  *
- * - The default verbosity and -v gain no line. At -vv `install` and `uninstall` name each selected
- *   agent's record file they read, in table order, whether or not it exists.
+ * - The default verbosity gains no line, and -v gains the change events alone. At -vv `install`
+ *   and `uninstall` name each selected agent's record file they read, in table order, whether or
+ *   not it exists.
  * - Each record file write and its deletion records `File written.` or `File removed.`, and each
  *   `mcp add` or `mcp remove` that exits 0 records `Program run.` with its words. A `claude mcp
  *   remove` before an `add` that exits otherwise records nothing, and a read, the `--version` call
@@ -90,19 +91,30 @@ async function run(state: string, argv: readonly string[], scenario: Scenario = 
     release: { build: 'distributed' },
   });
   return {
-    events: events.map(({ fields, level, message, plugin: from }) => ({
-      fields,
-      level,
-      message,
-      plugin: from,
-    })),
+    // The change events, which are info; the -vv lines are trace events of their own.
+    events: events
+      .filter(({ level }) => level === 'info')
+      .map(({ fields, level, message, plugin: from }) => ({
+        fields,
+        level,
+        message,
+        plugin: from,
+      })),
     raw: events,
     status: result.status,
     stderr: result.stderr,
   };
 }
 
-/** The lines the trace lane wrote, its gutter removed. */
+/** The lines a change event shows at -v, which open with a debug gutter and a change message. */
+const changeLine = /^› (?:File written\.|File removed\.|Program run\.) /u;
+
+/** The lines a run wrote that are not change events. */
+function withoutChanges(stderr: string): string[] {
+  return stderr.split('\n').filter((line) => !changeLine.test(line));
+}
+
+/** The trace log lines, their gutter removed. */
 function traced(stderr: string): string[] {
   return stderr
     .split('\n')
@@ -124,19 +136,19 @@ function programRun(name: string, words: readonly string[]) {
 }
 
 describe('lines', () => {
-  it('install names each record file at -vv in table order, and nothing at -v', async () => {
+  it('install names each record file at -vv in table order, and only its changes at -v', async () => {
     const { record, state } = stateFolder();
     const plain = await run(state, ['mcp', 'install']);
     expect(plain.status).toBe(0);
     const other = stateFolder().state;
     const verbosely = await run(other, ['-v', 'mcp', 'install']);
-    expect(verbosely.stderr).toBe(plain.stderr);
+    expect(withoutChanges(verbosely.stderr)).toEqual(plain.stderr.split('\n'));
     const again = await run(state, ['-vv', 'mcp', 'install']);
     expect(traced(again.stderr)).toEqual([
       `Checked ${join(record, 'mcp.claude.json')}.`,
       `Checked ${join(record, 'mcp.codex.json')}.`,
     ]);
-    expect(again.stderr).not.toContain('› ');
+    expect(withoutChanges(again.stderr).join('\n')).not.toContain('› ');
   });
 
   it('a file that is not there is checked too, and --agent checks its agent alone', async () => {

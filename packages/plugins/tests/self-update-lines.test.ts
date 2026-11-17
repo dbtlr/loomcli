@@ -141,7 +141,8 @@ test('-v names the release resolved, the asset verified, and the binary replaced
       '› Resolved v1.5.0 on the stable channel.',
       'ℹ Downloading notes-linux-x64 from v1.5.0 of acme/notes.',
       '› Verified notes-linux-x64 against SHA256SUMS.',
-      `› Replaced ${box.binary}.`,
+      `› Binary replaced. from=1.4.2 path=${box.binary} to=1.5.0`,
+      `› File written. path=${box.record}`,
       '✔ Updated notes from 1.4.2 to 1.5.0.',
       '',
     ].join('\n'),
@@ -154,7 +155,8 @@ test('a named version and --check resolve no line', async () => {
     stderr: [
       'ℹ Downloading notes-linux-x64 from v1.4.0 of acme/notes.',
       '› Verified notes-linux-x64 against SHA256SUMS.',
-      `› Replaced ${named.binary}.`,
+      `› Binary replaced. from=1.4.2 path=${named.binary} to=1.4.0`,
+      `› File written. path=${named.record}`,
       '✔ Updated notes from 1.4.2 to 1.4.0.',
       '',
     ].join('\n'),
@@ -177,7 +179,8 @@ test('-vv names each request before it is sent, each redirect included', async (
       `  ┆ Requested ${github}/releases/download/v1.5.0/notes-linux-x64.`,
       `  ┆ Requested ${assets}/v1.5.0/notes-linux-x64.`,
       '› Verified notes-linux-x64 against SHA256SUMS.',
-      `› Replaced ${box.binary}.`,
+      `› Binary replaced. from=1.4.2 path=${box.binary} to=1.5.0`,
+      `› File written. path=${box.record}`,
       '✔ Updated notes from 1.4.2 to 1.5.0.',
       '',
     ].join('\n'),
@@ -216,7 +219,8 @@ test('on another channel the lookup requests each candidate SHA256SUMS before Re
       `  ┆ Requested ${github}/releases/download/v1.6.0-next.1/notes-linux-x64.`,
       `  ┆ Requested ${assets}/v1.6.0-next.1/notes-linux-x64.`,
       '› Verified notes-linux-x64 against SHA256SUMS.',
-      `› Replaced ${box.binary}.`,
+      `› Binary replaced. from=1.6.0-next.0 path=${box.binary} to=1.6.0-next.1`,
+      `› File written. path=${box.record}`,
       '✔ Updated notes from 1.6.0-next.0 to 1.6.0-next.1.',
       '',
     ].join('\n'),
@@ -235,7 +239,8 @@ test('a replacing run records each staging file removed, the binary replaced, an
   writeFileSync(binaryStaging, 'partial');
   writeFileSync(recordStaging, 'partial');
   const { events } = await run(box, ['self-update']);
-  expect(events.map(({ fields, level, message }) => ({ fields, level, message }))).toEqual([
+  const changes = events.filter(({ level }) => level === 'info');
+  expect(changes.map(({ fields, level, message }) => ({ fields, level, message }))).toEqual([
     { fields: { path: binaryStaging }, level: 'info', message: 'File removed.' },
     {
       fields: { from: '1.4.2', path: box.binary, to: '1.5.0' },
@@ -251,13 +256,15 @@ test('--refresh-notice names its requests at -vv and records the cache it writes
   const box = sandbox();
   const { events, status, stderr } = await run(box, ['-vv', 'self-update', '--refresh-notice']);
   expect(status).toBe(0);
-  expect(stderr).toBe(`  ┆ Requested ${github}/releases/latest.\n`);
-  expect(events.map(({ fields, message }) => ({ fields, message }))).toEqual([
+  const cache = join(box.cache, 'notes', 'update.json');
+  expect(stderr).toBe(`  ┆ Requested ${github}/releases/latest.\n› File written. path=${cache}\n`);
+  const changes = events.filter(({ level }) => level === 'info');
+  expect(changes.map(({ fields, message }) => ({ fields, message }))).toEqual([
     { fields: { path: join(box.cache, 'notes', 'update.json') }, message: 'File written.' },
   ]);
 });
 
-test('afterReplace receives the graph name and the action out', async () => {
+test('afterReplace receives the graph name and the action log', async () => {
   const box = sandbox();
   const { stderr } = await run(box, ['-v', 'self-update'], { hook: 'record' });
   expect(stderr.endsWith('✔ Updated notes from 1.4.2 to 1.5.0.\n› The hook ran for notes.\n')).toBe(

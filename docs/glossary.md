@@ -291,7 +291,7 @@ The `color: true` fact on the one Boolean global option whose spellings carry th
 _Avoid_: No-color flag (for the mark), color option
 
 **Verbosity**:
-The run's one setting of which lanes write, settled right after graph build from argv with the parser's own word reader: the verbose-marked option's occurrences, read as 2 above 2, less the quiet-marked option's, read as 1 above 1. At 0, the default, `info`, `success`, `warn`, and `error` write; 1 adds `debug`, 2 adds `trace`, and -1 hides `info` and `success`. `print`, rendered output, `draw`, results, warnings, errors, failures, and the incomplete-result line write at every verbosity. An invocation by name settles its own from the values it lowers.
+The run's one setting of which lanes write and which log events core shows as log lines, settled right after graph build from argv with the parser's own word reader: the verbose-marked option's occurrences, read as 2 above 2, less the quiet-marked option's, read as 1 above 1. At 0, the default, `info`, `success`, `warn`, and `error` write and no log line shows; -1 hides `info` and `success`; 1 shows each log event at `debug` and above as a log line, and 2 adds `trace`. `print`, rendered output, `draw`, results, warnings, errors, failures, and the incomplete-result line write at every verbosity, and a failure event never shows as a log line. An invocation by name settles its own from the values it lowers, and its log lines follow the outermost run's.
 _Avoid_: Log level (a log level belongs to a log event), detail level, verbose mode, quiet mode
 
 **Verbose mark**:
@@ -450,11 +450,11 @@ _Avoid_: Control key, signal key, break key
 View, Token, Glyph, and Theme follow the [style contract](core/styles.md) and the [view registry contract](core/views.md). The registry is implemented under accepted ADR-0021, so the package spells a view `View` and its context `ViewContext`. Result, Row view, View name, and `ResultError` follow the [results contract](core/results.md), which is implemented under accepted ADR-0023. Column, Field, and Identifier follow the [table](plugins/pack-views.md#table) and [records](plugins/pack-views.md#records) contracts.
 
 **Out**:
-The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the region call that opens a live region on stderr, the draw call that draws one frame there, the text call that returns what the render call would write without writing it, the result call, and the fatal path. On a Command that declares a result, the action's `print` and `render` move to stderr beside `info`, `success`, `warn`, `error`, `debug`, and `trace`, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
+The output channel object an action or a middleware receives, carrying the semantic methods, the neutral render call, the region call that opens a live region on stderr, the draw call that draws one frame there, the text call that returns what the render call would write without writing it, the result call, and the fatal path. On a Command that declares a result, the action's `print` and `render` move to stderr beside `info`, `success`, `warn`, and `error`, `results` owns stdout, and `fatal` still throws without writing; a middleware's `out` keeps the default destinations and its `results` accepts no value, typed `never`, and no method is ever removed.
 _Avoid_: Logger, console, writer, printer
 
 **Semantic output**:
-A message written through one of the seven purpose-named methods: `print`, `info`, `success`, `warn`, `error`, `debug`, and `trace`. The method is the message's level: its fixed default destination and the verbosity it writes at. Its look is the method's lane view, or a view over the message the call passes, and the method ends the message with one line break. The message is a string, or an async iterable of its text, which makes it a streamed message. The run's verbosity decides whether `info`, `success`, `debug`, and `trace` write.
+A message written through one of the five purpose-named methods: `print`, `info`, `success`, `warn`, and `error`, which tell the operator. The method is the message's level: its fixed default destination and the verbosity it writes at. Its look is the method's lane view, or a view over the message the call passes, and the method ends the message with one line break. The message is a string, or an async iterable of its text, which makes it a streamed message. The run's verbosity decides whether `info` and `success` write. Detail an operator asks for with `-v` is no semantic output: it is logged through `log` and shows as a log line.
 _Avoid_: Log level (a log level belongs to a log event), styled output
 
 **Message level**:
@@ -538,7 +538,7 @@ The pairing of a key, a declared view or a failure class, with a replacement vie
 _Avoid_: Failure renderer, registration, hook
 
 **Lane view**:
-The declared view behind one of the seven semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the line break the method appends when the view's text does not end with one is outside the view. A call that passes its own view replaces the lane view for that call alone, and a streamed message always draws through it. The bare word lane also names an output area of core, as in the results lane.
+The declared view behind one of the five semantic methods, exported by core under `lanes`, each over the message string. An override of a lane view owns its glyph gutter and its wrapping, and the line break the method appends when the view's text does not end with one is outside the view. A call that passes its own view replaces the lane view for that call alone, and a streamed message always draws through it. The bare word lane also names an output area of core, as in the results lane.
 _Avoid_: Channel, log level (a log level belongs to a log event), stream (for the lane view)
 
 **Columns**:
@@ -680,10 +680,10 @@ One entry in an input error: an omitted required input, a rejected value togethe
 
 ## Logging
 
-Log, Log event, Change event, and Log destination follow the [logging contract](core/logging.md) and the [`onLog` hook](core/lifecycle-hooks.md#observing-log-events); Log record follows the [logging plugin](plugins/logging.md).
+Log, Log event, Message template, Log line, Change event, and Log destination follow the [logging contract](core/logging.md) and the [`onLog` hook](core/lifecycle-hooks.md#observing-log-events); Log record follows the [logging plugin](plugins/logging.md).
 
 **Log**:
-The member of the action, middleware, source, and `onFailure` contexts that records what happened for a reader later, with the methods `trace`, `debug`, `info`, `warn`, and `error`. It writes nothing: each call becomes a log event, and with no `onLog` installed it does nothing. It is separate from Out, which renders for the person at the terminal.
+The member of the action, middleware, source, provider, `onEnvironment`, and `onFailure` contexts, and of a log destination, that records what happened, with the methods `trace`, `debug`, `info`, `warn`, and `error`, each taking a message template and fields. Each call becomes a log event when an `onLog` hook hears it or the verbosity shows it as a log line, and does nothing otherwise. Out tells the operator and Log records: one call for each job.
 _Avoid_: Logger, console, out (for the log)
 
 **Log event**:
@@ -694,8 +694,16 @@ _Avoid_: Log entry, log message, log line (for the event)
 The severity of a log event: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`, the OpenTelemetry severity names. `fatal` is core's alone, for a defect; `log` has no `fatal`.
 _Avoid_: Severity class, verbosity (for the level), message level (a semantic method's destination and verbosity)
 
+**Message template**:
+A log event's message written as a Message Template, from messagetemplates.org: constant text in which `{name}` names where the field of that name goes and `{{` and `}}` write a brace. A log line fills it from the fields and trails the fields it does not place as `name=value`; the record keeps the template as written, so the message stays constant and searchable.
+_Avoid_: Format string, interpolated message, rendered message (for the record)
+
+**Log line**:
+The line core shows on stderr for one log event the verbosity asks for: at `-v` each event at `debug` and above, at `-vv` `trace` too, never a failure event. It fills the event's message template, trails its unplaced fields as dim `name=value`, escapes every value, and draws through the declared `logLine` view. It follows the outermost run's verbosity.
+_Avoid_: Debug line, trace line, debug lane, verbose output
+
 **Log destination**:
-The outermost run's `env`, `home`, `platform`, `stderr`, and `debug` and `trace` lanes, its `out`, that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. A log record never enters an invocation's captured output.
+The outermost run's `env`, `home`, `platform`, and `stderr`, and a `log` bound to the hook's plugin, that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. An event logged through its `log` shows as a log line at the outermost run's verbosity and reaches every other hook, never the hook itself. A log record never enters an invocation's captured output.
 _Avoid_: Sink, transport, target
 
 **Change event**:
@@ -704,7 +712,7 @@ _Avoid_: Audit event, side-effect log, change record
 
 **Log record**:
 One log event as the logging plugin writes it: one JSON line, the same in a file and on the console.
-_Avoid_: Log line, log entry
+_Avoid_: Log line (a log line is what `-v` shows), log entry
 
 **Logging plugin**:
 The first-party plugin `@loomcli/plugins/logging`, an `onLog` hook that writes each event as a log record, appended to a size-rotated file in the platform's state or log directory or written to stderr.

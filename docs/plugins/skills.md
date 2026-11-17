@@ -8,7 +8,7 @@ This page documents the skills plugin, which installs an application's agent ski
 
 ```ts
 // @loomcli/plugins/skills
-import type { Host, Log, Out, Plugin } from '@loomcli/core';
+import type { Host, Log, Plugin } from '@loomcli/core';
 
 export interface SkillFile {
   readonly path: string; // relative to the skill's folder, such as references/commands.md
@@ -31,7 +31,6 @@ export interface RefreshContext {
   readonly signal: AbortSignal; // the run signal
   readonly log: Log; // the run's log
   readonly name?: string; // the application's name, which finds the installation record; absent, the child always runs
-  readonly out?: Pick<Out, 'debug' | 'trace'>; // where the -v and -vv lines go; absent, none is written
 }
 export declare function skills(settings: SkillsSettings): Plugin;
 export declare function refreshSkills(context: RefreshContext): Promise<void>;
@@ -159,13 +158,12 @@ The Commands print a confirmation for each file they write or remove, so they wr
 
 | Level | Line | When |
 | --- | --- | --- |
-| `-v` | `Refreshed the skills after the update.` | The refresh child exited 0. |
 | `-vv` | `Skipped the skills refresh: nothing is installed.` | The refresh did not run, because the installation record holds none of the plugin's files. |
 
 - **Nothing is installed.** Before it starts the child, a refresh whose context carries `name` looks in `applicationDirectory('installation', name, host)` for the plugin's file for any target. When none exists, it starts no child, writes its `-vv` line, and resolves. It reads only whether each file exists, so an unreadable or damaged record still runs the child, whose failure names the fix. A directory that does not resolve, and a context without `name`, run the child. This is the one reason a refresh does not run.
-- **Its lines.** A child that fails or cannot start writes no `-v` line and keeps its `warn` event and its line on `host.stderr`. A context without `out` writes no line. The self-update plugin passes its action's `out` and the graph's `name`.
+- **Its lines.** The refresh logs its `-v` and `-vv` lines through the context's `log`, which the self-update plugin passes with the graph's `name`. A child that fails or cannot start logs no `-v` line and keeps its `warn` event and its line on `host.stderr`.
 - **Log events.** Each skill folder the Commands place records one `File written.` under the folder's path, global and project installs alike, and each one they remove one `File removed.`; each target's record file records `File written.` at each write and `File removed.` when deleted. A refresh child that exits 0 records `Program run.` with `{ program: path, arguments: ['skills', 'update'], code: 0 }` through the context's `log`, the self-update action's, so its `plugin` reads `@loomcli/plugins/self-update`. Each event is an `info` [change event](../core/logging.md#change-events), and a Command's events name `@loomcli/plugins/skills`. A leftover staging file the plugin removes beside a file it writes, which a run that was stopped mid-write left, records `File removed.` too, and so does each leftover staging or retired folder beside a skill folder, one event under its path.
-- **The lanes.** Each `-v` line is one `out.debug` call and each `-vv` line one `out.trace` call, rendered by the lane's own view, under the run's [verbosity](../core/verbosity.md): `-v -q` writes none, both lanes write to stderr whether or not it is a terminal, an [invocation by name](../core/invocation.md#invocation-by-name) shows them in its `messages` when its values ask for them, and an [MCP](mcp.md) tool call runs at verbosity 0 and shows none. Each value a line repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition). [ADR-0165](../decisions/0165-first-party-plugins-say-what-they-did-at-v-and-record-each-change-they-make-as-a-log-event.md) records the lines and the events.
+- **Log lines.** Each `-v` line is one `log.debug` call and each `-vv` line one `log.trace` call, whose message is a constant [message template](../core/logging.md#message-templates) with the values the line shows in the event's fields, so the screen reads the sentence the table shows and a record keeps the template. Core shows each through its [log-line view](../core/logging.md#at--v) under the run's [verbosity](../core/verbosity.md): `-v -q` shows none, the lines go to stderr whether or not it is a terminal, an [`app.invoke`](../core/invocation.md#invocation-by-name) shows them in its `messages` when its values ask for them, and under an action's `invoke` or an [MCP](mcp.md) tool call they follow the outermost run's verbosity. Every value a line shows passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition). Each line is a log event, so an installed [logging plugin](logging.md) records it at its level, and each change event the plugin records shows at `-v` too, as every `info` event does. [ADR-0165](../decisions/0165-first-party-plugins-say-what-they-did-at-v-and-record-each-change-they-make-as-a-log-event.md) records the lines and the events, and [ADR-0174](../decisions/0174-v-shows-the-log-through-message-templates-and-out-keeps-what-the-operator-is-told.md) moves the lines onto `log`.
 
 ## When author code fails
 

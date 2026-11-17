@@ -63,7 +63,7 @@ describe('an unstated member', () => {
   it('that is a function returning nothing does nothing', async () => {
     const context = bare();
     const view: View<string> = { render: vi.fn((text: Readonly<string>) => text) };
-    const lanes = ['print', 'info', 'success', 'warn', 'error', 'debug', 'trace'] as const;
+    const lanes = ['print', 'info', 'success', 'warn', 'error'] as const;
     for (const lane of lanes) {
       await expect(context.out[lane]('text')).resolves.toBeUndefined();
     }

@@ -25,7 +25,7 @@ import {
   silentRejection,
   stdinIssue,
 } from './messages.js';
-import type { InputSubject } from './messages.js';
+import type { InputSubject, LogLineText } from './messages.js';
 import { absentBooleans, groupReports } from './option-groups.js';
 import type { OptionGroup } from './option-groups.js';
 import {
@@ -949,7 +949,7 @@ export interface Validation {
    * The configuration fills the option's validator rejected. Each reads as unfilled in this pass,
    * and the caller withdraws it and names it.
    */
-  readonly dropped: ReadonlyMap<InputDeclaration, string>;
+  readonly dropped: ReadonlyMap<InputDeclaration, LogLineText>;
   readonly stdin: Content | undefined;
   readonly failure: InputError | undefined;
   readonly reports: ReadonlyMap<InputDeclaration, Report>;
@@ -1023,8 +1023,8 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     };
   };
   const values = new Map<InputDeclaration, unknown>();
-  /** Each dropped configuration fill with the `out.debug` line that names it. */
-  const dropped = new Map<InputDeclaration, string>();
+  /** Each dropped configuration fill with the `-v` log line that names it. */
+  const dropped = new Map<InputDeclaration, LogLineText>();
   // Each input reports at most once, so insertion order is the order this phase reaches them.
   const reports = new Map<InputDeclaration, Report>();
   /**
@@ -1082,7 +1082,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     reject(entry, issues, suppliedName(entry.input, spelling, origin));
   };
   /**
-   * Drops a value the configuration source filled, recording the `out.debug` line that names its
+   * Drops a value the configuration source filled, recording the `-v` log line that names its
    * first issue, and says whether it did. A value from any other tier, and a strict fill, is never dropped.
    */
   const dropsFill = (

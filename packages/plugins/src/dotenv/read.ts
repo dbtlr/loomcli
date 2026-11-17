@@ -153,19 +153,17 @@ function judgeLayer(
 const noNames = 0;
 
 /**
- * Writes one file's lines: at `-v` how many names it imported, when any, and at `-vv` each name
+ * Logs one file's lines: at `debug` how many names it imported, when any, and at `trace` each name
  * it passed over and why, in the order the file first assigns them. No line holds a value.
  */
-async function reportLayer(
-  file: string,
-  outcome: LayerOutcome,
-  out: EnvironmentContext['out'],
-): Promise<void> {
+function reportLayer(file: string, outcome: LayerOutcome, log: EnvironmentContext['log']): void {
   if (outcome.imported.length > noNames) {
-    await out.debug(imported(outcome.imported.length, file));
+    const line = imported(outcome.imported.length, file);
+    log.debug(line.template, line.fields);
   }
   for (const [name, reason] of outcome.skipped) {
-    await out.trace(skippedName(name, file, reason));
+    const line = skippedName(name, file, reason);
+    log.trace(line.template, line.fields);
   }
 }
 
@@ -183,7 +181,7 @@ async function readDotenv(context: EnvironmentContext, listedOut: ListedOut) {
     (Object.hasOwn(env, name) ? env[name] : undefined) ?? layers.values.get(name);
   for (const file of dotenvFiles(env.NODE_ENV)) {
     const names = await readLayer(file, context, { imports, outer });
-    await reportLayer(file, judgeLayer(file, names, { env, layers, listedOut }), context.out);
+    reportLayer(file, judgeLayer(file, names, { env, layers, listedOut }), context.log);
   }
   return Object.fromEntries([...layers.values].filter(([name]) => imports(name)));
 }

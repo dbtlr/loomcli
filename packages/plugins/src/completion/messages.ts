@@ -138,9 +138,6 @@ function completionNotRefreshed(path: string, name: string): string {
   return `Completion was not refreshed because ${shown(path)} could not start. Run ${shown(name)} completion update.\n`;
 }
 
-/** The refresh's `-v` line once its child exited 0. */
-const completionRefreshed = 'Refreshed completion after the update.';
-
 /** The refresh's `-vv` line when the installation record holds none of the plugin's files. */
 const completionRefreshSkipped = 'Skipped the completion refresh: nothing is installed.';
 
@@ -151,7 +148,6 @@ export {
   addLineYourself,
   alreadyLoads,
   completionNotRefreshed,
-  completionRefreshed,
   completionRefreshSkipped,
   installedScript,
   installsNotOnWindows,

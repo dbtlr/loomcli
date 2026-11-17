@@ -3,10 +3,15 @@
  * each change a plugin makes outside the process. A plugin raises them through the `log` its
  * action, middleware, or `afterReplace` context already holds, so the event's `plugin` field tells
  * the plugins apart. A read and a failed change raise none, because core logs the failure itself.
- * The messages are records for a reader later, not operator sentences, so they live here and not in
- * a `messages.ts`.
  */
 import type { Log } from '@loomcli/core';
+
+import {
+  binaryReplacedMessage,
+  fileRemovedMessage,
+  fileWrittenMessage,
+  programRunMessage,
+} from './messages.js';
 
 /** The fields of a file a plugin wrote or removed: its absolute path. */
 interface FileChange {
@@ -40,7 +45,7 @@ interface BinaryChange {
  * ```
  */
 function fileWritten(log: Log, { path }: FileChange): void {
-  log.info('File written.', { path });
+  log.info(fileWrittenMessage, { path });
 }
 
 /**
@@ -52,7 +57,7 @@ function fileWritten(log: Log, { path }: FileChange): void {
  * ```
  */
 function fileRemoved(log: Log, { path }: FileChange): void {
-  log.info('File removed.', { path });
+  log.info(fileRemovedMessage, { path });
 }
 
 /**
@@ -64,7 +69,7 @@ function fileRemoved(log: Log, { path }: FileChange): void {
  * ```
  */
 function programRun(log: Log, { arguments: words, code, program }: ProgramChange): void {
-  log.info('Program run.', { arguments: [...words], code, program });
+  log.info(programRunMessage, { arguments: [...words], code, program });
 }
 
 /**
@@ -76,7 +81,7 @@ function programRun(log: Log, { arguments: words, code, program }: ProgramChange
  * ```
  */
 function binaryReplaced(log: Log, { from, path, to }: BinaryChange): void {
-  log.info('Binary replaced.', { from, path, to });
+  log.info(binaryReplacedMessage, { from, path, to });
 }
 
 export type { BinaryChange, FileChange, ProgramChange };

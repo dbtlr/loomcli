@@ -5,8 +5,8 @@
  * public APIs on a mock process in the test's own process, under Node and Bun:
  *
  * - The joined text decides. Off a terminal, the bytes each lane writes for a stream equal the
- *   bytes it writes for the joined text, with color on, so a style the debug and trace lanes keep
- *   open across a line break included, and on a Command that declares a result `print` moves to
+ *   bytes it writes for the joined text, with color on, so a style the text keeps open across a
+ *   line break included, and on a Command that declares a result `print` moves to
  *   stderr with its stream. A text that ends with a line break writes the style close after that
  *   break wherever two chunks split it, so the next message starts with no style open.
  * - The lane view's context is read once a message.
@@ -130,7 +130,7 @@ type Rendering = NonNullable<Parameters<Application['run']>[0]>['rendering'];
 /** Color and modifiers forced on, so a style's bytes are written off a terminal too. */
 const colored: Rendering = { color: 'always', modifiers: 'always' };
 
-const semantic: readonly Lane[] = ['print', 'info', 'success', 'warn', 'error', 'debug', 'trace'];
+const semantic: readonly Lane[] = ['print', 'info', 'success', 'warn', 'error'];
 
 /** Text whose chunks split words, lines, and a blank line, and whose end has no line break. */
 const pages = ['Fetched the ', 'first page.\nThen the sec', 'ond', ' page.\n', '\nDone'];
@@ -211,7 +211,7 @@ test('a stream the verbosity hides is read to its end and writes nothing', async
   const run = await piped(
     async (out) => {
       await out.info(recorded());
-      await out.debug(recorded());
+      await out.success(recorded());
     },
     ['-q'],
   );
@@ -221,9 +221,12 @@ test('a stream the verbosity hides is read to its end and writes nothing', async
 
 test('a hidden stream that throws rejects its call', async () => {
   let rejection: unknown = undefined;
-  const run = await piped(async (out) => {
-    rejection = await out.debug(broken('partial')).catch((error: unknown) => error);
-  });
+  const run = await piped(
+    async (out) => {
+      rejection = await out.info(broken('partial')).catch((error: unknown) => error);
+    },
+    ['-q'],
+  );
   expect(rejection).toEqual(new Error('The service hung up.'));
   expect(run).toMatchObject({ code: 0, stderr: '' });
 });
@@ -702,16 +705,12 @@ test('off a terminal, a message written after a stream that ends with a line bre
   const mock = mockProcess({ argv: ['-vv'], env: {} });
   await marked('closed')
     .action(async ({ out }) => {
-      await out.trace(chunks('Fetched the page.\n'));
       await out.print(chunks(style.bold('Answer ready.\n')));
       await out.warn('Next message');
       await out.print('plain');
     })
     .run({ process: mock, rendering: colored });
-  const next = [
-    { message: 'Next message', opened: '\u001B[2m', stream: 'stderr' },
-    { message: 'plain', opened: '\u001B[1m', stream: 'stdout' },
-  ];
+  const next = [{ message: 'plain', opened: '\u001B[1m', stream: 'stdout' }];
   for (const { message, opened, stream } of next) {
     const writes = mock.transcript.filter((write) => write.stream === stream);
     const before = writes
@@ -721,7 +720,7 @@ test('off a terminal, a message written after a stream that ends with a line bre
       )
       .map(({ text }) => text)
       .join('');
-    // The stream opens a faint or bold attribute, and the bytes before the next message close it.
+    // The stream opens a bold attribute, and the bytes before the next message close it.
     expect({
       closed: before.endsWith('\n\u001B[22m'),
       opened: before.includes(opened),

@@ -40,7 +40,9 @@ async function refresh(
     { argv: ['refresh'], cwd: work, env: { FROM_HOST: 'yes' }, programs },
     { signal: controller.signal },
   );
-  return { ...result, events, resolved };
+  // The records the refresh made, without the lines it logs for -v and -vv.
+  const recorded = events.filter(({ level }) => level !== 'debug' && level !== 'trace');
+  return { ...result, events: recorded, resolved };
 }
 
 const roots: string[] = [];

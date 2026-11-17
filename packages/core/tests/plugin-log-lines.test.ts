@@ -4,9 +4,9 @@ import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 /**
- * The lanes a plugin's hooks write their `-v` and `-vv` lines through, under ADR-0165: an
- * `onEnvironment` hook's `out.debug` and `out.trace`, and an `onLog` hook's `destination.out`, the
- * outermost run's lanes, which follow that run's verbosity.
+ * The log lines a plugin's hooks say what they did with, under ADR-0174: an `onEnvironment` hook's
+ * `log`, and an `onLog` hook's `destination.log`, whose events show at the outermost run's
+ * verbosity, reach every other hook, and never reach the hook whose destination it is.
  */
 
 /** A verbose mark, spelled -L, so a run can raise its verbosity. */
@@ -22,11 +22,11 @@ const loud = plugin('fixture/loud', {
   },
 });
 
-/** A plugin whose environment hook says one line in each lane. */
+/** A plugin whose environment hook logs one debug and one trace event. */
 const speaks = plugin('fixture/speaks', {
-  onEnvironment: async ({ out }) => {
-    await out.debug('Read the environment.');
-    await out.trace('Looked at the environment.');
+  onEnvironment: ({ log }) => {
+    log.debug('Read the environment.');
+    log.trace('Looked at the environment.');
   },
 });
 
@@ -37,7 +37,7 @@ async function environmentLines(argv: readonly string[]): Promise<string> {
   return mock.stderr.text;
 }
 
-test("an environment hook's debug and trace lines follow the run's verbosity", async () => {
+test("an environment hook's log lines follow the run's verbosity", async () => {
   await expect(environmentLines([])).resolves.toBe('');
   await expect(environmentLines(['-L'])).resolves.toBe('› Read the environment.\n');
   await expect(environmentLines(['-LL'])).resolves.toBe(
@@ -45,19 +45,32 @@ test("an environment hook's debug and trace lines follow the run's verbosity", a
   );
 });
 
-/** A plugin whose `onLog` hook writes one debug and one trace line through its destination per event. */
-function observer(seen: LogDestination[]) {
+/**
+ * A plugin whose `onLog` hook logs one debug and one trace event through its destination for each
+ * event it hears, and records what it hears.
+ */
+function observer(seen: LogDestination[], heard: string[] = []) {
   return plugin('fixture/observer', {
     onLog: (event, destination) => {
       seen.push(destination);
-      void destination.out.debug(`Saw ${event.message}`).catch(() => {});
-      void destination.out.trace(`Traced ${event.message}`).catch(() => {});
+      heard.push(event.message);
+      destination.log.debug('Saw {message}', { message: event.message });
+      destination.log.trace('Traced {message}', { message: event.message });
       return undefined;
     },
   });
 }
 
-/** The stderr of a run whose action logs one event, which the observer's lanes answer. */
+/** A plugin whose `onLog` hook records each event's plugin and message. */
+function recorder(heard: string[]) {
+  return plugin('fixture/recorder', {
+    onLog: (event) => {
+      heard.push(`${String(event.plugin)} ${event.message}`);
+    },
+  });
+}
+
+/** The stderr of a run whose action logs one event, which the observer answers. */
 async function observedLines(argv: readonly string[]): Promise<string> {
   const mock = mockProcess({ argv });
   await new Application('app', { plugins: [loud, observer([])] })
@@ -68,13 +81,31 @@ async function observedLines(argv: readonly string[]): Promise<string> {
   return mock.stderr.text;
 }
 
-test("an onLog hook's lanes write to the outermost run's stderr at that run's verbosity", async () => {
+test("an onLog hook's log lines show at the outermost run's verbosity, after the event it heard", async () => {
   await expect(observedLines([])).resolves.toBe('');
-  await expect(observedLines(['-L'])).resolves.toBe('› Saw Indexed.\n');
-  await expect(observedLines(['-LL'])).resolves.toBe('› Saw Indexed.\n  ┆ Traced Indexed.\n');
+  await expect(observedLines(['-L'])).resolves.toBe('› Indexed.\n› Saw Indexed.\n');
+  await expect(observedLines(['-LL'])).resolves.toBe(
+    '› Indexed.\n› Saw Indexed.\n  ┆ Traced Indexed.\n',
+  );
 });
 
-test("under an action's invoke the hook's lanes follow the outer run, not the nested one", async () => {
+test("a hook's own destination.log reaches every other hook and never itself", async () => {
+  const own: string[] = [];
+  const other: string[] = [];
+  await new Application('app', { plugins: [loud, observer([], own), recorder(other)] })
+    .action(({ log }) => {
+      log.info('Indexed.');
+    })
+    .run({ process: mockProcess() });
+  expect(own).toEqual(['Indexed.']);
+  expect(other).toEqual([
+    'fixture/observer Saw {message}',
+    'fixture/observer Traced {message}',
+    'null Indexed.',
+  ]);
+});
+
+test("under an action's invoke the hook's lines follow the outer run, not the nested one", async () => {
   const mock = mockProcess({ argv: ['-L', 'outer'] });
   const seen: LogDestination[] = [];
   const app = new Application('app', { plugins: [loud, observer(seen)] })
@@ -91,7 +122,7 @@ test("under an action's invoke the hook's lanes follow the outer run, not the ne
       }),
     );
   await app.run({ process: mock });
-  expect(mock.stderr.text).toBe('› Saw Outer.\n› Saw Nested.\n');
+  expect(mock.stderr.text).toBe('› Outer.\n› Saw Outer.\n› Nested.\n› Saw Nested.\n');
   expect(mock.stdout.text).toBe('""\n');
   expect(seen).toHaveLength(2);
   expect(new Set(seen).size).toBe(1);
@@ -104,5 +135,5 @@ test("under app.invoke the hook's lines land in the call's messages when its val
   const quiet = await app.invoke([], {}, { process: mockProcess() });
   const verbose = await app.invoke([], { options: { loud: 1 } }, { process: mockProcess() });
   expect(quiet).toMatchObject({ messages: '', status: 'completed' });
-  expect(verbose).toMatchObject({ messages: '› Saw Called.\n', status: 'completed' });
+  expect(verbose).toMatchObject({ messages: '› Called.\n› Saw Called.\n', status: 'completed' });
 });

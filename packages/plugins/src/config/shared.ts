@@ -1,4 +1,11 @@
-import type { CommandGraph, ContextualStyle, Host, Out, StandardSchemaV1 } from '@loomcli/core';
+import type {
+  CommandGraph,
+  ContextualStyle,
+  Host,
+  Log,
+  Out,
+  StandardSchemaV1,
+} from '@loomcli/core';
 
 import { dropUntilPasses } from './drop.js';
 import type { Removal, Step } from './drop.js';
@@ -52,6 +59,7 @@ interface Scene {
   readonly invokedBy: 'argv' | 'name';
   readonly options: Readonly<Record<string, unknown>>;
   readonly out: Out;
+  readonly log: Log;
   readonly style: ContextualStyle;
 }
 
@@ -76,15 +84,13 @@ function shownPath(path: readonly Step[]): string {
   }, '');
 }
 
-/** The `-v` line for one removed value or unknown key, from its shown path (undefined for the whole file, which has no steps), each piece of raw data escaped. */
 /** Where a read reports what it finds: the file's name, the lines `strict` holds, and the `-v` channel. */
 interface Reporting {
   readonly file: string | undefined;
   /** The line of each covered removal and covered unknown key, in the order found. */
   readonly held: string[];
-  readonly out: Out;
+  readonly log: Log;
   readonly strict: Strictness;
-  readonly style: ContextualStyle;
 }
 
 /**
@@ -97,18 +103,14 @@ async function reportRemoval(
   round: Readonly<Record<string, unknown>>,
   reporting: Reporting,
 ): Promise<void> {
-  const { file, held, out, strict, style } = reporting;
+  const { file, held, log, strict } = reporting;
   if (!coversRemoval(strict, removal, round)) {
-    return out.debug(
-      ignoredValue(
-        {
-          file,
-          path: removal.readPath.length === noSteps ? undefined : shownPath(removal.readPath),
-        },
-        removal.message,
-        style,
-      ),
+    const line = ignoredValue(
+      { file, path: removal.readPath.length === noSteps ? undefined : shownPath(removal.readPath) },
+      removal.message,
     );
+    log.debug(line.template, line.fields);
+    return undefined;
   }
   const path =
     removal.readIssuePath.length === noSteps ? undefined : shownPath(removal.readIssuePath);
@@ -118,12 +120,13 @@ async function reportRemoval(
 
 /** The unknown keys of a read: each held for the failure when `strict` covers it, and else written at `-v`. */
 async function reportUnknown(paths: readonly Step[][], reporting: Reporting): Promise<void> {
-  const { file, held, out, strict, style } = reporting;
+  const { file, held, log, strict } = reporting;
   for (const path of paths) {
     if (covers(strict, path)) {
       held.push(unknownKeyLine(shownUnknownPath(path), file));
     } else {
-      await out.debug(ignoredValue({ file, path: shownUnknownPath(path) }, unknownKeyIssue, style));
+      const line = ignoredValue({ file, path: shownUnknownPath(path) }, unknownKeyIssue);
+      log.debug(line.template, line.fields);
     }
   }
 }
@@ -133,7 +136,7 @@ async function load<Schema extends StandardSchemaV1>(
   shared: Shared<Schema>,
   scene: Scene,
 ): Promise<Loaded<Schema>> {
-  const { graph, host, invokedBy, options, out, style } = scene;
+  const { graph, host, invokedBy, log, options, out, style } = scene;
   const usable = await findFile(
     {
       app: graph.name,
@@ -148,16 +151,15 @@ async function load<Schema extends StandardSchemaV1>(
       reach: shared.reach,
       strict: isStrict(shared.strict),
     },
-    { out, style },
+    { log, out, style },
   );
   // The `$schema` pointer names the file's hosted schema for an editor, and is never a setting.
   const object = usable === undefined ? {} : withoutPointer(usable.object);
   const reporting: Reporting = {
     file: usable?.file.shown,
     held: [],
-    out,
+    log,
     strict: shared.strict,
-    style,
   };
   const passed = await dropUntilPasses(shared.schema, object, (removal, round) =>
     reportRemoval(removal, round, reporting),

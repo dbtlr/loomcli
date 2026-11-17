@@ -5,7 +5,8 @@
  *
  * - The default verbosity writes no line of the plugin's own.
  * - At -v the plugin names its file once per outermost run, after the first record it appends, and
- *   a run that appends none writes no line; with `to: 'console'` it writes neither line.
+ *   a run that appends none writes no line; with `to: 'console'` it writes neither line. Its lines
+ *   are log events of its own, which never come back to its hook, so the file holds none of them.
  * - At -vv each rotation that renamed or deleted the file is named, `keep: 0` included.
  * - The lines follow the outermost run: an action's invoke writes them on the outer run's stderr,
  *   and an invocation by name in its messages, when its values ask for them.
@@ -71,18 +72,34 @@ test('the default verbosity writes no line of its own', async () => {
 test('-v names the file once per run, after the first record it appends', async () => {
   await inDirectory(async (directory) => {
     const file = join(directory, 'notes.jsonl');
-    await expect(stderrOf({ file }, ['-v'], twice)).resolves.toBe(`› Logging to ${file}.\n`);
-    await expect(stderrOf({ file }, ['-v'], twice)).resolves.toBe(`› Logging to ${file}.\n`);
+    const lines = `› Indexed.\n› Logging to ${file}.\n› Synced.\n`;
+    await expect(stderrOf({ file }, ['-v'], twice)).resolves.toBe(lines);
+    await expect(stderrOf({ file }, ['-v'], twice)).resolves.toBe(lines);
+  });
+});
+
+test("the plugin's own lines never reach its own hook, so the file records none", async () => {
+  await inDirectory(async (directory) => {
+    const file = join(directory, 'notes.jsonl');
+    writeFileSync(file, `${'x'.repeat(500)}\n`);
+    await stderrOf({ file, keep: 1, maxBytes: 600 }, ['-vv'], twice);
+    const records = readFileSync(file, 'utf8').trim().split('\n');
+    expect(records.map((line): unknown => JSON.parse(line))).toEqual([
+      expect.objectContaining({ message: 'Indexed.' }),
+      expect.objectContaining({ message: 'Synced.' }),
+    ]);
   });
 });
 
 test('a run that appends no record writes no line', async () => {
   await inDirectory(async (directory) => {
     const file = join(directory, 'notes.jsonl');
-    await expect(stderrOf({ file }, ['-vv'], below)).resolves.toBe('');
+    await expect(stderrOf({ file }, ['-vv'], below)).resolves.toBe('› Below the level.\n');
     const unwritable = join(directory, 'taken', 'notes.jsonl');
     writeFileSync(join(directory, 'taken'), '');
-    await expect(stderrOf({ file: unwritable }, ['-vv'], twice)).resolves.toBe('');
+    await expect(stderrOf({ file: unwritable }, ['-vv'], twice)).resolves.toBe(
+      '› Indexed.\n› Synced.\n',
+    );
   });
 });
 
@@ -90,16 +107,17 @@ test('-vv names each rotation that renamed or deleted the file, keep: 0 included
   await inDirectory(async (directory) => {
     const file = join(directory, 'notes.jsonl');
     writeFileSync(file, `${'x'.repeat(500)}\n`);
+    const rotatedLines = `› Indexed.\n  ┆ Rotated ${file}.\n› Logging to ${file}.\n› Synced.\n`;
     await expect(stderrOf({ file, keep: 2, maxBytes: 600 }, ['-vv'], twice)).resolves.toBe(
-      `  ┆ Rotated ${file}.\n› Logging to ${file}.\n`,
+      rotatedLines,
     );
     writeFileSync(file, `${'x'.repeat(500)}\n`);
     await expect(stderrOf({ file, keep: 0, maxBytes: 600 }, ['-v'], twice)).resolves.toBe(
-      `› Logging to ${file}.\n`,
+      `› Indexed.\n› Logging to ${file}.\n› Synced.\n`,
     );
     writeFileSync(file, `${'x'.repeat(500)}\n`);
     await expect(stderrOf({ file, keep: 0, maxBytes: 600 }, ['-vv'], twice)).resolves.toBe(
-      `  ┆ Rotated ${file}.\n› Logging to ${file}.\n`,
+      rotatedLines,
     );
   });
 });
@@ -108,8 +126,10 @@ test("with to: 'console' the records reach stderr and the plugin writes neither 
   const stderr = await stderrOf({ to: 'console' }, ['-vv'], (log) => {
     log.info('Indexed.');
   });
-  expect(stderr.split('\n').filter((line) => line !== '')).toHaveLength(1);
-  expect(JSON.parse(stderr)).toMatchObject({ message: 'Indexed.' });
+  const records = stderr.split('\n').filter((line) => line.startsWith('{'));
+  expect(records).toHaveLength(1);
+  expect(JSON.parse(records[0] ?? '')).toMatchObject({ message: 'Indexed.' });
+  expect(stderr.split('\n').filter((line) => !line.startsWith('{'))).toEqual(['› Indexed.', '']);
 });
 
 test("under an action's invoke the line follows the outer run and stays out of the call's messages", async () => {
@@ -130,7 +150,7 @@ test("under an action's invoke the line follows the outer run and stays out of t
         }),
       )
       .run({ process: mock });
-    expect(mock.stderr.text).toBe(`› Logging to ${file}.\n`);
+    expect(mock.stderr.text).toBe(`› Nested.\n› Logging to ${file}.\n› After.\n`);
     expect(mock.stdout.text).toBe('""\n');
   });
 });
@@ -144,7 +164,7 @@ test('an invocation by name shows the line in its messages when its values ask f
     });
     await expect(
       app.invoke([], { options: { verbose: 1 } }, { process: mockProcess() }),
-    ).resolves.toMatchObject({ messages: `› Logging to ${file}.\n` });
+    ).resolves.toMatchObject({ messages: `› Indexed.\n› Logging to ${file}.\n› Synced.\n` });
   });
 });
 
@@ -159,7 +179,7 @@ test('a control character in the path is escaped', async () => {
   await inDirectory(async (directory) => {
     const file = join(directory, 'no\u0007tes.jsonl');
     await expect(stderrOf({ file }, ['-v'], twice)).resolves.toBe(
-      `› Logging to ${join(directory, String.raw`no\u0007tes.jsonl`)}.\n`,
+      `› Indexed.\n› Logging to ${join(directory, String.raw`no\u0007tes.jsonl`)}.\n› Synced.\n`,
     );
   });
 });

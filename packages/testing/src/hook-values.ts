@@ -6,7 +6,7 @@
  */
 import type { LogDestination, LogEvent, ProgressEvent } from '@loomcli/core';
 
-import { readsToEnd } from './unstated-members.js';
+import { logWith } from './unstated-members.js';
 
 /**
  * What a test states to build a log event: any member it means the hook to read.
@@ -46,14 +46,14 @@ const eventDefaults = {
 
 /**
  * The members of a log destination a test does not state: `mockProcess`'s home and platform, the
- * `null` stderr of an invocation by name, and `debug` and `trace` lanes that resolve and write
- * nothing. Each call answers its own `env`, because the destination freezes only its top level.
+ * `null` stderr of an invocation by name, and a `log` whose every level does nothing. Each call
+ * answers its own `env`, because the destination freezes only its top level.
  */
 function destinationDefaults(): LogDestination {
   return {
     env: {},
     home: '/loom-test/home',
-    out: { debug: readsToEnd, trace: readsToEnd },
+    log: logWith(undefined),
     platform: 'linux',
     stderr: null,
   };

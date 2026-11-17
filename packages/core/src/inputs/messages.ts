@@ -33,12 +33,28 @@ function stdinIssue(issueSentence: string): string {
   return `Stdin: ${issueSentence}`;
 }
 
+/** One log line's message, a constant template, with the fields its placeholders and trail read. */
+interface LogLineText {
+  readonly template: string;
+  readonly fields: Readonly<Record<string, string>>;
+}
+
+/**
+ * The `-v` log line for a configuration fill core dropped: the option's reported spelling, the
+ * issue's path inside the value when it has one, the answer's label, and the first issue's message.
+ */
 function ignoredFill(
   fill: { readonly spelling: string; readonly label: string },
   path: string | undefined,
   issueSentence: string,
-): string {
-  return `Ignored option ${quoted(fill.spelling)}${position(path)} from ${escapeControlCharacters(fill.label)}: ${issueSentence}`;
+): LogLineText {
+  const fields = { issue: issueSentence, label: fill.label, option: fill.spelling };
+  return path === undefined
+    ? { fields, template: 'Ignored option "{option}" from {label}: {issue}' }
+    : {
+        fields: { ...fields, position: path },
+        template: 'Ignored option "{option}" at {position} from {label}: {issue}',
+      };
 }
 
 function values(count: number): string {
@@ -162,7 +178,7 @@ function requirementSentence(option: GroupMember, lacking: readonly string[]): s
     : `${inputSubject(subject)} requires options ${quotedNames(lacking)}. Supply them as well, or remove ${quoted(option.spelling)}.`;
 }
 
-export type { GroupMember, InputSubject, OptionFix };
+export type { LogLineText, GroupMember, InputSubject, OptionFix };
 export {
   environmentBoolean,
   environmentCount,
