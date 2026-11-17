@@ -32,10 +32,13 @@ function modulesOf(folder: string): string[] {
     .map((entry) => relative(src, join(entry.parentPath, entry.name)));
 }
 
-/** The relative specifiers of the static imports, re-exports, and dynamic imports in a source text. */
+/**
+ * The relative specifiers of the static imports, re-exports, and dynamic imports in a source text.
+ * A block comment may sit before the specifier, as a bundler's hint comment does inside `import()`.
+ */
 function relativeSpecifiers(text: string): string[] {
   const pattern =
-    /(?:\bfrom\s*|\bimport\s*\(?\s*)(?<quote>['"])(?<specifier>\.{1,2}\/[^'"]*)\k<quote>/gu;
+    /(?:\bfrom\s*|\bimport\s*\(?\s*)(?:\/\*[\s\S]*?\*\/\s*)*(?<quote>['"])(?<specifier>\.{1,2}\/[^'"]*)\k<quote>/gu;
   return [...text.matchAll(pattern)].map((match) => match.groups?.specifier ?? '');
 }
 
@@ -76,9 +79,9 @@ test('the scan reads plugin modules and their relative imports', () => {
   expect(modulesOf('version').length).toBeGreaterThan(0);
   expect(
     relativeSpecifiers(
-      "import type { A } from './a.js';\nexport { b } from '../b.js';\nawait import('./c.js');\nimport 'node:fs';\nimport x from 'pkg';",
+      "import type { A } from './a.js';\nexport { b } from '../b.js';\nawait import('./c.js');\nawait import(/* hint */ '../d.js');\nimport 'node:fs';\nimport x from 'pkg';",
     ),
-  ).toEqual(['./a.js', '../b.js', './c.js']);
+  ).toEqual(['./a.js', '../b.js', './c.js', '../d.js']);
 });
 
 test('a plugin imports a sibling plugin only through its declarations module', () => {
