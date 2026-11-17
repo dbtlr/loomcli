@@ -95,11 +95,12 @@ interface Progress {
   /**
    * Adds lines to the line's log: one line, text that holds several, or an async iterable of
    * text, such as a child program's output. The text is a marked string. Where the line draws,
-   * its newest lines show under it, dim; `end`, `skip`, and `clear` remove them, and `fail`,
-   * `warn`, and a cancellation keep them to write above the end line: at once for a root, and for
-   * a task with its tree when the tree's tasks stay, so a task's kept lines go when a group above
-   * it succeeds or it is cleared. Resolves at once for a string, and for an iterable once it ends,
-   * or rejects with what it threw.
+   * its newest lines show under it, dim, and `end`, `skip`, and `clear` remove them. `fail`,
+   * `warn`, and a cancellation keep them to write above the end line. A root writes them at its
+   * end. A task whose tree draws holds them and writes them with its tree when the tree's tasks
+   * stay, so they go when a group above the task succeeds or the task is cleared. A task whose
+   * tree does not draw writes them at its own end, and they stay. Resolves at once for a string,
+   * and for an iterable once it ends, or rejects with what it threw.
    */
   log(text: string | AsyncIterable<string>): Promise<void>;
   /**

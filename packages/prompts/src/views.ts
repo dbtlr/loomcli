@@ -1080,67 +1080,197 @@ function elapsedTime(elapsed: number): string {
   return `${String(Math.floor(whole / HOUR))}h ${String(minutes).padStart(2, '0')}m`;
 }
 
+/** A part of a progress row that can give way on a narrow row, named for its turn to drop. */
+type Droppable = 'bar' | 'counts' | 'elapsed' | 'left' | 'rate';
+
+/** One part of a progress row after its label: the marked text it draws and its turn to drop. */
+interface LinePart {
+  readonly drop: Droppable;
+  readonly text: string;
+}
+
 /**
- * The progress line's own row, after its indent, which the terminal wraps when it is wider than the
- * screen. The rate and the time left give way while the row with its indent is wider than `columns`.
+ * A progress row in pieces: its mark, the spinner frame or the end glyph, and how the mark is
+ * styled; the label; the parts after the label, in drawing order; and how the whole row is styled.
  */
-function lineText(data: ProgressLine, indent: string, context: ViewContext): string {
-  const { columns, style, width } = context;
-  const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;
-  if (data.state === 'cancelled') {
-    return style.dim(`${glyph.squareCenter} ${data.label} (cancelled)`);
-  }
-  if (data.state === 'ended') {
-    return `${style.success(glyph.success)} ${data.label} ${time}`;
-  }
-  if (data.state === 'failed') {
-    return `${style.error(glyph.error)} ${data.label} ${time}`;
-  }
-  if (data.state === 'skipped') {
-    return style.dim(`${glyph.info} ${data.label} · ${elapsedTime(data.elapsed)}`);
-  }
-  if (data.state === 'warned') {
-    return `${style.warning(glyph.warning)} ${data.label} ${time}`;
-  }
+interface LineRow {
+  readonly mark: string;
+  readonly markStyle: (text: string) => string;
+  readonly label: string;
+  readonly parts: readonly LinePart[];
+  readonly paint: (text: string) => string;
+}
+
+/** The parts that drop before the label clips, in their order: the rate, then the time left. */
+const DROPPED_FIRST: readonly Droppable[] = ['rate', 'left'];
+/** The parts that drop once the label is the ellipsis alone, in their order. */
+const DROPPED_LAST: readonly Droppable[] = ['bar', 'elapsed', 'counts'];
+
+/** Text drawn as it is, for a row or a mark that takes no style of its own. */
+function asIs(text: string): string {
+  return text;
+}
+
+/** The pieces of a running line's row: the frame, the label, and its bar, counts, time, and pace. */
+function runningRow(data: ProgressLine, context: ViewContext): LineRow {
+  const { style } = context;
   const completed = data.completed ?? 0;
-  let measure = '';
+  const parts: LinePart[] = [];
   if (data.total !== undefined) {
     const complete = completeCells(completed, data.total);
     const bar =
       style.highlight(textStyle.escape(data.bar.complete.repeat(complete))) +
       style.dim(textStyle.escape(data.bar.incomplete.repeat(BAR_CELLS - complete)));
-    measure = ` ${bar} ${counts(completed, data.total)}`;
+    parts.push(
+      { drop: 'bar', text: ` ${bar}` },
+      { drop: 'counts', text: ` ${counts(completed, data.total)}` },
+    );
   } else if (data.completed !== undefined) {
-    measure = ` ${String(data.completed)}`;
+    parts.push({ drop: 'counts', text: ` ${String(data.completed)}` });
   }
-  const running = `${style.highlight(textStyle.escape(data.frame))} ${data.label}${measure} ${time}`;
-  if (data.estimate !== true || data.rate === undefined) {
-    return running;
+  parts.push({
+    drop: 'elapsed',
+    text: ` ${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`,
+  });
+  if (data.estimate === true && data.rate !== undefined) {
+    parts.push({
+      drop: 'rate',
+      text: ` ${style.dim('·')} ${style.dim(rateText(data.rate, data.unit))}`,
+    });
+    if (data.remaining !== undefined) {
+      parts.push({
+        drop: 'left',
+        text: ` ${style.dim('·')} ${style.dim(timeLeft(data.remaining))}`,
+      });
+    }
   }
-  const pace = `${style.dim('·')} ${style.dim(rateText(data.rate, data.unit))}`;
-  const left =
-    data.remaining === undefined
-      ? []
-      : [`${style.dim('·')} ${style.dim(timeLeft(data.remaining))}`];
-  // On a narrow row the rate gives way first, then the time left, so neither makes the line wrap.
-  const fits = (text: string) => width(indent + text) <= Math.max(1, columns ?? 80);
-  return (
-    [[pace, ...left], left]
-      .map((parts) => [running, ...parts].join(' '))
-      .find((text) => fits(text)) ?? running
-  );
+  return {
+    label: data.label,
+    mark: textStyle.escape(data.frame),
+    markStyle: style.highlight,
+    paint: asIs,
+    parts,
+  };
+}
+
+/** The pieces of a progress line's row in its state: its glyph or frame, label, and parts. */
+function rowOf(data: ProgressLine, context: ViewContext): LineRow {
+  const { style } = context;
+  const time: LinePart = {
+    drop: 'elapsed',
+    text: ` ${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`,
+  };
+  const ended = (mark: string, markStyle: (text: string) => string): LineRow => ({
+    label: data.label,
+    mark,
+    markStyle,
+    paint: asIs,
+    parts: [time],
+  });
+  const rows: Readonly<Record<ProgressLine['state'], () => LineRow>> = {
+    cancelled: () => ({
+      label: data.label,
+      mark: glyph.squareCenter,
+      markStyle: asIs,
+      paint: style.dim,
+      parts: [{ drop: 'elapsed', text: ' (cancelled)' }],
+    }),
+    ended: () => ended(glyph.success, style.success),
+    failed: () => ended(glyph.error, style.error),
+    running: () => runningRow(data, context),
+    skipped: () => ({
+      label: data.label,
+      mark: glyph.info,
+      markStyle: asIs,
+      paint: style.dim,
+      parts: [{ drop: 'elapsed', text: ` · ${elapsedTime(data.elapsed)}` }],
+    }),
+    warned: () => ended(glyph.warning, style.warning),
+  };
+  return rows[data.state]();
+}
+
+/**
+ * A progress line's row after two spaces for each level of `depth`. A row the view `fits` keeps to
+ * one row of `columns`, or 80 where it is unknown, measured with its indent: the rate drops, then
+ * the time left, then the label clips to its leading graphemes and the ellipsis, down to the
+ * ellipsis alone, then the bar, the elapsed time, and the counts drop, and at the narrowest the row
+ * is its leading columns that fit. Any other row draws whole, and the terminal wraps a long one.
+ */
+function lineRow(
+  data: ProgressLine,
+  { depth, fits }: { readonly depth: number; readonly fits: boolean },
+  context: ViewContext,
+): string {
+  const { width } = context;
+  const indent = '  '.repeat(depth);
+  const row = rowOf(data, context);
+  const text = (label: string, parts: readonly LinePart[]) =>
+    `${row.markStyle(row.mark)} ${label}${parts.map((part) => part.text).join('')}`;
+  const drawn = (label: string, parts: readonly LinePart[]) =>
+    indent + row.paint(text(label, parts));
+  if (!fits) {
+    return drawn(row.label, row.parts);
+  }
+  const columns = Math.max(1, context.columns ?? 80);
+  const within = (label: string, parts: readonly LinePart[]) =>
+    width(indent + text(label, parts)) <= columns;
+  let parts = row.parts;
+  for (const drop of DROPPED_FIRST) {
+    if (within(row.label, parts)) {
+      return drawn(row.label, parts);
+    }
+    parts = parts.filter((part) => part.drop !== drop);
+  }
+  if (within(row.label, parts)) {
+    return drawn(row.label, parts);
+  }
+  const ellipsis = context.plain(glyph.ellipsis);
+  const room = columns - width(indent + text('', parts));
+  if (room >= width(literal(ellipsis))) {
+    const kept = leading(context.plain(row.label), room - width(literal(ellipsis)), (candidate) =>
+      width(literal(candidate)),
+    );
+    return drawn(literal(kept + ellipsis), parts);
+  }
+  for (const drop of DROPPED_LAST) {
+    parts = parts.filter((part) => part.drop !== drop);
+    if (within(literal(ellipsis), parts)) {
+      return drawn(literal(ellipsis), parts);
+    }
+  }
+  // The row is its leading columns that fit, each piece keeping its own style.
+  const pieces: [string, (text: string) => string][] = [
+    [indent, asIs],
+    [context.plain(row.mark), (piece) => row.markStyle(textStyle.escape(piece))],
+    [' ', asIs],
+    [ellipsis, (piece) => textStyle.escape(piece)],
+  ];
+  let left = columns;
+  let fitted = '';
+  for (const [piece, draw] of pieces) {
+    const kept = leading(piece, left, (candidate) => width(textStyle.escape(candidate)));
+    fitted += kept === '' ? '' : draw(kept);
+    if (kept !== piece) {
+      break;
+    }
+    left -= width(textStyle.escape(kept));
+  }
+  return row.paint(fitted);
 }
 
 /**
  * The rows of one line and the tasks under it: its row after two spaces for each level of its
- * depth, its log rows two spaces further in, and then each task's rows by the same rules.
+ * depth, its log rows two spaces further in, and then each task's rows by the same rules. A running
+ * line's row and every row drawn under it keep to one row each; `fits` says a running line is
+ * above this one.
  */
-function treeRows(data: ProgressLine, context: ViewContext): string[] {
+function treeRows(data: ProgressLine, context: ViewContext, fits = false): string[] {
   const depth = Math.max(0, data.depth ?? 0);
-  const indent = '  '.repeat(depth);
+  const fitted = fits || data.state === 'running';
   const rows = (data.log ?? []).map((entry) => context.style.dim(logRow(entry, context, depth)));
-  const tasks = (data.tasks ?? []).flatMap((task) => treeRows(task, context));
-  return [indent + lineText(data, indent, context), ...rows, ...tasks];
+  const tasks = (data.tasks ?? []).flatMap((task) => treeRows(task, context, fitted));
+  return [lineRow(data, { depth, fits: fitted }, context), ...rows, ...tasks];
 }
 
 /**

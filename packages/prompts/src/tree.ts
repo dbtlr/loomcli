@@ -12,8 +12,8 @@ import type { Region, RegionCloser, View, ViewContext } from '@loomcli/core';
 import { controls } from './controls.js';
 import { estimate } from './estimate.js';
 import type { Estimate } from './estimate.js';
-import { placeTree } from './height.js';
-import type { Grove, Seat } from './height.js';
+import { joinTree } from './height.js';
+import type { TreePlace, Seat } from './height.js';
 import { keptLinesAt, ProgressLog } from './log.js';
 import { logLinesDropped } from './messages.js';
 import type {
@@ -135,11 +135,23 @@ interface Tree {
   /** Whether the tree draws: its root's region is live. */
   live: boolean;
   /** The tree's place among the trees that share the terminal's height, while it draws. */
-  grove: Grove | undefined;
+  place: TreePlace | undefined;
   /** The root's frame timer, while the tree draws. */
   timer: ReturnType<typeof setInterval> | undefined;
   /** How many of the tree's lines have finished, which orders its finished rows. */
   finishes: number;
+  /** How many of the tree's lines have opened, which orders the tasks a line shows. */
+  opens: number;
+  /**
+   * The tasks the tree has held at their finish, in the order they finished, so a frame reads its
+   * newest finished rows from the end. A task the tree no longer holds stays until the list is
+   * compacted, and a frame skips it.
+   */
+  finished: Line[];
+  /** How many of `finished` the tree still holds: its finished rows. */
+  held: number;
+  /** How many of `finished` the tree no longer holds. */
+  released: number;
 }
 
 /** One progress line: a tree's root, or a task under a line of it. */
@@ -162,6 +174,12 @@ class Line {
   tick = 0;
   /** The tasks under the line that its tree still shows, in the order they opened. */
   tasks: Line[] = [];
+  /** The tasks under the line that still run, in the order they opened. */
+  running: Line[] = [];
+  /** Where the line opened among its tree's lines, so the tasks a line shows keep their order. */
+  readonly opened: number;
+  /** Whether the line's tree holds it: a task its parent holds under a line the tree holds. */
+  held = false;
   /** The line's own data, frozen at its end, so its end line reads the same at every later frame. */
   ended: ProgressLine | undefined = undefined;
   /** Where the line finished among its tree's lines, so the first to finish gives way first. */
@@ -175,6 +193,8 @@ class Line {
     this.tree = tree;
     this.parent = parent;
     this.depth = parent === undefined ? 0 : parent.depth + 1;
+    tree.opens += 1;
+    this.opened = tree.opens;
     this.settings = settings;
     this.spinner = tree.look.spinner(settings.spinner);
     this.book = new ProgressLog(settings.logRows ?? LOG_ROWS, settings.logLimit ?? LOG_LIMIT);
@@ -232,12 +252,32 @@ class Line {
     this.tree.finishes += 1;
     this.finished = this.tree.finishes;
     this.ended = this.own(Date.now());
+    const siblings = this.parent?.running ?? [];
+    const index = siblings.indexOf(this);
+    if (index !== -1) {
+      siblings.splice(index, 1);
+    }
+    if (this.held) {
+      this.tree.finished.push(this);
+      this.tree.held += 1;
+    }
   }
 
-  /** A group that ends as a success or a skip lets its tasks go, unless its `keepTasks` keeps them. */
-  settle(): void {
+  /** Lets the line's tasks go: the tree holds none of them, or any task under them, again. */
+  dropTasks(): void {
+    for (const task of this.tasks) {
+      release(task);
+    }
+    this.tasks = [];
+  }
+
+  /**
+   * Collapses a group that ends as a success or a skip: its tasks go, unless its `keepTasks` keeps
+   * them.
+   */
+  collapse(): void {
     if ((this.state === 'ended' || this.state === 'skipped') && this.settings.keepTasks !== true) {
-      this.tasks = [];
+      this.dropTasks();
     }
   }
 
@@ -284,47 +324,93 @@ class Line {
   }
 }
 
+/** Takes a task out of its tree's hold, with every task under it. */
+function release(task: Line): void {
+  if (!task.held) {
+    return;
+  }
+  task.held = false;
+  if (task.state !== 'running') {
+    task.tree.held -= 1;
+    task.tree.released += 1;
+  }
+  for (const under of task.tasks) {
+    release(under);
+  }
+}
+
 /** Every line of a tree, the root first and each line followed by its tasks in opening order. */
 function preorder(line: Line): Line[] {
   return [line, ...line.tasks.flatMap((task) => preorder(task))];
 }
 
-/** The finished tasks a tree shows under `line`: every ended task it still holds, at any depth. */
-function finishedUnder(line: Line): Line[] {
-  return line.tasks.flatMap((task) => [
-    ...(task.state === 'running' ? [] : [task]),
-    ...finishedUnder(task),
-  ]);
+/**
+ * The running lines of a tree in the same order: a line that has finished has no running task, so
+ * the walk reads only the running tasks of each running line.
+ */
+function runningUnder(line: Line): Line[] {
+  return line.state === 'running'
+    ? [line, ...line.running.flatMap((task) => runningUnder(task))]
+    : [];
 }
 
-/** A line's data with the tasks under it that show, `shown` naming the finished ones that do. */
-function shownData(line: Line, shown: ReadonlySet<Line>, now: number): ProgressLine {
+/**
+ * The newest `count` finished tasks the tree holds, newest first. The tasks it no longer holds are
+ * skipped, and dropped from the list once they are more than half of it.
+ */
+function newestFinished(tree: Tree, count: number): Line[] {
+  if (tree.released > tree.finished.length / 2) {
+    tree.finished = tree.finished.filter((task) => task.held);
+    tree.released = 0;
+  }
+  const newest: Line[] = [];
+  for (let index = tree.finished.length - 1; index >= 0 && newest.length < count; index -= 1) {
+    const task = tree.finished[index];
+    if (task?.held === true) {
+      newest.push(task);
+    }
+  }
+  return newest;
+}
+
+/**
+ * A line's data with the tasks under it that show: its running tasks and, of `shown`, the finished
+ * ones whose parent it is, in the order they opened.
+ */
+function shownData(
+  line: Line,
+  shown: ReadonlyMap<Line, readonly Line[]>,
+  now: number,
+): ProgressLine {
+  const tasks = [...line.running, ...(shown.get(line) ?? [])];
+  tasks.sort((left, right) => left.opened - right.opened);
   return {
     ...line.own(now),
     depth: line.depth,
-    tasks: line.tasks
-      .filter((task) => task.state === 'running' || shown.has(task))
-      .map((task) => shownData(task, shown, now)),
+    tasks: tasks.map((task) => shownData(task, shown, now)),
   };
 }
 
 /**
  * The tree's frame while its root runs: each running line's log rows fitted to its share of the
- * terminal's height, in opening order, then the newest finished rows the tree's share leaves.
+ * terminal's height, in opening order, then the newest finished rows the tree's share leaves. A
+ * frame reads its running lines and the finished rows it draws, and no other finished task.
  */
 function treeFrame(root: Line): ProgressLine {
-  for (const line of preorder(root)) {
-    if (line.state === 'running') {
-      const rows = line.book.rows();
-      const count = line.place === undefined ? rows.length : line.place.fit(rows.length);
-      line.rows = count === 0 ? [] : rows.slice(-count);
+  for (const line of runningUnder(root)) {
+    const rows = line.book.rows();
+    const count = line.place === undefined ? rows.length : line.place.fit(rows.length);
+    line.rows = count === 0 ? [] : rows.slice(-count);
+  }
+  const { tree } = root;
+  const allowed = tree.place?.fit(tree.held) ?? tree.held;
+  const shown = new Map<Line, Line[]>();
+  for (const task of newestFinished(tree, allowed)) {
+    if (task.parent !== undefined) {
+      shown.set(task.parent, [...(shown.get(task.parent) ?? []), task]);
     }
   }
-  const finished = finishedUnder(root);
-  const allowed = root.tree.grove?.fit(finished.length) ?? finished.length;
-  const newest = [...finished];
-  newest.sort((left, right) => right.finished - left.finished);
-  return shownData(root, new Set(newest.slice(0, allowed)), Date.now());
+  return shownData(root, shown, Date.now());
 }
 
 /** The root of a line's tree. */
@@ -350,13 +436,11 @@ function drawTree(line: Line): Promise<void> {
  */
 function endTasks(line: Line, state: Finish, own: boolean): Promise<unknown>[] {
   const pending: Promise<unknown>[] = [];
-  for (const task of line.tasks) {
-    if (task.state !== 'running') {
-      continue;
-    }
+  // Each task leaves the running tasks as it freezes, so the first one left is the next to end.
+  for (let task = line.running[0]; task !== undefined; task = line.running[0]) {
     pending.push(...endTasks(task, state, own));
     task.freeze(state);
-    task.settle();
+    task.collapse();
     if (!task.tree.live) {
       pending.push(...task.writeEnd());
     }
@@ -376,7 +460,7 @@ function clearTasks(line: Line): Promise<unknown>[] {
       task.freeze('ended');
       pending.push(task.region.end('ended'));
     }
-    task.tasks = [];
+    task.dropTasks();
   }
   return pending;
 }
@@ -405,8 +489,8 @@ function writeTree(root: Line): Promise<unknown>[] {
 function endRoot(root: Line): Promise<unknown>[] {
   const { tree } = root;
   clearInterval(tree.timer);
-  tree.grove?.leave();
-  tree.grove = undefined;
+  tree.place?.leave();
+  tree.place = undefined;
   if (root.tasks.length > 0) {
     return writeTree(root);
   }
@@ -427,7 +511,7 @@ async function finish(line: Line, state: EndState, message: string | undefined):
   const pending = endTasks(line, state, true);
   line.label = message ?? line.label;
   line.freeze(state);
-  line.settle();
+  line.collapse();
   if (!line.tree.live) {
     pending.push(...line.writeEnd());
   } else if (line.parent === undefined) {
@@ -446,18 +530,19 @@ async function clear(line: Line): Promise<void> {
   }
   const pending = clearTasks(line);
   line.freeze('ended');
-  line.tasks = [];
+  line.dropTasks();
   const { parent, tree } = line;
   if (parent === undefined) {
     clearInterval(tree.timer);
-    tree.grove?.leave();
-    tree.grove = undefined;
+    tree.place?.leave();
+    tree.place = undefined;
     if (tree.live) {
       // A cleared root's last frame is the library's empty one, never the view's.
       pending.push(line.region.draw('', controls));
     }
   } else {
     parent.tasks = parent.tasks.filter((task) => task !== line);
+    release(line);
     pending.push(drawTree(line));
   }
   pending.push(line.region.end('ended'));
@@ -478,7 +563,7 @@ function closeRoot(root: Line): void {
   const state = closedState[root.region.closedBy ?? 'completion'];
   const pending = endTasks(root, state, false);
   root.freeze(state);
-  root.settle();
+  root.collapse();
   if (root.tree.live) {
     pending.push(...endRoot(root));
   } else {
@@ -560,8 +645,10 @@ function openTask(parent: Line, settings: ProgressSettings): Progress {
   }
   // A task joins its parent's tasks whether or not the tree draws, so it takes its parent's end.
   parent.tasks.push(task);
+  parent.running.push(task);
+  task.held = true;
   if (tree.live) {
-    task.place = tree.grove?.seat(() => task.book.rows().length);
+    task.place = tree.place?.seat(() => task.book.rows().length);
     void drawTree(task);
   } else {
     void task.writePlain('info', task.label);
@@ -578,10 +665,14 @@ function openTask(parent: Line, settings: ProgressSettings): Progress {
 function openRoot(context: ProgressContext, look: Look, settings: ProgressSettings): Progress {
   const tree: Tree = {
     context,
+    finished: [],
     finishes: 0,
-    grove: undefined,
+    held: 0,
     live: false,
     look,
+    opens: 0,
+    place: undefined,
+    released: 0,
     timer: undefined,
   };
   const root = new Line(tree, undefined, settings);
@@ -595,20 +686,18 @@ function openRoot(context: ProgressContext, look: Look, settings: ProgressSettin
     tree.live = true;
     const stderr = context.host?.terminal.stderr;
     if (stderr !== undefined) {
-      tree.grove = placeTree(stderr, {
-        need: () => finishedUnder(root).length,
+      tree.place = joinTree(stderr, {
+        need: () => tree.held,
         redraw: () => {
           void drawTree(root);
         },
       });
-      root.place = tree.grove.seat(() => root.book.rows().length);
+      root.place = tree.place.seat(() => root.book.rows().length);
     }
     void drawTree(root);
     tree.timer = setInterval(() => {
-      for (const line of preorder(root)) {
-        if (line.state === 'running') {
-          line.tick += 1;
-        }
+      for (const line of runningUnder(root)) {
+        line.tick += 1;
       }
       void drawTree(root);
     }, root.spinner.interval);

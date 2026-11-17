@@ -47,8 +47,8 @@ function heightOf(terminal: Terminal): number | undefined {
   return rows === undefined || !(rows > 0) ? undefined : rows;
 }
 
-/** What the shared height reads from one tree and asks of it. */
-interface SharingTree {
+/** What the shared height reads from one tree, its finished rows, and asks of it. */
+interface TreeRows {
   /** The finished rows the tree has to show now: the end lines of the finished tasks it holds. */
   readonly need: () => number;
   /** Draws the tree's frame again, at its shares under the same rule. */
@@ -56,27 +56,27 @@ interface SharingTree {
 }
 
 /** The open lines and the trees that draw on one terminal, each in opening order. */
-interface Board {
+interface Registry {
   readonly terminal: Terminal;
   readonly seats: Seat[];
-  readonly groves: Grove[];
+  readonly trees: TreePlace[];
 }
 
 /** The rows the other trees' latest frames drew for their finished rows. */
-function othersFinished(board: Board, own: Grove): number {
-  return board.groves.reduce((sum, other) => (other === own ? sum : sum + other.drawn), 0);
+function othersFinished(registry: Registry, own: TreePlace): number {
+  return registry.trees.reduce((sum, other) => (other === own ? sum : sum + other.drawn), 0);
 }
 
 /** One open line's place among the lines that draw on one terminal: a tree's root or a running task. */
 class Seat {
   /** The log rows this line drew in its latest frame. */
   drawn = 0;
-  readonly tree: Grove;
+  readonly tree: TreePlace;
   readonly need: () => number;
-  readonly #board: Board;
+  readonly #registry: Registry;
 
-  constructor(board: Board, tree: Grove, need: () => number) {
-    this.#board = board;
+  constructor(registry: Registry, tree: TreePlace, need: () => number) {
+    this.#registry = registry;
     this.tree = tree;
     this.need = need;
   }
@@ -88,40 +88,40 @@ class Seat {
    * other trees drew. It notes them as drawn.
    */
   fit(need: number): number {
-    const rows = heightOf(this.#board.terminal);
+    const rows = heightOf(this.#registry.terminal);
     if (rows === undefined) {
       this.drawn = need;
       return need;
     }
-    const { seats } = this.#board;
+    const { seats } = this.#registry;
     const shares = logShares(
       rows - seats.length,
       seats.map((other) => (other === this ? need : other.need())),
     );
     const lines = seats.reduce((sum, other) => (other === this ? sum : sum + other.drawn), 0);
-    const left = rows - seats.length - lines - othersFinished(this.#board, this.tree);
+    const left = rows - seats.length - lines - othersFinished(this.#registry, this.tree);
     this.drawn = Math.max(0, Math.min(shares[seats.indexOf(this)] ?? 0, left));
     return this.drawn;
   }
 
   /** Takes this line out of the lines that share, at its end or its region's close. */
   leave(): void {
-    const index = this.#board.seats.indexOf(this);
+    const index = this.#registry.seats.indexOf(this);
     if (index !== -1) {
-      this.#board.seats.splice(index, 1);
+      this.#registry.seats.splice(index, 1);
     }
   }
 }
 
 /** One tree's place among the trees that draw on one terminal, and the lines it seats. */
-class Grove {
+class TreePlace {
   /** The finished rows this tree drew in its latest frame. */
   drawn = 0;
-  readonly tree: SharingTree;
-  readonly #board: Board;
+  readonly tree: TreeRows;
+  readonly #registry: Registry;
 
-  constructor(board: Board, tree: SharingTree) {
-    this.#board = board;
+  constructor(registry: Registry, tree: TreeRows) {
+    this.#registry = registry;
     this.tree = tree;
   }
 
@@ -132,18 +132,18 @@ class Grove {
    * line's first frame.
    */
   seat(need: () => number): Seat {
-    const board = this.#board;
-    const opened = new Seat(board, this, need);
-    board.seats.push(opened);
-    const rows = heightOf(board.terminal);
+    const registry = this.#registry;
+    const opened = new Seat(registry, this, need);
+    registry.seats.push(opened);
+    const rows = heightOf(registry.terminal);
     const drawn =
-      board.seats.reduce((sum, seat) => sum + seat.drawn, 0) +
-      board.groves.reduce((sum, other) => sum + other.drawn, 0);
-    if (rows !== undefined && board.seats.length + drawn > rows) {
-      const drawing = board.groves.filter(
+      registry.seats.reduce((sum, seat) => sum + seat.drawn, 0) +
+      registry.trees.reduce((sum, other) => sum + other.drawn, 0);
+    if (rows !== undefined && registry.seats.length + drawn > rows) {
+      const drawing = registry.trees.filter(
         (other) =>
           other !== this &&
-          (other.drawn > 0 || board.seats.some((seat) => seat.tree === other && seat.drawn > 0)),
+          (other.drawn > 0 || registry.seats.some((seat) => seat.tree === other && seat.drawn > 0)),
       );
       for (const other of drawing) {
         other.tree.redraw();
@@ -160,12 +160,12 @@ class Grove {
    * drawn.
    */
   fit(need: number): number {
-    const rows = heightOf(this.#board.terminal);
+    const rows = heightOf(this.#registry.terminal);
     if (rows === undefined) {
       this.drawn = need;
       return need;
     }
-    const { groves, seats } = this.#board;
+    const { trees, seats } = this.#registry;
     const budget = rows - seats.length;
     const logged = logShares(
       budget,
@@ -173,37 +173,37 @@ class Grove {
     ).reduce((sum, share) => sum + share, 0);
     const shares = logShares(
       budget - logged,
-      groves.map((other) => (other === this ? need : other.tree.need())),
+      trees.map((other) => (other === this ? need : other.tree.need())),
     );
     const lines = seats.reduce((sum, seat) => sum + seat.drawn, 0);
-    const left = budget - lines - othersFinished(this.#board, this);
-    this.drawn = Math.max(0, Math.min(shares[groves.indexOf(this)] ?? 0, left));
+    const left = budget - lines - othersFinished(this.#registry, this);
+    this.drawn = Math.max(0, Math.min(shares[trees.indexOf(this)] ?? 0, left));
     return this.drawn;
   }
 
   /** Takes this tree out of the trees that share, at its root's end or its region's close. */
   leave(): void {
-    const index = this.#board.groves.indexOf(this);
+    const index = this.#registry.trees.indexOf(this);
     if (index !== -1) {
-      this.#board.groves.splice(index, 1);
+      this.#registry.trees.splice(index, 1);
     }
-    for (const seat of this.#board.seats.filter((open) => open.tree === this)) {
+    for (const seat of this.#registry.seats.filter((open) => open.tree === this)) {
       seat.leave();
     }
   }
 }
 
 /** The open lines and trees of each terminal, held weakly by the run's stderr facts. */
-const boards = new WeakMap<Terminal, Board>();
+const registries = new WeakMap<Terminal, Registry>();
 
-/** Places a tree whose root opens live among the trees that draw on the same terminal. */
-function placeTree(terminal: Terminal, tree: SharingTree): Grove {
-  const board = boards.get(terminal) ?? { groves: [], seats: [], terminal };
-  boards.set(terminal, board);
-  const placed = new Grove(board, tree);
-  board.groves.push(placed);
+/** A tree whose root opens live joins the trees that draw on its terminal, and takes its place. */
+function joinTree(terminal: Terminal, tree: TreeRows): TreePlace {
+  const registry = registries.get(terminal) ?? { seats: [], terminal, trees: [] };
+  registries.set(terminal, registry);
+  const placed = new TreePlace(registry, tree);
+  registry.trees.push(placed);
   return placed;
 }
 
-export { logShares, placeTree };
-export type { Grove, Seat };
+export { logShares, joinTree };
+export type { TreePlace, Seat };

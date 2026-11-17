@@ -1,10 +1,10 @@
 /*
  * Acceptance plan for task groups (docs/libs/prompts.md#task-groups, ADR-0173). Each tree runs in
- * an application on a mock terminal 60 columns wide, its clock and its root's frame timer faked
- * inside the action, so a frame draws only when the test moves the clock, calls `update`, or ends a
- * line. An override of the progress view notes each frame's data and the default view's plain text
- * for it, and a headless terminal emulator replays stderr where the test reads the screen and its
- * scrollback.
+ * an application on a mock terminal 60 columns wide, or as wide as the test says, its clock and its
+ * root's frame timer faked inside the action, so a frame draws only when the test moves the clock,
+ * calls `update`, or ends a line. An override of the progress view notes each frame's data and the
+ * default view's plain text for it, and a headless terminal emulator replays stderr where the test
+ * reads the screen and its scrollback.
  *
  * - The tree. A parent's tasks draw indented under it in the order they opened, a task opened after
  *   an unrelated line still draws directly under its parent, and nesting reaches any depth.
@@ -18,11 +18,16 @@
  *   directly above its end line with the tree, and a later collapse discards them.
  * - The terminal's height. A tree on a short terminal never draws a frame taller than the
  *   terminal, its oldest finished rows give way first, no row shows twice in scrollback, and a kept
- *   tree is written whole.
+ *   tree is written whole. Each tree's log rows and finished rows share the height with other
+ *   roots, and a cancelled or failed tree writes each line's kept lines above its own end line.
+ * - One row while it runs. Every row of a running frame keeps to one row at every width, its parts
+ *   giving way in turn, while an end line drawn on its own keeps its whole text; finished tasks with
+ *   long labels leave no row behind.
  * - Where the tree does not draw. Piped, under `TERM=dumb`, CI, `--plain`, `-q`, and an invocation
  *   by name, each line writes its plain lines when they happen, indented, in the order they happen.
  * - The rest. `track()` on a task, `task()` after an end, each task's progress events, and the
- *   view's data, drawn by an override and built by hand.
+ *   view's data, drawn by an override and built by hand, and an override written before `depth` and
+ *   `tasks`.
  *
  * `progress-tasks-pty.test.ts` proves a drawn tree, its collapse, and a kept tree on a real
  * terminal.
@@ -60,6 +65,7 @@ interface Scene {
 
 /** How a run is set up. */
 interface Setup {
+  readonly columns?: number;
   readonly rows?: number;
   readonly terminal?: 'tty' | 'pipe' | 'invoke';
   readonly env?: Readonly<Record<string, string | undefined>>;
@@ -70,6 +76,7 @@ interface Setup {
 /** What a run left: its frames, its screen events, its stderr, its messages, and its events. */
 interface Outcome {
   readonly code: number | string;
+  readonly columns: number;
   readonly events: Recorded[];
   readonly frames: Drawn[];
   readonly messages: string | undefined;
@@ -94,14 +101,14 @@ function flush(): Promise<void> {
 /** Runs `script` as an action, the clock at 0 when it starts, and answers what the run left. */
 async function grouped(
   script: (context: ActionContext<unknown>, scene: Scene) => Promise<void>,
-  { argv = [], env = {}, render, rows = 24, terminal = 'tty' }: Setup = {},
+  { argv = [], columns = 60, env = {}, render, rows = 24, terminal = 'tty' }: Setup = {},
 ): Promise<Outcome> {
   const frames: Drawn[] = [];
   const reported: ProgressEvent[] = [];
   const mock = mockProcess({
     argv: [...argv],
     env: { ...noColor, ...env },
-    terminal: { columns: 60, rows, streams: terminal === 'tty' ? ['stderr'] : [] },
+    terminal: { columns, rows, streams: terminal === 'tty' ? ['stderr'] : [] },
   });
   const screen = recording(mock);
   const caller = new AbortController();
@@ -158,6 +165,7 @@ async function grouped(
   }
   return {
     code,
+    columns,
     events: screen.events(),
     frames,
     messages,
@@ -169,7 +177,10 @@ async function grouped(
 
 /** Every row the emulator holds, scrollback first, once it has taken the events up to the mark. */
 async function shown(outcome: Outcome, mark?: string): Promise<readonly string[]> {
-  const screen = await replay(until(outcome.events, mark), { columns: 60, rows: outcome.rows });
+  const screen = await replay(until(outcome.events, mark), {
+    columns: outcome.columns,
+    rows: outcome.rows,
+  });
   return screen.lines;
 }
 
@@ -1074,3 +1085,391 @@ test('a task that opens when the stack has no row left makes the line beside it 
     '  ◐ Building · 0.0s',
   ]);
 });
+
+/** `count` numbered lines that start with `prefix`, joined by line breaks. */
+function numbered(prefix: string, count: number): string {
+  return Array.from({ length: count }, (_line, index) => `${prefix} ${String(index)}`).join('\n');
+}
+
+/** The rows of each running frame the roots drew, the tallest first. */
+function runningHeights(outcome: Outcome): number[] {
+  return outcome.frames
+    .filter(({ data }) => data.state === 'running')
+    .map(({ text }) => text.split('\n').length)
+    .toSorted((left, right) => right - left);
+}
+
+test("a task's log rows are fitted to the terminal's height, and its collapse leaves only the root's end line", async () => {
+  const outcome = await grouped(
+    async (context, { mark }) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      const installing = deploying.task({ label: 'Installing', logRows: 10 });
+      await installing.log(numbered('npm', 10));
+      installing.update({});
+      await mark('running');
+      installing.update({});
+      await deploying.end();
+    },
+    { rows: 6 },
+  );
+  expect(runningHeights(outcome)[0]).toBeLessThanOrEqual(6);
+  const running = await shown(outcome, 'running');
+  expect(running.slice(-6)).toEqual([
+    '◐ Deploying · 0.0s',
+    '  ◐ Installing · 0.0s',
+    '    npm 6',
+    '    npm 7',
+    '    npm 8',
+    '    npm 9',
+  ]);
+  await expect(shown(outcome)).resolves.toEqual(['✔ Deploying · 0.0s']);
+});
+
+test("a tree's finished rows give way to a second root's log rows that come after them, and no row shows twice", async () => {
+  const outcome = await grouped(
+    async (context, { mark }) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      for (let index = 0; index < 10; index += 1) {
+        await deploying.task({ label: `Step ${String(index)}` }).end();
+      }
+      await mark('finished');
+      const watching = progress(context, { label: 'Watching', logRows: 10 });
+      await watching.log(numbered('log', 10));
+      watching.update({});
+      deploying.update({});
+      watching.update({});
+      await mark('steady');
+    },
+    { rows: 10 },
+  );
+  const finished = await shown(outcome, 'finished');
+  expect(finished.slice(-10)).toEqual([
+    '◐ Deploying · 0.0s',
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((index) => `  ✔ Step ${String(index)} · 0.0s`),
+  ]);
+  const steady = await shown(outcome, 'steady');
+  expect(steady.slice(-10)).toEqual([
+    '◐ Deploying · 0.0s',
+    '◐ Watching · 0.0s',
+    ...[2, 3, 4, 5, 6, 7, 8, 9].map((index) => `  log ${String(index)}`),
+  ]);
+  expect(repeated(steady)).toEqual([]);
+  expect(runningHeights(outcome)[0]).toBeLessThanOrEqual(10);
+});
+
+test("a second root's log rows that come before a tree's finished rows keep them out, and no row shows twice", async () => {
+  const outcome = await grouped(
+    async (context, { mark }) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      const watching = progress(context, { label: 'Watching', logRows: 10 });
+      await watching.log(numbered('log', 10));
+      for (let index = 0; index < 10; index += 1) {
+        await deploying.task({ label: `Step ${String(index)}` }).end();
+      }
+      watching.update({});
+      deploying.update({});
+      watching.update({});
+      await mark('steady');
+    },
+    { rows: 10 },
+  );
+  const steady = await shown(outcome, 'steady');
+  expect(steady.slice(-10)).toEqual([
+    '◐ Deploying · 0.0s',
+    '◐ Watching · 0.0s',
+    ...[2, 3, 4, 5, 6, 7, 8, 9].map((index) => `  log ${String(index)}`),
+  ]);
+  expect(repeated(steady)).toEqual([]);
+});
+
+test('a root that opens when a tree fills the terminal with finished rows makes the tree give a row up first', async () => {
+  const outcome = await grouped(
+    async (context, { mark }) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      for (let index = 0; index < 12; index += 1) {
+        await deploying.task({ label: `Step ${String(index)}` }).end();
+      }
+      progress(context, { label: 'Watching' });
+      deploying.update({});
+      await mark('steady');
+    },
+    { rows: 10 },
+  );
+  const steady = await shown(outcome, 'steady');
+  expect(steady.slice(-10)).toEqual([
+    '◐ Deploying · 0.0s',
+    ...[4, 5, 6, 7, 8, 9, 10, 11].map((index) => `  ✔ Step ${String(index)} · 0.0s`),
+    '◐ Watching · 0.0s',
+  ]);
+  expect(repeated(steady)).toEqual([]);
+});
+
+test("a tree that fails beside a logged root gives its rows back, and the root's log grows to its whole need", async () => {
+  const outcome = await grouped(
+    async (context, { mark }) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      for (let index = 0; index < 6; index += 1) {
+        await deploying.task({ label: `Step ${String(index)}` }).end();
+      }
+      const watching = progress(context, { label: 'Watching', logRows: 8 });
+      await watching.log(numbered('log', 8));
+      watching.update({});
+      await deploying.fail();
+      watching.update({});
+      watching.update({});
+      await mark('failed');
+    },
+    { rows: 10 },
+  );
+  const failed = await shown(outcome, 'failed');
+  expect(failed.slice(-9)).toEqual([
+    '◐ Watching · 0.0s',
+    ...[0, 1, 2, 3, 4, 5, 6, 7].map((index) => `  log ${String(index)}`),
+  ]);
+});
+
+test("a cancelled tree writes each line's kept lines directly above its own cancelled line", async () => {
+  const outcome = await grouped(async (context, { cancel }) => {
+    const deploying = progress(context, { label: 'Deploying' });
+    const installing = deploying.task({ label: 'Installing' });
+    await installing.log('npm http fetch 1\nnpm http fetch 2');
+    await deploying.log('registry reachable');
+    cancel();
+    await flush();
+  });
+  expect(outcome.code).toBe(130);
+  await expect(shown(outcome)).resolves.toEqual([
+    '  registry reachable',
+    '■ Deploying (cancelled)',
+    '    npm http fetch 1',
+    '    npm http fetch 2',
+    '  ■ Installing (cancelled)',
+  ]);
+});
+
+test("a task's kept lines open with the dropped-lines sentence at the task's indent", async () => {
+  const outcome = await grouped(async (context) => {
+    const deploying = progress(context, { label: 'Deploying' });
+    const installing = deploying.task({ label: 'Installing', logLimit: 2 });
+    await installing.log(numbered('npm', 5));
+    await installing.fail();
+    await deploying.fail();
+  });
+  await expect(shown(outcome)).resolves.toEqual([
+    '✘ Deploying · 0.0s',
+    '    3 earlier lines were dropped.',
+    '    npm 3',
+    '    npm 4',
+    '  ✘ Installing · 0.0s',
+  ]);
+});
+
+test('an override written before depth and tasks draws the root alone while it runs, and every line of a kept tree, flat', async () => {
+  const outcome = await grouped(
+    async (context, { mark }) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      const building = deploying.task({ label: 'Building' });
+      await building.log('tsc error TS2304');
+      await building.task({ label: 'Linking' }).end('Linked');
+      await building.fail();
+      await mark('running');
+      await deploying.fail();
+    },
+    { render: (data) => `${data.state} ${data.label}` },
+  );
+  await expect(shown(outcome, 'running')).resolves.toEqual(['running Deploying']);
+  await expect(shown(outcome)).resolves.toEqual([
+    'failed Deploying',
+    '    tsc error TS2304',
+    'failed Building',
+    'ended Linked',
+  ]);
+});
+
+/** A label 52 columns wide, which no row of a terminal 40 columns wide holds whole. */
+const longLabel = 'Uploading packages/frontend/src/components/Chart.tsx';
+
+test('a running line with a label too wide for the row draws one row that ends its label with the ellipsis', async () => {
+  const outcome = await grouped(
+    async (context, { mark }) => {
+      const uploading = progress(context, { label: longLabel });
+      await mark('running');
+      await uploading.end();
+    },
+    { columns: 40 },
+  );
+  await expect(shown(outcome, 'running')).resolves.toEqual([
+    '◐ Uploading packages/frontend/sr… · 0.0s',
+  ]);
+  expect(outcome.frames.at(-1)?.text).toBe(`✔ ${longLabel} · 0.0s`);
+});
+
+/** Each row the default view draws for each of `lines` on a terminal `columns` wide. */
+async function viewRows(lines: readonly ProgressLine[], columns: number): Promise<string[]> {
+  const mock = mockProcess({ env: noColor, terminal: { columns, rows: 24, streams: ['stdout'] } });
+  await new Application('rows', { description: 'Draw progress data.' })
+    .action(async ({ out }) => {
+      for (const line of lines) {
+        await out.render(line, {
+          render: (data, context) => `${progressLine.render(data, context)}\n`,
+        });
+      }
+    })
+    .run({ process: mock });
+  return mock.stdout.text.split('\n').slice(0, -1);
+}
+
+/** A counted line 40 of 120 done after 12 seconds, with a rate of 3.3 a second and 24 seconds left. */
+const fetching: ProgressLine = {
+  bar: { complete: '▰', incomplete: '▱' },
+  completed: 40,
+  elapsed: 12_000,
+  estimate: true,
+  frame: '◓',
+  label: 'Fetching records',
+  rate: 10 / 3,
+  remaining: 24_000,
+  state: 'running',
+  total: 120,
+};
+
+test('at every width from 1 to 80, a running counted line with its pace draws no row wider than the width, at depth 0 and 2', async () => {
+  const line: ProgressLine = { ...fetching, label: 'x'.repeat(60), unit: 'files' };
+  for (let columns = 1; columns <= 80; columns += 1) {
+    const rows = await viewRows([line, { ...line, depth: 2 }], columns);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.length, `a row ${String(columns)} columns wide`).toBeLessThanOrEqual(columns);
+    }
+  }
+});
+
+test.each([
+  { columns: 69, row: '◓ Fetching records ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s · 3.3/s · about 24s left' },
+  { columns: 68, row: '◓ Fetching records ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s · about 24s left' },
+  { columns: 61, row: '◓ Fetching records ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s · about 24s left' },
+  { columns: 60, row: '◓ Fetching records ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s' },
+  { columns: 44, row: '◓ Fetching records ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s' },
+  { columns: 43, row: '◓ Fetching recor… ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s' },
+  { columns: 36, row: '◓ Fetchin… ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s' },
+  { columns: 29, row: '◓ … ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s' },
+  { columns: 28, row: '◓ … 40/120 · 12.0s' },
+  { columns: 18, row: '◓ … 40/120 · 12.0s' },
+  { columns: 17, row: '◓ … 40/120' },
+  { columns: 10, row: '◓ … 40/120' },
+  { columns: 9, row: '◓ …' },
+  { columns: 3, row: '◓ …' },
+  { columns: 2, row: '◓ ' },
+  { columns: 1, row: '◓' },
+])(
+  'on a row $columns columns wide, the rate, the time left, the label, the bar, the elapsed time, and the counts give way in turn: "$row"',
+  async ({ columns, row }) => {
+    await expect(viewRows([fetching], columns)).resolves.toEqual([row]);
+  },
+);
+
+test('a task row is fitted with its indent, and its parts give way in the same turn', async () => {
+  await expect(viewRows([{ ...fetching, depth: 2 }], 33)).resolves.toEqual([
+    '    ◓ … ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s',
+  ]);
+  await expect(viewRows([{ ...fetching, depth: 2 }], 6)).resolves.toEqual(['    ◓ ']);
+});
+
+test("an end line drawn on its own keeps its whole text, and a finished task's row under a running line is fitted", async () => {
+  const ended: ProgressLine = { ...fetching, label: longLabel, state: 'ended' };
+  await expect(
+    viewRows([ended, { ...fetching, label: 'Deploying', tasks: [{ ...ended, depth: 1 }] }], 40),
+  ).resolves.toEqual([
+    `✔ ${longLabel} · 12.0s`,
+    '◓ Deploying ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s',
+    '  ✔ Uploading packages/frontend… · 12.0s',
+  ]);
+});
+
+test("a finished task's row is clipped while its root runs, and whole in the tree written when its tasks stay", async () => {
+  const outcome = await grouped(
+    async (context, { mark }) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      await deploying.task({ label: longLabel }).end();
+      const pushing = deploying.task({ label: `Pushing ${longLabel}` });
+      await mark('running');
+      await pushing.fail();
+      await deploying.fail();
+    },
+    { columns: 40 },
+  );
+  await expect(shown(outcome, 'running')).resolves.toEqual([
+    '◐ Deploying · 0.0s',
+    '  ✔ Uploading packages/frontend/… · 0.0s',
+    '  ◐ Pushing Uploading packages/f… · 0.0s',
+  ]);
+  const written = outcome.frames.filter(({ data }) => data.state !== 'running');
+  expect(written.map(({ text }) => text)).toEqual([
+    '✘ Deploying · 0.0s',
+    `  ✔ ${longLabel} · 0.0s`,
+    `  ✘ Pushing ${longLabel} · 0.0s`,
+  ]);
+  await expect(shown(outcome)).resolves.toEqual([
+    '✘ Deploying · 0.0s',
+    '  ✔ Uploading packages/frontend/src/comp',
+    'onents/Chart.tsx · 0.0s',
+    '  ✘ Pushing Uploading packages/frontend/',
+    'src/components/Chart.tsx · 0.0s',
+  ]);
+});
+
+/**
+ * A root and `count` tasks in turn, each with a label of about 75 columns that ends, on a terminal
+ * `columns` wide and `rows` tall, then the root's success.
+ */
+function longTasks(columns: number, rows: number, count: number): Promise<Outcome> {
+  return grouped(
+    async (context, { mark }) => {
+      const copying = progress(context, { label: 'Copying' });
+      for (let index = 0; index < count; index += 1) {
+        const name = `Chart${String(index).padStart(2, '0')}.tsx`;
+        await copying
+          .task({ label: `Uploading packages/frontend/src/components/dashboard/widgets/${name}` })
+          .end();
+      }
+      copying.update({});
+      await mark('steady');
+      await copying.end();
+    },
+    { columns, rows },
+  );
+}
+
+test.each([
+  {
+    columns: 80,
+    count: 30,
+    finished: (index: number) =>
+      `  ✔ Uploading packages/frontend/src/components/dashboard/widgets/Chart${String(index).padStart(2, '0')}… · 0.0s`,
+    rows: 24,
+  },
+  {
+    columns: 40,
+    count: 10,
+    finished: () => '  ✔ Uploading packages/frontend/… · 0.0s',
+    rows: 8,
+  },
+])(
+  'on $columns by $rows, $count finished tasks with long labels leave no row twice, and the collapse leaves only the end line',
+  async ({ columns, count, finished, rows }) => {
+    const outcome = await longTasks(columns, rows, count);
+    const running = outcome.frames.filter(({ data }) => data.state === 'running');
+    expect(Math.max(...runningHeights(outcome))).toBeLessThanOrEqual(rows);
+    const widest = Math.max(
+      ...running.flatMap(({ text }) => text.split('\n').map((row) => row.length)),
+    );
+    expect(widest).toBeLessThanOrEqual(columns);
+    // The whole buffer, scrollback included, is the frame alone, so no row was left behind.
+    const newest = Array.from({ length: rows - 1 }, (_row, index) => count - rows + 1 + index);
+    await expect(shown(outcome, 'steady')).resolves.toEqual([
+      '◐ Copying · 0.0s',
+      ...newest.map((index) => finished(index)),
+    ]);
+    await expect(shown(outcome)).resolves.toEqual(['✔ Copying · 0.0s']);
+  },
+);
