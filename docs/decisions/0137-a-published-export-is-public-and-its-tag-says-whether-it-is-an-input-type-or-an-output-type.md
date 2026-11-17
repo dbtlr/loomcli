@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0137 - A published export is public, and its tag says whether it is an input type or an output type
 description: Every name a published library's entry points export is public. A name no other package and no author uses is not exported, and a type an author plausibly needs to build an input or check a result is. Each export carries TSDoc's @public. An output type, which Loom hands to the author's code, and a class the author must not subclass also carry @sealed; an input type, which the author may hand to a Loom function and so may have created, does not. API Extractor checks the tags against committed API reports, and the changelog guide classifies a breaking change by the tag and the position of the changed member.
-status: proposed
+status: accepted
 created: 2026-11-04
-modified: 2026-11-13
+modified: 2026-11-17
 ---
 
 # ADR-0137 - A published export is public, and its tag says whether it is an input type or an output type
@@ -72,7 +72,7 @@ The repository builds with TypeScript 7, whose compiler API differs from the Typ
 
 ## Status
 
-Proposed. It moves to accepted with the release that ships the tagged surface and `check:api`.
+Accepted in 0.19.0.
 
 ## Changelog
 

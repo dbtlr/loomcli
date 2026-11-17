@@ -1,2 +1,0 @@
-- Fix the `loom` bin's own sentences, which no longer quote a Node.js reason and now name the cause and a fix.
-- Fix `loom release plan` and `loom release record`, which now refuse a `--registry` or `--github-api` value that is not an http or https URL as a usage error, before any request, where they reported an unreachable network.

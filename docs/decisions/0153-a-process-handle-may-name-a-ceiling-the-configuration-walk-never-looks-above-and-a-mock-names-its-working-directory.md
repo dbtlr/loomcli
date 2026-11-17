@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0153 - A process handle may name a ceiling the configuration walk never looks above, and a mock names its working directory
 description: ProcessHandle gains an optional ceiling, a directory that core copies into host.ceiling at entry. The configuration plugin's project walk looks in the ceiling directory itself and never in an ancestor of it, and ends at whichever stop it meets first, below home, the ceiling, a root marker, or the filesystem root. The real process's handle names none, so a real run walks as ADR-0119 and ADR-0129 state. mockProcess names its cwd unless the test names another ceiling, whether or not the cwd is inside home, so a mock run reads configuration from its working directory and nowhere above. The user scope, --config, and the variable are not bounded. It amends the walk's end in ADR-0119 and ADR-0129, and extends ADR-0107's handle and mock.
-status: proposed
+status: accepted
 created: 2026-11-14
-modified: 2026-11-14
+modified: 2026-11-17
 ---
 
 # ADR-0153 - A process handle may name a ceiling the configuration walk never looks above, and a mock names its working directory
@@ -47,7 +47,7 @@ A real run is unchanged. A test on `mockProcess` reads configuration from its wo
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

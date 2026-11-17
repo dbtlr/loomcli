@@ -6,6 +6,967 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.19.0 - 2026-11-17
+
+This is the polish release: every published export is documented and guarded by `check:api`, the SDK's contracts read one way across core, the plugins, and the libraries, and the prompt, validator, option, and progress floor fills in. `loom init` now also keeps an authoring skill current for an author's coding agent.
+
+Keep all installed `@loomcli` packages at the same exact version, `0.19.0`. Before upgrading, act on these breaks, which no compile error reports, one line each:
+
+- A linked `select` now answers its input's validated value, keeps asking on a choice the validator rejects, and needs a `graph` from `inspect()` in an `actionContext` test; a `questionFrame` override draws choice rows, not strings.
+- A `questionFrame` override that falls through to a default case now meets the `editor` kind.
+- With `format()` installed, a group's own `format` option, or one with `format({ short })`'s spelling, fails every run with exit 1.
+- `loom changelog check`, `write`, and `notes` refuse a fragment with CRLF line endings, non-UTF-8 bytes, or a refused control character.
+- `loom` fails on a `loom.config.json` that cannot be read or parsed, or that holds a value its schema rejects, where it warned and ran on conventions.
+- An `out` message that ends with a line break no longer prints a blank line after it.
+- On `0.x`, a feature fragment advances the minor, so a patch `--target` or a patch prerelease fails the cut.
+- A `mockProcess` test's configuration walk now stops at its `cwd`, so it no longer finds a file above it; name `ceiling` on the mock to let the walk reach that file.
+- `loom changelog write --narrative` refuses a file with CRLF line endings, non-UTF-8 bytes, or a refused control character.
+- An optional argument declared before a content argument with a positive `min` throws a `DeclarationError` at build; make it an option.
+- Code that reads a manifest as parsed JSON meets `optionGroups` entries of kind `requires`, which carry `option` and `requires` in place of `options`.
+- Words after a bare `--` now fill arguments, or fail with exit 2, unless the Command declares `.passthrough()`; `invoke` refuses a passthrough tail without it; the rule `@loomcli/core/variadic-argument-last` is now `@loomcli/core/argument-after-variadic`.
+- A region opened with `input: true` is not live under `TERM=dumb` or `ACCESSIBLE`, and no region is live under `ACCESSIBLE`, so its frames draw nothing there.
+- `@loomcli/loom`'s optional `pnpm` peer is now exactly 12.16.1.
+- `loom pr check` refuses a release PR whose `CHANGELOG.md` narrative holds CRLF, non-UTF-8 bytes, or a refused control character.
+
+Then run `tsc --noEmit` and fix what it reports: a lane in a test's `out` with an unannotated parameter, a hand-built `progress()` context without `warn` or `draw`, a reader of `supplied.options` that meets arity tuples, a pack extension descriptor's `schema` read as valibot or its facts mutated, a read of `options` on an `optionGroups` entry, `passthrough` read on a Command without the mode, and the `select` frame and `SelectSettings.choices` changes. Each breaking entry below carries its migration.
+
+### Breaking Changes
+
+- Add `multiselect`, a question that offers the same choices as `select`, toggles them with Tab always and with Space when it does not search, submits them in the order they were selected between `min` and `max`, and links a multiple string option or a variadic string argument.
+- Add choice objects to `select` and `multiselect`: a `value` of any type on an unlinked question, a `label`, a `description`, and a `disabled` state with its reason, beside `{ separator }` entries.
+- Add `search: true`, which filters a question's static choices as the operator types, and `source`, a function that returns the choices for a search term and whose previous call each keystroke aborts.
+- Add Ctrl-P, Ctrl-N, Home, and End to a select's navigation, and draw a supplied value a question cannot select in its issue instead of dropping it.
+- Add `validateLinkedValue` to `@loomcli/core`, which runs a linked input's validator on one value with the question's validation options, and its types `LinkedValue`, `LinkedValueContext`, `ValueLink`, and `LinkedOutput`.
+- Change a linked `select` that asks to pass the chosen value through the linked input's validator and return its output, typed as the input's value, as a skipped `select` already returns. A choice the validator rejects now keeps the question asking with the validator's issue, where it used to return the choice's string, and a test that asks one through `actionContext` states a `graph` that `inspect()` returned.
+- Change `SelectSettings` to a union of a `choices` list and a `source`, so its `choices` is optional.
+- Change the `select` member of `questionFrame`'s data to choice rows and separator rows, which the new `multiselect` member shares, with a `highlighted` that may be `undefined`, export `TypedFrame`, `ListFrame`, `ChoiceRow`, and `SeparatorRow` from `@loomcli/prompts/views`, and add the question's `kind` to `answeredLine`'s data, so the default view draws an empty multiselect answer as `none`.
+
+### Migration
+
+**Affected surface.** The type checker reports a hand-built frame, a read of `SelectSettings.choices`, and a read of a linked `select`'s answer once its validator's output type is not a string. Four breaks have no compile error and surface when the code runs: a `questionFrame` override that interpolates a row into a template string draws `[object Object]`, a linked `select` whose input's validator returns a different string, such as `path()`, answers that string, so a comparison with the choice compiles and is false, a linked `select` that offers a choice its input's validator rejects keeps asking, and a unit test that asks a linked `select` through `actionContext` without a `graph` from `inspect()` fails. The surfaces are a view override of `questionFrame` from `@loomcli/prompts/views` that reads a select's `choices` or `highlighted`, frame data an application builds by hand for `out.draw(data, questionFrame)`, an action that reads the answer of a `select` with `option` or `argument` whose input declares a validator that transforms its value, a `select` with `option` or `argument` that offers a choice its input's validator rejects, code that reads `choices` from a `SelectSettings` value, such as a wrapper around `select`, and a unit test that calls an action asking a linked `select` through `actionContext` without a `graph` from `inspect()`.
+
+**Why.** A choice row carries a label, a description, a disabled state, and a selection, and one row type serves both list kinds. A search may leave nothing highlighted. A linked question's asked answer passes the same validator as its skipped answer, so both have one type, and a choice that validator rejects can no longer answer. A question with a `source` has no `choices`.
+
+**Before and after.**
+
+Before, in a `questionFrame` override:
+
+```ts
+if (data.kind === 'select') {
+  return data.choices.map((choice, index) => (index === data.highlighted ? `> ${choice}` : `  ${choice}`)).join('\n');
+}
+```
+
+After:
+
+```ts
+if (data.kind === 'select' || data.kind === 'multiselect') {
+  return data.choices
+    .map((row, index) => {
+      const label = escapeControlCharacters(row.label);
+      return row.kind === 'separator' ? `  ${label}` : `${index === data.highlighted ? '>' : ' '} ${label}`;
+    })
+    .join('\n');
+}
+```
+
+**Steps.**
+
+1. In a `questionFrame` override, read each row's `kind` for a `select` or `multiselect` frame: draw a `'separator'` row's `label` as a separator, and a `'choice'` row's `label` where the string was drawn, with its `disabled`, `reason`, `description`, and `selected`. A label is plain text an application or a source may build from data, so draw it through `escapeControlCharacters` from `@loomcli/core`, as the default views do.
+2. Handle `highlighted` of `undefined`, which a search with no choice to highlight draws.
+3. Handle the `multiselect` member, which an override that switches on `kind` meets as a new case.
+4. In hand-built frame data, build rows: `choices: [{ kind: 'choice', label: 'sqlite', description: undefined, disabled: false, reason: undefined, selected: false }]`.
+5. Where an action compares a linked `select`'s answer with a choice string, compare it with the input's validated value, or give the input a validator whose output is the choice strings, such as `oneOf(['sqlite', 'postgres'])`.
+6. Align each linked `select`'s choices with its input's validator: remove a choice the validator rejects, such as `mysql` beside `oneOf(['sqlite', 'postgres'])`, or widen the validator to accept it.
+7. Where code reads `choices` from a `SelectSettings` value, check that it is present first, such as `settings.choices?.length ?? 0`, because a question with a `source` has none.
+8. In a unit test that calls an action asking a linked `select` through `actionContext`, state `graph: application.inspect()` and `command` as that graph's node for the routed Command, because the chosen value now passes the input's validator, which core reads from that graph's build.
+
+**Validation.** Run `tsc --noEmit` to type-check every hand-built frame, reader of `SelectSettings.choices`, and comparison with a linked `select`'s answer. `tsc` does not catch an override like the one before: a row object interpolated into a template string compiles and draws `[object Object]`. So run the application's test command, such as `vitest run` or `bun test`, with a test that draws each overridden `select` and `multiselect` frame through `viewContext` and asserts the text it draws, and that answers each linked `select` on `mockProcess` by choosing each of its choices. For each linked `select` whose input's validator transforms a string, such as `path()`, check the value its action compares the answer with.
+
+- Add `editor`, a question that waits for Enter, opens the operator's editor, named by `VISUAL`, `EDITOR`, or `vi`, on a private temporary file that holds the prefill, and answers the text the file holds when the editor exits. It links a string option or a string argument that takes one value, prefills, skips, and validates as `text` does, takes an `extension` for the file, and fails with `EditorError` when the editor cannot start, exits with a code other than 0, or the question cannot write the editor's file.
+- Add `out.lendTerminal(work)` to `@loomcli/core`, which holds every live region still while `work` runs a child program that draws on the terminal, and draws them again below whatever the child wrote once it settles.
+- Add the `editor` member, `EditorFrame`, to `questionFrame`'s data, and to `answeredLine`'s data the `kind` `'editor'` and an optional `lines`.
+
+### Migration
+
+**Affected surface.** The type checker reports an override with an exhaustive check on `kind`, such as one that ends in `assertNever`. An override that falls through to a default case for a kind it does not know has no compile error: it draws whatever the default draws for an editor question. The surface is a view override of `questionFrame` from `@loomcli/prompts/views` that switches on its data's `kind`.
+
+**Why.** An editor question draws through `questionFrame` with a frame of its own, `{ kind: 'editor', message, issue, editing }`, so the data's union gains a variant.
+
+**Before and after.**
+
+Before, in a `questionFrame` override with an exhaustive check:
+
+```ts
+switch (data.kind) {
+  case 'text':
+  case 'secret':
+  case 'confirm':
+    return drawTyped(data);
+  case 'select':
+  case 'multiselect':
+    return drawList(data);
+  default:
+    return assertNever(data);
+}
+```
+
+After:
+
+```ts
+switch (data.kind) {
+  case 'text':
+  case 'secret':
+  case 'confirm':
+    return drawTyped(data);
+  case 'select':
+  case 'multiselect':
+    return drawList(data);
+  case 'editor': {
+    const hint = data.editing ? 'Waiting for your editor to close the file…' : 'Press Enter to open your editor';
+    const line = `? ${data.message} › ${hint}`;
+    return data.issue === undefined ? line : `${line}\n  ✘ ${data.issue}`;
+  }
+  default:
+    return assertNever(data);
+}
+```
+
+**Steps.**
+
+1. In a `questionFrame` override, handle the `'editor'` kind: draw its `message`, its `issue` when it has one, and a hint that reads `editing`, which is `true` while the editor is open.
+2. Where an override falls through to a default case for a kind it does not know, check that the default draws a frame an editor question can show.
+
+**Validation.** Run `tsc --noEmit` to type-check every override with an exhaustive check. Run the application's test command, such as `vitest run` or `bun test`, with a test that draws the overridden `questionFrame` through `viewContext` with an `EditorFrame` and asserts the text it draws.
+
+- Export a facts interface for each pack extension, the value its descriptor takes and the value `readExtension` reads back. `@loomcli/plugins/help/extension` exports `HelpCommandFacts`, `HelpInputFacts`, `HelpArgumentFacts`, `HelpSectionPath`, and `CommandExample`. `@loomcli/plugins/manifest/extension` exports `ManifestCommandInput` and `DeclaredFailureInput`, which an author supplies, `ManifestCommandFacts` and `DeclaredFailure`, which the schema outputs, and `CommandExample`. `@loomcli/plugins/mcp/extension` exports `McpCommandFacts`, `McpAnnotations`, `McpInputFacts`, and `McpArgumentFacts`. `@loomcli/plugins/config/extension` exports `ConfigInputFacts`.
+- Allow read-only arrays in the values `helpCommand`, `helpInput`, and `manifestCommand` take, so a list declared `as const` or typed `readonly` passes as it is.
+- Change the published `schema` of the pack's extension descriptors from valibot's schema types to `StandardSchemaV1` over the exported facts interfaces: `helpCommand`, `helpInput`, and `helpArgument`; `manifestCommand`; `mcpCommand`, `mcpInput`, and `mcpArgument`; and `configInput`. No published declaration of `@loomcli/plugins` names valibot any longer, so an application's type check with `skipLibCheck: false` loads no valibot declarations through the pack. Validation is unchanged: every value the descriptors accepted before they accept now, with the same messages.
+
+### Migration
+
+**Affected surface.** The type checker reports every affected site. The first surface is application code that reads a pack descriptor's `schema` as a valibot schema: it passes the schema to a valibot function such as `v.parse` or `v.InferOutput`, or reads a valibot member such as `entries`. A call of the descriptor, such as `helpCommand({ details })`, and a read through `readExtension` are not affected.
+
+The second affected surface is code that assigns to or mutates a value typed from a descriptor's input or output, such as `Parameters<typeof helpCommand>[0]` or `StandardSchemaV1.InferOutput<typeof helpCommand.schema>`. The facts are readonly at every depth now, so an assignment to one of their fields, a `push` on one of their lists, or reading one of their tuples or lists into a mutable-typed variable no longer compiles. Type such a value with the exported facts interface, and build it as a fresh object literal or a spread.
+
+**Why.** A published type that named valibot loaded all of valibot's declarations into every author's type check. The descriptors now publish the [Standard Schema](https://standardschema.dev) contract, which every schema already implemented, over interfaces the pack exports.
+
+**Before and after.**
+
+Before:
+
+```ts
+import { helpCommand } from '@loomcli/plugins/help/extension';
+import * as v from 'valibot';
+
+type Facts = v.InferOutput<typeof helpCommand.schema>;
+const facts = v.parse(helpCommand.schema, value);
+```
+
+After:
+
+```ts
+import { helpCommand, type HelpCommandFacts } from '@loomcli/plugins/help/extension';
+
+const result = await helpCommand.schema['~standard'].validate(value);
+if (result.issues === undefined) {
+  const facts: HelpCommandFacts = result.value;
+}
+```
+
+Code that built a facts value field by field builds it as one literal, and extends a list with a spread:
+
+Before:
+
+```ts
+const facts: Parameters<typeof helpCommand>[0] = {};
+facts.details = details;
+facts.examples = [];
+facts.examples.push({ command: 'notes add' });
+```
+
+After:
+
+```ts
+import { helpCommand, type HelpCommandFacts } from '@loomcli/plugins/help/extension';
+
+const base: HelpCommandFacts = { details, examples: [] };
+const facts: HelpCommandFacts = {
+  ...base,
+  examples: [...(base.examples ?? []), { command: 'notes add' }],
+};
+```
+
+**Steps.**
+
+1. Replace each valibot type computed from a descriptor's `schema` with the exported facts interface: `HelpCommandFacts`, `HelpInputFacts`, `HelpArgumentFacts`, `ManifestCommandInput` and `ManifestCommandFacts`, `McpCommandFacts`, `McpInputFacts`, `McpArgumentFacts`, or `ConfigInputFacts`.
+2. Replace each valibot call that takes a descriptor's `schema` with the schema's `~standard.validate`, which returns the output or the issues.
+3. Where code assigns to or mutates a value typed from a descriptor's input or output, type the value with the exported facts interface and build it as a fresh object literal or a spread.
+
+**Validation.** Run the application's type check, such as `tsc --noEmit`, and its tests. The type check reports every remaining use of a valibot member on a descriptor's `schema`, and every assignment to a readonly facts value.
+
+- Change `@loomcli/core/optional-argument-last` to refuse an optional argument declared before a content argument whose `min` is positive. Such a content argument must receive a source, so it counts as required. Bare words fill arguments left to right, so a lone file word bound to the optional argument and left the content argument short.
+
+### Migration
+
+**Affected surface.** No compile error: building the application throws a `DeclarationError` when it starts. The surface is applications that declare an optional argument before a content argument with a positive `min`, such as `app lint [profile] <files...>`. This includes a content argument that claims stdin, where a piped run such as `cat a.ts | app lint` omitted `profile` and worked: the declaration is refused all the same.
+
+**Why.** `app lint a.ts` bound `a.ts` to `profile` and then failed for want of a file, so `profile` could not be omitted whenever files were named on the line. The declaration is now refused when it is written. A content argument with a positive `min` is variadic, and no optional argument may follow a variadic argument, so the optional argument cannot move after it: it becomes an option.
+
+**Before and after.**
+
+Before:
+
+```ts
+new Application('lint')
+  .argument('profile', {})
+  .argument('files', { min: 1, type: 'content', variadic: true });
+```
+
+After, with `profile` as an option:
+
+```ts
+new Application('lint')
+  .option('profile', { type: 'string' })
+  .argument('files', { min: 1, type: 'content', variadic: true });
+```
+
+An operator who typed `app lint strict a.ts` now types `app lint --profile strict a.ts`.
+
+**Steps.**
+
+1. Find each Command that declares an optional argument before a content argument with a positive `min`.
+2. Make the optional argument an option. If a positional value is always expected, declare it `required: true` instead, so it stays an argument before the content argument.
+3. Update scripts and documentation that passed the value as a bare word.
+
+**Validation.** Run the application's test command, such as `vitest run` or `bun test`, with a test that builds each changed Command and expects no `DeclarationError`. Start the application and run each changed Command with its new option.
+
+- Change `loom changelog write` so a feature fragment advances the minor below `1.0.0`, as a breaking fragment does. A feature cut from `0.4.7` now takes `0.5.0` instead of `0.4.8`, and a fix-only cut still takes `0.4.8`. The bump from `1.0.0` is unchanged, as [ADR-0145](docs/decisions/0145-below-1-0-0-a-feature-fragment-advances-the-minor.md) records.
+
+### Migration
+
+**Affected surface.** No compile error: the cut fails at run time and names the minimum. The surface is `loom changelog write` in a package below `1.0.0` with a feature fragment pending, when it passes `--target` at a patch version, or when its version is a prerelease of a patch version, such as `0.4.8-rc.1`.
+
+**Why.** The fragment minimum for a feature fragment below `1.0.0` is now the next minor, so a target or a prerelease's release part below that minor no longer meets it, and the cut fails and names the minimum.
+
+**Before and after.**
+
+Before, from `0.4.7` with `feature.tags.md` pending:
+
+```sh
+loom changelog write --target 0.4.8
+```
+
+After:
+
+```sh
+loom changelog write --target 0.5.0
+```
+
+**Steps.**
+
+1. Run `loom changelog write --dry-run` and read the next version it prints. From a prerelease, it fails and names the minimum instead.
+2. Change any `--target` in release scripts or workflows to that version or higher.
+3. For a prerelease such as `0.4.8-rc.1` with a feature fragment pending, cut a new prerelease with `loom changelog write --target 0.5.0-rc.1`, or finalize with `--target 0.5.0`.
+
+**Validation.** From a stable version, run `loom changelog write --dry-run` and check that it prints the expected version and exits 0. From a prerelease, or with a pinned target, run `loom changelog write --dry-run --target` with the new version, such as `0.5.0-rc.1` or `0.5.0`, and check that it exits 0.
+
+- Add an optional view to each semantic method, so a message keeps its level and takes another look: `out.info(text, view)` writes where `info` writes and hides under `-q` as `info` does, and the view replaces the lane view for that call, glyph and gutter included. Any view over a string works, bare, declared, or from the pack, and `out.debug(text, lanes.warn)` draws a warning's look at `-v`. The `out` an `onEnvironment` hook receives takes the same view on `warn`. See [Output](docs/core/output.md#a-messages-own-view).
+- Change how a semantic method ends a message: it appends a line break only when the text its view drew does not already end with one, so every message ends with exactly one. A pack view such as `box({ title })` passed to a message writes no blank line after it, and a message that ends with a line break no longer prints a blank line after it, through the default lanes or an override.
+- Add `step()` at `@loomcli/plugins/step`, a view over a string that marks a stage of the work with a `primary` pointer and the text in bold, wrapped under its gutter on a terminal. Write it at a level, as in `out.info('Building 3 packages', step())`. A note is a box with a title at a level, `out.info(text, box({ title: 'Next steps' }))`. See [Pack views](docs/plugins/pack-views.md#step).
+
+### Migration
+
+**Affected surface.** No compile error: the output changes at run time. The surface is calls to `out.print`, `out.info`, `out.success`, `out.warn`, `out.error`, `out.debug`, and `out.trace` whose message ends with a line break, and lane overrides under `views` whose text ends with one. A message that ends with no line break, which is how a message is usually written, writes the same bytes as before.
+
+**Why.** A semantic method now ends every message with exactly one line break, whichever view drew it, so a pack view that owns its last line break can draw a message without a blank line after it. One rule covers the lane views and a passed view alike.
+
+**Before and after.**
+
+Before, `out.print('done\n')` wrote `done`, a line break, and an empty line:
+
+```ts
+await out.print(summary); // summary ends with '\n'; stdout held a blank line after it
+```
+
+After, it writes `done` and one line break. To keep the blank line, end the message with two:
+
+```ts
+await out.print(`${summary}\n`); // summary ends with '\n'; the blank line stays
+```
+
+**Steps.**
+
+1. Search the application for semantic calls whose message can end with a line break, such as a printed file or a template literal that ends with a new line, and for lane overrides whose text ends with one.
+2. Where the blank line after such a message is wanted, add one more `\n` to the message or to the override's text.
+3. Where the blank line was unwanted and trimmed away, remove the trim if you like: the message now ends with one line break either way.
+
+**Validation.** Run the application's output tests, and compare its stdout and stderr for the affected commands against the bytes they wrote before the upgrade.
+
+- Change `loom changelog check`, `loom changelog write`, and `loom changelog notes` for a prerelease to refuse a fragment holding bytes that are not valid UTF-8, a carriage return, a control character other than tab and line feed, a bidirectional control or mark (U+202A through U+202E, U+2066 through U+2069, U+200E, U+200F, U+061C), or the zero-width space U+200B, so `write` no longer copies a fragment's terminal escape or hidden reordering into `CHANGELOG.md`, nor `notes` onto a release page. The failure names the fragment, the line, and the first such character by its code point, such as `.changes/fix.md: line 1 holds the carriage return U+000D. Save the fragment with LF line endings.`, as [the package changelog](docs/toolchain/changelog.md) describes.
+
+### Migration
+
+**Affected surface.** No compile error: the commands fail when they read the fragment. Fragments in a package's `.changes/` folder, or the folder `paths.changes` names, that `loom changelog check`, `loom changelog write`, or `loom changelog notes` reads, when a fragment has CRLF line endings, is saved in an encoding other than UTF-8, or holds one of the refused characters.
+
+**Why.** `write` copies a fragment's prose verbatim into the changelog and `notes` onto a release page, so a terminal escape, a carriage return, or an invisible bidirectional control in a fragment reached every reader of both.
+
+**Before and after.**
+
+Before, a fragment saved with CRLF line endings passed:
+
+```sh
+printf -- '- Fix output.\r\n' > .changes/fix.md
+loom changelog check   # Checked 1 fragment.
+```
+
+After, the same fragment fails with exit 1:
+
+```text
+.changes/fix.md: line 1 holds the carriage return U+000D. Save the fragment with LF line endings.
+```
+
+**Steps.**
+
+1. Run `loom changelog check` and read each failure it prints.
+2. For a carriage return, save the fragment with LF line endings through your editor's line-ending setting. A repository whose checkout converts line endings can keep fragments at LF with `.changes/*.md text eol=lf` in `.gitattributes`.
+3. For invalid UTF-8, save the fragment as UTF-8.
+4. For any other character, delete it at the line the failure names.
+
+**Validation.** Run `loom changelog check` and check that it prints `Checked <count> fragments.` and exits 0.
+
+- Change the optional peer dependency of `@loomcli/loom` from `pnpm` 12.8.1 to 12.16.1, the version that prepares `pnpm-lock.yaml` for a release. The error for a missing pnpm now asks for 12.16.1.
+
+### Migration
+
+**Affected surface.** No compile error: `pnpm install` reports an unmet peer. An application that installs `pnpm` beside `@loomcli/loom` to prepare `pnpm-lock.yaml` for a release, and whose `pnpm` is 12.8.1.
+
+**Why.** The peer is exact, because the pnpm that prepares `pnpm-lock.yaml` must be the version Loom was tested with. A project that keeps 12.8.1 now has an unmet peer.
+
+**Before and after.**
+
+Before:
+
+```json
+{ "devDependencies": { "pnpm": "12.8.1" } }
+```
+
+After:
+
+```json
+{ "devDependencies": { "pnpm": "12.16.1" } }
+```
+
+**Steps.**
+
+1. Change the `pnpm` dependency that sits beside `@loomcli/loom` to `12.16.1`.
+2. Run `pnpm install` to refresh `pnpm-lock.yaml`.
+3. Update any pnpm version your CI or tool manager pins to match.
+
+**Validation.** Run `pnpm install` and confirm it reports no unmet peer for `pnpm`.
+
+- Add `ceiling` to `ProcessHandle` and `Host` in `@loomcli/core`: an optional directory above which the configuration plugin's project walk never looks. Core copies it into `host.ceiling` at entry. The real process's handle names none, so a real run walks as before, and `processHandle({ ceiling })` names one. See [Host](docs/core/host.md#the-process-handle).
+- Change the project walk of `@loomcli/plugins/config` to end at the host's ceiling when it has one. The walk looks in the ceiling directory itself and never in an ancestor of it. A start directory that is outside the ceiling, being neither the ceiling, inside it, nor an ancestor of it, is looked in alone: the walk reads no ancestor of it. A start directory that is an ancestor of the ceiling looks nowhere. The walk ends at whichever it meets first of below home, the ceiling, a root marker, and the filesystem root. The home file, the XDG user file, `--config`, and the author's variable are not bounded. See [Lookup](docs/plugins/config.md#lookup).
+- Change `mockProcess` in `@loomcli/testing` to name its `cwd` as its ceiling unless the test supplies `ceiling`, whether or not the `cwd` is inside `home`. A mock run's configuration walk reads from its working directory and never from a directory above it, so a configuration file above a test's sandbox, such as the developer's own above a checkout, no longer reaches the test. `MockProcess` reads the ceiling as `ceiling`. See [mockProcess](docs/libs/testing.md#mockprocess).
+
+### Migration
+
+**Affected surface.** The break has no compile error. It affects tests that run an application on `mockProcess` from `@loomcli/testing` with a `cwd` below the directory that holds the configuration file, and that expect the configuration plugin's walk to climb to that file, such as a test that starts in a project's `src` directory and reads the project's file. Such a test compiles unchanged, and its run now finds no file in the walk: it reads the schema's output for an empty file, or the home file or the XDG user file when the test wrote one. A test whose directory option names a start directory outside its `cwd` and expects the walk to climb from it is affected the same way, because that walk now looks in the start directory alone. A test whose file is in its `cwd`, a test that names its file with `--config` or the author's variable, and a test that reads the home file are unaffected.
+
+**Why.** A mock with a temporary home and a `cwd` outside that home walked to the filesystem root, so a test run from a checkout under the developer's home read the developer's own configuration file in an ancestor of the checkout. The mock's ceiling keeps every mock run's walk inside its working directory.
+
+**Before and after.**
+
+Before, the walk from `src` climbed to the file in `root` and above it:
+
+```ts
+const root = mkdtempSync(join(tmpdir(), 'notes-'));
+mkdirSync(join(root, 'src'));
+writeFileSync(join(root, '.notes.json'), '{ "limit": 5 }');
+
+const mock = mockProcess({ argv: ['list'], cwd: join(root, 'src') });
+await application.run({ process: mock }); // read root/.notes.json
+```
+
+After, the walk looks in `src` alone, so the test names `root` as its ceiling:
+
+```ts
+const mock = mockProcess({ argv: ['list'], ceiling: root, cwd: join(root, 'src') });
+await application.run({ process: mock }); // reads root/.notes.json, and never looks above root
+```
+
+**Steps.**
+
+1. Find each test that passes `mockProcess` a `cwd` and writes the configuration file into a directory above that `cwd`, or above the start directory its directory option names.
+2. Add `ceiling` to that mock's fields, set to the directory that holds the file or to the test's temporary directory, whichever the walk should stop at. Keep the ceiling inside the test's temporary directory, so the walk never reads a file the test did not write.
+3. Where a shared base of fields, such as a `MockFacts` constant, sets `cwd` for several tests, add `ceiling` beside it.
+
+**Validation.** Run the application's test command, such as `vitest run` or `bun test`. A test that relied on the walk climbing above its `cwd` fails its assertion on the configured value before step 2 and passes after it.
+
+- Change `loom changelog write --narrative FILE` to refuse a narrative file holding the bytes and characters a fragment refuses: bytes that are not valid UTF-8, a carriage return, a control character other than tab and line feed, a bidirectional control or mark, or the zero-width space U+200B. `write` no longer copies a narrative's terminal escape or hidden reordering into `CHANGELOG.md`, nor `notes` onto a release page. The failure names the file as `--narrative` gave it, the line, and the first such character by its code point, such as `narrative.md: line 1 holds the carriage return U+000D. Save the narrative with LF line endings.`, as [the package changelog](docs/toolchain/changelog.md) describes.
+
+### Migration
+
+**Affected surface.** No compile error: `loom changelog write` fails when it reads the narrative. The surface is a file passed to `loom changelog write --narrative`, for a stable or a prerelease cut, that has CRLF line endings, is saved in an encoding other than UTF-8, or holds one of the refused characters.
+
+**Why.** `write` copies the narrative's prose verbatim into the changelog, and `notes` copies the release section onto a release page, so a terminal escape, a carriage return, or an invisible bidirectional control in a narrative reached every reader of both.
+
+**Before and after.**
+
+Before, a narrative saved with CRLF line endings was copied into `CHANGELOG.md`:
+
+```sh
+printf 'This release fixes output.\r\n' > narrative.md
+loom changelog write --narrative narrative.md   # exit 0, with the carriage return in CHANGELOG.md
+```
+
+After, the same cut fails with exit 1 and changes no file:
+
+```text
+narrative.md: line 1 holds the carriage return U+000D. Save the narrative with LF line endings.
+```
+
+**Steps.**
+
+1. Run `loom changelog write --dry-run --narrative FILE` and read the failure it prints.
+2. For a carriage return, save the narrative with LF line endings through your editor's line-ending setting.
+3. For invalid UTF-8, save the narrative as UTF-8.
+4. For any other character, delete it at the line the failure names.
+
+**Validation.** Run `loom changelog write --dry-run --narrative FILE` and check that it exits 0 and, for a stable cut, prints the narrative above the entries.
+
+- Change `loom pr check` to refuse a release PR whose `CHANGELOG.md` narrative holds the bytes and characters a `--narrative` file refuses: bytes that are not valid UTF-8, a carriage return, a control character other than tab and line feed, a bidirectional control or mark, or the zero-width space U+200B. A narrative edited by hand in the release PR after the cut no longer carries a terminal escape or a hidden reordering onto `main` and the release page. The check reads the narrative from the bytes of `CHANGELOG.md`, and the failure names `CHANGELOG.md`, the line within it, and the first such character by its code point, such as `CHANGELOG.md: line 6 holds the carriage return U+000D. Save the narrative with LF line endings.`, as [the PR guard reference](docs/maintaining/pr-guards.md) describes. The compiled entries below the narrative come from fragments, which are already checked, and a release section without a narrative is checked as before.
+
+### Migration
+
+**Affected surface.** No compile error: `loom pr check` fails when it checks the release PR. The surface is a release PR whose `CHANGELOG.md` section holds a narrative, edited after the cut, with a carriage return, bytes that are not UTF-8, or one of the refused characters.
+
+**Why.** The release plan copies the release section onto the GitHub Release page, so a terminal escape, a carriage return, or an invisible bidirectional control edited into the narrative reached every reader of `CHANGELOG.md` and of the release page, though `loom release cut --narrative` already refused the same file.
+
+**Before and after.**
+
+Before, a release PR whose narrative line ended with a carriage return passed:
+
+```sh
+pnpm loom pr check --base origin/main --title "chore(release): Release v0.4.8 - Improve output"   # exit 0
+```
+
+After, the same check fails with exit 1:
+
+```text
+CHANGELOG.md: line 6 holds the carriage return U+000D. Save the narrative with LF line endings.
+```
+
+**Steps.**
+
+1. Run `pnpm loom pr check` with the release PR's base and title, and read the failure it prints.
+2. For a carriage return, save `CHANGELOG.md` with LF line endings through your editor's line-ending setting.
+3. For invalid UTF-8, save `CHANGELOG.md` as UTF-8.
+4. For any other character, delete it at the line the failure names, and commit the change to the release branch.
+
+**Validation.** Run `pnpm loom pr check` with the release PR's base and title, and check that it prints `PR checks passed.` and exits 0.
+
+- Change `@loomcli/plugins/format` to declare a hidden `--format` on every group, the root of a group application included. A group's own option named `format`, or one with the short spelling `format({ short })` gives, now collides with it under the hook-collision rule, and every run of the application fails with exit 1. See [Formatter](docs/plugins/format.md).
+
+### Migration
+
+**Affected surface.** No compile error: every run of the application exits 1, `--help` and `--version` included, with the build diagnostic. A development build, and a test on `mockProcess`, prints it. For an option named `format`, the rule is `@loomcli/core/option-declared-twice` and the sentence `Plugin "@loomcli/plugins/format" declares option "format" on Command "cache", which is already declared as a local option.` For a short spelling, the rule is `@loomcli/core/spelling-taken` and the sentence `Plugin "@loomcli/plugins/format" declares option "format" with spelling "-f" on Command "cache", which "--force" already uses.` A distributed build prints `<app>: Something went wrong.` in its place. The surface is an application with `format()` installed whose group, a Command with children and no action, the root included, declares its own option named `format`, or, under `format({ short })`, an option with that short spelling. A Command with an action is unaffected.
+
+**Why.** The formatter states at a group the media type the operator asked for, so `tool --version --format json` prints the extended version as one JSON object at the root of a group application, and `tool --format json` writes a group's missing subcommand as the formatter's JSON line. Routing reads the option as the group's own, and two options with one name or one spelling on one Command leave one of them unreadable.
+
+**Before and after.**
+
+Before, a `cache` group declared its own `format` option, and an application that gives the formatter `-f` declared `-f` on a group:
+
+```ts
+new Application('notes', { plugins: [format()] }).command(
+  new Command('cache').option('format', { type: 'string' }).command(clear),
+);
+
+new Application('store', { plugins: [format({ short: 'f' })] }).command(
+  new Command('cache').option('force', { short: 'f', type: 'boolean' }).command(clear),
+);
+```
+
+After, the group's option takes another name, and the other option another short spelling:
+
+```ts
+new Application('notes', { plugins: [format()] }).command(
+  new Command('cache').option('layout', { type: 'string' }).command(clear),
+);
+
+new Application('store', { plugins: [format({ short: 'f' })] }).command(
+  new Command('cache').option('force', { short: 'F', type: 'boolean' }).command(clear),
+);
+```
+
+**Steps.**
+
+1. Run the application once in development, or its tests, under the new release. An affected application exits 1 with one of the two diagnostics, which names the group.
+2. For `@loomcli/core/option-declared-twice`, rename the group's option named `format`, and every place that reads it.
+3. For `@loomcli/core/spelling-taken`, change the short spelling of the group's option that the sentence names.
+
+**Validation.** Run the application again, such as with `--help` when help is installed. It no longer exits 1 with the diagnostic, and `--help` prints the page and exits 0. Then run the application's test command, such as `vitest run` or `bun test`.
+
+- Change `loom` to read `loom.config.json` strictly, so a broken file or a rejected value no longer leaves a CI run on conventions. A file the lookup finds that cannot be read, does not parse, or does not hold a JSON object, and a value the file's schema rejects, such as `"paths": { "changes": "" }`, now fail `build`, `init`, `changelog check`, `changelog write`, and `changelog notes` with code 2, where the command warned or dropped the value and ran on conventions. Before, `loom changelog check` over a broken file that names its fragment folder warned, checked the conventional `.changes/` instead, and exited 0, printing `Checked 0 fragments.` when that folder held none. Now it fails: `loom: Configuration file loom.config.json is not valid JSON at line 3, column 5. Correct its syntax, or remove it.` A missing file, an unknown key, and a run under `--no-config` behave as before. The [configuration file](docs/toolchain/build.md#the-configuration-file) reference states the rules.
+
+### Migration
+
+**Affected surface.** No compile error: the bin fails at run time. The surface is a package whose `loom.config.json`, or the file `--config` names, holds a value the schema rejects: a `paths` or `postInstall` that is not an object, a `paths` value that is not a nonempty string, a `postInstall.command` that is not a non-empty list of strings, or a `postInstall.message` that is not a string. A `loom.config.json` the lookup finds that cannot be read, does not parse, or does not hold a JSON object is affected too. `loom init` scaffolding a new application under a package whose file is such a file is affected too.
+
+**Why.** A command that ran on conventions after a warning, or after dropping a value, read or wrote paths the package did not name, and a CI guard passed with nothing checked.
+
+**Before and after.**
+
+Before, a `loom.config.json` whose fragment folder is an empty string, which `loom` dropped while it read `.changes/`:
+
+```json
+{ "paths": { "changes": "" } }
+```
+
+After, name the folder, or remove the key to use `.changes/`:
+
+```json
+{ "paths": { "changes": "changes" } }
+```
+
+**Steps.**
+
+1. Run `loom changelog check` in each package that keeps a `loom.config.json`, and each `loom` command CI runs with the `--config` argument it passes, so a file `--config` names is read too.
+2. For each failure, correct the value or the syntax it names, or remove the key or the file to use the convention.
+3. Where `loom init` scaffolds a new application under such a package, correct that package's file, or run `loom init --no-config`.
+
+**Validation.** Run `loom changelog check` and `loom build` in each package. Each exits 0, and `changelog check` counts the fragments in the folder the file names.
+
+- Change the first bare `--` so it ends option parsing and every later word is a plain word for the routed Command, as POSIX reads it. A word after `--` fills the next unfilled argument, so `rm -- -draft.txt` fills `rm`'s argument, and a word with no argument left to fill is the unexpected-argument usage error, with exit code 2. See [Passthrough](docs/core/options.md#passthrough).
+- Add `.passthrough({ description? })`, which a Command with an action declares to keep a passthrough tail. With it, every word after the first bare `--` reaches the action in `passthrough` untouched, as every Command's did before. Without it, the action context has no `passthrough` member. The validation context and the middleware `request` keep `passthrough`, which is `[]` without the mode. `@loomcli/testing`'s `actionContext` reads an unstated `passthrough` as `[]` instead of throwing.
+- Change `invoke` to refuse a non-empty `values.passthrough` on a Command that does not declare `.passthrough()`, with an `UnexpectedArgumentError`.
+- Rename the declaration rule `@loomcli/core/variadic-argument-last` to `@loomcli/core/argument-after-variadic`, which now allows required scalar arguments after a variadic argument.
+- Allow required scalar arguments after a variadic argument, so a Command can declare `copy <src...> <dest>` or `mv [src...] <dest>`. The arguments after the variadic fill from the end of the line, and the variadic takes the words between. An optional argument, a second variadic argument, an argument required only when input is not interactive, and a content argument still may not follow a variadic argument. See [Application declarations](docs/core/application.md).
+- Add `passthrough` to `CommandNode` and the manifest's Command entry: the declared mode's description, or `null` on a Command without `.passthrough()`. Help's usage line ends with `[-- <args>...]` only on a Command that declares `.passthrough()`.
+- Change the unknown-option sentence on a Command that declares an argument and does not declare `.passthrough()` to `Supply a declared option, or pass it as an argument after "--".`
+
+### Migration
+
+**Affected surface.** This change holds four breaks.
+
+- The type checker reports every affected site. The surface is an action, or a test built with `@loomcli/testing`'s `actionContext`, that reads `passthrough` from the action context of a Command that does not declare `.passthrough()`.
+- No compile error: behavior changes at run time. The surface is a Command without `.passthrough()` that an operator or a script gives words after a bare `--`. Those words now fill the Command's arguments, or fail with exit code 2 when no argument is left, where they were dropped into an unread `passthrough` before. The service plugin is in the surface: a `run` setting whose words after a bare `--` leave an extra word on a Command without the mode, such as `run: ['convert', '--', 'in.txt', 'extra']`, now fails the graph build, where an earlier release accepted it.
+- No compile error: an `invoke` call fails at run time. A call by name types no `--`, so its tail is `values.passthrough`. The surface is an `invoke` call, or an `app.invoke` call, that passes a non-empty `values.passthrough` to a Command without `.passthrough()`. It now fails with an `UnexpectedArgumentError`, where the action ignored the words before.
+- No compile error: a string no longer matches. The surface is code or documentation that names the rule identity `@loomcli/core/variadic-argument-last`, such as a test that matches a `DeclarationError`'s rule.
+
+**Why.** Every Command used to accept a passthrough tail, so a word that starts with a hyphen could not fill an argument, and a Command that never read the tail dropped it in silence. Passthrough is now something a Command declares, and help shows `[-- <args>...]` only on a Command that takes a tail.
+
+**Before and after.**
+
+Before, an action that forwards its tail to another program:
+
+```ts
+new Command('exec')
+  .argument('tool', { required: true })
+  .action(({ args, passthrough }) => run(args.tool, passthrough));
+```
+
+After:
+
+```ts
+new Command('exec')
+  .argument('tool', { required: true })
+  .passthrough({ description: 'Arguments for the tool.' })
+  .action(({ args, passthrough }) => run(args.tool, passthrough));
+```
+
+Before, a call by name that passed words the Command never read:
+
+```ts
+await invoke(['get'], { args: {}, options: {}, passthrough: ['user.name'] });
+```
+
+After, with the words as the argument the Command declares:
+
+```ts
+await invoke(['get'], { args: { path: 'user.name' }, options: {} });
+```
+
+**Steps.**
+
+1. Run the type checker, and add `.passthrough()` to each Command whose action reads `passthrough`. Call it before `.action()`.
+2. For each Command without `.passthrough()`, check the scripts and documentation that pass words after a bare `--`. Declare `.passthrough()` where the words are meant for a tail. Where they are meant as arguments, keep the `--`: the words after it now fill the Command's arguments, even a word that starts with `-` or names a child Command.
+3. For each `invoke` and `app.invoke` call that passes `values.passthrough`, declare `.passthrough()` on its Command if the action reads a tail. Otherwise remove `passthrough` from the values, or move the words into `values.args` under the declared argument's name.
+4. Check each service plugin `run` setting that carries a bare `--`. Declare `.passthrough()` on its Command where the words after `--` are a tail. Otherwise each word after `--` fills an argument, so remove a word that no argument takes, and the graph builds.
+5. Replace `@loomcli/core/variadic-argument-last` with `@loomcli/core/argument-after-variadic` wherever code or documentation names the rule.
+
+**Validation.** Run the application's type check, such as `tsc --noEmit`, and its test command, such as `vitest run` or `bun test`. Run each Command that declares `.passthrough()` with a tail after `--`, and check that the action receives it. Pick one Command without it whose arguments a line can fill completely, run it with every argument supplied and one more word after `--`, as `app <command> <arguments> -- extra`, and check that it fails with exit code 2. Run a Command without `.passthrough()` with a word that starts with `-` after `--`, as `app <command> -- -draft.txt`, and check that its action receives the word as the argument. After changing a service plugin `run` setting, run the application once, such as `app --help`, and check that it starts with no `DeclarationError`.
+
+- Add `arity` to string options, so one occurrence takes a fixed number of words: `.option('point', { arity: 2, type: 'string', validate: integer() })` reads `--point 3 4` as `[3, 4]`, typed as a tuple of the validator's output. With `multiple: true`, each occurrence adds one tuple. The words are the separate words after the spelling, so `--point=3 4` and too few words each fail with exit 2 and a sentence that says what to type instead. One validator checks each word and reports an issue at the word's position. A scalar arity option binds `env` beside `envDelimiter`, whose value splits into exactly that many items, the configuration plugin answers it from an array of that many items, and `invoke` takes a tuple. See [Option value arity](docs/core/options.md#option-value-arity).
+- Add `arity` to `OptionNode`'s string variant and to the manifest's option entry, `null` on an option without one. Help and the man page print the placeholder once per word, MCP publishes a fixed-length array, and completion offers a value for each word.
+- Add `arity` to `MissingValueError`, with an optional third constructor parameter that carries the count, and the `'arity'` kind to `UnexpectedValueError`.
+- Change `SuppliedInputs.options`, the type of `supplied.options` in the validation context, the action context, and a question's context, to admit a list of tuples, the raw value of a multiple arity option.
+
+### Migration
+
+**Affected surface.** The type checker reports every affected site. The surface is code that reads a value from `supplied.options` and, after ruling out a string, a Boolean, and a number, treats each element of the remaining array as a string.
+
+**Why.** A multiple arity option's raw value is a list of tuples, one per occurrence, so the supplied record's array values are now either a list of strings or a list of string tuples.
+
+**Before and after.**
+
+Before:
+
+```ts
+const fields = context.supplied.options['field'];
+if (Array.isArray(fields)) {
+  return fields.map((field) => field.toUpperCase());
+}
+```
+
+After:
+
+```ts
+const fields = context.supplied.options['field'];
+if (Array.isArray(fields)) {
+  return fields.flat().map((field) => field.toUpperCase());
+}
+```
+
+**Steps.**
+
+1. Run the type checker and find each site that reads an array from `supplied.options`.
+2. Where the option is never an arity option, narrow each element with `typeof element === 'string'`, or flatten the array as above.
+3. Where the option is a multiple arity option, read each element as one occurrence's tuple of words.
+
+**Validation.** Run `tsc --noEmit` on the application, then its test command.
+
+- Add `requires(option, ...needed)` on a Command, on the Application root, on the attached Command a lifecycle hook receives, and on an option set, so supplying one option requires others while the others alone are accepted: `.requires('password', 'user')` accepts `--user` alone and fails `--password` alone with exit 2 and `Option "--password" requires option "--user". Supply it as well, or remove "--password".` The names are typed as the declared options. The command line, the environment, and the configuration source supply an option, a default does not, and a Boolean at its absent value triggers nothing. The sentence names only the options still lacking, and no option sets another's value. See [A one-way requirement](docs/core/options.md#a-one-way-requirement).
+- Change `OptionGroup`, the type of each `CommandNode.optionGroups` entry and of the manifest's `optionGroups`, to a union that adds `{ kind: 'requires', option, requires }`, and add `'requires'` to the `reason` of `InputProblem`'s group variant. The manifest's stability rule now states that an `optionGroups` entry may arrive with a new `kind` that carries its own fields in place of `options`, which a consumer skips when it does not know the kind.
+- Print a requirement on the help page and the man page as `Use --password only with --user.`, and project it into an MCP tool's input schema as `dependentRequired`. The man page now prints every option-group sentence the help page prints. An MCP tool that excludes an option a requirement needs, while it does not exclude the requirement's option, is a build fault under `@loomcli/plugins/mcp/required-input-excluded`.
+- Report a discarded `requires()` call under `@loomcli/eslint-plugin`'s `discarded-declaration` rule.
+
+### Migration
+
+**Affected surface.** Two surfaces. The type checker reports every affected site in typed code: the surface is code that reads `options` from an entry of `CommandNode.optionGroups`, or of the manifest's `optionGroups` through its published type, without narrowing its `kind` first. No compile error for code that reads a manifest as parsed JSON: it fails at run time, and only on the manifest of an application that declares a requirement, where it reads `options` from an entry that has none.
+
+**Why.** A requirement names one option and the options it needs, so its entry carries `option` and `requires` in place of `options`, and `OptionGroup` became a union of the two shapes.
+
+**Before and after.**
+
+Before:
+
+```ts
+const members = command.optionGroups.flatMap((group) => group.options);
+```
+
+After:
+
+```ts
+const members = command.optionGroups.flatMap((group) =>
+  group.kind === 'requires' ? [group.option, ...group.requires] : group.options,
+);
+```
+
+**Steps.**
+
+1. Run the type checker and find each site that reads `options` from an option group.
+2. Narrow `kind` at each site, and read `option` and `requires` for a `requires` entry.
+3. Where code reads a manifest as JSON, handle an `optionGroups` entry whose `kind` is `requires`, which carries no `options` key, and skip an entry whose `kind` the code does not know, as the manifest's stability rule now states.
+
+**Validation.** Run `tsc --noEmit` on the application, then its test command.
+
+- Allow `out.print`, `info`, `success`, `warn`, `error`, `debug`, and `trace` to take an async iterable of text in place of the message, so text such as a model's answer shows as it arrives. A streamed message keeps its method's destination and verbosity, draws through the lane view, takes no view, and once its iterable ends has written what the method writes for the joined text. On a terminal each chunk shows as it arrives: a streamed `print` writes what each chunk adds at the cursor and holds every other write to the terminal until its line ends, and the other methods redraw their unfinished row above any live region, which `onLiveRegions` reports as it reports a region's frame. On a pipe, a file, or a captured run each line is written once it completes. A hidden streamed message is read to its end, one whose iterable throws keeps its text and rejects the call, and a failed action or a cancelled run ends an open one at once. The [output reference](docs/core/output.md#a-streamed-message) states the contract.
+- Add the `MessageArguments` type to `@loomcli/core`, the two argument lists a semantic method takes. Each method keeps its string signature first and gains a second over `MessageArguments`, so a wrapper forwards either form whole.
+- Change `@loomcli/testing`'s builders so an unstated semantic lane reads a streamed message to its end before it resolves. A stated lane whose parameter is typed from the context alone, such as `warn: async (message) => { lines.push(message); }`, no longer compiles, whether or not it uses the parameter, because the context types the parameter as either form and a lane typed that way does not fit the method's two signatures. The type checker reports every such site, and annotating the parameter, `(message: string)`, fixes it. See [Testing](docs/libs/testing.md).
+
+### Migration
+
+**Affected surface.** The type checker reports every affected site. The surface is a semantic lane, `print`, `info`, `success`, `warn`, `error`, `debug`, or `trace`, whose parameter has no annotation, whether or not the lane uses it, written where an `Out` method is expected: a lane a test states in the `out` of a `@loomcli/testing` builder, such as `actionContext`, or one in an `out` built by hand, such as a context passed to `progress()` from `@loomcli/prompts`. A lane whose parameter is annotated, such as `vi.fn(async (_message: string) => {})`, and a lane that declares no parameter still compile.
+
+**Why.** Each semantic method now takes a streamed message as well as a string, so the expected type gives a lane's unannotated parameter either form, and a lane typed that way fits neither of the method's two signatures.
+
+**Before and after.**
+
+Before, the parameter took its type from the context:
+
+```ts
+const lines: string[] = [];
+const context = actionContext(handler, {
+  args: {},
+  options: {},
+  out: {
+    warn: async (message) => {
+      lines.push(message);
+    },
+  },
+  provided: {},
+});
+```
+
+After, the parameter is annotated:
+
+```ts
+const lines: string[] = [];
+const context = actionContext(handler, {
+  args: {},
+  options: {},
+  out: {
+    warn: async (message: string) => {
+      lines.push(message);
+    },
+  },
+  provided: {},
+});
+```
+
+**Steps.**
+
+1. Run the project's type check, such as `tsc --noEmit`, and note each stated lane it reports.
+2. Annotate that lane's parameter, `(message: string)`, for an action that passes strings, or write `(...call: MessageArguments)`, imported from `@loomcli/core`, for one that streams.
+
+**Validation.** Run the type check again and confirm it reports no stated lane, then run the tests that state those lanes.
+
+- Add the plain switch, which turns off all redrawing so the screen is only ever appended to, for an operator whose screen reader or terminal copes badly with redrawing and one who keeps a readable record of a run. Core turns it on in every application when `ACCESSIBLE` is set and not empty, and the new plain plugin, `@loomcli/plugins/plain`, gives the operator `--plain` for one run. With it on, a progress line prints its start and end lines and nothing between, a streamed message is written a line at a time, and a question asks line by line: each piece is printed once, with no cursor movement or erase sequence, and the operator types the answer and presses Enter. The question reads its keys in raw mode, as it does when it redraws, and echoes what is typed itself, nothing at a secret, and a search offers its default by label, which Enter alone takes. Messages, color, verbosity, and whether a question asks are unchanged, so `-q`, `--no-input`, and `NO_COLOR` each keep their own job. The [output reference](docs/core/output.md#the-plain-switch) and the [prompts reference](docs/libs/prompts.md#asking-line-by-line) state the contract.
+- Add the `plain` mark to `@loomcli/core`'s Boolean global options, which an application puts on its own option for another spelling, under the new rule `@loomcli/core/plain-mark`. `OptionNode`'s Boolean variant and the manifest's Boolean option entry gain `plain`.
+- Add `questionLine`, `QuestionLine`, and `NumberedChoice` to `@loomcli/prompts/views`, the declared view and data that draw each piece of a question asked line by line, so an application restyles it with `override`.
+- Change a question under `TERM=dumb` to ask line by line, as the plain switch makes it ask, rather than redraw with cursor movement the terminal cannot perform. An input region is not live under `TERM=dumb` or the plain switch, so its `live` reads `false` there, and it still takes its turn among the run's input regions: its `draw` writes nothing and resolves once its turn has come. Under CI nothing changes.
+
+### Migration
+
+**Affected surface.** No compile error: behavior changes at run time. The surface is an action, a middleware, or a library that opens `out.region({ input: true })` itself and draws its frames there, run on a terminal under `TERM=dumb` or with `ACCESSIBLE` set. Such a region's `live` now reads `false`, and its frames draw nothing. A region opened without `input: true` is not live with `ACCESSIBLE` set either, where it drew before, so code that draws one and writes nothing when `live` is `false` shows nothing there, as it already shows nothing on a pipe. A question from `@loomcli/prompts` needs no change, though a test that asks one on a mock terminal with `TERM: 'dumb'` now reads its line-based pieces in `mock.stderr.text` rather than frames.
+
+**Why.** An input region redraws in place with cursor movement and erasure, which a terminal under `TERM=dumb` cannot perform and which the plain switch turns off.
+
+**Before and after.**
+
+Before, the region's frames were the only output:
+
+```ts
+const region = out.region({ input: true });
+await region.draw(state, pickerFrame);
+```
+
+After, the region writes plain lines when it is not live, as `progress()` does:
+
+```ts
+const region = out.region({ input: true });
+// A region that is not live writes nothing here, and resolves once its turn has come.
+await region.draw(state, pickerFrame);
+if (!region.live) {
+  await out.draw(state, pickerLines);
+}
+```
+
+**Steps.**
+
+1. Find each `out.region({ input: true })` your code opens, and each `out.region()` without it that draws frames and writes nothing when `live` is `false`.
+2. Await the region's `draw` as before: a region that is not live writes nothing, and an input region's `draw` resolves once its turn among the run's input regions has come. Then read the region's `live`, and when it is `false`, print each piece once. An input region prints through `out.draw` or a semantic method and then reads the operator's answer as a line. A region without `input: true` prints through `out.info` or another method that `-q` hides, as `progress()` writes its plain lines, so a quiet run stays quiet.
+
+**Validation.** Run the application at a terminal with `TERM=dumb`, and again with `ACCESSIBLE=1`, through each region it opens, and confirm each region prints its lines and each input region takes its answer. Record such a run with `script`, and confirm the record holds no cursor movement.
+
+- Add `skip(message?)`, `warn(message?)`, and `clear()` to the progress line of `@loomcli/prompts`, so work that had nothing to do, finished with a problem, or leaves nothing worth keeping ends as such. At a terminal that redraws, `skip` leaves a dim line under the info glyph, `warn` leaves a line under the warning glyph, and `clear` removes the line and leaves no blank row. Where the line is not live, `skip` writes its end line through `out.info`, `warn` through `out.warn`, and `clear` writes nothing after the start line. A line that fails or is cancelled keeps its text, and `track()` is unchanged. The [prompts reference](docs/libs/prompts.md#progress) states each end.
+- Add `'skipped'` and `'warned'` to the states `Region.end` takes and to `ProgressEvent`'s `state`, so an `onProgress` observer, `invoke`, and an MCP client, whose progress message reads `(skipped)` or `(warned)`, tell those ends from a success. A cleared line reports `ended`. The progress view's `ProgressLine` state gains the same two values. [Progress events](docs/core/output.md#progress-events) states the end states.
+- Change `ProgressContext` so its `out` also carries `warn`.
+
+### Migration
+
+**Affected surface.** The type checker reports every affected site. The surface is a context built by hand, such as a test's object literal, that omits `out.warn` and is passed to `progress()` from `@loomcli/prompts`. A context core hands an action, a middleware, or a configuration source, and one `@loomcli/testing` builds, already carries `warn`.
+
+**Why.** A warned line that is not live writes its end line through `out.warn`, so `progress()` needs the warn lane.
+
+**Before and after.**
+
+Before:
+
+```ts
+const line = progress({ graph, out: { error, info, region, success } }, { label: 'Fetching records' });
+```
+
+After:
+
+```ts
+const line = progress({ graph, out: { error, info, region, success, warn } }, { label: 'Fetching records' });
+```
+
+**Steps.**
+
+1. Add a `warn` method to each hand-built context passed to `progress()`, with the signature `Out['warn']` gives it, or build the context with `actionContext` from `@loomcli/testing`.
+
+Note, not a break: `'skipped'` and `'warned'` are new values of a progress event's and a progress line's `state`, as a string-literal union core produces may gain a member in any release. Where an `onProgress` observer or an override of the `@loomcli/prompts/progress` view switches over `state` with no default branch, handle the two new values.
+
+**Validation.** Run the application's type check, such as `pnpm exec tsc --noEmit`, and its tests.
+
+- Add `task(settings)` to the progress line of `@loomcli/prompts`, so one line groups the steps of a piece of work under it as a task group, to any depth. A task is a full progress line with the same handle, and the action decides what runs when. At a terminal that redraws, the tree draws as one frame, each task indented two columns for each level, in the order the tasks opened, also when another line opened between them, and a finished task shows its end line until its parent ends. A task still open when its parent ends takes the parent's end. A group that ends as a success or a skip leaves its own end line alone and no blank row, and one that fails, warns, or is cancelled keeps its tasks under it in scrollback, each failed task's kept log lines directly above its end line. A tree's rows share the terminal's height, and a finished task's row gives way first. Where the line prints plain lines, each task prints its start and end lines through the lane, its text stepping in under its parent's after the glyph, and under an invocation by name the same lines land in `messages`. Each task reports its own progress events under its own label. See [Task groups](docs/libs/prompts.md#task-groups).
+- Add `keepTasks` to a progress line's settings, which keeps a group's tasks when it succeeds too, and optional `depth` and `tasks` to `ProgressLine`, the progress view's data, so a view override draws the tree, while data you build by hand for `out.draw` draws without them.
+- Change `ProgressContext` so its `out` also carries `draw`.
+- Change every running progress line of `@loomcli/prompts`, in a task group or not, to keep to one row at a terminal that redraws. A label too wide for the row was wrapped by the terminal, which could leave copies of the frame's rows in scrollback; now, once the rate and the time left have given way, the label is cut and ends with `…`, and on a narrower row the bar, the elapsed time, and the counts drop in turn. A finished task's end line inside a running tree is cut the same way, while a line's end line left in scrollback keeps its whole text. See [Progress view](docs/libs/prompts.md#progress-view).
+
+### Migration
+
+**Affected surface.** The type checker reports every affected site. The surface is a context built by hand, such as a test's object literal, that omits `out.draw` and is passed to `progress()` from `@loomcli/prompts`. A context core hands an action, a middleware, or a configuration source, and one `@loomcli/testing` builds, already carries `draw`.
+
+**Why.** A task group whose tasks stay writes each of its end lines through `out.draw` and the progress view, so an application's override of the view draws them and each failed task's kept log lines stand directly above its own end line.
+
+**Before and after.**
+
+Before:
+
+```ts
+const line = progress({ graph, out: { error, info, region, success, warn } }, { label: 'Deploying' });
+```
+
+After:
+
+```ts
+const line = progress({ graph, out: { draw, error, info, region, success, warn } }, { label: 'Deploying' });
+```
+
+**Steps.**
+
+1. Add a `draw` method to each hand-built context passed to `progress()`, with the signature `Out['draw']` gives it, or build the context with `actionContext` from `@loomcli/testing`.
+
+Note, not a break: an override of the `@loomcli/prompts/progress` view written before `depth` and `tasks` draws a tree's root alone while the tree runs, and when a tree's tasks stay at its end, it draws every line of the written tree, flat, with the library's indented kept log lines between them, because the tree is written one line at a time. Draw `depth` and the entries of `tasks` to show a tree's tasks.
+
+Note, not a break: a test that reads a running progress line's long label from stderr now reads it cut with `…` at the terminal's width, and the end line still whole.
+
+**Validation.** Run the application's type check, such as `pnpm exec tsc --noEmit`, and its tests.
+
+### Features
+
+- Allow local multiple string options and scalar or variadic string arguments to require input only outside interactive runs with `required: 'non-interactive'`. Publish argument conditional requiredness through inspection, manifests, help, and MCP schemas.
+- Allow text, secret, and select questions to link a scalar string argument for prefilling and skipping with its validated value.
+- Add grapheme-aware cursor movement, word editing, hint acceptance, bracketed paste, and one-row fitting to typed questions. Question frame data gains an optional `cursor`, and frame data without one draws the cursor at the end of the typed line. Restore bracketed paste mode on every exit and discard secret typeahead after acceptance.
+- Add the `key` table to `@loomcli/testing` and support separate reads, handed over 100 milliseconds apart, within a scripted keyboard entry.
+- Fix MCP tool input schemas so a required multiple option or variadic argument declares `minItems: 1`, because an empty list reads as missing.
+
+- Export ten types from `@loomcli/core` that its public signatures already used, so a helper an author writes can name them. `GlobalOptionConfig` is the configuration a plugin's global option takes. `ExtensionTarget` names the declaration kind an extension targets. `InputSchema` is the schema a graph node publishes. `InvokedBy` is the `invokedBy` an `onFailure` hook reads, which says whether the run came from argv or from an invocation by name. `EndingSignal` names the signal that a `CancellationReason`'s `source` reports. `Lane` names a key of `lanes`. `SwitchPolicy` is a `RenderingPolicy` setting. `Alignment` is the `align` option `pad()` takes. `Modifier` and `CoreToken` name the modifiers and core theme tokens a `Style` publishes.
+- Mark every `@loomcli/core` export with the TSDoc tag `@public`, and mark with `@sealed` every type a Loom library builds and every class an author must not subclass, as the [public exports](docs/core/public-exports.md) page describes. An editor shows the tags on hover.
+
+- Export `EnvBinding`, an option's environment binding, `StringBinding`, a scalar string option's binding that may let an empty value supply it, and `ListBinding`, a multiple option's binding with its delimiter, from `@loomcli/core`, so a helper that builds the same binding for several options can name its type. Mark `Content` and `LinkedValueContext` as input types, which an author may write and hand to Loom, as the [public exports](docs/core/public-exports.md) page describes, rather than output types only Loom builds.
+
+- Mark `Host`, `HostTerminal`, `OnShutdown`, `OnSuspend`, and `OnResume` as input types, which an author may write and hand to Loom, such as a host a test states for a testing builder, as the [public exports](docs/core/public-exports.md) page describes, rather than output types only Loom builds. Core adds any new member to them as optional, with a default when it is missing.
+
+- Let an application subclass `InternalError`, as it already may `LoomError`, `UsageError`, and `FatalError`, and mark `DiagnosticRule` and `InvokedBy` as types an author may write and hand to Loom, as the [public exports](docs/core/public-exports.md) page describes. A release adds any new member to them as optional.
+
+- Export `ColumnDefinition` from `@loomcli/plugins/table` and `FieldDefinition` from `@loomcli/plugins/records`, the object form of one key's column or field, so a helper an author writes can name the entry for a known key. A table column's `align` is now core's `Alignment`, the same `'left' | 'right' | 'center'` union.
+- Mark every export of the pack views, `@loomcli/plugins/box`, `heading`, `list`, `prose`, `records`, `rule`, and `table`, with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes. Their configuration types are input types, so none carries `@sealed`.
+
+- Add an opt-in help Command to the help plugin. With `help({ command: true })`, `app help get` prints the page `app get --help` prints, for the root, groups, nested Commands, aliases, and hidden Commands, and pages it under the same `paging` setting. A word that names no Command fails as an unknown command. With no settings, help attaches no Command. See [The help Command](docs/plugins/help.md#the-help-command).
+
+- Add `pipe(first, ...steps)` to `@loomcli/validators`. A pipe runs any validator, then one to eight steps that check or transform the value the validator or step before it accepted, each a Standard Schema value or a parse function, and publishes exactly the input schema the first validator publishes. See the [validators reference](docs/libs/validators.md#pipe).
+
+  ```ts
+  const pairs = pipe(integer({ min: 2 }), (count) =>
+    count % 2 === 0 ? { value: count } : { issues: [{ message: 'Expected an even number.' }] },
+  );
+  ```
+
+- Export `LoomThemeDefaults` from `@loomcli/plugins/theme`, the type of the seven tokens `loomTheme()` supplies, so an author can name the defaults the returned plugin carries. Export `EncodingConfig` from `@loomcli/plugins/format`, the configuration `json()` and `jsonl()` take, beside the two views; `@loomcli/plugins/format/views` already exported it.
+- Mark every export of the output plugins, `@loomcli/plugins/format`, `format/views`, `theme`, `color`, `verbose`, and `background`, with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes. `BackgroundOptions`, `ColorOptions`, `VerboseOptions`, and `LoomThemeDefaults` are output types and carry `@sealed`; `FormatSettings`, `EncodingConfig`, and `LoomThemeOverrides` are input types, so none of them carries it.
+
+- Add `epilog` to `helpCommand`: Markdown that ends the help page, such as where to report a bug or where the documentation lives. Every page prints the epilog of the routed Command and of each ancestor, its own first and the Application's last, on `-h` and `--help` alike, so an epilog set once on the Application ends every page. Each man page prints the same epilogs under NOTES. See [Epilogs](docs/plugins/help-page.md#epilogs).
+
+- Add six validators to `@loomcli/validators`. See the [validators reference](docs/libs/validators.md#catalog).
+  - `bytes()` reads a size such as `10MB` or `512KiB` into a byte count, with decimal prefixes as powers of 1000 and binary prefixes as powers of 1024.
+  - `host()` reads a host name, and with `ip: true` an IP address too. `ip()` reads an IPv4 or IPv6 address. Both hand the action one canonical form, so two spellings of one address compare equal.
+  - `cidr()` reads a network such as `10.0.0.0/8` into `{ address, prefix }`.
+  - `keyValue()` reads a pair such as `env=prod` into `{ key, value }`.
+  - `email()` reads an email address under the rule browsers apply to `<input type="email">`.
+
+- Let `date()` and `dateTime()` read the forms operators type, such as `25/09/2026` or `25/09/2026 14:30`, through POSIX strftime `layouts` tried in order. A date read through a layout reaches the action as `YYYY-MM-DD`. See [Layouts](docs/libs/validators.md#layouts).
+- Add `time()` to `@loomcli/validators`. It reads a time of day such as `09:30`, or `9:30pm` through a layout, into milliseconds since midnight, with `min` and `max` bounds. See the [validators reference](docs/libs/validators.md#time).
+
+- Mark every export of the input plugins, `@loomcli/plugins/interaction`, `dotenv`, `config`, `config/extension`, and `suggestions`, with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes. `Configuration`, `ConfigProvider`, `ConfigOptions`, `InteractionOptions`, and `ConfigurationSchemaMustAcceptAnEmptyFile` are output types and carry `@sealed`; `ConfigurationSettings`, `DirectorySetting`, `Scope`, `ScopeSettings`, `ConfigInputFacts`, `DotenvSettings`, and `InteractionSettings` are input types, so none of them carries it.
+
+- Mark every export of the help and version plugins, `@loomcli/plugins/help`, `help/extension`, `help/views`, `version`, and `version/views`, with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes. `HelpOptions`, `VersionOptions`, `HelpPage`, `HelpVariant`, and `VersionLine` are output types and carry `@sealed`; `HelpSettings`, `VersionSettings`, `HelpCommandFacts`, `HelpInputFacts`, `HelpArgumentFacts`, `HelpSectionPath`, and `CommandExample` are input types, so none of them carries it.
+
+- Mark every export of the projection plugins, `@loomcli/plugins/manifest`, `manifest/extension`, `mcp`, `mcp/extension`, `completion`, `manpage`, and `skills`, with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes. `ManifestOptions`, `ManifestCommandFacts`, and `DeclaredFailure` are output types and carry `@sealed`; `RefreshContext`, `ManifestSettings`, `ManifestCommandInput`, `DeclaredFailureInput`, `McpCommandFacts`, `McpInputFacts`, `McpArgumentFacts`, `McpAnnotations`, `SkillsSettings`, `Skill`, and `SkillFile` are input types, so none of them carries it.
+
+- Mark every export of the lifecycle plugins, `@loomcli/plugins/logging`, `self-update`, and `service`, with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes, so every subpath of `@loomcli/plugins` now carries its tags. `@loomcli/plugins/logging` now exports `WrittenLevel`, the levels `LoggingSettings`' `level` accepts, and `LoggingErrorKind`, the steps a `LoggingError`'s `kind` names. `AfterReplaceContext`, `ProbeContext`, `ServiceState`, and `ServiceStatus` are output types and carry `@sealed`, and `LoggingError` carries it because you must not subclass it; `LoggingSettings`, `WrittenLevel`, `LoggingErrorKind`, `SelfUpdateSettings`, `NoticeSettings`, `ServiceSettings`, and `ServiceDetail` are input types, so none of them carries it.
+
+- Mark every export of `@loomcli/validators` with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes, so its exports now carry tags and `check:api` covers the package. `@loomcli/validators` now exports `BytesOptions`, `CidrOptions`, `DateOptions`, `DateTimeOptions`, `DurationOptions`, `HostOptions`, `IntegerOptions`, `IpOptions`, `KeyValueOptions`, `NumberOptions`, `PathOptions`, `TextOptions`, `TimeOptions`, and `UrlOptions`, the options each factory takes, with `IpVersion`, `PathKind`, `PathAccess`, and `SpelledBoundOptions`, the types those options use, and `ValidatorDefinition`, `ParseReturn`, `IssueCodeConfig`, and `Step`, the types `createValidator`, `issueCode`, and `pipe` take. It also exports `CidrBlock` and `KeyValuePair`, what `cidr` and `keyValue` output. `Validator`, `IssueCode`, `CidrBlock`, and `KeyValuePair` are output types and carry `@sealed`; the other types are input types, so none of them carries it.
+
+- Mark every export of `@loomcli/prompts` and `@loomcli/prompts/views` with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes, so its exports now carry tags and `check:api` covers the package. `@loomcli/prompts` now exports `PromptContext`, the slice of the action context a question takes, so a helper that asks several questions can name the context it passes on. `Answer`, `ChoiceAnswer`, and `Progress` are output types and carry `@sealed`, and so do `InteractionUnavailableError` and `EditorError`, which you catch and must not subclass. The settings, choice, and context types are input types and carry no `@sealed`. Neither does `ChoiceValue`, which types both a select's answer and the `default` you write, nor do the view data types under `@loomcli/prompts/views`, which an application may build by hand for `out.draw`.
+
+- Mark every export of `@loomcli/testing` with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes, so its exports now carry tags and `check:api` covers the package. `@loomcli/testing` now exports `MockFacts`, the facts a test hands `mockProcess` beside stdin and the terminal, so a test file can share a base across mocks, and `Write`, one entry of a mock's `transcript`, so a helper can name what it reads. `MockProcess`, `MockStdin`, `RecordingStream`, `ProgramCall`, and `Write` are output types and carry `@sealed`: only `mockProcess()` makes them, or Loom hands them to your `Program` script. The builder input types (`ActionValues`, `MiddlewareValues`, `FailureHookValues`, `ProviderValues`, and `ViewValues`), `MockFields`, `MockFacts`, `MockTerminal`, `Program`, `ProgramAnswer`, and `KeyLetter` are input types and carry no `@sealed`.
+
+- Mark the default export of `@loomcli/eslint-plugin` with the TSDoc tag `@public`, as the [public exports](docs/core/public-exports.md) page describes, so `check:api` covers the package and every published Loom library now carries tags. The plugin's API report records each rule it ships, so a removed or renamed rule shows in review.
+
+- Add `environmentContext`, `logEvent`, `logDestination`, and `progressEvent` to `@loomcli/testing`, so a test calls an `onEnvironment` hook, an `onLog` hook, or a progress observer with only the members it checks, as the testing reference's [environmentContext](docs/libs/testing.md#environmentcontext) and [value builders](docs/libs/testing.md#building-the-values-a-hook-reads) show. A log event, a log destination, or a progress event takes a fixed default for each member a test does not state, and an unstated `host` member of the environment hook's context throws a sentence that names it when read. A release that adds a member to `Log`, `LogEvent`, `LogDestination`, `EnvironmentContext`, or `ProgressEvent` leaves such a test compiling, apart from a test that states a nested member, such as a log event's `failure`, whole. A test that compares a whole value with a fixed one sees the new member's default.
+
+- Add a doc comment to every export and member of the published libraries, and an example to every function, class, constant, enum, and namespace, so an editor's hover on any part of Loom's API says what it is for, shows a use, and links its reference page. A member of the type a public type is written over, such as `.option()` on a `Command`, carries one too. The [public exports](docs/core/public-exports.md#doc-comments-and-examples) page states the rules.
+
+- Add the authoring skill to `loom init`, which writes `SKILL.md` and its references to `.agents/skills/loom/` under the piece `skill`, beside the changelog skill, so a coding agent learns how a Loom application fits together. Each file is a managed file, and its links to the documentation name the installed version.
+- Remove an unedited file of the authoring skill that the installed `loom` no longer ships, when `loom init` writes the piece `skill`. An edited one stays with a warning, and `--force` removes it.
+
+- Name each unknown key in a configuration file at `-v`, as a dropped value is named, so an operator who misspells a setting such as `state_dir` for `stateDir` learns that the application did not read it: `Ignored state_dir in .collector.toml: Unknown key. Check its spelling, or remove it.` The configuration plugin judges the file against the JSON Schema the configuration schema publishes, by the rule its link check already uses, so a record, a loose object, and a `z.unknown()` section name nothing, and a schema with no JSON Schema, such as valibot's, prints no line. The lines follow the lines for values the schema removed, a key at or below a dropped value prints none, and the default verbosity is unchanged. The [configuration plugin](docs/plugins/config.md#naming-unknown-keys) reference states the rule.
+
+- Add `strict` to `configuration()`, so a service that a supervisor runs, where nobody reads `-v`, fails on a broken setting instead of falling back in silence. `strict: true` covers the whole file, and a list of dotted key paths, such as `strict: ['delivery']`, covers each path at or under a listed one. A value the schema rejects, an unknown key, or a linked option's value that `strict` covers fails the run with code 2 instead of being dropped, and one failure names every such key with its file and what to do: `collector: Configuration value delivery.retries in .collector.toml: Invalid input: expected number, received string. Correct the value, or remove it.` An unknown key fails the run only where the schema publishes a JSON Schema, so under valibot only a rejected value fails it. Under any `strict`, a configuration file the variable names or the lookup finds that cannot be read, does not parse, or does not hold an object or a mapping fails the run with code 2 instead of warning while the run reads no configuration: `collector: Configuration file .collector.toml is not valid TOML at line 3, column 5. Correct its syntax, or remove it.` Without `strict`, the plugin writes the same bytes as before. The [configuration plugin](docs/plugins/config.md#the-strict-setting) reference states the rules.
+- Add `strict` to `SourceAnswer`, so a configuration source can mark an answer whose rejection by the option's validator fails the run with code 2, as an environment value's does, instead of falling back. The [input sources](docs/core/input-sources.md#configuration-sources) reference states the rule.
+
+- Show an unknown configuration key whose difference is invisible, so the line no longer reads as a correctly spelled key. When a key of the path is empty, has whitespace at an edge, or holds a character a reader cannot see, such as a zero-width space, a no-break space, or a soft hyphen, the `-v` line and the `strict` failure print that key in double quotes with each such character as its code point: `Ignored "stateU+200BDir" in .collector.toml: Unknown key. Check its spelling, or remove it.` Every other key and every other line keeps its bytes. The [configuration plugin](docs/plugins/config.md#naming-unknown-keys) reference states the rule.
+
+- Add `extended` to `version()`'s settings. With `version({ extended: true })`, `-V` and `--version` print the version line, then one row each for the run's release channel, build, release asset, installation method, runtime, and platform, with an absent fact printed as an empty value. When the run's media type is `application/json` or `application/jsonl`, as `--format json` and `--format jsonl` state with the formatter installed ahead of the version plugin, at the root of a group application as on a Command that declares a result, they print the same facts as one JSON object instead, with `null` for an absent fact. `versionFacts`, exported from `@loomcli/plugins/version/views` with its data type `VersionFacts`, restyles the rows. Without the setting, the version line is unchanged. See [Extended output](docs/plugins/version.md#extended-output).
+- Add `mediaType` to the middleware context: the run's media type, which a takeover reads to choose its encoding. On a Command that declares a result it is the media type the selected view declares; on one that declares none, a group included, it is the one a middleware assigned. A failure encoder reads the same value, and `middlewareContext` from `@loomcli/testing` takes it as an optional value. See [Middleware](docs/core/middleware.md).
+- Read a group's own options in routing, as a parent's own options are read: an occurrence at a group binds to the Command routing reaches by the spelling the operator typed. An author's option on a group still reaches no action, so `tool cache --force clear` with `--force` declared on `cache` sets `clear`'s own `--force`, where it failed with `Command "cache" accepts no arguments.`, and a lifecycle hook's option on a group reaches its plugin's middleware. See [Nested Commands and groups](docs/core/commands.md#nested-commands-and-groups).
+- Put a hidden `--format` on every group with the formatter installed, so `tool --format json` reports a missing subcommand as the JSON line, `tool --format json list` runs `list` with its `json` view, and completion offers `json` and `jsonl` after `tool --format`. See [Formatter](docs/plugins/format.md).
+- Add `runtime` to the host and the process handle: the JavaScript runtime's name, `bun` or `node`, and its version. The real process's handle reads it, `processHandle({ runtime })` and `mockProcess({ runtime })` replace it, and `mockProcess` defaults it to `{ name: 'node', version: '24.0.0' }`. It is optional on the handle and on the host, so a hand-built handle and a host a test states whole compile unchanged; core always sets the host's member, `undefined` when the handle holds none. See [Host facts](docs/core/host.md#host-facts).
+
+- Add `patchConsole()` at `@loomcli/plugins/patch-console`, an opt-in plugin that keeps a dependency's `console` writes from tearing a live region. While a frame is on the stack, `console.log`, `info`, and `debug` write to the run's stdout and `console.warn` and `error` to its stderr through `out`, above the regions and under the run's rendering policy, and on Node a process warning follows `console.error`. The console comes back when the last frame leaves the stack and before the run ends, a failure included, and outside a region nothing is patched. A dependency's `console.error(message)` followed by `process.exit(1)` while a frame is drawn prints the message above the frame. The [patch-console plugin](docs/plugins/patch-console.md) page states the rules.
+- Add the `onLiveRegions` lifecycle hook, with the `LiveRegionsHook` and `LiveRegionsHookContext` types. Core calls it with `'drawn'` when the run's first live region draws a frame and with `'closed'` when the last frame leaves the stack, in stderr's write order, for every region of the run, and hands it the run's `out`. [Observing live regions](docs/core/lifecycle-hooks.md#observing-live-regions) states the rules.
+- Fix a message lost when the process ends before core writes it. At the process's `exit` event, from a `process.exit()` an action or a dependency calls or an uncaught exception, and at a shutdown's end, core now writes every write still queued on the run's stdout and stderr, in the order queued, where it wrote only live-region frames before. So `out.error(message)` followed by `process.exit(1)` prints the message, with or without the patch-console plugin, and a run with nothing queued prints what it printed before. [At the process's end](docs/core/output.md#at-the-processs-end) states the rules.
+
+- Allow a Command with an action, the root included, to declare arguments and hold children, in either order, with no opt-in call. `argument()` no longer removes `command()`, and `command()` no longer removes `argument()`, so a root that declares arguments installs the plugins that bring Commands, such as completion, man pages, MCP, skills, self-update, and service. The rule `@loomcli/core/arguments-beside-children` is retired. A group, a Command with children and no action, that declares an argument fails with [`@loomcli/core/command-without-action`](docs/core/diagnostics.md#loomclicorecommand-without-action), as a group that declares stdin or the passthrough mode does. See [Nested Commands and groups](docs/core/commands.md#nested-commands-and-groups).
+- Route a plain word that is exactly a child's name or alias into that child, and read any other plain word on a Command that declares arguments as its first argument, so `textstat completion bash` runs the plugin and `textstat a.txt completion` counts two files. On a Command without the passthrough mode, a word after the first bare `--` fills an argument, so `textstat -- completion` counts a file named `completion`; on one with the mode, it reaches `passthrough`. A child that a later release adds shadows that word as an argument. See [Global consumption and routing](docs/core/commands.md#global-consumption-and-routing).
+- Add `argument` to the `command` position `locate()` returns: the argument the word fills when it names no child, which is the routed Command's first argument when it declares one and `null` otherwise. See [Locating a word](docs/core/graph-inspection.md#locating-a-word).
+- Add `argument` to `NonCallableCommandError` and an optional third `argument` parameter to its constructor. On an argv run, when a group is reached through one word from a parent that declares arguments and no passthrough mode, the message ends with `To pass "completion" as an argument, write -- before it.` and `argument` holds the word the operator typed. See [Failure classes](docs/core/failures.md#failure-classes).
+- Add a `--` row to the ARGUMENTS block of a help page and a man page, for a Command that declares arguments, holds a visible child, and declares no passthrough mode: `Read every later word as an argument, even a command name.` See [The help page](docs/plugins/help-page.md).
+- Offer a Command's children and then the values its first argument offers at a word that may name either, so `textstat co<Tab>` offers `completion`. With an argument that has no closed set, the answer ends with directive `0`, so a prefix that no child's name starts leaves the shell its file names. See [Completion](docs/plugins/completion.md).
+
+- Add `lastWins` to string options, so a later occurrence on the command line replaces an earlier one instead of failing as a repeat: with `.option('editor', { lastWins: true, type: 'string' })`, a shell alias `alias draft='mailer --editor vim'` lets `draft --editor nano` run with `nano`. Occurrences count across every accepted spelling, a bare spelling that supplies an implied value included, and on an arity option the last occurrence's whole tuple replaces the earlier one. Only the last value reaches the validator, and a replaced value is dropped with nothing printed. Every occurrence still takes its words, so a missing value is still a usage error wherever it occurs. The types reject `lastWins` beside `multiple: true` and on a Boolean, counted, or content option. The winning occurrence beats the environment, the configuration source, and the default, as any command-line value does. On a background-marked option that declares it, the run's background choice follows the occurrence that won, so a replaced `light` never settles the background. See [Last occurrence wins](docs/core/options.md#last-occurrence-wins).
+- Add `lastWins` to `OptionNode`'s string variant and to the manifest's string option entry, `false` unless the declaration says `true`. Completion offers a last-wins option again after the earlier words supplied it.
+
+- Add `optionSet()` and `options(set)`, so a group of Commands that share several options declares them once: `const output = optionSet({ json: { type: 'boolean' }, yaml: { type: 'boolean' } }).exclusive('json', 'yaml')`, then `.options(output)` on each Command that reads them. Each entry takes what `option()` takes and is checked as `option()` checks it, a set may carry `exclusive`, `oneRequired`, and `requiredTogether` groups over its own members, and the action reads each option with the type one `option()` call gives it. A name the Command already declares, locally or as a global option, is a compile error. `options()` exists on a Command and on the Application root. Nothing inherits: a parent that applies a set gives its children nothing. Help, the manifest, inspection, and every other projection read a Command built with a set exactly as one that declared the same options and groups one by one. See [Sharing options](docs/core/options.md#sharing-options).
+- Report a discarded `options()` call, and a discarded group call on an option set, under `@loomcli/eslint-plugin`'s `discarded-declaration` rule, and read the entries of an option set in its `undescribed` and `name-shape` rules, so an option keeps those checks when it moves into a set.
+
+- Add visible aliases, so an author advertises a short form operators should learn: `.visibleAlias('ls')` on a named Command and `visibleAliases: ['minimum']` on an option declare an alias that routes and parses as `alias()` and `aliases` do, under the same name rules, the same namespace, and the same declaration faults. Help prints it as the first fact of its member's row, `(alias: ls)` for a Command and `(alias: --minimum)` for an option, `(aliases: ls, dir)` for several, and a Command's own page prints `Alias: ls` in its masthead before its deprecation line. The man page follows help, and completion offers a visible alias only where the canonical name does not match what was typed. Usage lines, failure sentences, suggestions, routing-error candidates, and MCP tool names and input schemas keep the canonical name. `alias()` and `aliases` still declare an alias no listing shows. See [Visible aliases](docs/core/commands.md#visible-aliases) and [Visible option aliases](docs/core/options.md#visible-option-aliases).
+- Add `visibleAliases` to `CommandNode` and `OptionNode`, the visible aliases in the order `aliases` holds them, while `aliases` keeps every alias. The manifest's Command entries and option entries gain `aliases`, which holds the visible aliases alone and reads `[]` when there is none.
+- Read `visibleAlias(...)` calls and `visibleAliases` arrays in `@loomcli/eslint-plugin`'s `name-shape` rule, an option set's entries included, and count `visibleAlias` among the authoring calls of its `discarded-declaration` rule.
+- Fix an option alias whose spelling the option already accepts, such as `no-color` on a `both` option `color`: it adds nothing, as the options reference states, where it used to add a `--no-no-color` spelling.
+
+- Add `-v` and `-vv` lines to the first-party plugins that act on files, programs, or the environment. At `-v` a plugin says what it did, such as `Read configuration from .notes.json.`, `Imported 3 variables from .env.local.`, `Replaced /home/me/.local/bin/notes.`, `Ran systemctl --user daemon-reload.`, or `Logging to /home/me/.local/state/notes/notes.jsonl.`, and at `-vv` how it decided, such as `Looked for .notes.json: not found.` or `Skipped API_TOKEN from .env: already set.` No line repeats a confirmation the default verbosity prints, and no dotenv line holds a value. Each plugin's page lists its lines under [At -v and in the log](docs/plugins/README.md).
+- Add one `info` log event for each change a first-party plugin makes outside the process: `File written.` and `File removed.` with `path`, `Program run.` with `program`, `arguments`, and `code`, and `Binary replaced.` with `path`, `from`, and `to`, as [Change events](docs/core/logging.md#change-events) states.
+- Change the `plugin` field of a log event an action of a plugin Command logs from `null` to that plugin's identity, such as `@loomcli/plugins/service`.
+- Add `debug` and `trace` to an `onEnvironment` hook's `out`, and `out`, the outermost run's `debug` and `trace` lanes, to `LogDestination`. `@loomcli/testing`'s `logDestination` fills it with lanes that write nothing, and its `environmentContext` fills an unstated `out.debug` and `out.trace` the same way.
+- Add `name` and `out` to the self-update plugin's `AfterReplaceContext`, and the same two as optional members of `RefreshContext`.
+- Change the completion, man page, and skills refreshes after a self-update to start no child when the installation record holds none of the plugin's files, so the child's line that nothing is installed no longer prints after an update.
+
+- Add `estimate` and `unit` to a progress line's settings in `@loomcli/prompts`. With `estimate: true`, a running line also shows its rate and time left after the elapsed time, `◓ Copying files ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s · 3.3 files/s · about 24s left`, computed from the counts you report through `update()` over a window that reaches back to the latest report at least 10 seconds older than the newest and never past a report whose count went backward, so reports a minute apart are measured over that minute, and counting down between reports, with no timer on your work. Neither part shows until a second of reports has passed, and neither shows on an end line or where the line prints plain lines. On a narrow row the rate gives way first. See [Rate and time left](docs/libs/prompts.md#rate-and-time-left).
+- Add optional `estimate`, `rate`, `remaining`, and `unit` to `ProgressLine`, the progress view's data. Every line supplies them whether or not `estimate` is set, so a view override can draw a rate or a time left of its own, and data you build by hand for `out.draw` draws without them.
+
+- Add `log(text)` to the progress line of `@loomcli/prompts`, so a line shows a child program's output, or any other text, as its work runs. It takes a string or an async iterable of text, such as a `PassThrough` that `host.spawn` writes into. At a terminal that redraws, the newest 5 lines show under the running line, dim and clipped to one row each, and older ones scroll out. The open lines of a run share the terminal's height, so on a short terminal each logged line shows fewer rows, down to none, and the log rows fit the rows the lines' own rows leave. Rows another writer holds, such as an open question, are not counted. `end()`, `skip()`, and `clear()` remove the rows and leave no blank row, while `fail()`, `warn()`, and a cancelled run write the kept lines, the newest 1000, above the end line through `out.error` or `out.warn`, where they stay in scrollback, after a line such as `1203 earlier lines were dropped.` when earlier ones were. Where the line prints plain lines, nothing shows while it runs, and the kept lines print on the same ends. A child program's own `\r` progress shows its latest state, and its colors and control sequences draw nothing. See [A line's log](docs/libs/prompts.md#a-lines-log).
+- Add `logRows` and `logLimit` to a progress line's settings, the count of rows the running line shows and the count of lines it keeps for a failure, an optional `host` to `ProgressContext`, which every action's, middleware's, and configuration source's context already carries and from which a line reads the terminal's height, and an optional `log` to `ProgressLine`, the progress view's data, which holds the rows a line draws on every frame, fitted to the height, and none on an end frame, so a view override can draw them, and data you build by hand for `out.draw` draws without it.
+
+- Teach the authoring skill that `loom init` writes how to choose a Command's inputs: a catalog validator from `@loomcli/validators` and `pipe()`, `multiple`, `lastWins`, and `arity` for an option given more than once or with several words, `requires()` beside the other option groups, the first bare `--` and the `.passthrough()` mode, required arguments after a variadic one, and `required: 'non-interactive'` on an input a question asks for.
+- Teach the skill how an action writes and asks: a message's own view such as `step()`, `patchConsole()` for a dependency's console writes, `out.lendTerminal()` for a child program that draws on the terminal, and which question kind to link to an input, `multiselect`, `editor`, and a searched list included. It also teaches a middleware's `mediaType`, `version({ extended: true })`, the configuration plugin's `strict` setting for a supervised run, the `graph` a unit test of a linked `select` states, and the `runtime` a `mockProcess` run reads.
+
+### Fixes
+
+- Fix the manifest leaving out facts a declaration did not state, against its rule that every field is present in every entry. A Command entry now always carries `stdin`, `null` when the Command declares no `.stdin()`, and a stdin declaration with no description reads `description: null`. A content argument or content option entry now always carries `min` and `max`, `null` when the declaration states no bound. The [manifest reference](docs/plugins/manifest.md) lists both fields.
+
+- Install a smaller `@loomcli/loom`: the two programs that `loom init` and `loom build` run under Bun to read an application module no longer each carry a copy of `@loomcli/core`, so they take about 7 KB together, down from about 418 KB, a fifth of the installed package. What `loom init` and `loom build` print is unchanged.
+
+- Fix the `@loomcli/host-bypass` message for `process.exit()` and `process.exitCode`, which suggested a result the action returns: it now suggests a return from the action or a thrown failure, because core reads no value an action returns.
+
+- Fix help's pager so a live region an application holds waits for the pager to exit instead of drawing over it, and redraws once the pager closes.
+
+- Fix the line `loom` reports for a `package.json` that is not valid JSON and ends its lines with a lone CR, so it names the place an editor shows. A line now ends at LF, at CRLF, or at a lone CR, as the configuration plugin counts.
+
+- Fix a `configuration()` dropped-value line at `-v` to name an array item by its position in the file as read in every round. A line from a later round named the position after earlier rounds removed items before it, so one `-v` run could name the same item two ways. A file whose drops happen in one round prints as before.
+
+- Fix Loom's own messages, in core, the plugins, the validators, the prompts, and the `loom` bin, so a control or bidirectional character in a value they repeat, such as a name or a path, prints as its `\uXXXX` escape instead of reaching the terminal.
+- Fix the MCP server's error for a request id that is still in use, which no longer repeats the id.
+
+- Fix the `loom` bin's own sentences, which no longer quote a Node.js reason and now name the cause and a fix.
+- Fix `loom release plan` and `loom release record`, which now refuse a `--registry` or `--github-api` value that is not an http or https URL as a usage error, before any request, where they reported an unreachable network.
+
 ## v0.18.0 - 2026-11-03
 
 ### Fixes

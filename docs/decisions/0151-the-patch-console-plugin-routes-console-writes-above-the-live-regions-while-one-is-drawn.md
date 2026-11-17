@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0151 - The patch-console plugin routes console writes above the live regions while one is drawn
 description: An opt-in plugin, patchConsole() at @loomcli/plugins/patch-console, replaces console.log, info, debug, warn, and error for each span ADR-0156's onLiveRegions hook reports, and puts each member back at the span's close. Each write keeps its stream, formats as util.format, and goes through the hook's out to the run's own stdout or stderr, so it lands above the regions and obeys the run's rendering policy. Node's process warnings follow console.error and Node's flags keep working; Bun's are left to Bun. The plugin reads no member of process, so it adds no exception to ADR-0107's ban. A routed write is queued, and ADR-0157 has core write it when the process ends first, so a console.error followed by process.exit prints.
-status: proposed
+status: accepted
 created: 2026-11-14
-modified: 2026-11-15
+modified: 2026-11-17
 ---
 
 # ADR-0151 - The patch-console plugin routes console writes above the live regions while one is drawn
@@ -56,7 +56,7 @@ A write through `out` is queued: the call returns before its bytes reach the str
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

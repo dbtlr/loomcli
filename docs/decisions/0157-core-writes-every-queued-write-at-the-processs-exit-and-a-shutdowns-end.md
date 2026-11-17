@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0157 - Core writes every queued write at the process's exit and a shutdown's end
 description: At the process's exit event and at a shutdown's end, SIGQUIT's included, core writes each live run's queued writes to the run's stdout and stderr synchronously, once per run, in the order they were queued, where it wrote only region frames before, so a message queued just before process.exit prints, with the patch-console plugin or without it. The flush uses the lane's existing flush seam and adds no host surface. A run that ends normally is unchanged, and a run with nothing queued at an end writes what it wrote there before.
-status: proposed
+status: accepted
 created: 2026-11-15
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0157 - Core writes every queued write at the process's exit and a shutdown's end
@@ -44,7 +44,7 @@ The patch-console plugin of [ADR-0151](0151-the-patch-console-plugin-routes-cons
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

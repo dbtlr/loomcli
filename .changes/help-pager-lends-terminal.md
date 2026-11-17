@@ -1,1 +1,0 @@
-- Fix help's pager so a live region an application holds waits for the pager to exit instead of drawing over it, and redraws once the pager closes.

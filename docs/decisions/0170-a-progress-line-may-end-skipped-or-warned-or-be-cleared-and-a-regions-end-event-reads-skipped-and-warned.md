@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0170 - A progress line may end skipped or warned or be cleared, and a region's end event reads skipped and warned
 description: The progress handle of @loomcli/prompts gains skip(message?), warn(message?), and clear(). skip leaves a dim line with the message or else the label, under the info glyph, and off a live region writes the same text through out.info. warn leaves a warning line under the warning glyph in the warning token, and off a live region writes it through out.warn. clear draws an empty last frame, so the line leaves nothing but a frame drawn before the terminal was lent, and off a live region prints nothing after the start line. Only the author's own call clears a line: a line that fails or is cancelled keeps its text. After any end every end method does nothing and resolves, and track() is unchanged. Core's Region.end takes 'skipped' and 'warned' beside 'ended' and 'failed', and ProgressEvent's state gains the same two, so an onProgress observer, invoke, and an MCP client, whose message reads (skipped) or (warned), tell them from a success, while a cleared line reports ended. The progress view's state gains 'skipped' and 'warned', and ProgressContext's out gains warn. It extends ADR-0091's region end, its progress events, and its progress lines.
-status: proposed
+status: accepted
 created: 2026-11-16
 modified: 2026-11-17
 ---
@@ -147,7 +147,7 @@ The glossary's Progress event and Progress line entries name the new states and 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

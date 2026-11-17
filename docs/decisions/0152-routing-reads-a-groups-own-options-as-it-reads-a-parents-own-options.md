@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0152 - Routing reads a group's own options as it reads a parent's own options
 description: Core already accepts a local option on a group, the author's or one an onCommandAttach hook declares, and the group's table holds it, but routing read a group's words against the global options alone, so none reached anything. Routing now reads every option on a group as built, the author's and a hook's alike, as it reads a parent's own options at a Command with an action and children, so an occurrence binds to the Command routing finally reaches by the spelling the operator typed, the group itself when routing ends there. An author's option on a group still reaches no action, and a hook's reaches its plugin's middleware under ownOptions, validated under the held missing-subcommand fault. It supersedes ADR-0004's rejection of groups with their own local options and the rule that a group declares no local option, which ADR-0055 relies on and ADR-0026 carries from ADR-0003 through ADR-0024, and widens ADR-0055's routing over a parent's own options to any Command with children.
-status: proposed
+status: accepted
 created: 2026-11-15
-modified: 2026-11-15
+modified: 2026-11-17
 ---
 
 # ADR-0152 - Routing reads a group's own options as it reads a parent's own options
@@ -37,7 +37,7 @@ This record supersedes the rule that a group declares no local option, which ADR
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

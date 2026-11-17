@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0158 - The loom bin reads loom.config.json strictly, so a broken file or a rejected value fails the run
 description: The loom bin installs the configuration plugin with strict set to true. A loom.config.json that the lookup finds and cannot use, and a value its schema rejects, fail every loom command that reads the file with code 2, instead of warning or dropping while the command runs on conventions. --no-config still runs on conventions. It supersedes ADR-0130's clauses that a rejected value is dropped and its convention applies, and that a broken file warns once and the run uses conventions, and ADR-0131's clause that a rejected post-install command is dropped.
-status: proposed
+status: accepted
 created: 2026-11-15
-modified: 2026-11-15
+modified: 2026-11-17
 ---
 
 # ADR-0158 - The loom bin reads loom.config.json strictly, so a broken file or a rejected value fails the run
@@ -49,7 +49,7 @@ ADR-0130's clauses that a value the schema rejects is dropped and its convention
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

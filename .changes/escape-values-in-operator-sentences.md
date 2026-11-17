@@ -1,2 +1,0 @@
-- Fix Loom's own messages, in core, the plugins, the validators, the prompts, and the `loom` bin, so a control or bidirectional character in a value they repeat, such as a name or a path, prints as its `\uXXXX` escape instead of reaching the terminal.
-- Fix the MCP server's error for a request id that is still in use, which no longer repeats the id.

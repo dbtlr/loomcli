@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0164 - Loom's operator messages live in message modules, and a voice test per package reads them
 description: Every sentence Loom says to an operator, a failure's sentence, a hint line, a -v or -vv line, and a plugin's or the loom bin's notice, warning, or confirmation, is a named export of the internal messages.ts beside the code that raises or writes it, a function of its values or a constant, and that code calls it. A fast voice test per package reads those modules with a small reader of its own, and the package's other files for gathering and rule 6, and holds four checks, each known exception pinned per file with its reason. The loom bin may relay what another program or the author's code said, and its own sentences never quote a Node.js reason. No sentence's bytes change except those a check shows wrong and the loom bin's sentences that quoted a Node.js reason or stated no fix, nothing becomes public, and no localization layer is added. It widens the binding of ADR-0047's Two parts and No leaks clauses to @loomcli/prompts and the loom bin, and narrows ADR-0047's rejection of a check on message text.
-status: proposed
+status: accepted
 created: 2026-11-16
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0164 - Loom's operator messages live in message modules, and a voice test per package reads them
@@ -129,7 +129,7 @@ Six voice tests and their shared reader join the suite, and a later change write
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

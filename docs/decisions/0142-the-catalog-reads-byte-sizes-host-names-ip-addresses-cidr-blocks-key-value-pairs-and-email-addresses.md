@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0142 - The catalog reads byte sizes, host names, IP addresses, CIDR blocks, key-value pairs, and email addresses
 description: '`@loomcli/validators` gains six factories. `bytes()` reads IEC 80000-13 sizes, decimal prefixes as powers of 1000 and binary prefixes as powers of 1024, into a safe-integer byte count. `ip()` and `host()` hand the action canonical strings, `cidr()` hands it `{ address, prefix }` and rejects host bits, `keyValue()` splits at the first separator into `{ key, value }`, and `email()` follows the WHATWG HTML rule browsers apply. Each publishes a sound schema and one issue code per sentence. This supersedes the validators reference''s listing of email as not shipped.'
-status: proposed
+status: accepted
 created: 2026-11-09
-modified: 2026-11-09
+modified: 2026-11-17
 ---
 
 # ADR-0142 - The catalog reads byte sizes, host names, IP addresses, CIDR blocks, key-value pairs, and email addresses
@@ -47,7 +47,7 @@ The grammars, outputs, published schemas, sentences, and codes are the contract 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

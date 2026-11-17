@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0154 - The configuration plugin names at -v each key the published JSON Schema does not describe
 description: Where the configuration schema publishes a JSON Schema, the configuration plugin walks the file it read against the graph's configuration.schema and writes one out.debug line for each key a closed object does not list, judged by the link check's rule, after the lines for removed values and in the dropped-value line's form. Nothing at or below a dropped value, in an open object, or in a file whose schema publishes no JSON Schema prints a line. It supersedes ADR-0118's sentence that such a key is never reported at any verbosity.
-status: proposed
+status: accepted
 created: 2026-11-14
-modified: 2026-11-14
+modified: 2026-11-17
 ---
 
 # ADR-0154 - The configuration plugin names at -v each key the published JSON Schema does not describe
@@ -50,7 +50,7 @@ ADR-0118's decision stands except the superseded sentence. Its considered option
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

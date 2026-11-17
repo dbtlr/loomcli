@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0156 - onLiveRegions tells a plugin when a run's live regions first hold a frame and when none does
 description: A plugin definition gains a sixth lifecycle hook, onLiveRegions(state, context). Core calls it with 'drawn' at the write that gives a region of the run a frame while none holds one, and with 'closed' at the write after which none does, in stderr's write order, for every live region of the run wherever it was opened. The context carries the run's out with the default destinations. A failure, a cancellation, a shutdown's end, and the run's end all close the span; a run that invoke starts, and a stderr that is not a terminal, never open one. A throw is reported once after the run, as onLog's is.
-status: proposed
+status: accepted
 created: 2026-11-14
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0156 - onLiveRegions tells a plugin when a run's live regions first hold a frame and when none does
@@ -51,7 +51,7 @@ The rejected alternative, a plugin that patches for its middleware's whole span 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 
