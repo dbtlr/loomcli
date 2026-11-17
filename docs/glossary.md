@@ -841,7 +841,7 @@ The rate and the time left a running progress line shows after its elapsed time 
 _Avoid_: ETA (a moment, where the time left is a span), speed, throughput
 
 **Progress log**:
-The lines a progress line's author adds through `log()`, one line, text that holds several, or an async iterable of text such as a child program's output. Where the line draws, its newest lines, 5 by default, show under it as dim rows, each clipped to one row, and older ones scroll out. An end, a skip, or a clear removes them. A failure, a warning, or a cancellation writes the lines the line kept, the newest 1000 by default, above its end line through `out.error` or `out.warn`, where they stay in scrollback, and says how many earlier lines were dropped. Where the line does not draw, nothing shows while it runs, and the kept lines are written on the same ends. No progress event carries a log line.
+The lines a progress line's author adds through `log()`, one line, text that holds several, or an async iterable of text such as a child program's output. Where the line draws, its newest lines, 5 by default, show under it as dim rows, each clipped to one row, and older ones scroll out; the rows a line draws are its share of the terminal's height, which the run's open lines divide among them. An end, a skip, or a clear removes them. A failure, a warning, or a cancellation writes the lines the line kept, the newest 1000 by default, above its end line through `out.error` or `out.warn`, where they stay in scrollback, and says how many earlier lines were dropped. Where the line does not draw, nothing shows while it runs, and the kept lines are written on the same ends. No progress event carries a log line.
 _Avoid_: Task log, output pane, transcript
 
 **Progress style**:
