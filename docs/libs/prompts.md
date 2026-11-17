@@ -1206,16 +1206,16 @@ When the second push throws, the run fails with the group open, and the tasks st
   ✘ Pushing the image · 3.3s
 ```
 
-Where the line does not draw, each line writes its plain lines as they happen, a task's indented under its parent's:
+Where the line does not draw, each line writes its plain lines as they happen, a task's text stepping in under its parent's after the glyph:
 
 ```text
 ℹ Deploying
-  ℹ Building the image
-  ✔ Built the image
-  ℹ Pushing the image
-  ✔ Pushed the image
-  ℹ Running migrations
-  ✔ Ran migrations
+ℹ   Building the image
+✔   Built the image
+ℹ   Pushing the image
+✔   Pushed the image
+ℹ   Running migrations
+✔   Ran migrations
 ✔ Deployed
 ```
 
@@ -1234,7 +1234,7 @@ Where the line does not draw, each line writes its plain lines as they happen, a
 - **Writing the tree.** When a root ends with tasks under it, ones it holds and has not cleared, and they stay, its region draws an empty frame, and the library writes the tree above the stack, one line at a time from the root down, each line followed by its tasks in opening order. It writes the whole tree, also the finished rows that gave way to the terminal's height in the latest frame. A line's kept log lines come first, when it has any, through `out.error` for a failed line and `out.warn` for a warned or cancelled one, each kept line two columns further in for each level. Its end line follows, through `out.draw` and the progress view, so the application's override draws it, with one line break after it. So each line's kept lines stand directly above its own end line, and no other region's last frame lands inside the tree. While a question holds the frames, the tree is written at once and the stack shows the running tree until the question closes. While the terminal is lent, the writes land where the child program's cursor is. A root with no task under it ends as a line does under [A line's log](#a-lines-log).
 - **A task's log.** A task's log rows draw under its row, indented with it, and clipped so the whole row fits. When a task fails or warns while its root runs, its kept lines wait, unwritten, and are written with the tree, directly above the task's end line. When the task's group, or any group above it, collapses, they go with it.
 - **The terminal's height.** A tree shares stderr's rows by the rule of [A line's log](#a-lines-log). Each open task is a line that shares, with its own row and its log's need. A finished task's end line that the tree shows is a finished row, and finished rows give way first: they take the rows left after each line's own row and each line's log share, divided among the trees as log rows are among lines, and a tree shows its newest ones, so the task that finished first gives way first. A row that gives way shows again at a later frame with room for it. A tree draws its log rows and finished rows within what the other lines' and trees' latest frames left, and a task's end turns its own row into a finished row, so its end adds no row. The default view draws each line's row and each finished row on one row, so the counts are exact for it, and an application's own view that draws a row wider than the terminal is still counted as one row for each line. Roots and running tasks alone can still take more rows than the terminal has.
-- **Where the tree does not draw.** Each line writes its plain lines when they happen, as a line does, and a task's are indented two columns for each level. `task()` writes its label through `out.info`, `  ℹ Building the image`, and its ends write through the same lanes as a line's, `  ✔ Built the image`, `  ✘ Pushing the image`, `  ℹ Pushed nothing: the image is current`, and `  ⚠ Pushed 2 of 3 layers`, while `clear()` and a cancellation write no end line. A task that fails, warns, or is cancelled writes its kept lines above its end line at its own end, each two columns further in for each level, `    npm error code E404`. A task's line draws the lane's default look after the indent, its continuation rows indented with it, so an application's lane override draws a root's lines and not a task's.
+- **Where the tree does not draw.** Each line writes its plain lines when they happen, as a line does, through the lane like any message, and a task's text steps in two spaces for each level, inside the message and after the glyph, so the glyphs stay in one column: `task()` writes its label through `out.info`, `ℹ   Building the image`, and its ends write through the same lanes as a line's, `✔   Built the image`, `✘   Pushing the image`, `ℹ   Pushed nothing: the image is current`, and `⚠   Pushed 2 of 3 layers`, while `clear()` and a cancellation write no end line. When the text holds several lines, every line takes the same indent. A task that fails, warns, or is cancelled writes its kept lines above its end line at its own end, each at the column where that task's text starts, 4 columns at depth 1 and 6 at depth 2, `    npm error code E404`. Because the indent is inside the message, an application's lane override draws every line, a task's and a root's.
   - The lines land in the order they happen, so the tasks of different parents interleave, and the indent shows a line's depth, not its parent. Open tasks that take their parent's end write their end lines first, deepest first, then the parent's kept lines and end line, so a task's end line lands between its parent's start and end lines.
   - Nothing collapses, and under an invocation by name the same lines land in `messages`, their indent included.
 - **Each line's own figures.** A line's counts, bar, rate, time left, and elapsed time are its own. A parent shows the counts its own `update` reports and nothing of its tasks', and its elapsed time runs from its own opening. A finished line's figures stop at its end.

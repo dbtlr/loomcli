@@ -32,7 +32,7 @@
  * `progress-tasks-pty.test.ts` proves a drawn tree, its collapse, and a kept tree on a real
  * terminal.
  */
-import { Application, FatalError, override } from '@loomcli/core';
+import { Application, FatalError, lanes, override } from '@loomcli/core';
 import type { ActionContext, ProgressEvent, ViewContext } from '@loomcli/core';
 import { plain as plainPlugin } from '@loomcli/plugins/plain';
 import { verbose } from '@loomcli/plugins/verbose';
@@ -71,6 +71,8 @@ interface Setup {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly argv?: readonly string[];
   readonly render?: (data: ProgressLine, context: ViewContext) => string;
+  /** Overrides the info and error lane views, each to draw its name, a colon, and the message. */
+  readonly laneOverride?: boolean;
 }
 
 /** What a run left: its frames, its screen events, its stderr, its messages, and its events. */
@@ -101,7 +103,15 @@ function flush(): Promise<void> {
 /** Runs `script` as an action, the clock at 0 when it starts, and answers what the run left. */
 async function grouped(
   script: (context: ActionContext<unknown>, scene: Scene) => Promise<void>,
-  { argv = [], columns = 60, env = {}, render, rows = 24, terminal = 'tty' }: Setup = {},
+  {
+    argv = [],
+    columns = 60,
+    env = {},
+    laneOverride,
+    render,
+    rows = 24,
+    terminal = 'tty',
+  }: Setup = {},
 ): Promise<Outcome> {
   const frames: Drawn[] = [];
   const reported: ProgressEvent[] = [];
@@ -123,6 +133,12 @@ async function grouped(
           return text;
         },
       }),
+      ...(laneOverride
+        ? [
+            override(lanes.info, { render: (message) => `info: ${message}` }),
+            override(lanes.error, { render: (message) => `error: ${message}` }),
+          ]
+        : []),
     ],
   }).action(async (context) => {
     // Scope the fake clock to the action so run setup and teardown keep real timers.
@@ -752,15 +768,15 @@ async function outOfOrder(context: ActionContext<unknown>): Promise<void> {
 /** What `outOfOrder` writes where the tree does not draw. */
 const plainLines = [
   'ℹ Deploying',
-  '  ℹ Building the image',
-  '    ℹ Compiling',
-  '  ℹ Pushing the image',
-  '    ✔ Compiled',
+  'ℹ   Building the image',
+  'ℹ     Compiling',
+  'ℹ   Pushing the image',
+  '✔     Compiled',
   '    npm error code E404',
-  '  ✘ Pushing the image',
-  '  ℹ Cleaning up',
-  '  ⚠ Building the image',
-  '  ⚠ Cleaning up',
+  '✘   Pushing the image',
+  'ℹ   Cleaning up',
+  '⚠   Building the image',
+  '⚠   Cleaning up',
   '⚠ Deployed with problems',
   '',
 ].join('\n');
@@ -784,9 +800,9 @@ test('under -q only the failed and warned lines and the kept lines print, indent
   expect(outcome.stderr).toBe(
     [
       '    npm error code E404',
-      '  ✘ Pushing the image',
-      '  ⚠ Building the image',
-      '  ⚠ Cleaning up',
+      '✘   Pushing the image',
+      '⚠   Building the image',
+      '⚠   Cleaning up',
       '⚠ Deployed with problems',
       '',
     ].join('\n'),
@@ -808,7 +824,56 @@ test("piped, a task's long line wraps nowhere, and its continuation lines keep t
     { terminal: 'pipe' },
   );
   expect(outcome.stderr).toBe(
-    'ℹ Deploying\n  ℹ Building\n    the image\n  ✔ Building\n    the image\n✔ Deploying\n',
+    'ℹ Deploying\nℹ   Building\n    the image\n✔   Building\n    the image\n✔ Deploying\n',
+  );
+});
+
+test("an application's lane override draws a task's start and end lines, the indent inside the message", async () => {
+  const outcome = await grouped(
+    async (context) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      const building = deploying.task({ label: 'Building' });
+      await building.task({ label: 'Compiling' }).fail('Compile failed');
+      await building.skip();
+      await deploying.fail();
+    },
+    { laneOverride: true, terminal: 'pipe' },
+  );
+  expect(outcome.stderr).toBe(
+    [
+      'info: Deploying',
+      'info:   Building',
+      'info:     Compiling',
+      'error:     Compile failed',
+      'info:   Building',
+      'error: Deploying',
+      '',
+    ].join('\n'),
+  );
+});
+
+test('a task two levels down steps in four spaces after the glyph, as its kept lines step in six columns', async () => {
+  const outcome = await grouped(
+    async (context) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      const compiling = deploying.task({ label: 'Building' }).task({ label: 'Compiling' });
+      await compiling.log('error TS2322');
+      await compiling.fail();
+      await deploying.fail();
+    },
+    { terminal: 'pipe' },
+  );
+  expect(outcome.stderr).toBe(
+    [
+      'ℹ Deploying',
+      'ℹ   Building',
+      'ℹ     Compiling',
+      '      error TS2322',
+      '✘     Compiling',
+      '✘   Building',
+      '✘ Deploying',
+      '',
+    ].join('\n'),
   );
 });
 
@@ -824,10 +889,10 @@ test("piped, a failing run writes the open tasks' failure lines before the root'
   expect(failing.stderr).toBe(
     [
       'ℹ Deploying',
-      '  ℹ Building',
-      '    ℹ Compiling',
-      '    ✘ Compiling',
-      '  ✘ Building',
+      'ℹ   Building',
+      'ℹ     Compiling',
+      '✘     Compiling',
+      '✘   Building',
       '✘ Deploying',
       'The build failed. Fix the errors above, then deploy again.',
       '',
@@ -843,7 +908,7 @@ test("piped, a failing run writes the open tasks' failure lines before the root'
     },
     { terminal: 'pipe' },
   );
-  expect(cancelled.stderr).toBe('ℹ Deploying\n  ℹ Building\n    half built\n');
+  expect(cancelled.stderr).toBe('ℹ Deploying\nℹ   Building\n    half built\n');
 });
 
 test('track() on a task returns the value and ends the task, and rethrows a rejection after failing it', async () => {
@@ -866,7 +931,7 @@ test('track() on a task returns the value and ends the task, and rethrows a reje
     { terminal: 'pipe' },
   );
   expect(outcome.stderr).toBe(
-    'ℹ Deploying\n  ℹ Building\n  ✔ Built 3 layers\n  ℹ Pushing\n  ✘ Pushed nothing\n✔ Deploying\n',
+    'ℹ Deploying\nℹ   Building\n✔   Built 3 layers\nℹ   Pushing\n✘   Pushed nothing\n✔ Deploying\n',
   );
 });
 
@@ -912,7 +977,7 @@ test('task() on a task that has ended returns a task that has ended too', async 
     },
     { terminal: 'pipe' },
   );
-  expect(outcome.stderr).toBe('ℹ Deploying\n  ℹ Building\n  ✔ Building\n✔ Deploying\n');
+  expect(outcome.stderr).toBe('ℹ Deploying\nℹ   Building\n✔   Building\n✔ Deploying\n');
 });
 
 test('each task reports one start and one end under its own label, its open tasks ending before it', async () => {
@@ -959,12 +1024,12 @@ test("under core's close the root's end event comes first, then each open task's
   expect(outcome.messages).toBe(
     [
       'ℹ Deploying',
-      '  ℹ Building',
-      '    ℹ Compiling',
-      '  ℹ Pushing',
-      '    ✘ Compiling',
-      '  ✘ Building',
-      '  ✘ Pushing',
+      'ℹ   Building',
+      'ℹ     Compiling',
+      'ℹ   Pushing',
+      '✘     Compiling',
+      '✘   Building',
+      '✘   Pushing',
       '✘ Deploying',
       'The deploy failed. Fix the errors above, then deploy again.',
       '',

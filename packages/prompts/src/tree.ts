@@ -6,8 +6,7 @@
  * it, so the task takes no rows and core closes a tree's regions together. Where the root's region
  * is not live, each line writes its plain start and end lines when they happen, a task's indented.
  */
-import { glyph } from '@loomcli/core';
-import type { Region, RegionCloser, View, ViewContext } from '@loomcli/core';
+import type { Region, RegionCloser } from '@loomcli/core';
 
 import { controls } from './controls.js';
 import { estimate } from './estimate.js';
@@ -45,37 +44,8 @@ const LOG_ROWS = 5;
 /** The lines a line keeps of its log to write when it fails when its settings name no count. */
 const LOG_LIMIT = 1000;
 
-/** The glyph and style token a plain line's lane marks it with. */
+/** The lane a plain line goes through. */
 type Mark = 'error' | 'info' | 'success' | 'warning';
-
-/**
- * The message laid out right of a gutter `width` columns wide, as core's lane views lay it out: on a
- * terminal its tabs expand first, and it wraps at the columns right of the gutter, each
- * continuation line indented under the message. Off a terminal it is unchanged.
- */
-function underGutter(message: string, context: ViewContext, width: number): string {
-  const gutter = ' '.repeat(width);
-  const room = context.columns === undefined ? 0 : context.columns - width;
-  const laid = context.columns === undefined ? message : context.expandTabs(message);
-  const wrapped = room > 0 ? context.wrap(laid, room) : laid;
-  return wrapped.replace(/(?<newline>\r?\n)(?!$)/gu, `$<newline>${gutter}`);
-}
-
-/**
- * The view a task's plain line draws through: the lane's default look, its glyph in the lane's
- * token, one space, and the text, after two columns for each level of the task's depth, its
- * continuation rows indented with it.
- */
-function plainLane(mark: Mark, depth: number): View<string> {
-  const indent = '  '.repeat(depth);
-  return {
-    render: (message, context) => {
-      const glyphText = glyph[mark];
-      const body = underGutter(message, context, indent.length + context.width(glyphText) + 1);
-      return `${indent}${context.style[mark](glyphText)} ${body}`;
-    },
-  };
-}
 
 /** The message a tracked outcome ends with: the string, the function's answer, or the label. */
 function trackedMessage<Value>(
@@ -293,15 +263,23 @@ class Line {
     return state === 'failed' ? out.error(message, view) : out.warn(message, view);
   }
 
-  /** One plain line through the lane of `mark`, a root's through the lane view and a task's indented. */
+  /**
+   * One plain line through the lane of `mark`, whose view an application may override. A task's
+   * text steps in two spaces for each level of its depth, inside the message, after the lane's
+   * glyph, every line of it alike.
+   */
   writePlain(mark: Mark, text: string): Promise<void> {
     const { out } = this.tree.context;
-    const view = this.depth === 0 ? undefined : plainLane(mark, this.depth);
+    const indent = '  '.repeat(this.depth);
+    const message = text
+      .split('\n')
+      .map((line) => `${indent}${line}`)
+      .join('\n');
     const lanes: Readonly<Record<Mark, () => Promise<void>>> = {
-      error: () => out.error(text, view),
-      info: () => out.info(text, view),
-      success: () => out.success(text, view),
-      warning: () => out.warn(text, view),
+      error: () => out.error(message),
+      info: () => out.info(message),
+      success: () => out.success(message),
+      warning: () => out.warn(message),
     };
     return lanes[mark]();
   }
