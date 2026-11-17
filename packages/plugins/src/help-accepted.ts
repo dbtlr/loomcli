@@ -1,12 +1,12 @@
 import { readExtension } from '@loomcli/core';
 import type { ArgumentNode, OptionNode } from '@loomcli/core';
 
-import { closedSet } from '../closed-set.js';
-import type { Schema } from '../closed-set.js';
-import { escapeControls } from '../encode.js';
-import { terminator } from '../lines.js';
-import { oneLine } from './cells.js';
-import { helpArgument, helpInput } from './extension.js';
+import { closedSet } from './closed-set.js';
+import type { Schema } from './closed-set.js';
+import { escapeControls } from './encode.js';
+import { oneLine } from './help-cells.js';
+import { helpArgument, helpInput } from './help/extension.js';
+import { terminator } from './lines.js';
 
 /** The most values a derived list names; a larger set is the author's to state with `accepts`. */
 const maximumValues = 8;

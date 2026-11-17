@@ -8,7 +8,7 @@ import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { theme } from '@loomcli/plugins/theme';
 import { expect, test } from 'vite-plus/test';
 
-import { renderDetails } from '../src/help/details.js';
+import { renderDetails } from '../src/help-details.js';
 import { parseMarkdown } from '../src/markdown/blocks.js';
 import { parseInline } from '../src/markdown/inline.js';
 import { blockCases, inlineCases } from './markdown-cases.js';

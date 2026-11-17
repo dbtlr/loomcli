@@ -1,7 +1,7 @@
 import { splitLines } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
 
-import { NARROWEST, continuation, terminalWrap, unitWidth } from '../text-lines.js';
+import { NARROWEST, continuation, terminalWrap, unitWidth } from './text-lines.js';
 
 /** A view context whose destination is a terminal that reports its width. */
 type TerminalContext = ViewContext & { readonly columns: number };

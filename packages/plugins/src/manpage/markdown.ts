@@ -3,7 +3,7 @@
  * reader's width, so the author's line breaks inside a paragraph are not kept, while code keeps
  * every line. The details are parsed with the parser help uses.
  */
-import { isEmpty } from '../help/cells.js';
+import { isEmpty } from '../help-cells.js';
 import { parseMarkdown } from '../markdown/blocks.js';
 import type { Block, Item } from '../markdown/blocks.js';
 import type { Inline } from '../markdown/inline.js';

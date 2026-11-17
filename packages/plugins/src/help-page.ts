@@ -1,10 +1,7 @@
 import { nowrap, readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
-import { singleLineOf } from '../lines.js';
-import { groupSentences } from '../option-groups.js';
-import { continuation } from '../text-lines.js';
-import { argumentAccepts, optionAccepts } from './accepted.js';
+import { argumentAccepts, optionAccepts } from './help-accepted.js';
 import {
   aliasLabels,
   aliasSeparator,
@@ -17,15 +14,18 @@ import {
   optionForm,
   pageOptionFacts,
   rightCell,
-} from './cells.js';
-import type { Row, StringOption, UsageWriter } from './cells.js';
-import { renderDetails } from './details.js';
-import { epilogsOf } from './epilogs.js';
-import { helpCommand, helpInput } from './extension.js';
-import { hangLines, onTerminal, prose } from './layout.js';
-import { sectionBlocks } from './sections.js';
-import type { SectionMember } from './sections.js';
-import type { HelpPage, HelpVariant } from './views.js';
+} from './help-cells.js';
+import type { Row, StringOption, UsageWriter } from './help-cells.js';
+import { renderDetails } from './help-details.js';
+import { epilogsOf } from './help-epilogs.js';
+import { hangLines, onTerminal, prose } from './help-layout.js';
+import { sectionBlocks } from './help-sections.js';
+import type { SectionMember } from './help-sections.js';
+import { helpCommand, helpInput } from './help/extension.js';
+import type { HelpPage, HelpVariant } from './help/views.js';
+import { singleLineOf } from './lines.js';
+import { groupSentences } from './option-groups.js';
+import { continuation } from './text-lines.js';
 
 /**
  * The members one page shows. A member is visible when it is not hidden, and this is the one place

@@ -1,11 +1,11 @@
 import { nowrap, splitLines } from '@loomcli/core';
 import type { ViewContext } from '@loomcli/core';
 
-import { parseMarkdown } from '../markdown/blocks.js';
-import type { Block, Item } from '../markdown/blocks.js';
-import type { Inline } from '../markdown/inline.js';
-import { headingLines, itemLine, itemMarkers, terminalWrap } from '../text-lines.js';
-import { hangLines, onTerminal, proseRoom } from './layout.js';
+import { hangLines, onTerminal, proseRoom } from './help-layout.js';
+import { parseMarkdown } from './markdown/blocks.js';
+import type { Block, Item } from './markdown/blocks.js';
+import type { Inline } from './markdown/inline.js';
+import { headingLines, itemLine, itemMarkers, terminalWrap } from './text-lines.js';
 
 type Style = ViewContext['style'];
 interface Modifiers {

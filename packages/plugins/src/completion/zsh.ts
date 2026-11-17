@@ -1,4 +1,4 @@
-import { identifier, posixQuoted } from './name.js';
+import { identifier, posixQuoted } from '../shell-quoting.js';
 
 /**
  * The script for a name, with the guard lines after its `#compdef` line and the function name its
