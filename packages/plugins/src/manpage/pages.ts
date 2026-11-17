@@ -7,7 +7,7 @@
 import { DeclarationError } from '@loomcli/core';
 import type { CommandGraph, CommandNode, GraphBuiltHook } from '@loomcli/core';
 
-import { visible } from '../help/page.js';
+import { visible } from '../help-page.js';
 import { manpagePageNameTaken } from '../rules.js';
 
 /** The plugin's file in the installation record, `manpage.json`. */

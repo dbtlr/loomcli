@@ -1,7 +1,7 @@
 import { Command, plugin } from '@loomcli/core';
 import type { ActionContext, Plugin } from '@loomcli/core';
 
-import { json } from '../format/views.js';
+import { json } from '../json-views.js';
 import { control, installChild, isPresent, prepare, uninstallChild } from './children.js';
 import type { ChildRun } from './children.js';
 import { judgeRun } from './route.js';

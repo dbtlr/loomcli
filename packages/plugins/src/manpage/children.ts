@@ -12,7 +12,7 @@ import type { CommandGraph, Host, Log } from '@loomcli/core';
 
 import { recordDirectory, requiredHome } from '../application-folders.js';
 import { fileWritten } from '../change-events.js';
-import { isEmpty } from '../help/cells.js';
+import { isEmpty } from '../help-cells.js';
 import {
   createDirectory,
   digestOf,

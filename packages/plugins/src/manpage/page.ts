@@ -7,7 +7,7 @@ import { readExtension } from '@loomcli/core';
 import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from '@loomcli/core';
 
 import { configInput } from '../config/extension.js';
-import { argumentAccepts, optionAccepts } from '../help/accepted.js';
+import { argumentAccepts, optionAccepts } from '../help-accepted.js';
 import {
   aliasLabels,
   aliasSeparator,
@@ -19,9 +19,9 @@ import {
   optionCellParts,
   optionFacts,
   rightCellWith,
-} from '../help/cells.js';
-import type { CellText, CellWriter, Fact } from '../help/cells.js';
-import { epilogsOf } from '../help/epilogs.js';
+} from '../help-cells.js';
+import type { CellText, CellWriter, Fact } from '../help-cells.js';
+import { epilogsOf } from '../help-epilogs.js';
 import {
   childSuffix,
   commandHelp,
@@ -32,10 +32,10 @@ import {
   optionMembers,
   usageForms,
   visible,
-} from '../help/page.js';
-import type { Example } from '../help/page.js';
-import { orderedSections } from '../help/sections.js';
-import type { OrderedSection, SectionMember } from '../help/sections.js';
+} from '../help-page.js';
+import type { Example } from '../help-page.js';
+import { orderedSections } from '../help-sections.js';
+import type { OrderedSection, SectionMember } from '../help-sections.js';
 import { singleLine, singleLineOf } from '../lines.js';
 import { groupSentences } from '../option-groups.js';
 import { detailsLines, notesLines } from './markdown.js';

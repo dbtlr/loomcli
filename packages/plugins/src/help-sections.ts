@@ -1,7 +1,7 @@
 import type { ViewContext } from '@loomcli/core';
 
-import { column } from './cells.js';
-import type { Row } from './cells.js';
+import { column } from './help-cells.js';
+import type { Row } from './help-cells.js';
 
 /** One member a section lists: its default heading, its authored section, and what it shows. */
 interface SectionMember<Shown> {

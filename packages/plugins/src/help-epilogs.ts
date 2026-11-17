@@ -1,7 +1,7 @@
 import { readExtension } from '@loomcli/core';
 import type { CommandGraph, CommandNode } from '@loomcli/core';
 
-import { helpCommand } from './extension.js';
+import { helpCommand } from './help/extension.js';
 
 /** The ancestors of `command`, its parent first and the root last, reached through its path. */
 function ancestorsOf(graph: CommandGraph, command: CommandNode): CommandNode[] {

@@ -1,4 +1,4 @@
-import { fishQuoted, identifier } from './name.js';
+import { fishQuoted, identifier } from '../shell-quoting.js';
 
 /**
  * The Fish completion script, ported from Cobra's `fish_completions.go`.

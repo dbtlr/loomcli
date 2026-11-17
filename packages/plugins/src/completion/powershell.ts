@@ -1,4 +1,4 @@
-import { identifier, powershellQuoted } from './name.js';
+import { identifier, powershellQuoted } from '../shell-quoting.js';
 
 /**
  * The PowerShell completion script, ported from Cobra's `powershell_completions.go`.

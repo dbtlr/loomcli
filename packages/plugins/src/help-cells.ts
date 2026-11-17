@@ -1,15 +1,15 @@
 import { nowrap, pad, readExtension } from '@loomcli/core';
 import type { ArgumentNode, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
 
-import { aliasSpellings } from '../aliases.js';
-import { isStrings } from '../closed-set.js';
-import { configInput } from '../config/extension.js';
-import { singleLine, singleLineOf, terminators } from '../lines.js';
-import { addsOccurrence, oneOccurrence } from '../occurrences.js';
-import { unitWidth } from '../text-lines.js';
-import { helpInput } from './extension.js';
-import { hanging, onTerminal } from './layout.js';
-import type { TerminalContext } from './layout.js';
+import { aliasSpellings } from './aliases.js';
+import { isStrings } from './closed-set.js';
+import { configInput } from './config/extension.js';
+import { hanging, onTerminal } from './help-layout.js';
+import type { TerminalContext } from './help-layout.js';
+import { helpInput } from './help/extension.js';
+import { singleLine, singleLineOf, terminators } from './lines.js';
+import { addsOccurrence, oneOccurrence } from './occurrences.js';
+import { unitWidth } from './text-lines.js';
 
 /** One option that takes a value, the only kind the action form and the fact list ever narrow to. */
 type StringOption = Extract<OptionNode, { type: 'string' | 'content' }>;

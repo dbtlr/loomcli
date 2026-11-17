@@ -1,4 +1,4 @@
-import { identifier, posixQuoted } from './name.js';
+import { identifier, posixQuoted } from '../shell-quoting.js';
 
 /**
  * The Bash completion script, ported from Cobra's `bash_completionsV2.go`.

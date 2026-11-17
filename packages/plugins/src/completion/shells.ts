@@ -9,10 +9,10 @@ import type { Host } from '@loomcli/core';
 
 import { absoluteVariable, requiredHome } from '../application-folders.js';
 import { exists } from '../installation/disk.js';
+import { identifier, posixQuoted, powershellQuoted } from '../shell-quoting.js';
 import { bashScript } from './bash.js';
 import { fishScript } from './fish.js';
 import { shellUnknown } from './messages.js';
-import { identifier, posixQuoted, powershellQuoted } from './name.js';
 import { powershellScript } from './powershell.js';
 import { shells } from './shell-names.js';
 import type { Shell } from './shell-names.js';

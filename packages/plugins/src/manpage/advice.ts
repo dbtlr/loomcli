@@ -4,7 +4,7 @@
  */
 import { join } from 'node:path';
 
-import { fishQuoted } from '../completion/name.js';
+import { fishQuoted } from '../shell-quoting.js';
 
 /** The folder `man` searches, the parent of the pages' `man1`, and the line that adds it. */
 interface Advice {

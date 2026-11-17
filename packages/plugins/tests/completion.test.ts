@@ -142,11 +142,11 @@ import { sealedShellEnvironment } from '../../../scripts/test-shell.js';
 import { answer } from '../src/completion/answer.js';
 import { bashScript } from '../src/completion/bash.js';
 import { fishScript } from '../src/completion/fish.js';
-import { identifier, powershellQuoted } from '../src/completion/name.js';
 import { powershellScript } from '../src/completion/powershell.js';
 import { zshInstalledScript, zshScript } from '../src/completion/zsh.js';
 import { format } from '../src/format/plugin.js';
 import { help } from '../src/help/plugin.js';
+import { identifier, powershellQuoted } from '../src/shell-quoting.js';
 import { verbose } from '../src/verbose/plugin.js';
 import { run as fixtureRun } from './fixtures/completion-app.js';
 

@@ -2,7 +2,7 @@ import { view } from '@loomcli/core';
 import type { CommandGraph, CommandNode } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
-import { renderPage } from './page.js';
+import { renderPage } from '../help-page.js';
 
 /**
  * Which page an invocation asked for: `compact` orients a reader who needs the syntax, and
