@@ -171,78 +171,92 @@ type UpdateCheckSkip =
   | { readonly kind: 'not-release' | 'not-script'; readonly name: string }
   | { readonly kind: 'not-absolute'; readonly variable: string };
 
-/** The sentence that names why the middleware did nothing. */
-function skipReason(skip: UpdateCheckSkip): string {
+/** One log line: its message, a constant Message Template, and the fields it reads. */
+interface LogText {
+  readonly template: string;
+  readonly fields?: Readonly<Record<string, string>>;
+}
+
+/** The `trace` log line of a middleware that did nothing, naming the first reason. */
+function skippedUpdateCheck(skip: UpdateCheckSkip): LogText {
   switch (skip.kind) {
     case 'opted-out': {
-      return `${shown(skip.variable)} is set.`;
+      return {
+        fields: { variable: skip.variable },
+        template: 'Skipped the update check: {variable} is set.',
+      };
     }
     case 'stdout': {
-      return 'stdout is not a terminal.';
+      return { template: 'Skipped the update check: stdout is not a terminal.' };
     }
     case 'stderr': {
-      return 'stderr is not a terminal.';
+      return { template: 'Skipped the update check: stderr is not a terminal.' };
     }
     case 'ci': {
-      return 'CI is set.';
+      return { template: 'Skipped the update check: CI is set.' };
     }
     case 'self-update': {
-      return 'self-update is running.';
+      return { template: 'Skipped the update check: self-update is running.' };
     }
     case 'not-release': {
-      return `${shown(skip.name)} is not a release binary.`;
+      return {
+        fields: { name: skip.name },
+        template: 'Skipped the update check: {name} is not a release binary.',
+      };
     }
     case 'not-script': {
-      return `${shown(skip.name)} was not installed by install.sh.`;
+      return {
+        fields: { name: skip.name },
+        template: 'Skipped the update check: {name} was not installed by install.sh.',
+      };
     }
     default: {
-      return `${shown(skip.variable)} is not an absolute path.`;
+      return {
+        fields: { variable: skip.variable },
+        template: 'Skipped the update check: {variable} is not an absolute path.',
+      };
     }
   }
 }
 
-/** The `-vv` line of a middleware that did nothing, naming the first reason. */
-function skippedUpdateCheck(skip: UpdateCheckSkip): string {
-  return `Skipped the update check: ${skipReason(skip)}`;
+/** The `debug` log line that names the cache the middleware read. */
+function readUpdateCheck(path: string): LogText {
+  return { fields: { path }, template: 'Read the update check from {path}.' };
 }
 
-/** The `-v` line that names the cache the middleware read. */
-function readUpdateCheck(path: string): string {
-  return `Read the update check from ${shownPlace(path)}.`;
+/** The `trace` log line for something at the cache's path that is not a cache this version reads. */
+function ignoredUpdateCache(path: string): LogText {
+  return {
+    fields: { path },
+    template: 'Ignored {path}: it is not an update cache this version reads.',
+  };
 }
 
-/** The `-vv` line for something at the cache's path that is not a cache this version reads. */
-function ignoredUpdateCache(path: string): string {
-  return `Ignored ${shownPlace(path)}: it is not an update cache this version reads.`;
+/** The `debug` log line once the detached refresh started. */
+const startedRefresh: LogText = { template: 'Started a refresh of the update check.' };
+
+/** The `trace` log line before each request the Command sends. */
+function requested(url: string): LogText {
+  return { fields: { url }, template: 'Requested {url}.' };
 }
 
-const startedRefresh = 'Started a refresh of the update check.';
-
-/** The `-vv` line before each request the Command sends. */
-function requested(url: string): string {
-  return `Requested ${shownPlace(url)}.`;
+/** The `debug` log line once a run without a version found a newer release on its channel. */
+function resolvedRelease(version: string, channel: string): LogText {
+  return {
+    fields: { channel, version },
+    template: 'Resolved v{version} on the {channel} channel.',
+  };
 }
 
-/** The `-v` line once a run without a version found a newer release on its channel. */
-function resolvedRelease(version: string, channel: string): string {
-  return `Resolved v${shown(version)} on the ${shown(channel)} channel.`;
+/** The `debug` log line once the downloaded asset matches its listed digest. */
+function verifiedAsset(asset: string): LogText {
+  return { fields: { asset }, template: 'Verified {asset} against SHA256SUMS.' };
 }
 
-/** The `-v` line once the downloaded asset matches its listed digest. */
-function verifiedAsset(asset: string): string {
-  return `Verified ${shown(asset)} against SHA256SUMS.`;
-}
-
-/** The `-v` line once the verified bytes are renamed over the recorded path. */
-function replacedBinary(path: string): string {
-  return `Replaced ${shownPlace(path)}.`;
-}
-
-export type { FailedRequest, FoundRelease, UpdateCheckSkip };
+export type { FailedRequest, FoundRelease, LogText, UpdateCheckSkip };
 export {
   ignoredUpdateCache,
   readUpdateCheck,
-  replacedBinary,
   requested,
   resolvedRelease,
   skippedUpdateCheck,

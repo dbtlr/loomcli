@@ -23,8 +23,6 @@ new Application('streamed').action(async ({ out }) => {
   await out.success(answer());
   await out.warn(answer());
   await out.error(answer());
-  await out.debug(answer());
-  await out.trace(answer());
   await (typeof either === 'string' ? out.info(either) : out.info(either));
   // @ts-expect-error TS2769: A stream takes no view.
   await out.info(answer(), framed);

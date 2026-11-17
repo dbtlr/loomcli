@@ -91,23 +91,30 @@ describe('logDestination', () => {
     expect(destination).toEqual({
       env: {},
       home: '/loom-test/home',
-      out: { debug: expect.any(Function), trace: expect.any(Function) },
+      log: {
+        debug: expect.any(Function),
+        error: expect.any(Function),
+        info: expect.any(Function),
+        trace: expect.any(Function),
+        warn: expect.any(Function),
+      },
       platform: 'linux',
       stderr: null,
     });
-    await expect(destination.out.debug('Logging to a file.')).resolves.toBeUndefined();
-    await expect(destination.out.trace('Rotated a file.')).resolves.toBeUndefined();
+    expect(destination.log.debug('Logging to {path}.', { path: '/x' })).toBeUndefined();
     expect(logDestination().env).not.toBe(logDestination().env);
   });
 
-  it('stated lanes receive the lines a hook writes', async () => {
+  it('a stated log receives the events a hook logs', () => {
     const lines: string[] = [];
-    const debug = async (message: string) => {
+    const record = (message: string) => {
       lines.push(message);
     };
-    const destination = logDestination({ out: { debug, trace: debug } });
-    await destination.out.debug('Logging to a file.');
-    expect(lines).toEqual(['Logging to a file.']);
+    const destination = logDestination({
+      log: { debug: record, error: record, info: record, trace: record, warn: record },
+    });
+    destination.log.debug('Logging to {path}.');
+    expect(lines).toEqual(['Logging to {path}.']);
   });
 
   it('a stated stream is the stream the hook writes to', () => {

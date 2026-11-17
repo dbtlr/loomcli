@@ -6,7 +6,6 @@
 
 import type { Host } from '@loomcli/core';
 import type { Log } from '@loomcli/core';
-import type { Out } from '@loomcli/core';
 import type { Plugin as Plugin_2 } from '@loomcli/core';
 
 // @public
@@ -14,7 +13,6 @@ export interface RefreshContext {
     readonly host: Host;
     readonly log: Log;
     readonly name?: string;
-    readonly out?: Pick<Out, 'debug' | 'trace'>;
     readonly path: string;
     readonly signal: AbortSignal;
 }

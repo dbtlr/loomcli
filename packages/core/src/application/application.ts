@@ -128,7 +128,7 @@ import { checkPlainBinding, plain, plainSwitch } from '../marks/plain.js';
 import { argvVerbosity, checkVerbosityBinding, namedVerbosity } from '../marks/verbosity.js';
 import { coreViews } from '../output/lanes.js';
 import { RunLog } from '../output/log.js';
-import type { LogDestination } from '../output/log.js';
+import type { DestinationFacts, LogOutlet, LogScreen } from '../output/log.js';
 import { Output, reportPlainly } from '../output/output.js';
 import type { WriteState } from '../output/output.js';
 import type {
@@ -1128,30 +1128,35 @@ class ApplicationBuilder<
      */
     const logged: { current: RunLog | undefined } = { current: undefined };
     /**
-     * The run's `debug` and `trace` lanes for an `onLog` hook, read at each call, so a line follows
-     * the verbosity the run settled. Core logs no event before then.
+     * Where this run shows a log event as a log line, read at each call, so a line follows the
+     * verbosity the run settled. Core logs no event before then.
      */
-    const lanes: LogDestination['out'] = {
-      debug: async (...call: MessageArguments) => output?.out.debug(...call),
-      trace: async (...call: MessageArguments) => output?.out.trace(...call),
+    const screen: LogScreen = {
+      show: (event) => {
+        output?.showLog(event);
+      },
+      shows: (level) => output?.showsLog(level) ?? false,
     };
     // A hook's stderr follows the run's stderr order once the run's output exists.
-    const logDestination = (): LogDestination => {
-      const destination = door.destination(reportingHost(), lanes);
-      return output?.logDestination(destination) ?? destination;
+    const destinationFacts = (): DestinationFacts => {
+      const facts = door.destination(reportingHost());
+      return output?.logDestination(facts) ?? facts;
     };
     const logs = (): RunLog => {
-      logged.current ??= new RunLog(
-        {
-          application: Object.freeze({
-            name: this.#name,
-            version: this.#config.facts.version,
-          }),
-          destination: logDestination(),
-          path: () => walked,
+      logged.current ??= new RunLog({
+        application: Object.freeze({
+          name: this.#name,
+          version: this.#config.facts.version,
+        }),
+        outlet: door.outlet ?? {
+          facts: destinationFacts(),
+          hooks: this.#config.plugins.flatMap(({ identity, onLog }) =>
+            onLog === undefined ? [] : [{ hook: onLog, plugin: identity }],
+          ),
+          screen,
         },
-        this.#config.plugins.flatMap(({ onLog }) => (onLog === undefined ? [] : [onLog])),
-      );
+        path: () => walked,
+      });
       return logged.current;
     };
     const scene = (): FailureScene & { host: ReportHost } => ({
@@ -1278,8 +1283,6 @@ class ApplicationBuilder<
             host,
             log: (identity) => logs().bind(identity),
             out: {
-              debug: (...call: MessageArguments) => invocationOutput.out.debug(...call),
-              trace: (...call: MessageArguments) => invocationOutput.out.trace(...call),
               warn: (...call: MessageArguments) => invocationOutput.out.warn(...call),
             },
             plugins: built.plugins,
@@ -1306,10 +1309,10 @@ class ApplicationBuilder<
           // An action's own call reuses this run's graph, host fields, signal, and lane.
           const action: ActionCall = {
             bound: { declaredValues, graph, inspected, places },
-            destination: logs().destination,
             fields: fieldsOf(host),
             lane: door.lane,
             listens: door.listens,
+            outlet: logs().outlet,
             parent: { reason: () => bracket.reason(), signal: controller.signal },
             persistent: () => persistent,
           };
@@ -1561,12 +1564,12 @@ interface BoundGraph {
 
 /**
  * What a call an action makes reads from its run: the graph, the five host fields, the signal, and
- * the destination its log events reach.
+ * the outlet its log events reach.
  */
 interface ActionCall {
   bound: BoundGraph;
-  /** Where the run's log events are delivered, which its nested runs deliver to as well. */
-  destination: LogDestination;
+  /** Where the run's log events go, which its nested runs send theirs to as well. */
+  outlet: LogOutlet;
   fields: HandleFacts;
   /** The lane of the run's signal source, which the call takes its own place in. */
   lane: SharedLane;
@@ -1651,11 +1654,13 @@ interface RunDoor {
     signal: AbortSignal,
     settled: { early: RenderingPolicy; plain: boolean },
   ) => Output;
+  /** The destination facts of an outermost run, which its host names. */
+  destination: (host: ReportHost) => DestinationFacts;
   /**
-   * Where the run's log events are delivered: the outermost run's destination, which this run's
-   * host and lanes name under `run()` and `app.invoke`, and an action's call takes from its parent.
+   * The outlet of the run an action's call is nested in, which the call's events go through, or
+   * none for an outermost run, which builds its own.
    */
-  destination: (host: ReportHost, out: LogDestination['out']) => LogDestination;
+  readonly outlet: LogOutlet | undefined;
   /** The policy the run resolves its output by, from the Application's declared one. */
   rendering: (declared: RenderingPolicy) => RenderingPolicy;
   /** The graph an action's run built, which this run reuses, or none for a run that builds. */
@@ -1680,8 +1685,8 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     bound: undefined,
     bracket: (controller, entry) =>
       bracketRun(controller, { caller: options?.signal, entry: { ...entry, listens: true }, lane }),
-    destination: ({ env, home, platform, stderr }, out) =>
-      Object.freeze({ env, home, out, platform, stderr }),
+    destination: ({ env, home, platform, stderr }) =>
+      Object.freeze({ env, home, platform, stderr }),
     encodes: true,
     enter: () => {
       const { publishEnv } = handle;
@@ -1714,6 +1719,7 @@ function argvDoor(application: string, options: RunOptions | undefined): RunDoor
     invokedBy: 'argv',
     lane,
     listens: true,
+    outlet: undefined,
     output: (host, signal, { early, plain: on }) => {
       const output = new Output(host, signal, on);
       output.configure(early, new Map());
@@ -1762,8 +1768,7 @@ function nameDoor<Mapped>(
         parent: action?.parent,
       }),
     // An invocation by name writes to no process stream, so a call of the application has no stderr.
-    destination: ({ env, home, platform }, out) =>
-      action?.destination ?? Object.freeze({ env, home, out, platform, stderr: null }),
+    destination: ({ env, home, platform }) => Object.freeze({ env, home, platform, stderr: null }),
     encodes: false,
     enter: () => ({
       // An invocation by name settles no background and writes no query.
@@ -1780,6 +1785,7 @@ function nameDoor<Mapped>(
     lane,
     listens,
     // A call's host.argv is empty, so it reads no choice, and its plain policy holds color off.
+    outlet: action?.outlet,
     output: (captured, signal) => {
       const output = new Output(captured, signal);
       // A fault raised before the build must already render plain, so the policy applies at entry.

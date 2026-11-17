@@ -1,6 +1,6 @@
 /*
  * What `install` and `uninstall` share: the run a child acts on, the checks made before any
- * program starts, the plugin's files read, each named at -vv, the agent output a failure repeats,
+ * program starts, the plugin's files read, each logged at trace, the agent output a failure repeats,
  * and the `Program run.` event of an agent call that changed a registration.
  */
 import { escapeControlCharacters, FatalError } from '@loomcli/core';
@@ -25,7 +25,6 @@ interface ChildRun {
   readonly signal: AbortSignal;
   /** The action's log, which records each file the child writes or removes. */
   readonly log: Log;
-  readonly trace: (message: string) => Promise<void>;
   readonly info: (message: string) => Promise<void>;
   readonly success: (message: string) => Promise<void>;
   readonly warn: (message: string) => Promise<void>;
@@ -70,7 +69,7 @@ function refuseWindows(run: ChildRun, child: Child): void {
   }
 }
 
-/** The registration one agent's plugin's file records, named at -vv once read, or its refusal. */
+/** The registration one agent's plugin's file records, logged at trace once read, or its refusal. */
 async function readRecord(
   run: ChildRun,
   { child, record }: Reading,
@@ -81,13 +80,14 @@ async function readRecord(
   if (read.status === 'refused') {
     throw new FatalError(recordUnreadable(run.name, read.refused.path, child));
   }
-  await run.trace(checkedRecord(pluginFilePath(record, plugin)));
+  const checked = checkedRecord(pluginFilePath(record, plugin));
+  run.log.trace(checked.template, checked.fields);
   return read.registration;
 }
 
 /**
  * The registration each agent's plugin's file records, or the refusal of one it cannot read. Each
- * file read, there or not, is named at -vv; a refused one is named by its failure. Once every file
+ * file read, there or not, is logged at trace; a refused one is named by its failure. Once every file
  * reads, the staging files a killed write left beside them are removed.
  */
 async function readRecords(run: ChildRun, reading: Reading): Promise<Recorded> {

@@ -78,11 +78,11 @@ interface Walk {
 
 /**
  * What every request reads: the run signal, and the call that names a URL's address before it is
- * requested, which the Command answers with its `-vv` line.
+ * requested, which the Command answers with its `trace` log line.
  */
 interface Requesting {
   readonly signal: AbortSignal;
-  readonly requested: (url: string) => Promise<void>;
+  readonly requested: (url: string) => void;
 }
 
 /** One request of a walk, then the rest of the walk after the redirect it was answered with. */
@@ -140,7 +140,7 @@ function shownAddress(url: URL): string {
  */
 async function request(url: URL, start: URL, requesting: Requesting): Promise<Response> {
   const { requested, signal } = requesting;
-  await requested(shownAddress(url));
+  requested(shownAddress(url));
   try {
     return await fetch(url, { redirect: 'manual', signal });
   } catch (error) {

@@ -28,10 +28,6 @@ describe('environmentContext', () => {
   it('a stated out.warn and log level receive the calls', async () => {
     const warn = vi.fn(async (_message: string) => {});
     const debug = vi.fn();
-    const trace = vi.fn(async (_message: string) => {});
-    const lanes = environmentContext(regionDefault, { host: { env: {} }, out: { trace } });
-    await lanes.out.trace('Looked for REGION.');
-    expect(trace).toHaveBeenCalledWith('Looked for REGION.');
     const outside = environmentContext(regionDefault, {
       host: { env: { REGION: 'eu-west-1' } },
       out: { warn },
@@ -43,11 +39,9 @@ describe('environmentContext', () => {
     expect(debug).toHaveBeenCalledWith('REGION defaulted.');
   });
 
-  it('an unstated out.warn, out.debug, or out.trace resolves and log levels do nothing', async () => {
+  it('an unstated out.warn resolves and log levels do nothing', async () => {
     const context = environmentContext(regionDefault, { host: { env: { REGION: 'eu-west-1' } } });
     await expect(context.out.warn('anything')).resolves.toBeUndefined();
-    await expect(context.out.debug('anything')).resolves.toBeUndefined();
-    await expect(context.out.trace('anything')).resolves.toBeUndefined();
     expect(context.log.info('anything')).toBeUndefined();
     await expect(regionDefault(context)).resolves.toBeUndefined();
   });

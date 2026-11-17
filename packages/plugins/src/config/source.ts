@@ -5,7 +5,7 @@ import type {
   ContextualStyle,
   InputProblem,
   OptionNode,
-  Out,
+  Log,
   Plugin,
   SourceAnswer,
   SourceContext,
@@ -26,6 +26,7 @@ import {
   tupleIssue,
   tupleListIssue,
 } from './messages.js';
+import type { LogText } from './messages.js';
 import type { ConfigOptions } from './plugin.js';
 import { loadOnce } from './shared.js';
 import type { Shared } from './shared.js';
@@ -58,7 +59,7 @@ type Answered =
       covered: boolean;
       issues: readonly Issue[];
       label: string;
-      lines: readonly string[];
+      lines: readonly LogText[];
       spelling: string;
     }
   | undefined;
@@ -215,10 +216,9 @@ type InvokedBy = SourceContext['invokedBy'];
 function ignoredLines(
   subject: { label: string; spelling: string },
   issues: readonly Issue[],
-  style: ContextualStyle,
-): string[] {
+): LogText[] {
   return issues.map((issue) =>
-    ignoredOption({ ...subject, path: issuePath(issue) }, issue.message, style),
+    ignoredOption({ ...subject, path: issuePath(issue) }, issue.message),
   );
 }
 
@@ -270,7 +270,7 @@ function answer(
     issues: shaped.issues,
     kind: 'ignored',
     label: located.label,
-    lines: ignoredLines({ label: located.label, spelling }, shaped.issues, scene.style),
+    lines: ignoredLines({ label: located.label, spelling }, shaped.issues),
     spelling,
   };
 }
@@ -331,7 +331,7 @@ async function answerAll(
   scene: {
     globals: readonly OptionNode[];
     invokedBy: InvokedBy;
-    out: Out;
+    log: Log;
     strict: Strictness;
     style: ContextualStyle;
   },
@@ -346,7 +346,7 @@ async function answerAll(
       linked.push(linkedProblem(request, outcome, scene.globals.includes(request)));
     } else {
       for (const line of outcome?.lines ?? []) {
-        await scene.out.debug(line);
+        scene.log.debug(line.template, line.fields);
       }
     }
   }
@@ -363,16 +363,17 @@ async function answerAll(
 export function configSource<Schema extends StandardSchemaV1, Directory extends string>(
   shared: Shared<Schema>,
 ): SourceResolver<Plugin<ConfigOptions<Directory>>> {
-  return async ({ graph, host, invokedBy, options, out, requests, style }) => {
+  return async ({ graph, host, invokedBy, log, options, out, requests, style }) => {
     const { held, usable } = await loadOnce(shared, {
       graph,
       host,
       invokedBy,
+      log,
       options,
       out,
       style,
     });
-    const scene = { globals: graph.globals, invokedBy, out, strict: shared.strict, style };
+    const scene = { globals: graph.globals, invokedBy, log, strict: shared.strict, style };
     const { answers, linked } =
       usable === undefined ? { answers: {}, linked: [] } : await answerAll(requests, usable, scene);
     if (held.length > none || linked.length > none) {

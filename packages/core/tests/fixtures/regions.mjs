@@ -393,15 +393,15 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
           }).draw('running', text);
         },
       },
-      /** Two regions, a lane line and a debug line between their frames, and a frame that grows. */
+      /** Two regions, a debug log line and a lane line between their frames, and a frame that grows. */
       stack: {
-        action: async ({ out }) => {
+        action: async ({ log, out }) => {
           const first = out.region();
           const second = out.region();
           await first.draw('first frame', text);
           await second.draw('second frame', text);
+          log.debug('debug line');
           await out.info('info line');
-          await out.debug('debug line');
           mark('lines');
           await first.draw('first frame\nfirst grown row', text);
           mark('grown');

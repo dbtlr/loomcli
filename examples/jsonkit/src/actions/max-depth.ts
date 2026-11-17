@@ -33,8 +33,8 @@ function depthOf(value: unknown): number {
 }
 
 /** An omitted path measures the whole document. */
-export const maxDepth: ActionHandler<typeof max> = async ({ args, options, out, style }) => {
-  const document = await readJson({ options, out, style });
+export const maxDepth: ActionHandler<typeof max> = async ({ args, log, options, out }) => {
+  const document = await readJson({ log, options });
   const path: string | undefined = args.path;
   const value = path === undefined ? document : resolvePath(document, path);
   await out.print(String(depthOf(value)));

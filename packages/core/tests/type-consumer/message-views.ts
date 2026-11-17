@@ -15,8 +15,6 @@ new Application('messages').action(async ({ out }) => {
   await out.success('Built', framed);
   await out.warn('Stale', lanes.error);
   await out.error('Failed', framed);
-  await out.debug('Detail', lanes.warn);
-  await out.trace('Finer', framed);
   await out.info('Plain');
   // @ts-expect-error TS2769: A message's view reads a string.
   await out.info('Building', counted);

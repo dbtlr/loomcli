@@ -1,5 +1,5 @@
 import { escapeControlCharacters, FatalError } from '@loomcli/core';
-import type { Content, ContextualStyle, Out } from '@loomcli/core';
+import type { Content, Log } from '@loomcli/core';
 
 /**
  * The reason a runtime gave, or the fallback, as one sentence ending in a period. A reason that
@@ -11,27 +11,26 @@ function explain(error: unknown, fallback: string): string {
   return reason.endsWith('.') ? reason : `${reason}.`;
 }
 
-/** The prepared document handle and the output that names the source. */
+/** The prepared document handle and the log that names the source. */
 export interface DocumentReading {
   readonly options: { readonly file: Content };
-  readonly out: Pick<Out, 'debug'>;
-  readonly style: Pick<ContextualStyle, 'escape'>;
+  readonly log: Log;
 }
 
 /**
  * Every action reads its document here, so a read failure reads the same everywhere. It first
- * names the source on one debug line, which the operator's `-v` reveals, with its control
- * characters escaped as every other operator-supplied name jsonkit prints. A malformed document
- * throws the `SyntaxError` `JSON.parse` raises, which the application's translator turns into its
- * `InvalidJsonError`.
+ * names the source in one debug log event, which the operator's `-v` shows, with the file name in
+ * the event's fields, so core escapes it on screen and the message stays one searchable template.
+ * A malformed document throws the `SyntaxError` `JSON.parse` raises, which the application's
+ * translator turns into its `InvalidJsonError`.
  */
-export async function readJson({ options, out, style }: DocumentReading): Promise<unknown> {
+export async function readJson({ log, options }: DocumentReading): Promise<unknown> {
   const { file } = options;
-  await out.debug(
-    file.kind === 'stdin'
-      ? 'Reading stdin.'
-      : `Reading ${style.escape(escapeControlCharacters(file.name))}.`,
-  );
+  if (file.kind === 'stdin') {
+    log.debug('Reading stdin.');
+  } else {
+    log.debug('Reading {file}.', { file: file.name });
+  }
   const subject = file.kind === 'stdin' ? 'stdin' : `file: ${escapeControlCharacters(file.name)}`;
   const contents = await file.text().catch((error: unknown) => {
     throw new FatalError(

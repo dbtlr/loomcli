@@ -16,11 +16,12 @@ const none = 0;
 export function configOpener<Schema extends StandardSchemaV1, Directory extends string>(
   shared: Shared<Schema>,
 ): Opener<ConfigProvider<Schema, Directory>> {
-  return async ({ graph, host, invokedBy, options, out, style }) => {
+  return async ({ graph, host, invokedBy, log, options, out, style }) => {
     const { held, output } = await loadOnce(shared, {
       graph,
       host,
       invokedBy,
+      log,
       options,
       out,
       style,

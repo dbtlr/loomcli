@@ -145,6 +145,11 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Case = {}) {
 
 const added = '✔ Added note 12.\n';
 
+/** The change event writing `checked` records, which shows at -v, then the refresh it started. */
+function refreshed(file: string): string {
+  return `› File written. path=${file}\n› Started a refresh of the update check.\n`;
+}
+
 /** The run's stderr when the middleware did nothing, for the reason it names. */
 function skipped(reason: string): string {
   return `${added}  ┆ Skipped the update check: ${reason}\n`;
@@ -164,7 +169,7 @@ test('-v names the cache read, then the notice, then the refresh it started', as
   });
   writeCache(box, cacheLine(25));
   await expect(run(box, ['-v', 'add'])).resolves.toMatchObject({
-    stderr: `${added}› Read the update check from ${box.file}.\n${notice}› Started a refresh of the update check.\n`,
+    stderr: `${added}› Read the update check from ${box.file}.\n${notice}${refreshed(box.file)}`,
   });
 });
 
@@ -172,13 +177,13 @@ test('a format 1 cache for another channel is read and refreshed, not ignored', 
   const box = sandbox();
   writeCache(box, cacheLine(1, 'next'));
   await expect(run(box, ['-vv', 'add'])).resolves.toMatchObject({
-    stderr: `${added}› Read the update check from ${box.file}.\n› Started a refresh of the update check.\n`,
+    stderr: `${added}› Read the update check from ${box.file}.\n${refreshed(box.file)}`,
   });
 });
 
 test('-vv names a cache it cannot read as an update cache, and a missing cache writes nothing', async () => {
   const ignored = (box: Sandbox) =>
-    `${added}  ┆ Ignored ${box.file}: it is not an update cache this version reads.\n› Started a refresh of the update check.\n`;
+    `${added}  ┆ Ignored ${box.file}: it is not an update cache this version reads.\n${refreshed(box.file)}`;
   for (const content of ['{', '{"format":2}\n', '[]\n']) {
     const box = sandbox();
     writeCache(box, content);
@@ -192,7 +197,7 @@ test('-vv names a cache it cannot read as an update cache, and a missing cache w
   });
   const missing = sandbox();
   await expect(run(missing, ['-vv', 'add'])).resolves.toMatchObject({
-    stderr: `${added}› Started a refresh of the update check.\n`,
+    stderr: `${added}${refreshed(missing.file)}`,
   });
 });
 
@@ -252,14 +257,16 @@ test('a run whose action failed writes no Skipped line', async () => {
 test('a refresh child that cannot start writes no Started line', async () => {
   const box = sandbox();
   const { stderr } = await run(box, ['-v', 'add'], { unstartable: true });
-  expect(stderr).toBe(added);
+  expect(stderr).toBe(`${added}› File written. path=${box.file}\n`);
 });
 
 test('writing checked records File written. for update.json under the plugin', async () => {
   const box = sandbox();
   const { events } = await run(box, ['add']);
   expect(
-    events.map(({ fields, level, message, plugin }) => ({ fields, level, message, plugin })),
+    events
+      .filter(({ level }) => level === 'info')
+      .map(({ fields, level, message, plugin }) => ({ fields, level, message, plugin })),
   ).toEqual([
     {
       fields: { path: box.file },

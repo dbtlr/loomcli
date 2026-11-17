@@ -2,7 +2,7 @@
  * Acceptance plan for the verbose plugin (docs/plugins/verbose.md#verbose-plugin).
  *
  * - A fixture application installs `verbose()` and declares no verbose-marked or quiet-marked
- *   option of its own. Its action writes one debug line and one result. The plugin's `--help` rows
+ *   option of its own. Its action logs one debug event and writes one result. The plugin's `--help` rows
  *   are proven in help-page.test.ts and its `control` marks in control-marks.test.ts. The
  *   `verbose` and `quiet` marks, and an unmarked counted option reading `false` for both, are
  *   proven in packages/core/tests/verbosity-declarations.test.ts.
@@ -22,10 +22,10 @@ import { expect, test } from 'vite-plus/test';
 
 import { runOnMock } from './fixtures/in-process.ts';
 
-/** An application whose action names the document it reads on a debug line, then prints a result. */
+/** An application whose action logs the document it reads at debug, then prints a result. */
 function reader() {
-  return new Application('reader', { plugins: [verbose()] }).action(async ({ out }) => {
-    await out.debug('Reading doc.json.');
+  return new Application('reader', { plugins: [verbose()] }).action(async ({ log, out }) => {
+    log.debug('Reading {file}.', { file: 'doc.json' });
     await out.print('a');
   });
 }

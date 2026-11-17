@@ -4,12 +4,11 @@ import {
   DeclarationError,
   diagnosticRule,
   extension,
-  lanes,
+  logLine,
   override,
   plugin,
 } from '@loomcli/core';
 import { dotenv } from '@loomcli/plugins/dotenv';
-import { logging } from '@loomcli/plugins/logging';
 import { loomTheme } from '@loomcli/plugins/theme';
 
 import { scenario as fixtureScenario } from './scenario.mjs';
@@ -68,23 +67,21 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
     const tag = extension('@fixture/source/tag', { schema: accepting, target: 'option' });
 
     const plugins = {
-      /** A configuration source that names the file it read through out.debug. */
+      /** A configuration source that names the file it read through log.debug. */
       config: [
         plugin('@fixture/source', {
           extensions: [tag],
           source: {
             binding: tag,
             load: async () => ({
-              default: async ({ out }) => {
-                await out.debug('Read .fetchit.json.');
+              default: ({ log }) => {
+                log.debug('Read .fetchit.json.');
                 return {};
               },
             }),
           },
         }),
       ],
-      /** The logging plugin writing every level's records to the console. */
-      console: [logging({ level: 'trace', to: 'console' })],
       dotenv: [dotenv({ only: ['FETCHIT_TOKEN'] })],
       /** A hook that rejects every graph, a declaration error graph build raises. */
       graph: [
@@ -106,22 +103,14 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
               : command,
         }),
       ],
-      /** An onLog hook that records every event it hears. */
-      logged: [
-        plugin('@fixture/logged', {
-          onLog: (event) => {
-            heard.push(event.level);
-          },
-        }),
-      ],
       /** A middleware that writes one debug line and one info line before the action. */
       middleware: [
         plugin('@fixture/middleware', {
           middleware: {
             activate: 'always',
             load: async () => ({
-              default: async ({ next, out }) => {
-                await out.debug('middleware debug');
+              default: async ({ log, next, out }) => {
+                log.debug('middleware debug');
                 await out.info('middleware info');
                 await next();
               },
@@ -133,24 +122,21 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       themed: [loomTheme()],
     };
 
-    /** The events the logged variant's hook heard. */
-    const heard = [];
-
     const views = {
-      /** A debug lane override that fails the run if any call reaches it. */
+      /** A log-line override that fails the run if any event reaches it. */
       override: [
-        override(lanes.debug, {
+        override(logLine, {
           render: () => {
-            throw new Error('The debug lane view was called.');
+            throw new Error('The log-line view was called.');
           },
         }),
       ],
     };
 
     /** Writes every lane once, then the options it read on stdout. */
-    async function everyLane({ options, out }) {
-      await out.trace('trace');
-      await out.debug('debug');
+    async function everyLane({ log, options, out }) {
+      log.trace('trace');
+      log.debug('debug');
       await out.info('info');
       await out.success('success');
       await out.warn('warn');
@@ -165,16 +151,10 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
 
     /** The actions a variant swaps in for `get`'s own. */
     const actions = {
-      /** One log event beside every lane, so the console destination shows it writes records. */
-      console: async (context) => {
-        context.log.trace('logged');
-        await everyLane(context);
+      long: ({ log }) => {
+        log.debug('one two three four five six seven eight nine ten');
+        log.trace('one two three four five six seven eight nine ten');
       },
-      long: ({ out }) =>
-        Promise.all([
-          out.debug('one two three four five six seven eight nine ten'),
-          out.trace('one two three four five six seven eight nine ten'),
-        ]),
     };
 
     let app = new Application('fetchit', {
@@ -203,9 +183,9 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       .command(
         new Command('show', { description: 'Show one record.' })
           .result({ views: { plain: line } })
-          .action(async ({ out }) => {
-            await out.debug('debug');
-            await out.trace('trace');
+          .action(async ({ log, out }) => {
+            log.debug('debug');
+            log.trace('trace');
             await out.results('record');
           }),
       )
@@ -250,9 +230,6 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         terminal: terminals[terminal],
       }),
     });
-    if (variant === 'logged') {
-      writeStdout(`heard ${JSON.stringify(heard)}\n`);
-    }
   } catch (error) {
     if (error !== fixture.stopped) {
       fixture.thrown(error);

@@ -26,12 +26,10 @@ import { recordName } from './pages.js';
  */
 async function refreshManpages(context: RefreshContext): Promise<void> {
   // The sentence loads with the refresh, so the entry that exports it loads no message module.
-  const { manpagesNotRefreshed, manpagesRefreshed, manpagesRefreshSkipped } =
-    await import('./messages.js');
+  const { manpagesNotRefreshed, manpagesRefreshSkipped } = await import('./messages.js');
   await refreshByRunning(context, {
     notStarted: manpagesNotRefreshed,
     records: [recordName],
-    refreshed: manpagesRefreshed,
     skipped: manpagesRefreshSkipped,
     warning: 'Man pages were not refreshed after the update.',
     words: ['manpage', 'update'],

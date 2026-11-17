@@ -40,7 +40,7 @@ const issue =
 const exceptions: VoiceExceptions = {
   escaping: {
     'inputs/messages.ts': {
-      '${issueSentence}': { reason: issue, sites: 3 },
+      '${issueSentence}': { reason: issue, sites: 2 },
     },
   },
   'outside-text': {
@@ -87,6 +87,13 @@ const exceptions: VoiceExceptions = {
       'issue.message': { reason: issue, sites: 3 },
     },
     'inspection/inspect.ts': { 'failed.cause': { reason: carried, sites: 1 } },
+    'output/log-line.ts': {
+      'event.message': {
+        reason:
+          "A log event's message, a template the log line fills from its fields, escaping every character it shows.",
+        sites: 1,
+      },
+    },
     'output/log.ts': {
       'form.message': {
         reason:

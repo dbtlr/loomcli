@@ -129,14 +129,20 @@ function noFileNotice(file: string, app: string, style: ContextualStyle): string
   return `${noFileFound} Create ${warned(file, style)} to configure ${shown(app)}.`;
 }
 
-/** The `-v` line that names the file the run read. */
-function readFrom(file: string, style: ContextualStyle): string {
-  return `Read configuration from ${warned(file, style)}.`;
+/** One log line: its message, a constant Message Template, and the fields it reads. */
+interface LogText {
+  readonly template: string;
+  readonly fields: Readonly<Record<string, string>>;
 }
 
-/** The `-vv` line for one place the lookup looked and found nothing. */
-function lookedFor(file: string, style: ContextualStyle): string {
-  return `Looked for ${warned(file, style)}: not found.`;
+/** The `debug` log line that names the file the run read. */
+function readFrom(file: string): LogText {
+  return { fields: { file }, template: 'Read configuration from {file}.' };
+}
+
+/** The `trace` log line for one place the lookup looked and found nothing. */
+function lookedFor(file: string): LogText {
+  return { fields: { file }, template: 'Looked for {file}: not found.' };
 }
 
 const stops = ['.', '!', '?'];
@@ -163,21 +169,22 @@ function unknownKeyLine(path: string, file: string | undefined): string {
 
 const unknownKeyIssue = 'Unknown key. Check its spelling, or remove it.';
 
-/** What a `-v` line ignored: the value at a shown path, kept on one line, or every key. */
-function ignoredSubject(path: string | undefined, style: ContextualStyle): string {
-  return path === undefined ? 'every key' : nowrap(style.escape(escapeControlCharacters(path)));
-}
-
-function within(file: string | undefined, style: ContextualStyle): string {
-  return file === undefined ? '' : ` in ${warned(file, style)}`;
-}
-
+/**
+ * The `debug` log line for a removed value or an unknown key: its path, or every key for the whole
+ * file, the file when the run read one, and the issue.
+ */
 function ignoredValue(
   { file, path }: { readonly path: string | undefined; readonly file: string | undefined },
   issue: string,
-  style: ContextualStyle,
-): string {
-  return `Ignored ${ignoredSubject(path, style)}${within(file, style)}: ${style.escape(escapeControlCharacters(issue))}`;
+): LogText {
+  if (path === undefined) {
+    return file === undefined
+      ? { fields: { issue }, template: 'Ignored every key: {issue}' }
+      : { fields: { file, issue }, template: 'Ignored every key in {file}: {issue}' };
+  }
+  return file === undefined
+    ? { fields: { issue, key: path }, template: 'Ignored {key}: {issue}' }
+    : { fields: { file, issue, key: path }, template: 'Ignored {key} in {file}: {issue}' };
 }
 
 interface FileFill {
@@ -190,8 +197,18 @@ function position(path: string | undefined): string {
   return path === undefined ? '' : ` at ${shown(path)}`;
 }
 
-function ignoredOption(fill: FileFill, issueSentence: string, style: ContextualStyle): string {
-  return `Ignored option "${shown(fill.spelling)}"${position(fill.path)} from ${style.escape(escapeControlCharacters(fill.label))}: ${issueSentence}`;
+/**
+ * The `debug` log line for a value the option cannot take, in core's form for a dropped fill: the
+ * option by its reported spelling, any position, the label, and the issue.
+ */
+function ignoredOption(fill: FileFill, issueSentence: string): LogText {
+  const fields = { issue: issueSentence, label: fill.label, option: fill.spelling };
+  return fill.path === undefined
+    ? { fields, template: 'Ignored option "{option}" from {label}: {issue}' }
+    : {
+        fields: { ...fields, position: fill.path },
+        template: 'Ignored option "{option}" at {position} from {label}: {issue}',
+      };
 }
 
 function filledOptionLine(fill: FileFill, issueSentence: string): string {
@@ -214,7 +231,7 @@ const booleanIssue = 'Use true or false.';
 
 const countIssue = 'Use a whole number of 0 or more.';
 
-export type { FileFill, Unusable };
+export type { FileFill, LogText, Unusable };
 export {
   booleanIssue,
   brokenFileLine,

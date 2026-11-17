@@ -3,7 +3,7 @@
 import type { Child, ChildExit, Host, Log } from '@loomcli/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 
-import { expectChange, readCall, readLimit } from '../src/service/manager.js';
+import { readCall, readLimit } from '../src/service/manager.js';
 import type { Call, Manager } from '../src/service/manager.js';
 import { ranCall } from '../src/service/messages.js';
 
@@ -21,13 +21,12 @@ function exitOf(code: number, stdout = ''): ChildExit {
   };
 }
 
-/** A log that records nothing, because a read raises no event. */
+/** A log level a read never logs at, because a read records no change event. */
 const unused = (): void => {
   throw new Error('A read records no event.');
 };
-const silentLog: Log = { debug: unused, error: unused, info: unused, trace: unused, warn: unused };
 
-/** The signals a fake child received, and the -v lines the reads wrote. */
+/** The signals a fake child received, and the -v lines the reads logged. */
 interface Fake {
   readonly kills: string[];
   readonly said: string[];
@@ -70,12 +69,18 @@ function fakeManager(options: {
     };
     return child;
   };
-  const manager: Manager = {
-    debug: async (message) => {
-      said.push(message);
+  const log: Log = {
+    debug: (template, fields) => {
+      said.push(JSON.stringify({ fields, template }));
     },
+    error: unused,
+    info: unused,
+    trace: unused,
+    warn: unused,
+  };
+  const manager: Manager = {
     env: {},
-    log: silentLog,
+    log,
     name: 'notes',
     onShutdown: (handler) => {
       const handle = () => {
@@ -113,7 +118,7 @@ describe('a status read', () => {
     await expect(pending).resolves.toEqual({ kind: 'timedOut' });
     expect(kills).toEqual(['SIGKILL']);
     // A read the limit ended started, so -v names it as it names one that exits.
-    expect(said).toEqual([ranCall('systemctl', ['--user', 'show'])]);
+    expect(said).toEqual([JSON.stringify(ranCall('systemctl', ['--user', 'show']))]);
   });
 
   it('answers a read that exits 143 on its own as an exit, not as one that ran out', async () => {
@@ -200,45 +205,5 @@ describe('a status read', () => {
     await expect(readCall(manager, call)).resolves.toEqual({ error, kind: 'missing' });
     // A program that cannot start writes no -v line, because its failure or its note names it.
     expect(said).toEqual([]);
-  });
-});
-
-/** A manager whose `-v` lane rejects every write, as a closed stderr does, and whose log records. */
-function unwritable(events: unknown[]): Manager {
-  const { manager } = fakeManager({ answer: exitOf(0), signal: new AbortController().signal });
-  return {
-    ...manager,
-    debug: async () => await Promise.reject(new Error('The stream is closed.')),
-    log: {
-      ...silentLog,
-      info: (message, fields) => {
-        events.push({ fields, message });
-      },
-    },
-  };
-}
-
-describe('a -v line whose write fails', () => {
-  it('leaves a change that was made answered and recorded', async () => {
-    const events: unknown[] = [];
-    await expect(expectChange(unwritable(events), call)).resolves.toEqual({
-      code: 0,
-      kind: 'exited',
-      stdout: '',
-    });
-    expect(events).toEqual([
-      {
-        fields: { arguments: ['--user', 'show'], code: 0, program: 'systemctl' },
-        message: 'Program run.',
-      },
-    ]);
-  });
-
-  it('leaves a read answered', async () => {
-    await expect(readCall(unwritable([]), call)).resolves.toEqual({
-      code: 0,
-      kind: 'exited',
-      stdout: '',
-    });
   });
 });

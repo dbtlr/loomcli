@@ -51,7 +51,7 @@ const ruleSentence = `A text rule's own sentence, not an error's text. ${textRul
 const exceptions: VoiceExceptions = {
   escaping: {
     'config/messages.ts': {
-      '${issueSentence}': { reason: issue, sites: 2 },
+      '${issueSentence}': { reason: issue, sites: 1 },
       '${noFileFound}': {
         reason:
           'The fixed `-v` sentence the module declares, which the notice opens with and which repeats no value.',
@@ -94,7 +94,7 @@ const exceptions: VoiceExceptions = {
     'logging/record.ts': {
       'event.message': {
         reason:
-          "A log event's message, written into its log record, which ADR-0047 counts as no operator message.",
+          "A log event's template, written unchanged into its log record; core renders it at -v under ADR-0174.",
         sites: 1,
       },
     },
@@ -106,7 +106,7 @@ const exceptions: VoiceExceptions = {
     'refresh.ts': {
       'error.message': {
         reason:
-          "The text of the error a refresh's warn log event carries as a field, which a logging plugin records and no operator sentence quotes.",
+          "The error's message is a field of the refresh's warn log event, recorded and shown at -v under ADR-0174's narrowing of ADR-0047.",
         sites: 1,
       },
     },

@@ -1,10 +1,10 @@
 ---
-description: "The log events core publishes from the log member of each context, and the onLog hook through which a plugin observes them."
+description: "The log events core publishes from the log member of each context, the message templates they carry, the log lines -v shows, and the onLog hook through which a plugin observes them."
 ---
 
 # Logging
 
-This page states the log events core publishes from the `log` member of each context, and the `onLog` hook through which a plugin observes them. An author calls `log` from an action or a middleware, and the [logging plugin](../plugins/logging.md) writes the records.
+This page states the log events core publishes from the `log` member of each context, the message templates they carry, the log lines `-v` shows, and the `onLog` hook through which a plugin observes them. An author calls `log` from an action or a middleware, the operator reads the log at `-v`, and the [logging plugin](../plugins/logging.md) writes the records.
 
 ```ts
 interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
@@ -54,16 +54,16 @@ export const index = new Command('index')
   .action(async ({ args, log }) => {
     const { sessions, skipped } = await readTranscripts(args.harness);
     for (const path of skipped) {
-      log.debug('Skipped a transcript with no session id.', { path });
+      log.debug('Skipped {path}: it holds no session id.', { path });
     }
-    log.info('Indexed sessions.', { count: sessions.length, harness: args.harness });
+    log.info('Indexed {count} sessions.', { count: sessions.length, harness: args.harness });
   });
 ```
 
-Core gives author and plugin code a `log` and delivers each call as a frozen log event to every installed plugin's [`onLog`](lifecycle-hooks.md#observing-log-events) hook. Core writes no log record of its own: with no plugin that declares `onLog`, a call does nothing, and the [logging plugin](../plugins/logging.md) is the first-party plugin that writes records. `out` writes for the person at the terminal and `log` records for whoever reads later, and neither routes through the other. [ADR-0069](../decisions/0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md) records the decision.
+Core gives author and plugin code a `log`, shows each call as a log line when the run's [verbosity](verbosity.md) asks for it, under [At -v](#at--v), and delivers it as a frozen log event to every installed plugin's [`onLog`](lifecycle-hooks.md#observing-log-events) hook. Core writes no log record of its own: the [logging plugin](../plugins/logging.md) is the first-party plugin that writes records. `out` tells the operator and `log` records, one call for each job, and an operator who types `-v` reads the record as it is made. [ADR-0069](../decisions/0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md) records the events, and [ADR-0174](../decisions/0174-v-shows-the-log-through-message-templates-and-out-keeps-what-the-operator-is-told.md) the log lines and message templates.
 
 - **Where.** The action, middleware, [configuration source](input-sources.md), [provider](providers.md#the-opener), and [`onFailure`](lifecycle-hooks.md#failure-hints) contexts carry `log`, in every run, an action's `invoke` and `app.invoke` included. `onCommandAttach` and `onGraphBuilt` receive none: they run at graph build, under `inspect()` and `check()` as well, where no run exists. Each context's `log` is bound to it: a middleware's, a source's, and an `onFailure` hook's name the plugin core is calling, and an action's names the plugin whose `commands` list contributed its [plugin Command](plugin-contract.md#plugin-commands), or a Command above it, and none for any other Command, so the application's own actions, and a nested `invoke` of one, name none. A provider's names none either, because no plugin installs a provider. An [`onEnvironment`](plugin-contract.md#environment-preparation) hook's `log` names its plugin.
-- **A call.** `log.info(message, fields)` and its siblings create one event and deliver it to every installed `onLog` before they return. A call returns `undefined`, and a hook's throw never reaches its caller, under [Observing log events](lifecycle-hooks.md#observing-log-events). A message or a field whose value the types reject gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). With no installed plugin that declares `onLog`, core creates no event and reads nothing from the call, `fields` included.
+- **A call.** `log.info(message, fields)` and its siblings create one event and deliver it to every installed `onLog` before they return. A call returns `undefined`, and a hook's throw never reaches its caller, under [Observing log events](lifecycle-hooks.md#observing-log-events). A message or a field whose value the types reject gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A call creates its event when an installed `onLog` hook hears it or the run's verbosity shows its level, and otherwise creates none and reads nothing from the call, `fields` included.
 - **The copy.** Core copies `fields` at the call into plain JSON data and freezes the copy, so a later change to the caller's object changes nothing. The copy is the value `JSON.stringify` produces, `toJSON()` included, so a `Date` reads its ISO string, `undefined`, a function, and a symbol are omitted from an object and read `null` inside an array, a number that is not finite reads `null`, and a class instance keeps its own enumerable properties. Three values differ: an `Error` reads `{ name, message, stack, cause }` with whichever of them it holds, its `cause` copied by the same rule; a `bigint` reads its decimal string; and a value that holds itself reads `"[Circular]"` where it repeats. A property whose read throws throws from the call. Omitted fields read `{}`.
 - **The event.** `time` is `new Date().toISOString()` at the call. `application` is the graph's `name` and `version`, `0.0.0` when the Application declares none. `run` is 16 random bytes from `crypto.getRandomValues`, written as 32 lowercase hex characters: the same on every event of one run and new for each run, each `invoke` and `app.invoke` included, in the format of an OpenTelemetry trace id. `path` is the path a [failure view](failure-views.md#failure-view-context) reads: `[]` before routing, the partial path before an unknown Command, and the routed Command's path after. `plugin` is the identity of the plugin whose `log` it is, or `null`. The event and everything it holds are frozen.
 - **Failure events.** Core logs one event for each failure it reports in a run, the primary failure, each fault reported after the outcome, and a host stream that fails a write (`@loomcli/core/broken-destination`), once translators and `onFailure` hooks have run: `message` is the failure form's `message`, `failure` is the [failure form](failures.md#the-failure-form) the run reports, and `plugin` is `null`. A defect, which is an `InternalError`, a `ResultError`, or a `DeclarationError` met during a run, logs at `fatal` and also carries `defect`, in both builds: the name and message of the value the run caught, read as a [Developer Diagnostic](declaration-faults.md#developer-diagnostics) reads a cause, from an `InternalError`'s `cause` or from the failure itself, and its `stack` as the runtime formats it, absent when the value has none. Every other failure logs at `error`. What the run writes to stderr is unchanged, so a distributed build still prints the generic defect message. A cancelled run that reports its cancellation silently logs no failure event, and a failure a cancelled run still renders logs like any other. A declaration fault raised at graph build logs none, as no hook runs for it. `fatal` is a level core alone logs: `Log` has no `fatal`, because `out.fatal()` throws and ends the run.
@@ -71,9 +71,49 @@ Core gives author and plugin code a `log` and delivers each call as a frozen log
 - **Provider close failures.** A provider's close that throws or rejects on a run that already failed or was cancelled, or after an earlier close of the run threw, under [Closing](providers.md#closing), logs one `error` event: `message` is `A provider's close failed.`, `fields` holds `error`, the thrown value copied by the rule above, and `provider`, the provider's name, and `plugin` is `null`.
 - **Names.** `Log`, `LogFields`, `JsonValue`, `LogLevel`, `LogEvent`, and `LogDefect` are exported.
 
+## Message templates
+
+A message is a [Message Template](https://messagetemplates.org), as Serilog and the other Message Templates libraries read one: a constant text that names where each value goes, with the values in the event's fields. `log.info('Indexed {count} sessions.', { count: 3, harness: 'claude' })` records the message `Indexed {count} sessions.` with both fields, and `-v` shows `› Indexed 3 sessions. harness=claude`.
+
+- **Placeholders.** `{name}`, where `name` is one or more ASCII letters, digits, and underscores, fills from the field of that name. A string fills as written, and any other value as its JSON text, so `{count}` reads `3` and `{tries}` reads `[1,2]`.
+- **Braces.** `{{` writes `{` and `}}` writes `}`. Any other brace is written as it stands, and so is a placeholder whose field the event does not hold, so `{missing}` reads `{missing}`, as Serilog renders a property the event lacks.
+- **The record keeps the template.** The event's `message` is the text as written. Core stores no filled copy, so the message stays constant and searchable, and a reader fills it from `fields` as the log line does.
+- **What Loom reads.** Core fills named placeholders alone. The standard's capturing operators, `@` and `$`, and its format and alignment parts, such as `{count:000}`, are not placeholders to core, so their braces are written as they stand.
+
+## At -v
+
+```ts
+type LogLineLevel = Exclude<LogLevel, 'fatal'>;
+interface LogLineField {
+  readonly name: string; // marked text, escaped
+  readonly value: string; // marked text, escaped
+}
+interface LogLine {
+  readonly level: LogLineLevel;
+  readonly text: string; // the message with its placeholders filled, marked text, escaped
+  readonly fields: readonly LogLineField[]; // the fields the message does not place, in the event's order
+  readonly event: LogEvent; // the event, as every onLog hook receives it
+}
+declare const logLine: DeclaredView<LogLine>; // @loomcli/core/log/line
+```
+
+At verbosity 1, which `-v` sets under the [verbose plugin](../plugins/verbose.md), core shows each log event at `debug`, `info`, `warn`, and `error` as one log line on stderr, and at verbosity 2 it adds `trace`. At 0 and -1 it shows none. A failure event never shows, because core already reported the failure. At `-vv` on a terminal, the example above prints this for a run that skipped one transcript:
+
+```text
+› Skipped /home/me/.claude/a.jsonl: it holds no session id.
+› Indexed 3 sessions. harness=claude
+```
+
+- **Where.** Core shows the line before it hands the event to the `onLog` hooks, from the same frozen event every hook receives, with or without a hook installed. It goes to the outermost run's stderr at that run's verbosity, in call order among the run's other writes to stderr. Off a terminal, the logging plugin's console destination is the one exception: it writes its records at once, so a record can precede earlier log lines, warnings, and progress lines, which keep their own order. On a terminal, the line goes above any open [live region](output.md#live-region). Under an action's `invoke`, an MCP tool call included, the line follows the parent run, and under [`app.invoke`](invocation.md#invocation-by-name) it lands in the call's `messages` when its values ask for it.
+- **Errors.** An Error-shaped field, the `{ name, message, stack, cause }` copy described above under The copy, shows only its name and message, escaped onto one line, whether placed or trailing. Its stack and cause never show on the line; the event and the log record keep the full copy. Its `name: message` text follows the placed-value rule even when it trails, so it is never JSON-quoted.
+- **The text.** `text` is the message with its placeholders filled, under [Message templates](#message-templates). `fields` holds every field the message does not place, in the order the event holds them, each shown as `name=value`: a string as written, or as its JSON text when it is empty or holds whitespace, a double quote, or an equals sign, and any other value as its JSON text, so `note=""`, `path="/home/me/My Notes"`, and `tries=[1,2]`. Every character of the message, each name, and each value passes through [`escapeControlCharacters`](styles.md#strings-and-composition) and then `style.escape`, so a line stays one line and writes no control character, and each placed value without whitespace and each `name=value` pair is kept on one row with `nowrap`; placed sentences wrap under the gutter.
+- **The look.** The default view writes a gutter, then the text, then the fields, each separated by one space. A `debug`, `info`, `warn`, or `error` line opens with `glyph.pointerSmall` in its level's style, `dim`, `info`, `warning`, or `error`, keeps its text in the terminal's own style, and dims its fields. A `trace` line nests one step deeper, two spaces and `glyph.lineVerticalDashed0`, and fades whole, `dim.faint`. A long line wraps under its gutter, as [Width, padding, and multiline lanes](styles.md#width-padding-and-multiline-lanes) states for a lane. Off a terminal, the gutter alone tells a trace line from the rest, as the example shows. On a terminal under `NO_COLOR`, a trace line still writes faint: `NO_COLOR` turns off colors, not modifiers.
+- **Replacing it.** `logLine` is a declared view, `@loomcli/core/log/line`, so an application replaces its function through `views` as it replaces any [declared view](views.md), and a theme restyles the tokens it uses. Core adds one line break after the view's text unless it ends with one, and writes nothing for the empty string, so an override can drop a line.
+- **Names.** `logLine`, `LogLine`, `LogLineField`, and `LogLineLevel` are exported.
+
 ## Change events
 
-A first-party plugin records each change it makes outside the process as one `info` event, its change event, from four messages every plugin shares:
+A first-party plugin records each change it makes outside the process as one `info` event, its change event, from four messages every plugin shares. Each is an `info` event, so `-v` shows it as a log line, such as `› File written. path=/home/me/.config/systemd/user/notes.service`:
 
 | Message | Fields | The change |
 | --- | --- | --- |
@@ -84,9 +124,9 @@ A first-party plugin records each change it makes outside the process as one `in
 
 - **Fields.** `path` is an absolute path, `program` the program as the plugin starts it, `arguments` the array of words it passes, and `code` the number it exited with. No event carries a child's environment, input, or output, and no first-party plugin passes a secret in `arguments`: each plugin's page names the words it passes.
 - **Which plugin.** The event's `plugin` field names the plugin whose `log` raised it, so the events of a plugin Command's action, a middleware, and a hook tell the plugins apart. A refresh after a self-update logs through the self-update action's `log`, so its events name `@loomcli/plugins/self-update`.
-- **What records nothing.** A read, a request, a failed change, and a change inside the process record nothing. A failure has the event core logs for it. A directory a plugin creates for a file, or removes once it is empty, records no event of its own, while a skill folder, which the skills plugin places whole, records one under its own path. The configuration plugin, dotenv, the logging plugin, whose own events would come back to its hook, and every plugin that changes nothing outside the process record none.
+- **What records nothing.** A read, a request, a failed change, and a change inside the process record nothing. A failure has the event core logs for it. A directory a plugin creates for a file, or removes once it is empty, records no event of its own, while a skill folder, which the skills plugin places whole, records one under its own path. The configuration plugin, dotenv, the logging plugin, which changes only its own log file, and every plugin that changes nothing outside the process record none.
 - **Each plugin's events.** Each plugin's page lists them under its **At -v and in the log** section. [ADR-0165](../decisions/0165-first-party-plugins-say-what-they-did-at-v-and-record-each-change-they-make-as-a-log-event.md) records the events.
 
 ## When author code fails
 
-An `onLog` hook that throws takes the [ordinary failure path](failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). Its timing differs: the throw never reaches the caller of `log`, core keeps calling the hook for every later event, and core reports the hook's first throw once, after the outcome, under [Observing log events](lifecycle-hooks.md#observing-log-events). A `log` call an `onLog` hook makes is an ordinary call that delivers its own event to every hook, so a hook that logs on every event recurses until the runtime's stack overflows, and its throw reports as any hook's throw.
+An `onLog` hook that throws takes the [ordinary failure path](failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). Its timing differs: the throw never reaches the caller of `log`, core keeps calling the hook for every later event, and core reports the hook's first throw once, after the outcome, under [Observing log events](lifecycle-hooks.md#observing-log-events). A hook logs through its destination's `log`, whose events reach every other hook and never the hook itself, so a hook that logs about each event it hears never hears its own. A `log` captured from another context is an ordinary call that delivers its event to every hook, the calling one included, so a hook that logs through it on every event recurses until the runtime's stack overflows, and so do two hooks that each log on every event the other raises; the throw reports as any hook's throw.

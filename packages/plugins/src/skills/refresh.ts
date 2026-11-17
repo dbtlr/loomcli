@@ -29,12 +29,10 @@ import { recordName, targets } from './targets.js';
  */
 async function refreshSkills(context: RefreshContext): Promise<void> {
   // The sentence loads with the refresh, so the entry that exports it loads no message module.
-  const { skillsNotRefreshed, skillsRefreshed, skillsRefreshSkipped } =
-    await import('./messages.js');
+  const { skillsNotRefreshed, skillsRefreshSkipped } = await import('./messages.js');
   await refreshByRunning(context, {
     notStarted: skillsNotRefreshed,
     records: targets.map(recordName),
-    refreshed: skillsRefreshed,
     skipped: skillsRefreshSkipped,
     warning: 'Skills were not refreshed after the update.',
     words: ['skills', 'update'],

@@ -8,7 +8,7 @@
  *   or a more specific file already holds left out of the count.
  * - At -vv each name passed over says why, with the first reason that holds: the settings' list,
  *   then the environment, then a more specific file.
- * - No line holds a value, and no change event is recorded.
+ * - No line or log event holds a value, and no change event is recorded.
  * - The lanes keep their rules: -v -q writes none, and an invocation by name shows the lines in
  *   its messages when its values ask for them.
  */
@@ -154,7 +154,7 @@ test('a malformed line keeps its warning and gets no line, and a missing file wr
   await expect(stderrOf({}, ['-vv'])).resolves.toBe('');
 });
 
-test('no line holds a value, and the plugin records no change event', async () => {
+test('no line or log event holds a value, and the plugin records no change event', async () => {
   const events: LogEvent[] = [];
   const secret = 'sk-live-0123456789';
   const stderr = await inFiles(
@@ -169,7 +169,11 @@ test('no line holds a value, and the plugin records no change event', async () =
     '› Imported 1 variable from .env.local.\n  ┆ Skipped API_TOKEN from .env: already set from .env.local.\n',
   );
   expect(stderr).not.toContain(secret);
-  expect(events).toEqual([]);
+  expect(JSON.stringify(events)).not.toContain(secret);
+  expect(events.map(({ level, message }) => `${level} ${message}`)).toEqual([
+    'debug Imported {count} variable from {file}.',
+    'trace Skipped {name} from {file}: already set from {specific}.',
+  ]);
 });
 
 test('a control character in a name cannot occur, and a file name is shown as the warnings show it', async () => {

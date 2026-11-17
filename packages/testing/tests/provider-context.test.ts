@@ -80,7 +80,7 @@ describe('providerContext', () => {
       provided: { pool: { url: '' } },
     });
     await context.out.warn('Loud.');
-    await context.out.debug('Quiet.');
+    await context.out.info('Quiet.');
     expect(lines).toEqual(['Loud.']);
   });
 });

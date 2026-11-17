@@ -2,7 +2,7 @@ import { lstat, readFile, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { escapeControlCharacters, InputError } from '@loomcli/core';
-import type { ContextualStyle, Host, Out } from '@loomcli/core';
+import type { ContextualStyle, Host, Log, Out } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
 import { parseFile } from './formats.js';
@@ -76,6 +76,7 @@ interface Lookup {
 /** The channels a warning about a discovered file is written through. */
 interface Channels {
   readonly out: Out;
+  readonly log: Log;
   readonly style: ContextualStyle;
 }
 
@@ -272,9 +273,10 @@ async function namedFile(named: string, lookup: Lookup): Promise<UsableFile> {
   return { file, object: reading.object };
 }
 
-/** Writes the `-vv` line for one place the lookup looked and found nothing. */
-async function traceAbsent(file: ConfigFile, { out, style }: Channels): Promise<void> {
-  await out.trace(lookedFor(file.shown, style));
+/** Logs the `trace` line for one place the lookup looked and found nothing. */
+function traceAbsent(file: ConfigFile, { log }: Channels): void {
+  const line = lookedFor(file.shown);
+  log.trace(line.template, line.fields);
 }
 
 const nothingFound = 0;
@@ -293,7 +295,7 @@ async function presentFiles(
     if (await isPresent(file.path)) {
       present.push(file);
     } else if (present.length === nothingFound) {
-      await traceAbsent(file, channels);
+      traceAbsent(file, channels);
     }
   }
   return present;
@@ -342,7 +344,7 @@ async function discoveredFile(
     return { kind: 'file', usable: { file, object: reading.object } };
   }
   if (isSilent(reading.clause)) {
-    await traceAbsent(file, channels);
+    traceAbsent(file, channels);
     return undefined;
   }
   if (lookup.strict) {
@@ -488,13 +490,14 @@ async function reportNoFile(
   const noticed =
     outcome === undefined && lookup.notice && (await announceNoFile(lookup, channels));
   if (!noticed) {
-    await channels.out.debug(noFileFound);
+    channels.log.debug(noFileFound);
   }
 }
 
-/** Writes the `-v` line that names the file the run reads, and answers it. */
-async function announceRead(usable: UsableFile, { out, style }: Channels): Promise<UsableFile> {
-  await out.debug(readFrom(usable.file.shown, style));
+/** Logs the `debug` line that names the file the run reads, and answers it. */
+function announceRead(usable: UsableFile, { log }: Channels): UsableFile {
+  const line = readFrom(usable.file.shown);
+  log.debug(line.template, line.fields);
   return usable;
 }
 

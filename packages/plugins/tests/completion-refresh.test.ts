@@ -47,7 +47,9 @@ async function refresh(path: string, programs: Record<string, Program>) {
     env: { FROM_HOST: 'yes' },
     programs,
   });
-  return { ...result, events, resolved };
+  // The records the refresh made, without the lines it logs for -v and -vv.
+  const recorded = events.filter(({ level }) => level !== 'debug' && level !== 'trace');
+  return { ...result, events: recorded, resolved };
 }
 
 const warning = 'Completion was not refreshed after the update.';

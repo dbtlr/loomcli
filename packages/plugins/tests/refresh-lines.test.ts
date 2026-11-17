@@ -4,11 +4,11 @@
  * application on mockProcess, its installation record under a fresh directory below the temporary
  * directory, which it removes after; the refreshed binary is a script the mock answers.
  *
- * - A child that exits 0 writes the `-v` line and records `Program run.` with the words it ran.
+ * - A child that exits 0 records `Program run.` with the words it ran, shown once at -v.
  * - With the graph's name and nothing installed, the refresh starts no child and writes its `-vv`
  *   line; any one of the plugin's record files runs the child, an unreadable one included.
  * - Without a name, or a record directory that does not resolve, the child runs as before.
- * - A child that fails writes no `-v` line, and a context without `out` writes no line.
+ * - A child that fails writes no refreshed line; its warn event shows at -v.
  */
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -72,7 +72,15 @@ function stateHome(): { state: string; record: string } {
   return { record, state };
 }
 
-/** Runs the refresh with `argv`, the child answering `child`, and answers what it wrote and saw. */
+/** The -v line of the change event a child that exits 0 records. */
+function ranLine(words: readonly string[]): string {
+  return `› Program run. arguments=${JSON.stringify(words)} code=0 program=${binary}\n`;
+}
+
+/**
+ * Runs the refresh with `argv`, the child answering `child`, and answers what it wrote, and the
+ * events it recorded at info and above, which leave out the lines of its own.
+ */
 async function refresh(
   kind: Kind,
   argv: readonly string[],
@@ -85,7 +93,7 @@ async function refresh(
     kind,
     binary,
     { observe: (event) => events.push(event), resolved: () => {} },
-    options.handed ?? { name: true, out: true },
+    options.handed ?? { name: true },
   );
   const result = await runOnMock(app, {
     argv: [...argv, 'refresh'],
@@ -99,18 +107,19 @@ async function refresh(
       },
     },
   });
-  return { events, started, status: result.status, stderr: result.stderr };
+  const recorded = events.filter(({ level }) => level !== 'debug' && level !== 'trace');
+  return { events: recorded, started, status: result.status, stderr: result.stderr };
 }
 
 describe.each(kinds)('$kind', ({ kind, record, refreshed, skipped, words }) => {
-  it('a child that exits 0 writes the -v line and records Program run.', async () => {
+  it('a child that exits 0 shows only Program run. at -v', async () => {
     const { record: directory, state } = stateHome();
     writeFileSync(join(directory, record), '{}\n');
     const quiet = await refresh(kind, [], { state });
     expect(quiet.stderr).toBe('');
     const result = await refresh(kind, ['-v'], { state });
     expect(result.started).toEqual([words]);
-    expect(result.stderr).toBe(`› ${refreshed}\n`);
+    expect(result.stderr).toBe(ranLine(words));
     expect(result.events).toEqual([
       {
         fields: { arguments: words, code: 0, program: binary },
@@ -130,10 +139,11 @@ describe.each(kinds)('$kind', ({ kind, record, refreshed, skipped, words }) => {
 
   it('without a name, or with a record directory that does not resolve, the child runs', async () => {
     const { state } = stateHome();
-    const unnamed = await refresh(kind, ['-v'], { handed: { out: true }, state });
-    expect(unnamed).toMatchObject({ started: [words], stderr: `› ${refreshed}\n` });
+    const shown = ranLine(words);
+    const unnamed = await refresh(kind, ['-v'], { handed: {}, state });
+    expect(unnamed).toMatchObject({ started: [words], stderr: shown });
     const unresolved = await refresh(kind, ['-v']);
-    expect(unresolved).toMatchObject({ started: [words], stderr: `› ${refreshed}\n` });
+    expect(unresolved).toMatchObject({ started: [words], stderr: shown });
   });
 
   // A superuser searches any folder, so the case needs an ordinary user.
@@ -144,24 +154,24 @@ describe.each(kinds)('$kind', ({ kind, record, refreshed, skipped, words }) => {
       chmodSync(directory, 0o000);
       try {
         const result = await refresh(kind, ['-v'], { state });
-        expect(result).toMatchObject({ started: [words], stderr: `› ${refreshed}\n` });
+        expect(result).toMatchObject({
+          started: [words],
+          stderr: ranLine(words),
+        });
       } finally {
         chmodSync(directory, 0o755);
       }
     },
   );
 
-  it('a failing child writes no -v line, and no out writes no line', async () => {
+  it('a failing child writes no refreshed line', async () => {
     const { record: directory, state } = stateHome();
     writeFileSync(join(directory, record), 'not json');
     const failed = await refresh(kind, ['-v'], { child: () => ({ code: 1 }), state });
-    expect(failed.stderr).toBe('');
+    // The warn event the failure records shows at -v, and no refreshed line does.
+    expect(failed.stderr).not.toContain(refreshed);
+    expect(failed.stderr).toMatch(/^› .+ code=1 path=\/loom-test\/bin\/notes\n$/u);
     expect(failed.events.map(({ level }) => level)).toEqual(['warn']);
-    const silent = await refresh(kind, ['-vv'], {
-      handed: { name: true },
-      state: stateHome().state,
-    });
-    expect(silent).toMatchObject({ started: [], stderr: '' });
   });
 });
 
@@ -198,8 +208,8 @@ describe.each(installers)(
       mkdirSync(home);
       const started: string[][] = [];
       const app = new Application('notes', { plugins: [verbosePlugin(), plugin] }).command(
-        new Command('refresh').action(async ({ graph, host, log, out, signal }) => {
-          await afterReplace({ host, log, name: graph.name, out, path: binary, signal });
+        new Command('refresh').action(async ({ graph, host, log, signal }) => {
+          await afterReplace({ host, log, name: graph.name, path: binary, signal });
         }),
       );
       const fields = {
@@ -218,8 +228,8 @@ describe.each(installers)(
       const installed = await runOnMock(app, { ...fields, argv: install });
       expect(installed.status).toBe(0);
       const result = await runOnMock(app, { ...fields, argv: ['-vv', 'refresh'] });
-      const { refreshed, words } = kinds.find((entry) => entry.kind === kind) ?? kinds[0];
-      expect(result).toMatchObject({ status: 0, stderr: `› ${refreshed}\n` });
+      const { words } = kinds.find((entry) => entry.kind === kind) ?? kinds[0];
+      expect(result).toMatchObject({ status: 0, stderr: ranLine(words) });
       expect(started).toEqual([words]);
     });
   },

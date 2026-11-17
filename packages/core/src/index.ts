@@ -60,6 +60,7 @@ export type { FailureExitCode } from './failures/exit-codes.js';
 export { extension, readExtension } from './plugins/extension.js';
 export { locate } from './inspection/locate.js';
 export { incompleteResult, lanes } from './output/lanes.js';
+export { logLine } from './output/log-line.js';
 export { override, view } from './output/view.js';
 export { plugin } from './plugins/plugin.js';
 export { processHandle } from './host/process-handle.js';
@@ -117,6 +118,7 @@ export type {
   LogHook,
   LogLevel,
 } from './output/log.js';
+export type { LogLine, LogLineField, LogLineLevel } from './output/log-line.js';
 export type { CommandMethod, CommandOptions } from './commands/command.js';
 export type { CancellationReason } from './signals/signals.js';
 export type { EndingSignal } from './signals/signal-lane.js';

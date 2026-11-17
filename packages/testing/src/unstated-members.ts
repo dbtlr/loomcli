@@ -143,7 +143,6 @@ function outWith<Result>(
   builder: keyof typeof outBuilders,
 ): Out<Result> {
   return {
-    debug: readsToEnd,
     draw: () => Promise.resolve(nothingDrawn),
     error: readsToEnd,
     fatal: (message) => {
@@ -157,7 +156,6 @@ function outWith<Result>(
     results: resolved,
     success: readsToEnd,
     text: unstatedText(builder),
-    trace: readsToEnd,
     warn: readsToEnd,
     ...stated,
   };

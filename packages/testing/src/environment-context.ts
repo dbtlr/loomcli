@@ -1,10 +1,10 @@
 /**
  * The context a test calls one `onEnvironment` hook with. The hook runs before any input is
- * parsed, so the context holds only the host, `log`, and `out.warn`, `out.debug`, and `out.trace`.
+ * parsed, so the context holds only the host, `log`, and `out.warn`.
  */
 import type { EnvironmentContext, EnvironmentHook } from '@loomcli/core';
 
-import { logWith, readsToEnd, resolved, unstated } from './unstated-members.js';
+import { logWith, resolved, unstated } from './unstated-members.js';
 
 /**
  * What a test states to build an environment hook's context: each `host` member, and `log` and
@@ -17,10 +17,7 @@ interface EnvironmentValues {
   readonly host?: Partial<EnvironmentContext['host']>;
   /** The log levels the test observes; an unstated level does nothing. */
   readonly log?: Partial<EnvironmentContext['log']>;
-  /**
-   * The `warn`, `debug`, and `trace` the test observes; an unstated one resolves and writes
-   * nothing.
-   */
+  /** The `warn` the test observes; unstated, it resolves and writes nothing. */
   readonly out?: Partial<EnvironmentContext['out']>;
 }
 
@@ -54,7 +51,7 @@ function environmentContext(hook: EnvironmentHook, values: EnvironmentValues): E
       },
     },
     log: logWith(values.log),
-    out: { debug: readsToEnd, trace: readsToEnd, warn: resolved, ...values.out },
+    out: { warn: resolved, ...values.out },
   };
 }
 

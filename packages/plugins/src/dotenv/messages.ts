@@ -16,11 +16,17 @@ function lineMalformed(name: string, line: number, file: string): string {
 
 const single = 1;
 
-/** The `-v` line for a file that imported names, which counts them and names none. */
-function imported(count: number, file: string): string {
+/** One log line: its message, a constant Message Template, and the fields it reads. */
+interface LogText {
+  readonly template: string;
+  readonly fields: Readonly<Record<string, number | string>>;
+}
+
+/** The `debug` log line for a file that imported names, which counts them and names none. */
+function imported(count: number, file: string): LogText {
   return count === single
-    ? `Imported 1 variable from ${shown(file)}.`
-    : `Imported ${String(count)} variables from ${shown(file)}.`;
+    ? { fields: { count, file }, template: 'Imported {count} variable from {file}.' }
+    : { fields: { count, file }, template: 'Imported {count} variables from {file}.' };
 }
 
 /** Why the plugin passed over a name a file assigns, in the order the reasons are tried. */
@@ -30,23 +36,25 @@ type SkipReason =
   | { readonly kind: 'set' }
   | { readonly kind: 'supplied'; readonly from: string };
 
-/** The clause of each reason that names no file. */
+/** The message of each reason that names no other file. */
 const fixedReasons: Readonly<Record<Exclude<SkipReason['kind'], 'supplied'>, string>> = {
-  except: 'on the except list.',
-  only: 'not on the only list.',
-  set: 'already set.',
+  except: 'Skipped {name} from {file}: on the except list.',
+  only: 'Skipped {name} from {file}: not on the only list.',
+  set: 'Skipped {name} from {file}: already set.',
 };
 
-function reasonText(reason: SkipReason): string {
+/**
+ * The `trace` log line for one name a file assigns that the plugin passed over, which never holds
+ * a value.
+ */
+function skippedName(name: string, file: string, reason: SkipReason): LogText {
   return reason.kind === 'supplied'
-    ? `already set from ${shown(reason.from)}.`
-    : fixedReasons[reason.kind];
+    ? {
+        fields: { file, name, specific: reason.from },
+        template: 'Skipped {name} from {file}: already set from {specific}.',
+      }
+    : { fields: { file, name }, template: fixedReasons[reason.kind] };
 }
 
-/** The `-vv` line for one name a file assigns that the plugin passed over, which never holds a value. */
-function skippedName(name: string, file: string, reason: SkipReason): string {
-  return `Skipped ${shown(name)} from ${shown(file)}: ${reasonText(reason)}`;
-}
-
-export type { SkipReason };
+export type { LogText, SkipReason };
 export { fileUnreadable, imported, lineMalformed, skippedName };

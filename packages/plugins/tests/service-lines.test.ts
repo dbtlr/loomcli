@@ -6,7 +6,8 @@
  * directory, which it removes after.
  *
  * - The default verbosity gains no line. At -v each manager call that started writes `Ran` with its
- *   words once it ends, whatever its code, the reads `status` makes included; -vv adds nothing.
+ *   words once it ends, whatever its code, the reads `status` makes included, and each change event
+ *   shows as well; -vv adds nothing.
  * - Each call that changes a unit records `Program run.` with the code the plugin accepted, and the
  *   unit file and the plugin's record file record `File written.` and `File removed.`. A read
  *   records nothing, and no event carries the environment.
@@ -125,11 +126,11 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
   return { calls, events, status: result.status, stderr: result.stderr };
 }
 
-/** The lines the debug lane wrote, its glyph removed. */
+/** The `Ran` log lines, their glyph removed. */
 function ran(stderr: string): string[] {
   return stderr
     .split('\n')
-    .filter((line) => line.startsWith('› '))
+    .filter((line) => line.startsWith('› Ran '))
     .map((line) => line.slice('› '.length));
 }
 
@@ -148,14 +149,16 @@ function fileEvent(message: 'File written.' | 'File removed.', path: string) {
   return { fields: { path }, level: 'info', message, plugin: identity };
 }
 
-/** The events as the assertions read them. */
+/** The change events, which are info, as the assertions read them. */
 function changes(events: readonly LogEvent[]) {
-  return events.map(({ fields, level, message, plugin: from }) => ({
-    fields,
-    level,
-    message,
-    plugin: from,
-  }));
+  return events
+    .filter(({ level }) => level === 'info')
+    .map(({ fields, level, message, plugin: from }) => ({
+      fields,
+      level,
+      message,
+      plugin: from,
+    }));
 }
 
 /** The systemd unit's path in the sandbox. */
@@ -187,21 +190,22 @@ describe('systemd', () => {
     rmSync(box.config, { force: true, recursive: true });
     rmSync(box.state, { force: true, recursive: true });
     const verbosely = await run(box, ['-v', 'service', 'install']);
+    const reload = '["--user","daemon-reload"]';
     expect(verbosely.stderr).toBe(
       [
+        `› File written. path=${record(box)}`,
+        `› File written. path=${unit(box)}`,
+        `› File written. path=${record(box)}`,
         `ℹ Wrote ${unit(box)}.`,
-        '› Ran systemctl --user daemon-reload.',
-        `› Ran systemctl --user enable ${unitName}.`,
-        `› Ran systemctl --user restart ${unitName}.`,
+        `› Program run. arguments=${reload} code=0 program=systemctl`,
+        `› Program run. arguments=["--user","enable","${unitName}"] code=0 program=systemctl`,
+        `› Program run. arguments=["--user","restart","${unitName}"] code=0 program=systemctl`,
         `✔ Started ${label}.`,
         '',
       ].join('\n'),
     );
     const again = await run(box, ['-vv', 'service', 'install']);
-    expect(ran(again.stderr)).toEqual([
-      `Ran systemctl --user enable ${unitName}.`,
-      `Ran systemctl --user restart ${unitName}.`,
-    ]);
+    expect(ran(again.stderr)).toEqual([]);
     expect(again.stderr).not.toContain('┆');
   });
 
@@ -225,11 +229,7 @@ describe('systemd', () => {
       answers: { [`systemctl --user stop ${unitName}`]: { code: 5 } },
     });
     expect(removed.status).toBe(0);
-    expect(ran(removed.stderr)).toEqual([
-      `Ran systemctl --user stop ${unitName}.`,
-      `Ran systemctl --user disable ${unitName}.`,
-      'Ran systemctl --user daemon-reload.',
-    ]);
+    expect(ran(removed.stderr)).toEqual([]);
     expect(changes(removed.events)).toEqual([
       programRun('systemctl', ['--user', 'stop', unitName], 5),
       programRun('systemctl', ['--user', 'disable', unitName]),
@@ -243,7 +243,7 @@ describe('systemd', () => {
     const box = sandbox();
     await run(box, ['service', 'install']);
     const stopped = await run(box, ['-v', 'service', 'stop']);
-    expect(ran(stopped.stderr)).toEqual([`Ran systemctl --user stop ${unitName}.`]);
+    expect(ran(stopped.stderr)).toEqual([]);
     expect(changes(stopped.events)).toEqual([
       programRun('systemctl', ['--user', 'stop', unitName]),
     ]);
@@ -257,7 +257,7 @@ describe('systemd', () => {
       `Ran systemctl --user show ${unitName} --property=ActiveState,MainPID.`,
       `Ran loginctl show-user ${String(uid)} --property=Linger.`,
     ]);
-    expect(status.events).toEqual([]);
+    expect(changes(status.events)).toEqual([]);
   });
 
   it('a call that runs while the run is cancelled writes no Ran line', async () => {
@@ -303,12 +303,7 @@ describe('launchd', () => {
       platform: 'darwin',
     });
     expect(installed.status).toBe(0);
-    expect(ran(installed.stderr)).toEqual([
-      `Ran launchctl enable ${target}.`,
-      `Ran launchctl bootout ${target}.`,
-      `Ran launchctl print ${target}.`,
-      `Ran launchctl bootstrap gui/${String(uid)} ${plist(box)}.`,
-    ]);
+    expect(ran(installed.stderr)).toEqual([`Ran launchctl print ${target}.`]);
     expect(changes(installed.events)).toEqual([
       fileEvent('File written.', darwinRecord(box)),
       fileEvent('File written.', plist(box)),
@@ -323,10 +318,7 @@ describe('launchd', () => {
     const box = sandbox();
     await run(box, ['service', 'install'], { answers: notLoaded, platform: 'darwin' });
     const restarted = await run(box, ['-v', 'service', 'restart'], { platform: 'darwin' });
-    expect(ran(restarted.stderr)).toEqual([
-      `Ran launchctl print ${target}.`,
-      `Ran launchctl kickstart -k ${target}.`,
-    ]);
+    expect(ran(restarted.stderr)).toEqual([`Ran launchctl print ${target}.`]);
     expect(changes(restarted.events)).toEqual([
       programRun('launchctl', ['kickstart', '-k', target]),
     ]);

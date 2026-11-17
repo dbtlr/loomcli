@@ -5,18 +5,16 @@
  * and manpage plugins each call it with their words, their record files, and their sentences. When
  * the installation record holds none of the plugin's files it starts no child. A child that exits 0
  * records `Program run.`, and one that fails or cannot start adds a `warn` log event and resolves,
- * because the binary update succeeded. At `-v` it names a refresh that ran and at `-vv` one that
- * did not, through the context's `out`.
+ * because the binary update succeeded. A refresh that did not run logs at `trace`, which `-vv` shows.
  */
 import { basename } from 'node:path';
 
 import { applicationDirectory, escapeControlCharacters } from '@loomcli/core';
-import type { Host, Log, Out } from '@loomcli/core';
+import type { Host, Log } from '@loomcli/core';
 
 import { programRun } from './change-events.js';
 import { exists } from './installation/disk.js';
 import { pluginFilePath } from './installation/record.js';
-import { say } from './lane-writes.js';
 
 /**
  * What a refresh reads from a self-update's `afterReplace` context.
@@ -37,22 +35,19 @@ interface RefreshContext {
    * runs the new binary.
    */
   readonly name?: string;
-  /** Where the refresh writes its `-v` and `-vv` lines. Without it, the refresh writes none. */
-  readonly out?: Pick<Out, 'debug' | 'trace'>;
 }
 
 /**
  * What one plugin's refresh runs and says: the words the new binary runs with, the names of the
  * plugin's files in the installation record, the `warn` log event's message, the line a child that
- * cannot start leaves for the operator, from the binary's path and its name, each escaped, and its
- * `-v` and `-vv` lines.
+ * cannot start leaves for the operator, from the binary's path and its name, each escaped, and the
+ * message it logs at `trace`.
  */
 interface Refresh {
   readonly words: readonly string[];
   readonly records: readonly string[];
   readonly warning: string;
   readonly notStarted: (path: string, name: string) => string;
-  readonly refreshed: string;
   readonly skipped: string;
 }
 
@@ -96,7 +91,7 @@ function nothingInstalled({ host, name }: RefreshContext, records: readonly stri
 async function refreshByRunning(context: RefreshContext, refresh: Refresh): Promise<void> {
   const { host, path, signal } = context;
   if (nothingInstalled(context, refresh.records)) {
-    await say(context.out?.trace(refresh.skipped));
+    context.log.trace(refresh.skipped);
     return;
   }
   const answer = await host.spawn(path, refresh.words, {
@@ -118,7 +113,7 @@ type Answer = Awaited<ReturnType<Host['spawn']>['exited']>;
 async function settle(context: RefreshContext, refresh: Refresh, answer: Answer): Promise<void> {
   const { host, log, path } = context;
   if (answer.kind === 'exited' && answer.code === succeeded) {
-    await refreshed(context, refresh);
+    refreshed(context, refresh);
     return;
   }
   if (answer.kind === 'exited') {
@@ -130,11 +125,10 @@ async function settle(context: RefreshContext, refresh: Refresh, answer: Answer)
   log.warn(refresh.warning, { error: errorText(answer.error), path });
 }
 
-/** Records the child that exited 0 as a program run, and names the refresh at `-v`. */
-async function refreshed(context: RefreshContext, refresh: Refresh): Promise<void> {
-  const { log, out, path } = context;
+/** Records the child that exited 0 as a program run. */
+function refreshed(context: RefreshContext, refresh: Refresh): void {
+  const { log, path } = context;
   programRun(log, { arguments: refresh.words, code: succeeded, program: path });
-  await say(out?.debug(refresh.refreshed));
 }
 
 export type { RefreshContext };
