@@ -936,6 +936,40 @@ test('track() on a task returns the value and ends the task, and rethrows a reje
   );
 });
 
+test('track() on a task its parent has ended reads neither message, returns the value, and rethrows a rejection', async () => {
+  const read: string[] = [];
+  const thrown = new Error('no space');
+  const outcome = await grouped(
+    async (context) => {
+      const deploying = progress(context, { label: 'Deploying' });
+      const building = deploying.task({ label: 'Building' });
+      const pushing = deploying.task({ label: 'Pushing' });
+      await deploying.end();
+      await expect(
+        building.track(Promise.resolve(3), {
+          done: () => {
+            read.push('done');
+            return 'Built';
+          },
+        }),
+      ).resolves.toBe(3);
+      await expect(
+        pushing.track(Promise.reject(thrown), {
+          failed: () => {
+            read.push('failed');
+            return 'Pushed nothing';
+          },
+        }),
+      ).rejects.toBe(thrown);
+    },
+    { terminal: 'pipe' },
+  );
+  expect(read).toEqual([]);
+  expect(outcome.stderr).toBe(
+    'ℹ Deploying\nℹ   Building\nℹ   Pushing\n✔   Building\n✔   Pushing\n✔ Deploying\n',
+  );
+});
+
 test.each<[string, (line: Progress) => Promise<void>]>([
   ['ended', (line) => line.end()],
   ['failed', (line) => line.fail()],
@@ -1449,6 +1483,26 @@ test("an end line drawn on its own keeps its whole text, and a finished task's r
     `✔ ${longLabel} · 12.0s`,
     '◓ Deploying ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s',
     '  ✔ Uploading packages/frontend… · 12.0s',
+  ]);
+});
+
+test('a label that holds a line break draws its first line and the ellipsis on a fitted row, and every line on an end line drawn on its own', async () => {
+  const failed: ProgressLine = { ...fetching, label: 'Push failed\nreason: 404', state: 'failed' };
+  await expect(
+    viewRows(
+      [
+        { ...fetching, estimate: false, label: 'Copying files\nfrom the cache' },
+        { ...fetching, estimate: false, label: 'Deploying', tasks: [{ ...failed, depth: 1 }] },
+        failed,
+      ],
+      60,
+    ),
+  ).resolves.toEqual([
+    '◓ Copying files… ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s',
+    '◓ Deploying ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s',
+    '  ✘ Push failed… · 12.0s',
+    '✘ Push failed',
+    'reason: 404 · 12.0s',
   ]);
 });
 

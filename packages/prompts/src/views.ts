@@ -1215,20 +1215,24 @@ function lineRow(
   const columns = Math.max(1, context.columns ?? 80);
   const within = (label: string, parts: readonly LinePart[]) =>
     width(indent + text(label, parts)) <= columns;
+  const ellipsis = context.plain(glyph.ellipsis);
+  // A label that holds a line break would draw a second row, so its first line stands for it.
+  const plain = context.plain(row.label);
+  const [first = ''] = plain.split('\n', 1);
+  const label = first === plain ? row.label : literal(first + ellipsis);
   let parts = row.parts;
   for (const drop of DROPPED_FIRST) {
-    if (within(row.label, parts)) {
-      return drawn(row.label, parts);
+    if (within(label, parts)) {
+      return drawn(label, parts);
     }
     parts = parts.filter((part) => part.drop !== drop);
   }
-  if (within(row.label, parts)) {
-    return drawn(row.label, parts);
+  if (within(label, parts)) {
+    return drawn(label, parts);
   }
-  const ellipsis = context.plain(glyph.ellipsis);
   const room = columns - width(indent + text('', parts));
   if (room >= width(literal(ellipsis))) {
-    const kept = leading(context.plain(row.label), room - width(literal(ellipsis)), (candidate) =>
+    const kept = leading(first, room - width(literal(ellipsis)), (candidate) =>
       width(literal(candidate)),
     );
     return drawn(literal(kept + ellipsis), parts);

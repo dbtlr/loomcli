@@ -584,11 +584,16 @@ function handleOf(line: Line): Progress {
     task: (settings) => (line.state === 'running' ? openTask(line, settings) : endedHandle()),
     async track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value> {
       const outcome = await settle(work);
+      // A line that ended while the work ran writes no message, so neither message is read.
       if ('error' in outcome) {
-        await finish(line, 'failed', trackedMessage(messages?.failed, outcome.error));
+        if (line.state === 'running') {
+          await finish(line, 'failed', trackedMessage(messages?.failed, outcome.error));
+        }
         throw outcome.error;
       }
-      await finish(line, 'ended', trackedMessage(messages?.done, outcome.value));
+      if (line.state === 'running') {
+        await finish(line, 'ended', trackedMessage(messages?.done, outcome.value));
+      }
       return outcome.value;
     },
     update({ completed, label, total }) {
