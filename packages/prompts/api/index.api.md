@@ -95,6 +95,7 @@ export interface Progress {
     fail(message?: string): Promise<void>;
     log(text: string | AsyncIterable<string>): Promise<void>;
     skip(message?: string): Promise<void>;
+    task(settings: ProgressSettings): Progress;
     track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
     update(update: ProgressUpdate): void;
     warn(message?: string): Promise<void>;
@@ -105,7 +106,7 @@ export function progress(context: ProgressContext, settings: ProgressSettings): 
 
 // @public
 export type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
-    readonly out: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'>;
+    readonly out: Pick<Out, 'region' | 'draw' | 'info' | 'success' | 'warn' | 'error'>;
     readonly host?: {
         readonly terminal: {
             readonly stderr: Pick<OutputTerminal, 'rows'>;
@@ -116,6 +117,7 @@ export type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
 // @public
 export interface ProgressSettings {
     readonly estimate?: boolean;
+    readonly keepTasks?: boolean;
     readonly label: string;
     readonly logLimit?: number;
     readonly logRows?: number;

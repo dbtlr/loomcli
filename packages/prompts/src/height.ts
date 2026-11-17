@@ -1,8 +1,10 @@
 /*
  * How a run's open progress lines share the terminal's height, under ADR-0172's The terminal's
- * height: each line keeps its own row, and the rows left are divided among the lines that have a
- * log. A line reads the height at each frame it builds and draws the smaller of its share and the
- * rows the other lines' latest frames leave, so the stack never grows taller than the terminal.
+ * height and ADR-0173's extension of it to task groups: each open line, a task included, keeps its
+ * own row, the rows left are divided among the lines that have a log, and the rows the log rows
+ * leave are divided among the trees that show finished tasks' end lines. Each tree draws as one
+ * frame, which reads the height at each frame it builds and draws the smaller of each share and
+ * the rows the others' latest frames leave, so the stack never grows taller than the terminal.
  */
 
 /**
@@ -39,82 +41,169 @@ interface Terminal {
   readonly rows: number | undefined;
 }
 
-/** What the shared height reads from one line and asks of it. */
-interface SharingLine {
-  /** The rows the line's log has to show now, at most its `logRows`. */
+/** The rows one terminal holds, or `undefined` when its height is unknown or not above 0. */
+function heightOf(terminal: Terminal): number | undefined {
+  const rows = terminal.rows;
+  return rows === undefined || !(rows > 0) ? undefined : rows;
+}
+
+/** What the shared height reads from one tree and asks of it. */
+interface SharingTree {
+  /** The finished rows the tree has to show now: the end lines of the finished tasks it holds. */
   readonly need: () => number;
-  /** Draws the line's frame again, at its share under the same rule. */
+  /** Draws the tree's frame again, at its shares under the same rule. */
   readonly redraw: () => void;
 }
 
-/** One open line's place among the lines that draw on one terminal. */
+/** The open lines and the trees that draw on one terminal, each in opening order. */
+interface Board {
+  readonly terminal: Terminal;
+  readonly seats: Seat[];
+  readonly groves: Grove[];
+}
+
+/** The rows the other trees' latest frames drew for their finished rows. */
+function othersFinished(board: Board, own: Grove): number {
+  return board.groves.reduce((sum, other) => (other === own ? sum : sum + other.drawn), 0);
+}
+
+/** One open line's place among the lines that draw on one terminal: a tree's root or a running task. */
 class Seat {
   /** The log rows this line drew in its latest frame. */
   drawn = 0;
-  readonly line: SharingLine;
-  readonly #terminal: Terminal;
-  readonly #seats: Seat[];
+  readonly tree: Grove;
+  readonly need: () => number;
+  readonly #board: Board;
 
-  constructor(terminal: Terminal, seats: Seat[], line: SharingLine) {
-    this.#terminal = terminal;
-    this.#seats = seats;
-    this.line = line;
+  constructor(board: Board, tree: Grove, need: () => number) {
+    this.#board = board;
+    this.tree = tree;
+    this.need = need;
   }
 
   /**
-   * The log rows this line draws at the frame it builds, of the `need` its log has: up to `need`
-   * where the height is unknown, and otherwise the smaller of its share and what is left of the
-   * rows after each line's own row and the log rows the other lines drew. It notes them as drawn.
+   * The log rows this line draws at the frame its tree builds, of the `need` its log has: up to
+   * `need` where the height is unknown, and otherwise the smaller of its share and what is left of
+   * the rows after each line's own row, the log rows the other lines drew, and the finished rows the
+   * other trees drew. It notes them as drawn.
    */
   fit(need: number): number {
-    const rows = this.#terminal.rows;
-    if (rows === undefined || !(rows > 0)) {
+    const rows = heightOf(this.#board.terminal);
+    if (rows === undefined) {
       this.drawn = need;
       return need;
     }
-    const seats = this.#seats;
+    const { seats } = this.#board;
     const shares = logShares(
       rows - seats.length,
-      seats.map((other) => (other === this ? need : other.line.need())),
+      seats.map((other) => (other === this ? need : other.need())),
     );
-    const others = seats.reduce((sum, other) => (other === this ? sum : sum + other.drawn), 0);
-    const left = rows - seats.length - others;
+    const lines = seats.reduce((sum, other) => (other === this ? sum : sum + other.drawn), 0);
+    const left = rows - seats.length - lines - othersFinished(this.#board, this.tree);
     this.drawn = Math.max(0, Math.min(shares[seats.indexOf(this)] ?? 0, left));
     return this.drawn;
   }
 
   /** Takes this line out of the lines that share, at its end or its region's close. */
   leave(): void {
-    const index = this.#seats.indexOf(this);
+    const index = this.#board.seats.indexOf(this);
     if (index !== -1) {
-      this.#seats.splice(index, 1);
+      this.#board.seats.splice(index, 1);
     }
   }
 }
 
-/** The open lines of each terminal, in opening order, held weakly by the run's stderr facts. */
-const seated = new WeakMap<Terminal, Seat[]>();
+/** One tree's place among the trees that draw on one terminal, and the lines it seats. */
+class Grove {
+  /** The finished rows this tree drew in its latest frame. */
+  drawn = 0;
+  readonly tree: SharingTree;
+  readonly #board: Board;
 
-/**
- * Seats a line that opens live among the lines on the same terminal. A line adds its own row before
- * the others' next frames, so when the stack has no row left for it, each line that draws log rows
- * draws again first, in opening order, before the new line draws its first frame.
- */
-function seat(terminal: Terminal, line: SharingLine): Seat {
-  const seats = seated.get(terminal) ?? [];
-  seated.set(terminal, seats);
-  const opened = new Seat(terminal, seats, line);
-  const earlier = [...seats];
-  seats.push(opened);
-  const rows = terminal.rows;
-  const height = seats.length + earlier.reduce((sum, other) => sum + other.drawn, 0);
-  if (rows !== undefined && rows > 0 && height > rows) {
-    for (const other of earlier.filter((drawing) => drawing.drawn > 0)) {
-      other.line.redraw();
+  constructor(board: Board, tree: SharingTree) {
+    this.#board = board;
+    this.tree = tree;
+  }
+
+  /**
+   * Seats a line of this tree that opens live. A line adds its own row before the others' next
+   * frames, so when the stack has no row left for it, each other tree that draws log rows or
+   * finished rows draws again first, in the order the roots opened, before this tree draws the
+   * line's first frame.
+   */
+  seat(need: () => number): Seat {
+    const board = this.#board;
+    const opened = new Seat(board, this, need);
+    board.seats.push(opened);
+    const rows = heightOf(board.terminal);
+    const drawn =
+      board.seats.reduce((sum, seat) => sum + seat.drawn, 0) +
+      board.groves.reduce((sum, other) => sum + other.drawn, 0);
+    if (rows !== undefined && board.seats.length + drawn > rows) {
+      const drawing = board.groves.filter(
+        (other) =>
+          other !== this &&
+          (other.drawn > 0 || board.seats.some((seat) => seat.tree === other && seat.drawn > 0)),
+      );
+      for (const other of drawing) {
+        other.tree.redraw();
+      }
+    }
+    return opened;
+  }
+
+  /**
+   * The finished rows this tree draws at the frame it builds, of the `need` it has, once its lines
+   * have fitted their log rows: up to `need` where the height is unknown, and otherwise the smaller
+   * of its share of the rows the log rows leave and what is left of the rows after each line's own
+   * row, the log rows every line drew, and the finished rows the other trees drew. It notes them as
+   * drawn.
+   */
+  fit(need: number): number {
+    const rows = heightOf(this.#board.terminal);
+    if (rows === undefined) {
+      this.drawn = need;
+      return need;
+    }
+    const { groves, seats } = this.#board;
+    const budget = rows - seats.length;
+    const logged = logShares(
+      budget,
+      seats.map((seat) => seat.need()),
+    ).reduce((sum, share) => sum + share, 0);
+    const shares = logShares(
+      budget - logged,
+      groves.map((other) => (other === this ? need : other.tree.need())),
+    );
+    const lines = seats.reduce((sum, seat) => sum + seat.drawn, 0);
+    const left = budget - lines - othersFinished(this.#board, this);
+    this.drawn = Math.max(0, Math.min(shares[groves.indexOf(this)] ?? 0, left));
+    return this.drawn;
+  }
+
+  /** Takes this tree out of the trees that share, at its root's end or its region's close. */
+  leave(): void {
+    const index = this.#board.groves.indexOf(this);
+    if (index !== -1) {
+      this.#board.groves.splice(index, 1);
+    }
+    for (const seat of this.#board.seats.filter((open) => open.tree === this)) {
+      seat.leave();
     }
   }
-  return opened;
 }
 
-export { logShares, seat };
-export type { Seat };
+/** The open lines and trees of each terminal, held weakly by the run's stderr facts. */
+const boards = new WeakMap<Terminal, Board>();
+
+/** Places a tree whose root opens live among the trees that draw on the same terminal. */
+function placeTree(terminal: Terminal, tree: SharingTree): Grove {
+  const board = boards.get(terminal) ?? { groves: [], seats: [], terminal };
+  boards.set(terminal, board);
+  const placed = new Grove(board, tree);
+  board.groves.push(placed);
+  return placed;
+}
+
+export { logShares, placeTree };
+export type { Grove, Seat };

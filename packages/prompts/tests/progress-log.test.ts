@@ -134,6 +134,7 @@ async function logged(
     const observed: ProgressContext = {
       graph: context.graph,
       out: {
+        draw: (data, view) => out.draw(data, view),
         error: (...call: MessageArguments) => {
           lanes.push(['error', typeof call[0] === 'string' ? call[0] : '']);
           return out.error(...call);

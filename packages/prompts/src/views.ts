@@ -930,7 +930,7 @@ const questionLine = view<QuestionLine>('@loomcli/prompts/question-line', {
 
 /**
  * What one progress line's view draws: its state, its counts, its spinner frame, its time, its
- * rate and time left, and its log rows.
+ * rate and time left, its log rows, and the tasks under it.
  *
  * @public
  */
@@ -947,7 +947,10 @@ interface ProgressLine {
   readonly frame: string;
   /** The cells the bar draws for the done and the remaining share. */
   readonly bar: { readonly complete: string; readonly incomplete: string };
-  /** Milliseconds since `progress()` opened the line. */
+  /**
+   * Milliseconds since `progress()` or `task()` opened the line: to the frame while it runs, and to
+   * its end on an end line, which reads the same at every later frame.
+   */
   readonly elapsed: number;
   /**
    * Whether the default view draws the rate and time left: the line's `estimate` setting. A line
@@ -978,6 +981,20 @@ interface ProgressLine {
    * frame, because every end removes the rows. A line always supplies it; absent, no rows.
    */
   readonly log?: readonly string[] | undefined;
+  /**
+   * How deep the line sits in its tree: 0 for a line `progress()` opened, and one more than its
+   * parent's for a task. The default view indents the line's row two columns for each level and
+   * its log rows two columns more. A line always supplies it; absent, 0.
+   */
+  readonly depth?: number | undefined;
+  /**
+   * The tasks the line shows under it at this frame, in the order they opened, each with its own
+   * data: a running line's running and finished tasks, and an ended line's kept tasks while its
+   * tree runs, less the finished ones whose rows give way to the terminal's height. Empty on a
+   * root's last frame and on each end line a tree whose tasks stay writes. A line always supplies
+   * it; absent, none.
+   */
+  readonly tasks?: readonly ProgressLine[] | undefined;
 }
 
 /** The cells of a progress bar, which the default view never widens. */
@@ -1063,8 +1080,12 @@ function elapsedTime(elapsed: number): string {
   return `${String(Math.floor(whole / HOUR))}h ${String(minutes).padStart(2, '0')}m`;
 }
 
-/** The progress line's own row, which the terminal wraps when it is wider than the screen. */
-function lineText(data: ProgressLine, { columns, style, width }: ViewContext): string {
+/**
+ * The progress line's own row, after its indent, which the terminal wraps when it is wider than the
+ * screen. The rate and the time left give way while the row with its indent is wider than `columns`.
+ */
+function lineText(data: ProgressLine, indent: string, context: ViewContext): string {
+  const { columns, style, width } = context;
   const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;
   if (data.state === 'cancelled') {
     return style.dim(`${glyph.squareCenter} ${data.label} (cancelled)`);
@@ -1102,12 +1123,24 @@ function lineText(data: ProgressLine, { columns, style, width }: ViewContext): s
       ? []
       : [`${style.dim('·')} ${style.dim(timeLeft(data.remaining))}`];
   // On a narrow row the rate gives way first, then the time left, so neither makes the line wrap.
-  const fits = (text: string) => width(text) <= Math.max(1, columns ?? 80);
+  const fits = (text: string) => width(indent + text) <= Math.max(1, columns ?? 80);
   return (
     [[pace, ...left], left]
       .map((parts) => [running, ...parts].join(' '))
       .find((text) => fits(text)) ?? running
   );
+}
+
+/**
+ * The rows of one line and the tasks under it: its row after two spaces for each level of its
+ * depth, its log rows two spaces further in, and then each task's rows by the same rules.
+ */
+function treeRows(data: ProgressLine, context: ViewContext): string[] {
+  const depth = Math.max(0, data.depth ?? 0);
+  const indent = '  '.repeat(depth);
+  const rows = (data.log ?? []).map((entry) => context.style.dim(logRow(entry, context, depth)));
+  const tasks = (data.tasks ?? []).flatMap((task) => treeRows(task, context));
+  return [indent + lineText(data, indent, context), ...rows, ...tasks];
 }
 
 /**
@@ -1139,12 +1172,7 @@ function lineText(data: ProgressLine, { columns, style, width }: ViewContext): s
  * @public
  */
 const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
-  render: (data, context) => {
-    const rows = (data.log ?? []).map((entry) =>
-      context.style.dim(logRow(entry, Math.max(1, context.columns ?? 80), context)),
-    );
-    return [lineText(data, context), ...rows].join('\n');
-  },
+  render: (data, context) => treeRows(data, context).join('\n'),
 });
 
 export { answeredLine, cancelledLine, progressLine, questionFrame, questionLine };
