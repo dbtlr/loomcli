@@ -24,7 +24,8 @@
  *   giving way in turn, while an end line drawn on its own keeps its whole text; finished tasks with
  *   long labels leave no row behind.
  * - Where the tree does not draw. Piped, under `TERM=dumb`, CI, `--plain`, `-q`, and an invocation
- *   by name, each line writes its plain lines when they happen, indented, in the order they happen.
+ *   by name, each line writes its plain lines when they happen, in the order they happen, a task's
+ *   text stepping in after the glyph.
  * - The rest. `track()` on a task, `task()` after an end, each task's progress events, and the
  *   view's data, drawn by an override and built by hand, and an override written before `depth` and
  *   `tasks`.
