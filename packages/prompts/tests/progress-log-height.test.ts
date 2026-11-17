@@ -13,7 +13,8 @@
  *   scrollback hold each row once.
  * - Between frames. A line that ends frees its rows for the others' next frames; a line that opens
  *   beside a line drawing 5 rows on 6 rows makes it shrink first and draws no log row until it has;
- *   a resize takes effect at each line's next frame.
+ *   a third line that opens makes the two above draw again in the order they opened; a resize takes
+ *   effect at each line's next frame.
  * - Who shares. Lines opened by a middleware and by the action share; two runs in one process do
  *   not; a context with no `host`, and `rows` that is `undefined` or 0, draw up to `logRows`.
  * - What it leaves alone. The view's data carries the fitted rows, which an override draws, and a
@@ -328,6 +329,29 @@ test('a line that opens beside a line drawing 5 rows on a 6-row terminal draws n
     '  second line 5',
     '  second line 6',
   ]);
+});
+
+test('a third line that opens on a full 7-row terminal makes the two lines above draw again in the order they opened', async () => {
+  const outcome = await stacked(
+    async (context, { tick }) => {
+      const [first, second] = await openLogged(context, ['first', 'second']);
+      tick();
+      const third = progress(context, { label: 'third' });
+      tick();
+      await first?.end();
+      await second?.end();
+      await third.end();
+    },
+    { rows: 7 },
+  );
+  // Two lines on 7 rows share a budget of 5 as 3 and 2, and three lines share 4 as 2 and 2.
+  // The first line draws again before the second, so the second finds 2 rows left, not 1.
+  expect(drawn(outcome.frames, 'first')).toEqual([0, 3, 2, 2]);
+  expect(drawn(outcome.frames, 'second')).toEqual([0, 2, 2, 2]);
+  expect(drawn(outcome.frames, 'third')).toEqual([0, 0]);
+  for (const height of heights(outcome.frames)) {
+    expect(height).toBeLessThanOrEqual(7);
+  }
 });
 
 test('a resize to fewer rows takes effect at each line’s next frame, and one to more rows lets the lines grow', async () => {
