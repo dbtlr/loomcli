@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0173 - A progress line groups tasks under it as one tree, which collapses when the group succeeds and stays when it fails
 description: The progress handle of @loomcli/prompts gains task(settings), which opens a task, a full progress line with the same handle, under the line it is called on, to any depth. The author's code decides what runs when. The root line's region draws the whole tree as one frame through the progress view, each task indented two columns for each level and its log rows two more, in the order the tasks opened, a finished task showing its end line, its figures stopped at its end, until its parent ends or, when its parent keeps its tasks, until a group above it collapses or its root ends; each task opens a region of its own through its root's context for its progress events and never draws in it, so it takes no rows and core's public surface is unchanged. A task still open when its parent ends takes the parent's end, deepest first. When a group ends as a success or a skip, or core closes it for completion, its tasks go and its own end line stays; when it fails, warns, or is cancelled, they stay under it; ProgressSettings gains keepTasks, absent false, which keeps them on success too and is not inherited. clear() removes a task with its own tasks, or the whole tree. A root whose tasks stay draws an empty last frame and writes the tree above the stack line by line, each line's kept log lines through out.error or out.warn and then its end line through out.draw and the progress view, so ProgressContext's out gains draw, which breaks a context built by hand without it. A task's kept lines wait for that write and go when a group above it collapses. A tree's rows share the terminal's height under ADR-0172, and a finished task's row gives way first, the first to finish first. Every row of a live frame keeps to one row: after the rate and the time left, a running line's label clips with the ellipsis and its other parts drop, while an end line written to stay keeps its whole text. Where the tree does not draw, each line writes its plain start and end lines when they happen through the lane like any message, a task's text stepping in two spaces for each level after the glyph. Each line keeps its own counts, estimate, and elapsed time, and reports its own events under its own label. The progress view's data gains optional depth and tasks. A task opened after its line ended has ended too. It extends ADR-0091's progress lines, ADR-0170's ends, and ADR-0172's log and height.
-status: proposed
+status: accepted
 created: 2026-11-17
 modified: 2026-11-17
 ---
@@ -273,7 +273,7 @@ The glossary gains Task group, which holds a tree, its root, and a finished row,
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

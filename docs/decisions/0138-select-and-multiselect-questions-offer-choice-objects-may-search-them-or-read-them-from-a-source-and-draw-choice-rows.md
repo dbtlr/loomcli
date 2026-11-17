@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0138 - Select and multiselect questions offer choice objects, may search them or read them from a source, and draw choice rows
 description: A select question's choice is a string or an object with a value, a label, an optional description, and an optional disabled state, and a separator entry may sit between choices. An unlinked question's values may be any type, and a linked question's are strings. A fifth kind, multiselect, takes the same choices, toggles them with Tab always and with Space when it does not search, submits them in selection order with Enter between min and max, and links a multiple string option or a variadic string argument. A linked select or multiselect that asks passes each chosen value through its input's own validator, and a supplied value it cannot select is named in its issue rather than dropped. Either kind searches its static choices with search true or reads them from an author's source function, whose previous call each keystroke aborts, with no debounce timer; the answer is always a choice. The question frame keeps one view, and its select data becomes choice rows shared with multiselect, which breaks a view override that read a choice as a string. This narrows ADR-0082's four kinds, its exports, its link clause, and its validation clause, and decides the several-value link ADR-0136 left open.
-status: proposed
+status: accepted
 created: 2026-11-04
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0138 - Select and multiselect questions offer choice objects, may search them or read them from a source, and draw choice rows
@@ -123,7 +123,7 @@ The contract is in the [prompts reference](../libs/prompts.md#choices).
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

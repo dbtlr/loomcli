@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0140 - The help plugin attaches a help Command on opt-in
 description: With help({ command: true }), the help plugin attaches a visible plugin Command, help, whose optional variadic argument names a Command path. Its action resolves the words child by child from the root, aliases and hidden Commands included, and prints that Command's extended help page, paged under the same setting as --help. A word that names no child is the ordinary unknown-command failure. With no settings, or command false, help attaches nothing.
-status: proposed
+status: accepted
 created: 2026-11-09
-modified: 2026-11-15
+modified: 2026-11-17
 ---
 
 # ADR-0140 - The help plugin attaches a help Command on opt-in
@@ -51,7 +51,7 @@ The glossary gains Help Command.
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

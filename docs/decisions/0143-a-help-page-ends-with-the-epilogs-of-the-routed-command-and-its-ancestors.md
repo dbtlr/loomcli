@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0143 - A help page ends with the epilogs of the routed Command and its ancestors
 description: helpCommand gains epilog, Markdown under the rule and the renderer details uses. Both help variants end with one block per epilog on the routed Command's path, its own first and the Application's last, after the hints, and each man page prints the same epilogs under NOTES before SEE ALSO. Help supplies no epilog to the manifest.
-status: proposed
+status: accepted
 created: 2026-11-09
-modified: 2026-11-09
+modified: 2026-11-17
 ---
 
 # ADR-0143 - A help page ends with the epilogs of the routed Command and its ancestors
@@ -48,7 +48,7 @@ The glossary gains Epilog.
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

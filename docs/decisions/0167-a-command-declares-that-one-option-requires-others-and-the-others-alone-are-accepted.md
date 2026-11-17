@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0167 - A Command declares that one option requires others, and the others alone are accepted
 description: requires(option, ...needed) on a Command, on the Application root, on the attached Command a lifecycle hook receives, and on an option set declares a one-way requirement between local options, so --password is accepted only with --user while --user alone is accepted. It is an option group of a fourth kind, named in the types as the declared options are. Supplied means what it means for the other groups on both sides, a Boolean at its absent value triggers nothing, a requirement withdraws nothing, and one that holds a member an exclusive group withdrew is not checked, as ADR-0123 states for requiredTogether. A failure is one InputProblem with reason requires, whose sentence names the option and only the options it still lacks. The declaration faults are the option-group rules, with an option that requires itself, and an exclusive group and a requirement that share two or more members. Inspection and the manifest publish { kind, option, requires }, help and the man page print Use --password only with --user., MCP projects dependentRequired, and completion is unchanged. No option sets another option's value. It supersedes in part ADR-0085's clause that richer relationships remain application logic.
-status: proposed
+status: accepted
 created: 2026-11-16
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0167 - A Command declares that one option requires others, and the others alone are accepted
@@ -152,7 +152,7 @@ ADR-0085's clause "Richer relationships, relationships involving globals or argu
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

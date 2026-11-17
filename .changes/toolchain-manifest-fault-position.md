@@ -1,1 +1,0 @@
-- Fix the line `loom` reports for a `package.json` that is not valid JSON and ends its lines with a lone CR, so it names the place an editor shows. A line now ends at LF, at CRLF, or at a lone CR, as the configuration plugin counts.

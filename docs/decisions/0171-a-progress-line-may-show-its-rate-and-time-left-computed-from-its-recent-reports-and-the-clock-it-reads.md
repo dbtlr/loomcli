@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0171 - A progress line may show its rate and time left, computed from its recent reports and the clock it reads
 description: A progress line from @loomcli/prompts takes two optional settings, estimate and unit. With estimate set, a running line draws its rate and its time left after the elapsed time, each dim after a dim ·, such as 40/120 · 12.0s · 3.3 files/s · about 24s left. The line computes both from the completed counts the author reports through update() and the clock it already reads for the elapsed time, and adds no timer. The rate is measured over the last 10 seconds of reports, from the newest report back to the latest report at least 10 seconds older, or to the first report, and shows once those two reports are a second apart, so a count done before the first report never enters it. The time left is the work left at that rate, counting down from the newest report on each frame the existing timer draws and held at 0. A report that goes backward restarts the window, a rate of 0 shows 0/s with no time left, and no time left shows without a total or once completed reaches it. Neither part shows on an end line or where the line does not draw, and on a narrow row the rate gives way first and the time left next. The progress view's data gains optional estimate, rate, remaining, and unit, which every line supplies whether or not estimate is set. Progress events are unchanged. It extends ADR-0091's progress lines.
-status: proposed
+status: accepted
 created: 2026-11-16
 modified: 2026-11-17
 ---
@@ -136,7 +136,7 @@ The glossary gains Progress estimate, and its Progress line entry names it.
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

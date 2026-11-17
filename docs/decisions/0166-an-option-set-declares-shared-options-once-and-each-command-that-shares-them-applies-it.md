@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0166 - An option set declares shared options once, and each Command that shares them applies it
 description: optionSet() takes a record of option name to option settings and checks each entry as option() would, with the same constraints in the types and the same declaration faults at the call. A set may carry exclusive, oneRequired, and requiredTogether groups over its own members, and each group call returns a new set. options(set) on a Command and on the Application root declares the set's options in the record's order, then its groups, exactly as one option() call per option and one group call per group would, and the action's options type gains each option. A name the receiver already declares, locally or as a global option, is a compile error. Nothing inherits: a parent that applies a set gives its children nothing, and each Command applies the set itself. Inspection, the manifest, and every other projection show nothing about the set. There is no set form for global options, and a set holds options only. It supersedes nothing, ADR-0026's rule that nothing inherits stands, and it narrows ADR-0085's clause that a group call names already-declared local options and returns a new Command.
-status: proposed
+status: accepted
 created: 2026-11-16
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0166 - An option set declares shared options once, and each Command that shares them applies it
@@ -215,7 +215,7 @@ The jsonkit example adopts a set. Its four Commands that print a JSON value, `ge
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

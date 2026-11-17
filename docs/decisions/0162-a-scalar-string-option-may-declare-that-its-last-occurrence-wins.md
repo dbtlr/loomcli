@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0162 - A scalar string option may declare that its last occurrence wins
 description: A scalar string option, an arity option included, declares lastWins true, and a later occurrence on the command line then replaces an earlier one instead of failing as a repeat, so a wrapper script or a shell alias can prepend a default that the operator's later value replaces. Occurrences count across every accepted spelling, a bare spelling that supplies an implied value included, and on an arity option the last occurrence's whole tuple replaces the earlier one. Only the last value reaches the validator, a replaced value is dropped unread with nothing printed at any verbosity, the background choice of a last-wins marked option follows the winning occurrence, and every occurrence still takes its words and still raises every fault but the repeat. The types reject the key beside multiple true and on a Boolean, counted, or content option. Source precedence, the value class, the action's type, invoke, and MCP are unchanged. OptionNode's string variant and the manifest's string option entry publish lastWins, completion offers such an option again after the earlier words supplied it, and help and the man page print nothing new. It supersedes nothing and narrows ADR-0040's spelling clause and ADR-0161's repeat and completion clauses.
-status: proposed
+status: accepted
 created: 2026-11-16
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0162 - A scalar string option may declare that its last occurrence wins
@@ -111,7 +111,7 @@ A declaration that compiled before compiles and runs the same. The string option
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

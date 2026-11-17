@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0150 - An application opts in to an extended version that prints the release facts, runtime, and platform
 description: version({ extended }) makes -V and --version print the version line, then a records-layout block of six rows, channel, build, asset, installation method, runtime, and platform, each absent fact an empty value the records layout lays out, through a second declared view, versionFacts. When the run's media type, which the middleware context's new mediaType reads, is application/json or application/jsonl, they print one JSON object of eight keys in a fixed order through a bare view, with null for an absent fact. mediaType reads the selected view's media type on a Command that declares a result and the one a middleware assigned on a Command that declares none, and a failure encoder reads the same value. The formatter puts a hidden --format on every group, which routing reads under ADR-0152, so tool --version --format json prints the object at the root of a group application. The host gains a runtime fact, the JavaScript runtime's name and version. Without the setting every byte the version plugin writes is unchanged.
-status: proposed
+status: accepted
 created: 2026-11-14
-modified: 2026-11-15
+modified: 2026-11-17
 ---
 
 # ADR-0150 - An application opts in to an extended version that prints the release facts, runtime, and platform
@@ -75,7 +75,7 @@ This record extends [ADR-0107](0107-a-run-reads-the-process-through-one-process-
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

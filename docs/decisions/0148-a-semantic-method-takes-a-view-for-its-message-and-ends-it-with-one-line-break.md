@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0148 - A semantic method takes a view for its message and ends it with one line break
 description: Each of the seven semantic methods takes an optional View<string> after its message. The method keeps its level, which is its destination and the verbosity it writes at, and the view replaces the lane view for that call and owns the whole layout. A semantic method ends its message with exactly one line break, appending one only when the view's text does not already end with one, so every pack view over a string is also a message view. The pack adds step(), and a note is box({ title }) written at a level.
-status: proposed
+status: accepted
 created: 2026-11-13
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0148 - A semantic method takes a view for its message and ends it with one line break
@@ -47,7 +47,7 @@ The glossary's Semantic output and Lane view entries say that a call may pass it
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

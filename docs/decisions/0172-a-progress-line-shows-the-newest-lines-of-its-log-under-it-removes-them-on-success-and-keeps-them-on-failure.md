@@ -2,7 +2,7 @@
 type: adr
 title: ADR-0172 - A progress line shows the newest lines of its log under it, removes them on success, and keeps them on failure
 description: The progress handle of @loomcli/prompts gains log(text), which takes one line, text that holds several, or an async iterable of text, such as a child program's output, and adds its lines to the line's log. While the line draws, the newest 5 lines show under it, dim, indented two columns, each clipped to one row, and older ones scroll out; the line draws them on the frames it already draws and adds no timer. The open progress lines of a run share stderr's rows: each keeps its own row, and the rows left are divided among the lines with a log, so on a short terminal a line shows fewer than its logRows, down to none; the line reads the height through a new optional host on ProgressContext, at each frame. end, skip, clear, and a close for completion remove the rows and write nothing more. fail, a rejected track, a failing run, warn, and a cancellation write the kept lines, at most the newest 1000, as one message, a failure through out.error and a warning or a cancellation through out.warn, above the end line, dim and unclipped, after the sentence "1203 earlier lines were dropped." when earlier ones were dropped. ProgressSettings gains logRows, 5 when absent, and logLimit, 1000 when absent. A line splits at \n, keeps CRLF whole across chunks, starts over at a lone \r that text follows, draws its plain text with tabs expanded, other control characters dropped, and bidirectional controls escaped, and keeps at most its first 4096 code points. Where the line does not draw, log() shows nothing, and the kept lines are written above the plain end line on the same ends. A string's log() resolves at once and an iterable's at its end; a throw keeps the lines and rejects log() unchanged; an iterable open at an end or given after one is read to its end and discarded. The progress view's data gains an optional log, the rows on every frame, empty on an end frame. Progress events are unchanged. It extends ADR-0091's progress lines and ADR-0170's ends.
-status: proposed
+status: accepted
 created: 2026-11-16
 modified: 2026-11-17
 ---
@@ -212,7 +212,7 @@ The glossary gains Progress log, and its Progress line entry names it.
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

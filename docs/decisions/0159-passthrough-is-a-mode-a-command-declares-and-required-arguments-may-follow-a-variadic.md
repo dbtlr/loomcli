@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0159 - Passthrough is a mode a Command declares, and required arguments may follow a variadic
 description: A Command turns passthrough on with .passthrough({ description? }), which types passthrough onto its action context. Without it, the first bare -- still ends routing and option parsing, and every later word is a plain word that fills the routed Command's next argument, so rm -- -draft.txt fills the argument. With it, every word after the first bare -- reaches passthrough untouched, as before. Required scalar arguments may follow a variadic argument and fill from the end of the line. It narrows ADR-0055's second layer, ADR-0042's passthrough position, ADR-0059's values and its argv equivalence, ADR-0028's typed passthrough, ADR-0110's actionContext member, ADR-0093's argument order and its variadic fault, and ADR-0136's rule that a variadic argument is last.
-status: proposed
+status: accepted
 created: 2026-11-15
-modified: 2026-11-15
+modified: 2026-11-17
 ---
 
 # ADR-0159 - Passthrough is a mode a Command declares, and required arguments may follow a variadic
@@ -52,7 +52,7 @@ ADR-0055's second layer, which reads the routed Command's words up to the first 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

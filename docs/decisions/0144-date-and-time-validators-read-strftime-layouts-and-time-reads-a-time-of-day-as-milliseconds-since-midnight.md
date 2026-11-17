@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0144 - Date and time validators read strftime layouts, and time() reads a time of day as milliseconds since midnight
 description: '`date()` and `dateTime()` take `layouts`, POSIX strftime layouts with no locale-dependent directive, tried in order after their default grammar, the first match winning, and parsed as `strptime` defines; a date read through a layout outputs `YYYY-MM-DD`. A new `time()` reads an RFC 3339 partial time, or its own layouts with 12-hour directives, into milliseconds since midnight, with bounds in its own grammar. A layout that lacks a required field or holds an unsupported directive is a declaration fault under one new rule. This supersedes the validators reference''s listing of custom date layouts as not shipped.'
-status: proposed
+status: accepted
 created: 2026-11-09
-modified: 2026-11-09
+modified: 2026-11-17
 ---
 
 # ADR-0144 - Date and time validators read strftime layouts, and time() reads a time of day as milliseconds since midnight
@@ -42,7 +42,7 @@ The directives, grammars, sentences, and codes are the contract in the [validato
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

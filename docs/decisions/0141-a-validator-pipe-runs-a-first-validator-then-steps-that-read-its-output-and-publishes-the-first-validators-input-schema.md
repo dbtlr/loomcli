@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0141 - A validator pipe runs a first validator, then steps that read its output, and publishes the first validator's input schema
 description: '`@loomcli/validators` exports `pipe(first, ...steps)`. `first` is any Standard Schema value and reads what core hands the input; each of one to eight steps is a Standard Schema value whose input type accepts the previous output, or a parse function that receives that output and the validation context. `first` and each step are the pipe's stages. The first rejection ends the pipe with that stage's issues unchanged, and the pipe answers synchronously unless a stage answers with a promise. The pipe publishes exactly what `first` publishes and adds no message, code, or fault of its own. This supersedes ADR-0037''s rejection of a composition utility.'
-status: proposed
+status: accepted
 created: 2026-11-09
-modified: 2026-11-09
+modified: 2026-11-17
 ---
 
 # ADR-0141 - A validator pipe runs a first validator, then steps that read its output, and publishes the first validator's input schema
@@ -58,7 +58,7 @@ The signature, the published schema, and examples are the contract in the [valid
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

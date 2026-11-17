@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0145 - Below 1.0.0, a feature fragment advances the minor
 description: Below 1.0.0, a feature fragment advances the minor, as a breaking fragment does, and only a fix fragment advances the patch. From 1.0.0 the bump is unchanged. The rule governs loom changelog write and this repository's loom release cut alike. It supersedes ADR-0067's bump clause below 1.0.0 and ADR-0012's rule that anything not breaking advances the patch, and raises the fragment minimum ADR-0083 and ADR-0132 floor a chosen target at.
-status: proposed
+status: accepted
 created: 2026-11-11
-modified: 2026-11-11
+modified: 2026-11-17
 ---
 
 # ADR-0145 - Below 1.0.0, a feature fragment advances the minor
@@ -41,7 +41,7 @@ A feature-only cut from `0.4.7` takes `0.5.0`, and a fix-only cut takes `0.4.8`.
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

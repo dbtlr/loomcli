@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0139 - An editor question opens the operator's editor on a private temporary file, and core lends it the terminal
 description: A sixth question kind, editor, waits for Enter and then opens the editor VISUAL, EDITOR, or vi names, through /bin/sh as help's pager runs PAGER, on a file in a private folder under host.tmpdir that holds the prefill. Its answer is the saved text exactly. It links, prefills, skips, and validates as text does. An editor that cannot start or exits with a code other than 0, and a file the question cannot write, fail the run with EditorError. While the editor runs, the question leaves raw mode and starts it inside a new core method, out.lendTerminal, which ends the bottom frame's row, holds every live region still, and draws a fresh stack below whatever the child wrote when it exits, erasing nothing. This narrows ADR-0082's kinds, exports, link clause, and leaving clause, ADR-0138's count of kinds, ADR-0091's rules that core redraws regions around every write and that the failure report is last, ADR-0106's terminal users' suspend and resume handlers, and ADR-0115's rule that the pager is the one child that runs through a shell.
-status: proposed
+status: accepted
 created: 2026-11-04
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0139 - An editor question opens the operator's editor on a private temporary file, and core lends it the terminal
@@ -126,7 +126,7 @@ The contract is in the [prompts reference](../libs/prompts.md#the-editor-questio
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

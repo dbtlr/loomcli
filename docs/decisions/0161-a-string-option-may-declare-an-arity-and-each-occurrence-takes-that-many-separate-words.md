@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0161 - A string option may declare an arity, and each occurrence takes that many separate words
 description: A string option declares arity, a whole number of 2 or more, and each occurrence takes exactly that many separate words after its spelling, so --point 3 4 gives the action the tuple ['3', '4']. One validator checks each word under ADR-0036. A multiple option collects one tuple per occurrence. An attached value is an input error, and a word that refuses a value, or the end of the line, before the count is met is the missing-value error, which names the count. A scalar arity option binds env beside envDelimiter and its variable splits into exactly that many items; a multiple one binds no variable. The configuration source takes an array of that many values, or an array of such arrays. The graph and the manifest publish arity, help prints the placeholder once per word, MCP publishes a fixed-length array, invoke by name takes a tuple, and locate reads each later word as the option's value until the count is met. It narrows ADR-0036's value shape, ADR-0127's binding, ADR-0128's empty variable, ADR-0057's value classes, and ADR-0059's argv equivalence.
-status: proposed
+status: accepted
 created: 2026-11-15
-modified: 2026-11-15
+modified: 2026-11-17
 ---
 
 # ADR-0161 - A string option may declare an arity, and each occurrence takes that many separate words
@@ -50,7 +50,7 @@ A declaration that compiled before compiles and runs the same. One change breaks
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

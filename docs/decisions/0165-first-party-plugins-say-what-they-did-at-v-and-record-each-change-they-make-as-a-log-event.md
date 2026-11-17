@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0165 - First-party plugins say what they did at -v and record each change they make as a log event
 description: The first-party plugins that act on files, programs, or the environment say what they did at -v, one out.debug line per act, and how they decided at -vv, one out.trace line per place looked or thing passed over, through the lanes' own views; a confirmation a Command already prints is not repeated. The configuration plugin names the file it read or that it found none, and each place it looked; dotenv counts the variables each file imported and names each one it skipped, with the reason and never a value; update notices name the cache read, a refresh started, the first reason they did nothing, and a cache they ignored; the self-update Command names the release it resolved, the asset it verified, the binary it replaced, and each request; the service plugin names each manager call; the completion, man page, and skills refreshes name a refresh run or skipped, and skip one when nothing is installed; the MCP plugin names each record file it checked; the logging plugin names its file and each rotation. Each change a plugin makes outside the process is one info log event from four shared messages, File written., File removed., Program run., and Binary replaced. An onEnvironment hook's out gains debug and trace, a log destination gains the outermost run's debug and trace lanes, a plugin Command's action logs under its plugin's identity, AfterReplaceContext gains name and out, and RefreshContext gains optional name and out. It supersedes ADR-0080's clause that the notice part reports none of its faults, ADR-0069's clause that every action's log names no plugin, and, for that log identity alone, ADR-0033's clause that a plugin Command's action receives what every action receives.
-status: proposed
+status: accepted
 created: 2026-11-16
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0165 - First-party plugins say what they did at -v and record each change they make as a log event
@@ -297,7 +297,7 @@ The glossary gains Change event and Update check, its Log destination entry name
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

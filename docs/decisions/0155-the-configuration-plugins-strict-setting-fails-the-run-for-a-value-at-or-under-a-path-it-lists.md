@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0155 - The configuration plugin's strict setting fails the run for a value at or under a path it lists
 description: configuration() gains strict, true or a non-empty list of dotted key paths. Each value the drop rule would remove, and each unknown key, at or under a listed path, or anywhere under true, fails the run in place of its -v line, as one InputError with code 2 that names every such key with its file, the schema's message, and what to do. A linked option whose path strict covers fails on a value it cannot take, and core fails a covered fill its validator rejects instead of falling back, through a new strict field on SourceAnswer. A file the variable names or the lookup finds that cannot be used fails the run under any strict, in place of its warning. Without strict nothing changes. It supersedes ADR-0118's drop clause, and narrows ADR-0117's fallback, for what strict covers.
-status: proposed
+status: accepted
 created: 2026-11-14
-modified: 2026-11-15
+modified: 2026-11-17
 ---
 
 # ADR-0155 - The configuration plugin's strict setting fails the run for a value at or under a path it lists
@@ -68,7 +68,7 @@ ADR-0118's drop clause, which says a rejected value is dropped and named at `-v`
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

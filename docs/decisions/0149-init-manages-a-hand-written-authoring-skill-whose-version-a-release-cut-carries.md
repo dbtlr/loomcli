@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0149 - init manages a hand-written authoring skill whose version a release cut carries
 description: loom init writes the authoring skill, a skill that teaches a coding agent to author a Loom application, as managed files at .agents/skills/loom/ under the piece skill. It is Markdown written by hand in @loomcli/loom, its links into the repository render at the running version's tag, and init removes an unedited file of its own that it no longer renders. A release PR fails unless the skill's metadata.version equals the release version, so each release reviews the skill in a preparatory PR before the cut.
-status: proposed
+status: accepted
 created: 2026-11-14
-modified: 2026-11-14
+modified: 2026-11-17
 ---
 
 # ADR-0149 - init manages a hand-written authoring skill whose version a release cut carries
@@ -45,7 +45,7 @@ ADR-0068's managed files gain the authoring skill and the stale-file rule, and `
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

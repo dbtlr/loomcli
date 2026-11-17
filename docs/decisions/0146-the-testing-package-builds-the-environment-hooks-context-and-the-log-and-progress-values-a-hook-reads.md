@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0146 - The testing package builds the environment hook's context and the log and progress values a hook reads
 description: '@loomcli/testing adds environmentContext(hook, values), whose host is stated member by member and whose unstated host member throws its sentence when read, as ADR-0110''s builders do. It adds logEvent, logDestination, and progressEvent, which build the plain values an onLog hook and a progress observer read; each member a test does not state takes a fixed, documented default. It supersedes ADR-0110''s sentence that a test writes the arguments of onLog and onEnvironment by hand.'
-status: proposed
+status: accepted
 created: 2026-11-12
-modified: 2026-11-12
+modified: 2026-11-17
 ---
 
 # ADR-0146 - The testing package builds the environment hook's context and the log and progress values a hook reads
@@ -62,7 +62,7 @@ A test of an `onLog` hook, an `onEnvironment` hook, or a progress observer state
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

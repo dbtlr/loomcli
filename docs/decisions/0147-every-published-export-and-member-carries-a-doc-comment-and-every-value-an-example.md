@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0147 - Every published export and member carries a doc comment, and every value an example
 description: Every export of a published library, every member API Extractor reports, and every member of a declaration a public type is written over carries a doc comment with a summary. Every function, class, constant, enum, and namespace also carries an @example block that holds a fenced ts code block. check:api enforces both; it does not compile examples. A comment states the export's use in the glossary's terms and links its governing page rather than restating that page's rules, which review enforces. It supersedes ADR-0137's exception for the missing-comment rule.
-status: proposed
+status: accepted
 created: 2026-11-13
-modified: 2026-11-13
+modified: 2026-11-17
 ---
 
 # ADR-0147 - Every published export and member carries a doc comment, and every value an example
@@ -45,7 +45,7 @@ A link in a hover resolves only as an absolute URL: a relative `docs/` path in a
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships every library's comments.
+Accepted in 0.19.0.
 
 ## Changelog
 

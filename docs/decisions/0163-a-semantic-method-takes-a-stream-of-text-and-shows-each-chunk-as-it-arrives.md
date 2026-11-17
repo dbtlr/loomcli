@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0163 - A semantic method takes a stream of text and shows each chunk as it arrives
 description: Each of the seven semantic methods takes an async iterable of text in place of its string message, so text such as a model's output shows as it arrives. A streamed message keeps the method's lane, destination, and verbosity, takes no view, and draws through the lane view; when it ends, what was written is what the method writes for the joined text. On a terminal that redraws, each chunk shows as it arrives: `print` writes what each chunk adds at the cursor, never redraws it, and holds every other write to the terminal until its line ends, and the lanes that wrap keep a permanent finished row that stands alone and an unfinished row redrawn as it grows above any live region, which counts for onLiveRegions. Elsewhere, a captured run included, each line is one write once it completes, and the last line is written at the end with the one closing line break. A hidden streamed message is read to its end, a throw keeps the text and rejects the call, open streamed messages are independent, and core runs no timer. At the process's end and a shutdown's end, the text an open streamed message has received is written with the rest of the queue. It widens ADR-0148's signature, narrows ADR-0008's and ADR-0027's string-only signatures, and extends ADR-0090's hidden call, ADR-0110's inert lanes, ADR-0156's span, and ADR-0157's queued writes.
-status: proposed
+status: accepted
 created: 2026-11-16
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0163 - A semantic method takes a stream of text and shows each chunk as it arrives
@@ -139,7 +139,7 @@ The glossary gains Streamed message, Unfinished row, Unfinished line, and Captur
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

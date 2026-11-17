@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0160 - A Command with an action may declare arguments and hold children, and an exact child name routes first
 description: A Command with an action, the root included, may declare arguments and hold children, with no opt-in call. Under it, a plain word routes only when it is exactly a child's name or alias; any other plain word ends routing as the Command's first argument, and once a word fills an argument no later word routes. On a Command without the passthrough mode, a word after the first bare -- fills an argument, so it is how an operator passes a child's name as an argument. A group that declares arguments is the command-without-action fault. locate()'s command position gains the argument the word fills, help notes the -- escape, and the missing-subcommand failure says how to pass the word as an argument. It supersedes ADR-0004's rule that a Command declares arguments or attaches children, never both, and narrows ADR-0025, ADR-0033, ADR-0042, ADR-0055, ADR-0063, ADR-0073, ADR-0074, ADR-0076, ADR-0093, ADR-0140, ADR-0152, and ADR-0159.
-status: proposed
+status: accepted
 created: 2026-11-15
-modified: 2026-11-15
+modified: 2026-11-17
 ---
 
 # ADR-0160 - A Command with an action may declare arguments and hold children, and an exact child name routes first
@@ -54,7 +54,7 @@ ADR-0004's rule that one Command declares arguments or attaches children, never 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 

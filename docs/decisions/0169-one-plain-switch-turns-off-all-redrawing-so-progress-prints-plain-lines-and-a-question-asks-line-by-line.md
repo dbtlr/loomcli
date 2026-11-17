@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0169 - One plain switch turns off all redrawing, so progress prints plain lines and a question asks line by line
 description: The run's plain switch turns off every redraw, so the screen is only ever appended to. It is on when an argv word before the first bare -- is a spelling of the option that carries the new plain mark, which @loomcli/plugins/plain declares as --plain, or when ACCESSIBLE is set and not empty, which core reads itself in every application, and nothing turns it off. With it on, a terminal stderr or stdout does not redraw in place, as under TERM=dumb, so no region is live, an input region included, a progress line prints its start and end lines alone, a streamed message is written a line at a time, out.draw keeps the Application's terminal controls setting, and a question asks line by line. A question asked line by line prints each piece once, through the new questionLine view, and writes no cursor-movement or erase sequence: it reads its keys in raw mode through the reader a question that redraws uses and echoes them itself, nothing at a secret, text, secret, and confirm ask on one row with the default in brackets, select and multiselect print a numbered list and ask for a number or numbers, a search asks for a term first and offers its default by label, the editor keeps its interaction and prints each frame once, and the words around a question are fixed labels. TERM=dumb asks line by line too, CI is unchanged, and messages, color, verbosity, and the interaction decision are untouched. It narrows ADR-0082's look and leaving clauses, ADR-0091's live rule, ADR-0114's input-region clause, ADR-0138's search, ADR-0139's frames, and ADR-0163's terminal rule.
-status: proposed
+status: accepted
 created: 2026-11-16
-modified: 2026-11-16
+modified: 2026-11-17
 ---
 
 # ADR-0169 - One plain switch turns off all redrawing, so progress prints plain lines and a question asks line by line
@@ -295,7 +295,7 @@ The glossary gains Plain switch, Plain mark, and Line-based question, and its Li
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.19.0.
 
 ## Changelog
 
