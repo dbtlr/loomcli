@@ -51,7 +51,7 @@ await invoke(['get'], { args: { path: 'user.name' }, options: {} });
 **Steps.**
 
 1. Run the type checker, and add `.passthrough()` to each Command whose action reads `passthrough`. Call it before `.action()`.
-2. For each Command without `.passthrough()`, check the scripts and documentation that pass words after a bare `--`. Declare `.passthrough()` where the words are meant for a tail. Where they are meant as arguments, keep the `--`: the words after it now fill the Command's arguments, even a word that starts with `-`.
+2. For each Command without `.passthrough()`, check the scripts and documentation that pass words after a bare `--`. Declare `.passthrough()` where the words are meant for a tail. Where they are meant as arguments, keep the `--`: the words after it now fill the Command's arguments, even a word that starts with `-` or names a child Command.
 3. For each `invoke` and `app.invoke` call that passes `values.passthrough`, declare `.passthrough()` on its Command if the action reads a tail. Otherwise remove `passthrough` from the values, or move the words into `values.args` under the declared argument's name.
 4. Check each service plugin `run` setting that carries a bare `--`. Declare `.passthrough()` on its Command where the words after `--` are a tail. Otherwise each word after `--` fills an argument, so remove a word that no argument takes, and the graph builds.
 5. Replace `@loomcli/core/variadic-argument-last` with `@loomcli/core/argument-after-variadic` wherever code or documentation names the rule.
