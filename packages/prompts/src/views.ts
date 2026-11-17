@@ -930,7 +930,7 @@ const questionLine = view<QuestionLine>('@loomcli/prompts/question-line', {
 
 /**
  * What one progress line's view draws: its state, its counts, its spinner frame, its time, its
- * rate and time left, and its log rows.
+ * rate and time left, its log rows, and the tasks under it.
  *
  * @public
  */
@@ -947,7 +947,10 @@ interface ProgressLine {
   readonly frame: string;
   /** The cells the bar draws for the done and the remaining share. */
   readonly bar: { readonly complete: string; readonly incomplete: string };
-  /** Milliseconds since `progress()` opened the line. */
+  /**
+   * Milliseconds since `progress()` or `task()` opened the line: to the frame while it runs, and to
+   * its end on an end line, which reads the same at every later frame.
+   */
   readonly elapsed: number;
   /**
    * Whether the default view draws the rate and time left: the line's `estimate` setting. A line
@@ -978,6 +981,20 @@ interface ProgressLine {
    * frame, because every end removes the rows. A line always supplies it; absent, no rows.
    */
   readonly log?: readonly string[] | undefined;
+  /**
+   * How deep the line sits in its tree: 0 for a line `progress()` opened, and one more than its
+   * parent's for a task. The default view indents the line's row two columns for each level and
+   * its log rows two columns more. A line always supplies it; absent, 0.
+   */
+  readonly depth?: number | undefined;
+  /**
+   * The tasks the line shows under it at this frame, in the order they opened, each with its own
+   * data: a running line's running and finished tasks, and an ended line's kept tasks while its
+   * tree runs, less the finished ones whose rows give way to the terminal's height. Empty on a
+   * root's last frame and on each end line a tree whose tasks stay writes. A line always supplies
+   * it; absent, none.
+   */
+  readonly tasks?: readonly ProgressLine[] | undefined;
 }
 
 /** The cells of a progress bar, which the default view never widens. */
@@ -1063,51 +1080,201 @@ function elapsedTime(elapsed: number): string {
   return `${String(Math.floor(whole / HOUR))}h ${String(minutes).padStart(2, '0')}m`;
 }
 
-/** The progress line's own row, which the terminal wraps when it is wider than the screen. */
-function lineText(data: ProgressLine, { columns, style, width }: ViewContext): string {
-  const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;
-  if (data.state === 'cancelled') {
-    return style.dim(`${glyph.squareCenter} ${data.label} (cancelled)`);
-  }
-  if (data.state === 'ended') {
-    return `${style.success(glyph.success)} ${data.label} ${time}`;
-  }
-  if (data.state === 'failed') {
-    return `${style.error(glyph.error)} ${data.label} ${time}`;
-  }
-  if (data.state === 'skipped') {
-    return style.dim(`${glyph.info} ${data.label} · ${elapsedTime(data.elapsed)}`);
-  }
-  if (data.state === 'warned') {
-    return `${style.warning(glyph.warning)} ${data.label} ${time}`;
-  }
+/** A part of a progress row that can give way on a narrow row, named for its turn to drop. */
+type Droppable = 'bar' | 'counts' | 'elapsed' | 'left' | 'rate';
+
+/** One part of a progress row after its label: the marked text it draws and its turn to drop. */
+interface LinePart {
+  readonly drop: Droppable;
+  readonly text: string;
+}
+
+/**
+ * A progress row in pieces: its mark, the spinner frame or the end glyph, and how the mark is
+ * styled; the label; the parts after the label, in drawing order; and how the whole row is styled.
+ */
+interface LineRow {
+  readonly mark: string;
+  readonly markStyle: (text: string) => string;
+  readonly label: string;
+  readonly parts: readonly LinePart[];
+  readonly paint: (text: string) => string;
+}
+
+/** The parts that drop before the label clips, in their order: the rate, then the time left. */
+const DROPPED_FIRST: readonly Droppable[] = ['rate', 'left'];
+/** The parts that drop once the label is the ellipsis alone, in their order. */
+const DROPPED_LAST: readonly Droppable[] = ['bar', 'elapsed', 'counts'];
+
+/** Text drawn as it is, for a row or a mark that takes no style of its own. */
+function asIs(text: string): string {
+  return text;
+}
+
+/** The pieces of a running line's row: the frame, the label, and its bar, counts, time, and pace. */
+function runningRow(data: ProgressLine, context: ViewContext): LineRow {
+  const { style } = context;
   const completed = data.completed ?? 0;
-  let measure = '';
+  const parts: LinePart[] = [];
   if (data.total !== undefined) {
     const complete = completeCells(completed, data.total);
     const bar =
       style.highlight(textStyle.escape(data.bar.complete.repeat(complete))) +
       style.dim(textStyle.escape(data.bar.incomplete.repeat(BAR_CELLS - complete)));
-    measure = ` ${bar} ${counts(completed, data.total)}`;
+    parts.push(
+      { drop: 'bar', text: ` ${bar}` },
+      { drop: 'counts', text: ` ${counts(completed, data.total)}` },
+    );
   } else if (data.completed !== undefined) {
-    measure = ` ${String(data.completed)}`;
+    parts.push({ drop: 'counts', text: ` ${String(data.completed)}` });
   }
-  const running = `${style.highlight(textStyle.escape(data.frame))} ${data.label}${measure} ${time}`;
-  if (data.estimate !== true || data.rate === undefined) {
-    return running;
+  parts.push({
+    drop: 'elapsed',
+    text: ` ${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`,
+  });
+  if (data.estimate === true && data.rate !== undefined) {
+    parts.push({
+      drop: 'rate',
+      text: ` ${style.dim('·')} ${style.dim(rateText(data.rate, data.unit))}`,
+    });
+    if (data.remaining !== undefined) {
+      parts.push({
+        drop: 'left',
+        text: ` ${style.dim('·')} ${style.dim(timeLeft(data.remaining))}`,
+      });
+    }
   }
-  const pace = `${style.dim('·')} ${style.dim(rateText(data.rate, data.unit))}`;
-  const left =
-    data.remaining === undefined
-      ? []
-      : [`${style.dim('·')} ${style.dim(timeLeft(data.remaining))}`];
-  // On a narrow row the rate gives way first, then the time left, so neither makes the line wrap.
-  const fits = (text: string) => width(text) <= Math.max(1, columns ?? 80);
-  return (
-    [[pace, ...left], left]
-      .map((parts) => [running, ...parts].join(' '))
-      .find((text) => fits(text)) ?? running
-  );
+  return {
+    label: data.label,
+    mark: textStyle.escape(data.frame),
+    markStyle: style.highlight,
+    paint: asIs,
+    parts,
+  };
+}
+
+/** The pieces of a progress line's row in its state: its glyph or frame, label, and parts. */
+function rowOf(data: ProgressLine, context: ViewContext): LineRow {
+  const { style } = context;
+  const time: LinePart = {
+    drop: 'elapsed',
+    text: ` ${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`,
+  };
+  const ended = (mark: string, markStyle: (text: string) => string): LineRow => ({
+    label: data.label,
+    mark,
+    markStyle,
+    paint: asIs,
+    parts: [time],
+  });
+  const rows: Readonly<Record<ProgressLine['state'], () => LineRow>> = {
+    cancelled: () => ({
+      label: data.label,
+      mark: glyph.squareCenter,
+      markStyle: asIs,
+      paint: style.dim,
+      parts: [{ drop: 'elapsed', text: ' (cancelled)' }],
+    }),
+    ended: () => ended(glyph.success, style.success),
+    failed: () => ended(glyph.error, style.error),
+    running: () => runningRow(data, context),
+    skipped: () => ({
+      label: data.label,
+      mark: glyph.info,
+      markStyle: asIs,
+      paint: style.dim,
+      parts: [{ drop: 'elapsed', text: ` · ${elapsedTime(data.elapsed)}` }],
+    }),
+    warned: () => ended(glyph.warning, style.warning),
+  };
+  return rows[data.state]();
+}
+
+/**
+ * A progress line's row after two spaces for each level of `depth`. A row the view `fits` keeps to
+ * one row of `columns`, or 80 where it is unknown, measured with its indent: the rate drops, then
+ * the time left, then the label clips to its leading graphemes and the ellipsis, down to the
+ * ellipsis alone, then the bar, the elapsed time, and the counts drop, and at the narrowest the row
+ * is its leading columns that fit. Any other row draws whole, and the terminal wraps a long one.
+ */
+function lineRow(
+  data: ProgressLine,
+  { depth, fits }: { readonly depth: number; readonly fits: boolean },
+  context: ViewContext,
+): string {
+  const { width } = context;
+  const indent = '  '.repeat(depth);
+  const row = rowOf(data, context);
+  const text = (label: string, parts: readonly LinePart[]) =>
+    `${row.markStyle(row.mark)} ${label}${parts.map((part) => part.text).join('')}`;
+  const drawn = (label: string, parts: readonly LinePart[]) =>
+    indent + row.paint(text(label, parts));
+  if (!fits) {
+    return drawn(row.label, row.parts);
+  }
+  const columns = Math.max(1, context.columns ?? 80);
+  const within = (label: string, parts: readonly LinePart[]) =>
+    width(indent + text(label, parts)) <= columns;
+  const ellipsis = context.plain(glyph.ellipsis);
+  // A label that holds a line break would draw a second row, so its first line stands for it.
+  const plain = context.plain(row.label);
+  const [first = ''] = plain.split('\n', 1);
+  const label = first === plain ? row.label : literal(first + ellipsis);
+  let parts = row.parts;
+  for (const drop of DROPPED_FIRST) {
+    if (within(label, parts)) {
+      return drawn(label, parts);
+    }
+    parts = parts.filter((part) => part.drop !== drop);
+  }
+  if (within(label, parts)) {
+    return drawn(label, parts);
+  }
+  const room = columns - width(indent + text('', parts));
+  if (room >= width(literal(ellipsis))) {
+    const kept = leading(first, room - width(literal(ellipsis)), (candidate) =>
+      width(literal(candidate)),
+    );
+    return drawn(literal(kept + ellipsis), parts);
+  }
+  for (const drop of DROPPED_LAST) {
+    parts = parts.filter((part) => part.drop !== drop);
+    if (within(literal(ellipsis), parts)) {
+      return drawn(literal(ellipsis), parts);
+    }
+  }
+  // The row is its leading columns that fit, each piece keeping its own style.
+  const pieces: [string, (text: string) => string][] = [
+    [indent, asIs],
+    [context.plain(row.mark), (piece) => row.markStyle(textStyle.escape(piece))],
+    [' ', asIs],
+    [ellipsis, (piece) => textStyle.escape(piece)],
+  ];
+  let left = columns;
+  let fitted = '';
+  for (const [piece, draw] of pieces) {
+    const kept = leading(piece, left, (candidate) => width(textStyle.escape(candidate)));
+    fitted += kept === '' ? '' : draw(kept);
+    if (kept !== piece) {
+      break;
+    }
+    left -= width(textStyle.escape(kept));
+  }
+  return row.paint(fitted);
+}
+
+/**
+ * The rows of one line and the tasks under it: its row after two spaces for each level of its
+ * depth, its log rows two spaces further in, and then each task's rows by the same rules. A running
+ * line's row and every row drawn under it keep to one row each; `fits` says a running line is
+ * above this one.
+ */
+function treeRows(data: ProgressLine, context: ViewContext, fits = false): string[] {
+  const depth = Math.max(0, data.depth ?? 0);
+  const fitted = fits || data.state === 'running';
+  const rows = (data.log ?? []).map((entry) => context.style.dim(logRow(entry, context, depth)));
+  const tasks = (data.tasks ?? []).flatMap((task) => treeRows(task, context, fitted));
+  return [lineRow(data, { depth, fits: fitted }, context), ...rows, ...tasks];
 }
 
 /**
@@ -1139,12 +1306,7 @@ function lineText(data: ProgressLine, { columns, style, width }: ViewContext): s
  * @public
  */
 const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
-  render: (data, context) => {
-    const rows = (data.log ?? []).map((entry) =>
-      context.style.dim(logRow(entry, Math.max(1, context.columns ?? 80), context)),
-    );
-    return [lineText(data, context), ...rows].join('\n');
-  },
+  render: (data, context) => treeRows(data, context).join('\n'),
 });
 
 export { answeredLine, cancelledLine, progressLine, questionFrame, questionLine };

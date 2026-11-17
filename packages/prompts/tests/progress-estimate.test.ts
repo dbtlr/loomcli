@@ -21,8 +21,8 @@
  *   `estimate` is set, and the default view draws neither part without it.
  * - Ends and plain lines. An end line draws neither part, and off a live region the start and end
  *   lines carry neither.
- * - A narrow row. The rate gives way first, then the time left, and a line still too wide draws as
- *   before. `progress-estimate-pty.test.ts` proves the drawn line on a real terminal.
+ * - A narrow row. The rate gives way first, then the time left, and a line still too wide clips
+ *   its label. `progress-estimate-pty.test.ts` proves the drawn line on a real terminal.
  */
 import { Application, override } from '@loomcli/core';
 import type { ActionContext } from '@loomcli/core';
@@ -354,7 +354,8 @@ test.each([
   { columns: 64, shown: '◐ Copying files ▱▱▱▱▱▱▱▱▱▱ 10/120 · 3.0s · about 31s left' },
   { columns: 57, shown: '◐ Copying files ▱▱▱▱▱▱▱▱▱▱ 10/120 · 3.0s · about 31s left' },
   { columns: 56, shown: '◐ Copying files ▱▱▱▱▱▱▱▱▱▱ 10/120 · 3.0s' },
-  { columns: 39, shown: '◐ Copying files ▱▱▱▱▱▱▱▱▱▱ 10/120 · 3.0s' },
+  { columns: 40, shown: '◐ Copying files ▱▱▱▱▱▱▱▱▱▱ 10/120 · 3.0s' },
+  { columns: 39, shown: '◐ Copying fil… ▱▱▱▱▱▱▱▱▱▱ 10/120 · 3.0s' },
 ])('on a row $columns columns wide, the line reads "$shown"', async ({ columns, shown }) => {
   const { frames } = await drawn(
     reporting(copying, [

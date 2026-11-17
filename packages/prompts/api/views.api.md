@@ -73,6 +73,7 @@ export interface ProgressLine {
         readonly incomplete: string;
     };
     readonly completed: number | undefined;
+    readonly depth?: number | undefined;
     readonly elapsed: number;
     readonly estimate?: boolean | undefined;
     readonly frame: string;
@@ -81,6 +82,7 @@ export interface ProgressLine {
     readonly rate?: number | undefined;
     readonly remaining?: number | undefined;
     readonly state: 'running' | 'ended' | 'failed' | 'cancelled' | 'skipped' | 'warned';
+    readonly tasks?: readonly ProgressLine[] | undefined;
     readonly total: number | undefined;
     readonly unit?: string | undefined;
 }

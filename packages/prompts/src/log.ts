@@ -220,38 +220,50 @@ function logText(entry: string, context: ViewContext): string {
   return escapeControlCharacters(context.plain(expanded));
 }
 
-/** The indent of a log row and a kept line. */
+/** The indent of a log row and a kept line under a line at depth 0. */
 const LOG_INDENT = '  ';
 
+/** The indent of a log row and a kept line under a line at `depth`: two columns more for each level. */
+function logIndent(depth: number): string {
+  return '  '.repeat(Math.max(0, depth)) + LOG_INDENT;
+}
+
 /**
- * A log row that never wraps, as marked text: the indent and the text, or, while that is wider than
- * `columns`, the text's leading graphemes and the ellipsis, down to the ellipsis alone, and at 2
- * columns or fewer the leading columns of the indent and the ellipsis that fit.
+ * A log row that never wraps, as marked text: the indent for the line's `depth` and the text, or,
+ * while that is wider than the columns, the text's leading graphemes and the ellipsis, down to the
+ * ellipsis alone, and where the indent and the ellipsis alone are wider, the leading columns of
+ * them that fit. `columns` is the view context's, or 80 where it is unknown.
  */
-function logRow(entry: string, columns: number, context: ViewContext): string {
+function logRow(entry: string, context: ViewContext, depth: number): string {
+  const columns = Math.max(1, context.columns ?? 80);
+  const indent = logIndent(depth);
   const text = logText(entry, context);
   const width = (part: string) => context.width(textStyle.escape(part));
-  if (width(LOG_INDENT + text) <= columns) {
-    return textStyle.escape(LOG_INDENT + text);
+  if (width(indent + text) <= columns) {
+    return textStyle.escape(indent + text);
   }
   const ellipsis = context.plain(glyph.ellipsis);
-  const budget = columns - width(LOG_INDENT + ellipsis);
+  const budget = columns - width(indent + ellipsis);
   if (budget < 0) {
-    return textStyle.escape(leading(LOG_INDENT + ellipsis, columns, width));
+    return textStyle.escape(leading(indent + ellipsis, columns, width));
   }
-  return textStyle.escape(LOG_INDENT + leading(text, budget, width) + ellipsis);
+  return textStyle.escape(indent + leading(text, budget, width) + ellipsis);
 }
 
 /**
  * The view a failed, warned, or cancelled line writes its kept lines through, in place of the
- * lane's: each line of the message on a row of its own, two spaces in, dim and whole.
+ * lane's: each line of the message on a row of its own, two spaces in, and two more for each level
+ * of the line's `depth`, dim and whole.
  */
-const keptLines = {
-  render: (message: string, context: ViewContext): string =>
-    message
-      .split('\n')
-      .map((line) => context.style.dim(textStyle.escape(LOG_INDENT + logText(line, context))))
-      .join('\n'),
-};
+function keptLinesAt(depth: number): { render: (message: string, context: ViewContext) => string } {
+  const indent = logIndent(depth);
+  return {
+    render: (message, context) =>
+      message
+        .split('\n')
+        .map((line) => context.style.dim(textStyle.escape(indent + logText(line, context))))
+        .join('\n'),
+  };
+}
 
-export { keptLines, logRow, ProgressLog };
+export { keptLinesAt, logRow, ProgressLog };

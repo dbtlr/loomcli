@@ -108,9 +108,17 @@ const tracked = new Application('tracked', {
   await ending.clear();
   // @ts-expect-error TS2554: A cleared line leaves no text, so clear takes no message.
   await ending.clear('Cleared');
-  const lanes: Pick<Out, 'region' | 'info' | 'success' | 'error'> = context.out;
+  const lanes: Pick<Out, 'region' | 'draw' | 'info' | 'success' | 'error'> = context.out;
   // @ts-expect-error TS2741: A context passed to progress() carries the warn lane.
   progress({ graph: context.graph, out: lanes }, { label: 'Fetching' });
+  const undrawn: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'> = context.out;
+  // @ts-expect-error TS2741: A context passed to progress() carries draw, for a kept tree's end lines.
+  progress({ graph: context.graph, out: undrawn }, { label: 'Deploying' });
+  const deploying = progress(context, { keepTasks: true, label: 'Deploying' });
+  const building: Progress = deploying.task({ label: 'Building the image', total: 3 });
+  await building.task({ keepTasks: false, label: 'Compiling' }).end();
+  await building.end('Built the image');
+  await deploying.end('Deployed');
   // @ts-expect-error TS2345: A done function reads the tracked work's own value type.
   await progress(context, { label: 'Indexing' }).track(Promise.resolve(3), {
     done: (value: string) => value,
@@ -130,6 +138,8 @@ const line: ProgressLine = {
   state: 'running',
   total: 10,
 };
+/** A tree's data: a root with a task under it. */
+const tree: ProgressLine = { ...line, depth: 0, tasks: [{ ...line, depth: 1, tasks: [] }] };
 const declared = progressLine;
 
 /** An override's switch over every state the progress view takes, a skipped and a warned end included. */
@@ -154,4 +164,4 @@ function drawnLine({ label, state }: ProgressLine): string {
   }
 }
 
-export { declared, drawn, drawnLine, event, line, outcome, tracked };
+export { declared, drawn, drawnLine, event, line, outcome, tracked, tree };

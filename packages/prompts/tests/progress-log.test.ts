@@ -134,6 +134,7 @@ async function logged(
     const observed: ProgressContext = {
       graph: context.graph,
       out: {
+        draw: (data, view) => out.draw(data, view),
         error: (...call: MessageArguments) => {
           lanes.push(['error', typeof call[0] === 'string' ? call[0] : '']);
           return out.error(...call);
@@ -468,8 +469,8 @@ test('the default view clips a row to its leading columns at 2 columns or fewer,
     texts.push(mock.stdout.text);
   }
   expect(texts).toEqual([
-    '* W · 0.0s\n  \n  \n',
-    '* W · 0.0s\n \n \n',
+    '* \n  \n  \n',
+    '*\n \n \n',
     `* W · 0.0s\n  wide 😀 text\n  ${'y'.repeat(77)}…\n`,
   ]);
 });
