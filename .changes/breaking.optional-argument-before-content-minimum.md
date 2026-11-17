@@ -4,7 +4,7 @@
 
 **Affected surface.** No compile error: building the application throws a `DeclarationError` when it starts. The surface is applications that declare an optional argument before a content argument with a positive `min`, such as `app lint [profile] <files...>`. This includes a content argument that claims stdin, where a piped run such as `cat a.ts | app lint` omitted `profile` and worked: the declaration is refused all the same.
 
-**Why.** `app lint a.ts` bound `a.ts` to `profile` and then failed for want of a file, so `profile` could not be omitted whenever files were named on the line. The declaration is now refused when it is written. A content argument with a positive `min` is variadic, and a variadic argument is last, so the optional argument cannot move after it: it becomes an option.
+**Why.** `app lint a.ts` bound `a.ts` to `profile` and then failed for want of a file, so `profile` could not be omitted whenever files were named on the line. The declaration is now refused when it is written. A content argument with a positive `min` is variadic, and no optional argument may follow a variadic argument, so the optional argument cannot move after it: it becomes an option.
 
 **Before and after.**
 

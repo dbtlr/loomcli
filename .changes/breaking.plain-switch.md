@@ -5,7 +5,7 @@
 
 ### Migration
 
-**Affected surface.** No compile error: behavior changes at run time. The surface is an action, a middleware, or a library that opens `out.region({ input: true })` itself and draws its frames there, run on a terminal under `TERM=dumb` or with `ACCESSIBLE` set. Such a region's `live` now reads `false`, and its frames draw nothing. A question from `@loomcli/prompts` needs no change, though a test that asks one on a mock terminal with `TERM: 'dumb'` now reads its line-based pieces in `mock.stderr.text` rather than frames.
+**Affected surface.** No compile error: behavior changes at run time. The surface is an action, a middleware, or a library that opens `out.region({ input: true })` itself and draws its frames there, run on a terminal under `TERM=dumb` or with `ACCESSIBLE` set. Such a region's `live` now reads `false`, and its frames draw nothing. A region opened without `input: true` is not live with `ACCESSIBLE` set either, where it drew before, so code that draws one and writes nothing when `live` is `false` shows nothing there, as it already shows nothing on a pipe. A question from `@loomcli/prompts` needs no change, though a test that asks one on a mock terminal with `TERM: 'dumb'` now reads its line-based pieces in `mock.stderr.text` rather than frames.
 
 **Why.** An input region redraws in place with cursor movement and erasure, which a terminal under `TERM=dumb` cannot perform and which the plain switch turns off.
 
@@ -22,16 +22,16 @@ After, the region writes plain lines when it is not live, as `progress()` does:
 
 ```ts
 const region = out.region({ input: true });
-if (region.live) {
-  await region.draw(state, pickerFrame);
-} else {
+// A region that is not live writes nothing here, and resolves once its turn has come.
+await region.draw(state, pickerFrame);
+if (!region.live) {
   await out.draw(state, pickerLines);
 }
 ```
 
 **Steps.**
 
-1. Find each `out.region({ input: true })` your code opens.
-2. Read the region's `live` after opening it, and when it is `false`, print each piece once through `out.draw` or a semantic method, and read the operator's answer as a line.
+1. Find each `out.region({ input: true })` your code opens, and each `out.region()` without it that draws frames and writes nothing when `live` is `false`.
+2. Await the region's `draw` as before: a region that is not live writes nothing, and an input region's `draw` resolves once its turn among the run's input regions has come. Then read the region's `live`, and when it is `false`, print each piece once. An input region prints through `out.draw` or a semantic method and then reads the operator's answer as a line. A region without `input: true` prints through `out.info` or another method that `-q` hides, as `progress()` writes its plain lines, so a quiet run stays quiet.
 
-**Validation.** Run the application at a terminal with `TERM=dumb`, and again with `ACCESSIBLE=1`, through each input region it opens, and confirm the region prints its lines and takes its answer. Record such a run with `script`, and confirm the record holds no cursor movement.
+**Validation.** Run the application at a terminal with `TERM=dumb`, and again with `ACCESSIBLE=1`, through each region it opens, and confirm each region prints its lines and each input region takes its answer. Record such a run with `script`, and confirm the record holds no cursor movement.

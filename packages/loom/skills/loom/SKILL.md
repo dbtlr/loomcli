@@ -27,8 +27,8 @@ Read the doc comment of every export you use. It states the export's contract, s
 
 Read the reference for the work at hand.
 
-- [Structure](references/structure.md): read it when you lay out files, add a Command, install a plugin, or share an option, a view, or a failure class.
-- [Middleware and actions](references/middleware-and-actions.md): read it when you decide where work goes, or write a middleware.
+- [Structure](references/structure.md): read it when you lay out files, add a Command or declare its inputs, install a plugin, or share an option, a view, or a failure class.
+- [Middleware and actions](references/middleware-and-actions.md): read it when you decide where work goes, write an action's messages, progress lines, or questions, or write a middleware.
 - [Results and failures](references/results-and-failures.md): read it when you declare what a Command produces, throw or translate a failure, or write a failure message.
 - [Testing](references/testing.md): read it when you write or change a test.
 - [Toolchain](references/toolchain.md): read it when you run `loom init`, `loom build`, or `loom changelog`, or change `loom.config.json`.

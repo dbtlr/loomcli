@@ -1,6 +1,6 @@
 # Structure
 
-This reference covers how to lay out a Loom application across files: the application module and the entry, the Command modules, and where plugins, shared options, views, and failure classes go.
+This reference covers how to lay out a Loom application across files: the application module and the entry, the Command modules and the inputs they declare, and where plugins, shared options, views, and failure classes go.
 
 ## The application module and the entry
 
@@ -23,7 +23,7 @@ Write the application module in this order, because each step types the next:
 
 Keep one registration per TypeScript project. A second application, an example, or a test with its own registration needs its own `tsconfig.json`.
 
-[`configuration()`](../../../../../docs/plugins/config.md#the-plugin-and-its-values) returns the plugin and a provider, `{ plugin, values }`. When a Command opts in to `values`, call `configuration()` in a module of its own, such as `src/config.ts`, so the application module imports the plugin and the Command imports the provider, and no Command imports the application module.
+[`configuration()`](../../../../../docs/plugins/config.md#the-plugin-and-its-values) returns the plugin and a provider, `{ plugin, values }`. When a Command opts in to `values`, call `configuration()` in a module of its own, such as `src/config.ts`, so the application module imports the plugin and the Command imports the provider, and no Command imports the application module. Under a supervisor, where nobody reads `-v`, pass `strict` to `configuration()`, `true` or a list of key paths, so a broken setting fails the run with code 2 instead of being dropped, under [The strict setting](../../../../../docs/plugins/config.md#the-strict-setting).
 
 ## Commands and files
 
@@ -36,6 +36,18 @@ Start from the scaffold: one application module with an inline root action. Spli
 - **Extract an action to test it.** Put an extracted action in its own module, such as [`src/actions/get-value.ts`](../../../../../examples/jsonkit/src/actions/get-value.ts), typed `ActionHandler<typeof get>` through `import type` of its Command. Keep the Command's initializer ending in `.action(getValue)`, and derive an `extend()` value from the finished Command instead, under [Modular authoring](../../../../../docs/core/commands.md#modular-authoring). A unit test calls the extracted action with [`actionContext`](../../../../../docs/libs/testing.md#actioncontext). An inline action has no public path to a unit test.
 - **A root with arguments and children.** A Command with an action, the root included, may declare arguments and hold children, so a root that takes arguments, like the [textstat example](../../../../../examples/textstat/src/application.ts)'s, can install plugin Commands such as `help({ command: true })`, `completion()`, or `mcp()`; textstat installs `completion()`. A plain word that is exactly a child's name or alias routes into that child. Any other word fills the first argument, and once a word fills an argument no later word routes. An operator passes a child's name as an argument after `--`, as in `textstat -- completion`, and a child added in a later release shadows that word as an argument. A group, a Command with children and no action, declares no arguments.
 - **Share steps as functions.** A step that several actions repeat, such as reading and parsing a document, is a plain function in its own module. Type its parameter as the part of the action context it reads, such as `Pick<Out, 'debug'>`, so a test passes only that part.
+
+## A Command's inputs
+
+Each setting's doc comment states its rules. Choose among them by what the operator types:
+
+- **Check a value with a validator.** Declare `validate` on the input, and start from the [catalog](../../../../../docs/libs/validators.md#catalog) in `@loomcli/validators`, such as `integer()`, `path()`, `bytes()`, `host()`, or `date()` with the `layouts` operators type. Add a rule to a catalog validator with [`pipe()`](../../../../../docs/libs/validators.md#pipe) rather than writing its parse again.
+- **An option given more than once.** A second occurrence of a string option fails as a repeat. Declare `multiple: true` to collect every occurrence as a list, or [`lastWins: true`](../../../../../docs/core/options.md#last-occurrence-wins) to keep the last, so a wrapper script or a shell alias puts a default first and the operator's later value replaces it.
+- **Several words to one option.** Declare [`arity`](../../../../../docs/core/options.md#option-value-arity) for a fixed count of separate words per occurrence: `{ arity: 2, type: 'string', validate: integer() }` reads `--point 3 4` as `[3, 4]`, typed as a tuple. No question answers an arity option.
+- **Options that depend on each other.** `exclusive()`, `oneRequired()`, and `requiredTogether()` constrain a group, and [`requires('password', 'user')`](../../../../../docs/core/options.md#a-one-way-requirement) refuses `--password` without `--user` while it accepts `--user` alone. A default never counts as supplied.
+- **Words after `--`.** The first bare `--` ends option parsing, and the words after it fill the Command's arguments, so `rm -- -draft.txt` takes a file name that starts with a hyphen. A Command that forwards words to another program declares [`.passthrough()`](../../../../../docs/core/options.md#passthrough) before `action()`, and its action reads them untouched in `passthrough`. Without the mode, the action has no `passthrough`.
+- **A list before a fixed argument.** Required arguments may follow a variadic one, as in `copy <src...> <dest>`. They fill from the end of the line, and the variadic takes the words between.
+- **An input a question asks for.** Declare `required: 'non-interactive'` on it, so a run that cannot ask fails before the action, and link the question to it, under [Middleware and actions](middleware-and-actions.md).
 
 ## Plugins
 
