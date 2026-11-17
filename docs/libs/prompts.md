@@ -831,7 +831,7 @@ A question waits as long as the operator takes, and the library adds no timeout.
 ## Progress
 
 ```ts
-import type { ActionContext, Out, Plugin } from '@loomcli/core';
+import type { ActionContext, Out, OutputTerminal, Plugin } from '@loomcli/core';
 
 interface Spinner {
   readonly frames: readonly string[]; // drawn in turn, one each interval
@@ -843,6 +843,8 @@ interface ProgressSettings {
   readonly spinner?: Spinner; // this line's own spinner, over the application's style
   readonly estimate?: boolean; // the running line shows its rate and time left; absent, false
   readonly unit?: string; // what the line counts, as the rate names it: 3.3 files/s
+  readonly logRows?: number; // the most log rows a running line shows under it; absent, 5
+  readonly logLimit?: number; // the log lines kept to write when the line fails, warns, or is cancelled; absent, 1000
 }
 interface ProgressUpdate {
   readonly completed?: number;
@@ -855,6 +857,7 @@ interface TrackMessages<Value> {
 }
 interface Progress {
   update(update: ProgressUpdate): void;
+  log(text: string | AsyncIterable<string>): Promise<void>;
   end(message?: string): Promise<void>;
   fail(message?: string): Promise<void>;
   skip(message?: string): Promise<void>;
@@ -864,6 +867,7 @@ interface Progress {
 }
 type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
   readonly out: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'>;
+  readonly host?: { readonly terminal: { readonly stderr: Pick<OutputTerminal, 'rows'> } }; // the height the log rows share
 };
 interface ProgressStyleSettings {
   readonly spinner?: Spinner;
@@ -966,19 +970,20 @@ Where the line is not live, the cleared line's start line stays and nothing foll
 
 A progress line shows an operator that work is under way: a spinner while the work has no known size, and a bar with counts once it has a total. `progress(context, settings)` draws one in a [live region](../core/output.md#live-region), animates it on its own timer, and reports it as [progress events](../core/output.md#progress-events), so an invocation by name and an MCP client read the same progress a terminal shows.
 
-- **A line in a region.** `progress()` opens one region through `context.out.region()`, reports `{ label, total, completed: 0 }` with a total and `{ label }` without one, draws its first frame, and returns the line's handle at once. Several lines stack in the order they started, and a question asked meanwhile draws below them. An action, a middleware, and a configuration source each call it with their own context.
+- **A line in a region.** `progress()` opens one region through `context.out.region()`, reports `{ label, total, completed: 0 }` with a total and `{ label }` without one, draws its first frame, and returns the line's handle at once. Several lines stack in the order they started, and a question asked meanwhile draws below them. An action, a middleware, and a configuration source each call it with their own context. `ProgressContext` reads the context's `graph` and `out`, and its optional `host`, from which a line reads stderr's `rows` to share the terminal's height under [A line's log](#a-lines-log). Each of those contexts carries the run's `host`, and a context built by hand may leave it out, so its lines draw up to their `logRows`.
 - **Updates.** `update({ completed?, total?, label? })` changes what the line shows, reports the change, and draws the next frame, and an omitted field keeps its value. A `total` turns a spinner into a bar. It returns nothing, because the frame queues in call order. After the line has closed it checks its settings, as every call does, and then does nothing.
 - **The frame timer.** While the line is live, the library redraws it every spinner `interval` from its own `setInterval`, advancing the spinner frame and the elapsed time, and counting down the time left of a line that shows one. The timer is unref'd, so it never keeps a process alive, and the library clears it when the region's signal aborts, whatever closed the region. It cancels and limits nothing. A line that is not live runs no timer.
 - **Ending.** `end(message?)` draws the line's success line, with the message or else the label, and closes its region with `end('ended', message)`. `fail(message?)` draws its failure line and closes the region with `end('failed', message)`, so its last progress event reads `failed`. `skip(message?)` draws its skipped line, dim, and closes the region with `end('skipped', message)`, for work that had nothing to do. `warn(message?)` draws its warned line and closes the region with `end('warned', message)`, for work that finished with a problem the operator should see. Each way the end event's label is the message, so an `onProgress` observer and an MCP client read the same end text the terminal shows, and a line ended with no message keeps its last label. Each resolves once its line is written. [ADR-0170](../decisions/0170-a-progress-line-may-end-skipped-or-warned-or-be-cleared-and-a-regions-end-event-reads-skipped-and-warned.md) records the skipped, warned, and cleared ends.
-- **Clearing.** `clear()` removes the line and leaves nothing, with one exception: under [Lending the terminal](../core/output.md#lending-the-terminal), a frame drawn before the terminal was lent stays where it was drawn, so a line cleared during or after a lend leaves that frame. It draws an empty last frame, which does not pass through the [progress view](#progress-view), and closes its region with `end('ended')`, so the rows above the line stay as they were, the lines below close the gap, and no blank row is left. Its end event reads `ended` with the last label. Only the author's own `clear()` removes a line: a line that fails or is cancelled keeps its text, and nothing clears a line on its own.
-- **After an end.** Once the line has ended, failed, been cancelled, been skipped, been warned, or been cleared, `end`, `fail`, `skip`, `warn`, and `clear` do nothing and resolve.
+- **Clearing.** `clear()` removes the line and leaves nothing, with one exception: under [Lending the terminal](../core/output.md#lending-the-terminal), a frame drawn before the terminal was lent stays where it was drawn, so a line cleared during or after a lend leaves that frame. It draws an empty last frame, which does not pass through the [progress view](#progress-view), and closes its region with `end('ended')`, so the rows above the line stay as they were, the lines below close the gap, and no blank row is left. Its end event reads `ended` with the last label. Only the author's own `clear()` removes a line: a line that fails, warns, or is cancelled keeps its text and its log, `end` and `skip` remove the log rows and keep the end line, and nothing clears a line on its own.
+- **After an end.** Once the line has ended, failed, been cancelled, been skipped, been warned, or been cleared, `end`, `fail`, `skip`, `warn`, and `clear` do nothing and resolve. `log()` does nothing for a string and resolves, and reads an iterable to its end and discards its text, under [A line's log](#a-lines-log).
 - **Tracking work.** `track(work, { done?, failed? })` awaits `work`, and ends the line only as a success or a failure. When it resolves, the line ends with `done`, and `track` returns the value. When it rejects, the line fails with `failed`, and `track` rejects with the same rejection, unchanged. `done` is a string or a function of the resolved value, and `failed` a string or a function of the rejection, so either message can say what happened, and each defaults to the label. When the line has already closed, `track` only returns the value or rethrows.
-- **Cancellation.** The handle has no cancel method. When the run is cancelled, core closes the line's region for the cancellation, and the line draws its cancelled line in the region's abort. A line started after the run is cancelled finds its region already closed, so it draws and writes nothing and starts no timer.
-- **A failing run.** When the run fails with a line still open, core closes the line's region for the failure before it renders the failure report, and the line draws its failure line with its label in the abort, so the report follows every line. A line the action leaves open draws its success line with its label when the action returns. A line a middleware or a configuration source leaves open stays open through the action, so a middleware can show a line around the whole run, and draws its success line with its label once the middleware chain has unwound.
-- **Off a terminal.** When the region is not live, because stderr is not a terminal, the terminal does not [redraw](../core/output.md#live-region) in place (the run's [plain switch](../core/output.md#the-plain-switch) on, `TERM=dumb`, or `CI` set and not `false`), the run is an [invocation by name](../core/invocation.md#invocation-by-name), or the run's [verbosity](../core/verbosity.md) is -1, the line draws nothing. `progress()` writes its label once through `context.out.info`. `end` and a resolved `track` write the end message through `context.out.success`, `skip` writes it through `context.out.info`, `warn` through `context.out.warn`, and `fail`, a rejected `track`, and a failing run write it through `context.out.error`. An update, a cancellation, and `clear` write nothing, so a cleared line leaves its start line alone, and no line carries the elapsed time, the rate, or the time left. So under `-q` the start, success, and skipped lines hide with their lanes and a warned or failure line prints, and under an invocation by name the lines land in `messages`. The library reads the region's `live` and never the verbosity.
+- **Cancellation.** The handle has no cancel method. When the run is cancelled, core closes the line's region for the cancellation, and the line draws its cancelled line in the region's abort, with its kept log lines above it. A line started after the run is cancelled finds its region already closed, so it draws and writes nothing and starts no timer.
+- **A failing run.** When the run fails with a line still open, core closes the line's region for the failure before it renders the failure report, and the line draws its failure line with its label in the abort, with its kept log lines above it, so the report follows every line. A line the action leaves open draws its success line with its label when the action returns. A line a middleware or a configuration source leaves open stays open through the action, so a middleware can show a line around the whole run, and draws its success line with its label once the middleware chain has unwound.
+- **Off a terminal.** When the region is not live, because stderr is not a terminal, the terminal does not [redraw](../core/output.md#live-region) in place (the run's [plain switch](../core/output.md#the-plain-switch) on, `TERM=dumb`, or `CI` set and not `false`), the run is an [invocation by name](../core/invocation.md#invocation-by-name), or the run's [verbosity](../core/verbosity.md) is -1, the line draws nothing. `progress()` writes its label once through `context.out.info`. `end` and a resolved `track` write the end message through `context.out.success`, `skip` writes it through `context.out.info`, `warn` through `context.out.warn`, and `fail`, a rejected `track`, and a failing run write it through `context.out.error`. An update and `clear` write nothing, and a cancellation writes no end line, so a cleared line leaves its start line alone, and no line carries the elapsed time, the rate, or the time left. `log()` shows nothing while the line runs. A line that fails or warns writes its kept log lines above its end line, and a cancelled line writes them alone, under [A line's log](#a-lines-log). So under `-q` the start, success, and skipped lines hide with their lanes and a warned or failure line prints, and under an invocation by name the lines land in `messages`. The library reads the region's `live` and never the verbosity.
 - **Reports.** The line reports at its start, at each update, and when it closes, so an [`onProgress`](../core/invocation.md#invocation-by-name) observer and an [MCP](../plugins/mcp.md) client read `started`, `updated`, and `ended`, `failed`, `skipped`, `warned`, or `cancelled`, whether or not the line draws. A cleared line reads `ended`.
 - **The values.** `label`, an update's `label`, and the end messages are marked strings, as a lane message is, so an author escapes raw data with `style.escape` first. `total` and `completed` are counts of 0 or more, which the library draws as given, and `completed` may pass `total`.
 - **Rate and time left.** With `estimate: true`, a running line also shows how fast its work goes and how long it has left, under [Rate and time left](#rate-and-time-left).
+- **A log.** `log(text)` shows a child program's output, or any other text, under the running line, removes it on success, and keeps it on failure, under [A line's log](#a-lines-log).
 - **No limit.** A line shows until its work ends. The library adds no timeout and no stall check.
 
 ### Rate and time left
@@ -1042,6 +1047,112 @@ A line whose settings set `estimate` shows its rate and its time left while it r
 - **The words.** `about`, `left`, `/s`, `/min`, and `/h` are fixed labels of the progress view, as `(cancelled)` is, so they stay with the view that prints them. The `unit` is a marked string, as the label is, so an author escapes raw data with `style.escape` first.
 - **Progress events.** No event carries the rate or the time left. An `onProgress` observer or an MCP client reads the counts and measures a rate against its own clock if it needs one.
 
+### A line's log
+
+```ts
+import { PassThrough } from 'node:stream';
+
+import { Command, FatalError } from '@loomcli/core';
+import { progress } from '@loomcli/prompts';
+
+export const install = new Command('install').action(async (context) => {
+  const { host, signal, style } = context;
+  const stdout = new PassThrough({ encoding: 'utf8' });
+  const stderr = new PassThrough({ encoding: 'utf8' });
+  async function* text(stream: PassThrough): AsyncGenerator<string> {
+    for await (const chunk of stream) {
+      yield style.escape(String(chunk)); // the child's raw text, escaped chunk by chunk
+    }
+  }
+  const installing = progress(context, { label: 'Installing dependencies' });
+  // One log() call for each stream, so a partial line of one never joins a partial line of the other.
+  const logged = Promise.all([installing.log(text(stdout)), installing.log(text(stderr))]);
+  const exit = await host.spawn('npm', ['install'], { signal, stderr, stdout }).exited;
+  stdout.end();
+  stderr.end();
+  await logged;
+  if (exit.kind === 'unstarted' || exit.code !== 0) {
+    await installing.fail();
+    throw new FatalError('npm could not install the dependencies. Fix what its lines above name, then run the command again.');
+  }
+  await installing.end('Installed dependencies');
+});
+```
+
+At a terminal, the line reads, partway through, with the newest five lines of npm's output under it, dim:
+
+```text
+◓ Installing dependencies · 4.2s
+  npm http fetch GET 200 https://registry.npmjs.org/react 81ms
+  npm http fetch GET 200 https://registry.npmjs.org/react-dom 77ms
+  npm http fetch GET 200 https://registry.npmjs.org/scheduler 64ms
+  npm http fetch GET 200 https://registry.npmjs.org/loose-envify 59ms
+  npm http fetch GET 200 https://registry.npmjs.org/js-tokens 61ms
+```
+
+When the install succeeds, the rows go, and the run leaves the success line alone:
+
+```text
+✔ Installed dependencies · 9.8s
+```
+
+When it fails, the line writes the lines it kept above its failure line, dim, where they stay in scrollback, and the failure report follows:
+
+```text
+  npm error code E404
+  npm error 404 Not Found - GET https://registry.npmjs.org/left-padd - Not found
+  npm error 404
+  npm error 404  'left-padd@*' is not in this registry.
+✘ Installing dependencies · 3.2s
+```
+
+Where the line does not draw, it shows nothing while it runs, and the same failure writes:
+
+```text
+ℹ Installing dependencies
+  npm error code E404
+  npm error 404 Not Found - GET https://registry.npmjs.org/left-padd - Not found
+  npm error 404
+  npm error 404  'left-padd@*' is not in this registry.
+✘ Installing dependencies
+```
+
+`log(text)` adds lines to the line's log: one line, text that holds several, or an async iterable of text, such as a child program's output as it arrives. While the line runs, its newest lines show under it, and older ones scroll out. A line that ends well takes them away, and one that fails, warns, or is cancelled keeps them where the operator can read why. [ADR-0172](../decisions/0172-a-progress-line-shows-the-newest-lines-of-its-log-under-it-removes-them-on-success-and-keeps-them-on-failure.md) records the rules.
+
+- **The text.** `log()` takes a string or an `AsyncIterable<string>`, as a [streamed message](../core/output.md#a-streamed-message) does, and the types refuse a plain iterable and an array. The text is a marked string, so escape a child program's raw text with `style.escape`, chunk by chunk, and keep each style call inside one line. A chunk that is not a string gets no rule: a Node `Readable` yields `Buffer` chunks unless its encoding is set, so pass one after `setEncoding('utf8')`, or a `PassThrough` built with `encoding: 'utf8'`, as above. [`host.spawn`](../core/host.md#child-programs) never ends a stream it writes into, so end it once the child has exited.
+- **Lines.** A line ends at `\n`, and a `\r` directly before it is part of the line break, also when two chunks split the CRLF. A chunk that ends inside a line leaves it unfinished, and the end of the string or the iterable finishes it. A final line break starts no line, so `'Done\n'` is one line, `'a\nb'` is two, and the empty string is none. A blank line is a line. A lone `\r`, one no `\n` follows, starts the line over once text follows it, as a child program redraws its own progress, so `'Fetching 10%\rFetching 20%\n'` is the line `Fetching 20%`, and `'Fetched\r'` keeps `Fetched`.
+- **What a row shows.** A row is two spaces and the line's plain text, all of it dim. The author's styles and the color, hyperlink, and terminal control sequences a child program writes draw nothing, and neither does any other control character but the tab, such as a backspace or a bell. Each tab expands to the next multiple of eight columns from the start of the line, and a line or paragraph separator or a bidirectional control that is left draws as [`escapeControlCharacters`](../core/styles.md#strings-and-composition) writes it, such as `\u202e`, so no row moves the cursor or breaks the frame. A row never wraps: while it is wider than the view context's `columns`, or 80 columns when `columns` is `undefined`, measured in the form it draws, its text clips to its leading graphemes and the `ellipsis` glyph, down to the ellipsis alone, and at 2 columns or fewer the row is its leading columns that fit.
+- **While the line runs.** Where the line draws, its newest `logRows` lines show under it, the oldest on top. An open iterable's unfinished line shows as the newest row while it grows, so a child program's own `\r` progress shows its latest state. `log()` draws no frame of its own: the rows show at the line's next frame, from its timer or an `update`, so a child program that writes thousands of lines a second costs no more frames than the spinner draws. A line with no log draws as it did before. Each frame clips to the `columns` it reads, so the rows follow a narrowed terminal at the next frame. The frame is the line and at most `logRows` rows, 6 rows by default, and fewer on a short terminal, under The terminal's height below.
+- **The terminal's height.** A stack taller than the terminal cannot be erased above its top row, under [Live region](../core/output.md#live-region), so the run's open progress lines share stderr's `rows`: each line keeps its own row, and the rows left are divided among the lines that have a log, so each shows fewer than its `logRows`, down to none.
+  - The lines that share are the open lines whose region is live and that draw on one terminal in one process: those whose contexts carry the same `host.terminal.stderr`, which an action's, a middleware's, and a configuration source's context of one run share and two runs do not. A line joins when it opens live and leaves at any end, a clear, or its region's close. A line that is not live never joins and is never fitted.
+  - A line reads `rows` from its context's `host` each time it builds a frame, as the select question does, so a resize takes effect at the line's next frame. With no `host`, or with `rows` `undefined` or not above 0, the line draws up to its `logRows`, and a line whose context has no `host` does not join.
+  - The budget for log rows is `rows` less one row for each line that shares, a line's own row counting as one. When it is 0 or less, no line draws a log row.
+  - A line needs the smaller of its `logRows` and the rows its log has to show, an open iterable's unfinished row included, so a line with `logRows: 0` or an empty log needs none and takes none. The budget is divided among the lines with a need in equal shares: a line never gets more than its need, the rows it does not need go to the others, and a remainder that cannot be divided equally goes one row each to the lines that opened first.
+
+    | `rows` | Open lines and the rows each log has to show | Budget | Shares, in opening order |
+    | ------ | -------------------------------------------- | ------ | ------------------------ |
+    | 10     | Two, each with 6 lines, so each needs 5      | 8      | 4, 4                     |
+    | 24     | Five, each with 6 lines                      | 19     | 4, 4, 4, 4, 3            |
+    | 6      | Two, one with 1 line and one with 6          | 4      | 1, 3                     |
+    | 10     | Three: 6 lines, an empty log, and 6 lines    | 7      | 4, 0, 3                  |
+    | 3      | Three, each with 6 lines                     | 0      | 0, 0, 0                  |
+
+  - Each line draws on its own timer, so it learns of a change, a line opened or ended, a log that grew, or a resize, at its own next frame. At each frame it draws the smaller of its share and what is left of `rows` after every sharing line's own row and the log rows the other lines drew in their latest frames, the newest rows of its log as before. So a line shrinks to its share, or below it, at its next frame, and it grows only into rows the others have already given up. Once every line has drawn a frame since a change, the stack is within the terminal, and each line's next frame draws its whole share. No frame makes the stack taller than the terminal. A line that opens when the stack has no row left for its own row first has each line that draws log rows draw again under the same rule, in the order they opened, before it draws its first frame. A terminal that grows narrower or shorter between frames stays under core's [resize](../core/output.md#live-region) rule, as for every view.
+  - The kept lines a failed, warned, or cancelled line writes are every kept line, whatever it drew, and plain output, progress events, `track()`, and the settings are unchanged.
+  - Rows other writers hold are not counted: an open question's region, a region an author opens by hand, and a streamed message's unfinished row. A line's own row counts as one row, also when the terminal wraps a long label, and lines alone, with no log rows, can still take more than the terminal's rows.
+- **The settings.** `logRows` is the most rows a running line shows, 5 when absent, and `logLimit` the count of lines the line keeps to write when it fails, warns, or is cancelled, 1000 when absent. Each is a whole number of 0 or more, and neither changes after `progress()` opens the line. `logRows: 0` shows no row, and the line still keeps its lines. `logLimit: 0` keeps none, so a failure writes no log line and no sentence. The rows are the newest `logRows` lines whatever `logLimit` says.
+- **Success removes the rows.** `end`, `skip`, `clear`, a resolved `track`, and a line its opener leaves open for completion draw their last frame with no rows, and core erases the whole running frame before it draws it, so the rows leave no blank row. Where the line does not draw, these ends write nothing for the log.
+- **Failure keeps the lines.** `fail`, a rejected `track`, a failing run, `warn`, and a cancellation write the kept lines as one message above the end line, whether or not the line draws. The message goes through the lane of the end line's level, so the lines stay on stderr with it: `out.error` for a failed line, and `out.warn` for a warned or a cancelled line. Both write at every verbosity, so a failure under `-q` still shows them, and under an invocation by name they land in `messages`. The message draws through the library's own view, so it carries no glyph: each kept line draws as a row does, two spaces and its text, dim, but whole, and the terminal wraps a long one. The line writes the message and its end line at the same moment, so the kept lines stand directly above the end line, and a failing run writes them before core's failure report, which stays last. While a question or a lend holds the frames, the end line moves into scrollback when the hold ends, as every last frame does. A line with no log writes no message. A cancelled line where the line does not draw writes no end line, so its kept lines stand alone.
+- **The dropped lines.** When the line finished more lines than the message writes, the message opens with a row that says how many earlier lines it leaves out, drawn as a kept line is: `1 earlier line was dropped.`, or `1203 earlier lines were dropped.` for 1203. The count is every finished line less the `logLimit` lines the message writes, so 20 lines with `logRows: 5` and `logLimit: 3` read `17 earlier lines were dropped.`
+- **The bound.** The line holds the newest `logLimit` lines, or the newest `logRows` when that is more, and counts every line it finished. A line longer than 4096 code points keeps its first 4096 and the `ellipsis` glyph after them, and the rest of that line is read and discarded, so a child program's one long line costs no more. An open iterable's unfinished line is bounded the same way.
+- **When it resolves.** For a string, `log()` resolves at once, once its lines are in the log. For an iterable, it resolves once the iterable has ended and its last line is in the log. Await it before ending the line, so the end keeps every line.
+- **A throw.** When an iterable throws, the lines it gave stay, its unfinished line is finished, and `log()` rejects with the thrown value, unchanged. The line keeps running: ending it is the action's, and a rejection that fails the run fails the line, which keeps its lines.
+- **Several at once.** Each call keeps its own unfinished line, and no call waits for another. Finished lines join the log in the order they finish, so two iterables open at once interleave line by line and never tear a line. Each open iterable's unfinished line shows after the finished rows, in the order the calls were made, and counts toward `logRows`.
+- **At an end.** When the line ends, each open iterable's unfinished line joins the log first, so the kept lines hold what the operator last saw. An iterable still open then, or one passed to `log()` after the end, is read to its end and its text discarded, and its call resolves at that end or rejects when it throws. The line never stops an iterable, so a child program writing into a stream the action passed never blocks on a full pipe. `log()` with a string after the end does nothing and resolves.
+- **Tracking work.** `track()` is unchanged: a resolved `track` removes the rows as `end` does, and a rejected one keeps the lines as `fail` does.
+- **Progress events.** No event carries a log line. An `onProgress` observer reads the counts and the label as before, and an MCP client reads the kept lines in a failing call's `messages`.
+- **No limit.** The line puts no timer on the work and never limits how long an iterable stays open. An application that needs a timeout sets one in its own work, such as `AbortSignal.timeout(ms)` passed to `host.spawn`.
+
 ### Progress style
 
 ```ts
@@ -1076,6 +1187,7 @@ interface ProgressLine {
   readonly rate?: number | undefined; // units per second over recent reports; undefined until known
   readonly remaining?: number | undefined; // milliseconds left at rate, counting down; undefined when none
   readonly unit?: string | undefined; // what the line counts, as the author wrote it
+  readonly log?: readonly string[] | undefined; // the log rows the line draws at this frame, fitted to the height, oldest first; empty on an end frame
 }
 ```
 
@@ -1086,6 +1198,7 @@ interface ProgressLine {
 | Running, no total                      | The frame in `highlight`, the label, then a dim `·` and the elapsed time, dim: `◐ Building the index · 0.8s`                    |
 | Running, with a total                  | The frame, the label, a bar of 10 cells, complete cells in `highlight` and incomplete cells dim, the counts, the dim `·`, and the elapsed time: `◓ Fetching records ▰▰▰▰▰▰▱▱▱▱ 6/10 · 2.4s` |
 | Running, `completed` without a total   | The frame, the label, the count, the dim `·`, and the elapsed time: `◑ Reading rows 1204 · 3.0s`                                |
+| Running, with a log                    | As running, then, on a row of its own under the line for each entry of `log`, two spaces and the entry's plain text, all dim: `  npm http fetch GET 200 https://registry.npmjs.org/react 81ms` |
 | Running, with `estimate`               | As running, then, once each is known, a dim `·` and the rate, dim, and a dim `·` and the time left, dim: `◓ Fetching records ▰▰▰▱▱▱▱▱▱▱ 40/120 · 12.0s · 3.3/s · about 24s left` |
 | Ended                                  | The glyph `success` in `success`, the message, the dim `·`, and the elapsed time: `✔ Fetched 10 records · 4.1s`               |
 | Failed                                 | Core's glyph `error` in `error`, the message, the dim `·`, and the elapsed time: `✘ Fetching records · 2.6s`, and `× Fetching records · 2.6s` where the terminal takes compat forms |
@@ -1096,6 +1209,7 @@ interface ProgressLine {
 - **The bar.** The complete cells number 10 × `completed` ÷ `total`, rounded down and held between 0 and 10, and a total of 0 fills the bar. The counts read `completed/total` when both are whole numbers, and otherwise the percent, 100 × `completed` ÷ `total` rounded down and followed by `%`, which a total of 0 reads as `100%`. An absent `completed` reads 0.
 - **Elapsed time.** Under a minute it reads seconds with one decimal, `2.4s`; under an hour, minutes and two-digit seconds, `1m 05s`; and from an hour, hours and two-digit minutes, `1h 02m`. Each rounds down.
 - **Rate and time left.** A line supplies `estimate`, `rate`, `remaining`, and `unit` on every frame, whether or not its settings set `estimate`, so an application's own view can draw a rate or a time left the default view does not. `rate` is `undefined` until there is enough progress, and `remaining` is `undefined` while `rate` is `undefined` or 0, without a total, and once `completed` reaches `total`. The four are optional, so data an application builds by hand draws without them: an absent `estimate` reads `false`. The default view draws the rate when `estimate` is `true`, the state is `running`, and `rate` is defined, and the time left when `remaining` is defined as well, in the formats of [Rate and time left](#rate-and-time-left). An end line's data carries the values of its frame, which the default view does not draw.
+- **Log rows.** A line supplies `log` on every frame: on a running frame, the rows it draws at that frame, already fitted, the newest lines of its [log](#a-lines-log), at most its `logRows` and at most its share of the terminal's height, oldest first, each the author's marked text with no line break, after the `\r` rule and the bound, and an open iterable's unfinished line last; on an end frame, none, because every end removes the rows, so an override that draws `log` in every state draws no rows on an end line. `log` is optional, so data an application builds by hand draws without it, and an absent `log` reads as no rows. The default view draws each entry on a row of its own under the line, in every state, as [A line's log](#a-lines-log) states: two spaces and the entry's plain text, tabs expanded, other control characters dropped, and bidirectional controls escaped, dim, and clipped to one row. An application's own view draws the rows it chooses from `log`, and so draws within the height without a rule of its own, and one written before `log` draws its line without rows. The kept lines a failed, warned, or cancelled line writes do not pass through this view, so an override changes the running rows and not the kept lines.
 - **A narrow row.** While a running line with its rate and time left, measured with the view context's `width`, is wider than the view context's `columns`, or 80 columns when `columns` is `undefined`, the rate drops with its `·`, and then the time left with its `·`. So the two parts never make a line wrap, and the time left, which the operator waits on, stays longest.
 - **The end glyphs.** Each end line's glyph is the one its plain line's lane draws: `success` for the success lane, core's `error` for the error lane, `info` for the info lane, and `warning` for the warn lane, so a line shows the same glyph live and not live. The success, failure, and warned lines also style the glyph as their lanes do, while the skipped line draws its glyph dim with the rest of the line, where the info lane draws it in `info`. The skipped and warned lines draw no spinner frame, bar, or counts, as the success line draws none.
 - **A cleared line.** A cleared line never reaches the view, so an override cannot leave text for it. An override written before the skipped and warned states receives them only from a line whose author calls `skip` or `warn`. One whose switch over `state` has no default branch needs the two new values handled.
@@ -1103,7 +1217,7 @@ interface ProgressLine {
 
 ## When author code fails
 
-A question's `validate`, the linked input's validator a select or multiselect runs, a select's or multiselect's `source`, its lookups included, the `done` and `failed` message functions of `track`, the work `track` awaits, and an overridden prompts view are author code. Author code that throws or rejects takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The operator's editor is not author code, and its failures are `EditorError`, under [When the editor fails](#when-the-editor-fails). Three outcomes are the library's own. A source whose latest call throws or rejects ends its question with its cancelled line and rejects the question with the same error, unchanged, and a stale call's rejection is discarded, under [Searching](#searching). Work that rejects under `track` fails its line and rejects `track` with the same rejection, unchanged. A question or progress line still open when the run fails draws its cancelled or failure line before core renders the failure report, as [Leaving a question](#leaving-a-question) and the failing-run rule of [Progress](#progress) state.
+A question's `validate`, the linked input's validator a select or multiselect runs, a select's or multiselect's `source`, its lookups included, the `done` and `failed` message functions of `track`, the work `track` awaits, an iterable passed to `log()`, and an overridden prompts view are author code. Author code that throws or rejects takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The operator's editor is not author code, and its failures are `EditorError`, under [When the editor fails](#when-the-editor-fails). Four outcomes are the library's own. A source whose latest call throws or rejects ends its question with its cancelled line and rejects the question with the same error, unchanged, and a stale call's rejection is discarded, under [Searching](#searching). Work that rejects under `track` fails its line and rejects `track` with the same rejection, unchanged. An iterable passed to `log()` that throws rejects `log()` with the same value, unchanged, and leaves its line running. A question or progress line still open when the run fails draws its cancelled or failure line, a progress line's kept log lines above it, before core renders the failure report, as [Leaving a question](#leaving-a-question) and the failing-run rule of [Progress](#progress) state.
 
 ## Package
 
@@ -1133,4 +1247,7 @@ A question's `validate`, the linked input's validator a select or multiselect ru
 - Redrawing when the terminal is resized while a question asks. The next frame after a resize erases the whole region, because core recounts its last frame at the current width.
 - A progress line drawn as a multi-step tree, and a progress line on stdout.
 - A rate or a time left on a progress event, on a plain line, or on an end line, and a setting that changes the rate window or the second of progress the rate waits for.
+- A setting that keeps a line's log rows on success, a log line or a count of dropped lines on a progress event, and a log row drawn in the color a child program wrote it in.
+- Counting the rows other writers hold in a progress line's share of the terminal's height: an open question's region, a region an author opens by hand, and a streamed message's unfinished row. A line's own row counts as one row when a long label wraps it, and lines alone, with no log rows, can still take more than the terminal's rows.
+- A setting for how long a log line may be. A line keeps its first 4096 code points.
 - A setting that clears a progress line when it ends, as Rich's `transient` does, and an end that leaves the running frame as it stands, as ora's `stop` does. An author calls `clear()` for a line that should leave nothing.

@@ -2,6 +2,7 @@ import { extension, plugin, readExtension } from '@loomcli/core';
 import type {
   ActionContext,
   Out,
+  OutputTerminal,
   Plugin,
   Region,
   RegionCloser,
@@ -10,6 +11,10 @@ import type {
 
 import { controls } from './controls.js';
 import { estimate } from './estimate.js';
+import { seat } from './height.js';
+import type { Seat } from './height.js';
+import { keptLines, ProgressLog } from './log.js';
+import { logLinesDropped } from './messages.js';
 import { progressLine } from './views.js';
 import type { ProgressLine } from './views.js';
 
@@ -27,7 +32,8 @@ interface Spinner {
 
 /**
  * The settings of one progress line: its label, an optional total that makes it a bar, an
- * optional spinner of its own, and whether it shows its rate and time left.
+ * optional spinner of its own, whether it shows its rate and time left, and how much of its log
+ * it shows and keeps.
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/prompts.md#progress
  * @public
@@ -46,6 +52,16 @@ interface ProgressSettings {
   readonly estimate?: boolean;
   /** What the line counts, as the rate names it: `files` reads `3.3 files/s`. A marked string. */
   readonly unit?: string;
+  /**
+   * How many of the log's newest lines the running line shows under it at most, a whole number
+   * of 0 or more, and fewer when the terminal's height leaves the line less. Absent, 5.
+   */
+  readonly logRows?: number;
+  /**
+   * How many of the log's newest lines the line keeps to write above its end line when it fails,
+   * warns, or is cancelled, a whole number of 0 or more. Absent, 1000.
+   */
+  readonly logLimit?: number;
 }
 
 /**
@@ -85,6 +101,14 @@ interface TrackMessages<Value> {
 interface Progress {
   /** Changes the line's counts or label while it runs. */
   update(update: ProgressUpdate): void;
+  /**
+   * Adds lines to the line's log: one line, text that holds several, or an async iterable of
+   * text, such as a child program's output. The text is a marked string. Where the line draws,
+   * its newest lines show under it, dim; `end`, `skip`, and `clear` remove them, and `fail`,
+   * `warn`, and a cancellation write the kept lines above the end line. Resolves at once for a
+   * string, and for an iterable once it ends, or rejects with what it threw.
+   */
+  log(text: string | AsyncIterable<string>): Promise<void>;
   /** Ends the line as a success, with an optional message in place of the label. */
   end(message?: string): Promise<void>;
   /** Ends the line as a failure, with an optional message in place of the label. */
@@ -113,6 +137,11 @@ interface Progress {
  */
 type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
   readonly out: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'>;
+  /**
+   * The run's host, whose stderr's `rows` the line reads at each frame to share the terminal's
+   * height with the run's other open lines. Absent, the line draws up to its `logRows`.
+   */
+  readonly host?: { readonly terminal: { readonly stderr: Pick<OutputTerminal, 'rows'> } };
 };
 
 /**
@@ -251,6 +280,11 @@ const closedState: Readonly<Record<RegionCloser, Exclude<ProgressLine['state'], 
 /** The state a line's own end takes, each of which draws its own last line. */
 type EndState = Exclude<ProgressLine['state'], 'running' | 'cancelled'>;
 
+/** The rows a running line shows of its log when its settings name no count. */
+const LOG_ROWS = 5;
+/** The lines a line keeps of its log to write when it fails when its settings name no count. */
+const LOG_LIMIT = 1000;
+
 /** What one line shows and how it changes, which its view reads at each frame. */
 interface LineState {
   state: ProgressLine['state'];
@@ -270,7 +304,11 @@ interface LineState {
  * end line through `success`, `error`, `info` for a skipped line, or `warn`, and a cleared line
  * writes no end line. It reports at its start, at each update, and at its close. With `estimate`,
  * a running line also draws its rate and time left, computed from the counts its updates report
- * and the clock it reads for the elapsed time.
+ * and the clock it reads for the elapsed time. Its `log()` adds lines, such as a child program's
+ * output, whose newest rows show dim under the running line, as many as its share of the
+ * terminal's height leaves it beside the run's other open lines; an end, a skip, or a clear removes
+ * them, and a failure, a warning, or a cancellation writes the kept lines above the end line,
+ * where the line draws and where it does not.
  *
  * @example
  * ```ts
@@ -299,12 +337,21 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
   const started = Date.now();
   // The rate and time left read the reports and the clock the elapsed time reads, and no timer.
   const pace = estimate();
+  const book = new ProgressLog(settings.logRows ?? LOG_ROWS, settings.logLimit ?? LOG_LIMIT);
   const line: LineState = {
     completed: total === undefined ? undefined : 0,
     label,
     state: 'running',
     tick: 0,
     total,
+  };
+  // The line's place among the open lines that share the terminal's height, while it runs live.
+  let place: Seat | undefined = undefined;
+  // The rows a running frame draws: the newest of its log, as many as its place leaves it.
+  const fitted = (): string[] => {
+    const rows = book.rows();
+    const count = place === undefined ? rows.length : place.fit(rows.length);
+    return count === 0 ? [] : rows.slice(-count);
   };
   const frame = (): ProgressLine => {
     const now = Date.now();
@@ -315,6 +362,7 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
       estimate: settings.estimate ?? false,
       frame: spinner.frames[line.tick % spinner.frames.length] ?? '',
       label: line.label,
+      log: line.state === 'running' ? fitted() : [],
       rate: pace.rate(),
       remaining: pace.remaining(line.total, now),
       state: line.state,
@@ -327,7 +375,17 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
   if (region.closedBy !== undefined) {
     // A region opened after the run's cancellation closed as it opened, so the line starts closed.
     line.state = closedState[region.closedBy];
+    book.close();
   } else if (region.live) {
+    const stderr = context.host?.terminal.stderr;
+    if (stderr !== undefined) {
+      place = seat(stderr, {
+        need: () => book.rows().length,
+        redraw: () => {
+          void region.draw(frame(), progressLine);
+        },
+      });
+    }
     void region.draw(frame(), progressLine);
     timer = setInterval(() => {
       line.tick += 1;
@@ -344,6 +402,18 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     skipped: (text) => context.out.info(text),
     warned: (text) => context.out.warn(text),
   };
+  // A failed, warned, or cancelled line writes its kept log lines as one message above its end line.
+  // The message goes through the lane of the end's level, and a line with no kept line writes none.
+  const writeKept = (state: 'failed' | 'warned' | 'cancelled'): Promise<void> => {
+    const { dropped, lines } = book.kept();
+    if (lines.length === 0) {
+      return Promise.resolve();
+    }
+    const message = [...(dropped > 0 ? [logLinesDropped(dropped)] : []), ...lines].join('\n');
+    return state === 'failed'
+      ? context.out.error(message, keptLines)
+      : context.out.warn(message, keptLines);
+  };
   // Core closes the region for the action's return, a failure, or cancellation.
   // The line draws its closing frame inside the abort, so that frame is the region's last.
   region.signal.addEventListener(
@@ -353,7 +423,12 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
       if (line.state !== 'running') {
         return;
       }
+      place?.leave();
       line.state = closedState[region.closedBy ?? 'completion'];
+      book.close();
+      if (line.state === 'failed' || line.state === 'cancelled') {
+        void writeKept(line.state);
+      }
       if (region.live) {
         void region.draw(frame(), progressLine);
       } else if (line.state !== 'cancelled') {
@@ -369,8 +444,14 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     line.state = state;
     line.label = message ?? line.label;
     clearInterval(timer);
-    await (region.live ? region.draw(frame(), progressLine) : plainLine[state](line.label));
-    await region.end(state, message);
+    place?.leave();
+    book.close();
+    // The kept lines, the end line, and the close are issued in one tick, in that order.
+    // Core's queue keeps the order, so nothing another writer writes lands between them.
+    const kept = state === 'failed' || state === 'warned' ? writeKept(state) : Promise.resolve();
+    const ended = region.live ? region.draw(frame(), progressLine) : plainLine[state](line.label);
+    const closed = region.end(state, message);
+    await Promise.all([kept, ended, closed]);
   };
   return {
     // A cleared line ends as ended, but its last frame is the library's empty one, never the view's.
@@ -380,6 +461,8 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
       }
       line.state = 'ended';
       clearInterval(timer);
+      place?.leave();
+      book.close();
       if (region.live) {
         await region.draw('', controls);
       }
@@ -387,6 +470,26 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     },
     end: (message) => finish('ended', message),
     fail: (message) => finish('failed', message),
+    // A string joins the log at once, and an iterable is read to its end.
+    // Its text is discarded once the line has ended, and the line never stops an iterable, so a child writing into it never blocks.
+    async log(text) {
+      if (typeof text === 'string') {
+        book.add(text);
+        return;
+      }
+      const feed = book.open();
+      try {
+        for await (const chunk of text) {
+          if (feed !== undefined) {
+            book.write(feed, chunk);
+          }
+        }
+      } finally {
+        if (feed !== undefined) {
+          book.end(feed);
+        }
+      }
+    },
     skip: (message) => finish('skipped', message),
     async track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value> {
       const outcome = await settle(work);

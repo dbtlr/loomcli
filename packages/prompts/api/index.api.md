@@ -7,6 +7,7 @@
 import type { ActionContext } from '@loomcli/core';
 import { FatalError } from '@loomcli/core';
 import type { Out } from '@loomcli/core';
+import type { OutputTerminal } from '@loomcli/core';
 import type { Plugin as Plugin_2 } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 
@@ -92,6 +93,7 @@ export interface Progress {
     clear(): Promise<void>;
     end(message?: string): Promise<void>;
     fail(message?: string): Promise<void>;
+    log(text: string | AsyncIterable<string>): Promise<void>;
     skip(message?: string): Promise<void>;
     track<Value>(work: PromiseLike<Value>, messages?: TrackMessages<Value>): Promise<Value>;
     update(update: ProgressUpdate): void;
@@ -104,12 +106,19 @@ export function progress(context: ProgressContext, settings: ProgressSettings): 
 // @public
 export type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
     readonly out: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'>;
+    readonly host?: {
+        readonly terminal: {
+            readonly stderr: Pick<OutputTerminal, 'rows'>;
+        };
+    };
 };
 
 // @public
 export interface ProgressSettings {
     readonly estimate?: boolean;
     readonly label: string;
+    readonly logLimit?: number;
+    readonly logRows?: number;
     readonly spinner?: Spinner;
     readonly total?: number;
     readonly unit?: string;

@@ -1,7 +1,7 @@
 /*
- * The operator sentences of the questions, under ADR-0164. Each is a function of the values it
- * repeats, or a constant. `tests/message-voice.test.ts` holds this module to the failure message
- * voice.
+ * The operator sentences of the questions and the progress lines, under ADR-0164. Each is a
+ * function of the values it repeats, or a constant. `tests/message-voice.test.ts` holds this module
+ * to the failure message voice.
  */
 import { escapeControlCharacters } from '@loomcli/core';
 
@@ -68,6 +68,12 @@ function overLimit(values: readonly unknown[], max: number): string {
   return `Cannot select ${quotedValues(values)}: at most ${String(max)} can be selected. Deselect a choice to select ${values.length === 1 ? 'it' : 'one'}.`;
 }
 
+function logLinesDropped(dropped: number): string {
+  return dropped === 1
+    ? '1 earlier line was dropped.'
+    : `${String(dropped)} earlier lines were dropped.`;
+}
+
 export {
   answerFileRemoved,
   answerFileUnreadable,
@@ -80,6 +86,7 @@ export {
   editorNotStarted,
   interactionUnavailable,
   invalidAnswer,
+  logLinesDropped,
   noSelectableChoice,
   overLimit,
   typeNumbers,

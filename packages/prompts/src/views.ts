@@ -1,7 +1,8 @@
 import type { ViewContext } from '@loomcli/core';
 import { escapeControlCharacters, glyph, style as textStyle, view } from '@loomcli/core';
 
-import { graphemes } from './line.js';
+import { graphemes, leading } from './line.js';
+import { logRow } from './log.js';
 
 /** Operator values stay literal even though drawing preserves the library's terminal controls. */
 function literal(text: string): string {
@@ -675,19 +676,11 @@ function editorAnswer(
       : '';
   const row = () => `${style.dim('?')} ${message} ${style.dim('·')} ${answer}${count}`;
   /** The longest run of the text's leading graphemes that fits in `budget`, unescaped. */
-  const leading = (text: string, budget: number) => {
-    let result = '';
-    for (const part of graphemes(text)) {
-      if (width(literal(result + part)) > budget) {
-        break;
-      }
-      result += part;
-    }
-    return result;
-  };
+  const clippedTo = (text: string, budget: number) =>
+    leading(text, budget, (candidate) => width(literal(candidate)));
   if (width(row()) > columns) {
     const budget = Math.max(width(glyph.ellipsis), columns - width(row()) + width(answer));
-    const kept = leading(
+    const kept = clippedTo(
       data.answer === '' ? 'empty' : data.answer,
       budget - width(glyph.ellipsis),
     );
@@ -716,7 +709,7 @@ function editorAnswer(
   let room = columns;
   let fitted = '';
   for (const [text, draw] of parts) {
-    const kept = leading(text, room);
+    const kept = clippedTo(text, room);
     if (kept !== '') {
       fitted += draw(kept);
     }
@@ -936,8 +929,8 @@ const questionLine = view<QuestionLine>('@loomcli/prompts/question-line', {
 });
 
 /**
- * What one progress line's view draws: its state, its counts, its spinner frame, its time, and
- * its rate and time left.
+ * What one progress line's view draws: its state, its counts, its spinner frame, its time, its
+ * rate and time left, and its log rows.
  *
  * @public
  */
@@ -977,6 +970,14 @@ interface ProgressLine {
   readonly remaining?: number | undefined;
   /** What the line counts, as the author wrote it, or `undefined` without one. */
   readonly unit?: string | undefined;
+  /**
+   * The rows the line draws under it at this frame, already fitted: the newest lines `log()` gave,
+   * at most the line's `logRows` and at most its share of the terminal's height, oldest first,
+   * each the author's marked text with no line break. The last entry may be an open iterable's
+   * unfinished line, and a line cut at the length bound ends with the ellipsis. Empty on an end
+   * frame, because every end removes the rows. A line always supplies it; absent, no rows.
+   */
+  readonly log?: readonly string[] | undefined;
 }
 
 /** The cells of a progress bar, which the default view never widens. */
@@ -1062,6 +1063,53 @@ function elapsedTime(elapsed: number): string {
   return `${String(Math.floor(whole / HOUR))}h ${String(minutes).padStart(2, '0')}m`;
 }
 
+/** The progress line's own row, which the terminal wraps when it is wider than the screen. */
+function lineText(data: ProgressLine, { columns, style, width }: ViewContext): string {
+  const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;
+  if (data.state === 'cancelled') {
+    return style.dim(`${glyph.squareCenter} ${data.label} (cancelled)`);
+  }
+  if (data.state === 'ended') {
+    return `${style.success(glyph.success)} ${data.label} ${time}`;
+  }
+  if (data.state === 'failed') {
+    return `${style.error(glyph.error)} ${data.label} ${time}`;
+  }
+  if (data.state === 'skipped') {
+    return style.dim(`${glyph.info} ${data.label} · ${elapsedTime(data.elapsed)}`);
+  }
+  if (data.state === 'warned') {
+    return `${style.warning(glyph.warning)} ${data.label} ${time}`;
+  }
+  const completed = data.completed ?? 0;
+  let measure = '';
+  if (data.total !== undefined) {
+    const complete = completeCells(completed, data.total);
+    const bar =
+      style.highlight(textStyle.escape(data.bar.complete.repeat(complete))) +
+      style.dim(textStyle.escape(data.bar.incomplete.repeat(BAR_CELLS - complete)));
+    measure = ` ${bar} ${counts(completed, data.total)}`;
+  } else if (data.completed !== undefined) {
+    measure = ` ${String(data.completed)}`;
+  }
+  const running = `${style.highlight(textStyle.escape(data.frame))} ${data.label}${measure} ${time}`;
+  if (data.estimate !== true || data.rate === undefined) {
+    return running;
+  }
+  const pace = `${style.dim('·')} ${style.dim(rateText(data.rate, data.unit))}`;
+  const left =
+    data.remaining === undefined
+      ? []
+      : [`${style.dim('·')} ${style.dim(timeLeft(data.remaining))}`];
+  // On a narrow row the rate gives way first, then the time left, so neither makes the line wrap.
+  const fits = (text: string) => width(text) <= Math.max(1, columns ?? 80);
+  return (
+    [[pace, ...left], left]
+      .map((parts) => [running, ...parts].join(' '))
+      .find((text) => fits(text)) ?? running
+  );
+}
+
 /**
  * The declared view that draws one progress line, for a `ProgressLine`. An application restyles it
  * with `override`.
@@ -1091,50 +1139,11 @@ function elapsedTime(elapsed: number): string {
  * @public
  */
 const progressLine = view<ProgressLine>('@loomcli/prompts/progress', {
-  render: (data, { columns, style, width }) => {
-    const time = `${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`;
-    if (data.state === 'cancelled') {
-      return style.dim(`${glyph.squareCenter} ${data.label} (cancelled)`);
-    }
-    if (data.state === 'ended') {
-      return `${style.success(glyph.success)} ${data.label} ${time}`;
-    }
-    if (data.state === 'failed') {
-      return `${style.error(glyph.error)} ${data.label} ${time}`;
-    }
-    if (data.state === 'skipped') {
-      return style.dim(`${glyph.info} ${data.label} · ${elapsedTime(data.elapsed)}`);
-    }
-    if (data.state === 'warned') {
-      return `${style.warning(glyph.warning)} ${data.label} ${time}`;
-    }
-    const completed = data.completed ?? 0;
-    let measure = '';
-    if (data.total !== undefined) {
-      const complete = completeCells(completed, data.total);
-      const bar =
-        style.highlight(textStyle.escape(data.bar.complete.repeat(complete))) +
-        style.dim(textStyle.escape(data.bar.incomplete.repeat(BAR_CELLS - complete)));
-      measure = ` ${bar} ${counts(completed, data.total)}`;
-    } else if (data.completed !== undefined) {
-      measure = ` ${String(data.completed)}`;
-    }
-    const running = `${style.highlight(textStyle.escape(data.frame))} ${data.label}${measure} ${time}`;
-    if (data.estimate !== true || data.rate === undefined) {
-      return running;
-    }
-    const pace = `${style.dim('·')} ${style.dim(rateText(data.rate, data.unit))}`;
-    const left =
-      data.remaining === undefined
-        ? []
-        : [`${style.dim('·')} ${style.dim(timeLeft(data.remaining))}`];
-    // On a narrow row the rate gives way first, then the time left, so neither makes the line wrap.
-    const fits = (text: string) => width(text) <= Math.max(1, columns ?? 80);
-    return (
-      [[pace, ...left], left]
-        .map((parts) => [running, ...parts].join(' '))
-        .find((text) => fits(text)) ?? running
+  render: (data, context) => {
+    const rows = (data.log ?? []).map((entry) =>
+      context.style.dim(logRow(entry, Math.max(1, context.columns ?? 80), context)),
     );
+    return [lineText(data, context), ...rows].join('\n');
   },
 });
 

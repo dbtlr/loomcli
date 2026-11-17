@@ -6,6 +6,18 @@ function graphemes(text: string): string[] {
   );
 }
 
+/** The longest run of a text's leading graphemes whose measure fits in `budget`. */
+function leading(text: string, budget: number, measure: (candidate: string) => number): string {
+  let result = '';
+  for (const part of graphemes(text)) {
+    if (measure(result + part) > budget) {
+      break;
+    }
+    result += part;
+  }
+  return result;
+}
+
 /** A single editable line, with a cursor that never bisects a grapheme. */
 class TypedLine {
   value = '';
@@ -105,4 +117,4 @@ class TypedLine {
   }
 }
 
-export { graphemes, TypedLine };
+export { graphemes, leading, TypedLine };
