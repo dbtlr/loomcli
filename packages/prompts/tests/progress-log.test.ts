@@ -781,7 +781,7 @@ test('under app.invoke the kept lines land in messages above the failure line', 
 test("a string's log() resolves at once and an iterable's once it ends", async () => {
   const feed = channel();
   const settled: string[] = [];
-  await logged(async (context) => {
+  const outcome = await logged(async (context) => {
     const line = progress(context, { label: 'Installing' });
     const string = line.log('one');
     const iterable = line.log(feed.iterable);
@@ -797,6 +797,8 @@ test("a string's log() resolves at once and an iterable's once it ends", async (
     expect(settled).toEqual(['string', 'iterable']);
     await line.end();
   });
+  // An expectation that fails inside the action fails the run, so the run's exit says they held.
+  expect(outcome.code).toBe(0);
 });
 
 test('an iterable that throws keeps its lines, finishes its unfinished line, and rejects log() with the same value while the line runs on', async () => {
