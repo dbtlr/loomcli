@@ -20,7 +20,7 @@ This reference covers how to build, release, install, and update a Loom applicat
 - **The release channel comes from the version.** Core reads the channel as the first prerelease identifier, so `1.5.0-next.2` is on `next`, and a version without one is on `stable`. Choose prerelease identifiers as the channel names operators follow with `self-update --channel <channel>`.
 - **Read the facts from the host.** An action reads `host.release`, and a test supplies facts through its process handle, under [release facts](../../../../../docs/core/release-facts.md). Never import or pass them yourself.
 - **Make `--version` agree.** The version plugin prints the Application's declared `version`, which is `0.0.0` unless the Application sets one, while self-update and update notices compare `host.release.version`, the `package.json` version. Set the Application's `version` from `package.json`, such as through a JSON import, so the two agree.
-- **Let a bug report say which copy ran.** `version({ extended: true })` prints, under the version line, the release channel, the build, the asset, how the copy was installed, the runtime, and the platform, and one JSON object under `--format json` with the formatter listed ahead of it, under [Extended output](../../../../../docs/plugins/version.md#extended-output).
+- **Let a bug report say which copy ran.** `version({ extended: true })` prints, under the version line, the release channel, the build, the asset, how the copy was installed, the runtime, and the platform, and one JSON object under `--format json` at a group or on a Command that declares a result, with the formatter listed ahead of it, under [Extended output](../../../../../docs/plugins/version.md#extended-output).
 
 ## Keep one name
 

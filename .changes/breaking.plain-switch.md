@@ -22,9 +22,9 @@ After, the region writes plain lines when it is not live, as `progress()` does:
 
 ```ts
 const region = out.region({ input: true });
-if (region.live) {
-  await region.draw(state, pickerFrame);
-} else {
+// A region that is not live writes nothing here, and resolves once its turn has come.
+await region.draw(state, pickerFrame);
+if (!region.live) {
   await out.draw(state, pickerLines);
 }
 ```
@@ -32,6 +32,6 @@ if (region.live) {
 **Steps.**
 
 1. Find each `out.region({ input: true })` your code opens, and each `out.region()` without it that draws frames and writes nothing when `live` is `false`.
-2. Read the region's `live` after opening it, and when it is `false`, print each piece once through `out.draw` or a semantic method, and read the operator's answer as a line.
+2. Await the region's `draw` as before: a region that is not live writes nothing, and an input region's `draw` resolves once its turn among the run's input regions has come. Then read the region's `live`, and when it is `false`, print each piece once. An input region prints through `out.draw` or a semantic method and then reads the operator's answer as a line. A region without `input: true` prints through `out.info` or another method that `-q` hides, as `progress()` writes its plain lines, so a quiet run stays quiet.
 
 **Validation.** Run the application at a terminal with `TERM=dumb`, and again with `ACCESSIBLE=1`, through each region it opens, and confirm each region prints its lines and each input region takes its answer. Record such a run with `script`, and confirm the record holds no cursor movement.
