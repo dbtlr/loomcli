@@ -22,13 +22,18 @@ interface PtyStep {
 }
 
 /**
- * What a fixture prints on a real pseudo-terminal that starts `columns` wide, as one terminal
- * transcript up to its `@@DONE@@` line: the pty's CRLF line endings read as LF. The fixture
- * resizes the terminal itself with `stty`. Each of `steps` waits for its text, which the driver
+ * What a fixture prints on a real pseudo-terminal that starts `columns` wide and `rows` high, 30
+ * rows unless a test names another height, as one terminal transcript up to its `@@DONE@@` line:
+ * the pty's CRLF line endings read as LF. The fixture resizes the terminal itself with `stty`. Each of `steps` waits for its text, which the driver
  * reads as a glob, and then types its keys, as an operator answering a question does, and the
  * transcript holds what the terminal echoed of them, as a terminal in its line mode echoes.
  */
-function ptyTranscript(fixture: string, columns: number, steps: readonly PtyStep[] = []): string {
+function ptyTranscript(
+  fixture: string,
+  columns: number,
+  steps: readonly PtyStep[] = [],
+  rows = 30,
+): string {
   const command = [
     'env',
     '-u',
@@ -39,7 +44,7 @@ function ptyTranscript(fixture: string, columns: number, steps: readonly PtyStep
     'sh',
     '-c',
     // A terminal echoes what the operator types, which the driver's pty leaves off.
-    `stty cols ${columns} rows 30 echo && exec "$0" "$1"`,
+    `stty cols ${columns} rows ${rows} echo && exec "$0" "$1"`,
     runtime(),
     fixture,
   ];

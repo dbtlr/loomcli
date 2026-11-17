@@ -2,6 +2,7 @@ import { extension, plugin, readExtension } from '@loomcli/core';
 import type {
   ActionContext,
   Out,
+  OutputTerminal,
   Plugin,
   Region,
   RegionCloser,
@@ -10,6 +11,8 @@ import type {
 
 import { controls } from './controls.js';
 import { estimate } from './estimate.js';
+import { seat } from './height.js';
+import type { Seat } from './height.js';
 import { keptLines, ProgressLog } from './log.js';
 import { logLinesDropped } from './messages.js';
 import { progressLine } from './views.js';
@@ -50,8 +53,8 @@ interface ProgressSettings {
   /** What the line counts, as the rate names it: `files` reads `3.3 files/s`. A marked string. */
   readonly unit?: string;
   /**
-   * How many of the log's newest lines the running line shows under it, a whole number of 0 or
-   * more. Absent, 5.
+   * How many of the log's newest lines the running line shows under it at most, a whole number
+   * of 0 or more, and fewer when the terminal's height leaves the line less. Absent, 5.
    */
   readonly logRows?: number;
   /**
@@ -134,6 +137,11 @@ interface Progress {
  */
 type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
   readonly out: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'>;
+  /**
+   * The run's host, whose stderr's `rows` the line reads at each frame to share the terminal's
+   * height with the run's other open lines. Absent, the line draws up to its `logRows`.
+   */
+  readonly host?: { readonly terminal: { readonly stderr: Pick<OutputTerminal, 'rows'> } };
 };
 
 /**
@@ -297,7 +305,8 @@ interface LineState {
  * writes no end line. It reports at its start, at each update, and at its close. With `estimate`,
  * a running line also draws its rate and time left, computed from the counts its updates report
  * and the clock it reads for the elapsed time. Its `log()` adds lines, such as a child program's
- * output, whose newest rows show dim under the running line; an end, a skip, or a clear removes
+ * output, whose newest rows show dim under the running line, as many as its share of the
+ * terminal's height leaves it beside the run's other open lines; an end, a skip, or a clear removes
  * them, and a failure, a warning, or a cancellation writes the kept lines above the end line,
  * where the line draws and where it does not.
  *
@@ -336,6 +345,14 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     tick: 0,
     total,
   };
+  // The line's place among the open lines that share the terminal's height, while it runs live.
+  let place: Seat | undefined = undefined;
+  // The rows a running frame draws: the newest of its log, as many as its place leaves it.
+  const fitted = (): string[] => {
+    const rows = book.rows();
+    const count = place === undefined ? rows.length : place.fit(rows.length);
+    return count === 0 ? [] : rows.slice(-count);
+  };
   const frame = (): ProgressLine => {
     const now = Date.now();
     return {
@@ -345,7 +362,7 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
       estimate: settings.estimate ?? false,
       frame: spinner.frames[line.tick % spinner.frames.length] ?? '',
       label: line.label,
-      log: line.state === 'running' ? book.rows() : [],
+      log: line.state === 'running' ? fitted() : [],
       rate: pace.rate(),
       remaining: pace.remaining(line.total, now),
       state: line.state,
@@ -360,6 +377,15 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     line.state = closedState[region.closedBy];
     book.close();
   } else if (region.live) {
+    const stderr = context.host?.terminal.stderr;
+    if (stderr !== undefined) {
+      place = seat(stderr, {
+        need: () => book.rows().length,
+        redraw: () => {
+          void region.draw(frame(), progressLine);
+        },
+      });
+    }
     void region.draw(frame(), progressLine);
     timer = setInterval(() => {
       line.tick += 1;
@@ -397,6 +423,7 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
       if (line.state !== 'running') {
         return;
       }
+      place?.leave();
       line.state = closedState[region.closedBy ?? 'completion'];
       book.close();
       if (line.state === 'failed' || line.state === 'cancelled') {
@@ -417,6 +444,7 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
     line.state = state;
     line.label = message ?? line.label;
     clearInterval(timer);
+    place?.leave();
     book.close();
     // The kept lines, the end line, and the close are issued in one tick, in that order.
     // Core's queue keeps the order, so nothing another writer writes lands between them.
@@ -433,6 +461,7 @@ function progress(context: ProgressContext, settings: ProgressSettings): Progres
       }
       line.state = 'ended';
       clearInterval(timer);
+      place?.leave();
       book.close();
       if (region.live) {
         await region.draw('', controls);

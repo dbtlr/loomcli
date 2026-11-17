@@ -11,6 +11,10 @@
  *   directly above the running bottom line.
  * - Once the bottom line fails, its kept line stands directly above its failure line, still dim,
  *   and the failure line is not.
+ *
+ * A second fixture opens two lines that each log 6 lines on a terminal 10 rows high, so they share
+ * its height: while both run, each draws 4 rows, and neither the screen nor its scrollback holds a
+ * row twice, then or once both have ended.
  */
 import { fileURLToPath } from 'node:url';
 
@@ -21,6 +25,7 @@ import { replay } from '../../../scripts/test-screen.js';
 import type { Screen } from '../../../scripts/test-screen.js';
 
 const fixture = fileURLToPath(new URL('fixtures/progress-log-pty.mjs', import.meta.url));
+const short = fileURLToPath(new URL('fixtures/progress-log-height-pty.mjs', import.meta.url));
 
 /** The transcript up to the mark of that name. */
 function cut(transcript: string, name: string): string {
@@ -32,8 +37,22 @@ function cut(transcript: string, name: string): string {
 }
 
 /** What the emulator shows once it has taken `text`, on a fresh screen 60 columns wide. */
-function screen(text: string): Promise<Screen> {
-  return replay([{ write: text }], { columns: 60 });
+function screen(text: string, rows?: number): Promise<Screen> {
+  return replay([{ write: text }], { columns: 60, ...(rows === undefined ? {} : { rows }) });
+}
+
+/** The newest 4 of a line's 6 log rows, which it draws beside another line on a terminal 10 rows high. */
+function newestRows(name: string): string[] {
+  return [3, 4, 5, 6].map((number) => `  ${name} line ${String(number)}`);
+}
+
+/** The rows that appear more than once among `lines`, blank rows aside. */
+function repeated(lines: readonly string[]): string[] {
+  const seen = new Map<string, number>();
+  for (const line of lines.filter((row) => row !== '')) {
+    seen.set(line, (seen.get(line) ?? 0) + 1);
+  }
+  return [...seen].filter(([, count]) => count > 1).map(([line]) => line);
 }
 
 /** One elapsed time as the view writes it under a minute. */
@@ -75,5 +94,28 @@ test.skipIf(zsh === undefined)(
     expect(failed.dim[2]).toBe('  tsc error TS2304');
     expect(failed.lines[3]).toMatch(timed('✘ Building'));
     expect(failed.dim[3]).toMatch(new RegExp(`^ {11}· ${seconds}$`, 'u'));
+  },
+);
+
+test.skipIf(zsh === undefined)(
+  'on a real terminal 10 rows high two logged lines share its height and leave no stale row in scrollback',
+  async () => {
+    const transcript = ptyTranscript(short, 60, [], 10);
+
+    const running = await screen(cut(transcript, 'running'), 10);
+    expect(repeated(running.lines)).toEqual([]);
+    expect(running.lines).toHaveLength(11);
+    expect(running.lines[0]).toBe('ℹ lane line');
+    expect(running.lines[1]).toMatch(timed('◐ install 1'));
+    expect(running.lines.slice(2, 6)).toEqual(newestRows('install 1'));
+    expect(running.lines[6]).toMatch(timed('◐ install 2'));
+    expect(running.lines.slice(7, 11)).toEqual(newestRows('install 2'));
+
+    const ended = await screen(cut(transcript, 'ended'), 10);
+    expect(repeated(ended.lines)).toEqual([]);
+    expect(ended.lines).toHaveLength(3);
+    expect(ended.lines[0]).toBe('ℹ lane line');
+    expect(ended.lines[1]).toMatch(timed('✔ install 1'));
+    expect(ended.lines[2]).toMatch(timed('✔ install 2'));
   },
 );

@@ -971,10 +971,11 @@ interface ProgressLine {
   /** What the line counts, as the author wrote it, or `undefined` without one. */
   readonly unit?: string | undefined;
   /**
-   * The rows under the line: the newest lines `log()` gave, at most the line's `logRows`, oldest
-   * first, each the author's marked text with no line break. The last entry may be an open
-   * iterable's unfinished line, and a line cut at the length bound ends with the ellipsis. Empty on
-   * an end frame, because every end removes the rows. A line always supplies it; absent, no rows.
+   * The rows the line draws under it at this frame, already fitted: the newest lines `log()` gave,
+   * at most the line's `logRows` and at most its share of the terminal's height, oldest first,
+   * each the author's marked text with no line break. The last entry may be an open iterable's
+   * unfinished line, and a line cut at the length bound ends with the ellipsis. Empty on an end
+   * frame, because every end removes the rows. A line always supplies it; absent, no rows.
    */
   readonly log?: readonly string[] | undefined;
 }

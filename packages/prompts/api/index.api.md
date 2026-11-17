@@ -7,6 +7,7 @@
 import type { ActionContext } from '@loomcli/core';
 import { FatalError } from '@loomcli/core';
 import type { Out } from '@loomcli/core';
+import type { OutputTerminal } from '@loomcli/core';
 import type { Plugin as Plugin_2 } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 
@@ -105,6 +106,11 @@ export function progress(context: ProgressContext, settings: ProgressSettings): 
 // @public
 export type ProgressContext = Pick<ActionContext<unknown>, 'graph'> & {
     readonly out: Pick<Out, 'region' | 'info' | 'success' | 'warn' | 'error'>;
+    readonly host?: {
+        readonly terminal: {
+            readonly stderr: Pick<OutputTerminal, 'rows'>;
+        };
+    };
 };
 
 // @public
