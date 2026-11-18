@@ -172,7 +172,8 @@
   },
   "devDependencies": {
     "@loom/json": "workspace:*",
-    "@loom/mcp": "workspace:*"
+    "@loom/mcp": "workspace:*",
+    "@opentelemetry/api-logs": "0.223.0"
   },
   "peerDependencies": {
     "@loomcli/core": "workspace:*"

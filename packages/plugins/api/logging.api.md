@@ -12,6 +12,10 @@ export function logging(settings?: LoggingSettings): Plugin_2;
 
 // @public
 export type LoggingDestinationSettings = {
+    readonly to: 'otel';
+    readonly logger: OpenTelemetryLogger;
+    readonly level?: WrittenLevel;
+} | {
     readonly to?: 'file';
     readonly file?: string;
     readonly level?: WrittenLevel;
@@ -35,7 +39,9 @@ export class LoggingError extends Error {
 export type LoggingErrorKind = 'unresolved-directory' | 'create-directory' | 'append' | 'rotate';
 
 // @public
-export type LoggingSettings = (LoggingDestinationSettings & {
+export type LoggingSettings = (Exclude<LoggingDestinationSettings, {
+    readonly to: 'otel';
+}> & {
     readonly destinations?: never;
 }) | {
     readonly destinations: readonly LoggingDestinationSettings[];
@@ -45,6 +51,25 @@ export type LoggingSettings = (LoggingDestinationSettings & {
     readonly maxBytes?: never;
     readonly keep?: never;
     readonly onError?: never;
+};
+
+// @public
+export interface OpenTelemetryLogger {
+    emit(record: OpenTelemetryLogRecord): void;
+}
+
+// @public @sealed
+export interface OpenTelemetryLogRecord {
+    readonly attributes: Record<string, OpenTelemetryLogValue>;
+    readonly body: string;
+    readonly severityNumber: 1 | 5 | 9 | 13 | 17 | 21;
+    readonly severityText: LogLevel;
+    readonly timestamp: Date;
+}
+
+// @public
+export type OpenTelemetryLogValue = null | boolean | number | string | OpenTelemetryLogValue[] | {
+    [key: string]: OpenTelemetryLogValue;
 };
 
 // @public

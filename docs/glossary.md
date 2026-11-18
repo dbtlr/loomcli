@@ -719,15 +719,15 @@ An `info` log event a first-party plugin records for one change it makes outside
 _Avoid_: Audit event, side-effect log, change record
 
 **Log record**:
-One log event as the logging plugin writes it: one JSON line, the same in a file and on the console.
+One log event as the logging plugin writes it to a file or console logging destination: one JSON line, the same in both. An OpenTelemetry logging destination emits an OpenTelemetry log record instead, mapped from the same event.
 _Avoid_: Log line (a log line is what `-v` shows), log entry
 
 **Logging destination**:
-One entry of the logging plugin's `destinations` list, described by `LoggingDestinationSettings`: a file or console with its own level, and for a file its own path, rotation, and error callback. It names where records are written, distinct from the Log destination core passes an `onLog` hook.
+One entry of the logging plugin's `destinations` list, described by `LoggingDestinationSettings`: a file, the console, or the author's OpenTelemetry logger, each with its own level, and for a file its own path, rotation, and error callback. It names where records are written, distinct from the Log destination core passes an `onLog` hook.
 _Avoid_: Log destination (the hook's context), sink, transport, target
 
 **Logging plugin**:
-The first-party plugin `@loomcli/plugins/logging`, one `onLog` hook that writes log records to an ordered list of independently filtered logging destinations. Its single-destination shorthand chooses one file or stderr.
+The first-party plugin `@loomcli/plugins/logging`, one `onLog` hook that writes log records to an ordered list of independently filtered logging destinations: files, the console, and OpenTelemetry loggers. Its single-destination shorthand chooses one file or stderr.
 _Avoid_: Logger, log sink
 
 ## Product surface

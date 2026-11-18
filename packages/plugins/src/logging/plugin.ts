@@ -7,6 +7,7 @@ import { LoggingError } from './error.js';
 import { writeRecord } from './file.js';
 import type { Report, Written } from './file.js';
 import { loggingTo, rotated } from './messages.js';
+import { emitEvent } from './otel.js';
 import { isWritten, recordOf } from './record.js';
 import { plansOf } from './settings.js';
 import type { LoggingPlan, LoggingSettings } from './settings.js';
@@ -43,11 +44,14 @@ function sayWritten(path: string, written: Written, { announced, destination }: 
   }
 }
 
-/** Writes one already-serialized record to one destination. */
+/** Writes one event to a destination, sharing JSON bytes for file and console entries. */
 type Write = (event: LogEvent, destination: LogDestination, record: string) => void;
 
 /** The writer and run-local announcement state of one destination. */
 function writerOf(plan: LoggingPlan): Write {
+  if (plan.to === 'otel') {
+    return (event) => emitEvent(plan.logger, event);
+  }
   if (plan.to === 'console') {
     return (_event, destination, record) => {
       destination.stderr?.write(record);
@@ -83,8 +87,8 @@ function hookOf(plans: readonly LoggingPlan[]): LogHook {
 }
 
 /**
- * A plugin that writes each log event as one JSON record to independently filtered destinations:
- * size-rotated files in the platform's state or log directory, and stderr. It is an `onLog` hook
+ * A plugin that writes log events to independently filtered destinations: size-rotated files,
+ * stderr, and the author's OpenTelemetry logger. It is an `onLog` hook
  * and nothing else.
  *
  * @example
@@ -107,3 +111,5 @@ export { LoggingError } from './error.js';
 export type { LoggingErrorKind } from './error.js';
 export type { WrittenLevel } from './record.js';
 export type { LoggingDestinationSettings, LoggingSettings } from './settings.js';
+
+export type { OpenTelemetryLogger, OpenTelemetryLogRecord, OpenTelemetryLogValue } from './otel.js';
