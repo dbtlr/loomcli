@@ -86,6 +86,20 @@ export interface SkillsSettings {
     readonly skills?: readonly Skill[];
 }
 
+// @public @sealed
+export type SkillState = 'missing' | 'unmanaged' | 'modified' | 'stale' | 'current';
+
+// @public @sealed
+export interface SkillStatus {
+    readonly files: readonly string[];
+    readonly folder: string;
+    readonly notes: readonly string[];
+    readonly scope: 'global' | 'project';
+    readonly skill: string;
+    readonly state: SkillState;
+    readonly target: 'claude' | 'agents';
+}
+
 // (No @packageDocumentation comment for this package)
 
 ```

@@ -22,6 +22,7 @@ import {
   installedSkill,
   installedSkillOver,
   projectIsGlobal,
+  statusProjectIsGlobal,
 } from './messages.js';
 import type { Declared } from './settings.js';
 import { realFolder, selectedTargets, skillsDirectory } from './targets.js';
@@ -94,12 +95,20 @@ function clashOf(
 function guardGlobal(
   run: ChildRun,
   root: string,
-  { agent, names }: { readonly agent: Target | undefined; readonly names: readonly string[] },
+  {
+    agent,
+    names,
+    status,
+  }: {
+    readonly agent: Target | undefined;
+    readonly names: readonly string[];
+    readonly status?: boolean;
+  },
 ): void {
   for (const target of selectedTargets(agent)) {
     const clash = clashOf(run, root, { names, target });
     if (clash !== undefined) {
-      throw new FatalError(projectIsGlobal(run.name, clash));
+      throw new FatalError((status ? statusProjectIsGlobal : projectIsGlobal)(run.name, clash));
     }
   }
 }
@@ -147,4 +156,11 @@ async function installProject(run: ChildRun, request: ProjectRequest): Promise<v
   }
 }
 
-export { directoryNeedsProject, installProject };
+export {
+  startOf,
+  repositoryRoot,
+  projectFolder,
+  guardGlobal,
+  directoryNeedsProject,
+  installProject,
+};

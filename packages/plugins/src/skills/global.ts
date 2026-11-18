@@ -17,11 +17,20 @@ import {
   readRecorded,
   uninstall,
 } from '../installation/files.js';
-import type { InstalledFolder, InstallOutcome, Refusal } from '../installation/files.js';
-import { folderHoldsExactly } from '../installation/folders.js';
-import { loadSkills, withModes } from './load.js';
+import type {
+  InstalledFolder,
+  InstallOutcome,
+  Refusal,
+  FolderRefusal,
+} from '../installation/files.js';
+import { changedReferences, staleFiles } from '../installation/folders.js';
+import type { RecordedFolder } from '../installation/record.js';
+import { isOwned, loadSkills, withModes } from './load.js';
 import type { LoadedSkill } from './load.js';
 import {
+  referenceChanged,
+  modifiedKept,
+  replacedModified,
   folderGone,
   folderNotInstalled,
   folderUnchanged,
@@ -79,7 +88,25 @@ async function loadForRun(run: ChildRun, declared: Declared): Promise<readonly L
   for (const { path, skill } of loaded.leftOut) {
     run.log.trace(skillFileLeftOut, { path, skill });
   }
-  return loaded.skills.map(({ files, name }) => ({ files: withModes(files), name }));
+  return loaded.skills.map(({ files, name }) => ({
+    files: withModes(files).map((file) => {
+      if (
+        declared.selections.some(
+          (selection) => selection.name === name && selection.commands.length > none,
+        ) &&
+        isOwned(file.path, run.name)
+      ) {
+        return {
+          content: file.content,
+          generated: true,
+          mode: file.mode,
+          path: file.path,
+        };
+      }
+      return file;
+    }),
+    name,
+  }));
 }
 
 /** The run and the record's directory, which every read of a plugin's file needs. */
@@ -104,7 +131,11 @@ function prepare(
  * The places a child acts on: both, or the first alone when a link makes the two skills
  * directories one folder, which it states.
  */
-async function actingPlaces(run: ChildRun, places: readonly Place[]): Promise<readonly Place[]> {
+async function actingPlaces(
+  run: ChildRun,
+  places: readonly Place[],
+  message = sameSkillsFolder,
+): Promise<readonly Place[]> {
   const [first, second] = places;
   if (first === undefined || second === undefined) {
     return places;
@@ -112,7 +143,7 @@ async function actingPlaces(run: ChildRun, places: readonly Place[]): Promise<re
   if (realPath(first.directory) !== realPath(second.directory)) {
     return places;
   }
-  await run.info(sameSkillsFolder(run.name, second.directory, first.directory));
+  await run.info(message(run.name, second.directory, first.directory));
   return [first];
 }
 
@@ -120,6 +151,7 @@ async function actingPlaces(run: ChildRun, places: readonly Place[]): Promise<re
 interface Recorded {
   readonly place: Place;
   readonly folders: readonly string[];
+  readonly recorded: readonly RecordedFolder[];
   readonly pending: boolean;
 }
 
@@ -139,6 +171,7 @@ function recordedBy(
       folders: (read.folders ?? []).map(({ path }) => path),
       pending: hasPendingRecord(request),
       place,
+      recorded: read.folders ?? [],
     };
   });
 }
@@ -149,26 +182,35 @@ interface Wanted extends Recorded {
 }
 
 /** The refusals of every wanted folder that something other than the record's folder holds. */
-function unrecorded(entries: readonly Wanted[]): readonly Refusal[] {
-  return entries.flatMap(({ folders, wanted }) =>
+function unrecorded(entries: readonly Wanted[]): readonly FolderRefusal[] {
+  return entries.flatMap(({ recorded, wanted }) =>
     folderRefusals(
       wanted.map(({ path }) => path),
-      folders.map((path) => ({ path })),
+      recorded,
     ),
   );
 }
 
 /**
- * Whether a target's skills are all unchanged and its plugin's file lists no other folder. A
- * `pending` file is never unchanged: the module's install resolves it and removes its leftovers.
+ * Whether all wanted folders have digests, unchanged references and current files, and no other
+ * folder is recorded. A `pending` file is never unchanged: the module's install resolves it and
+ * removes its leftovers.
  */
-function isUnchanged({ folders, pending, wanted }: Wanted): boolean {
+function isUnchanged({ folders, pending, wanted, recorded }: Wanted): boolean {
   const paths = new Set(folders);
   return (
     !pending &&
+    recorded.every((folder) => changedReferences(folder).length === none) &&
     paths.size === wanted.length &&
     wanted.every(
-      (folder) => paths.has(folder.path) && folderHoldsExactly(folder.path, folder.files),
+      (folder) =>
+        paths.has(folder.path) &&
+        recorded.find((entry) => entry.path === folder.path)?.files !== undefined &&
+        staleFiles(
+          folder.path,
+          folder.files,
+          recorded.find((entry) => entry.path === folder.path)?.files,
+        ).length === none,
     )
   );
 }
@@ -199,12 +241,16 @@ interface Writing extends Where {
 /** States the folders the install replaced, wrote, and removed. */
 async function reportInstall(
   writing: Writing,
-  entry: Wanted,
+  entry: Wanted & { readonly modified: ReadonlySet<string> },
   outcome: Extract<InstallOutcome, { status: 'installed' }>,
 ): Promise<void> {
   const { run } = writing;
   for (const folder of outcome.replaced ?? []) {
-    await run.info(replacedFolder(run.name, folder));
+    await run.info(
+      entry.modified.has(folder)
+        ? replacedModified(run.name, folder)
+        : replacedFolder(run.name, folder),
+    );
   }
   for (const { name, path } of entry.wanted) {
     await run.success(
@@ -212,6 +258,9 @@ async function reportInstall(
         ? updatedSkill(name, entry.place.target, path)
         : installedSkill(name, entry.place.target, path),
     );
+  }
+  for (const folder of outcome.kept) {
+    await run.warn(modifiedKept(run.name, folder));
   }
   for (const folder of outcome.removed) {
     await run.info(removedFolder(folder));
@@ -227,6 +276,9 @@ async function writeTarget(writing: Writing, entry: Wanted): Promise<void> {
     }
     return;
   }
+  const modified = new Set(
+    entry.recorded.filter((held) => changedReferences(held).length > none).map(({ path }) => path),
+  );
   const outcome = install({
     files: [],
     folders: entry.wanted,
@@ -239,7 +291,7 @@ async function writeTarget(writing: Writing, entry: Wanted): Promise<void> {
   if (outcome.status === 'refused') {
     throw failureOf(run, writing.verb, outcome.refused);
   }
-  await reportInstall(writing, entry, outcome);
+  await reportInstall(writing, { ...entry, modified }, outcome);
 }
 
 /**
@@ -256,10 +308,11 @@ async function chosenTargets(
   const entries = recordedBy(where, acting, 'install');
   const chosen =
     request.verb === 'update' ? entries.filter(({ folders }) => folders.length > none) : entries;
-  return chosen.map(({ folders, pending, place }) => ({
+  return chosen.map(({ folders, pending, place, recorded }) => ({
     folders,
     pending,
     place,
+    recorded,
     wanted: foldersIn(place.directory, loaded),
   }));
 }
@@ -271,8 +324,12 @@ async function refuseUnrecorded(
   chosen: readonly Wanted[],
 ): Promise<void> {
   const refused = request.force ? [] : unrecorded(chosen);
-  for (const { path } of refused) {
-    await run.warn(folderNotInstalled(run.name, path));
+  for (const refusal of refused) {
+    await run.warn(
+      refusal.reason === 'changed'
+        ? referenceChanged(run.name, join(refusal.path, refusal.file))
+        : folderNotInstalled(run.name, refusal.path),
+    );
   }
   if (refused.length > none) {
     throw new FatalError(skillsInTheWay(run.name, request.verb));
@@ -312,7 +369,9 @@ async function removeTarget(where: Where, entry: Recorded): Promise<void> {
     throw new FatalError(recordUnreadable(run.name, refused?.path ?? record, 'uninstall'));
   }
   for (const folder of entry.folders) {
-    await run.info(outcome.removed.includes(folder) ? removedFolder(folder) : folderGone(folder));
+    await (outcome.kept.includes(folder)
+      ? run.warn(modifiedKept(run.name, folder))
+      : run.info(outcome.removed.includes(folder) ? removedFolder(folder) : folderGone(folder)));
   }
 }
 
@@ -333,4 +392,4 @@ async function uninstallGlobal(run: ChildRun, agent: Target | undefined): Promis
 }
 
 export type { ChildRun };
-export { installGlobal, loadForRun, uninstallGlobal };
+export { actingPlaces, prepare, installGlobal, loadForRun, uninstallGlobal };

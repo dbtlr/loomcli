@@ -695,7 +695,7 @@ describe('refusing', () => {
 
   it.each([
     ['damaged', 'not json'],
-    ['unknown-format', '{"format":2,"state":"committed","directories":[],"files":[]}\n'],
+    ['unknown-format', '{"format":3,"state":"committed","directories":[],"files":[]}\n'],
   ])(
     'a %s service.json fails install and uninstall with the pinned sentence and calls nothing',
     async (_reason, text) => {

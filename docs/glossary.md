@@ -391,7 +391,7 @@ The release line a version belongs to, which core derives from the version: its 
 _Avoid_: Lane (a lane is an output area), channel (alone, which names `out`), track, dist-tag
 
 **Installation record**:
-The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps what it installed, files with their digests, whole folders, or startup lines, in files of its own there. A file the application writes there under a name no first-party writer uses is the application's own.
+The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps what it installed, files with their digests, whole folders with the digest of each file inside, or startup lines, in files of its own there. A file the application writes there under a name no first-party writer uses is the application's own.
 _Avoid_: Receipt, installation receipt, journal, ledger, manifest
 
 **Startup line**:
@@ -1137,6 +1137,10 @@ _Avoid_: Prompt, plugin (for the folder), instructions file
 **Agent target**:
 One of the folder layouts agents read skills from: `claude`, which Claude Code alone reads, and `agents`, the shared folder that Codex and other agents following the Agent Skills standard read. Each has a global folder under the user's home and a project folder at a repository's root.
 _Avoid_: Host (the process environment), agent (for the folder), provider
+
+**Skill state**:
+What `skills status` reports for one skill at one agent target: `missing`, nothing at its folder's path; `unmanaged`, something there that nothing records as the skill's folder, at global scope because the installation record does not list it, and at project scope because it is not a folder; `modified`, a recorded folder whose generated command reference changed on disk since the install wrote it; `stale`, a folder that lacks a file the running version installs, holds one with other content or another executable bit, or still holds a recorded file the running version no longer installs; or `current`, none of these. The first that applies wins, in that order. An edit to an author's file, such as `SKILL.md`, reads `stale`, never `modified`, an entry the record does not list changes no state, and project folders, which have no record, are never `modified`. `unmanaged` says only that nothing records what is at the path; it is unrelated to `loom init`'s Managed file, under [Toolchain](#toolchain), whose edited copies init calls drifted.
+_Avoid_: Drift, sync state, outdated (for stale), dirty or edited (for modified)
 
 **Skills folder**:
 The folder an application names in the skills plugin's `folder` setting, each directory directly inside it one agent skill named for the directory. A source run and a test read it from disk, and `loom build` carries it into the bundle or binary it builds.

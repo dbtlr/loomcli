@@ -43,7 +43,7 @@ const executableMode = 0o755;
 const plainMode = 0o644;
 
 /** The files of a judged result with the mode each is written with. */
-function withModes(files: readonly SkillFile[]): FolderFile[] {
+function withModes(files: readonly SkillFile[]): (FolderFile & { readonly mode: number })[] {
   return files.map(({ content, executable, path }) => ({
     content,
     mode: executable === true ? executableMode : plainMode,
@@ -141,4 +141,4 @@ async function loadSkills(declared: Declared, request: LoadRequest): Promise<Loa
 }
 
 export type { LeftOut, LoadedSkill, LoadedSkills };
-export { loadSkills, withModes };
+export { isOwned, loadSkills, withModes };

@@ -110,7 +110,7 @@ import type {
   InstallRequest,
   StartupLinesOutcome,
 } from '../src/installation/files.js';
-import { fillFolder, folderHoldsExactly, writeFolder } from '../src/installation/folders.js';
+import { fillFolder, writeFolder } from '../src/installation/folders.js';
 
 /** A log that keeps nothing: these cases read the files the module leaves, not its change events. */
 const log: Log = { debug() {}, error() {}, info() {}, trace() {}, warn() {}, with: () => log };
@@ -432,7 +432,7 @@ test.each([
   ],
   [
     'an unknown format',
-    '{"format":2,"state":"committed","directories":[],"files":[]}\n',
+    '{"format":3,"state":"committed","directories":[],"files":[]}\n',
     'unknown-format',
   ],
 ])(
@@ -784,7 +784,7 @@ test('reading a pending plugin file returns what recovery would keep and writes 
 
 test.each([
   ['damaged', 'not json'],
-  ['unknown-format', '{"format":2,"state":"committed","directories":[],"files":[]}\n'],
+  ['unknown-format', '{"format":3,"state":"committed","directories":[],"files":[]}\n'],
 ])('reading a %s plugin file refuses it and reports its path', (reason, text) => {
   const box = sandbox();
   mkdirSync(box.record);
@@ -845,9 +845,16 @@ function installedFolders(
 }
 
 /** A committed plugin's file's bytes with the folders it records and no files. */
-function committedFolders(directories: readonly string[], folders: readonly string[]): string {
-  const entries = folders.map((path) => ({ path }));
-  return `${JSON.stringify({ format: 1, state: 'committed', directories, files: [], folders: entries })}\n`;
+function committedFolders(
+  directories: readonly string[],
+  folders: readonly string[],
+  contents: readonly Record<string, string>[] = folders.map(() => ({ 'SKILL.md': digests.test })),
+): string {
+  const entries = folders.map((folderPath, index) => ({
+    path: folderPath,
+    files: Object.entries(contents[index] ?? {}).map(([path, digest]) => ({ path, digest })),
+  }));
+  return `${JSON.stringify({ format: 2, state: 'committed', directories, files: [], folders: entries })}\n`;
 }
 
 /** Every entry under `directory` as `name`, `name/`, or `name -> target`, sorted, without following links. */
@@ -891,7 +898,13 @@ test('installing a folder writes it whole, with its modes, and records its path 
   expect(listing(folder)).toEqual(['SKILL.md', 'agents/', 'agents/run.sh']);
   expect(readFileSync(join(folder, 'agents', 'run.sh'), 'utf8')).toBe('abc');
   expect(statSync(join(folder, 'agents', 'run.sh')).mode & 0o7777).toBe(0o755);
-  expect(ownerText(box)).toBe(committedFolders([join(box.skills, 'deep')], [folder]));
+  expect(ownerText(box)).toBe(
+    committedFolders(
+      [join(box.skills, 'deep')],
+      [folder],
+      [{ 'SKILL.md': digests.test, 'agents/run.sh': digests.abc }],
+    ),
+  );
   expect(listing(join(box.skills, 'deep'))).toEqual([
     'notes/',
     'notes/SKILL.md',
@@ -918,7 +931,13 @@ test('a second install leaves exactly the new files, even after edits and additi
     'notes/references/',
     'notes/references/old.md',
   ]);
-  expect(ownerText(box)).toBe(committedFolders([], [box.directory]));
+  expect(ownerText(box)).toBe(
+    committedFolders(
+      [],
+      [box.directory],
+      [{ 'SKILL.md': digests.new, 'references/old.md': digests.abc }],
+    ),
+  );
 });
 
 test('an install that no longer lists a recorded folder removes it whole, edits included', () => {
@@ -937,7 +956,7 @@ test('an install that no longer lists a recorded folder removes it whole, edits 
     written: [other],
   });
   expect(listing(box.skills)).toEqual(['other/', 'other/a.md']);
-  expect(ownerText(box)).toBe(committedFolders([], [other]));
+  expect(ownerText(box)).toBe(committedFolders([], [other], [{ 'a.md': digests.abc }]));
 });
 
 test('files and folders install together and an uninstall removes both', () => {
@@ -1153,7 +1172,13 @@ test('a process killed between moving the old folder aside and renaming the new 
       'other',
     ].toSorted(),
   );
-  expect(ownerText(box)).toBe(committedFolders([], [box.directory, other]));
+  expect(ownerText(box)).toBe(
+    committedFolders(
+      [],
+      [box.directory, other],
+      [{ 'SKILL.md': digests.new, 'extra.md': digests.abc }, { 'a.md': digests.abc }],
+    ),
+  );
 });
 
 test('a pending file keeps a folder recorded whether or not it is there, and an uninstall passes over a gone one', () => {
@@ -1188,7 +1213,11 @@ test('a recorded folder that is gone is written again by the next install', () =
 test('reading a plugin file returns its recorded folders, and none when it records none', () => {
   const box = sandbox();
   installedFolders(box, [folderOf(box.directory, { 'a.md': 'abc' })]);
-  expect(read(box)).toEqual({ files: [], folders: [{ path: box.directory }], status: 'read' });
+  expect(read(box)).toEqual({
+    files: [],
+    folders: [{ path: box.directory, files: [{ path: 'a.md', digest: digests.abc }] }],
+    status: 'read',
+  });
   installedFolders(box, []);
   expect(read(box)).toEqual({ files: [], status: 'read' });
 });
@@ -1234,58 +1263,6 @@ const exactFiles = [
   { content: 'abc', mode: 0o755, path: 'agents/run.sh' },
 ];
 
-/** A folder at `path` written with `exactFiles`, which a test then spoils one way. */
-function exactFolder(box: Box): string {
-  writeFolder(box.directory, exactFiles);
-  return box.directory;
-}
-
-test('a folder holds exactly its files when contents and modes match, with no mode named for a file that names none', () => {
-  const box = sandbox();
-  expect(folderHoldsExactly(exactFolder(box), exactFiles)).toBe(true);
-  chmodSync(join(box.directory, 'SKILL.md'), 0o600);
-  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(true);
-});
-
-test.each([
-  ['an extra file', (path: string) => writeFileSync(join(path, 'extra.md'), 'x')],
-  [
-    'an extra file in a subfolder',
-    (path: string) => writeFileSync(join(path, 'agents', 'extra.md'), 'x'),
-  ],
-  ['an extra empty subfolder', (path: string) => mkdirSync(join(path, 'empty'))],
-  ['a wrong mode', (path: string) => chmodSync(join(path, 'agents', 'run.sh'), 0o644)],
-  ['a wrong content', (path: string) => writeFileSync(join(path, 'SKILL.md'), 'other')],
-  ['a missing file', (path: string) => rmSync(join(path, 'SKILL.md'))],
-  [
-    'a link in place of a file',
-    (path: string) => {
-      rmSync(join(path, 'SKILL.md'));
-      writeFileSync(join(path, '..', 'target.md'), 'test');
-      symlinkSync(join(path, '..', 'target.md'), join(path, 'SKILL.md'));
-    },
-  ],
-  [
-    'a link to a directory inside',
-    (path: string) => symlinkSync(join(path, 'agents'), join(path, 'again')),
-  ],
-])('a folder with %s does not hold exactly its files', (_name, spoil) => {
-  const box = sandbox();
-  spoil(exactFolder(box));
-  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(false);
-});
-
-test('a link at the path, a file, or nothing does not hold exactly its files', () => {
-  const box = sandbox();
-  const real = join(box.root, 'real');
-  writeFolder(real, exactFiles);
-  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(false);
-  symlinkSync(real, box.directory);
-  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(false);
-  expect(folderHoldsExactly(join(real, 'SKILL.md'), exactFiles)).toBe(false);
-  expect(folderHoldsExactly(real, exactFiles)).toBe(true);
-});
-
 // The folder write without a record
 
 test('writing a folder without a record replaces what is there and removes the leftovers of its own name only', () => {
@@ -1305,7 +1282,8 @@ test('writing a folder without a record replaces what is there and removes the l
     symlinkSync(target, join(path, 'link'));
   }
   writeFolder(box.directory, exactFiles);
-  expect(folderHoldsExactly(box.directory, exactFiles)).toBe(true);
+  expect(readFileSync(join(box.directory, 'SKILL.md'), 'utf8')).toBe('test');
+  expect(readFileSync(join(box.directory, 'agents/run.sh'), 'utf8')).toBe('abc');
   expect(existsSync(own[0]!)).toBe(false);
   expect(existsSync(own[1]!)).toBe(false);
   expect(others.every((path) => existsSync(path))).toBe(true);
@@ -2230,7 +2208,7 @@ test.each([
 test('a plugin file of an unknown format refuses', () => {
   const box = sandbox();
   mkdirSync(box.record, { recursive: true });
-  writeFileSync(join(box.record, 'mcp.claude.json'), '{"format":2}');
+  writeFileSync(join(box.record, 'mcp.claude.json'), '{"format":3}');
   expect(readRegistration({ plugin: 'mcp.claude', record: box.record })).toMatchObject({
     refused: { reason: 'unknown-format' },
     status: 'refused',
