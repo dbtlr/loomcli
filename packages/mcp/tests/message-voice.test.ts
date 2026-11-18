@@ -17,6 +17,9 @@ const src = new URL('../src/', import.meta.url);
 const ownConstant =
   "A protocol revision, a meta key, and a served method's name are the server's own constants, which hold no control character.";
 
+const ownHeader =
+  "A metadata header's name and the body field it mirrors are the HTTP transport's own constants, which hold no control character.";
+
 /**
  * The package's known exceptions. The package bundles into the plugin pack with no dependency on
  * core, so its sentences repeat only what the server itself names.
@@ -24,12 +27,14 @@ const ownConstant =
 const exceptions: VoiceExceptions = {
   escaping: {
     'messages.ts': {
-      '${capabilitiesKey}': { reason: ownConstant, sites: 1 },
+      '${capabilitiesKey}': { reason: ownConstant, sites: 2 },
       '${handshakes}': { reason: ownConstant, sites: 1 },
+      '${header}': { reason: ownHeader, sites: 2 },
       '${key}': { reason: ownConstant, sites: 1 },
       '${method}': { reason: ownConstant, sites: 1 },
-      '${revision}': { reason: ownConstant, sites: 3 },
-      '${versionKey}': { reason: ownConstant, sites: 1 },
+      '${revision}': { reason: ownConstant, sites: 5 },
+      '${source}': { reason: ownHeader, sites: 2 },
+      '${versionKey}': { reason: ownConstant, sites: 2 },
     },
   },
   'outside-text': {

@@ -272,6 +272,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Man page name taken.** The manpage plugin writes one page for each Command an operator can find, named by the application name and the Command's path joined with hyphens, so a Command named with a hyphen can give the name of a child's page, and one page would replace the other.
 
+### @loomcli/plugins/mcp/broken-authorize-hook
+
+**Broken MCP authorize hook.** The MCP plugin's HTTP server calls the authorize hook with each request's headers, and the hook answers true to serve the request or false to refuse it, without throwing. A throw is a defect in the hook: the server answered that request with 500 and kept serving, and it reports the first throw once, when it stops.
+
 ### @loomcli/plugins/mcp/property-name-taken
 
 **MCP property name taken.** An MCP tool takes its arguments and options as one object keyed by declared name, so an argument and an option that share a name leave the client no way to supply each one.

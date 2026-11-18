@@ -11,9 +11,11 @@ import { json, jsonl } from '@loomcli/plugins/format/views';
 import { help } from '@loomcli/plugins/help';
 import { manifest } from '@loomcli/plugins/manifest';
 import { mcp } from '@loomcli/plugins/mcp';
+import type { McpSettings } from '@loomcli/plugins/mcp';
 import { mcpArgument, mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extension';
 import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
+import { verbose } from '@loomcli/plugins/verbose';
 import { progress as progressLine } from '@loomcli/prompts';
 import { z } from 'zod';
 
@@ -417,6 +419,55 @@ function progress() {
     .command(waiting);
 }
 
+/**
+ * The HTTP server's settings, as the test's variables name them: an authorize hook that wants the
+ * bearer token `sesame` or that throws, and a body limit.
+ */
+function httpSettings(env: Record<string, string | undefined>): McpSettings {
+  const hooks: Record<string, McpSettings['authorize']> = {
+    throw: () => {
+      throw new TypeError('token.trim is not a function');
+    },
+    token: ({ headers }) => headers.get('authorization') === 'Bearer sesame',
+  };
+  const authorize = hooks[env.FIXTURE_AUTHORIZE ?? ''];
+  return {
+    ...(authorize === undefined ? {} : { authorize }),
+    ...(env.FIXTURE_MAX_BODY === undefined ? {} : { maxBodyBytes: Number(env.FIXTURE_MAX_BODY) }),
+  };
+}
+
+/**
+ * Tools served over HTTP: one that echoes, one that waits for its signal, and one with a progress
+ * line, beside a Command that needs a terminal and never opts in, with the verbose plugin for -v.
+ */
+function served(env: Record<string, string | undefined> = {}) {
+  const opted = { extensions: [mcpCommand({})] };
+  const echo = new Command('echo', { description: 'Echo the word.', ...opted })
+    .argument('word', { description: 'A word.', required: true })
+    .action(({ args, out }) => out.print(args.word));
+  const wait = new Command('wait', { description: 'Wait for the abort.', ...opted })
+    .argument('label', { description: 'The label to report.', required: true })
+    .action(waitForAbort);
+  const counted = new Command('counted', { description: 'Count two records.', ...opted }).action(
+    async (context) => {
+      const line = progressLine(context, { label: 'Fetching records', total: 2 });
+      line.update({ completed: 1 });
+      await line.end();
+    },
+  );
+  const top = new Command('top', { description: 'A live view.' }).needsTerminal().action(dispatch);
+  return new Application('served', {
+    ...(env.FIXTURE_BUILD === undefined ? {} : { description: 'Serve over HTTP.' }),
+    plugins: [mcp(httpSettings(env)), verbose()],
+    version: '3.0.0',
+  })
+    .command(echo)
+    .command(wait)
+    .command(counted)
+    .command(top);
+}
+
 /** One application for each build fault the plugin's hook raises. */
 /** The options every fault's application shares: the build, a description, and the plugin. */
 const faulty = { description: 'A faulty fixture.', plugins: [mcp()] };
@@ -598,7 +649,17 @@ function fitted() {
  */
 const processColumns: Readonly<Record<string, string>> = { columns: '20', fitted: '10' };
 
-const scenarios = { calls, columns, excluded, fitted, listing, multiline, progress, ...faults };
+const scenarios = {
+  calls,
+  columns,
+  excluded,
+  fitted,
+  listing,
+  multiline,
+  progress,
+  served,
+  ...faults,
+};
 
 function createScenario(name: string, env: Record<string, string | undefined> = {}) {
   const factory = Object.entries(scenarios).find(([key]) => key === name)?.[1];

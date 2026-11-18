@@ -5,6 +5,15 @@ import { createScenario, processColumns } from './mcp-app.ts';
 import { ruleText } from './rule-text.mjs';
 
 const release = { build: process.env.FIXTURE_BUILD ?? 'distributed' };
+
+// A test that asks reports at exit whether Node loaded node:http. Bun lists no module, which reads as unknown.
+if (process.env.FIXTURE_REPORT_HTTP !== undefined) {
+  process.once('exit', () => {
+    const list = process.moduleLoadList ?? [];
+    const loaded = list.includes('NativeModule http') ? 'loaded' : 'not loaded';
+    process.stderr.write(`node:http ${list.length === 0 ? 'unknown' : loaded}\n`);
+  });
+}
 const [name, ...argv] = process.argv.slice(2);
 
 // The process entry alone sets COLUMNS for the scenarios that read it, before building them.

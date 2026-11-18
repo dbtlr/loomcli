@@ -808,6 +808,14 @@ _Avoid_: Endpoint, function, MCP command, tool (for a Command that has not opted
 An entry in one coding agent's own MCP configuration that names the application and the command line that starts its MCP server, made and removed through that agent's own command-line interface. The MCP plugin replaces or removes only the registrations the installation record lists, unless the operator forces an install.
 _Avoid_: Installation (for the registration), host configuration, agent target (the agent is one program, not a folder layout), MCP install
 
+**MCP endpoint**:
+The one URL where the MCP plugin's HTTP server answers, `http://<host>:<port>/mcp`, when `mcp --http <address>` starts it, written as the run's one stdout line. It serves the same tools as the stdio server, refuses any request that carries an `Origin` header, and lets an author's `authorize` hook judge each request from its headers. A loopback endpoint is reachable by every user and process on the machine.
+_Avoid_: Endpoint (for a tool), route, URL (alone, for the endpoint), server (for the endpoint)
+
+**MCP session**:
+The connection the MCP plugin's HTTP server keeps for one client that opened with `initialize` on an initialize-era revision, named by the `MCP-Session-Id` the server issues with a successful `InitializeResult`: the negotiated revision, the requests it has in flight by id, and the rule that no request reuses the id of one still in flight. It is the protocol package's state, as one stdio run is, not an HTTP connection, which is the transport's socket. It ends by DELETE, after it sits idle for the plugin's `sessionIdleMs`, or when the server stops. A `2026-07-28` request belongs to no session.
+_Avoid_: HTTP connection (for the session), run, login
+
 **Formatter**:
 The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, `jsonlRows()` as the row view of `jsonl` that the hook declares under `rows()` so each line prints as the row arrives, failure encoders for their two media types, and `--fields`, which keeps the named top-level keys of its own json and jsonl output through a result transform and applies to no view an author declared. A result has no encoding outside the view model: a machine view is a view like a table is.
 _Avoid_: Format plugin, encoder (for the plugin), serializer, format (for the view), output mode

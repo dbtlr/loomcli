@@ -1,4 +1,11 @@
-import { batchUnsupported, lineNotJson, notJsonRpcRequest } from './messages.js';
+import {
+  batchUnsupported,
+  bodyBatch,
+  bodyNotJson,
+  bodyNotMessage,
+  lineNotJson,
+  notJsonRpcRequest,
+} from './messages.js';
 import type { JsonValue } from './protocol.js';
 
 /** A request's id, which its response and any cancellation name. */
@@ -9,6 +16,7 @@ const errorCodes = {
   internalError: -32_603,
   invalidParams: -32_602,
   invalidRequest: -32_600,
+  headerMismatch: -32_020,
   methodNotFound: -32_601,
   parseError: -32_700,
   unsupportedProtocolVersion: -32_022,
@@ -51,24 +59,47 @@ function isRequestId(value: unknown): value is RequestId {
   return typeof value === 'string' || typeof value === 'number';
 }
 
-const notJson = new ProtocolError(errorCodes.parseError, lineNotJson);
-const batch = new ProtocolError(errorCodes.invalidRequest, batchUnsupported);
-const notRequest = new ProtocolError(errorCodes.invalidRequest, notJsonRpcRequest);
+/** The refusals of a message that is not one a transport reads, worded for its framing. */
+interface Wording {
+  readonly notJson: ProtocolError;
+  readonly batch: ProtocolError;
+  readonly notRequest: ProtocolError;
+}
 
-/** The parsed line, or `notJson` when it does not parse. */
-function parse(line: string): { readonly value: unknown } | ProtocolError {
+/** The refusals of a stdio line. */
+const lineWording: Wording = {
+  batch: new ProtocolError(errorCodes.invalidRequest, batchUnsupported),
+  notJson: new ProtocolError(errorCodes.parseError, lineNotJson),
+  notRequest: new ProtocolError(errorCodes.invalidRequest, notJsonRpcRequest),
+};
+
+/** The refusals of an HTTP POST body. */
+const bodyWording: Wording = {
+  batch: new ProtocolError(errorCodes.invalidRequest, bodyBatch),
+  notJson: new ProtocolError(errorCodes.parseError, bodyNotJson),
+  notRequest: new ProtocolError(errorCodes.invalidRequest, bodyNotMessage),
+};
+
+/** The parsed text, or nothing when it does not parse. */
+function parse(text: string): { readonly value: unknown } | undefined {
   try {
-    return { value: JSON.parse(line) };
+    return { value: JSON.parse(text) };
   } catch {
-    return notJson;
+    return undefined;
   }
 }
 
 /** Sorts one parsed object: a client's response, a notification, a request, or neither. */
-function classifyObject(message: Record<string, unknown>): Incoming {
+function classifyObject(
+  message: Record<string, unknown>,
+  notRequest: ProtocolError,
+  strictResponses: boolean,
+): Incoming {
   const { id, method, params } = message;
   if (method === undefined && ('result' in message || 'error' in message)) {
-    return { kind: 'response' };
+    return strictResponses && (message.jsonrpc !== '2.0' || !isRequestId(id))
+      ? { kind: 'invalid', id: null, error: notRequest }
+      : { kind: 'response' };
   }
   const named = isRequestId(id) ? id : null;
   if (message.jsonrpc !== '2.0' || typeof method !== 'string') {
@@ -82,18 +113,21 @@ function classifyObject(message: Record<string, unknown>): Incoming {
     : { kind: 'request', id: named, method, params };
 }
 
-/** Reads one line as a request, a notification, a client's response, or a message to refuse. */
-function classify(line: string): Incoming {
-  const parsed = parse(line);
-  if (parsed instanceof ProtocolError) {
-    return { kind: 'invalid', id: null, error: parsed };
+/**
+ * Reads one message, a stdio line or a POST body, as a request, a notification, a client's
+ * response, or a message to refuse in the transport's wording.
+ */
+function classify(text: string, wording: Wording = lineWording): Incoming {
+  const parsed = parse(text);
+  if (parsed === undefined) {
+    return { kind: 'invalid', id: null, error: wording.notJson };
   }
   if (Array.isArray(parsed.value)) {
-    return { kind: 'invalid', id: null, error: batch };
+    return { kind: 'invalid', id: null, error: wording.batch };
   }
   return isRecord(parsed.value)
-    ? classifyObject(parsed.value)
-    : { kind: 'invalid', id: null, error: notRequest };
+    ? classifyObject(parsed.value, wording.notRequest, wording === bodyWording)
+    : { kind: 'invalid', id: null, error: wording.notRequest };
 }
 
 /** Whether a line holds nothing but JSON whitespace, which carries no message. */
@@ -158,6 +192,7 @@ function notificationMessage(method: string, params: object) {
 }
 
 export {
+  bodyWording,
   classify,
   errorCodes,
   errorMessage,

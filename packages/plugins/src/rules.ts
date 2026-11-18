@@ -117,6 +117,13 @@ const mcpToolNeedsTerminal = diagnosticRule(`${packageName}/mcp/tool-needs-termi
   headline: 'MCP tool needs a terminal',
 });
 
+/** An `authorize` hook given to `mcp()` that threw or rejected while it judged an HTTP request. */
+const mcpBrokenAuthorizeHook = diagnosticRule(`${packageName}/mcp/broken-authorize-hook`, {
+  explanation:
+    "The MCP plugin's HTTP server calls the authorize hook with each request's headers, and the hook answers true to serve the request or false to refuse it, without throwing. A throw is a defect in the hook: the server answered that request with 500 and kept serving, and it reports the first throw once, when it stops.",
+  headline: 'Broken MCP authorize hook',
+});
+
 /** An argument and an option one MCP tool would list under one name. */
 const mcpPropertyNameTaken = diagnosticRule(`${packageName}/mcp/property-name-taken`, {
   explanation:
@@ -204,6 +211,7 @@ export {
   configVariableName,
   failureCodeConflict,
   manpagePageNameTaken,
+  mcpBrokenAuthorizeHook,
   mcpPropertyNameTaken,
   mcpRequiredInputExcluded,
   mcpToolNameTaken,

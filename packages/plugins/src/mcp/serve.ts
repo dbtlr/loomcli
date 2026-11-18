@@ -1,7 +1,8 @@
 /**
- * The `mcp` Command's server: it serves every opted-in Command as a tool over the host's stdin and
- * stdout, each call run through `invoke`. The plugin loads this module when the Command runs, so the
- * protocol package loads only then.
+ * The `mcp` Command's server: it serves every opted-in Command as a tool, each call run through
+ * `invoke`, over the host's stdin and stdout or, with `--http`, over HTTP. The plugin loads this
+ * module when the Command runs, so the protocol package loads only then, and this module loads the
+ * HTTP server only when `--http` is given.
  */
 import { errorCodes, McpServer, ProtocolError } from '@loom/mcp';
 import type { CallToolResult, JsonValue, ServerIdentity, TextContent, ToolCall } from '@loom/mcp';
@@ -15,14 +16,25 @@ import type {
 
 import { singleLine } from '../lines.js';
 import { isRecord } from '../plain-data.js';
+import type { HttpAddress } from './address.js';
 import { excludedNames } from './exposure.js';
 import { argumentsNotObject, unknownTool, unlistedArgument } from './messages.js';
+import type { McpSettings } from './plugin.js';
 import { progressRelay } from './progress.js';
 import { listedTool, propertiesOf, toolEntries } from './tools.js';
 import type { ListedTool, Property, ToolEntry } from './tools.js';
 
-/** The context the `mcp` action reads: the run's graph, host, signal, and `invoke`. */
-type ServeContext = Pick<ActionContext<unknown>, 'graph' | 'host' | 'invoke' | 'signal'>;
+/** The context the `mcp` action reads: the run's graph, host, signal, `invoke`, `log`, and `out`. */
+type ServeContext = Pick<
+  ActionContext<unknown>,
+  'graph' | 'host' | 'invoke' | 'log' | 'out' | 'signal'
+>;
+
+/** How the `mcp` action serves: the plugin's settings, and the address `--http` names, if any. */
+interface Serving {
+  readonly settings: McpSettings;
+  readonly http: HttpAddress | undefined;
+}
 
 /** What a failed call's handler returns, which the call answers as its structured content. */
 interface FailedCall {
@@ -174,10 +186,10 @@ async function callTool(
 
 /**
  * Serves every opted-in Command as a tool over the host's stdin and stdout until stdin ends or the
- * run's signal aborts. The tool table is derived here from the run's graph, which the build-fault
- * hook already judged.
+ * run's signal aborts, or, with `--http`, over HTTP until the run's signal aborts. The tool table is
+ * derived here from the run's graph, which the build-fault hook already judged.
  */
-async function serve(context: ServeContext): Promise<void> {
+async function serve(context: ServeContext, { http, settings }: Serving): Promise<void> {
   const entries = toolEntries(context.graph);
   const tools: readonly ListedTool[] = entries.map((entry) => listedTool(context.graph, entry));
   const byName = new Map(entries.map((entry) => [entry.name, entry]));
@@ -192,7 +204,16 @@ async function serve(context: ServeContext): Promise<void> {
     identity: identityOf(context.graph),
     listTools: () => tools,
   });
-  await server.run(context.host.stdin, context.host.stdout, { signal: context.signal });
+  if (http === undefined) {
+    await server.run(context.host.stdin, context.host.stdout, { signal: context.signal });
+    return;
+  }
+  const { serveHttp } = await import('./serve-http.js');
+  await serveHttp(context, {
+    address: http,
+    settings,
+    transport: (options) => server.http(options),
+  });
 }
 
 export { serve };

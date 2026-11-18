@@ -13,4 +13,11 @@ export type {
 export { handshakeRevisions, protocolRevision } from './revision.js';
 export type { HandshakeRevision } from './revision.js';
 export { McpServer } from './server.js';
-export type { McpServerOptions, RunOptions, ServerInput, ServerOutput } from './server.js';
+export type {
+  HttpOptions,
+  HttpTransport,
+  McpServerOptions,
+  RunOptions,
+  ServerInput,
+  ServerOutput,
+} from './server.js';
