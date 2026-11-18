@@ -1143,6 +1143,7 @@ class ApplicationBuilder<
      * verbosity the run settled. Core logs no event before then.
      */
     const screen: LogScreen = {
+      out: { warn: (...call: MessageArguments) => output?.out.warn(...call) ?? Promise.resolve() },
       show: (event) => {
         output?.showLog(event);
       },

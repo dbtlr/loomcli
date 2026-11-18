@@ -12,7 +12,10 @@ function unresolved(name: string): LoggingError {
 }
 
 /** The directory a platform keeps an application's logs in, as core's `logs` lookup resolves it. */
-function defaultDirectory(application: string, destination: LogDestination): string | LoggingError {
+function defaultDirectory(
+  application: string,
+  destination: Pick<LogDestination, 'env' | 'home' | 'platform'>,
+): string | LoggingError {
   const lookup = applicationDirectory('logs', application, destination);
   return 'path' in lookup ? lookup.path : unresolved(lookup.variable);
 }
@@ -21,7 +24,9 @@ function defaultDirectory(application: string, destination: LogDestination): str
  * The home directory a `~/` path starts from: the destination's `home`, the outermost run's
  * `host.home`, when it is absolute, on every platform.
  */
-function homeDirectory(destination: LogDestination): string | LoggingError {
+function homeDirectory(
+  destination: Pick<LogDestination, 'env' | 'home' | 'platform'>,
+): string | LoggingError {
   return homeOf(destination) ?? unresolved('HOME');
 }
 
@@ -36,7 +41,7 @@ const homePrefix = '~/';
 function resolveLogFile(
   file: string | undefined,
   application: string,
-  destination: LogDestination,
+  destination: Pick<LogDestination, 'env' | 'home' | 'platform'>,
 ): string | LoggingError {
   if (file?.startsWith(homePrefix)) {
     const home = homeDirectory(destination);

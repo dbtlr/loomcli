@@ -1,0 +1,48 @@
+---
+type: adr
+title: ADR-0178 - Operators control log files and levels, and failures name the run's log
+description: Two variables named after the application let the operator set the logging plugin's file level and redirect its first file, an unusable value warns and keeps the author's setting, a configurable failure hint names the file and run, and the plugin publishes its files as its own extension fact on the root Command with a resolver beside the descriptor that another plugin imports.
+status: proposed
+created: 2026-11-18
+modified: 2026-11-18
+---
+
+# ADR-0178 - Operators control log files and levels, and failures name the run's log
+
+## Context
+
+An operator who needs a more detailed record of a failing run should not need a rebuild. npm's log level and its complete-log notice, `RUST_LOG`, and `LOG_LEVEL` set the expectation: the environment selects the record, and a failure says where it is. Under [ADR-0177](0177-one-logging-installation-writes-to-several-destinations.md) every logging destination has its own level, but only the author sets it.
+
+[ADR-0119](0119-the-configuration-lookup-walks-to-home-reads-an-author-named-variable-and-the-xdg-user-file-and-never-falls-back-after-a-broken-file.md) gives configuration no default variable name. Logging departs from that on purpose: operator control is the feature, and a variable the author has to wire would leave it out of every application that keeps the defaults.
+
+Other code needs the same files: the failure hint, and next the service plugin's `status`, which names the log file of the service it reports. Core knows no log file. [ADR-0121](0121-the-configuration-source-publishes-its-files-json-schema-as-a-core-graph-fact.md) made the configuration schema a core graph fact because the configuration source is a core slot; logging has no slot, and the file is the logging plugin's own concept. Plugin facts are descriptor-keyed extension values under [ADR-0019](0019-plugin-facts-are-descriptor-keyed-extension-values-and-core-owns-the-universal-facts.md) and [ADR-0031](0031-a-plugin-supplies-facts-to-another-plugins-projection-through-a-collecting-extension.md), read through the declaring plugin's `<subpath>/extension` module.
+
+## Decision
+
+- **Two variables, named after the application.** The application's name is uppercased and each character outside `A`-`Z` and `0`-`9` becomes `_`, then `_LOG_LEVEL` and `_LOG_FILE` are added: `heimdall` reads `HEIMDALL_LOG_LEVEL` and `HEIMDALL_LOG_FILE`. Both are on by default. `levelEnv` and `fileEnv` rename either, and `false` turns either off. The plugin reads them from the log destination's `env`, the run's environment, at every event, so they reach every record, a configuration source's included, and never read `process.env`.
+- **Files only.** The level variable is trimmed and matched case-insensitively against `trace`, `debug`, `info`, `warn`, and `error`, and sets the level of every file destination; console destinations keep their declared levels, so a supervisor's output is unchanged. The file variable replaces the first file destination's path, resolved by the ordinary path rules; other files keep theirs. A console-only installation gains no file and reads neither variable. The operator's value beats the author's setting.
+- **An unusable value warns and falls back.** An empty or blank value of either variable counts as unset and warns nothing. A level outside the five, a file path the host cannot resolve, and one that cannot receive an append each keep the author's setting for that variable. The plugin judges a path by the file, or its nearest existing parent directory, without creating either. It warns once per outermost run, at that run's first log event, which is the first moment the value would take effect, through `destination.out.warn`, which prints at every verbosity. A run that logs no event writes no record and warns nothing. The warning escapes each value it repeats and quotes no runtime sentence.
+- **The destination carries `out.warn`.** `LogDestination` gains `out: Pick<Out, 'warn'>`, the outermost run's warn lane, narrowing [ADR-0174](0174-v-shows-the-log-through-message-templates-and-out-keeps-what-the-operator-is-told.md)'s removal of the destination's `out`. `destination.log` shows only at `-v`, and an `onEnvironment` hook's `out.warn` runs without the application's name, home, or platform, which the variables' names and the file check need, so the destination is the one place that holds both the facts and an operator lane. What a hook did still goes to `log`.
+- **The plugin's fact.** The logging plugin's attach hook adds `loggingFiles`, the extension `@loomcli/plugins/logging/files`, to the root Command on every build: `files`, each file destination in declaration order with its declared `file`, absent for the default name, and its `level`; and `levelEnv` and `fileEnv` as the author set them, absent for the derived name. It is plain data, as every extension value is, so `inspect()` reports it and the manifest carries nothing new. It holds no host fact, so it is the same on every build.
+- **One resolver beside the descriptor.** `@loomcli/plugins/logging/extension` exports `resolveLoggingFiles(facts, { application, host })`, where `host` is `{ env, home, platform }`. It returns one entry per file destination, in order, with its level and its absolute path, or the `LoggingError` that names the variable the host lacks, and it returns under `rejected` each variable whose value it could not use. It creates nothing. The plugin writes through it, so a reader that resolves the fact for a run's host names the files that run writes. This narrows [ADR-0020](0020-first-party-plugins-ship-in-one-package-as-subpaths.md)'s rule that the extension module holds declarations alone: it also holds a reader of its own fact that reads the filesystem and creates nothing, and still imports no entry, middleware, or view module. Its directory lookup transitively imports the shared message module, which holds sentences and no writer, and a sibling that imports the extension bundles none of the plugin's writers.
+- **The failure hint.** `failureHint` selects the failures that name the log: `'runtime'`, the default, every failure but a usage error (rejected input, `InputError`, is a usage error); `'always'`, every failure; `'defects'`, an `InternalError` or a `DeclarationError` alone; `false`, none. The hint, `Read the log of this run in <path> (run <id>).`, names each file the failure's own event was appended to, in declaration order, each once, by resolving the fact on the run's graph for the host the event was written on. A console destination, a write that failed, and a file of an earlier run earn none.
+- **Core records the failure first and names the run.** Core logs a failure's event before it calls the `onFailure` hooks, so a failure that is the run's first record still reaches the file before the hint is gathered. The event's failure form carries no hints; the report the operator reads carries them. `FailureHookContext` gains `run`, the identifier every log event of the run carries, so a hook pairs the failure with the run's records. Neither names logging: any plugin that observes events can point at them.
+
+## Considered options
+
+- **A core graph fact, `graph.logging.files`, from a `logFiles` member on every plugin definition and a host-aware `inspect({ env, home, platform })`.** Built first and withdrawn. It installs a logging concept in core and makes `inspect()` host-dependent, where the plugin's own extension value carries the same fact and a resolver in the plugin's module applies the host.
+- **A resolved path in the fact.** Rejected: a path depends on the host's environment, home, and platform, which `inspect()` does not take, so the fact holds what the author declared and the resolver applies a host.
+- **The warning from `onEnvironment`.** Rejected: its context holds no application name, home, or platform, so it can name neither variable nor judge a path without three more core members.
+- **A hint for every file the run appended to.** Rejected for the failure's own event: that is the record the operator looks for, and it needs no state per run that a long-running server would accumulate.
+
+## Consequences
+
+This narrows ADR-0070's author-only settings, ADR-0177's independent file levels, ADR-0046's hook context, ADR-0069's failure-event ordering, ADR-0064's failure-form hints, ADR-0174's destination, and ADR-0020's declarations module. ADR-0119's rule for configuration is unchanged. A file write that fails still reaches the entry's `onError` and never changes the exit code. The [logging reference](../plugins/logging.md) documents the variables, the hint, the fact, and the resolver, and [Lifecycle hooks](../core/lifecycle-hooks.md) documents `run` and `out.warn`.
+
+## Status
+
+Proposed. It moves to accepted in the release PR of the release that ships it.
+
+## Changelog
+
+- 2026-11-18: Proposed for operator log controls, failure hints, and the logging plugin's file fact and resolver (LM-373).

@@ -33,10 +33,11 @@ function copyName(path: string, number: number): string {
   return join(dir, `${name}.${number}${ext}`);
 }
 
-/** The size of the file now, or 0 when it is not there. */
+/** The size of a regular file now, or 0 when it is absent or must not rotate. */
 function sizeOf(path: string): number {
   try {
-    return statSync(path).size;
+    const stat = statSync(path);
+    return stat.isFile() ? stat.size : EMPTY;
   } catch {
     return EMPTY;
   }

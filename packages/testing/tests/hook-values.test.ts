@@ -99,6 +99,7 @@ describe('logDestination', () => {
         warn: expect.any(Function),
         with: expect.any(Function),
       },
+      out: { warn: expect.any(Function) },
       platform: 'linux',
       stderr: null,
     });

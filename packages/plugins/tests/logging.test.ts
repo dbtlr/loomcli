@@ -42,9 +42,16 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { Application, Command, FatalError, readExtension } from '@loomcli/core';
+import { configuration } from '@loomcli/plugins/config';
+import { configInput } from '@loomcli/plugins/config/extension';
+import { logging } from '@loomcli/plugins/logging';
 import type { LoggingSettings } from '@loomcli/plugins/logging';
+import { loggingFiles, resolveLoggingFiles } from '@loomcli/plugins/logging/extension';
+import type { LoggingFilesFacts } from '@loomcli/plugins/logging/extension';
 import { mockProcess } from '@loomcli/testing';
 import { afterEach, expect, test } from 'vite-plus/test';
+import { z } from 'zod';
 
 import { invoke, start } from '../../../scripts/test-process.js';
 import type { Outcome } from './fixtures/in-process.ts';
@@ -584,7 +591,8 @@ test.skipIf(!unprivileged)(
     const failed = await run(box, ['fail']);
     expect(failed.status).toBe(1);
     const reference = await run(writable, ['fail']);
-    expect(failed.stderr).toBe(reference.stderr);
+    expect(reference.stderr).toContain(failed.stderr.trimEnd());
+    expect(failed.stderr).not.toContain('Read the log of this run');
     expect(failed.stderr).not.toBe('');
   },
 );
@@ -613,3 +621,414 @@ test.skipIf(!unprivileged)(
     );
   },
 );
+
+test('the application log level variable overrides the author before records are filtered', async () => {
+  const box = sandbox();
+  await run(box, ['log'], {
+    env: { HEIMDALL_LOG_LEVEL: 'debug', HOME: box.home, XDG_STATE_HOME: box.state },
+  });
+  expect(lines(box.file)).toEqual([logged.debug, logged.info, logged.warn, logged.error]);
+});
+
+test.each(['DEBUG', ' debug '])(
+  'the level variable accepts %j without a warning',
+  async (value) => {
+    const box = sandbox();
+    const result = await run(box, ['log'], {
+      env: { HEIMDALL_LOG_LEVEL: value, HOME: box.home, XDG_STATE_HOME: box.state },
+    });
+    expect(result.stderr).toBe('');
+    expect(lines(box.file)).toEqual([logged.debug, logged.info, logged.warn, logged.error]);
+  },
+);
+
+test.each(['', '   '])('an empty level variable %j is unset without a warning', async (value) => {
+  const box = sandbox();
+  const result = await run(box, ['log'], {
+    env: { HEIMDALL_LOG_LEVEL: value, HOME: box.home, XDG_STATE_HOME: box.state },
+  });
+  expect(result.stderr).toBe('');
+  expect(lines(box.file)).toEqual([logged.info, logged.warn, logged.error]);
+});
+
+test('the file variable redirects the first file and leaves the second file intact', async () => {
+  const box = sandbox();
+  const redirected = join(box.root, 'report.jsonl');
+  const second = join(box.root, 'audit.jsonl');
+  await run(
+    box,
+    ['log'],
+    { env: { HEIMDALL_LOG_FILE: redirected, HOME: box.home, XDG_STATE_HOME: box.state } },
+    { destinations: [{}, { file: second }] },
+  );
+  expect(lines(redirected)).toEqual([logged.info, logged.warn, logged.error]);
+  expect(lines(second)).toEqual(lines(redirected));
+  expect(existsSync(box.file)).toBe(false);
+});
+
+test('an unusable level warns visibly and retains the declared threshold', async () => {
+  const box = sandbox();
+  const result = await run(
+    box,
+    ['log'],
+    { env: { HEIMDALL_LOG_LEVEL: 'verbose\nforged', HOME: box.home, XDG_STATE_HOME: box.state } },
+    { level: 'warn' },
+  );
+  expect(result.stderr).toContain(String.raw`HEIMDALL_LOG_LEVEL=verbose\u000aforged`);
+  expect(result.stderr).toContain('Use trace, debug, info, warn, or error');
+  expect(result.stderr.split('\n').filter(Boolean)).toHaveLength(1);
+  expect(lines(box.file)).toEqual([logged.warn, logged.error]);
+});
+
+test('a directory supplied as the file variable warns and keeps the declared file', async () => {
+  const box = sandbox();
+  const result = await run(box, ['log'], {
+    env: { HEIMDALL_LOG_FILE: box.home, HOME: box.home, XDG_STATE_HOME: box.state },
+  });
+  expect(result.stderr).toContain('Set it to a writable file path');
+  expect(lines(box.file)).toEqual([logged.info, logged.warn, logged.error]);
+});
+
+test('a missing directory with a trailing separator warns at verbosity zero and keeps the declared file', async () => {
+  const box = sandbox();
+  const directory = join(box.root, 'newdir');
+  const result = await run(box, ['log'], {
+    env: { HEIMDALL_LOG_FILE: `${directory}/`, HOME: box.home, XDG_STATE_HOME: box.state },
+  });
+  expect(result.stderr).toContain('Set it to a writable file path');
+  expect(lines(box.file)).toEqual([logged.info, logged.warn, logged.error]);
+  expect(existsSync(directory)).toBe(false);
+});
+
+test.skipIf(!existsSync('/dev/null'))(
+  'the file variable accepts a writable device without a warning or fallback',
+  async () => {
+    const box = sandbox();
+    const result = await run(
+      box,
+      ['log'],
+      {
+        env: { HEIMDALL_LOG_FILE: '/dev/null', HOME: box.home, XDG_STATE_HOME: box.state },
+      },
+      { maxBytes: 1 },
+    );
+    expect(result.stderr).toBe('');
+    expect(existsSync(box.file)).toBe(false);
+  },
+);
+
+test('authors can rename either variable and disable either variable', async () => {
+  const box = sandbox();
+  const file = join(box.root, 'named.jsonl');
+  const env = {
+    DETAIL: 'debug',
+    HEIMDALL_LOG_FILE: box.work,
+    HEIMDALL_LOG_LEVEL: 'trace',
+    HOME: box.home,
+    RECORD: file,
+    XDG_STATE_HOME: box.state,
+  };
+  await run(box, ['log'], { env }, { fileEnv: 'RECORD', levelEnv: 'DETAIL' });
+  expect(lines(file)).toEqual([logged.debug, logged.info, logged.warn, logged.error]);
+  const result = await run(box, ['log'], { env }, { fileEnv: false, levelEnv: false });
+  expect(result.stderr).toBe('');
+  expect(lines(box.file)).toEqual([logged.info, logged.warn, logged.error]);
+});
+
+test('runtime failures name this run and its successfully appended file', async () => {
+  const box = sandbox();
+  const result = await run(box, ['fail']);
+  const records = readFileSync(box.file, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+  expect(result.stderr).toContain(
+    `Read the log of this run in ${box.file} (run ${records[0].run}).`,
+  );
+});
+
+test.each<NonNullable<LoggingSettings['failureHint']>>(['runtime', 'always', 'defects', false])(
+  'failureHint %s selects runtime failures',
+  async (failureHint) => {
+    const box = sandbox();
+    const result = await run(box, ['fail'], {}, { failureHint });
+    expect(result.stderr.includes('Read the log of this run')).toBe(
+      failureHint === 'runtime' || failureHint === 'always',
+    );
+  },
+);
+
+test.each<NonNullable<LoggingSettings['failureHint']>>(['runtime', 'always', 'defects', false])(
+  'failureHint %s selects defects',
+  async (failureHint) => {
+    const box = sandbox();
+    const result = await run(box, ['defect'], {}, { failureHint });
+    expect(result.stderr.includes('Read the log of this run')).toBe(failureHint !== false);
+  },
+);
+
+test('a usage error shows no default hint and a console-only run shows none', async () => {
+  const box = sandbox();
+  const usage = await run(box, ['missing']);
+  expect(usage.stderr).not.toContain('Read the log of this run');
+  const consoleOnly = await run(box, ['fail'], {}, { to: 'console' });
+  expect(consoleOnly.stderr).not.toContain('Read the log of this run');
+});
+
+/** The logging fact `inspect()` publishes on the root of the fixture application. */
+function publishedFacts(settings?: LoggingSettings): LoggingFilesFacts {
+  const facts = readExtension(loggingApplication(settings).inspect().root, loggingFiles);
+  if (facts === undefined) {
+    throw new Error('The logging fact is missing.');
+  }
+  return facts;
+}
+
+test('inspect() carries the logging fact on the root, and the resolver gives a host its files', () => {
+  const box = sandbox();
+  const facts = publishedFacts({
+    destinations: [{}, { to: 'console' }, { file: 'audit.jsonl', level: 'warn' }],
+    fileEnv: 'RECORD',
+  });
+  expect(facts).toEqual({
+    fileEnv: 'RECORD',
+    files: [{ level: 'info' }, { file: 'audit.jsonl', level: 'warn' }],
+  });
+  const audit = join(box.state, 'heimdall', 'audit.jsonl');
+  const host = {
+    env: { HOME: box.home, XDG_STATE_HOME: box.state },
+    home: box.home,
+    platform: 'linux',
+  };
+  expect(resolveLoggingFiles(facts, { application: 'heimdall', host })).toEqual({
+    files: [
+      { level: 'info', path: box.file },
+      { level: 'warn', path: audit },
+    ],
+    rejected: {},
+  });
+  const redirected = join(box.root, 'report.jsonl');
+  const operated = {
+    ...host,
+    env: { ...host.env, HEIMDALL_LOG_LEVEL: 'debug', RECORD: redirected },
+  };
+  expect(resolveLoggingFiles(facts, { application: 'heimdall', host: operated }).files).toEqual([
+    { level: 'debug', path: redirected },
+    { level: 'debug', path: audit },
+  ]);
+  expect(existsSync(redirected)).toBe(false);
+});
+
+test('the resolver rejects an unusable value and names the variable a host lacks', () => {
+  const box = sandbox();
+  const facts = publishedFacts();
+  const env = { HEIMDALL_LOG_FILE: '/var/log/heimdall/', HEIMDALL_LOG_LEVEL: 'loud' };
+  const resolved = resolveLoggingFiles(facts, {
+    application: 'heimdall',
+    host: { env, home: 'relative', platform: 'linux' },
+  });
+  expect(resolved.rejected).toEqual({
+    file: { value: '/var/log/heimdall/', variable: 'HEIMDALL_LOG_FILE' },
+    level: { value: 'loud', variable: 'HEIMDALL_LOG_LEVEL' },
+  });
+  const [file] = resolved.files;
+  expect(file !== undefined && 'error' in file && file.error.variable).toBe('HOME');
+  expect(existsSync(box.file)).toBe(false);
+});
+
+test('the resolver counts an empty or blank file variable as unset', () => {
+  const facts = publishedFacts();
+  for (const value of ['', '   ']) {
+    const host = { env: { HEIMDALL_LOG_FILE: value }, home: '/home/me', platform: 'linux' };
+    expect(resolveLoggingFiles(facts, { application: 'heimdall', host }).rejected).toEqual({});
+  }
+});
+
+test('a console-only installation publishes no file and reads neither variable', () => {
+  const facts = publishedFacts({ to: 'console' });
+  expect(facts).toEqual({ files: [] });
+  const host = { env: { HEIMDALL_LOG_LEVEL: 'loud' }, home: '/home/me', platform: 'linux' };
+  expect(resolveLoggingFiles(facts, { application: 'heimdall', host })).toEqual({
+    files: [],
+    rejected: {},
+  });
+});
+
+test('always hints for a usage failure whose failure record is the first append', async () => {
+  const box = sandbox();
+  const result = await run(box, ['missing'], {}, { failureHint: 'always' });
+  expect(result.stderr).toContain(`Read the log of this run in ${box.file}`);
+});
+
+test('the environment override covers configuration-source debug records before option resolution', async () => {
+  const box = sandbox();
+  writeFileSync(join(box.work, '.heimdall.json'), '{"value":"configured"}');
+  const config = configuration({ schema: z.object({ value: z.string().optional() }) });
+  const app = new Application('heimdall', { plugins: [config.plugin, logging()] })
+    .option('value', { extensions: [configInput({ path: 'value' })], type: 'string' })
+    .action(() => undefined);
+  const mock = mockProcess({
+    argv: [],
+    cwd: box.work,
+    env: { HEIMDALL_LOG_LEVEL: 'debug', HOME: box.home, XDG_STATE_HOME: box.state },
+    home: box.home,
+    platform: 'linux',
+  });
+  await app.run({ process: mock });
+  expect(mock.exitCode).toBe(0);
+  const records = readFileSync(box.file, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+  expect(
+    records.some((event) => event.plugin === '@loomcli/plugins/config' && event.level === 'debug'),
+  ).toBe(true);
+});
+
+test('application names uppercase and replace punctuation in the default variable names', async () => {
+  const box = sandbox();
+  const file = join(box.root, 'report.jsonl');
+  const app = new Application('my-tool', { plugins: [logging()] }).action(({ log }) => {
+    log.debug('Detail.');
+  });
+  const mock = mockProcess({
+    argv: [],
+    cwd: box.work,
+    env: { MY_TOOL_LOG_FILE: file, MY_TOOL_LOG_LEVEL: 'debug' },
+    home: box.home,
+    platform: 'linux',
+  });
+  await app.run({ process: mock });
+  expect(JSON.parse(readFileSync(file, 'utf8')).message).toBe('Detail.');
+});
+
+test('concurrent runs of one application name only their own run id', async () => {
+  const box = sandbox();
+  const app = new Application('heimdall', { plugins: [logging()] }).command(
+    new Command('fail', { description: 'Fail.' }).action(async ({ log }) => {
+      log.info('Before failure.');
+      await Promise.resolve();
+      throw new FatalError('Failed.');
+    }),
+  );
+  const env = { HOME: box.home, XDG_STATE_HOME: box.state };
+  const first = mockProcess({
+    argv: ['fail'],
+    cwd: box.work,
+    env,
+    home: box.home,
+    platform: 'linux',
+  });
+  const second = mockProcess({
+    argv: ['fail'],
+    cwd: box.work,
+    env,
+    home: box.home,
+    platform: 'linux',
+  });
+  await Promise.all([app.run({ process: first }), app.run({ process: second })]);
+  const firstRun = /\(run (?<id>[a-f0-9]{32})\)/u.exec(first.stderr.text)?.groups?.id;
+  const secondRun = /\(run (?<id>[a-f0-9]{32})\)/u.exec(second.stderr.text)?.groups?.id;
+  expect(firstRun).toBeDefined();
+  expect(secondRun).toBeDefined();
+  expect(firstRun).not.toBe(secondRun);
+});
+
+test('a nested invocation failure names its own records in the outer destination', async () => {
+  const box = sandbox();
+  let hints: readonly string[] = [];
+  const app = new Application('heimdall', { plugins: [logging()] })
+    .command(
+      new Command('inner', { description: 'Fail.' }).action(() => {
+        throw new FatalError('Failed inside.');
+      }),
+    )
+    .action(async ({ invoke: call }) => {
+      const outcome = await call(['inner'], {});
+      if (outcome.status === 'failed') {
+        hints = outcome.form.hints;
+      }
+    });
+  const mock = mockProcess({
+    argv: [],
+    cwd: box.work,
+    env: { HOME: box.home, XDG_STATE_HOME: box.state },
+    home: box.home,
+    platform: 'linux',
+  });
+  await app.run({ process: mock });
+  expect(mock.exitCode).toBe(0);
+  expect(hints.join('\n')).toContain(`Read the log of this run in ${box.file}`);
+});
+
+test('an invalid level warns at verbosity 0 on a run whose only event no file writes', async () => {
+  const box = sandbox();
+  const app = new Application('heimdall', { plugins: [logging()] }).action(({ log }) => {
+    log.debug('Detail.');
+  });
+  const mock = mockProcess({
+    argv: [],
+    cwd: box.work,
+    env: { HEIMDALL_LOG_LEVEL: 'verbose', HOME: box.home, XDG_STATE_HOME: box.state },
+    home: box.home,
+    platform: 'linux',
+  });
+  await app.run({ process: mock });
+  expect(mock.exitCode).toBe(0);
+  expect(mock.stderr.text).toContain('Use trace, debug, info, warn, or error');
+  expect(existsSync(box.file)).toBe(false);
+});
+
+test('operator variables change files alone beside ordered OpenTelemetry and console entries', async () => {
+  const box = sandbox();
+  const redirected = join(box.root, 'operator.jsonl');
+  const second = join(box.root, 'second.jsonl');
+  const emitted: string[] = [];
+  const app = new Application('heimdall', {
+    plugins: [
+      logging({
+        destinations: [
+          { level: 'error' },
+          {
+            level: 'info',
+            logger: {
+              emit: (entry) => {
+                emitted.push(entry.body);
+                expect(readFileSync(redirected, 'utf8')).toContain(entry.body);
+                expect(readFileSync(second, 'utf8')).not.toContain(entry.body);
+              },
+            },
+            to: 'otel',
+          },
+          { level: 'error', to: 'console' },
+          { file: second, level: 'error' },
+        ],
+      }),
+    ],
+  }).action(({ log }) => {
+    log.debug('Detail.');
+    log.info('Ready.');
+  });
+  const facts = readExtension(app.inspect().root, loggingFiles);
+  expect(facts).toEqual({
+    files: [{ level: 'error' }, { file: second, level: 'error' }],
+  });
+  const mock = mockProcess({
+    argv: [],
+    cwd: box.work,
+    env: {
+      HEIMDALL_LOG_FILE: redirected,
+      HEIMDALL_LOG_LEVEL: 'debug',
+      HOME: box.home,
+      XDG_STATE_HOME: box.state,
+    },
+    home: box.home,
+    platform: 'linux',
+  });
+  await app.run({ process: mock });
+  expect(mock.exitCode).toBe(0);
+  expect(emitted).toEqual(['Ready.']);
+  expect(mock.stderr.text).toBe('');
+  expect(readFileSync(redirected, 'utf8')).toContain('Detail.');
+  expect(readFileSync(second, 'utf8')).toContain('Detail.');
+});

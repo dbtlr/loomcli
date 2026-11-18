@@ -149,6 +149,12 @@ export const surfacePackages = [
             'Parameter of the exported `LoggingError` constructor; the author passes an object literal.',
         },
       },
+      './logging/extension': {
+        forgottenExports: {
+          LoggingErrorDetail:
+            'Parameter of the exported `LoggingError` constructor, which a resolved file carries; the author passes an object literal.',
+        },
+      },
       './manifest': {
         forgottenExports: {
           options:
