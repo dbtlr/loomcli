@@ -268,7 +268,7 @@ export interface CommandGraph {
 }
 
 // @public @sealed
-export type CommandMethod = 'action' | 'alias' | 'visibleAlias' | 'argument' | 'command' | 'option' | 'options' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'requires' | 'result' | 'rows' | 'passthrough' | 'stdin';
+export type CommandMethod = 'action' | 'alias' | 'visibleAlias' | 'argument' | 'command' | 'option' | 'options' | 'exclusive' | 'oneRequired' | 'requiredTogether' | 'requires' | 'result' | 'rows' | 'needsTerminal' | 'passthrough' | 'stdin';
 
 // @public @sealed
 export interface CommandNode {
@@ -281,6 +281,7 @@ export interface CommandNode {
     readonly hasAction: boolean;
     readonly hidden: boolean;
     readonly name: string | null;
+    readonly needsTerminal: boolean;
     readonly optionGroups: readonly OptionGroup[];
     readonly options: readonly OptionNode[];
     readonly passthrough: Readonly<{
@@ -1820,6 +1821,13 @@ export type SwitchPolicy = 'auto' | 'always' | 'never';
 
 // @public
 export type Synchronous<Returned> = Returned extends PromiseLike<unknown> ? never : Returned;
+
+// @public @sealed
+export class TerminalUnavailableError extends FatalError {
+    constructor(application: string, command: readonly string[]);
+    static readonly code: string;
+    readonly command: readonly string[];
+}
 
 // @public
 export type ThemeConstraint<Mapping> = {

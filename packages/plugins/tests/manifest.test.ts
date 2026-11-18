@@ -46,9 +46,12 @@
  *   `-M`.
  */
 
+import { Application, Command } from '@loomcli/core';
+import { manifest } from '@loomcli/plugins/manifest';
 import { expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
+import { runOnMock } from './fixtures/in-process.ts';
 import { run as fixtureRun } from './fixtures/manifest-run.js';
 import { run as settingsRun } from './fixtures/manifest-settings.mjs';
 
@@ -187,6 +190,7 @@ const getDocument = {
     ],
     deprecated: null,
     hasAction: true,
+    needsTerminal: false,
     result: null,
     failures: [],
     arguments: [
@@ -643,6 +647,7 @@ test('a Command entry carries stdin: null without a stdin declaration, and the d
     'examples',
     'deprecated',
     'hasAction',
+    'needsTerminal',
     'result',
     'failures',
     'arguments',
@@ -865,4 +870,18 @@ test('an agent builds a valid invocation from the manifest alone and parses the 
   // A value result under json is the value as one JSON document, as `encodings.json` states.
   expect(document.encodings.json).toContain('a value result is the value');
   expect(JSON.parse(result.stdout)).toBe('shown');
+});
+
+test('a Command entry carries needsTerminal, true where the Command declares it', async () => {
+  const app = new Application('monitor', { plugins: [manifest()] })
+    .command(new Command('top').needsTerminal().action(() => undefined))
+    .action(() => undefined);
+  const root = await runOnMock(app, { argv: ['--manifest'] });
+  const top = await runOnMock(app, { argv: ['top', '--manifest'] });
+  expect(z.object({ command: entrySchema }).parse(JSON.parse(root.stdout)).command).toMatchObject({
+    needsTerminal: false,
+  });
+  expect(z.object({ command: entrySchema }).parse(JSON.parse(top.stdout)).command).toMatchObject({
+    needsTerminal: true,
+  });
 });

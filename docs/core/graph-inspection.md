@@ -40,6 +40,7 @@ interface CommandNode {
   readonly hidden: boolean;
   readonly deprecated: string | undefined;
   readonly hasAction: boolean;
+  readonly needsTerminal: boolean; // see A Command that needs a terminal
   readonly result: ResultNode | null;
   readonly arguments: readonly ArgumentNode[];
   readonly options: readonly OptionNode[];
@@ -158,6 +159,7 @@ type OptionNode =
 - A content option's node is the string variant with `type: 'content'`, `stdin`, `min`, and `max`, and without `arity`, `background`, `envAllowEmpty`, and `lastWins`. A content argument's node carries the same four facts, which a plain argument's node omits, and `min` and `max` are `undefined` when the declaration states no bound. A Command that declares a standalone [`.stdin()`](validation.md#content-inputs) carries it as `stdin`, its `description` and whether it is `required`, and a Command that declares none omits the field. [Content inputs](validation.md#content-inputs) describe them.
 - `optionGroups` holds the Command's [declared option groups](options.md#declared-option-groups) in declaration order, hidden members included, or `[]`. An exclusive, one-required, or required-together group is `{ kind, options }`, its members in the order the call names them, and a [one-way requirement](options.md#a-one-way-requirement) is `{ kind: 'requires', option, requires }`, so `.requires('password', 'user')` reads `{ kind: 'requires', option: 'password', requires: ['user'] }`. Narrow `kind` before reading `options`.
 - `passthrough` is `null` on a Command that does not declare the [passthrough mode](options.md#passthrough), and otherwise `{ description }`, the mode's description or `undefined` when it declares none.
+- `needsTerminal` is `true` on a Command, the root included, that declares `needsTerminal()`, and `false` otherwise, under [A Command that needs a terminal](commands.md#a-command-that-needs-a-terminal).
 - `requiredWhen` is `'non-interactive'` on the node of an argument or a string option that declares `required: 'non-interactive'`, whose `required` reads `false`, and `null` on every other argument and string or content option, a content argument's included, under [Interaction](interaction.md).
 - `control` is the fact [Control options](commands.md#control-options) describes: `true` when the declaration marks the option as controlling the invocation, and `false` otherwise. Routing, parsing, and validation read it nowhere.
 - `type` is the option's kind. A string option's `implied` is the [implied value](options.md#implied-values) a bare spelling supplies, or `null` when it declares none, and its `background` is `true` on the option that carries the [background mark](background.md) and `false` on every other. A [counted option](options.md#counted-options) has no negative spelling, no polarity, no default, and no validator, so its node carries none of those fields, and its `schema` is always `null`. Its `verbose` and `quiet` are the [verbose mark and the quiet mark](verbosity.md), `true` on the option that carries one.

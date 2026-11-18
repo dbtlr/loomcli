@@ -52,6 +52,7 @@ test("each core class reads its failure code without an instance, and an author'
     NonCallableCommandError: 'missing-subcommand',
     RepeatedOptionError: 'repeated-option',
     ResultError: 'internal',
+    TerminalUnavailableError: 'terminal-unavailable',
     UnexpectedArgumentError: 'unexpected-argument',
     UnexpectedValueError: 'unexpected-value',
     UnknownCommandError: 'unknown-command',

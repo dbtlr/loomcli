@@ -337,6 +337,31 @@ test('a deprecated Command carries its message on a second masthead line', async
   );
 });
 
+test('a Command that needs a terminal says so under its masthead, and help prints without one', async () => {
+  const app = new Application('monitor', { plugins: [help()] })
+    .command(
+      new Command('top', { description: 'Show a live view.' })
+        .needsTerminal()
+        .action(() => undefined),
+    )
+    .action(() => undefined);
+  const result = await runOnMock(app, { argv: ['top', '--help'] });
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  expect(result.stdout).toBe(
+    [
+      'monitor top · Show a live view.',
+      '  Needs a terminal: stdin and stderr, outside CI.',
+      '',
+      'USAGE',
+      '  monitor top [options]',
+      '',
+      'GLOBAL OPTIONS',
+      '  -h, --help  Show this help.',
+      '',
+    ].join('\n'),
+  );
+});
+
 test('a line break in a description or a deprecation message prints as one space', async () => {
   await expect(run('multiline', ['--help'])).resolves.toEqual(
     page(

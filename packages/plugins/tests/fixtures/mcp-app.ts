@@ -510,6 +510,18 @@ const faults = {
         }).action(dispatch),
       )
       .action(dispatch),
+  'tool-needs-terminal': () =>
+    new Application('app', faulty)
+      .command(
+        new Command('top', { description: 'A live view.', extensions: [mcpCommand({})] })
+          .needsTerminal()
+          .action(dispatch),
+      )
+      .command(new Command('plain', { description: 'Plain.' }).action(dispatch)),
+  'tool-needs-terminal-root': () =>
+    new Application('app', { ...faulty, extensions: [mcpCommand({})] })
+      .needsTerminal()
+      .action(dispatch),
   'tool-without-action': () => {
     const clear = new Command('clear', { description: 'Clear.' }).action(dispatch);
     const cache = new Command('cache', {

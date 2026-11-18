@@ -110,6 +110,13 @@ const mcpToolWithoutAction = diagnosticRule(`${packageName}/mcp/tool-without-act
   headline: 'MCP tool without an action',
 });
 
+/** `mcpCommand` on a Command that needs a terminal. */
+const mcpToolNeedsTerminal = diagnosticRule(`${packageName}/mcp/tool-needs-terminal`, {
+  explanation:
+    'An MCP tool call is an invocation by name, which has no terminal, so a Command that declares it needs a terminal fails every call a client makes.',
+  headline: 'MCP tool needs a terminal',
+});
+
 /** An argument and an option one MCP tool would list under one name. */
 const mcpPropertyNameTaken = diagnosticRule(`${packageName}/mcp/property-name-taken`, {
   explanation:
@@ -200,6 +207,7 @@ export {
   mcpPropertyNameTaken,
   mcpRequiredInputExcluded,
   mcpToolNameTaken,
+  mcpToolNeedsTerminal,
   mcpToolWithoutAction,
   selfUpdateSettings,
   serviceRunUnrouted,

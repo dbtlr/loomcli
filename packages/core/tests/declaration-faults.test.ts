@@ -38,6 +38,7 @@ test('a Command value publishes its authoring calls and no declared state', asyn
       'constructor',
       'exclusive',
       'extend',
+      'needsTerminal',
       'oneRequired',
       'option',
       'options',

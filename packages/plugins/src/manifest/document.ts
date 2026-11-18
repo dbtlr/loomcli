@@ -44,6 +44,8 @@ interface ManifestCommand {
   readonly examples: readonly { readonly command: string; readonly note: string | null }[];
   readonly deprecated: string | null;
   readonly hasAction: boolean;
+  /** Whether the Command runs only where stdin and stderr are terminals, outside CI. */
+  readonly needsTerminal: boolean;
   readonly result: ResultNode | null;
   readonly failures: readonly ManifestFailure[];
   readonly arguments: readonly ManifestArgument[];
@@ -422,6 +424,7 @@ function commandEntry(node: CommandNode): ManifestCommand {
     ),
     deprecated: lineOf(node.deprecated),
     hasAction: node.hasAction,
+    needsTerminal: node.needsTerminal,
     result:
       node.result === null
         ? null

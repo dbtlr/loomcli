@@ -808,6 +808,7 @@ type Rule =
   | 'property-name-taken'
   | 'required-input-excluded'
   | 'tool-name-taken'
+  | 'tool-needs-terminal'
   | 'tool-without-action';
 
 describe('build faults', () => {
@@ -835,6 +836,18 @@ describe('build faults', () => {
       'tool-without-action',
       'The root Command carries mcpCommand and registers no action.',
       'Remove mcpCommand, or opt in the Commands under it.',
+    ],
+    [
+      'tool-needs-terminal',
+      'tool-needs-terminal',
+      'Command "top" carries mcpCommand and needs a terminal, which no tool call has.',
+      'Remove mcpCommand, or remove needsTerminal from the Command.',
+    ],
+    [
+      'tool-needs-terminal-root',
+      'tool-needs-terminal',
+      'The root Command carries mcpCommand and needs a terminal, which no tool call has.',
+      'Remove mcpCommand, or remove needsTerminal from the Command.',
     ],
     [
       'property-name-taken',

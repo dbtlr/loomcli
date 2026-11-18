@@ -175,17 +175,31 @@ function aliasParagraph(command: CommandNode): string[] {
     : [textLine(escapeText(`${aliasLabels(names).line}${names.join(aliasSeparator)}`))];
 }
 
-/** The alias paragraph, then the deprecation paragraph, then the details, `.PP` between them. */
-function description({ command }: Subject): string[] {
+/** Help's masthead facts as paragraphs, in help order. */
+function mastheadParagraphs(command: CommandNode): string[] {
   const aliases = aliasParagraph(command);
   const deprecation =
     command.deprecated === undefined
       ? []
       : [textLine(escapeText(`Deprecated: ${singleLine(command.deprecated)}`))];
-  const opening =
-    isEmpty(aliases) || isEmpty(deprecation)
-      ? [...aliases, ...deprecation]
-      : [...aliases, '.PP', ...deprecation];
+  const terminal = command.needsTerminal
+    ? [textLine(escapeText('Needs a terminal: stdin and stderr, outside CI.'))]
+    : [];
+  const opening: string[] = [];
+  for (const paragraph of [aliases, terminal, deprecation]) {
+    if (!isEmpty(paragraph)) {
+      if (!isEmpty(opening)) {
+        opening.push('.PP');
+      }
+      opening.push(...paragraph);
+    }
+  }
+  return opening;
+}
+
+/** The masthead facts, then the details, `.PP` between them. */
+function description({ command }: Subject): string[] {
+  const opening = mastheadParagraphs(command);
   const source = commandHelp(command)?.details;
   const details = source === undefined ? [] : detailsLines(source, { preceded: !isEmpty(opening) });
   return headed('DESCRIPTION', [...opening, ...details]);
