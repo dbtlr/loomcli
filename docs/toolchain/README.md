@@ -15,6 +15,7 @@ The toolchain has no `check` command: the assembly check from [`@loomcli/testing
 - [loom build](build.md): open it when you build an application for Node, Bun, or a compiled binary, or need the facts a build bakes in.
 - [The package changelog](changelog.md): open it when you write change fragments, cut a package's version or prerelease, or print a version's release notes.
 - [loom init](init.md): open it when you scaffold a new application or refresh the files init manages.
+- [loom skills export](skills.md): open it when you keep a committed copy of application skills and generated references.
 - [The installer script](install.md): open it when an operator installs your release binary with `install.sh`.
 
 This repository's own release commands are hidden and not part of this contract. The [changelog compiler](../maintaining/changelog-compiler.md), [PR guards](../maintaining/pr-guards.md), and [release workflow](../maintaining/release-workflow.md) references document them.

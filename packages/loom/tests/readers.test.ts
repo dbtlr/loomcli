@@ -23,7 +23,10 @@ function bundledModules(reader: string): string[] {
 }
 
 test.each([
-  ['read-application', ['src/read-application.ts', 'src/application-load.ts']],
+  [
+    'read-application',
+    ['src/read-application.ts', 'src/application-load.ts', 'src/helpers/inspect-application.ts'],
+  ],
   ['read-skills', ['src/read-skills.ts', 'src/application-load.ts']],
 ])('dist/%s.js bundles only its own modules', (reader, modules) => {
   expect(bundledModules(reader)).toEqual(modules.toSorted());

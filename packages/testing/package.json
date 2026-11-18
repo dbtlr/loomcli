@@ -23,7 +23,13 @@
     "postpack": "node ../../scripts/readme-links.mjs unpin"
   },
   "peerDependencies": {
-    "@loomcli/core": "workspace:*"
+    "@loomcli/core": "workspace:*",
+    "@loomcli/plugins": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@loomcli/plugins": {
+      "optional": true
+    }
   },
   "engines": {
     "bun": ">=1.4.4",

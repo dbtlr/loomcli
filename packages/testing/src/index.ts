@@ -28,3 +28,5 @@ export { logDestination, logEvent, progressEvent } from './hook-values.js';
 export type { LogDestinationValues, LogEventValues, ProgressEventValues } from './hook-values.js';
 export { key } from './key.js';
 export type { KeyLetter } from './key.js';
+
+export { assertSkillsMatch } from './assert-skills-match.js';

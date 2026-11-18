@@ -276,3 +276,21 @@ export {
   useVersion,
   useWholeNumber,
 };
+
+export const skillsUnavailable =
+  'The application records no skills plugin. Install a current @loomcli/plugins and declare skills(), then export again.';
+export const noSkills =
+  'The application declares no skills. Add a skill to skills(), then export again.';
+export function unknownSkill(name: string): string {
+  return `Skill "${escaped(name)}" is not declared. Name a declared skill or omit --skill to export all skills.`;
+}
+export function exportedSkills(path: string): string {
+  return `Exported skills to ${escaped(path)}.\n`;
+}
+
+export function sourceSkillsOutput(path: string): string {
+  return `Cannot export to ${escaped(path)}: export would write into the application's skills folder, which holds the source. Name another directory.`;
+}
+export function occupiedSkillOutput(path: string): string {
+  return `Cannot replace ${escaped(path)}: it is not a skill folder, which holds a SKILL.md. Move or remove it, or name another directory.`;
+}

@@ -9,6 +9,7 @@ import { changelog } from './commands/changelog/command.js';
 import { init } from './commands/init/command.js';
 import { pr } from './commands/pr/command.js';
 import { release } from './commands/release/command.js';
+import { skillsCommand } from './commands/skills/command.js';
 import { loomConfigPlugin } from './helpers/loom-config.js';
 import { loomVersion } from './helpers/loom-version.js';
 
@@ -21,4 +22,5 @@ export const loom = new Application('loom', {
   .command(changelog)
   .command(init)
   .command(pr)
-  .command(release);
+  .command(release)
+  .command(skillsCommand);

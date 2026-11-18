@@ -24,6 +24,8 @@ import type {
   SpawnOptions,
 } from '@loomcli/core';
 
+import { unscriptedProgram } from './messages.js';
+
 /**
  * A terminal the mock's streams sit on.
  *
@@ -708,9 +710,7 @@ function scriptedChild(request: SpawnRequest, scripted: Scripted): Child {
 
 /** The sentence a spawn of a command with no script throws. */
 function unscripted(command: string): Error {
-  return new Error(
-    `mockProcess has no program for "${command}". Add a "${command}" entry to programs.`,
-  );
+  return new Error(unscriptedProgram(command));
 }
 
 /**

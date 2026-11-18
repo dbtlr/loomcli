@@ -45,6 +45,12 @@ export type ActionValues<Args, Options, Result, Stdin extends StdinContext & {
 export function assertAssembles(application: Pick<Application, 'check'>): void;
 
 // @public
+export function assertSkillsMatch(application: Pick<Application, 'inspect'>, directory: string, options?: {
+    readonly skills?: readonly string[];
+    readonly moduleDirectory?: string;
+}): Promise<void>;
+
+// @public
 export function environmentContext(hook: EnvironmentHook, values: EnvironmentValues): EnvironmentContext;
 
 // @public

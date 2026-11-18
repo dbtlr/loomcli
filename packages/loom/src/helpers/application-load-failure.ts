@@ -12,8 +12,14 @@ import type { InferOutput } from 'valibot';
 /** A module that threw while it loaded, for a throw that is not a `DeclarationError`. */
 const loadFailed = diagnosticRule('@loomcli/loom/application-load-failed', {
   explanation:
-    'loom imports the application module to learn what it declares, loom init how the entry imports its Application and loom build the skills folder skills() names, and the module threw while it loaded, so the command could not finish.',
+    'loom imports the application module to learn what it declares, loom init how the entry imports its Application, loom build the skills folder skills() names, and loom skills export its skill files, and the module threw while it loaded, so the command could not finish.',
   headline: 'Application failed to load',
+});
+
+const loaderFailed = diagnosticRule('@loomcli/loom/skill-loader-failed', {
+  explanation:
+    'loom skills export loaded the application, but the author code that supplies the files of a skill threw, so nothing was written.',
+  headline: 'Skill files loader failed',
 });
 
 /** What a reader writes when the module threw something other than a `DeclarationError`. */
@@ -23,11 +29,14 @@ const threw = strictObject({ threw: string() });
 type Threw = InferOutput<typeof threw>;
 
 /** The Developer Diagnostic of a module that threw while it loaded, for the reason a reader wrote. */
-function loadFailure(module: string, reason: string): string {
-  return new DeclarationError(loadFailed, {
-    correction:
-      'Fix the code that throws, or move the work into an action, which runs only when its Command runs.',
-    sentence: `${module} threw while it loaded: ${reason}`,
+function loadFailure(module: string, reason: string, loader = false): string {
+  return new DeclarationError(loader ? loaderFailed : loadFailed, {
+    correction: loader
+      ? 'Fix the skill files loader and run loom skills export again.'
+      : 'Fix the code that throws, or move the work into an action, which runs only when its Command runs.',
+    sentence: loader
+      ? `A skill's files loader in ${module} threw: ${reason}`
+      : `${module} threw while it loaded: ${reason}`,
   }).message;
 }
 

@@ -28,6 +28,8 @@ function readerScript(reader: Reader): string {
 /** One read of an application module: the reader, the package directory, and the module. */
 interface ReaderRequest {
   readonly reader: Reader;
+  /** A projection run on the live inspected graph before the reader serializes its answer. */
+  readonly projection?: 'skills';
   /** The package directory, where Bun runs, so the package's own `bunfig.toml` applies. */
   readonly directory: string;
   /** The module's absolute path, resolved against the working directory before the spawn. */
@@ -62,7 +64,15 @@ async function runReader<Schema extends BaseSchema<unknown, unknown, BaseIssue<u
     const { directory, module, path } = request;
     const read = await runBun(
       run,
-      ['--no-install', readerScript(request.reader), resultFile, directory, path, module],
+      [
+        '--no-install',
+        readerScript(request.reader),
+        resultFile,
+        directory,
+        path,
+        module,
+        ...(request.projection === undefined ? [] : [request.projection]),
+      ],
       directory,
     );
     if (read.code !== 0 || !existsSync(resultFile)) {

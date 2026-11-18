@@ -1,5 +1,16 @@
-import { array, boolean, literal, number, picklist, strictObject, string, union } from 'valibot';
-import type { InferOutput } from 'valibot';
+import {
+  array,
+  boolean,
+  literal,
+  number,
+  picklist,
+  strictObject,
+  string,
+  union,
+  unknown,
+  safeParse,
+} from 'valibot';
+import type { BaseIssue, BaseSchema, InferOutput } from 'valibot';
 
 import {
   coreUnresolved,
@@ -9,6 +20,8 @@ import {
 } from '../commands/init/messages.js';
 import { loadFailure, threw } from './application-load-failure.js';
 import { runReader } from './application-reader.js';
+import type { ReaderRequest } from './application-reader.js';
+import { parseOrThrow } from './parse-or-throw.js';
 import type { RunHost } from './run-host.js';
 
 /** The names a module exports its Application under. */
@@ -43,7 +56,7 @@ const readResult = union([exportsResult, readProblem, threw]);
 type ReadProblem = InferOutput<typeof readProblem>;
 
 /** A problem the read found, worded for the module, and whether the module loaded before it. */
-function problemExports(module: string, read: ReadProblem): InferOutput<typeof exportsResult> {
+function problemExports(module: string, read: ReadProblem): { failure: string; loaded: boolean } {
   if (read.problem === 'applications') {
     const failure =
       read.count === 0 ? noApplicationExport(module) : manyApplicationExports(module, read.count);
@@ -53,6 +66,13 @@ function problemExports(module: string, read: ReadProblem): InferOutput<typeof e
     read.problem === 'core-unresolved' ? coreUnresolved(module) : coreWithoutApplication(module);
   return { failure, loaded: false };
 }
+
+const projectionFailure = union([
+  readProblem,
+  threw,
+  strictObject({ failure: string(), loaded: boolean() }),
+  strictObject({ loaderThrew: string() }),
+]);
 
 /** One read of an application module, a throw while it loaded formatted as its diagnostic. */
 export type ApplicationExports = InferOutput<typeof exportsResult>;
@@ -76,4 +96,30 @@ export async function readApplicationExports(
     return { failure: loadFailure(options.module, result.threw), loaded: false };
   }
   return 'problem' in result ? problemExports(options.module, result) : result;
+}
+
+/**
+ * Runs a reader request under Bun and validates its successful answer against schema.
+ * Throws a worded export-count or core-resolution failure, a DeclarationError's own diagnostic,
+ * or the diagnostic for author code that threw. Projections share this bin-side reader boundary.
+ */
+export async function readApplicationProjection<
+  Schema extends BaseSchema<unknown, unknown, BaseIssue<unknown>>,
+>(run: RunHost, request: ReaderRequest, schema: Schema): Promise<InferOutput<Schema>> {
+  const value = await runReader(run, request, unknown());
+  const failure = safeParse(projectionFailure, value);
+  if (!failure.success) {
+    return parseOrThrow(schema, value);
+  }
+  const result = failure.output;
+  if ('threw' in result) {
+    throw new Error(loadFailure(request.module, result.threw));
+  }
+  if ('loaderThrew' in result) {
+    throw new Error(loadFailure(request.module, result.loaderThrew, true));
+  }
+  if ('failure' in result) {
+    throw new Error(result.failure);
+  }
+  throw new Error(problemExports(request.module, result).failure);
 }

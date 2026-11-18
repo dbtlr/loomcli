@@ -15,6 +15,14 @@ import type {
   Region,
 } from '@loomcli/core';
 
+import {
+  unstatedMember,
+  unstatedViewMeasure,
+  unstatedActionInvoke,
+  unstatedMiddlewareNext,
+  unstatedOutText,
+} from './messages.js';
+
 /** The members a test may state beside the inputs: out and log member by member, every other member whole. */
 type OptionalMembers<Context> = {
   readonly [Key in keyof Context]?: Key extends 'out' | 'log'
@@ -33,15 +41,13 @@ type Builder =
 
 /** Throws the sentence for a member the function read and the test did not state. */
 function unstated(builder: Builder, member: string): never {
-  throw new Error(`${builder} has no ${member}. Add ${member} to its values.`);
+  throw new Error(unstatedMember(builder, member));
 }
 
 /** A view measure the view calls and the test did not state, which throws its sentence. */
 function unstatedMeasure(member: string): () => never {
   return () => {
-    throw new Error(
-      `viewContext has no ${member} for this view to call. Add ${member} to its values.`,
-    );
+    throw new Error(unstatedViewMeasure(member));
   };
 }
 
@@ -83,20 +89,13 @@ const registersNothing: OnShutdown & OnSuspend & OnResume = () => nothing;
 
 /** An `invoke` the test did not state, which rejects with its sentence. */
 function unstatedInvoke(path: readonly string[]): Promise<never> {
-  return Promise.reject(
-    new Error(
-      `actionContext has no invoke for "${path.join(' ')}". Add invoke to its values, such as invoke: async () => ({ status: 'completed', output: '', messages: '' }).`,
-    ),
-  );
+  const sentence = unstatedActionInvoke(path.join(' '));
+  return Promise.reject(new Error(sentence));
 }
 
 /** A `next` the test did not state, which rejects with its sentence. */
 function unstatedNext(): Promise<never> {
-  return Promise.reject(
-    new Error(
-      "middlewareContext has no next for this middleware to call. Add next to its values, such as next: async () => 'dispatched'.",
-    ),
-  );
+  return Promise.reject(new Error(unstatedMiddlewareNext()));
 }
 
 /** A region that is not live: it draws, ends, and reports nothing, and never closes. */
@@ -126,9 +125,7 @@ const outBuilders: Readonly<
  */
 function unstatedText(builder: keyof typeof outBuilders): () => never {
   return () => {
-    throw new Error(
-      `${builder} has no out.text for this ${outBuilders[builder]} to read. Add text to its out values, such as out: { text: () => 'page\\n' }.`,
-    );
+    throw new Error(unstatedOutText(builder, outBuilders[builder]));
   };
 }
 
