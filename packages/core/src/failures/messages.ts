@@ -136,6 +136,14 @@ function misplacedOption(spelling: string, commands: readonly (readonly string[]
     : `Option ${quoted(spelling)} belongs to commands ${escapedList(names, ', ')}. Supply it after the command name.`;
 }
 
+/**
+ * A Command that needs a terminal, run where stdin or stderr is not one or under CI: the routed
+ * Command, and the command line to run at a terminal, which names the application.
+ */
+function terminalUnavailable(application: string, command: readonly string[]): string {
+  return `${routedSentence(command)} needs a terminal. Run ${quoted([application, ...command].join(' '))} with stdin and stderr at a terminal, outside CI.`;
+}
+
 const workingDirectoryUnreadable =
   'The current working directory cannot be read. Change to a directory that exists and run the command again.';
 
@@ -164,6 +172,7 @@ export {
   unknownCommand,
   unknownOption,
   unknownOptionBeforeArguments,
+  terminalUnavailable,
   unknownOptionName,
   workingDirectoryUnreadable,
 };

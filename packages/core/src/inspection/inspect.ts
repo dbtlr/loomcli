@@ -279,6 +279,11 @@ interface CommandNode {
   readonly deprecated: string | undefined;
   /** Whether the Command has an action registered. */
   readonly hasAction: boolean;
+  /**
+   * Whether the action needs a terminal, which `needsTerminal()` declares: such a Command runs only
+   * when stdin and stderr are terminals and the run is not under CI.
+   */
+  readonly needsTerminal: boolean;
   /** The result the Command declares, or `null` where it declares none. */
   readonly result: ResultNode | null;
   /** The Command's arguments, in declaration order. */
@@ -684,6 +689,7 @@ function commandNode(
     hasAction: command.dispatch !== undefined,
     hidden: command.hidden,
     name: command.name,
+    needsTerminal: command.needsTerminal,
     options: Object.freeze(optionNodes(command.inputs, { check, records, table: command.table })),
     path,
     result: resultNode(command.result),

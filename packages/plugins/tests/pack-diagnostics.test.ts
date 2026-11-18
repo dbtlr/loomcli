@@ -167,6 +167,7 @@ const pinnedElsewhere = [
   'mcp/property-name-taken',
   'mcp/required-input-excluded',
   'mcp/tool-name-taken',
+  'mcp/tool-needs-terminal',
   'mcp/tool-without-action',
   'service/run-unrouted',
   'skills/files',

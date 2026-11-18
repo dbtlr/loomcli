@@ -58,7 +58,7 @@ const commandAttachedTwice = registerRule('@loomcli/core/command-attached-twice'
 /** A Command with neither an action nor children. */
 const commandWithoutAction = registerRule('@loomcli/core/command-without-action', {
   explanation:
-    "Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run. A group that declares an argument, stdin, or the passthrough mode has the same fault, because those declarations reach no action.",
+    "Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run. A group that declares an argument, stdin, the passthrough mode, or that it needs a terminal has the same fault, because those declarations reach no action.",
   headline: 'Nothing to run',
 });
 

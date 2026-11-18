@@ -8,6 +8,7 @@ import {
   DeclarationError,
   NonCallableCommandError,
   ResultError,
+  TerminalUnavailableError,
   toFailure,
   reasonOf,
 } from '../failures/errors.js';
@@ -252,6 +253,8 @@ export interface BuiltCommand {
   hidden: boolean;
   inputs: readonly InputDeclaration[];
   name: string | null;
+  /** Whether the action needs a terminal, which a `needsTerminal()` call declared. */
+  needsTerminal: boolean;
   /** The providers the action reads, which core builds at the dispatch boundary. */
   uses: readonly AnyProvider[];
   /**
@@ -296,6 +299,7 @@ export type CommandMethod =
   | 'requires'
   | 'result'
   | 'rows'
+  | 'needsTerminal'
   | 'passthrough'
   | 'stdin';
 
@@ -511,6 +515,8 @@ export interface CommandFacts {
  * them, so one declaration call has one implementation.
  */
 export interface CommandState<Args, Options, Globals> {
+  /** Present once a `needsTerminal()` call declared that the action needs a terminal. */
+  needsTerminal?: true;
   passthrough?: { description: string | undefined };
   optionGroups: readonly OptionGroup[];
   stdin?: StdinConfig & { readonly position: number };
@@ -565,6 +571,7 @@ export type Declared = Pick<
   | 'name'
   | 'records'
   | 'results'
+  | 'needsTerminal'
   | 'passthrough'
   | 'stdin'
   | 'optionGroups'
@@ -1301,6 +1308,14 @@ function checkGroup(state: Declared, place: FinishedPlace): void {
       correction: 'Declare stdin on the Command that reads it, or register an action.',
       findings: [stdinFinding(place.path, state.stdin)],
       sentence: `${commandSentence(name)} declares stdin but registers no action to receive it.`,
+    });
+  }
+  if (state.needsTerminal === true) {
+    throw new DeclarationError(commandWithoutAction, {
+      correction:
+        'Declare needsTerminal on the Command whose action needs it, or register an action.',
+      findings: [{ arguments: [], call: 'needsTerminal', mark: '0', path: place.path }],
+      sentence: `${commandSentence(name)} needs a terminal but registers no action.`,
     });
   }
 }
@@ -2340,6 +2355,7 @@ export function buildCommand<Args, Options, Globals>(
     hidden: facts.hidden,
     inputs: hooked.inputs,
     name,
+    needsTerminal: state.needsTerminal === true,
     optionGroups: hooked.optionGroups,
     passthrough: state.passthrough,
     placement: context.placement,
@@ -2468,6 +2484,28 @@ export class CommandBuilder<
     this.#name = name;
     this.#state = state;
     nodes.set(this, nodeHandle(name, state));
+  }
+
+  /**
+   * Declares that the action needs a terminal: a run whose stdin or stderr is not a terminal, or
+   * that is under CI, fails before the action, and no invocation by name or MCP tool runs it.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#a-command-that-needs-a-terminal
+   */
+  needsTerminal(): Command<
+    Args,
+    Options,
+    Globals,
+    Exclude<State, 'needsTerminal'>,
+    Result,
+    Stdin,
+    Provided
+  > {
+    return new CommandBuilder(
+      this.#name,
+      { ...this.#state, needsTerminal: true },
+      { provided: this.#providedBind, stdin: this.#stdinBind },
+    );
   }
 
   /**
@@ -3465,6 +3503,14 @@ async function buildProvided(
 }
 
 /**
+ * Whether the run has a terminal, the test the interaction decision and a Command that needs a
+ * terminal share: stdin and stderr are terminals, and the run is not under CI. Stdout plays no part.
+ */
+function atTerminal(host: Host): boolean {
+  return host.terminal.stdin.isTTY && host.terminal.stderr.isTTY && !underCI(host.env);
+}
+
+/**
  * Prepares one dispatch ahead of the middleware chain and holds whatever fault it found, so a
  * middleware reads the request before the action runs and a takeover never observes the fault.
  * The phases run in order: the structural fault parsing held, a group's missing subcommand, the
@@ -3485,11 +3531,9 @@ export async function prepareDispatch(
   const preparation = { graph, interactive: false, invocation, ledger, routed };
   const { globals, scope, sources } = await fillScope(preparation, local);
   const marked = graph.globals.inputs.find((input) => isMarked(input.config, interaction));
+  const terminal = atTerminal(invocation.host);
   preparation.interactive =
-    invocation.host.terminal.stdin.isTTY &&
-    invocation.host.terminal.stderr.isTTY &&
-    !underCI(invocation.host.env) &&
-    (marked === undefined || booleanValue(globals, marked.name, marked.config));
+    terminal && (marked === undefined || booleanValue(globals, marked.name, marked.config));
   const held = async (fault: unknown, options: Prepared['options']): Promise<Prepared> => {
     await validateOwn(preparation, globals);
     return {
@@ -3533,6 +3577,13 @@ export async function prepareDispatch(
         withdrawFill(scope.options, input.name);
       }
       invocation.logFor(null).debug(line.template, line.fields);
+    }
+    // A Command that needs a terminal fails without one, ahead of the input problems validation collected.
+    if (routed.command.needsTerminal && !terminal) {
+      return await held(
+        new TerminalUnavailableError(invocation.inspected().name, routed.path),
+        options,
+      );
     }
     if (local.kind === 'held' || supplied === undefined) {
       return await held(validation.failure, options);

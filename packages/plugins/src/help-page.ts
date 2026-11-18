@@ -112,7 +112,8 @@ function aliasLine(command: CommandNode, context: ViewContext): string[] {
  * and the migration message each print as one line of prose, a line break the author wrote read as
  * a space. On a terminal the description wraps and continues under its first character, or at
  * indent 2 when that hang cannot fit. A Command with visible aliases follows it with its alias
- * line, and a deprecated Command with its migration message, in the same block.
+ * line, a Command that needs a terminal with the line that says so, and a deprecated Command with
+ * its migration message, in the same block.
  */
 function masthead(path: string, command: CommandNode, context: ViewContext): string[] {
   const { style } = context;
@@ -131,7 +132,13 @@ function masthead(path: string, command: CommandNode, context: ViewContext): str
     deprecated === undefined
       ? []
       : labeled({ label: 'Deprecated: ', text: deprecated, tone: 'warning' }, context);
-  return [...opening, ...aliasLine(command, context), ...deprecation];
+  const terminal = command.needsTerminal
+    ? labeled(
+        { label: 'Needs a terminal: ', text: 'stdin and stderr, outside CI.', tone: 'dim' },
+        context,
+      )
+    : [];
+  return [...opening, ...aliasLine(command, context), ...terminal, ...deprecation];
 }
 
 /**

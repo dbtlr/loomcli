@@ -282,6 +282,10 @@ _Avoid_: TTY check, interactive mode, host.interactive
 The `interaction: true` fact on the one Boolean global option whose value states the application's intent to ask questions. It can turn the interaction decision off and never on.
 _Avoid_: No-input flag (for the mark), interactive option
 
+**Terminal need**:
+The fact a Command declares through `needsTerminal()`, and `inspect()` publishes as `needsTerminal`: its action runs only when stdin and stderr are terminals and the run is not under CI, the terminal half of the interaction decision, whatever the interaction mark reads. Without a terminal, and always by name, the run fails before the action with `TerminalUnavailableError`, and the MCP plugin never serves such a Command as a tool.
+_Avoid_: Interactive Command, TTY-only Command, terminal Command
+
 **Color choice**:
 The operator's color setting for one run: the last spelling of the color-marked option among argv's words before the first bare `--`, read right after host capture so everything the run prints after capture follows it. A positive spelling turns color on and a negative one turns it off, over `NO_COLOR`, `FORCE_COLOR`, and the declared rendering policy, and modifiers and hyperlinks keep their own policy.
 _Avoid_: Color lane, color mode, color flag (for the choice)

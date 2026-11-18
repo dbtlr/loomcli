@@ -26,6 +26,7 @@ declare class ApplicationBuilder<Args, Options, Globals, State extends Applicati
     readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
     readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
     get name(): string;
+    needsTerminal(): Application<Args, Options, Globals, Exclude<State, 'needsTerminal'>, Plugins, Result, Stdin, Provided, Requires>;
     passthrough(config?: {
         description?: string;
     }): Application<Args, Options, Globals, Exclude<State, 'passthrough'>, Plugins, Result, Stdin & {
@@ -200,6 +201,7 @@ export declare class CommandBuilder<Args, Options, Globals, State extends Comman
     #private;
     readonly [commandValue]: true;
     readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
+    needsTerminal(): Command<Args, Options, Globals, Exclude<State, 'needsTerminal'>, Result, Stdin, Provided>;
     passthrough(config?: {
         description?: string;
     }): Command<Args, Options, Globals, Exclude<State, 'passthrough'>, Result, Stdin & {

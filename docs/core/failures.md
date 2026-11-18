@@ -53,6 +53,7 @@ function reportedSpelling(option: OptionNode): string; // '--file', '--no-quiet'
 | `MisplacedOptionError`    | `UsageError` | 2    | `spelling`, `commands`                 |
 | `DeclarationError`        | `LoomError`  | 1    | `rule`, `sentence`, `findings`, `correction`; see [Developer Diagnostics](declaration-faults.md#developer-diagnostics) |
 | `FatalError`              | `LoomError`  | 1    | the message `out.fatal()` received     |
+| `TerminalUnavailableError` | `FatalError` | 1  | `command`; see [A Command that needs a terminal](commands.md#a-command-that-needs-a-terminal) |
 | `WorkingDirectoryError`   | `LoomError`  | 1    | `cause`, the value capture threw; see [An unreadable working directory](host.md#an-unreadable-working-directory) |
 | `InternalError`           | `LoomError`  | 1    | `cause`, the thrown value core wrapped, and `rule`, `sentence`, `correction` |
 | `ResultError`             | `InternalError` | 1 | `path`, `kind`, and an `undefined` `cause`; see [Results](results.md) |
@@ -209,6 +210,7 @@ A failure class states a failure code once, on the class, so a script or an agen
 | `RepeatedOptionError`     | `repeated-option`              |
 | `MisplacedOptionError`    | `misplaced-option`             |
 | `FatalError`              | `fatal`                        |
+| `TerminalUnavailableError` | `terminal-unavailable`       |
 | `WorkingDirectoryError`   | `working-directory-unreadable` |
 | `DeclarationError`        | `internal`                     |
 | `InternalError`           | `internal`                     |

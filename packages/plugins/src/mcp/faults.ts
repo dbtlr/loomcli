@@ -11,6 +11,7 @@ import {
   mcpPropertyNameTaken,
   mcpRequiredInputExcluded,
   mcpToolNameTaken,
+  mcpToolNeedsTerminal,
   mcpToolWithoutAction,
 } from '../rules.js';
 import { excluded, requiredInCall } from './exposure.js';
@@ -182,6 +183,17 @@ function actionFault(command: CommandNode): DeclarationError | undefined {
   });
 }
 
+/** The fault, if any, of an opted-in Command that needs a terminal, which no tool call has. */
+function terminalFault(command: CommandNode): DeclarationError | undefined {
+  if (!command.needsTerminal) {
+    return undefined;
+  }
+  return new DeclarationError(mcpToolNeedsTerminal, {
+    correction: 'Remove mcpCommand, or remove needsTerminal from the Command.',
+    sentence: `${opening(command)} carries mcpCommand and needs a terminal, which no tool call has.`,
+  });
+}
+
 /** The fault, if any, of a tool name an earlier opted-in Command already serves. */
 function nameFault(earlier: CommandNode | undefined, command: CommandNode, name: string) {
   if (earlier === undefined) {
@@ -195,7 +207,7 @@ function nameFault(earlier: CommandNode | undefined, command: CommandNode, name:
 
 /**
  * Judges the opted-in Commands of every build, a run that never serves a tool included: each has
- * an action, no two give one tool name, no tool lists an argument and an option under one name, and no tool excludes
+ * an action and needs no terminal, no two give one tool name, no tool lists an argument and an option under one name, and no tool excludes
  * a required local option or what a group needs from every call.
  */
 const judgeTools: GraphBuiltHook = (graph) => {
@@ -203,6 +215,7 @@ const judgeTools: GraphBuiltHook = (graph) => {
   for (const { command, name } of toolEntries(graph)) {
     const fault =
       actionFault(command) ??
+      terminalFault(command) ??
       nameFault(named.get(name), command, name) ??
       propertyFault(graph, command) ??
       requiredFault(command) ??

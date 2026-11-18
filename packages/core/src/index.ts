@@ -32,6 +32,7 @@ export {
   NonCallableCommandError,
   RepeatedOptionError,
   ResultError,
+  TerminalUnavailableError,
   UnexpectedArgumentError,
   UnexpectedValueError,
   UnknownCommandError,

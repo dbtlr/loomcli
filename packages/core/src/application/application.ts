@@ -419,6 +419,35 @@ class ApplicationBuilder<
   }
 
   /**
+   * Declares that the root's action needs a terminal: a run whose stdin or stderr is not a
+   * terminal, or that is under CI, fails before the action, and no invocation by name or MCP tool
+   * runs it.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#a-command-that-needs-a-terminal
+   */
+  needsTerminal(): Application<
+    Args,
+    Options,
+    Globals,
+    Exclude<State, 'needsTerminal'>,
+    Plugins,
+    Result,
+    Stdin,
+    Provided,
+    Requires
+  > {
+    return new ApplicationBuilder(
+      this.#name,
+      {
+        config: this.#config,
+        globals: this.#globals,
+        root: { ...this.#root, needsTerminal: true },
+      },
+      { provided: this.#providedBind, stdin: this.#stdinBind },
+    );
+  }
+
+  /**
    * Declares the root Command's untouched tail after the first bare delimiter.
    *
    * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/options.md#passthrough

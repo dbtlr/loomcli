@@ -316,6 +316,7 @@ The default help view applies this mapping. A style named below is a member of t
 | Fact parentheses, fact separators, `alias: <names>`, `aliases: <names>`, `required`, `repeatable`, `default: <value>`, `implied: <value>`, `env: <names>`, and `config: <path>` | `dim` |
 | `deprecated: <message>` inside a fact list | `warning` |
 | The entire `Alias: <names>` or `Aliases: <names>` line below a masthead, excluding indentation | `dim` |
+| The entire `Needs a terminal: ...` line below a masthead, excluding indentation | `dim` |
 | The entire `Deprecated: <message>` line below a masthead, excluding indentation | `warning` |
 | Example `$` prompt | `dim` |
 | Application name added before an authored example | `highlight` |

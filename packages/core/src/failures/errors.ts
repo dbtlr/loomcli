@@ -27,6 +27,7 @@ import {
   repeatedOption,
   routedSentence,
   separateValues,
+  terminalUnavailable,
   undeclaredArgument as undeclaredArgumentSentence,
   unexpectedArguments,
   unknownCommand,
@@ -905,6 +906,44 @@ export class FatalError extends LoomError {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = 'FatalError';
+  }
+}
+
+/**
+ * Exit 1: the routed Command declares that it needs a terminal, and the run has none: stdin or
+ * stderr is not a terminal, or the run is under CI. Core raises it before the action, and an
+ * invocation by name, which has no terminal, always raises it for such a Command.
+ *
+ * @example
+ * ```ts
+ * import { Application, Command, TerminalUnavailableError } from '@loomcli/core';
+ *
+ * export const app = new Application('monitor').command(
+ *   new Command('top').needsTerminal().action(() => undefined),
+ * );
+ *
+ * const outcome = await app.invoke(['top'], {});
+ * if (outcome.status === 'failed' && outcome.failure instanceof TerminalUnavailableError) {
+ *   console.log(outcome.failure.command); // ['top']
+ * }
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/commands.md#a-command-that-needs-a-terminal
+ *
+ * @public
+ * @sealed
+ */
+export class TerminalUnavailableError extends FatalError {
+  /** The failure code of a Command that needs a terminal run without one, `terminal-unavailable`. */
+  static override readonly code: string = 'terminal-unavailable';
+
+  /** The routed path from the root, which is empty for the root. */
+  readonly command: readonly string[];
+
+  constructor(application: string, command: readonly string[]) {
+    super(terminalUnavailable(application, command));
+    this.command = command;
+    this.name = 'TerminalUnavailableError';
   }
 }
 

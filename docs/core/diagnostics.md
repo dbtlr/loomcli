@@ -52,7 +52,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/command-without-action
 
-**Nothing to run.** Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run. A group that declares an argument, stdin, or the passthrough mode has the same fault, because those declarations reach no action.
+**Nothing to run.** Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run. A group that declares an argument, stdin, the passthrough mode, or that it needs a terminal has the same fault, because those declarations reach no action.
 
 ### @loomcli/core/declared-name
 
@@ -283,6 +283,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 ### @loomcli/plugins/mcp/tool-name-taken
 
 **MCP tool name taken.** An MCP client calls a tool by its name: the Command path joined with underscores, or the application name for the root, with each hyphen written as an underscore. Two Commands that give one name leave the client no way to call either one.
+
+### @loomcli/plugins/mcp/tool-needs-terminal
+
+**MCP tool needs a terminal.** An MCP tool call is an invocation by name, which has no terminal, so a Command that declares it needs a terminal fails every call a client makes.
 
 ### @loomcli/plugins/mcp/tool-without-action
 

@@ -4,7 +4,7 @@ title: ADR-0063 - The MCP plugin serves opted-in Commands as tools
 description: '@loomcli/plugins/mcp installs a plugin Command, app mcp, whose action serves every Command that carries an mcpCommand value as one MCP tool over stdio, each call run through invoke. Tool names flatten the path, annotations are hints the author owns and Loom never infers, and the protocol is written in a private workspace package pinned to revision 2026-07-28 and compiled into the plugin pack.'
 status: accepted
 created: 2026-10-05
-modified: 2026-11-15
+modified: 2026-11-18
 ---
 
 # ADR-0063 - The MCP plugin serves opted-in Commands as tools
@@ -65,3 +65,4 @@ Accepted in 0.9.0.
 - 2026-11-15: [ADR-0160](0160-a-command-with-an-action-may-declare-arguments-and-hold-children-and-an-exact-child-name-routes-first.md), proposed, withdraws this record's sentence that an application whose root declares arguments cannot install the MCP plugin. A Command with an action, the root included, may declare arguments and hold children, so such a root holds the plugin's Commands like any children. It binds when that record is accepted.
 
 - 2026-11-17: [ADR-0174](0174-v-shows-the-log-through-message-templates-and-out-keeps-what-the-operator-is-told.md) widens what the server's stderr carries: at `mcp -v`, core shows log lines there, including every tool call's events, following the outermost run's verbosity. It binds when ADR-0174 is accepted.
+- 2026-11-18: [ADR-0181](0181-a-command-may-declare-that-it-needs-a-terminal-and-runs-only-at-one.md), proposed, adds a build fault, `@loomcli/plugins/mcp/tool-needs-terminal`: a Command that carries `mcpCommand` and declares `needsTerminal()` fails every build, because a tool call runs by name with no terminal. Every other rule here stands. It binds when that record is accepted.

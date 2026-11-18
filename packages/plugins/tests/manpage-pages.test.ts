@@ -438,6 +438,43 @@ describe('sections', () => {
     );
   });
 
+  it('DESCRIPTION mirrors the terminal need between aliases and deprecation, before details', () => {
+    const app = new Application('kit')
+      .needsTerminal()
+      .command(
+        new Command('top', {
+          deprecated: 'Use dashboard.',
+          extensions: [helpCommand({ details: 'Shows live activity.' })],
+        })
+          .visibleAlias('monitor')
+          .needsTerminal()
+          .action(noop),
+      )
+      .command(new Command('list').action(noop))
+      .action(noop);
+    const pages = pagesOf(app);
+    expect(pages.get('kit.1')).toContain(
+      [
+        '.SH "DESCRIPTION"',
+        'Needs a terminal: stdin and stderr, outside CI.',
+        '.SH "COMMANDS"',
+      ].join('\n'),
+    );
+    expect(pages.get('kit-top.1')).toContain(
+      [
+        '.SH "DESCRIPTION"',
+        'Alias: monitor',
+        '.PP',
+        'Needs a terminal: stdin and stderr, outside CI.',
+        '.PP',
+        'Deprecated: Use dashboard.',
+        '.PP',
+        'Shows live activity.',
+      ].join('\n'),
+    );
+    expect(pages.get('kit-list.1')).not.toContain('.SH "DESCRIPTION"');
+  });
+
   it('a line break in a description, a deprecation, or the stdin description reads as a space', () => {
     const app = new Application('kit', {
       description: 'First line.\nSecond line.',
