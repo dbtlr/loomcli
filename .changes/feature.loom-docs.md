@@ -1,0 +1,1 @@
+- Add `loom docs <directory>` to write a Markdown command reference for every non-hidden Command of the application, with an `index.md`, using the renderer that skill command references use.

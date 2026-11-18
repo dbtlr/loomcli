@@ -79,3 +79,24 @@ bun build src/main.ts --outdir dist --target node --define "$(loom build --targe
 ```
 
 `--facts` prints the facts JSON instead, for a bundler's `define` option. See [loom build](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/build.md#loom-build) and [Release facts](https://github.com/dbtlr/loomcli/blob/main/docs/core/release-facts.md) for the contracts.
+
+## Skills export
+
+`loom skills export <directory>` writes the application's agent skills into a directory, each skill's own files and the command references `skills install` generates, so a repository can commit a copy.
+
+```sh
+loom skills export .claude/skills                 # every declared skill
+loom skills export .claude/skills --skill notes   # one skill
+```
+
+It replaces each skill's folder whole, and refuses a path that is not a skill folder and a directory that is the application's own skills folder. `assertSkillsMatch` from `@loomcli/testing` fails a test when the committed copy is stale. See [loom skills export](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/skills.md) for the contract.
+
+## Docs
+
+`loom docs <directory>` writes a Markdown command reference for the whole application: one file for each Command an operator can find, and an `index.md`.
+
+```sh
+loom docs docs/reference
+```
+
+Each file ends with a marker line that says `loom docs` generated it. A later run overwrites those files, removes the file of a Command that is gone, and never touches a file without the marker. See [loom docs](https://github.com/dbtlr/loomcli/blob/main/docs/toolchain/docs.md) for the contract.

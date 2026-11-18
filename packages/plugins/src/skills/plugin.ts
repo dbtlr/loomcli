@@ -194,7 +194,7 @@ function readerOf(declared: Declared): SkillsReader {
  *
  * @example
  * ```ts
- * import { Application } from '@loomcli/core';
+ * import { Application, Command } from '@loomcli/core';
  * import { skills } from '@loomcli/plugins/skills';
  *
  * export const app = new Application('notes', {
@@ -204,7 +204,7 @@ function readerOf(declared: Declared): SkillsReader {
  *       skills: [{ name: 'notes', commands: [['note']] }],
  *     }),
  *   ],
- * });
+ * }).command(new Command('note', { description: 'Work with notes.' }).action(() => {}));
  * ```
  *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/skills.md

@@ -29,7 +29,7 @@ function readerScript(reader: Reader): string {
 interface ReaderRequest {
   readonly reader: Reader;
   /** A projection run on the live inspected graph before the reader serializes its answer. */
-  readonly projection?: 'skills';
+  readonly projection?: 'docs' | 'skills';
   /** The package directory, where Bun runs, so the package's own `bunfig.toml` applies. */
   readonly directory: string;
   /** The module's absolute path, resolved against the working directory before the spawn. */

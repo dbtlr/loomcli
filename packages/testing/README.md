@@ -3,10 +3,11 @@
 Test helpers for a Loom application, for `bun test` and vitest alike:
 
 - `assertAssembles`, the assembly check, fails a test for a fault that only the assembled application reveals, which an operator would otherwise meet on the first run.
+- `assertSkillsMatch` fails a test when a committed copy of the application's agent skills, written by `loom skills export`, no longer matches what an install writes.
 - `mockProcess` is a process handle a test runs the application on, then reads the run's output and exit code from. Its keyboard answers questions from scripted keys.
 - The context builders, such as `actionContext` and `viewContext`, build the context one author function reads, so a test calls that function with no application.
 
-`@loomcli/core` is a peer dependency, at the same version as the application's.
+`@loomcli/core` is a peer dependency, at the same version as the application's. `@loomcli/plugins` is an optional peer dependency, which only `assertSkillsMatch` loads.
 
 ## Install
 

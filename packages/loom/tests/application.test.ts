@@ -18,6 +18,7 @@ test('build, init, skills, and the changelog are public while the release comman
   expect(children).toEqual([
     { hidden: false, name: 'build' },
     { hidden: false, name: 'changelog' },
+    { hidden: false, name: 'docs' },
     { hidden: false, name: 'init' },
     { hidden: true, name: 'pr' },
     { hidden: true, name: 'release' },
@@ -30,6 +31,7 @@ test('--help lists build, init, skills, and the changelog and advertises no rele
   expect(result.status).toBe(0);
   expect(result.stdout).toMatch(/^ {2}build +/mu);
   expect(result.stdout).toMatch(/^ {2}changelog +/mu);
+  expect(result.stdout).toMatch(/^ {2}docs +/mu);
   expect(result.stdout).not.toMatch(/^ {2}check +/mu);
   expect(result.stdout).toMatch(/^ {2}init +/mu);
   expect(result.stdout).toMatch(/^ {2}skills +/mu);
@@ -74,6 +76,7 @@ test('--help loads every command declaration and the work of no command', () => 
   expect(loadedCommandModules(['--help'])).toEqual([
     'src/commands/build/command.ts',
     'src/commands/changelog/command.ts',
+    'src/commands/docs/command.ts',
     'src/commands/init/command.ts',
     'src/commands/pr/command.ts',
     'src/commands/release/command.ts',

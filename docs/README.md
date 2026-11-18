@@ -28,7 +28,7 @@ New to Loom? Read the [jsonkit example](../examples/jsonkit/README.md), then [Ap
 
 ## Shipping an application
 
-- [Toolchain reference](toolchain/README.md) documents the `loom` bin from `@loomcli/loom`: building, the package changelog, scaffolding with `loom init`, and the installer script.
+- [Toolchain reference](toolchain/README.md) documents the `loom` bin from `@loomcli/loom`: building, the package changelog, command reference files with `loom docs`, a committed copy of the application's skills with `loom skills export`, scaffolding with `loom init`, and the installer script.
 
 ## Maintaining Loom
 

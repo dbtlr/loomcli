@@ -53,7 +53,9 @@ function withModes(files: readonly SkillFile[]): (FolderFile & { readonly mode: 
 
 /**
  * Whether the plugin owns a path in a skill that selects Commands: `index.md`, `<app>.md`, or any
- * `<app>-*.md` directly under `references/commands/`.
+ * `<app>-*.md` directly under `references/commands/`. The `loom` bin's `loom docs` states the same
+ * three names for its output directory, in `packages/loom/src/commands/docs/write.ts`; change the two
+ * together.
  */
 function isOwned(path: string, application: string): boolean {
   if (!path.startsWith(referencesFolder)) {

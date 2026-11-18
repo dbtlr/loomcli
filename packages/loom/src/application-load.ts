@@ -4,7 +4,7 @@ import type { Threw } from './helpers/application-load-failure.js';
 
 /*
  * What the processes that load an application module share: `loom init`'s read of its exports,
- * `loom skills export`'s projection, and `loom build`'s read of its skills folder each import the
+ * `loom skills export`'s and `loom docs`'s projections, and `loom build`'s read of its skills folder each import the
  * module under Bun in a process of their own, take the same arguments, resolve the package's own
  * core the same way, and read a throw while
  * the module loads the same way. They import no module of `@loomcli/core` themselves, only the

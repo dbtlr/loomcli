@@ -4,7 +4,7 @@ title: ADR-0060 - onGraphBuilt judges the built graph and never contributes
 description: A plugin definition gains a third lifecycle hook, onGraphBuilt, which core calls once per graph build with the frozen graph, after every onCommandAttach hook. It may reject the graph by throwing a DeclarationError, and it cannot attach, rewrite, or store anything. Any other throw or a returned value is the broken-graph-hook build fault.
 status: accepted
 created: 2026-10-05
-modified: 2026-10-20
+modified: 2026-11-18
 ---
 
 # ADR-0060 - onGraphBuilt judges the built graph and never contributes
