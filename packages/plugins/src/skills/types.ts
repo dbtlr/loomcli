@@ -126,3 +126,46 @@ export interface SkillFoldersOptions {
 
 /** What `refreshSkills` reads from a self-update's `afterReplace` context, the declaration every refresh shares. */
 export type { RefreshContext } from '../refresh.js';
+
+/**
+ * What status found for a skill at one target, in precedence order.
+ *
+ * @example
+ * ```ts
+ * import type { SkillState } from '@loomcli/plugins/skills';
+ * export const current: SkillState = 'current';
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/skills.md#status
+ * @public
+ * @sealed
+ */
+export type SkillState = 'missing' | 'unmanaged' | 'modified' | 'stale' | 'current';
+/**
+ * One declared skill's installation state at one agent target.
+ *
+ * @example
+ * ```ts
+ * import type { SkillStatus } from '@loomcli/plugins/skills';
+ * export function isCurrent(row: SkillStatus): boolean { return row.state === 'current'; }
+ * ```
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/skills.md#status
+ * @public
+ * @sealed
+ */
+export interface SkillStatus {
+  /** The declared skill's name. */
+  readonly skill: string;
+  /** The agent target. */
+  readonly target: 'claude' | 'agents';
+  /** The installation scope. */
+  readonly scope: 'global' | 'project';
+  /** What status found. */
+  readonly state: SkillState;
+  /** The absolute folder path as configured. */
+  readonly folder: string;
+  /** Relative paths that differ, sorted in code-point order. */
+  readonly files: readonly string[];
+  /** Steps for this state, empty when current. */
+  readonly notes: readonly string[];
+}

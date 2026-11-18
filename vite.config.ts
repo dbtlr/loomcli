@@ -357,9 +357,13 @@ export default defineConfig({
         },
       },
       {
-        files: ['packages/plugins/src/service/status.ts', 'packages/plugins/tests/service.test.ts'],
+        files: [
+          'packages/plugins/src/service/status.ts',
+          'packages/plugins/tests/service.test.ts',
+          'packages/plugins/src/skills/status.ts',
+        ],
         rules: {
-          // A service status keeps the member order its type lists, which its JSON view prints.
+          // Status rows keep the documented JSON member order, pinned by Object.keys tests.
           'eslint/sort-keys': 'off',
         },
       },

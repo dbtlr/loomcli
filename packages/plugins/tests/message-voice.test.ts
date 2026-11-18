@@ -58,6 +58,17 @@ const exceptions: VoiceExceptions = {
         sites: 1,
       },
     },
+    'skills/messages.ts': {
+      '${directory}': {
+        reason: 'A fixed option spelling followed by the root passed through shown.',
+        sites: 1,
+      },
+      '${install}': {
+        reason:
+          'The install step is built from fixed spellings and escaped application, target, and root values.',
+        sites: 6,
+      },
+    },
   },
   gathering: {
     'lines.ts': {

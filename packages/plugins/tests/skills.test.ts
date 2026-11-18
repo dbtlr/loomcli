@@ -293,7 +293,10 @@ function killedAfterSwap(box: Box): string[] {
     writeFileSync(join(leftover, 'SKILL.md'), 'stale\n');
     retired.push(leftover);
     const record = JSON.parse(readFileSync(recordPath(box, target), 'utf8'));
-    writeFileSync(recordPath(box, target), `${JSON.stringify({ ...record, state: 'pending' })}\n`);
+    writeFileSync(
+      recordPath(box, target),
+      `${JSON.stringify({ ...record, folders: record.folders.map((folder: { path: string; files: unknown[] }) => ({ intended: folder.files, path: folder.path, prior: [{ digest: `sha256:${'0'.repeat(64)}`, path: 'SKILL.md' }] })), state: 'pending' })}\n`,
+    );
   }
   return retired;
 }
@@ -419,14 +422,9 @@ describe('installing globally', () => {
   );
 
   const changes: [string, (box: Box) => void, Scenario?][] = [
-    ['a file mode changed', (box) => chmodSync(join(folderOf(box, 'claude'), 'SKILL.md'), 0o600)],
     [
-      'someone added a file',
-      (box) => writeFileSync(join(folderOf(box, 'claude'), 'extra.md'), 'x'),
-    ],
-    [
-      'someone added a folder',
-      (box) => mkdirSync(join(folderOf(box, 'claude'), 'extra'), { recursive: true }),
+      'a file executable changed',
+      (box) => chmodSync(join(folderOf(box, 'claude'), 'SKILL.md'), 0o755),
     ],
     ['a file was edited', (box) => writeFileSync(join(folderOf(box, 'claude'), 'SKILL.md'), 'x')],
     [
@@ -534,7 +532,7 @@ describe('refusing', () => {
       expect(result.status).toBe(1);
       expect(pinned(box, result.stderr)).toEqual([
         'HOME/.agents/skills/notes was not installed by notes skills install.',
-        'notes skills install changed nothing, because folders it did not install are in the way. Remove them, or run notes skills install --force to replace them.',
+        'notes skills install changed nothing, because folders it did not install, or whose command references changed since it installed them, are in the way. Copy any file you want to keep out of them, then remove them or run notes skills install --force to replace them.',
       ]);
       expect(tree(join(box.home, '.agents'))).toEqual(before.agents);
       expect(tree(join(box.home, '.claude'))).toEqual(before.claude);
@@ -564,7 +562,7 @@ describe('refusing', () => {
       expect(result.status).toBe(1);
       expect(pinned(box, result.stderr)).toEqual([
         'HOME/.agents/skills/second was not installed by notes skills install.',
-        'notes skills update changed nothing, because folders it did not install are in the way. Remove them, or run notes skills install --force to replace them.',
+        'notes skills update changed nothing, because folders it did not install, or whose command references changed since it installed them, are in the way. Copy any file you want to keep out of them, then remove them or run notes skills install --force to replace them.',
       ]);
       expect(tree(join(box.home, '.agents'))).toEqual(before.agents);
       expect(tree(join(box.home, '.claude'))).toEqual(before.claude);
@@ -1217,7 +1215,7 @@ describe('loading', () => {
 });
 
 describe('the Commands', () => {
-  it('describes skills and its three children', async () => {
+  it('describes skills and its four children', async () => {
     const box = sandbox();
     const result = await run(box, ['skills', 'install', '--help']);
     expect(result.status).toBe(0);

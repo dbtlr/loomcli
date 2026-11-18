@@ -1,9 +1,9 @@
 /**
  * The installed-folder writes of the installed-files module: a folder written whole through a
- * staging folder and renames, removed whole without following a symbolic link, and read for whether
- * it holds exactly a list of files. The project install of a skill uses the write with no record.
+ * staging folder and renames, removed whole without following a symbolic link, and read against
+ * recorded per-file digests. The project install of a skill uses the write with no record.
  */
-import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import { lstatSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { basename, dirname, join, posix } from 'node:path';
 
 import {
@@ -18,12 +18,14 @@ import {
   stagingPath,
   stagingSuffix,
 } from './disk.js';
+import type { FolderDigest, RecordedFolder, PendingFolder } from './record.js';
 
 /** One file of an installed folder: its relative POSIX path, its content, and its permission bits. */
 interface FolderFile {
   readonly path: string;
   readonly content: string | Uint8Array;
   readonly mode?: number;
+  readonly generated?: true;
 }
 
 /**
@@ -127,68 +129,108 @@ function writeFolder(path: string, files: readonly FolderFile[]): string[] {
   return leftovers;
 }
 
-/** Every directory above a file of the list, as the relative paths the folder holds. */
-function expectedDirectories(files: readonly FolderFile[]): Set<string> {
-  const directories = new Set<string>();
-  for (const { path } of files) {
-    for (let up = posix.dirname(path); up !== '.'; up = posix.dirname(up)) {
-      directories.add(up);
+const executeBits = 0o111;
+
+/** Reads below a real folder without following any internal directory link. */
+function observeIn(folder: string, path: string) {
+  if (lstatSync(folder, { throwIfNoEntry: false })?.isDirectory() !== true) {
+    return { kind: 'absent' } satisfies ReturnType<typeof observe>;
+  }
+  const parts = path.split('/');
+  parts.pop();
+  let at = folder;
+  for (const part of parts) {
+    at = join(at, part);
+    if (lstatSync(at, { throwIfNoEntry: false })?.isDirectory() !== true) {
+      return { kind: 'absent' } satisfies ReturnType<typeof observe>;
     }
   }
-  return directories;
+  return observe(join(folder, path));
 }
-
-/** Whether the file at `path` is a regular file holding the listed content and, when named, mode. */
-function fileMatches(path: string, file: FolderFile): boolean {
-  const seen = observe(path);
+/** Records each file's content digest and generated mark. */
+function folderDigests(files: readonly FolderFile[]): FolderDigest[] {
+  return files.map(({ path, content, generated }) => ({
+    digest: digestOf(content),
+    path,
+    ...(generated ? { generated } : {}),
+  }));
+}
+/** Lists recorded generated references that exist with changed content or kind. */
+function changedReferences(folder: RecordedFolder): string[] {
+  return (folder.files ?? [])
+    .filter((file) => {
+      if (!file.generated) {
+        return false;
+      }
+      const seen = observeIn(folder.path, file.path);
+      return seen.kind !== 'absent' && (seen.kind !== 'file' || seen.digest !== file.digest);
+    })
+    .map(({ path }) => path);
+}
+/**
+ * Lists the wanted files that differ or are absent, and the recorded files this version no longer
+ * writes that are still in the folder, in code point order.
+ */
+function staleFiles(
+  path: string,
+  files: readonly FolderFile[],
+  recorded: readonly FolderDigest[] = [],
+): string[] {
+  const changed = files
+    .filter((file) => {
+      const seen = observeIn(path, file.path);
+      return (
+        seen.kind !== 'file' ||
+        seen.digest !== digestOf(file.content) ||
+        (file.mode !== undefined &&
+          Boolean(seen.mode & executeBits) !== Boolean(file.mode & executeBits))
+      );
+    })
+    .map((file) => file.path);
   return (
-    seen.kind === 'file' &&
-    seen.digest === digestOf(file.content) &&
-    (file.mode === undefined || seen.mode === file.mode)
+    [
+      ...new Set([
+        ...changed,
+        ...recorded
+          .filter(
+            (file) =>
+              !files.some((wanted) => wanted.path === file.path) &&
+              observeIn(path, file.path).kind !== 'absent',
+          )
+          .map((file) => file.path),
+      ]),
+    ]
+      // ES2022 has no toSorted, and the array was just created here.
+      // oxlint-disable-next-line unicorn/no-array-sort
+      .sort((first, second) => Buffer.compare(Buffer.from(first), Buffer.from(second)))
   );
 }
-
-/** What a check of a folder expects, by relative path, and the files it found so far. */
-interface Walk {
-  readonly files: ReadonlyMap<string, FolderFile>;
-  readonly directories: ReadonlySet<string>;
-  readonly found: Set<string>;
-}
-
 /**
- * Whether every entry under `directory` is one the list expects, each file matching, recording the
- * files it finds in `walk`. A link, another kind of file, or an unexpected entry fails.
+ * Resolves a pending folder: its intended files once every one is in place, whatever else the
+ * folder holds; otherwise its prior record while something is at the path, by its path alone for a
+ * folder an earlier format recorded; its intended files when nothing is there; and no entry when
+ * neither applies.
  */
-function entriesMatch(directory: string, relative: string, walk: Walk): boolean {
-  return readdirSync(directory).every((name) => {
-    const path = join(directory, name);
-    const key = relative === '' ? name : `${relative}/${name}`;
-    const file = walk.files.get(key);
-    if (file !== undefined) {
-      walk.found.add(key);
-      return fileMatches(path, file);
-    }
-    const isFolder = walk.directories.has(key) && lstatSync(path).isDirectory();
-    return isFolder && entriesMatch(path, key, walk);
-  });
-}
-
-/**
- * Whether the folder at `path` holds exactly `files`: each file with its content and, when the list
- * names one, its mode, and no other file or folder. Nothing is followed, so a symbolic link at the
- * path or inside the folder, or a path that is not a directory, answers false.
- */
-function folderHoldsExactly(path: string, files: readonly FolderFile[]): boolean {
-  if (lstatSync(path, { throwIfNoEntry: false })?.isDirectory() !== true) {
-    return false;
+function recoveredFolder(folder: PendingFolder): RecordedFolder[] {
+  if (folder.prior === undefined) {
+    return [{ path: folder.path }];
   }
-  const walk: Walk = {
-    directories: expectedDirectories(files),
-    files: new Map(files.map((file) => [file.path, file])),
-    found: new Set<string>(),
-  };
-  return entriesMatch(path, '', walk) && walk.found.size === files.length;
+  const intended = folder.intended;
+  if (
+    intended &&
+    intended.every((file) => {
+      const seen = observeIn(folder.path, file.path);
+      return seen.kind === 'file' && seen.digest === file.digest;
+    })
+  ) {
+    return [{ files: intended, path: folder.path }];
+  }
+  const held = exists(folder.path) ? folder.prior : intended;
+  return held === null || held === undefined
+    ? []
+    : [{ path: folder.path, ...(held === 'path' ? {} : { files: held }) }];
 }
+export { changedReferences, folderDigests, staleFiles, recoveredFolder };
 
 export type { FolderFile };
-export { fillFolder, folderHoldsExactly, removeFolderLeftovers, removeWhole, writeFolder };
+export { fillFolder, removeFolderLeftovers, removeWhole, writeFolder };

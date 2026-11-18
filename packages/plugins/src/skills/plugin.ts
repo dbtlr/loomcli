@@ -3,6 +3,7 @@ import type { ActionContext, CommandGraph, Plugin } from '@loomcli/core';
 import { oneOf } from '@loomcli/validators';
 
 import { isEmpty } from '../help-cells.js';
+import { json } from '../json-views.js';
 import { skillCommand } from './extension.js';
 import type { ChildRun } from './global.js';
 import { recordedSkills, recordGraph } from './graphs.js';
@@ -12,8 +13,10 @@ import { recordCall } from './registry.js';
 import { selectedCommands } from './selection.js';
 import { identity, judgeSettings } from './settings.js';
 import type { Declared } from './settings.js';
+import { statusText } from './status-text.js';
 import type { Target } from './targets.js';
 import type {
+  SkillStatus,
   CommandReferenceFile,
   CommandReferenceSettings,
   SkillFolder,
@@ -124,12 +127,44 @@ function uninstallCommand() {
     });
 }
 
-/** The `skills` group and its three children. */
+/** Reports each declared skill without changing its installation. */
+function statusCommand(declared: Declared) {
+  return new Command('status', {
+    description: 'Report whether each skill is installed and up to date.',
+  })
+    .option('agent', {
+      description: 'The agents to report on: claude or agents. Both when left out.',
+      type: 'string',
+      validate: agentInput,
+    })
+    .option('project', {
+      description: "Report on the current repository's skills instead of your home folder's.",
+      type: 'boolean',
+    })
+    .option('directory', {
+      description: 'Find the repository from this directory instead of the current one.',
+      short: 'C',
+      type: 'string',
+    })
+    .rows<SkillStatus>({ views: { text: { row: statusText } } })
+    .views({ json: json<readonly SkillStatus[]>() })
+    .action(async (context) => {
+      const { statusRows } = await import('./status.js');
+      const result = await statusRows(childRun(context), declared, context.options);
+      await context.out.results(result.rows);
+      for (const notice of result.notices) {
+        await context.out.info(notice);
+      }
+    });
+}
+
+/** The `skills` group and its four children. */
 function skillsCommand(declared: Declared) {
   return new Command('skills', { description: "Install this application's agent skills." })
     .command(installCommand(declared))
     .command(updateCommand(declared))
-    .command(uninstallCommand());
+    .command(uninstallCommand())
+    .command(statusCommand(declared));
 }
 
 /**
@@ -266,6 +301,8 @@ export type {
   FolderSkillCommands,
   RefreshContext,
   Skill,
+  SkillState,
+  SkillStatus,
   SkillFile,
   SkillFolder,
   SkillFoldersOptions,

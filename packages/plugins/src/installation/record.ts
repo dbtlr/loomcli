@@ -1,7 +1,7 @@
 /**
  * A first-party plugin's file in the installation record, `<plugin>.json`: the directories the
- * installed-files module created, each file it installed with its digest, each installed folder by
- * its path alone, each startup line by its startup file's path and its text, and each agent
+ * installed-files module created, each file it installed with its digest, each installed folder with
+ * its per-file digests, each startup line by its startup file's path and its text, and each agent
  * registration by its name and command line. Only the module
  * reads or writes it, and it replaces the file whole, through a staging file and a rename.
  */
@@ -18,11 +18,24 @@ interface CommittedFile {
 }
 
 /**
- * An installed folder, recorded by its path alone: the plugin owns it whole, so no digest says what
- * is inside. A pending file lists the folders an install under way writes or removes the same way.
+ * An installed folder with the digests of its files; an earlier format or recovery can keep its path alone.
  */
 interface RecordedFolder {
   readonly path: string;
+  readonly files?: readonly FolderDigest[];
+}
+
+/** One installed file's relative path, content digest, and generated reference mark. */
+interface FolderDigest {
+  readonly path: string;
+  readonly digest: string;
+  readonly generated?: true;
+}
+
+/** A folder's prior and intended records during a swap; path denotes an earlier path-only record. */
+interface PendingFolder extends RecordedFolder {
+  readonly prior?: readonly FolderDigest[] | 'path' | null;
+  readonly intended?: readonly FolderDigest[] | null;
 }
 
 /**
@@ -85,7 +98,7 @@ interface Pending {
   readonly state: 'pending';
   readonly directories: readonly string[];
   readonly files: readonly PendingFile[];
-  readonly folders: readonly RecordedFolder[];
+  readonly folders: readonly PendingFolder[];
   readonly lines: readonly PendingLine[];
   readonly registrations: readonly PendingRegistration[];
 }
@@ -101,8 +114,10 @@ type PluginFileRead =
 /** The count of folders or startup lines a plugin's file omits the member for. */
 const none = 0;
 
-/** The one format the module reads and writes. */
+/** The compatible format for records without folders. */
 const knownFormat = 1;
+/** The folder-digest format, read beside the compatible format. */
+const folderFormat = 2;
 
 /** The record of a plugin that has installed nothing. */
 const nothingRecorded: Committed = {
@@ -157,8 +172,46 @@ function everyOf<Entry>(
   return entries;
 }
 
+/** Reads a valid relative file path, digest, and optional generated mark. */
+function folderDigestOf(value: unknown): FolderDigest | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.path !== 'string' ||
+    value.path.split('/').some((part) => part === '' || part === '.' || part === '..') ||
+    !isDigest(value.digest) ||
+    (value.generated !== undefined && value.generated !== true)
+  ) {
+    return undefined;
+  }
+  return {
+    path: value.path,
+    digest: value.digest,
+    ...(value.generated === true ? { generated: true } : {}),
+  };
+}
 function recordedFolderOf(value: unknown): RecordedFolder | undefined {
-  return isRecord(value) && isAbsolutePath(value.path) ? { path: value.path } : undefined;
+  if (!isRecord(value) || !isAbsolutePath(value.path)) {
+    return undefined;
+  }
+  const files = value.files === undefined ? undefined : everyOf(value.files, folderDigestOf);
+  if (value.files !== undefined && files === undefined) {
+    return undefined;
+  }
+  return { path: value.path, ...(files === undefined ? {} : { files }) };
+}
+/** Reads both prior and intended records, rejecting a missing member. */
+function pendingFolderOf(value: unknown): PendingFolder | undefined {
+  if (!isRecord(value) || !isAbsolutePath(value.path)) {
+    return undefined;
+  }
+  const prior =
+    value.prior === null || value.prior === 'path'
+      ? value.prior
+      : everyOf(value.prior, folderDigestOf);
+  const intended = value.intended === null ? null : everyOf(value.intended, folderDigestOf);
+  return prior === undefined || intended === undefined
+    ? undefined
+    : { path: value.path, prior, intended };
 }
 
 function committedFileOf(value: unknown): CommittedFile | undefined {
@@ -256,7 +309,10 @@ function pluginFileOf(value: Record<string, unknown>): PluginFile | undefined {
   const directories = everyOf(value.directories, (member) =>
     isAbsolutePath(member) ? member : undefined,
   );
-  const folders = optionalOf(value.folders, recordedFolderOf);
+  const folders = optionalOf(
+    value.folders,
+    value.format === folderFormat && value.state === 'pending' ? pendingFolderOf : recordedFolderOf,
+  );
   if (directories === undefined || folders === undefined) {
     return undefined;
   }
@@ -269,7 +325,7 @@ function pluginFileOf(value: Record<string, unknown>): PluginFile | undefined {
  */
 function recordedEntriesOf(
   value: Record<string, unknown>,
-  rest: { directories: readonly string[]; folders: readonly RecordedFolder[] },
+  rest: { directories: readonly string[]; folders: readonly PendingFolder[] },
 ): PluginFile | undefined {
   if (value.state === 'committed') {
     return committedEntriesOf(value, rest);
@@ -280,7 +336,7 @@ function recordedEntriesOf(
 /** The committed plugin's file, or `undefined` for files, lines, or registrations not that shape. */
 function committedEntriesOf(
   value: Record<string, unknown>,
-  rest: { directories: readonly string[]; folders: readonly RecordedFolder[] },
+  rest: { directories: readonly string[]; folders: readonly PendingFolder[] },
 ): Committed | undefined {
   const files = everyOf(value.files, committedFileOf);
   const lines = optionalOf(value.lines, startupLineOf);
@@ -293,7 +349,7 @@ function committedEntriesOf(
 /** The pending plugin's file, or `undefined` for files, lines, or registrations not that shape. */
 function pendingEntriesOf(
   value: Record<string, unknown>,
-  rest: { directories: readonly string[]; folders: readonly RecordedFolder[] },
+  rest: { directories: readonly string[]; folders: readonly PendingFolder[] },
 ): Pending | undefined {
   const files = everyOf(value.files, pendingFileOf);
   const lines = optionalOf(value.lines, pendingLineOf);
@@ -334,7 +390,7 @@ function readPluginFile(path: string): PluginFileRead {
   if (!isRecord(value)) {
     return { kind: 'refused', reason: 'damaged' };
   }
-  if (value.format !== knownFormat) {
+  if (value.format !== knownFormat && value.format !== folderFormat) {
     return { kind: 'refused', reason: 'unknown-format' };
   }
   const file = pluginFileOf(value);
@@ -365,16 +421,36 @@ function entryMembers(file: PluginFile): {
   };
 }
 
-/**
- * The plugin's file as one line of JSON, its members in the contract's order, then `folders` and
- * `lines` and `registrations`, each only when it lists any.
- */
+/** Every folder file in the specified path, digest, generated member order. */
+function folderMembers(files: readonly FolderDigest[]): object[] {
+  return files.map(({ path, digest, generated }) => ({
+    path,
+    digest,
+    ...(generated === true ? { generated } : {}),
+  }));
+}
+
+/** The plugin's file as one JSON line, omitting empty optional collections. */
 function serialize(file: PluginFile): string {
   const { files, lines, registrations } = entryMembers(file);
   const { state, directories } = file;
-  const folders = file.folders.map(({ path }) => ({ path }));
+  const folders =
+    file.state === 'committed'
+      ? file.folders.map(({ path, files: held }) => ({
+          path,
+          ...(held === undefined ? {} : { files: folderMembers(held) }),
+        }))
+      : file.folders.map(({ path, prior, intended }) => ({
+          path,
+          prior:
+            prior === null || prior === undefined || prior === 'path'
+              ? prior
+              : folderMembers(prior),
+          intended:
+            intended === null || intended === undefined ? intended : folderMembers(intended),
+        }));
   const members = {
-    format: knownFormat,
+    format: folders.length === none ? knownFormat : folderFormat,
     state,
     directories,
     files,
@@ -392,6 +468,8 @@ function writePluginFile(path: string, file: PluginFile): void {
 }
 
 export type {
+  FolderDigest,
+  PendingFolder,
   Committed,
   CommittedFile,
   Pending,
