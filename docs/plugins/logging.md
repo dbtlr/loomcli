@@ -1,5 +1,5 @@
 ---
-description: "The logging plugin: JSONL destinations with independent levels, file rotation, and console records."
+description: "The logging plugin: Destinations with independent levels, file rotation, console records, and OpenTelemetry export."
 ---
 
 # Logging plugin
@@ -28,9 +28,14 @@ export type LoggingDestinationSettings =
   | {
       readonly to: 'console';
       readonly level?: WrittenLevel;
+    }
+  | {
+      readonly to: 'otel';
+      readonly logger: OpenTelemetryLogger;
+      readonly level?: WrittenLevel;
     };
 export type LoggingSettings =
-  | LoggingDestinationSettings
+  | Exclude<LoggingDestinationSettings, { readonly to: 'otel' }>
   | { readonly destinations: readonly LoggingDestinationSettings[] };
 export type LoggingErrorKind = 'unresolved-directory' | 'create-directory' | 'append' | 'rotate';
 export declare class LoggingError extends Error {
@@ -64,11 +69,11 @@ A `log.info('Indexed sessions.', { count: 3 })` in that application's `serve` ac
 {"time":"2026-10-10T14:03:22.418Z","level":"info","message":"Indexed sessions.","fields":{"count":3},"application":{"name":"heimdall","version":"0.0.0"},"run":"4bf92f3577b34da6a3ce929d0e0e4736","path":["serve"],"plugin":null}
 ```
 
-The logging plugin writes each [log event](../core/logging.md) as one JSON record, appended to files that rotate by size and written to stderr for a system that captures its own logs. Each logging destination has its own level. It is an `onLog` hook and nothing else: no option, middleware, view, or slot. It logs which file it writes, which `-v` shows, and each rotation, which `-vv` shows. [ADR-0070](../decisions/0070-the-logging-plugin-writes-one-json-record-per-event-to-a-size-rotated-file-or-stderr.md) records the record format and file behavior. [ADR-0177](../decisions/0177-one-logging-installation-writes-to-several-destinations.md) adds several destinations.
+The logging plugin writes each [log event](../core/logging.md) as one JSON record, appended to files that rotate by size and written to stderr for a system that captures its own logs, and emits it as an OpenTelemetry log record through the author's own logger. Each logging destination has its own level. It is an `onLog` hook and nothing else: no option, middleware, view, or slot. It logs which file it writes, which `-v` shows, and each rotation, which `-vv` shows. [ADR-0070](../decisions/0070-the-logging-plugin-writes-one-json-record-per-event-to-a-size-rotated-file-or-stderr.md) records the record format and file behavior. [ADR-0177](../decisions/0177-one-logging-installation-writes-to-several-destinations.md) adds several destinations.
 
-- **Several destinations.** `logging({ destinations: [...] })` writes to each entry in list order. Each entry is `LoggingDestinationSettings`, either a file with its own `file`, `level`, `maxBytes`, `keep`, and `onError`, or a console with its own `level`. The list allows any number of files and console entries. An empty list records nothing. There is no predicate setting. A failed file write calls only that file's `onError` and, if the callback returns, later destinations still write. The same record bytes reach every eligible destination.
+- **Several destinations.** `logging({ destinations: [...] })` writes to each entry in list order. Each entry is `LoggingDestinationSettings`, a file with its own `file`, `level`, `maxBytes`, `keep`, and `onError`, a console with its own `level`, or an OpenTelemetry logger as described below. The list allows any number of file, console, and OpenTelemetry entries. An empty list records nothing. There is no predicate setting. A failed file write calls only that file's `onError` and, if the callback returns, later destinations still write. The same JSONL bytes reach every eligible file and console destination; OpenTelemetry entries receive the mapped record below.
 - **Settings.** `logging()` fills each omitted setting with its default and judges none of them, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md): the settings type bounds each key, and each entry holds no file key beside `to: 'console'`.
-- **The record.** One event is one line: the event as `JSON.stringify` writes it, with its keys in the order `time`, `level`, `message`, `fields`, `application`, `run`, `path`, `plugin`, `failure`, `defect`, an absent key omitted, followed by one newline. Every destination writes the same bytes.
+- **The record.** One event is one line: the event as `JSON.stringify` writes it, with its keys in the order `time`, `level`, `message`, `fields`, `application`, `run`, `path`, `plugin`, `failure`, `defect`, an absent key omitted, followed by one newline. File and console logging destinations write the same bytes.
 - **The level.** An event below a logging destination's `level` is skipped for that logging destination alone. A `fatal` event is never skipped by `level`; the logging destination's own rules and the failed-write rules still apply to it.
 - **The file.** With `to: 'file'`, the default, the plugin writes to a file in the default directory, which it reads from the log destination's `env`, `home`, and `platform` alone:
 
@@ -102,4 +107,41 @@ The path is the file's absolute path as the plugin resolved it. Console entries 
 
 ## When author code fails
 
-`onError` is the one author function the plugin calls. An `onError` that throws throws from the plugin's hook, which core reports as a hook's throw under [Observing log events](../core/lifecycle-hooks.md#observing-log-events), and it takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path). An author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The plugin calls `onError` once for each failed write and ignores what it returns.
+The plugin calls the author's `onError` for a failed file write and `logger.emit` for an OpenTelemetry record. An `emit` that throws takes the same hook failure path and stops later destinations for that event. An `onError` that throws throws from the plugin's hook, which core reports as a hook's throw under [Observing log events](../core/lifecycle-hooks.md#observing-log-events), and it takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path). An author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The plugin calls `onError` once for each failed write and ignores what it returns.
+
+## OpenTelemetry destination
+
+Pass your configured OpenTelemetry logger in the destination list:
+
+```ts
+import { logs } from '@opentelemetry/api-logs';
+import { logging } from '@loomcli/plugins/logging';
+
+export const records = logging({ destinations: [
+	{ to: 'otel', logger: logs.getLogger('notes'), level: 'debug' },
+	{ to: 'console', level: 'warn' },
+] });
+```
+
+The author installs and configures the OpenTelemetry SDK, its resource, processors, exporters, and shutdown. Loom adds no runtime OpenTelemetry dependency. `OpenTelemetryLogger` requires only `emit(record: OpenTelemetryLogRecord): void`, structurally compatible with the API Logger. `OpenTelemetryLogger`, `OpenTelemetryLogRecord`, and `OpenTelemetryLogValue` are exported from `@loomcli/plugins/logging`.
+
+Each eligible event calls `emit` once, synchronously, in destination order. The default level is `info`; fatal events always reach it. File and console entries keep their JSONL format. The OpenTelemetry record maps as follows:
+
+| Event | Record |
+| --- | --- |
+| `time` | `timestamp`, a Date with the same instant |
+| `level` | `severityText`, unchanged; `severityNumber`: trace 1, debug 5, info 9, warn 13, error 17, fatal 21 |
+| `message` | `body`, the template as written, with no interpolation |
+| `fields` | `attributes['loom.fields']`, the complete map, already redacted by core |
+| `application.name`, `application.version` | `attributes['service.name']`, `attributes['service.version']` |
+| `run` | `attributes['loom.run']` |
+| `path` | `attributes['loom.path']`, an array |
+| `plugin` | `attributes['loom.plugin']`, the identity or null |
+| `failure`, when present | `attributes['loom.failure']`, the complete failure form |
+| `defect`, when present | `attributes['exception.type']`, `attributes['exception.message']`, and `attributes['exception.stacktrace']` when it has a stack |
+
+The semantic conventions place `service.name` and `service.version` on the Resource, which the plugin leaves to the author's SDK: set the Resource's `service.name` to the application's name, or an SDK reports `unknown_service:<process>` there beside the record's `service.name`.
+
+Fields and failure forms keep nested JSON values, including arrays and nulls. The bridge copies containers for the SDK and leaves the frozen event intact. Nesting fields under `loom.fields` prevents a field named `service.name` or `loom.run` from replacing record facts. Application identity uses semantic convention names as record attributes; the SDK's resource remains the author's configuration.
+
+A run ID has the shape of a trace ID but establishes no span or trace context. The bridge leaves OpenTelemetry context unset so the SDK can use its active context. No exception detail is invented for a failure that has no defect detail. A logger that throws takes the ordinary hook failure path described above, without retries or a separate error callback. [ADR-0179](../decisions/0179-the-logging-plugin-emits-opentelemetry-records-through-the-authors-logger.md) records the mapping.

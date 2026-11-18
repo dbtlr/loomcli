@@ -60,6 +60,6 @@ A plugin that acts on files, programs, or the environment says what it did at `-
 
 ### Lifecycle
 
-- [Logging](logging.md): open it when an application writes log events to several logging destinations, each with its own level.
+- [Logging](logging.md): open it when an application writes log events to JSONL files, the console, or an OpenTelemetry logger, each with its own level.
 - [Self-update](self-update.md): open it when an installed application updates itself or notices a new release.
 - [Service](service.md): open it when an application runs as a user service.

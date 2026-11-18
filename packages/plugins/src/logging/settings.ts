@@ -1,4 +1,5 @@
 import type { LoggingError } from './error.js';
+import type { OpenTelemetryLogger } from './otel.js';
 import type { WrittenLevel } from './record.js';
 
 /** The default size past which the file rotates, and the default number of rotated copies kept. */
@@ -6,11 +7,16 @@ const defaultMaxBytes = 10_000_000;
 const defaultKeep = 5;
 
 /**
- * The settings of one file or console destination.
+ * The settings of one file, console, or OpenTelemetry destination.
  *
  * @public
  */
 type LoggingDestinationSettings =
+  | {
+      readonly to: 'otel';
+      readonly logger: OpenTelemetryLogger;
+      readonly level?: WrittenLevel;
+    }
   | {
       readonly to?: 'file';
       /** The log file: a name inside the default directory, an absolute path, or a path under ~/. */
@@ -35,7 +41,9 @@ type LoggingDestinationSettings =
  * @public
  */
 type LoggingSettings =
-  | (LoggingDestinationSettings & { readonly destinations?: never })
+  | (Exclude<LoggingDestinationSettings, { readonly to: 'otel' }> & {
+      readonly destinations?: never;
+    })
   | {
       readonly destinations: readonly LoggingDestinationSettings[];
       readonly to?: never;
@@ -48,6 +56,7 @@ type LoggingSettings =
 
 /** The settings with their defaults filled: where the records go and what the destination needs. */
 type LoggingPlan =
+  | { readonly to: 'otel'; readonly logger: OpenTelemetryLogger; readonly level: WrittenLevel }
   | { readonly to: 'console'; readonly level: WrittenLevel }
   | {
       readonly to: 'file';
@@ -60,6 +69,9 @@ type LoggingPlan =
 
 /** Fills each omitted setting with its default. */
 function planOf(settings: LoggingDestinationSettings | undefined): LoggingPlan {
+  if (settings?.to === 'otel') {
+    return { level: settings.level ?? 'info', logger: settings.logger, to: 'otel' };
+  }
   if (settings?.to === 'console') {
     return { level: settings.level ?? 'info', to: 'console' };
   }

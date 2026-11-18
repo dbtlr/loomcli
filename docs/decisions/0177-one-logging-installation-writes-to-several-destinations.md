@@ -41,3 +41,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-18: Proposed with the settings, independent filtering, and ordered writes.
+- 2026-11-18: [ADR-0179](0179-the-logging-plugin-emits-opentelemetry-records-through-the-authors-logger.md), proposed, adds an OpenTelemetry kind to the destination union and narrows the identical-bytes clause to file and console logging destinations. It binds when that record is accepted.

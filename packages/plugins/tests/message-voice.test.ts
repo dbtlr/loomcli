@@ -91,6 +91,22 @@ const exceptions: VoiceExceptions = {
       'markdownRule.message': { reason: ruleSentence, sites: 1 },
     },
     'logging/error.ts': { 'detail.cause': { reason: carried, sites: 1 } },
+    'logging/otel.ts': {
+      'defect.message': {
+        reason:
+          "Core's defect detail is exported as the exception message, not worded as an operator sentence.",
+        sites: 1,
+      },
+      'defect.stack': {
+        reason:
+          "Core's defect stack is exported as exception detail, not worded as an operator sentence.",
+        sites: 2,
+      },
+      'event.message': {
+        reason: "A log event's template is exported unchanged as the OpenTelemetry body.",
+        sites: 1,
+      },
+    },
     'logging/record.ts': {
       'event.message': {
         reason:
