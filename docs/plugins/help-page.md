@@ -51,7 +51,7 @@ COMMANDS
   help                  Show help for a command.
   doctor                Check the host this application runs on.
   completion <command>  Print or install a shell completion script.
-  mcp [command]         Serve this application's tools to an MCP client over stdin and stdout.
+  mcp [command]         Serve this application's tools to an MCP client, over stdin and stdout or, with --http, over HTTP.
   manpage <command>     Write or install the man pages.
 
 OPTIONS
@@ -201,7 +201,7 @@ COMMANDS
   help                  Show help for a command.
   doctor                Check the host this application runs on.
   completion <command>  Print or install a shell completion script.
-  mcp [command]         Serve this application's tools to an MCP client over stdin and stdout.
+  mcp [command]         Serve this application's tools to an MCP client, over stdin and stdout or, with --http, over HTTP.
   manpage <command>     Write or install the man pages.
 
 OPTIONS

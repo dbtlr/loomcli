@@ -1,43 +1,8 @@
-import {
-  classify,
-  errorCodes,
-  errorMessage,
-  frame,
-  isRecord,
-  isRequestId,
-  LineSplitter,
-  notificationMessage,
-  ProtocolError,
-  resultMessage,
-} from './json-rpc.js';
-import type { RequestId } from './json-rpc.js';
-import {
-  alreadyInitialized,
-  callWithoutTool,
-  handlerFailed,
-  idInUse,
-  initializeIncomplete,
-  methodNotServed,
-  methodNotServedInitialized,
-  metaKeyMissing,
-  unknownCursor,
-  versionNotSpoken,
-} from './messages.js';
-import type { CallToolResult, ProgressUpdate, ServerIdentity, Tool, ToolCall } from './protocol.js';
-import {
-  handshakeRevisions,
-  latestHandshakeRevision,
-  protocolRevision,
-  undescribedHandshakeRevision,
-} from './revision.js';
-import type { HandshakeRevision } from './revision.js';
-
-/** What a server serves: its identity, its tool listing, and the call of one tool. */
-interface McpServerOptions {
-  readonly identity: ServerIdentity;
-  readonly listTools: () => readonly Tool[] | Promise<readonly Tool[]>;
-  readonly callTool: (call: ToolCall) => CallToolResult | Promise<CallToolResult>;
-}
+import { Connection } from './connection.js';
+import type { Channel, McpServerOptions } from './connection.js';
+import { HttpTransport } from './http.js';
+import type { HttpOptions } from './http.js';
+import { classify, errorMessage, frame, LineSplitter } from './json-rpc.js';
 
 /**
  * The stream a server reads, such as a process's stdin: the members of a Node.js readable stream
@@ -66,120 +31,6 @@ interface ServerOutput {
 /** How a run ends early: when `signal` aborts, every call aborts and the server writes nothing more. */
 interface RunOptions {
   readonly signal?: AbortSignal;
-}
-
-const metaKeys = {
-  clientCapabilities: 'io.modelcontextprotocol/clientCapabilities',
-  protocolVersion: 'io.modelcontextprotocol/protocolVersion',
-  serverInfo: 'io.modelcontextprotocol/serverInfo',
-  subscriptionId: 'io.modelcontextprotocol/subscriptionId',
-} as const;
-
-/** Every revision the server serves, as discovery and an unsupported version list them. */
-const supportedRevisions = [protocolRevision, ...handshakeRevisions];
-
-/**
- * How a request is served. A request whose `params._meta` carries a protocol version is served on
- * the per-request revision, relying on no earlier request. Any other request is served on the
- * initialize-era revision its connection negotiated.
- */
-type Era = 'handshake' | 'per-request';
-
-/** Every method a per-request one may call. Any other, `ping` included, is not found. */
-const methods = new Set(['server/discover', 'subscriptions/listen', 'tools/call', 'tools/list']);
-
-/** Every method an initialized connection serves beside `initialize`. Any other is not found. */
-const handshakeMethods = new Set(['ping', 'tools/call', 'tools/list']);
-
-function unsupportedVersion(requested: string) {
-  return new ProtocolError(
-    errorCodes.unsupportedProtocolVersion,
-    versionNotSpoken(protocolRevision, handshakeRevisions.join(' or ')),
-    { supported: supportedRevisions, requested },
-  );
-}
-
-function missingMeta(key: string) {
-  return new ProtocolError(
-    errorCodes.invalidParams,
-    metaKeyMissing(key, metaKeys.protocolVersion, metaKeys.clientCapabilities),
-  );
-}
-
-/** The era a request selects: per-request when its `params._meta` names a protocol version. */
-function eraOf(params: unknown): Era {
-  const meta = isRecord(params) ? params._meta : undefined;
-  return isRecord(meta) && metaKeys.protocolVersion in meta ? 'per-request' : 'handshake';
-}
-
-/**
- * The version an `initialize` request negotiates: the one it asks for when the server serves it,
- * and otherwise the latest the server serves, as the initialize-era lifecycle requires. A request
- * with no version string or no capabilities object is answered with the error.
- */
-function negotiate(params: unknown): HandshakeRevision | ProtocolError {
-  const requested = isRecord(params) ? params.protocolVersion : undefined;
-  const capabilities = isRecord(params) ? params.capabilities : undefined;
-  if (typeof requested !== 'string' || !isRecord(capabilities)) {
-    return new ProtocolError(errorCodes.invalidParams, initializeIncomplete);
-  }
-  return handshakeRevisions.find((revision) => revision === requested) ?? latestHandshakeRevision;
-}
-
-/**
- * The server's identity as an initialize result carries it. The implementation info of the earliest
- * revision served has no description, which later revisions added.
- */
-function implementationInfo(identity: ServerIdentity, version: HandshakeRevision) {
-  const { description, ...named } = identity;
-  return version === undescribedHandshakeRevision || description === undefined
-    ? named
-    : { ...named, description };
-}
-
-/**
- * A call's result as an initialize-era revision holds it, where structured content is a JSON
- * object. Any other value is left to the text content, which already carries it.
- */
-function handshakeCallResult({ structuredContent, ...result }: CallToolResult) {
-  return isRecord(structuredContent) ? { ...result, structuredContent } : result;
-}
-
-/**
- * The per-request check: every request carries the protocol version and the client's capabilities
- * in `params._meta`, and the version is the pinned revision. The server relies on no earlier
- * request.
- */
-function envelopeFault(params: unknown): ProtocolError | undefined {
-  const meta = isRecord(params) ? params._meta : undefined;
-  const version = isRecord(meta) ? meta[metaKeys.protocolVersion] : undefined;
-  const capabilities = isRecord(meta) ? meta[metaKeys.clientCapabilities] : undefined;
-  if (typeof version !== 'string') {
-    return missingMeta(metaKeys.protocolVersion);
-  }
-  if (!isRecord(capabilities)) {
-    return missingMeta(metaKeys.clientCapabilities);
-  }
-  return version === protocolRevision ? undefined : unsupportedVersion(version);
-}
-
-/**
- * The error a request other than `initialize` is answered with before any handler runs, if any.
- * Before `initialize`, a request for a method the server serves needs per-request `_meta`, `ping`
- * aside, which the initialize-era lifecycle allows at any time.
- */
-function requestFault(method: string, params: unknown, initialized: boolean) {
-  if (eraOf(params) === 'per-request') {
-    return methods.has(method)
-      ? envelopeFault(params)
-      : new ProtocolError(errorCodes.methodNotFound, methodNotServed(protocolRevision));
-  }
-  if (!initialized && methods.has(method)) {
-    return missingMeta(metaKeys.protocolVersion);
-  }
-  return handshakeMethods.has(method)
-    ? undefined
-    : new ProtocolError(errorCodes.methodNotFound, methodNotServedInitialized);
 }
 
 /** Listens for the output's error event. A write the client cannot read has no one to report to. */
@@ -229,43 +80,19 @@ function readChunks(
 }
 
 /**
- * A request in flight: the controller that aborts it, and whether it is a `tools/call`, the only
- * request whose handler sees that signal.
+ * One run of a server over one pair of streams: its connection, which every line of the input
+ * reaches, and the writes not yet flushed.
  */
-interface Pending {
-  readonly controller: AbortController;
-  readonly call: boolean;
-}
-
-/**
- * What a request's handler receives beside its params: the era that shapes its result, the signal
- * that aborts it, and, for a call that carries a progress token, the function that sends progress.
- */
-interface Handling {
-  readonly era: Era;
-  readonly signal: AbortSignal;
-  readonly progress: ((update: ProgressUpdate) => void) | undefined;
-}
-
-/**
- * One run of a server over one pair of streams: the requests in flight, the open subscriptions,
- * and the writes not yet flushed.
- */
-class Session {
-  readonly #options: McpServerOptions;
+class StdioSession {
   readonly #output: ServerOutput;
-  /** Each request in flight by id. A cancelled request leaves the map, so its answer is dropped. */
-  readonly #inFlight = new Map<RequestId, Pending>();
-  readonly #settling = new Set<Promise<void>>();
-  readonly #subscriptions = new Set<RequestId>();
+  readonly #connection: Connection;
   readonly #writes = new Set<Promise<void>>();
   readonly #splitter = new LineSplitter();
-  /** The revision `initialize` negotiated for the connection, once it has. */
-  #handshake: HandshakeRevision | undefined;
-  #silenced = false;
+  /** The one channel every request of the connection shares: the output. */
+  readonly #channel: Channel = { end: () => {}, send: (message) => this.#write(message) };
 
   constructor(options: McpServerOptions, output: ServerOutput) {
-    this.#options = options;
+    this.#connection = new Connection(options);
     this.#output = output;
     // A failed write, such as a broken pipe after the client exits, also emits "error" on the stream.
     // With no listener that ends the process, so the session listens until it ends.
@@ -280,275 +107,52 @@ class Session {
   }
 
   /**
-   * Ends the run once the input has ended: a last line with no line feed is handled, every call
-   * aborts and answers nothing, and once each has settled, each open subscription is cancelled and
-   * answered with its closing result. Resolves when every message has been handed to the output,
-   * and stops listening for the output's errors. After the caller's signal, nothing is written.
+   * Ends the run once the input has ended or the run's signal aborted: a last line with no line
+   * feed is handled, every call aborts and answers nothing, and once each has settled, each open
+   * subscription is cancelled and answered with its closing result. Resolves when every message has
+   * been handed to the output, and stops listening for the output's errors.
    */
   async end() {
     for (const line of this.#splitter.end()) {
       this.#receive(line);
     }
-    this.#abortAll();
-    // A Set visits an entry added while it is iterated, and skips one deleted once it settles.
-    for (const settling of this.#settling) {
-      await settling;
-    }
-    this.#closeSubscriptions();
+    this.#connection.abortAll();
+    await this.#connection.settled();
+    this.#connection.closeSubscriptions();
     await Promise.all(this.#writes);
     this.#output.off('error', dropWriteError);
   }
 
-  /** Cancels each open subscription and answers it with its closing result. */
-  #closeSubscriptions() {
-    for (const id of this.#subscriptions) {
-      this.#send(notificationMessage('notifications/cancelled', { requestId: id }));
-      this.#send(resultMessage(id, this.#stamp({}, id)));
-    }
-    this.#subscriptions.clear();
+  /**
+   * Ends the run on the caller's signal: every call aborts, and the server answers nothing more.
+   * Each open subscription's teardown is still sent when the run ends.
+   */
+  silence() {
+    this.#connection.silence();
   }
 
   /** Handles one line the client wrote. */
   #receive(line: string) {
-    if (this.#silenced) {
+    if (this.#connection.silenced) {
       return;
     }
     const message = classify(line);
     if (message.kind === 'invalid') {
-      this.#send(errorMessage(message.id, message.error));
+      this.#write(errorMessage(message.id, message.error));
     } else if (message.kind === 'notification') {
-      this.#notify(message.method, message.params);
+      this.#connection.notify(message.method, message.params);
     } else if (message.kind === 'request') {
-      this.#request(message.id, message.method, message.params);
-    }
-  }
-
-  /**
-   * Ends the run on the caller's signal: every call aborts, and the server writes nothing more, an
-   * open subscription's closing result included.
-   */
-  silence() {
-    this.#silenced = true;
-    this.#subscriptions.clear();
-    this.#abortAll();
-  }
-
-  #abortAll() {
-    for (const { controller } of this.#inFlight.values()) {
-      controller.abort();
-    }
-  }
-
-  /** `notifications/cancelled` ends the request it names. Every other notification is ignored. */
-  #notify(method: string, params: unknown) {
-    const id = method === 'notifications/cancelled' && isRecord(params) ? params.requestId : null;
-    if (!isRequestId(id) || this.#subscriptions.delete(id)) {
-      return;
-    }
-    const pending = this.#inFlight.get(id);
-    this.#inFlight.delete(id);
-    pending?.controller.abort();
-  }
-
-  #request(id: RequestId, method: string, params: unknown) {
-    const fault =
-      this.#idInUse(id) ??
-      (method === 'initialize'
-        ? undefined
-        : requestFault(method, params, this.#handshake !== undefined));
-    if (fault !== undefined) {
-      this.#send(errorMessage(id, fault));
-    } else if (method === 'initialize') {
-      this.#initialize(id, params);
-    } else if (method === 'ping') {
-      this.#send(resultMessage(id, {}));
-    } else if (method === 'subscriptions/listen') {
-      this.#listen(id);
-    } else {
-      this.#start(id, method, isRecord(params) ? params : {});
-    }
-  }
-
-  /**
-   * Opens the connection on an initialize-era revision, once. The negotiated revision then serves
-   * every request that carries no per-request `_meta`.
-   */
-  #initialize(id: RequestId, params: unknown) {
-    if (this.#handshake !== undefined) {
-      const refusal = alreadyInitialized(this.#handshake);
-      this.#send(errorMessage(id, new ProtocolError(errorCodes.invalidRequest, refusal)));
-      return;
-    }
-    const version = negotiate(params);
-    if (version instanceof ProtocolError) {
-      this.#send(errorMessage(id, version));
-      return;
-    }
-    this.#handshake = version;
-    this.#send(
-      resultMessage(id, {
-        protocolVersion: version,
-        capabilities: { tools: {} },
-        serverInfo: implementationInfo(this.#options.identity, version),
-      }),
-    );
-  }
-
-  /**
-   * The answer to a request whose id a call or subscription still in flight holds. The request in
-   * flight keeps its id and runs untouched, so its answer stays the only one under that id.
-   */
-  #idInUse(id: RequestId): ProtocolError | undefined {
-    return this.#inFlight.has(id) || this.#subscriptions.has(id)
-      ? new ProtocolError(errorCodes.invalidRequest, idInUse)
-      : undefined;
-  }
-
-  /** Opens a subscription. The server offers no notification type, so it sends nothing more on it. */
-  #listen(id: RequestId) {
-    this.#subscriptions.add(id);
-    this.#send(
-      notificationMessage('notifications/subscriptions/acknowledged', {
-        notifications: {},
-        _meta: { [metaKeys.subscriptionId]: id },
-      }),
-    );
-  }
-
-  #start(id: RequestId, method: string, params: Record<string, unknown>) {
-    const pending = { call: method === 'tools/call', controller: new AbortController() };
-    this.#inFlight.set(id, pending);
-    const progress = pending.call ? this.#progress(id, pending, params) : undefined;
-    const handling = { era: eraOf(params), progress, signal: pending.controller.signal };
-    const outcome = this.#outcome(method, params, handling);
-    const settling = this.#answer(id, pending, outcome);
-    this.#settling.add(settling);
-    void settling.finally(() => this.#settling.delete(settling));
-  }
-
-  /**
-   * Writes a request's answer once it settles, unless the client cancelled it meanwhile. A call
-   * whose signal aborted, which only shutdown or the run's signal does to a call still in the map,
-   * answers nothing either.
-   */
-  async #answer(id: RequestId, pending: Pending, outcome: Promise<object>) {
-    const settled = await outcome;
-    if (this.#inFlight.get(id) !== pending) {
-      return;
-    }
-    this.#inFlight.delete(id);
-    if (pending.call && pending.controller.signal.aborted) {
-      return;
-    }
-    this.#send(
-      settled instanceof ProtocolError ? errorMessage(id, settled) : resultMessage(id, settled),
-    );
-  }
-
-  /**
-   * The function a call sends progress through, when its request's `params._meta` carries a
-   * progress token. Each call writes one `notifications/progress` on the token, passing `progress`
-   * on as given, until the call is answered, cancelled by the client, or aborted.
-   */
-  #progress(
-    id: RequestId,
-    pending: Pending,
-    params: Record<string, unknown>,
-  ): ((update: ProgressUpdate) => void) | undefined {
-    const meta = params._meta;
-    const token = isRecord(meta) ? meta.progressToken : undefined;
-    // A progress token is a string or a number, as a request id is.
-    if (!isRequestId(token)) {
-      return undefined;
-    }
-    return ({ message, progress, total }) => {
-      if (this.#inFlight.get(id) !== pending || pending.controller.signal.aborted) {
-        return;
+      const admission = this.#connection.admit(message.id, message.method, message.params);
+      if (admission.kind === 'refused') {
+        this.#write(errorMessage(message.id, admission.error));
+      } else {
+        admission.begin(this.#channel);
       }
-      this.#send(
-        notificationMessage('notifications/progress', {
-          progressToken: token,
-          progress,
-          ...(total === undefined ? {} : { total }),
-          ...(message === undefined ? {} : { message }),
-        }),
-      );
-    };
-  }
-
-  /**
-   * A request's result in the shape of its era, stamped on the per-request revision, or the error to
-   * answer it with. A handler's own throw is internal.
-   */
-  async #outcome(method: string, params: Record<string, unknown>, handling: Handling) {
-    try {
-      const result = await this.#dispatch(method, params, handling);
-      return handling.era === 'per-request' ? this.#stamp(result) : result;
-    } catch (error) {
-      return error instanceof ProtocolError
-        ? error
-        : new ProtocolError(errorCodes.internalError, handlerFailed(method));
     }
   }
 
-  async #dispatch(
-    method: string,
-    params: Record<string, unknown>,
-    handling: Handling,
-  ): Promise<object> {
-    if (method === 'server/discover') {
-      return {
-        supportedVersions: supportedRevisions,
-        capabilities: { tools: {} },
-        ttlMs: 0,
-        cacheScope: 'private',
-      };
-    }
-    return method === 'tools/list'
-      ? this.#list(params, handling.era)
-      : this.#call(params, handling);
-  }
-
-  /** One tool call, its result in the shape of its era. */
-  async #call(params: Record<string, unknown>, handling: Handling) {
-    const { name } = params;
-    if (typeof name !== 'string') {
-      throw new ProtocolError(errorCodes.invalidParams, callWithoutTool);
-    }
-    const { era, progress, signal } = handling;
-    const call: ToolCall = { name, arguments: params.arguments, signal };
-    const result = await this.#options.callTool(
-      progress === undefined ? call : { ...call, progress },
-    );
-    return era === 'per-request' ? result : handshakeCallResult(result);
-  }
-
-  /** The tool listing: one page, which no client caches on the per-request revision. */
-  async #list(params: Record<string, unknown>, era: Era) {
-    if (params.cursor !== undefined) {
-      throw new ProtocolError(errorCodes.invalidParams, unknownCursor);
-    }
-    const tools = await this.#options.listTools();
-    return era === 'per-request' ? { tools, ttlMs: 0, cacheScope: 'private' } : { tools };
-  }
-
-  /** A result as the revision requires it: complete, with the server's identity in `_meta`. */
-  #stamp(result: object, subscriptionId?: RequestId) {
-    return {
-      resultType: 'complete',
-      ...result,
-      _meta: {
-        ...(subscriptionId === undefined ? {} : { [metaKeys.subscriptionId]: subscriptionId }),
-        [metaKeys.serverInfo]: this.#options.identity,
-      },
-    };
-  }
-
-  /** Writes one message as one line, unless the run was ended by the caller's signal. */
-  #send(message: object) {
-    if (this.#silenced) {
-      return;
-    }
+  /** Writes one message as one line. */
+  #write(message: object) {
     // A write the client can no longer read has no one to report to, so its callback drops the error.
     // The session's error listener drops the stream's error event the same way.
     const written = new Promise<void>((resolve) => {
@@ -560,11 +164,11 @@ class Session {
 }
 
 /**
- * An MCP server over a stdio-style pair of streams, of both eras. A request carrying per-request
- * `_meta` is served on the per-request revision, which serves `server/discover`, `tools/list`,
- * `tools/call`, and `subscriptions/listen`. A connection that opens with `initialize` is served on
- * the initialize-era revision it negotiates, which serves `ping`, `tools/list`, and `tools/call`.
- * Every other method is not found.
+ * An MCP server of both eras, over a stdio-style pair of streams or over HTTP. A request carrying
+ * per-request `_meta` is served on the per-request revision, which serves `server/discover`,
+ * `tools/list`, `tools/call`, and `subscriptions/listen`. A connection that opens with `initialize`
+ * is served on the initialize-era revision it negotiates, which serves `ping`, `tools/list`, and
+ * `tools/call`. Every other method is not found.
  */
 class McpServer {
   readonly #options: McpServerOptions;
@@ -577,12 +181,12 @@ class McpServer {
    * Serves one client until the input ends or `signal` aborts. When the input ends, the server
    * aborts every call in flight, answers none of them, waits for each to settle, closes each open
    * subscription, and resolves. When `signal` aborts, before or after the input ends, it stops
-   * reading, aborts every call, writes nothing more, and resolves once every call has settled.
+   * reading, aborts every call, answers no call, closes each open subscription, and resolves once
+   * every call has settled.
    */
   async run(input: ServerInput, output: ServerOutput, options: RunOptions = {}): Promise<void> {
     const { signal } = options;
-    const session = new Session(this.#options, output);
-    // The signal is watched until the run resolves, so a call that settles after it aborts writes nothing.
+    const session = new StdioSession(this.#options, output);
     const silence = () => session.silence();
     if (signal?.aborted === true) {
       silence();
@@ -595,7 +199,17 @@ class McpServer {
       signal?.removeEventListener('abort', silence);
     }
   }
+
+  /**
+   * The server's streamable HTTP transport, which answers each request its caller's `node:http`
+   * server hands it until `options.signal` aborts.
+   */
+  http(options: HttpOptions): HttpTransport {
+    return new HttpTransport(this.#options, options);
+  }
 }
 
 export { McpServer };
-export type { McpServerOptions, RunOptions, ServerInput, ServerOutput };
+export type { McpServerOptions } from './connection.js';
+export type { HttpOptions, HttpTransport } from './http.js';
+export type { RunOptions, ServerInput, ServerOutput };

@@ -7,7 +7,19 @@
 import type { Plugin as Plugin_2 } from '@loomcli/core';
 
 // @public
-export function mcp(): Plugin_2;
+export function mcp(settings?: McpSettings): Plugin_2;
+
+// @public @sealed
+export interface McpHttpRequest {
+    readonly headers: Headers;
+}
+
+// @public
+export interface McpSettings {
+    readonly authorize?: ((request: McpHttpRequest) => boolean | Promise<boolean>) | undefined;
+    readonly maxBodyBytes?: number | undefined;
+    readonly sessionIdleMs?: number | undefined;
+}
 
 // (No @packageDocumentation comment for this package)
 

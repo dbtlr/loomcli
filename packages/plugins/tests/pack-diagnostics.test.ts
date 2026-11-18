@@ -164,6 +164,7 @@ const pinnedElsewhere = [
   'config/strict-schema-path',
   'manifest/failure-code-conflict',
   'manpage/page-name-taken',
+  'mcp/broken-authorize-hook',
   'mcp/property-name-taken',
   'mcp/required-input-excluded',
   'mcp/tool-name-taken',

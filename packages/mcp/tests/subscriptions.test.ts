@@ -88,7 +88,7 @@ describe('shutdown when stdin ends', () => {
 });
 
 describe("the run's signal", () => {
-  it('aborts every call and ends the run with nothing more written', async () => {
+  it('aborts every call, answers none of them, and tears down each subscription with its id', async () => {
     const session = open();
     session.send(request(1, 'subscriptions/listen'));
     await expect(session.next()).resolves.toEqual(acknowledged(1));
@@ -98,7 +98,20 @@ describe("the run's signal", () => {
     // The run ends with stdin still open: aborting stops reading.
     const { messages, status, stderr } = await session.finish();
     expect(stderr).toBe('started two\naborted two\nresolved\n');
-    expect(messages).toHaveLength(1);
+    expect(messages.slice(1)).toEqual([
+      { jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } },
+      {
+        id: 1,
+        jsonrpc: '2.0',
+        result: {
+          _meta: {
+            'io.modelcontextprotocol/serverInfo': serverInfo,
+            'io.modelcontextprotocol/subscriptionId': 1,
+          },
+          resultType: 'complete',
+        },
+      },
+    ]);
     expect(status).toBe(0);
   });
 });

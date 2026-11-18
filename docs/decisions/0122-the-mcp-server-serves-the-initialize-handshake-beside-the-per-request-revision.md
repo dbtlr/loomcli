@@ -4,7 +4,7 @@ title: ADR-0122 - The MCP server serves the initialize handshake beside the per-
 description: '@loom/mcp serves MCP 2026-07-28 per request and, for a client that opens with initialize, the initialize-era revisions 2025-11-25 and 2025-06-18 on the same connection. A request whose params._meta names a protocol version is served on 2026-07-28; any other is served on the revision initialize negotiated, in that revision''s shape. This narrows ADR-0063''s one pinned revision and withdraws its rejection of serving both eras.'
 status: accepted
 created: 2026-10-30
-modified: 2026-11-02
+modified: 2026-11-18
 ---
 
 # ADR-0122 - The MCP server serves the initialize handshake beside the per-request revision
@@ -41,3 +41,4 @@ Accepted in 0.17.0.
 ## Changelog
 
 - 2026-10-30: Proposed with the fix (LM-425). It narrows ADR-0063's "One pinned revision" to the per-request revision and withdraws ADR-0063's rejection of serving both eras, whose premise Codex falsifies. ADR-0063 carries a dated entry.
+- 2026-11-18: [ADR-0184](0184-the-mcp-plugin-also-serves-its-tools-over-streamable-http-at-an-address-the-operator-names.md), proposed, serves both eras over streamable HTTP too. A `2026-07-28` request is served statelessly, and an `initialize` opens a session that holds what this record's connection holds, the negotiated revision and the calls in flight, as the protocol scopes the initialize era to the session over HTTP. Over stdio the connection is still the process. Every other rule here stands. It binds when that record is accepted.

@@ -138,18 +138,87 @@ function unknownTool(tool: string): string {
   return `Unknown tool "${shown(tool)}". Call tools/list for the tool names.`;
 }
 
+const httpAddressIssue =
+  'Supply a port, such as 8080, or host:port, such as 127.0.0.1:8080 or [::1]:8080.';
+
+/** The cause of a bind failure, by the system error's code, and the step that answers it. */
+function bindCause(code: string): string {
+  if (code === 'EADDRINUSE') {
+    return 'another program is using that port. Run it with another port, or with 0 to take any free port.';
+  }
+  if (code === 'EACCES') {
+    return 'the system does not permit this program to use that port. Run it with a port at or above 1024.';
+  }
+  if (code === 'EADDRNOTAVAIL') {
+    return 'that address is not one this machine has. Run it with an address this machine has, or with a port alone.';
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return 'its host name does not resolve. Run it with an address, or with a host name that resolves.';
+  }
+  return `listening failed with the system error ${shown(code)}. Run it with another address, or free the one it names.`;
+}
+
+function bindFailed(name: string, written: string, code: string): string {
+  return `${shown(name)} mcp cannot serve at ${shown(written)}, because ${bindCause(code)}`;
+}
+
+function openNetworkWarning(written: string): string {
+  return `Serving at ${shown(written)}, which other hosts can reach, with no authorize hook, so any host that reaches it can call the tools without credentials. Serve on 127.0.0.1, or put the server behind something that authenticates.`;
+}
+
+function cleartextWarning(written: string): string {
+  return `Serving at ${shown(written)} over plain HTTP, so requests and their credentials cross the network unencrypted, where anyone on the path can read and replay them. Put TLS in front of the server, such as a reverse proxy that terminates it.`;
+}
+
+/** The `debug` log line for a request refused for its `Origin`. */
+function originRefusedLine(origin: string): {
+  readonly template: string;
+  readonly fields: { readonly origin: string };
+} {
+  return {
+    fields: { origin },
+    template:
+      'Refused a request from origin {origin}, because this server answers no browser request.',
+  };
+}
+
+/** The `debug` log line for a request the authorize hook refused. */
+const unauthorizedLine = 'Refused a request the authorize hook did not allow.';
+
+/** The `error` log event for an HTTP connection the server could not accept, such as on EMFILE. */
+const serverErrorLine =
+  'The HTTP server could not accept a connection ({code}). It will keep serving; free system resources if this continues.';
+
+/** The `error` log event for a throw of the authorize hook, whose `error` field carries the throw. */
+const hookThrewLine = 'The authorize hook threw, so the request was answered 500.';
+
+const brokenAuthorizeHook =
+  'The authorize hook given to mcp() threw while it judged a request, so the server answered that request with 500.';
+
+const brokenAuthorizeHookCorrection =
+  'Return true or false from authorize for every request, and throw from it for none.';
+
 export type { Child, Names };
 export {
   addFailed,
   agentMissing,
   argumentsNotObject,
+  bindFailed,
+  brokenAuthorizeHook,
+  brokenAuthorizeHookCorrection,
   buildNote,
   cannotTell,
   checkedRecord,
+  cleartextWarning,
+  hookThrewLine,
+  serverErrorLine,
+  httpAddressIssue,
   nameHeld,
   noAgent,
   noLongerRecorded,
   nothingToRemove,
+  openNetworkWarning,
+  originRefusedLine,
   pathHoldsControl,
   recordUnreadable,
   registered,
@@ -160,6 +229,7 @@ export {
   runtimeFlagsDropped,
   skippedAgent,
   staysRegistered,
+  unauthorizedLine,
   uninstallIncomplete,
   unknownTool,
   unlistedArgument,
