@@ -25,15 +25,19 @@ import { identifier, posixQuoted } from '../shell-quoting.js';
  *   like an assignment. With several matches each entry holds its word escaped, so the common
  *   prefix readline inserts is escaped text; the list shows escaped words.
  * - No `compgen -f` or `compgen -d` is called, because in a completion Bash 3.2 expands the
- *   directory part of its word. Without `_filedir`, `__<id>_offer_files` lists file names by
- *   pathname expansion of the dequoted word with only a trailing `*` unquoted, so nothing typed
- *   is expanded or run, and a `$HOME` or `~` in the word is never rewritten. It escapes each name
- *   itself rather than setting `-o filenames`.
+ *   directory part of its word. `__<id>_offer_files` lists file names by pathname expansion of
+ *   the dequoted word with only a trailing `*` unquoted, so nothing typed is expanded or run, and
+ *   a `$HOME` or `~` in the word is never rewritten. It escapes each name itself rather than
+ *   setting `-o filenames`.
  * - Without the bash-completion package, `__<id>_comp_words` builds `words`, `cword`, and `cur`
- *   from `COMP_WORDS` as `-n =:` does, and directives 8 and 16 fall back to `__<id>_offer_files`
- *   with the extensions compared as strings.
- * - The extension list is quoted rather than expanded unquoted, and `_filedir` gets one argument
- *   rather than a command string.
+ *   from `COMP_WORDS` as `-n =:` does.
+ * - Directives 8 and 16 list file names through `__<id>_offer_files`, with or without the
+ *   bash-completion package, rather than through `_filedir`, whose extension match ignores case.
+ *   An extension is compared as a string, and the compspec's default file completion is turned
+ *   off, so a name no hint accepts is never offered.
+ * - Under directives 8 and 16, a first answer word that starts with `-` is the lead of a value
+ *   attached to its option, such as `--config=` or `-c`: the names are listed for the rest of the
+ *   word, and each is offered behind the lead. No answer word names a folder to list in.
  * - The current word is not trimmed after `=`; `__<id>_handle_special_char` trims the inserted
  *   words instead.
  * - An error, a failed call, or an unreadable answer turns default file completion off.
@@ -253,9 +257,9 @@ __${id}_process_completion_results() {
     done <<<"\${out}"
 
     if (((directive & shellCompDirectiveFilterFileExt) != 0)); then
-        __${id}_filter_file_extensions
+        __${id}_offer_filtered_files extensions
     elif (((directive & shellCompDirectiveFilterDirs) != 0)); then
-        __${id}_filter_directories
+        __${id}_offer_filtered_files dirs
     else
         __${id}_handle_completion_types
         # Without compopt the compspec carries no default file completion, so
@@ -291,19 +295,26 @@ __${id}_quote() {
 }
 
 # Lists the file names that start with the word under the cursor into the
-# caller's names array; a directory ends in /. Like readline's own, it reads
-# the part of the word after the last = or : that is a word break. The dequoted
-# word is expanded as a quoted pattern with only a trailing * unquoted, so
-# nothing in it is expanded or run and no $HOME or ~ in it is rewritten.
+# caller's names array; a directory ends in /. A word that starts with the lead
+# given as the first argument, such as -c, lists the names for the rest of it,
+# and any other word lists nothing. Without a lead, like readline's own, it
+# reads the part of the word after the last = or : that is a word break. The
+# dequoted word is expanded as a quoted pattern with only a trailing * unquoted,
+# so nothing in it is expanded or run and no $HOME or ~ in it is rewritten.
 __${id}_file_names() {
-    local word=$cur dequoted candidate failglob=0
+    local lead=$1 word=$cur dequoted candidate failglob=0
 
     names=()
-    if [[ $COMP_WORDBREAKS == *=* ]]; then
-        word=\${word##*=}
-    fi
-    if [[ $COMP_WORDBREAKS == *:* ]]; then
-        word=\${word##*:}
+    if [[ -n $lead ]]; then
+        [[ $word == "$lead"* ]] || return 1
+        word=\${word#"$lead"}
+    else
+        if [[ $COMP_WORDBREAKS == *=* ]]; then
+            word=\${word##*=}
+        fi
+        if [[ $COMP_WORDBREAKS == *:* ]]; then
+            word=\${word##*:}
+        fi
     fi
     __${id}_dequote "$word" || return 1
     if shopt -q failglob; then
@@ -323,13 +334,14 @@ __${id}_file_names() {
 
 # Offers the file names __${id}_file_names lists: all of them (any), only the
 # directories (dirs), or the directories and the names that end in an offered
-# extension, compared as strings (extensions). Each is escaped by
-# __${id}_quote, because the compspec has no filenames option to quote it, and
-# a sole directory takes no space after it.
+# extension, compared as strings (extensions). Each is offered behind the lead
+# given as the second argument, if any, and escaped by __${id}_quote, because
+# the compspec has no filenames option to quote it. A sole directory takes no
+# space after it.
 __${id}_offer_files() {
-    local kind=$1 names=() name filter keep quoted
+    local kind=$1 lead=$2 names=() name filter keep quoted
 
-    __${id}_file_names || return 1
+    __${id}_file_names "$lead" || return 1
     for name in "\${names[@]}"; do
         keep=1
         if [[ $name != */ && $kind != any ]]; then
@@ -341,7 +353,7 @@ __${id}_offer_files() {
             fi
         fi
         if ((keep)); then
-            __${id}_quote "$name"
+            __${id}_quote "$lead$name"
             COMPREPLY+=("$quoted")
         fi
     done
@@ -351,39 +363,22 @@ __${id}_offer_files() {
     return 0
 }
 
-# File completion filtered by the offered extensions.
-__${id}_filter_file_extensions() {
-    local fullFilter="" filter
+# Under directive 8 or 16 the script lists the file names itself, so the
+# compspec's default file completion is turned off, and nothing else is listed
+# when no name qualifies. A first word that starts with - is the lead of a value
+# attached to its option, such as --config= or -c, and the rest are extensions.
+__${id}_offer_filtered_files() {
+    local lead=''
 
-    if declare -F _filedir >/dev/null 2>&1; then
-        for filter in "\${completions[@]}"; do
-            fullFilter+="$filter|"
-        done
-        __${id}_debug "File filtering extensions: $fullFilter"
-        _filedir "$fullFilter"
-        return
+    if [[ $(type -t compopt) == builtin ]]; then
+        compopt +o default
     fi
-    __${id}_offer_files extensions
-}
-
-# File completion for directories only, inside the offered directory if any.
-__${id}_filter_directories() {
-    local subdir=\${completions[0]}
-
-    if [[ -n $subdir ]]; then
-        __${id}_debug "Listing directories in $subdir"
-        pushd -- "$subdir" >/dev/null 2>&1 || return
-    else
-        __${id}_debug "Listing directories in ."
+    if [[ \${completions[0]-} == -* ]]; then
+        lead=\${completions[0]}
+        completions=("\${completions[@]:1}")
     fi
-    if declare -F _filedir >/dev/null 2>&1; then
-        _filedir -d
-    else
-        __${id}_offer_files dirs
-    fi
-    if [[ -n $subdir ]]; then
-        popd >/dev/null 2>&1
-    fi
+    __${id}_debug "Listing the files for the lead '$lead' and the extensions \${completions[*]}"
+    __${id}_offer_files "$1" "$lead"
 }
 
 __${id}_handle_completion_types() {

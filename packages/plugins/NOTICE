@@ -58,15 +58,17 @@ Changes made to the Cobra scripts:
   word escaped, so the common prefix readline inserts is escaped text, and the
   list shows the escaped words.
 - Bash calls no compgen -f or compgen -d, because in a completion Bash 3.2
-  expands the directory part of their word. Without _filedir, the script lists
-  file names by pathname expansion of the dequoted word with only a trailing
-  "*" unquoted, so nothing typed is expanded or run and a $HOME or "~" in the
-  word is never rewritten. It escapes each name itself rather than setting
-  -o filenames.
+  expands the directory part of their word. Where it lists file names itself,
+  the script lists them by pathname expansion of the dequoted word with only a
+  trailing "*" unquoted, so nothing typed is expanded or run and a $HOME or "~"
+  in the word is never rewritten. It escapes each name itself rather than
+  setting -o filenames.
 - Bash without the bash-completion package builds its words from COMP_WORDS the
-  way _get_comp_words_by_ref -n =: does, and honors directives 8 and 16 with
-  that file listing and a string comparison of file extensions. The extension
-  list is quoted when it is passed to _filedir.
+  way _get_comp_words_by_ref -n =: does.
+- Bash honors directives 8 and 16 with that file listing and a string
+  comparison of file extensions, with or without the bash-completion package,
+  rather than through _filedir, and turns default file completion off under
+  both where compopt exists, so no other file name is offered.
 - Bash without compopt, such as Bash 3.2, registers without -o default, so an
   error or a failed call never falls through to file names. The script
   completes file names itself with that file listing, only when the directive
@@ -83,9 +85,18 @@ Changes made to the Cobra scripts:
   __loom_<identifier>_debug, so no application name shadows a completion system
   function such as _describe, _files, or _arguments. The file still runs the
   function when compinit autoloads it as _<name>.
+- Zsh honors directives 8 and 16 with _path_files -/ and one -g pattern per
+  extension, rather than _files, which falls back to every file name.
 - Fish filters by prefix with a string comparison, keeps trailing empty lines
-  in the answer, and offers nothing rather than file names after an error. As
-  in Cobra's script, Fish completes every file name under directives 8 and 16.
+  in the answer, and offers nothing rather than file names after an error. Fish
+  honors directives 8 and 16 by listing the names that start with the typed
+  word through its own expansion of a variable, which expands nothing the word
+  holds, rather than completing every file name.
+- Under directives 8 and 16, every script reads a first answer word that starts
+  with - as the lead of a value attached to its option, such as --config= or
+  -c, lists the file names for the rest of the word, and inserts each behind
+  the lead. No answer word names a folder to list in, so the handling of one
+  under directive 16 is removed.
 - Directive numbers are written as literals, and comments are adjusted.
 - PowerShell's Invoke-Expression is removed. The program is resolved with
   Get-Command, an application alone off Windows. On Windows it is called

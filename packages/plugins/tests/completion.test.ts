@@ -134,14 +134,16 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Application, Command, locate } from '@loomcli/core';
+import { Application, Command, DeclarationError, locate } from '@loomcli/core';
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
 import { describe, expect, it } from 'vite-plus/test';
 
 import { sealedShellEnvironment } from '../../../scripts/test-shell.js';
 import { answer } from '../src/completion/answer.js';
 import { bashScript } from '../src/completion/bash.js';
+import { completionArgument, completionInput } from '../src/completion/extension.js';
 import { fishScript } from '../src/completion/fish.js';
+import { completion } from '../src/completion/plugin.js';
 import { powershellScript } from '../src/completion/powershell.js';
 import { zshInstalledScript, zshScript } from '../src/completion/zsh.js';
 import { format } from '../src/format/plugin.js';
@@ -526,6 +528,228 @@ describe('the answer', () => {
         4,
       ),
     );
+  });
+});
+
+/** The declaration that receives a hint validates it, so a malformed hint is that call's throw. */
+const declared = (value: ReturnType<typeof completionInput>) => () =>
+  new Command('x').option('o', { extensions: [value], type: 'string' });
+
+describe('a static value hint', () => {
+  /** An application whose inputs each carry one hint, and one carries a hint beside a closed set. */
+  const graph = new Application('kit')
+    .command(
+      new Command('load')
+        .option('config', {
+          extensions: [completionInput({ extensions: ['json', 'tar.gz'] })],
+          short: 'c',
+          type: 'string',
+        })
+        .option('into', {
+          extensions: [completionInput({ directories: true })],
+          short: 'i',
+          type: 'string',
+        })
+        .option('verbose', { short: 'v', type: 'boolean' })
+        .option('name', { extensions: [completionInput({ none: true })], type: 'string' })
+        .option('any', { extensions: [completionInput({ files: true })], type: 'string' })
+        .option('pair', {
+          arity: 2,
+          extensions: [completionInput({ extensions: ['yaml'] })],
+          type: 'string',
+        })
+        .option('mode', {
+          extensions: [completionInput({ directories: true })],
+          type: 'string',
+          validate: shaped({ enum: ['fast', 'slow'] }),
+        })
+        .argument('source', { extensions: [completionArgument({ extensions: ['csv'] })] })
+        .action(() => {}),
+    )
+    .command(
+      new Command('enter')
+        .argument('folder', { extensions: [completionArgument({ directories: true })] })
+        .action(() => {}),
+    )
+    .command(
+      new Command('quiet')
+        .argument('word', { extensions: [completionArgument({ none: true })] })
+        .action(() => {}),
+    )
+    .command(
+      new Command('wide')
+        .argument('file', { extensions: [completionArgument({ files: true })] })
+        .action(() => {}),
+    )
+    .command(
+      new Command('route')
+        .argument('path', { extensions: [completionArgument({ commands: true })], variadic: true })
+        .action(() => {}),
+    )
+    .command(
+      new Command('task', { description: 'Work with tasks.' })
+        .alias('todo')
+        .visibleAlias('tk')
+        .command(new Command('show', { description: 'Show a task.' }).action(() => {}))
+        .command(new Command('shelve', { description: 'Shelve a task.' }).action(() => {}))
+        .command(new Command('shred', { hidden: true }).action(() => {}))
+        .command(new Command('shim', { deprecated: 'Use show.' }).action(() => {})),
+    )
+    .command(new Command('team', { description: 'Work with teams.' }).action(() => {}))
+    .command(new Command('secret', { hidden: true }).action(() => {}))
+    .inspect();
+  const at = (...words: string[]) => answer(graph, locate(graph, words), words);
+
+  it('extensions offer the extensions themselves under directive 8, whatever is typed of the file', () => {
+    const offered = framed(['json', 'tar.gz'], 8);
+    expect(at('load', '--config', '')).toBe(offered);
+    expect(at('load', '--config', 'conf')).toBe(offered);
+    expect(at('load', '-c', 'conf')).toBe(offered);
+    expect(at('load', '-vc', 'conf')).toBe(offered);
+    expect(at('load', '')).toBe(framed(['csv'], 8));
+    expect(at('load', 'data')).toBe(framed(['csv'], 8));
+  });
+
+  it('a value attached to its option writes the lead first, so the script lists files for the rest', () => {
+    expect(at('load', '--config=')).toBe(framed(['--config=', 'json', 'tar.gz'], 8));
+    expect(at('load', '--config=conf')).toBe(framed(['--config=', 'json', 'tar.gz'], 8));
+    expect(at('load', '-cconf')).toBe(framed(['-c', 'json', 'tar.gz'], 8));
+    expect(at('load', '-c=conf')).toBe(framed(['-c=', 'json', 'tar.gz'], 8));
+    expect(at('load', '-vcconf')).toBe(framed(['-vc', 'json', 'tar.gz'], 8));
+    expect(at('load', '--into=sr')).toBe(framed(['--into='], 16));
+    expect(at('load', '-isr')).toBe(framed(['-i'], 16));
+  });
+
+  it('directories offer no word under directive 16, at an option value and at an argument', () => {
+    expect(at('load', '--into', '')).toBe(framed([], 16));
+    expect(at('load', '-i', 'sr')).toBe(framed([], 16));
+    expect(at('enter', '')).toBe(framed([], 16));
+    expect(at('enter', 'sr')).toBe(framed([], 16));
+  });
+
+  it('a hint that filters files gives way to the children a Command position matches', () => {
+    const parent = new Application('kit')
+      .command(
+        new Command('table')
+          .argument('source', { extensions: [completionArgument({ extensions: ['csv'] })] })
+          .command(new Command('show', { description: 'Show a table.' }).action(() => {}))
+          .action(() => {}),
+      )
+      .inspect();
+    const where = (...words: string[]) => answer(parent, locate(parent, words), words);
+    expect(where('table', 'sh')).toBe(framed(['show\tShow a table.'], 4));
+    expect(where('table', 'data')).toBe(framed(['csv'], 8));
+  });
+
+  it('none offers no word and no file name under directive 4', () => {
+    expect(at('load', '--name', '')).toBe(framed([], 4));
+    expect(at('load', '--name=')).toBe(framed([], 4));
+    expect(at('quiet', '')).toBe(framed([], 4));
+  });
+
+  it('files offer no word and leave the shell its file names under directive 0', () => {
+    expect(at('load', '--any', '')).toBe(framed([], 0));
+    expect(at('load', '--any=')).toBe(framed([], 0));
+    expect(at('wide', '')).toBe(framed([], 0));
+  });
+
+  it('an arity option offers its hint at each word it takes, and the next word is read afresh', () => {
+    expect(at('load', '--pair', '')).toBe(framed(['yaml'], 8));
+    expect(at('load', '--pair', 'a.yaml', '')).toBe(framed(['yaml'], 8));
+    expect(at('load', '--pair', 'a.yaml', 'b.yaml', '')).toBe(framed(['csv'], 8));
+  });
+
+  it('a closed set the schema names wins over the hint, so an operator is offered only valid values', () => {
+    expect(at('load', '--mode', '')).toBe(framed(['fast', 'slow'], 4));
+    expect(at('load', '--mode=s')).toBe(framed(['--mode=slow'], 4));
+  });
+
+  it('commands offer the children of the Command the earlier words reached, as a path from the root', () => {
+    // A visible alias stands in only where the canonical name does not match, and a hidden or
+    // Deprecated Command is never offered, though a typed one routes.
+    expect(at('route', '')).toBe(
+      framed(
+        [
+          'load',
+          'enter',
+          'quiet',
+          'wide',
+          'route',
+          'task\tWork with tasks.',
+          'team\tWork with teams.',
+        ],
+        4,
+      ),
+    );
+    expect(at('route', 't')).toBe(framed(['task\tWork with tasks.', 'team\tWork with teams.'], 4));
+    expect(at('route', 'tk')).toBe(framed(['tk\tWork with tasks.'], 4));
+    expect(at('route', 'task', '')).toBe(
+      framed(['show\tShow a task.', 'shelve\tShelve a task.'], 4),
+    );
+    expect(at('route', 'task', 'sh')).toBe(
+      framed(['show\tShow a task.', 'shelve\tShelve a task.'], 4),
+    );
+    expect(at('route', 'task', 'shr')).toBe(framed([], 4));
+    expect(at('route', 'todo', 'sho')).toBe(framed(['show\tShow a task.'], 4));
+    expect(at('route', 'secret', '')).toBe(framed([], 4));
+    expect(at('route', 'task', 'show', '')).toBe(framed([], 4));
+    expect(at('route', 'nope', '')).toBe(framed([], 4));
+  });
+
+  it('commands read only the words the argument holds, not an option or its value', () => {
+    const wide = new Application('kit')
+      .globalOption('color', { type: 'string' })
+      .command(
+        new Command('see')
+          .option('as', { type: 'string' })
+          .argument('path', {
+            extensions: [completionArgument({ commands: true })],
+            variadic: true,
+          })
+          .action(() => {}),
+      )
+      .command(new Command('task').command(new Command('show').action(() => {})))
+      .inspect();
+    const where = (...words: string[]) => answer(wide, locate(wide, words), words);
+    expect(where('see', '--as', 'x', 'task', '--color', 'red', 's')).toBe(framed(['show'], 4));
+  });
+
+  it('a value that holds two hints, none, commands on an option, or a malformed extension is the invalid-extension-value fault', () => {
+    const faults = [
+      // @ts-expect-error A value holds one hint.
+      completionInput({ directories: true, files: true }),
+      // @ts-expect-error A value holds a hint.
+      completionInput({}),
+      completionInput({ extensions: [] }),
+      completionInput({ extensions: ['.json'] }),
+      completionInput({ extensions: ['a b'] }),
+      completionInput({ extensions: ['js|ts'] }),
+      // @ts-expect-error A hint that is on is true.
+      completionInput({ none: false }),
+      // @ts-expect-error Only an argument reads the words before it as a path of Commands.
+      completionInput({ commands: true }),
+    ];
+    for (const value of faults) {
+      expect(declared(value)).toThrow(DeclarationError);
+    }
+  });
+});
+
+describe('the help Command', () => {
+  const graph = new Application('app', { plugins: [help({ command: true }), completion()] })
+    .command(
+      new Command('task', { description: 'Work with tasks.' }).command(
+        new Command('show', { description: 'Show a task.' }).action(() => {}),
+      ),
+    )
+    .command(new Command('secret', { hidden: true }).action(() => {}))
+    .inspect();
+  const at = (...words: string[]) => answer(graph, locate(graph, words), words);
+
+  it('offers the Commands its words have reached, and never a hidden one', () => {
+    expect(at('help', 'ta')).toBe(framed(['task\tWork with tasks.'], 4));
+    expect(at('help', 'task', 'sh')).toBe(framed(['show\tShow a task.'], 4));
+    expect(at('help', 's')).toBe(framed([], 4));
   });
 });
 

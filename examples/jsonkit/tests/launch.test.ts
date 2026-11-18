@@ -56,6 +56,7 @@ test('--version loads each plugin Command declaration, no Command implementation
   expect(result.status).toBe(0);
   expect(result.modules).toEqual(
     new Set([
+      'completion/extension.js',
       'completion/plugin.js',
       'completion/shell-names.js',
       // Bun shares these helpers with the change-event templates in the common message module.

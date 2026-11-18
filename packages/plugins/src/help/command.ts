@@ -1,6 +1,8 @@
 import { Command, UnknownCommandError } from '@loomcli/core';
 import type { CommandNode } from '@loomcli/core';
 
+import { completionArgument } from '../completion/extension.js';
+
 /**
  * The Command the words name, taken child by child from the root, each word the canonical name or an
  * alias of a child of the Command reached so far. Hidden and deprecated Commands resolve, as
@@ -39,6 +41,8 @@ export function helpCommandFor(paging: boolean) {
     .argument('command', {
       description:
         'The command to show help for, as you would type it. The application itself when left out.',
+      // Completion offers the Commands the earlier words have reached.
+      extensions: [completionArgument({ commands: true })],
       variadic: true,
     })
     .action(async (context) => {

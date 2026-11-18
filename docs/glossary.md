@@ -796,6 +796,10 @@ _Avoid_: Help subcommand, help topic, `helpCommand` (the extension that carries 
 The projection a shell reads while the operator types: a script, printed or installed, that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
+**Value hint**:
+The one static fact an author gives about how an option's or an argument's value completes when its schema names no closed set: file names, files of some extensions, directories only, nothing, or, for an argument only, the Commands the argument's earlier words have reached. It is a `completionInput` value on an option or a `completionArgument` value on an argument, which completion reads and core reports as any extension value.
+_Avoid_: Completer (a function that computes values), completion type, value kind
+
 **Man page**:
 The projection of one Command that the manpage plugin writes as a section-1 roff file for `man`: its name and summary, usage, details, members with their environment and configuration bindings, and examples. Each Command that is neither hidden nor under a hidden Command has one, named for the Command's path, such as `jsonkit-get`, and a page's bytes depend only on the graph.
 _Avoid_: Manual page, manpage (outside the plugin's name), roff page, help page

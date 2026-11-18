@@ -59,3 +59,4 @@ Accepted in 0.19.0.
 ## Changelog
 
 - 2026-11-15: Proposed with arguments beside children on a Command with an action (LM-403). It supersedes ADR-0004's exclusivity for a Command with an action and narrows ADR-0025, ADR-0033, ADR-0042, ADR-0055, ADR-0063, ADR-0073, ADR-0074, ADR-0076, ADR-0093, ADR-0140, ADR-0152, and ADR-0159, each of which carries a dated entry.
+- 2026-11-18: [ADR-0180](0180-an-author-hints-an-inputs-completion-with-one-static-value-hint.md), proposed, narrows the Decision's rule that a `command` position whose argument has no closed set offers the children with directive `0`. Where that argument carries a value hint, the hint's directive applies: `extensions` or `directories` filters file names only where no child's name starts with the prefix, and offers the matching children with directive `4` otherwise, `none` and `commands` give directive `4`, and `files` keeps `0`. It binds when that record is accepted.

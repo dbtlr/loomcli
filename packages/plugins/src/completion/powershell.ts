@@ -46,7 +46,9 @@ import { identifier, powershellQuoted } from '../shell-quoting.js';
  *   after a sole word is kept, unless directive 2 is set; the descriptions it wrote into the text
  *   of several words, and the spaces of its MenuComplete mode, are removed.
  * - Directives 8 and 16 list the folder that the word under the cursor names, read literally,
- *   rather than falling back to every file name.
+ *   rather than falling back to every file name. A first answer word that starts with `-` is the
+ *   lead of a value attached to its option, such as `--config=` or `-c`: the names after it are
+ *   listed, each inserted behind it. No answer word names a folder to list in.
  * - Directive numbers are written as literals, and values are kept in arrays.
  */
 export function powershellScript(name: string): string {
@@ -325,19 +327,28 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
            (($Directive -band $ShellCompDirectiveFilterDirs) -ne 0 ))  {
             # List the folder the word under the cursor names, read literally:
             # its directories, and under FilterFileExt its files that end in an
-            # offered extension, compared as strings. Under FilterDirs, an
-            # offered word names the folder to list in.
+            # offered extension, compared as strings.
             $DirectoriesOnly = ($Directive -band $ShellCompDirectiveFilterDirs) -ne 0
-            $Split = $Current.LastIndexOfAny([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
-            $Folder = $Current.Substring(0, $Split + 1)
-            $Leaf = $Current.Substring($Split + 1)
+            # A first offered word that starts with - is the lead of a value
+            # attached to its option, such as --config= or -c: the names after
+            # it are listed, each inserted behind it, and a word without it
+            # lists nothing.
+            $Lead = ""
+            $Typed = $Current
+            if ($Values.Count -gt 0 -and $Values[0].Name.StartsWith("-", [System.StringComparison]::Ordinal)) {
+                $Lead = $Values[0].Name
+                $Values = @($Values | Select-Object -Skip 1)
+                if (-not $Typed.StartsWith($Lead, [System.StringComparison]::Ordinal)) {
+                    return ""
+                }
+                $Typed = $Typed.Substring($Lead.Length)
+            }
+            $Split = $Typed.LastIndexOfAny([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
+            $Folder = $Typed.Substring(0, $Split + 1)
+            $Leaf = $Typed.Substring($Split + 1)
             $Base = $ExecutionContext.SessionState.Path.CurrentFileSystemLocation.ProviderPath
             $Extensions = @()
-            if ($DirectoriesOnly) {
-                if ($Values.Count -gt 0) {
-                    $Base = [System.IO.Path]::Combine($Base, $Values[0].Name)
-                }
-            } else {
+            if (-not $DirectoriesOnly) {
                 $Extensions = @($Values | ForEach-Object { "." + $_.Name })
             }
             __${id}_debug "Listing $Folder in $Base for extensions $Extensions"
@@ -351,7 +362,7 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
             }
             # A sole file takes a space after it, and a directory none.
             $Entries | ForEach-Object {
-                $Text = $Folder + $_.Name
+                $Text = $Lead + $Folder + $_.Name
                 $Type = 'ProviderItem'
                 $After = ""
                 if ($_.PSIsContainer) {
