@@ -363,5 +363,17 @@ export interface ProgressEvent {
 export interface ResultBinding {
   path: readonly string[];
   result: DeclaredResult | undefined;
+  /** The run's result transform, applied ahead of the selected view, or `undefined` for none. */
+  transform: ResultTransform | undefined;
   view: string | null;
 }
+
+/**
+ * A function a middleware assigns through `transform` to reshape a run's result before the selected
+ * view renders it: called once with a value result, and once with each row of a rows result as the
+ * row arrives. Its answer is what the view receives, and a throw fails the run through the ordinary
+ * failure path, as a view's throw does.
+ *
+ * @public
+ */
+export type ResultTransform = (value: unknown) => unknown;

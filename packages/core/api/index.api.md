@@ -1190,6 +1190,8 @@ export interface MiddlewareContext<Options extends PluginOptions = PluginOptions
     readonly request: Request_2 | null;
     readonly signal: AbortSignal;
     readonly spellings: PluginOptionSpellings<Options>;
+    get transform(): ResultTransform | undefined;
+    set transform(transform: ResultTransform);
     get view(): string | null;
     set view(name: string);
 }
@@ -1667,6 +1669,9 @@ export interface ResultNode {
     readonly mediaTypes: Readonly<Record<string, string | null>>;
     readonly views: readonly string[];
 }
+
+// @public
+export type ResultTransform = (value: unknown) => unknown;
 
 // @public
 export type ResultView = View<never> | RowView<never>;

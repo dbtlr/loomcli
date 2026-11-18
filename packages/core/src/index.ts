@@ -219,6 +219,7 @@ export type {
   RegionOptions,
   RenderedData,
   ResultInput,
+  ResultTransform,
   ResultView,
   ResultViews,
   RowViewOver,

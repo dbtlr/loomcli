@@ -17,6 +17,14 @@ function fixtureApplication(name: string) {
   });
 
   const scenarios = {
+    /** A local option "fields" on the Command the hook declares `--fields` on. */
+    'fields-collision': () => {
+      const count = new Command('count')
+        .option('fields', { type: 'string' })
+        .result({ views: { table } })
+        .action(dispatch);
+      return new Application('app', { plugins: [format()] }).command(count);
+    },
     /** A global option "format" on the Application, which every Command's hook sees. */
     'global-collision': () => {
       const count = new Command('count').result({ views: { table } }).action(dispatch);

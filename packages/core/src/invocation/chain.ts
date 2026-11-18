@@ -17,7 +17,13 @@ import type { InputPlaces, DeclaredValues } from '../inputs/validation.js';
 import { nodeAt } from '../inspection/inspect.js';
 import type { CommandGraph, CommandNode } from '../inspection/inspect.js';
 import type { Log, LogBinder } from '../output/log.js';
-import type { DeclaredResult, OpenResult, Out, ResultBinding } from '../output/types.js';
+import type {
+  DeclaredResult,
+  OpenResult,
+  Out,
+  ResultBinding,
+  ResultTransform,
+} from '../output/types.js';
 import { loadDefault, pluginSentence, pluginSpellings } from '../plugins/plugin.js';
 import type {
   BuiltPlugin,
@@ -63,7 +69,9 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * assignment before the dispatch boundary wins, and one made after it changes nothing. `mediaType`
  * is the run's media type: the selected view's on a Command that declares a result, and the last
  * one a middleware assigned on a Command that declares none, which a takeover reads to choose its
- * encoding and a failure encoder answers.
+ * encoding and a failure encoder answers. `transform` is the run's result transform, which reshapes
+ * a value result once, and each row of a rows result as it arrives, before the selected view renders
+ * it; the last assignment before the dispatch boundary wins, and none leaves the result as it is.
  *
  * @public
  * @sealed
@@ -104,6 +112,13 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
    */
   get mediaType(): string | undefined;
   set mediaType(type: string);
+  /**
+   * The run's result transform: the function the result passes through before the selected view
+   * renders it, once for a value and once for each row as it arrives, or `undefined` until a
+   * middleware assigns one. The last assignment before the dispatch boundary wins.
+   */
+  get transform(): ResultTransform | undefined;
+  set transform(transform: ResultTransform);
   /** The run's host facts. */
   readonly host: Host;
   /** The channel the middleware writes the run's output through. */
@@ -174,6 +189,7 @@ interface StartingView {
 class ViewSelection {
   #assigned: ViewAssignment | undefined;
   #mediaType: MediaTypeAssignment | undefined;
+  #transform: ResultTransform | undefined;
   #reached = false;
   readonly #result: DeclaredResult | undefined;
 
@@ -243,6 +259,18 @@ class ViewSelection {
   assignMediaType(identity: string, type: string): void {
     if (!this.#reached) {
       this.#mediaType = { identity, type };
+    }
+  }
+
+  /** What `transform` reads: the last result transform assigned, or `undefined` for none. */
+  readTransform(): ResultTransform | undefined {
+    return this.#transform;
+  }
+
+  /** The last result transform assigned before the boundary wins; a later one changes nothing. */
+  assignTransform(transform: ResultTransform): void {
+    if (!this.#reached) {
+      this.#transform = transform;
     }
   }
 
@@ -583,7 +611,7 @@ async function runChain(
     }
     const view = selection.resolve(routed.path);
     run.invoked = true;
-    return prepared.dispatch(view);
+    return prepared.dispatch(view, selection.readTransform());
   };
   const cancelled = () => invocation.signal.aborted;
   if (entries.length === 0) {
@@ -616,6 +644,12 @@ async function runChain(
       request: prepared.request,
       signal: invocation.signal,
       spellings: entry.spellings,
+      get transform(): ResultTransform | undefined {
+        return selection.readTransform();
+      },
+      set transform(transform: ResultTransform) {
+        selection.assignTransform(transform);
+      },
       get view(): string | null {
         return selection.read();
       },

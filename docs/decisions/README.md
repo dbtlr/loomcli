@@ -199,6 +199,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0179](0179-the-logging-plugin-emits-opentelemetry-records-through-the-authors-logger.md) | The logging plugin emits OpenTelemetry records through the author's structural logger, preserving templates, fields, and failure facts without an SDK dependency. | proposed |
 | [ADR-0181](0181-a-command-may-declare-that-it-needs-a-terminal-and-runs-only-at-one.md) | A Command may declare that it needs a terminal; without one it fails before its action, an invocation by name refuses it, and the MCP plugin rejects it as a tool. | proposed |
 | [ADR-0182](0182-failure-hooks-read-received-values-without-putting-them-on-failures.md) | Failure hooks read received values through their context while failures and problems carry no received value. | proposed |
+| [ADR-0183](0183-a-middleware-may-set-one-result-transform-that-reshapes-a-result-before-its-view.md) | A middleware may set one result transform that reshapes a value result, or each row as it arrives, before the selected view renders; the formatter's `--fields` sets one that keeps named top-level keys under json and jsonl. | proposed |
 | [ADR-0185](0185-jsonlrows-streams-json-lines-beside-the-whole-jsonl-view.md) | The formatter streams rows through `jsonlRows()` beside the whole `jsonl()` view, choosing by result unit. | proposed |
 
 ## Adding a record
@@ -393,6 +394,8 @@ ADR-0007, ADR-0008, and ADR-0020 remain accepted except for the specific clauses
 [ADR-0179](0179-the-logging-plugin-emits-opentelemetry-records-through-the-authors-logger.md) supersedes ADR-0069's sentence mapping each event field onto the OpenTelemetry record's Resource, InstrumentationScope, and trace id, extends ADR-0177's destination union and narrows its identical-bytes clause to file and console logging destinations, and narrows ADR-0070's `onError` rule to file destinations. ADR-0069, ADR-0070, and ADR-0177 carry dated entries. ADR-0179 binds when accepted.
 
 [ADR-0181](0181-a-command-may-declare-that-it-needs-a-terminal-and-runs-only-at-one.md) supersedes ADR-0082's considered option that deferred a Command that declares it needs a terminal, and adds a build fault to ADR-0063's MCP tools. ADR-0082 and ADR-0063 carry dated entries. ADR-0181 binds when accepted.
+
+[ADR-0183](0183-a-middleware-may-set-one-result-transform-that-reshapes-a-result-before-its-view.md) narrows ADR-0021's sense that the view alone decides what a result renders as, and ADR-0023's rule that a run reaches a result's rendering by view name alone: one result transform a middleware sets runs ahead of the selected view, and views stay pure. ADR-0021 and ADR-0023 carry dated entries. ADR-0183 binds when accepted.
 
 [ADR-0185](0185-jsonlrows-streams-json-lines-beside-the-whole-jsonl-view.md) supersedes the JSONL clauses of ADR-0028's formatter, separate-factory rejection, and collected-sequence acceptance, and the JSONL part of ADR-0023's 2026-09-15 entry. The hook declares `jsonlRows()` for rows results and `jsonl()` for value results. `json()` and an explicitly declared `jsonl()` remain whole views. ADR-0028 and ADR-0023 carry dated entries. ADR-0185 binds when accepted.
 

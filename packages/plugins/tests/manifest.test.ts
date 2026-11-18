@@ -439,7 +439,7 @@ test('the root slice lists every visible Command and omits the hidden one', asyn
   ]);
 });
 
-test('a result reads kind, views, default, and media types in order, and the formatter option carries its enum and its control mark', async () => {
+test('a result reads kind, views, default, and media types in order, and the formatter options carry the enum and their control marks', async () => {
   const show = entryAt(await documentOf(['show', '--manifest']), []);
   expect(show.result).toEqual({
     default: 'text',
@@ -472,6 +472,28 @@ test('a result reads kind, views, default, and media types in order, and the for
         enum: ['text', 'json', 'jsonl'],
         type: 'string',
       },
+      short: null,
+      type: 'string',
+    },
+    {
+      aliases: [],
+      arity: null,
+      background: false,
+      control: true,
+      default: null,
+      deprecated: null,
+      description: 'Select top-level fields of json and jsonl output, as a comma list.',
+      env: [],
+      envAllowEmpty: false,
+      envDelimiter: null,
+      implied: null,
+      lastWins: false,
+      long: '--fields',
+      multiple: true,
+      name: 'fields',
+      required: false,
+      requiredWhen: null,
+      schema: { $schema: 'https://json-schema.org/draft/2020-12/schema', type: 'string' },
       short: null,
       type: 'string',
     },
