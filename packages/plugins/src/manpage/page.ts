@@ -31,6 +31,8 @@ import {
   notesEscape,
   optionMembers,
   usageForms,
+  needsProducer,
+  terminalNeed,
   visible,
 } from '../help-page.js';
 import type { Example } from '../help-page.js';
@@ -155,7 +157,7 @@ function synopsis({ children, command, graph }: Subject): string[] {
         '.nf',
         ...forms.map((form) =>
           textLine(
-            command.stdin?.required && command.hasAction && form === firstForm
+            needsProducer(command) && form === firstForm
               ? `${escapeText('<producer> | ', 'noFill')}${form}`
               : form,
           ),
@@ -183,7 +185,7 @@ function mastheadParagraphs(command: CommandNode): string[] {
       ? []
       : [textLine(escapeText(`Deprecated: ${singleLine(command.deprecated)}`))];
   const terminal = command.needsTerminal
-    ? [textLine(escapeText('Needs a terminal: stdin and stderr, outside CI.'))]
+    ? [textLine(escapeText(`${terminalNeed.label}${terminalNeed.text}`))]
     : [];
   const opening: string[] = [];
   for (const paragraph of [aliases, terminal, deprecation]) {

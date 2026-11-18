@@ -425,6 +425,24 @@ test('a missing folder fails the build before it bundles', async () => {
   );
 });
 
+test('an entry without files that names a skill the folder does not hold fails the build before it bundles', async () => {
+  const root = notesPackage({
+    'src/application.ts': `import { Application } from '@loomcli/core';
+import { skills } from '@loomcli/plugins/skills';
+
+export const notes = new Application('notes', {
+  description: 'Keep notes.',
+  plugins: [skills({ folder: ${urlFolder}, skills: [{ commands: [[]], name: 'absent' }] })],
+});
+`,
+  });
+  const stderr = await failedBuild(root, ['--target', 'node']);
+  expect(stderr).toContain('@loomcli/plugins/skills/folder');
+  expect(stderr).toContain(
+    `The skills setting lists the skill absent without files, and the skills folder ${join(root, 'skills')} holds no skill absent.`,
+  );
+});
+
 test('two skills() calls that each name a folder fail the build and name both', async () => {
   const root = notesPackage({
     'src/application.ts': `${application(urlFolder)}

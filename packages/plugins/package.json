@@ -139,6 +139,10 @@
       "types": "./dist/src/skills/plugin.d.ts",
       "import": "./dist/src/skills/plugin.js"
     },
+    "./skills/extension": {
+      "types": "./dist/src/skills/extension.d.ts",
+      "import": "./dist/src/skills/extension.js"
+    },
     "./step": {
       "types": "./dist/src/step.d.ts",
       "import": "./dist/src/step.js"

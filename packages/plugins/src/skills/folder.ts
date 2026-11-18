@@ -10,7 +10,8 @@ import { join } from 'node:path';
 
 import { DeclarationError, escapeControlCharacters } from '@loomcli/core';
 
-import { skillsFiles, skillsFolder } from '../rules.js';
+import { skillsFiles } from '../rules.js';
+import { folderFault } from './folder-fault.js';
 import { judged } from './judge.js';
 import { identity, isSkillName } from './settings.js';
 import type { SkillFile } from './types.js';
@@ -26,11 +27,6 @@ const executeBits = 0o111;
 
 /** The count of an empty list. */
 const none = 0;
-
-/** A fault of the skills folder, under the plugin's folder rule. */
-function folderFault(sentence: string, correction: string): DeclarationError {
-  return new DeclarationError(skillsFolder, { correction, sentence });
-}
 
 /** The faults of the folder and what it holds, each with its sentence and correction. */
 const faults = {
@@ -74,9 +70,27 @@ const faults = {
 /** The fault of a listed skill that holds a folder skill's name, under the files rule. */
 function listedTwice(folder: string, name: string): DeclarationError {
   return new DeclarationError(skillsFiles, {
-    correction: 'Give the listed skill another name, or remove it from the list or the folder.',
+    correction:
+      "Give the listed skill another name, remove it from the list or the folder, or leave out its files so the entry names the folder's skill.",
     sentence: `The skills setting lists the skill ${name}, which the skills folder ${escapeControlCharacters(folder)} holds too.`,
   });
+}
+
+/** The fault of an entry without files that names a skill the folder does not hold. */
+function entryWithoutSkill(folder: string, name: string): DeclarationError {
+  return folderFault(
+    `The skills setting lists the skill ${name} without files, and the skills folder ${escapeControlCharacters(folder)} holds no skill ${name}.`,
+    `Add a folder named ${name}, holding its SKILL.md, to the skills folder, or give the entry its files.`,
+  );
+}
+
+/**
+ * The names the `skills` list holds: the listed skills, whose files a loader supplies, and the
+ * entries without files, which name a folder skill.
+ */
+interface ListedNames {
+  readonly listed: readonly string[];
+  readonly selecting: readonly string[];
 }
 
 /** What a path names, following a link, or none for a link that names nothing. */
@@ -169,30 +183,47 @@ function skillsIn(folder: string): FolderSkill[] {
 }
 
 /**
- * Reads and judges the skills folder at an absolute path, throwing the first fault: a path that is
- * not a folder, then in name order a link directly inside it that names nothing, a skill directory
- * whose name is not a skill name, and a skill's files' faults, then a folder that holds no skill
- * when no skill is listed, then a listed skill that holds a folder skill's name. The skills come in
- * name order.
+ * Judges the folder's skills against the `skills` list: a folder that holds no skill when the list
+ * is empty, then a listed skill that holds a folder skill's name, then an entry without files that
+ * names a skill the folder does not hold.
  */
-function readSkillsFolder(
+function judgeListed(
   folder: string,
-  listed: readonly string[],
-  missing: Missing = 'setting',
-): readonly FolderSkill[] {
-  if (followed(folder)?.isDirectory() !== true) {
-    throw missing === 'built' ? faults.carriedNone(folder) : faults.missing(folder);
-  }
-  const skills = skillsIn(folder);
-  if (skills.length === none && listed.length === none) {
+  skills: readonly FolderSkill[],
+  { listed, selecting }: ListedNames,
+): void {
+  if (skills.length === none && listed.length === none && selecting.length === none) {
     throw faults.empty(folder);
   }
   const twice = skills.find(({ name }) => listed.includes(name));
   if (twice !== undefined) {
     throw listedTwice(folder, twice.name);
   }
+  const absent = selecting.find((name) => !skills.some((skill) => skill.name === name));
+  if (absent !== undefined) {
+    throw entryWithoutSkill(folder, absent);
+  }
+}
+
+/**
+ * Reads and judges the skills folder at an absolute path, throwing the first fault: a path that is
+ * not a folder, then in name order a link directly inside it that names nothing, a skill directory
+ * whose name is not a skill name, and a skill's files' faults, then a folder that holds no skill
+ * when the `skills` list is empty, then a listed skill that holds a folder skill's name, then an
+ * entry without files that names a skill the folder does not hold. The skills come in name order.
+ */
+function readSkillsFolder(
+  folder: string,
+  names: ListedNames,
+  missing: Missing = 'setting',
+): readonly FolderSkill[] {
+  if (followed(folder)?.isDirectory() !== true) {
+    throw missing === 'built' ? faults.carriedNone(folder) : faults.missing(folder);
+  }
+  const skills = skillsIn(folder);
+  judgeListed(folder, skills, names);
   return skills;
 }
 
-export type { FolderSkill };
-export { folderFault, readSkillsFolder };
+export type { FolderSkill, ListedNames };
+export { readSkillsFolder };

@@ -142,18 +142,35 @@ function spellings({ long, short }: OptionCellParts, { style }: ViewContext): st
     : `${style.highlight(style.escape(short))}${style.dim(',')} ${highlighted}`;
 }
 
+/**
+ * The left cell of one option row after its spellings: the `...` of a counted option, or the
+ * separator and the value an option takes, each word styled by `word`.
+ */
+function cellAfterSpellings(parts: OptionCellParts, word: (text: string) => string): string {
+  if (parts.trailingEllipsis) {
+    return word('...');
+  }
+  if (parts.value === undefined) {
+    return '';
+  }
+  return `${parts.value.separator}${word(valueText(parts.value, parts.words))}`;
+}
+
 /** The left cell of one option row, its parts styled as help prints them. */
 function optionCell(option: OptionNode, context: ViewContext): string {
   const { style } = context;
   const parts = optionCellParts(option);
-  const cell = spellings(parts, context);
-  if (parts.trailingEllipsis) {
-    return `${cell}${style.dim.italic('...')}`;
-  }
-  if (parts.value === undefined) {
-    return cell;
-  }
-  return `${cell}${parts.value.separator}${style.dim.italic(style.escape(valueText(parts.value, parts.words)))}`;
+  return `${spellings(parts, context)}${cellAfterSpellings(parts, (text) => style.dim.italic(style.escape(text)))}`;
+}
+
+/**
+ * The left cell of one option row as plain text, without its indentation and without the short
+ * spelling and the `, ` after it: `--file <path>` for `-f, --file <path>`. A `shortOnly` option has
+ * no long spelling, so it keeps its short one.
+ */
+function optionLabel(option: OptionNode): string {
+  const parts = optionCellParts(option);
+  return `${parts.long ?? parts.short ?? ''}${cellAfterSpellings(parts, (text) => text)}`;
 }
 
 /**
@@ -330,18 +347,36 @@ function rightCell(text: CellText, facts: readonly Fact[], context: ViewContext)
 function styledFact(fact: Fact, context: ViewContext): string {
   const { style } = context;
   const tone = style[fact.tone];
+  return factWith(fact, {
+    text: (text) => tone(style.escape(text)),
+    unit: (unit) => {
+      const styled = tone(style.escape(unit));
+      return onTerminal(context) ? nowrap(styled) : styled;
+    },
+  });
+}
+
+/**
+ * One fact, its words written by `text` and each name and delimiter by `unit`: the text alone, or
+ * a label, the names, and the delimiter and what it splits the variable into.
+ */
+function factWith(
+  fact: Fact,
+  writer: { readonly text: (text: string) => string; readonly unit: (unit: string) => string },
+): string {
   if (fact.names === undefined) {
-    return tone(style.escape(fact.text));
+    return writer.text(fact.text);
   }
-  const whole = (unit: string) => {
-    const styled = tone(style.escape(unit));
-    return onTerminal(context) ? nowrap(styled) : styled;
-  };
   const list =
     fact.delimiter === undefined
       ? ''
-      : `${tone(` as ${fact.noun ?? 'a list'} separated by `)}${whole(fact.delimiter)}`;
-  return `${tone(style.escape(`${fact.text} `))}${fact.names.map(whole).join(tone(' '))}${list}`;
+      : `${writer.text(` as ${fact.noun ?? 'a list'} separated by `)}${writer.unit(fact.delimiter)}`;
+  return `${writer.text(`${fact.text} `)}${fact.names.map((name) => writer.unit(name)).join(writer.text(' '))}${list}`;
+}
+
+/** One fact as plain text, as help prints it with no style. */
+function plainFact(fact: Fact): string {
+  return factWith(fact, { text: (text) => text, unit: (unit) => unit });
 }
 
 /**
@@ -502,12 +537,15 @@ function optionFacts(option: OptionNode): Fact[] {
  * option's bindings between them and the deprecation, unless its `helpInput` hides them.
  */
 function pageOptionFacts(option: OptionNode): Fact[] {
-  return [
-    ...optionAliasFacts(option),
-    ...kindFacts(option),
-    ...bindingFacts(option),
-    ...deprecatedFacts(option),
-  ];
+  return [...optionAliasFacts(option), ...unaliasedOptionFacts(option)];
+}
+
+/**
+ * The facts a help page prints for one option row with its alias fact left out: its kind's facts,
+ * its bindings, and its deprecation, as a command reference shows them.
+ */
+function unaliasedOptionFacts(option: OptionNode): Fact[] {
+  return [...kindFacts(option), ...bindingFacts(option), ...deprecatedFacts(option)];
 }
 
 /**
@@ -665,7 +703,10 @@ export {
   optionCellParts,
   optionFacts,
   optionForm,
+  optionLabel,
   pageOptionFacts,
+  plainFact,
   rightCell,
   rightCellWith,
+  unaliasedOptionFacts,
 };

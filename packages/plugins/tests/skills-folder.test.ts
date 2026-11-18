@@ -44,7 +44,7 @@ import { pathToFileURL } from 'node:url';
 import { Application, Command, DeclarationError } from '@loomcli/core';
 import type { ReleaseFacts } from '@loomcli/core';
 import { skills } from '@loomcli/plugins/skills';
-import type { SkillsSettings } from '@loomcli/plugins/skills';
+import type { FolderSkillsSettings, SkillsSettings } from '@loomcli/plugins/skills';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { ruleParts } from '../../../scripts/test-rules.js';
@@ -97,7 +97,7 @@ function notesSkill(folder: string) {
 /** Runs `notes ...argv` for an application whose skills plugin takes the settings. */
 async function run(
   box: Box,
-  settings: SkillsSettings,
+  settings: SkillsSettings | FolderSkillsSettings,
   argv: string[],
   build: ReleaseFacts['build'] = 'source',
 ) {
@@ -255,7 +255,7 @@ describe('an unbuilt run', () => {
 /** One fault: how the folder is arranged, and the rule, sentence, and correction it draws. */
 interface FolderFault {
   readonly arrange: (box: Box) => void;
-  readonly settings?: (box: Box) => SkillsSettings;
+  readonly settings?: (box: Box) => SkillsSettings | FolderSkillsSettings;
   readonly build?: ReleaseFacts['build'];
   readonly rule: string;
   readonly sentence: (box: Box) => string;
@@ -312,7 +312,8 @@ const faults: Record<string, FolderFault> = {
   },
   'a listed skill that holds a folder skill name': {
     arrange: notesSkillOf,
-    correction: 'Give the listed skill another name, or remove it from the list or the folder.',
+    correction:
+      "Give the listed skill another name, remove it from the list or the folder, or leave out its files so the entry names the folder's skill.",
     rule: 'files',
     sentence: (box) =>
       `The skills setting lists the skill notes, which the skills folder ${box.folder} holds too.`,
@@ -362,6 +363,15 @@ const faults: Record<string, FolderFault> = {
     rule: 'files',
     sentence: () => 'Skill "notes" lists no SKILL.md.',
   },
+  'an entry without files that names no folder skill': {
+    arrange: notesSkillOf,
+    correction:
+      'Add a folder named review, holding its SKILL.md, to the skills folder, or give the entry its files.',
+    rule: 'folder',
+    sentence: (box) =>
+      `The skills setting lists the skill review without files, and the skills folder ${box.folder} holds no skill review.`,
+    settings: (box) => ({ folder: box.folder, skills: [{ commands: [['ping']], name: 'review' }] }),
+  },
 };
 
 describe('faults', () => {
@@ -409,7 +419,7 @@ function read(request: Partial<FolderRequest> & Pick<FolderRequest, 'carried'>) 
     return folderSkills({
       base: 'file:///nowhere/main.js',
       build: 'distributed',
-      listed: [],
+      names: { listed: [], selecting: [] },
       setting: '../skills',
       ...request,
     }).map(({ files, name }) => ({

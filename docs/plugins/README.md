@@ -56,7 +56,7 @@ A plugin that acts on files, programs, or the environment says what it did at `-
 - [MCP](mcp.md): open it when an application serves its Commands as MCP tools.
 - [Completion](completion.md): open it when an application offers shell completion, or installs it.
 - [Man pages](manpage.md): open it when an application writes or installs man pages.
-- [Skills](skills.md): open it when an application installs its agent skills.
+- [Skills](skills.md): open it when an application installs its agent skills, or generates a reference for the Commands a skill selects.
 
 ### Lifecycle
 

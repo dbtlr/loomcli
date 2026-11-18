@@ -11,8 +11,8 @@ import { FatalError, InputError } from '@loomcli/core';
 import { fileWritten } from '../change-events.js';
 import { exists, recordLeftovers } from '../installation/disk.js';
 import { writeFolder } from '../installation/folders.js';
+import { loadForRun } from './global.js';
 import type { ChildRun } from './global.js';
-import { loadSkills } from './load.js';
 import type { LoadedSkill } from './load.js';
 import {
   directoryMissing,
@@ -132,7 +132,7 @@ async function installProject(run: ChildRun, request: ProjectRequest): Promise<v
   const root = repositoryRoot(startOf(run, request.directory));
   const { agent } = request;
   guardGlobal(run, root, { agent, names: request.skills.skills.map(({ name }) => name) });
-  const loaded = await loadSkills(request.skills, run.host.release.build);
+  const loaded = await loadForRun(run, request.skills);
   // Only the folder knows its skills' names, so its skills meet the guard once they are read.
   guardGlobal(run, root, { agent, names: loaded.map(({ name }) => name) });
   run.signal.throwIfAborted();

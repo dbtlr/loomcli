@@ -17,9 +17,8 @@
  * and `@loomcli/loom`, which publish at one version, so no export names it, and a change to an
  * entry's shape raises its format.
  */
-import { readSkillsFolder } from './folder.js';
+import { folderPath } from './folder-path.js';
 import type { Declared } from './settings.js';
-import { folderPath } from './source.js';
 
 /** The global symbol the registry lives under. */
 const registryKey = Symbol.for('@loomcli/plugins/skills/registry');
@@ -44,15 +43,19 @@ interface RegistryEntry {
 
 /** Records one `skills()` call in the registry, creating the registry on the first call. */
 function recordCall(declared: Declared): void {
-  const names = declared.skills.map(({ name }) => name);
+  const names = {
+    listed: declared.skills.map(({ name }) => name),
+    selecting: declared.folderEntries,
+  };
   const { folder: setting } = declared;
   const entry: RegistryEntry = {
     folder: (moduleDirectory) =>
       setting === undefined ? undefined : folderPath(setting, moduleDirectory),
     format: registryFormat,
     // A fault the read throws rejects the promise, so the build reads it as the read's failure.
-    read: (folder) =>
-      Promise.resolve().then(() => ({
+    read: async (folder) => {
+      const { readSkillsFolder } = await import('./folder.js');
+      return {
         skills: readSkillsFolder(folder, names).map((skill) => ({
           files: skill.files.map(({ executable, path }) => ({
             executable: executable === true,
@@ -60,7 +63,8 @@ function recordCall(declared: Declared): void {
           })),
           name: skill.name,
         })),
-      })),
+      };
+    },
   };
   const registry: unknown = Reflect.get(globalThis, registryKey);
   if (Array.isArray(registry)) {
