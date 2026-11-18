@@ -1,5 +1,5 @@
 ---
-description: The @loomcli/testing reference. The assembly check, assertAssembles, which a bun test or vitest test calls with the Application, mockProcess, the sealed process handle a test runs an Application on in its own process and reads the run's output and exit code from, with a keyboard that answers questions from scripted keys, the six builders, actionContext, middlewareContext, failureHookContext, providerContext, viewContext, and environmentContext, that build the context one author function reads so a test calls that function with no Application, and logEvent, logDestination, and progressEvent, which build the values an onLog hook and a progress observer read. Recipes for cancelling at a named point, typed calls through invoke, checking that output fits the screen, testing a validator alone, and substituting a provider.
+description: The @loomcli/testing reference. The assembly check, assertAssembles, which a bun test or vitest test calls with the Application, assertSkillsMatch, which fails a test when a committed copy of the application's skills is stale, mockProcess, the sealed process handle a test runs an Application on in its own process and reads the run's output and exit code from, with a keyboard that answers questions from scripted keys, the six builders, actionContext, middlewareContext, failureHookContext, providerContext, viewContext, and environmentContext, that build the context one author function reads so a test calls that function with no Application, and logEvent, logDestination, and progressEvent, which build the values an onLog hook and a progress observer read. Recipes for cancelling at a named point, typed calls through invoke, checking that output fits the screen, testing a validator alone, and substituting a provider.
 ---
 
 # Testing reference
@@ -12,7 +12,7 @@ description: The @loomcli/testing reference. The assembly check, assertAssembles
 bun add -d @loomcli/testing
 ```
 
-`@loomcli/core` is a peer dependency. The package needs the same core version as the application.
+`@loomcli/core` is a peer dependency. The package needs the same core version as the application. `@loomcli/plugins` is an optional peer dependency, which only [`assertSkillsMatch`](#assertskillsmatch) loads, at the same version.
 
 ## assertAssembles
 
@@ -782,7 +782,7 @@ function assertSkillsMatch(
 ): Promise<void>;
 ```
 
-`assertSkillsMatch` calls `inspect()` and the skills plugin's public `skillFolders()` in the test's process. It compares each declared skill folder with the committed copy: file bytes and executable bits, missing files, and extra files within that skill folder. It ignores sibling folders and dot entries at every depth. The first difference, in skill declaration order and then sorted file-path order, throws an `Error` naming the file and asking for a fresh export. That includes stale files under the plugin's owned generated names.
+`assertSkillsMatch` calls `inspect()` and the skills plugin's public `skillFolders()` in the test's process. It compares each declared skill folder with the committed copy: file bytes and executable bits, missing files, and extra files within that skill folder. A link or a file where a skill's folder belongs differs, and so does a link where one of its files belongs. It ignores sibling folders, and it ignores an entry of the committed copy whose name starts with `.`, at every depth, unless the skill itself supplies a file at that path. The first difference, in the order an install writes the skills, the folder's skills by name and then the listed ones, and then in sorted file-path order, throws an `Error` naming the file and asking for a fresh export. An empty `options.skills` list checks no skill. That includes stale files under the plugin's owned generated names.
 
 ```ts
 import { test } from 'vitest';

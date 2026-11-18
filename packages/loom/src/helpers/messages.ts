@@ -294,3 +294,13 @@ export function sourceSkillsOutput(path: string): string {
 export function occupiedSkillOutput(path: string): string {
   return `Cannot replace ${escaped(path)}: it is not a skill folder, which holds a SKILL.md. Move or remove it, or name another directory.`;
 }
+export const docsUnavailable =
+  'The package resolves no @loomcli/plugins that renders command references. Install a current @loomcli/plugins, then run loom docs again.';
+export function authorFileInTheWay(path: string): string {
+  return `Cannot write ${escaped(path)}, because it is not a file loom docs generated. Move or rename it, then run loom docs again.`;
+}
+export function wroteDocs(path: string, written: number, removed: number): string {
+  return removed === 0
+    ? `Wrote ${String(written)} command reference files to ${escaped(path)}.\n`
+    : `Wrote ${String(written)} command reference files to ${escaped(path)} and removed ${String(removed)} earlier.\n`;
+}

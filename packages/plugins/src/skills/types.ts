@@ -20,7 +20,7 @@ export interface SkillFile {
 export interface Skill {
   /** The skill's folder name, such as notes. */
   readonly name: string;
-  /** Loads the skill's files, called when a skills Command installs the skill or skillFolders reads it. */
+  /** Loads the skill's files, called when a skills Command installs or reports on the skill, or skillFolders reads it. */
   readonly files: () => Promise<readonly SkillFile[]> | readonly SkillFile[];
   /**
    * The Commands whose command references the plugin generates, each by its path from the root;
