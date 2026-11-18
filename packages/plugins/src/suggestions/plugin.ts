@@ -1,4 +1,10 @@
-import { override, plugin, UnknownCommandError, UnknownOptionError } from '@loomcli/core';
+import {
+  InputError,
+  override,
+  plugin,
+  UnknownCommandError,
+  UnknownOptionError,
+} from '@loomcli/core';
 import type {
   CommandGraph,
   CommandNode,
@@ -7,13 +13,17 @@ import type {
   FailureView,
   FailureViewContext,
   LoomError,
+  InputIdentity,
+  InputProblem,
   OptionNode,
   Plugin,
+  StandardSchemaV1,
 } from '@loomcli/core';
 
+import { closedSet } from '../closed-set.js';
 import { packageName } from '../constants.js';
 import { nearest } from './match.js';
-import { unknownWithSuggestion } from './messages.js';
+import { unknownWithSuggestion, valueSuggestion } from './messages.js';
 
 /**
  * The sentence the hook wrote, keyed by the failure instance core hands to both the hook and the
@@ -86,6 +96,93 @@ function suggestion(
   return undefined;
 }
 
+/** A collected input's issue path selects its element; a scalar issue reads the scalar itself. */
+function receivedAt(raw: unknown, path: StandardSchemaV1.Issue['path']): unknown {
+  let value = raw;
+  for (const segment of path ?? []) {
+    const key = typeof segment === 'object' ? segment.key : segment;
+    if (!Array.isArray(value) || typeof key !== 'number') {
+      return undefined;
+    }
+    value = value[key];
+  }
+  return value;
+}
+
+/** The closed set of the declaration a problem identifies, subject to the visibility rules. */
+function acceptedValues(input: InputIdentity, context: FailureHookContext) {
+  if (input.kind === 'stdin') {
+    return undefined;
+  }
+  const options = input.global ? context.graph.globals : context.command.options;
+  const nodes = input.kind === 'argument' ? context.command.arguments : options;
+  const node = nodes.find(({ name }) => name === input.name);
+  return node === undefined || ('hidden' in node && !offered(node))
+    ? undefined
+    : closedSet(node.schema);
+}
+
+/** A membership miss offers only accepted values, using the name comparison without dash folding. */
+function valueFix(value: unknown, values: readonly string[] | undefined) {
+  if (values === undefined || typeof value !== 'string' || values.includes(value)) {
+    return undefined;
+  }
+  return valueSuggestion(
+    nearest(
+      value,
+      values.map((candidate) => [candidate]),
+      'name',
+    ),
+  );
+}
+
+interface InputLines {
+  lines: string[];
+  offset: number;
+  changed: boolean;
+}
+
+/** Replaces one issue sentence and advances over its original lines, including a multiline issue. */
+function replaceIssue(
+  state: InputLines,
+  issue: StandardSchemaV1.Issue,
+  received: { raw: unknown; values: readonly string[] | undefined },
+) {
+  const line = state.lines[state.offset];
+  const issueSentence = issue.message;
+  const fix = valueFix(receivedAt(received.raw, issue.path), received.values);
+  if (fix !== undefined && line !== undefined && line.endsWith(issueSentence)) {
+    state.lines[state.offset] = line.slice(undefined, line.length - issueSentence.length) + fix;
+    state.changed = true;
+  }
+  state.offset += issueSentence.split('\n').length;
+}
+
+/** Missing and group problems retain their line; invalid problems retain every unmatched issue. */
+function replaceProblem(state: InputLines, problem: InputProblem, context: FailureHookContext) {
+  const oneLine = 1;
+  if (problem.reason === 'invalid') {
+    const received = {
+      raw: context.received(problem),
+      values: acceptedValues(problem.input, context),
+    };
+    for (const issue of problem.issues) {
+      replaceIssue(state, issue, received);
+    }
+  } else {
+    state.offset += oneLine;
+  }
+}
+
+/** Replaces only invalid issue sentences, preserving every other byte core wrote. */
+function inputSuggestion(failure: InputError, context: FailureHookContext): string | undefined {
+  const state: InputLines = { changed: false, lines: failure.message.split('\n'), offset: 0 };
+  for (const problem of failure.problems) {
+    replaceProblem(state, problem, context);
+  }
+  return state.changed ? state.lines.join('\n') : undefined;
+}
+
 /**
  * Records the sentence for this run. It first forgets any an earlier run recorded for the same
  * instance, because an application may keep one failure and throw it again where nothing is near,
@@ -93,7 +190,10 @@ function suggestion(
  */
 const suggest: FailureHook = (failure, context) => {
   sentences.delete(failure);
-  const written = suggestion(failure, context);
+  const written =
+    failure instanceof InputError
+      ? inputSuggestion(failure, context)
+      : suggestion(failure, context);
   if (written !== undefined) {
     sentences.set(failure, written);
   }
@@ -120,10 +220,12 @@ const unknownCommand: FailureView<UnknownCommandError> = { render };
 
 const unknownOption: FailureView<UnknownOptionError> = { render };
 
+const invalidInput: FailureView<InputError> = { render };
+
 /**
- * A plugin that offers the declared name nearest a mistyped Command or option as the fix inside
- * the failure's sentence. Its hook reads the graph and adds no hint; its two views write the
- * sentence, and write core's text when no name is near.
+ * A plugin that offers the declared name or accepted value nearest a mistyped input as the fix
+ * inside the failure's sentence. Its hook reads the graph and adds no hint; its views write the
+ * sentence, and write core's text when no candidate is near.
  *
  * @example
  * ```ts
@@ -141,6 +243,7 @@ export function suggestions(): Plugin {
   return plugin(`${packageName}/suggestions`, {
     onFailure: suggest,
     views: [
+      override(InputError, invalidInput),
       override(UnknownCommandError, unknownCommand),
       override(UnknownOptionError, unknownOption),
     ],

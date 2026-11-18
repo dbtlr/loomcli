@@ -134,7 +134,12 @@ const exceptions: VoiceExceptions = {
     'suggestions/plugin.ts': {
       'failure.message': {
         reason:
-          "A failure's own message, which the suggestions view prints as core's default text does when it recorded no sentence.",
+          "A failure's own message, which the suggestions view prints as core's default text does when it recorded no sentence, and whose individual issue sentences it replaces when it recorded a value suggestion.",
+        sites: 2,
+      },
+      'issue.message': {
+        reason:
+          "The validator issue sentence, which the suggestions hook reads to locate and replace its line in core's failure text.",
         sites: 1,
       },
     },

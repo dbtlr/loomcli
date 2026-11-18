@@ -162,6 +162,7 @@ interface FailureHookContext {
   readonly graph: CommandGraph;
   readonly command: CommandNode;
   readonly log: Log; // see Logging
+  readonly received: (problem: InputProblem) => unknown;
   readonly run: string; // the run every log event of the run carries
 }
 ```
@@ -200,6 +201,7 @@ A hint is a line a plugin adds under a failure message. Plugins add hints to a f
 - **Order.** Hints keep installation order, and each hook's strings keep their own. Each hook receives the failure and its context alone and never another hook's hints, so no plugin removes or rewords another's, and two plugins that return the same line print it twice.
 - **Candidates.** A hook that suggests a name reads its candidates from the graph: `graph.globals` and `command.options` for an option spelling, and `command.children` for a Command name. It leaves out, by the node facts, a hidden or deprecated member, as [completion](../plugins/completion.md) does, and every alias, a [visible alias](commands.md#visible-aliases) included, since a child's `name` is its canonical name. `UnknownOptionError` carries no accepted spellings, and `candidates` on the routing errors leaves out hidden and deprecated children, the same rule. A hint adds a line; a plugin that wants the near match inside the sentence itself overrides the failure's view, as the [suggestions](../plugins/suggestions.md) plugin does.
 - **Plugins alone.** The hook is on the plugin definition alone, as `onCommandAttach` is. An application that wants a hint of its own writes an override that prints it, or installs a small local plugin.
+- **Received values.** `received(problem)` returns the raw value core held before validating an invalid problem of this failure, from argv, invocation by name, environment, or configuration. For a collected input it returns the raw collection; an issue's path identifies the rejected element. Missing and group problems, another failure's problems, and problems with no recorded value return `undefined`. The reader lives on the hook context instead of the failure so failure views, encoders, and an author's catch receive no potentially secret value. Core never repeats the value in its failure text. [ADR-0182](../decisions/0182-failure-hooks-read-received-values-without-putting-them-on-failures.md) records the seam.
 - **Names.** `FailureHook`, `FailureHookContext`, and `InvokedBy` are exported.
 
 ## Observing log events

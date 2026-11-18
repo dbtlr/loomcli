@@ -586,6 +586,7 @@ export interface FailureHookContext {
     readonly log: Log;
     readonly mediaType: string | undefined;
     readonly path: readonly string[];
+    readonly received: (problem: InputProblem) => unknown;
     readonly run: string;
     readonly style: ContextualStyle;
     readonly view: string | undefined;

@@ -50,7 +50,12 @@
  * `@loomcli/plugins/suggestions`, compiles against its declaration, and prints a suggestion.
  */
 
-import { describe, expect, it } from 'vite-plus/test';
+import { Application } from '@loomcli/core';
+import { suggestions } from '@loomcli/plugins/suggestions';
+import { mockProcess } from '@loomcli/testing';
+import { oneOf } from '@loomcli/validators';
+import { describe, expect, it, test } from 'vite-plus/test';
+import { z } from 'zod';
 
 import { runShared } from './fixtures/suggestions-shared.ts';
 import { invokeScenario, runScenario } from './fixtures/suggestions.ts';
@@ -487,5 +492,200 @@ describe("help's failure hint", () => {
     expect(status).toBe(1);
     expect(stderr).toBe('kit: Something went wrong.\n');
     expect(stderr).not.toContain('--help');
+  });
+});
+
+/** Each declaration isolates one value suggestion rule through the public run and invoke APIs. */
+function valueKit(installed: boolean) {
+  return new Application('kit', { plugins: installed ? [suggestions()] : [] })
+    .globalOption('mode', { env: 'KIT_MODE', type: 'string', validate: oneOf(['quiet', 'loud']) })
+    .option('format', {
+      aliases: ['fmt'],
+      short: 'f',
+      type: 'string',
+      validate: oneOf(['json', 'yaml', 'text']),
+    })
+    .option('rank', { type: 'string', validate: oneOf(['tap', 'tip', 'top', 'tup']) })
+    .option('secret', { hidden: true, type: 'string', validate: oneOf(['json']) })
+    .option('old', { deprecated: 'Use format.', type: 'string', validate: oneOf(['json']) })
+    .option('length', { type: 'string', validate: z.string().min(8) })
+    .option('checked', {
+      type: 'string',
+      validate: z
+        .enum(['json', 'yaml'])
+        .refine((value) => value !== 'json', 'Choose YAML for this operation.'),
+    })
+    .option('tag', { multiple: true, type: 'string', validate: oneOf(['json', 'yaml']) })
+    .option('left', { type: 'boolean' })
+    .option('right', { type: 'boolean' })
+    .exclusive('left', 'right')
+    .argument('target', { validate: oneOf(['json', 'yaml']) })
+    .action(() => undefined);
+}
+
+async function valueOutput(installed: boolean, argv: string[]) {
+  const mock = mockProcess({ argv });
+  await valueKit(installed).run({ process: mock });
+  return mock.stderr.text;
+}
+
+describe('rejected closed-set values', () => {
+  it('replaces the accepted-values fix without echoing the received value or adding a line', async () => {
+    const mock = mockProcess({ argv: ['--format', 'jsno'] });
+    await valueKit(true).run({ process: mock });
+    expect(mock.stderr.text).toBe('kit: Option "--format": Did you mean "json"?\n');
+    expect(mock.exitCode).toBe(2);
+  });
+
+  it('ranks matches by distance then schema order and caps them at three', async () => {
+    await expect(valueOutput(true, ['--rank', 'TUP'])).resolves.toBe(
+      'kit: Option "--rank": Did you mean one of these: tup, tap, tip?\n',
+    );
+  });
+
+  it('changes each membership miss while preserving other problems and group text', async () => {
+    const argv = [
+      '--format',
+      'jsno',
+      '--mode',
+      'quie',
+      '--length',
+      'tiny',
+      '--left',
+      '--right',
+      'yaml',
+    ];
+    const core = await valueOutput(false, argv);
+    await expect(valueOutput(true, argv)).resolves.toBe(
+      core
+        .replace('Expected one of: quiet, loud.', 'Did you mean "quiet"?')
+        .replace('Expected one of: json, yaml, text.', 'Did you mean "json"?'),
+    );
+  });
+
+  it.each([
+    ['--format', 'zzzzzz'],
+    ['--format', 'x'],
+    ['--length', 'json'],
+    ['--checked', 'json'],
+    ['--secret', 'jsno'],
+    ['--old', 'jsno'],
+  ])('keeps core bytes when no suggestion applies: %s %s', async (...argv) => {
+    await expect(valueOutput(true, argv)).resolves.toBe(await valueOutput(false, argv));
+  });
+
+  it.each(['--format', '--fmt', '-f'])(
+    'resolves a known spelling %s to its schema',
+    async (spelling) => {
+      await expect(valueOutput(true, [spelling, 'jsno'])).resolves.toBe(
+        'kit: Option "--format": Did you mean "json"?\n',
+      );
+    },
+  );
+
+  it('suggests for arguments and for global and local values in an invocation by name', async () => {
+    const invoked = await valueKit(true).invoke(
+      [],
+      {
+        args: { target: 'jsno' },
+        options: { format: 'jsno', mode: 'quie' },
+      },
+      { process: mockProcess() },
+    );
+    expect(invoked).toMatchObject({
+      messages: [
+        'kit: Option "mode": Did you mean "quiet"?',
+        'kit: Option "format": Did you mean "json"?',
+        'kit: Argument "target": Did you mean "json"?',
+        '',
+      ].join('\n'),
+      status: 'failed',
+    });
+    await expect(valueOutput(true, ['jsno'])).resolves.toBe(
+      'kit: Argument "target": Did you mean "json"?\n',
+    );
+  });
+
+  it('reads an environment value and preserves its source label', async () => {
+    const mock = mockProcess({ env: { KIT_MODE: 'quie' } });
+    await valueKit(true).run({ process: mock });
+    expect(mock.stderr.text).toBe('kit: Option "--mode" (from KIT_MODE): Did you mean "quiet"?\n');
+  });
+
+  it('suggests independently for rejected elements of a collected input', async () => {
+    await expect(valueOutput(true, ['--tag', 'jsno', '--tag', 'yalm'])).resolves.toBe(
+      [
+        'kit: Option "--tag" at 0: Did you mean "json"?',
+        'kit: Option "--tag" at 1: Did you mean "yaml"?',
+        '',
+      ].join('\n'),
+    );
+  });
+});
+
+test.each([z.literal('json'), z.union([z.literal('json'), z.literal('yaml')])])(
+  'derives accepted values from const and anyOf schemas',
+  async (validate) => {
+    const mock = mockProcess({ argv: ['--format', 'jsno'] });
+    await new Application('kit', { plugins: [suggestions()] })
+      .option('format', { type: 'string', validate })
+      .action(() => undefined)
+      .run({ process: mock });
+    expect(mock.stderr.text).toBe('kit: Option "--format": Did you mean "json"?\n');
+  },
+);
+
+test('escapes a suggested accepted value without echoing the received value', async () => {
+  const mock = mockProcess({ argv: ['--format', 'json'] });
+  await new Application('kit', { plugins: [suggestions()] })
+    .option('format', { type: 'string', validate: oneOf(['js\non']) })
+    .action(() => undefined)
+    .run({ process: mock });
+  expect(mock.stderr.text).toBe('kit: Option "--format": Did you mean "js\\u000aon"?\n');
+});
+
+async function alignedValueOutput(installed: boolean, argv: string[], multiline = false) {
+  const mock = mockProcess({ argv });
+  await new Application('kit', { plugins: installed ? [suggestions()] : [] })
+    .option('x', {
+      required: true,
+      type: 'string',
+      validate: multiline
+        ? z.enum(['json', 'yaml'], { message: 'Line one.\nLine two.' })
+        : oneOf(['json', 'yaml']),
+    })
+    .option('y', { type: 'string', validate: oneOf(['json', 'yaml']) })
+    .action(() => undefined)
+    .run({ process: mock });
+  expect(mock.exitCode).toBe(2);
+  return mock.stderr.text;
+}
+
+describe('value suggestion line alignment', () => {
+  it('preserves a missing required option ahead of a closed-set miss', async () => {
+    const argv = ['--y', 'yalm'];
+    const core = await alignedValueOutput(false, argv);
+    expect(core.split('\n')[0]).toContain('--x');
+    expect(core).toContain('Expected one of: json, yaml.');
+    await expect(alignedValueOutput(true, argv)).resolves.toBe(
+      core.replace('Expected one of: json, yaml.', 'Did you mean "yaml"?'),
+    );
+  });
+
+  it('preserves a multiline closed-set issue byte for byte', async () => {
+    const argv = ['--x', 'jsno'];
+    const core = await alignedValueOutput(false, argv, true);
+    expect(core).toContain('Line one.\nkit: Line two.');
+    await expect(alignedValueOutput(true, argv, true)).resolves.toBe(core);
+  });
+
+  it('suggests for a closed-set miss after a multiline issue', async () => {
+    const argv = ['--x', 'jsno', '--y', 'yalm'];
+    const core = await alignedValueOutput(false, argv, true);
+    expect(core).toContain('Line one.\nkit: Line two.');
+    expect(core).toContain('Expected one of: json, yaml.');
+    await expect(alignedValueOutput(true, argv, true)).resolves.toBe(
+      core.replace('Expected one of: json, yaml.', 'Did you mean "yaml"?'),
+    );
   });
 });

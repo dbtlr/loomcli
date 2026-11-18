@@ -440,6 +440,8 @@ test('--dry-run takes over before the action', async () => {
 
 ### failureHookContext
 
+`received` accepts an optional reader for tests of hooks that inspect rejected inputs. Its default returns `undefined` for every problem.
+
 ```ts
 import type { FailureHook, FailureHookContext } from '@loomcli/core';
 
@@ -447,7 +449,9 @@ type FailureHookValues = Pick<
   FailureHookContext,
   'application' | 'path' | 'invokedBy' | 'view' | 'mediaType'
 > &
-  OptionalMembers<Pick<FailureHookContext, 'style' | 'log' | 'graph' | 'command' | 'run'>>;
+  OptionalMembers<
+    Pick<FailureHookContext, 'style' | 'log' | 'graph' | 'command' | 'run' | 'received'>
+  >;
 
 function failureHookContext(hook: FailureHook, values: FailureHookValues): FailureHookContext;
 ```

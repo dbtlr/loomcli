@@ -58,7 +58,7 @@ export interface EnvironmentValues {
 export function failureHookContext(hook: FailureHook, values: FailureHookValues): FailureHookContext;
 
 // @public
-export type FailureHookValues = Pick<FailureHookContext, 'application' | 'path' | 'invokedBy' | 'view' | 'mediaType'> & OptionalMembers<Pick<FailureHookContext, 'style' | 'log' | 'graph' | 'command' | 'run'>>;
+export type FailureHookValues = Pick<FailureHookContext, 'application' | 'path' | 'invokedBy' | 'view' | 'mediaType'> & OptionalMembers<Pick<FailureHookContext, 'style' | 'log' | 'graph' | 'command' | 'run' | 'received'>>;
 
 // @public
 export const key: Readonly<{

@@ -18,7 +18,9 @@ type FailureHookValues = Pick<
   FailureHookContext,
   'application' | 'path' | 'invokedBy' | 'view' | 'mediaType'
 > &
-  OptionalMembers<Pick<FailureHookContext, 'style' | 'log' | 'graph' | 'command' | 'run'>>;
+  OptionalMembers<
+    Pick<FailureHookContext, 'style' | 'log' | 'graph' | 'command' | 'run' | 'received'>
+  >;
 
 /**
  * Builds the context an `onFailure` hook takes second from the values the test states.
@@ -53,6 +55,7 @@ function failureHookContext(hook: FailureHook, values: FailureHookValues): Failu
       return values.graph ?? unstated('failureHookContext', 'graph');
     },
     log: logWith(values.log),
+    received: values.received ?? (() => undefined),
     get run() {
       return values.run ?? unstated('failureHookContext', 'run');
     },
