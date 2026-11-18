@@ -60,7 +60,7 @@ Each entry links to its reference page.
 
 ### Lifecycle
 
-- `@loomcli/plugins/logging`: log events written to a JSONL file or to stderr. [Logging](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/logging.md)
+- `@loomcli/plugins/logging`: log events written to several logging destinations, each with its own level. [Logging](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/logging.md)
 - `@loomcli/plugins/self-update`: an installed application that updates itself and notices new releases. [Self-update](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/self-update.md)
 - `@loomcli/plugins/service`: the application run as a user service. [Service](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/service.md)
 

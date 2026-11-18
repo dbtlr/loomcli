@@ -24,7 +24,10 @@ function settingsWith(
   declared: LoggingSettings | undefined,
   onError: OnError | undefined,
 ): LoggingSettings | undefined {
-  if (onError === undefined || declared?.to === 'console') {
+  if (
+    onError === undefined ||
+    (declared !== undefined && ('destinations' in declared || declared.to === 'console'))
+  ) {
     return declared;
   }
   return {

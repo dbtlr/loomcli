@@ -183,3 +183,101 @@ test('a control character in the path is escaped', async () => {
     );
   });
 });
+
+test('one installation writes debug to a file and only warn to the console, with identical record bytes', async () => {
+  await inDirectory(async (directory) => {
+    const file = join(directory, 'notes.jsonl');
+    const mock = mockProcess({ env: { XDG_STATE_HOME: directory }, home: directory });
+    await application(
+      {
+        destinations: [
+          { file, level: 'debug' },
+          { level: 'warn', to: 'console' },
+        ],
+      },
+      (log) => {
+        log.debug('Read {file}.', { file: 'notes.json' });
+        log.warn('Retry {attempt}.', { attempt: 2 });
+      },
+    ).run({ process: mock });
+    expect(mock.exitCode).toBe(0);
+    const records = readFileSync(file, 'utf8').split('\n');
+    expect(records).toHaveLength(3);
+    expect(JSON.parse(records[0] ?? '')).toMatchObject({ level: 'debug', message: 'Read {file}.' });
+    expect(JSON.parse(records[1] ?? '')).toMatchObject({
+      level: 'warn',
+      message: 'Retry {attempt}.',
+    });
+    expect(mock.stderr.text).toBe(`${records[1]}\n`);
+    expect(mock.stdout.text).toBe('');
+  });
+});
+
+const debugAndWarn = (log: Log) => {
+  log.debug('Read.');
+  log.warn('Retry.');
+};
+
+test('two files filter independently and name their own appends and rotations once per run', async () => {
+  await inDirectory(async (directory) => {
+    const debug = join(directory, 'debug.jsonl');
+    const warn = join(directory, 'warn.jsonl');
+    for (const file of [debug, warn]) {
+      writeFileSync(file, `${'x'.repeat(500)}\n`);
+    }
+    const settings: LoggingSettings = {
+      destinations: [
+        { file: debug, keep: 1, level: 'debug', maxBytes: 600 },
+        { file: warn, keep: 0, level: 'warn', maxBytes: 600 },
+      ],
+    };
+    await expect(stderrOf(settings, ['-vv'], debugAndWarn)).resolves.toBe(
+      `› Read.\n  ┆ Rotated ${debug}.\n› Logging to ${debug}.\n› Retry.\n  ┆ Rotated ${warn}.\n› Logging to ${warn}.\n`,
+    );
+    const debugRecords = readFileSync(debug, 'utf8').split('\n');
+    expect(debugRecords).toHaveLength(3);
+    expect(readFileSync(warn, 'utf8')).toBe(`${debugRecords[1]}\n`);
+    expect(readFileSync(join(directory, 'debug.1.jsonl'), 'utf8')).toBe(`${'x'.repeat(500)}\n`);
+    await expect(stderrOf(settings, ['-v'], debugAndWarn)).resolves.toBe(
+      `› Read.\n› Logging to ${debug}.\n› Retry.\n› Logging to ${warn}.\n`,
+    );
+  });
+});
+
+test('file failures use their own callbacks in declaration order and allow the console to record', async () => {
+  await inDirectory(async (directory) => {
+    const blocked = join(directory, 'blocked');
+    writeFileSync(blocked, '');
+    const failures: string[] = [];
+    const stderr = await stderrOf(
+      {
+        destinations: [
+          {
+            file: join(blocked, 'first.jsonl'),
+            onError: (error) => {
+              failures.push(`first:${error.kind}`);
+              return undefined;
+            },
+          },
+          {
+            file: join(blocked, 'second.jsonl'),
+            onError: (error) => {
+              failures.push(`second:${error.kind}`);
+              return undefined;
+            },
+          },
+          { to: 'console' },
+        ],
+      },
+      [],
+      (log) => {
+        log.warn('Recorded despite file failures.');
+      },
+    );
+    expect(failures).toEqual(['first:append', 'second:append']);
+    expect(JSON.parse(stderr)).toMatchObject({
+      level: 'warn',
+      message: 'Recorded despite file failures.',
+    });
+  });
+});
