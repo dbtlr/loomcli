@@ -711,7 +711,7 @@ The line core shows on stderr for one log event the verbosity asks for: at `-v` 
 _Avoid_: Debug line, trace line, debug lane, verbose output
 
 **Log destination**:
-The outermost run's `env`, `home`, `platform`, and `stderr`, and a `log` bound to the hook's plugin, that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. An event logged through its `log` shows as a log line at the outermost run's verbosity and reaches every other hook, never the hook itself. A log record never enters an invocation's captured output.
+The outermost run's `env`, `home`, `platform`, and `stderr`, its `out.warn`, and a `log` bound to the hook's plugin, that core passes an `onLog` hook beside each event: the parent run's under an action's `invoke`, and a `null` stderr under `app.invoke`. An event logged through its `log` shows as a log line at the outermost run's verbosity and reaches every other hook, never the hook itself. A log record never enters an invocation's captured output.
 _Avoid_: Sink, transport, target
 
 **Change event**:
@@ -727,8 +727,16 @@ One entry of the logging plugin's `destinations` list, described by `LoggingDest
 _Avoid_: Log destination (the hook's context), sink, transport, target
 
 **Logging plugin**:
-The first-party plugin `@loomcli/plugins/logging`, one `onLog` hook that writes log records to an ordered list of independently filtered logging destinations: files, the console, and OpenTelemetry loggers. Its single-destination shorthand chooses one file or stderr.
+The first-party plugin `@loomcli/plugins/logging`, one `onLog` hook that writes log records to an ordered list of independently filtered logging destinations: files, the console, and OpenTelemetry loggers. Its single-destination shorthand chooses one file or stderr. It reads the operator variables, names the log file under a failure, and publishes the Log file fact.
 _Avoid_: Logger, log sink
+
+**Operator variable**:
+One of the two environment variables named after the application, such as `HEIMDALL_LOG_LEVEL` and `HEIMDALL_LOG_FILE`, through which the operator sets the logging plugin's file level and redirects its first file without a rebuild. The operator's value beats the author's setting, and an unusable one warns and keeps it.
+_Avoid_: Log override, env override
+
+**Log file fact**:
+The logging plugin's extension value `loggingFiles` on the root Command: each file destination's declared `file` and level, and the operator variables' names. It holds no host fact; `resolveLoggingFiles` turns it and a host into the files a run writes.
+_Avoid_: Log files node, graph.logging
 
 ## Product surface
 

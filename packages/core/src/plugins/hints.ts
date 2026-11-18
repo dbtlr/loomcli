@@ -56,6 +56,8 @@ interface FailureHookContext {
   readonly graph: CommandGraph;
   /** The node at `path` inside `graph`, built on the first read. */
   readonly command: CommandNode;
+  /** The run's identifier, which every log event of the run carries as `run`. */
+  readonly run: string;
 }
 
 /**
@@ -145,7 +147,7 @@ function hintsOf(returned: string | readonly string[] | undefined): readonly str
  */
 function hookContext(
   scene: FailureScene & { built: BuiltRun },
-  shared: { log: Log; style: ContextualStyle },
+  shared: { log: Log; run: string; style: ContextualStyle },
 ): FailureHookContext {
   const { application, built, invokedBy, path, selection } = scene;
   const { log, style } = shared;
@@ -163,6 +165,7 @@ function hookContext(
     log,
     mediaType: selection.mediaType,
     path,
+    run: shared.run,
     style,
     view: selection.view,
   });
@@ -185,6 +188,7 @@ function callHook(
   }
   const context = hookContext(reading.scene, {
     log: reading.logging.bind(identity),
+    run: reading.logging.run,
     style: reading.style,
   });
   try {
@@ -420,27 +424,27 @@ async function settleIncomplete(output: Output, answer: EncoderAnswer): Promise<
 }
 
 /**
- * The form of one failure, built after the hooks, which is also the failure the run logs. No hook
- * runs for a failure raised before the graph built, and no event is logged for it either.
+ * Logs one failure's event, then gathers the hooks' hints. The event carries the failure form with
+ * no hints, so a hook can name a log file that received the event, even when it is the run's first.
+ * No hook runs for a failure raised before the graph built, and no event is logged for it either.
  */
-function loggedForm(
-  sink: FailureSink,
-  failure: LoomError,
-  answered: { built: BuiltRun | undefined; hints: readonly string[] },
-): FailureForm {
-  const form = failureForm(failure, {
-    development: sink.build.development,
-    hints: answered.hints,
-    plain: (text) => sink.output.plain(text),
-  });
-  if (answered.built !== undefined) {
+function recordedHints(sink: FailureSink, failure: LoomError, scene: FailureScene): CollectedHints {
+  if (scene.built !== undefined) {
+    const form = failureForm(failure, {
+      development: sink.build.development,
+      hints: [],
+      plain: (text) => sink.output.plain(text),
+    });
     sink.logging.failure(failure, form);
   }
-  return form;
+  return collectHints(scene, failure, {
+    logging: sink.logging,
+    style: sink.output.context('stderr').style,
+  });
 }
 
 /**
- * Reports one failure. The hooks run first, so the diagnostic, the view, or the encoder receives
+ * Reports one failure. Its record precedes the hooks, and the diagnostic, view, or encoder receives
  * their hints and their form. A failure whose selection an installed plugin encodes passes through
  * the encoding stage in place of its view. What a broken view or encoder leaves the plain fallback
  * path comes first there. It answers whether a view, an encoder, or a hook broke, which forces the
@@ -452,12 +456,13 @@ async function reportFailure(
   scene: FailureScene & { host: DeveloperScene['host'] },
 ): Promise<FailureReported> {
   await sink.output.waitForLends();
-  const collected = collectHints(scene, failure, {
-    logging: sink.logging,
-    style: sink.output.context('stderr').style,
-  });
+  const collected = recordedHints(sink, failure, scene);
   const hints = collected.kind === 'hints' ? collected.hints : [];
-  const form = loggedForm(sink, failure, { built: scene.built, hints });
+  const form = failureForm(failure, {
+    development: sink.build.development,
+    hints,
+    plain: (text) => sink.output.plain(text),
+  });
   const developer: DeveloperScene = { application: scene.application, host: scene.host };
   const own =
     collected.kind === 'hints'

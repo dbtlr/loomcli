@@ -13,6 +13,8 @@ import type {
   HelpCommandFacts,
   HelpInputFacts,
 } from '@loomcli/plugins/help/extension';
+import { loggingFiles } from '@loomcli/plugins/logging/extension';
+import type { LoggingFilesFacts } from '@loomcli/plugins/logging/extension';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import type {
   ManifestCommandFacts,
@@ -107,4 +109,15 @@ test('the configuration binding keeps its path', async () => {
 
   expect(() => configInput(binding)).not.toThrow();
   await expect(validated(configInput.schema, binding)).resolves.toEqual(binding);
+});
+
+test('the logging fact keeps every file and both variable names', async () => {
+  const facts: Required<LoggingFilesFacts> = {
+    fileEnv: false,
+    files: [{ file: 'collector.jsonl', level: 'debug' }, { level: 'info' }],
+    levelEnv: 'DETAIL',
+  };
+
+  expect(() => loggingFiles(facts)).not.toThrow();
+  await expect(validated(loggingFiles.schema, facts)).resolves.toEqual(facts);
 });

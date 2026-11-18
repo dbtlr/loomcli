@@ -117,8 +117,8 @@ test('an action, a middleware, a source, and an onFailure hook each log one even
     ['info', 'from source', 'fixture/reaching'],
     ['info', 'from middleware', 'fixture/reaching'],
     ['info', 'from action', null],
-    ['info', 'from hook', 'fixture/reaching'],
     ['error', 'The action failed.', null],
+    ['info', 'from hook', 'fixture/reaching'],
   ]);
 });
 

@@ -39,7 +39,7 @@ export class LoggingError extends Error {
 export type LoggingErrorKind = 'unresolved-directory' | 'create-directory' | 'append' | 'rotate';
 
 // @public
-export type LoggingSettings = (Exclude<LoggingDestinationSettings, {
+export type LoggingSettings = ((Exclude<LoggingDestinationSettings, {
     readonly to: 'otel';
 }> & {
     readonly destinations?: never;
@@ -51,6 +51,10 @@ export type LoggingSettings = (Exclude<LoggingDestinationSettings, {
     readonly maxBytes?: never;
     readonly keep?: never;
     readonly onError?: never;
+}) & {
+    readonly levelEnv?: string | false;
+    readonly fileEnv?: string | false;
+    readonly failureHint?: 'runtime' | 'always' | 'defects' | false;
 };
 
 // @public

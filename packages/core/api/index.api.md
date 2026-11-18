@@ -586,6 +586,7 @@ export interface FailureHookContext {
     readonly log: Log;
     readonly mediaType: string | undefined;
     readonly path: readonly string[];
+    readonly run: string;
     readonly style: ContextualStyle;
     readonly view: string | undefined;
 }
@@ -1104,6 +1105,7 @@ export interface LogDestination {
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly home: string;
     readonly log: Log;
+    readonly out: Pick<Out, 'warn'>;
     readonly platform: string;
     readonly stderr: Writable | null;
 }

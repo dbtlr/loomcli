@@ -79,6 +79,10 @@
       "types": "./dist/src/logging/plugin.d.ts",
       "import": "./dist/src/logging/plugin.js"
     },
+    "./logging/extension": {
+      "types": "./dist/src/logging/extension.d.ts",
+      "import": "./dist/src/logging/extension.js"
+    },
     "./manifest": {
       "types": "./dist/src/manifest/plugin.d.ts",
       "import": "./dist/src/manifest/plugin.js"

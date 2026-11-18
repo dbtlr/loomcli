@@ -447,7 +447,7 @@ type FailureHookValues = Pick<
   FailureHookContext,
   'application' | 'path' | 'invokedBy' | 'view' | 'mediaType'
 > &
-  OptionalMembers<Pick<FailureHookContext, 'style' | 'log' | 'graph' | 'command'>>;
+  OptionalMembers<Pick<FailureHookContext, 'style' | 'log' | 'graph' | 'command' | 'run'>>;
 
 function failureHookContext(hook: FailureHook, values: FailureHookValues): FailureHookContext;
 ```
@@ -475,7 +475,7 @@ test('an unknown command at the command line points at help', () => {
 
 - **The hook.** An `onFailure` hook takes the failure and its context, so the builder returns the context, the second argument, and the test calls `hook(failure, context)` with a failure it constructs.
 - **The facts.** `application`, `path`, `invokedBy`, `view`, and `mediaType`, each typed as the hook reads it, so `view` and `mediaType` are written out, as `undefined` for a run that reached no Command's result.
-- **The rest.** `log` is inert unless stated, `style` answers every name with its text unchanged, and `graph` and `command` each throw their sentence when read unstated.
+- **The rest.** `log` is inert unless stated, `style` answers every name with its text unchanged, and `graph`, `command`, and `run` each throw their sentence when read unstated.
 
 ### providerContext
 
@@ -639,6 +639,7 @@ An `onLog` hook takes a log event and a log destination, and a progress observer
   | | `platform` | `'linux'` |
   | | `stderr` | `null`, as under an invocation by name |
   | | `log` | a `log` whose every level does nothing, stated level by level as a builder's `log` is |
+  | | `out` | an `out` whose `warn` does nothing |
   | `progressEvent` | `id` | `1` |
   | | `label` | `''` |
   | | `state` | `'updated'` |

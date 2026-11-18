@@ -8,6 +8,7 @@ import type { FailureForm } from '../failures/form.js';
 import type { LogLineLevel } from './log-line.js';
 import { redactedValue } from './redaction.js';
 import type { Redaction } from './redaction.js';
+import type { Out } from './types.js';
 
 /**
  * The levels a log event carries. `fatal` is core's alone: `Log` has no method for it.
@@ -103,6 +104,11 @@ interface Log {
  * @sealed
  */
 interface LogDestination {
+  /**
+   * The outermost run's `warn`, which prints at every verbosity, for a setting the hook passes
+   * over. What the hook did goes to `log`.
+   */
+  readonly out: Pick<Out, 'warn'>;
   /** The outermost run's environment variables. */
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The outermost run's `host.home`. */
@@ -121,10 +127,12 @@ interface LogDestination {
 }
 
 /** The outermost run's facts every hook's destination shares, before each hook's own `log`. */
-type DestinationFacts = Omit<LogDestination, 'log'>;
+type DestinationFacts = Omit<LogDestination, 'log' | 'out'>;
 
 /** Where the outermost run shows a log event as a log line, at its verbosity. */
 interface LogScreen {
+  /** The outermost run's `warn`, which every hook's destination carries as `out`. */
+  readonly out: Pick<Out, 'warn'>;
   /** Whether the outermost run's verbosity shows an event at `level`, read at each call. */
   readonly shows: (level: LogLineLevel) => boolean;
   /** Shows one event as a log line, unless the verbosity hides it or it is a failure event. */
@@ -387,6 +395,11 @@ class RunLog {
     this.#outlet = 'receivers' in scene.outlet ? scene.outlet : this.#outletOf(scene.outlet);
   }
 
+  /** The run's identifier, which each of its events carries and its failure hooks read. */
+  get run(): string {
+    return this.#runId();
+  }
+
   /** Where the run's events go, which the runs nested under it send theirs to as well. */
   get outlet(): LogOutlet {
     return this.#outlet;
@@ -424,7 +437,11 @@ class RunLog {
   #outletOf({ facts, hooks, screen }: OutletParts): LogOutlet {
     const receivers = hooks.map(({ hook, plugin }) =>
       Object.freeze({
-        destination: Object.freeze({ ...facts, log: this.#logFor(plugin, hook, noFields) }),
+        destination: Object.freeze({
+          ...facts,
+          log: this.#logFor(plugin, hook, noFields),
+          out: screen.out,
+        }),
         hook,
       }),
     );

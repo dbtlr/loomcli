@@ -58,6 +58,7 @@ function destinationDefaults(): LogDestination {
     env: {},
     home: '/loom-test/home',
     log: logWith(undefined),
+    out: { warn: async () => undefined },
     platform: 'linux',
     stderr: null,
   };

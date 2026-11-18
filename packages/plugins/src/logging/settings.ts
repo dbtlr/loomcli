@@ -40,7 +40,7 @@ type LoggingDestinationSettings =
  *
  * @public
  */
-type LoggingSettings =
+type LoggingSettings = (
   | (Exclude<LoggingDestinationSettings, { readonly to: 'otel' }> & {
       readonly destinations?: never;
     })
@@ -52,7 +52,15 @@ type LoggingSettings =
       readonly maxBytes?: never;
       readonly keep?: never;
       readonly onError?: never;
-    };
+    }
+) & {
+  /** The level variable's name, application-derived by default; false disables it. Files only. */
+  readonly levelEnv?: string | false;
+  /** The file variable's name, application-derived by default; false disables it. Redirects the first file. */
+  readonly fileEnv?: string | false;
+  /** Failures that show the file and run id: runtime by default, all, defects, or none. */
+  readonly failureHint?: 'runtime' | 'always' | 'defects' | false;
+};
 
 /** The settings with their defaults filled: where the records go and what the destination needs. */
 type LoggingPlan =
