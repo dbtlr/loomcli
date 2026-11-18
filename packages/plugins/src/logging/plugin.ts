@@ -1,5 +1,5 @@
 import { plugin } from '@loomcli/core';
-import type { LogDestination, LogHook, Plugin } from '@loomcli/core';
+import type { LogDestination, LogEvent, LogHook, Plugin } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { resolveLogFile } from './directory.js';
@@ -8,7 +8,7 @@ import { writeRecord } from './file.js';
 import type { Report, Written } from './file.js';
 import { loggingTo, rotated } from './messages.js';
 import { isWritten, recordOf } from './record.js';
-import { planOf } from './settings.js';
+import { plansOf } from './settings.js';
 import type { LoggingPlan, LoggingSettings } from './settings.js';
 
 const identity = `${packageName}/logging`;
@@ -43,37 +43,49 @@ function sayWritten(path: string, written: Written, { announced, destination }: 
   }
 }
 
-/** The hook that writes each record, from the settings with their defaults filled. */
-function hookOf(plan: LoggingPlan): LogHook {
+/** Writes one already-serialized record to one destination. */
+type Write = (event: LogEvent, destination: LogDestination, record: string) => void;
+
+/** The writer and run-local announcement state of one destination. */
+function writerOf(plan: LoggingPlan): Write {
   if (plan.to === 'console') {
-    return (event, destination) => {
-      if (isWritten(event.level, plan.level)) {
-        destination.stderr?.write(recordOf(event));
-      }
-      return undefined;
+    return (_event, destination, record) => {
+      destination.stderr?.write(record);
     };
   }
   const { keep, maxBytes } = plan;
   const report = reportTo(plan.onError);
   const announced = new WeakSet<LogDestination>();
-  return (event, destination) => {
-    if (!isWritten(event.level, plan.level)) {
-      return undefined;
-    }
+  return (event, destination, record) => {
     const path = resolveLogFile(plan.file, event.application.name, destination);
     if (path instanceof LoggingError) {
       report(path);
     } else {
-      const written = writeRecord({ keep, maxBytes, path, report }, recordOf(event));
+      const written = writeRecord({ keep, maxBytes, path, report }, record);
       sayWritten(path, written, { announced, destination });
+    }
+  };
+}
+
+/** One hook shares the record bytes across destinations, filtering each independently. */
+function hookOf(plans: readonly LoggingPlan[]): LogHook {
+  const writers = plans.map((plan) => ({ level: plan.level, write: writerOf(plan) }));
+  return (event, destination) => {
+    let record: string | undefined = undefined;
+    for (const writer of writers) {
+      if (isWritten(event.level, writer.level)) {
+        record ??= recordOf(event);
+        writer.write(event, destination, record);
+      }
     }
     return undefined;
   };
 }
 
 /**
- * A plugin that writes each log event as one JSON record, appended to a size-rotated file in the
- * platform's state or log directory, or written to stderr. It is an `onLog` hook and nothing else.
+ * A plugin that writes each log event as one JSON record to independently filtered destinations:
+ * size-rotated files in the platform's state or log directory, and stderr. It is an `onLog` hook
+ * and nothing else.
  *
  * @example
  * ```ts
@@ -88,10 +100,10 @@ function hookOf(plan: LoggingPlan): LogHook {
  * @public
  */
 export function logging(settings?: LoggingSettings): Plugin {
-  return plugin(identity, { onLog: hookOf(planOf(settings)) });
+  return plugin(identity, { onLog: hookOf(plansOf(settings)) });
 }
 
 export { LoggingError } from './error.js';
 export type { LoggingErrorKind } from './error.js';
 export type { WrittenLevel } from './record.js';
-export type { LoggingSettings } from './settings.js';
+export type { LoggingDestinationSettings, LoggingSettings } from './settings.js';

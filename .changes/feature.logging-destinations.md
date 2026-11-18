@@ -1,0 +1,1 @@
+- Add multiple destinations to one `logging()` installation through `destinations`, each with its own level and each file with its own path, rotation, and error callback. Every eligible file and console destination writes identical JSONL record bytes. Existing single-destination calls keep working.

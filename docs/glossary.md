@@ -714,8 +714,12 @@ _Avoid_: Audit event, side-effect log, change record
 One log event as the logging plugin writes it: one JSON line, the same in a file and on the console.
 _Avoid_: Log line (a log line is what `-v` shows), log entry
 
+**Logging destination**:
+One entry of the logging plugin's `destinations` list, described by `LoggingDestinationSettings`: a file or console with its own level, and for a file its own path, rotation, and error callback. It names where records are written, distinct from the Log destination core passes an `onLog` hook.
+_Avoid_: Log destination (the hook's context), sink, transport, target
+
 **Logging plugin**:
-The first-party plugin `@loomcli/plugins/logging`, an `onLog` hook that writes each event as a log record, appended to a size-rotated file in the platform's state or log directory or written to stderr.
+The first-party plugin `@loomcli/plugins/logging`, one `onLog` hook that writes log records to an ordered list of independently filtered logging destinations. Its single-destination shorthand chooses one file or stderr.
 _Avoid_: Logger, log sink
 
 ## Product surface

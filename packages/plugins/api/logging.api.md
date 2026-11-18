@@ -10,6 +10,19 @@ import type { Plugin as Plugin_2 } from '@loomcli/core';
 // @public
 export function logging(settings?: LoggingSettings): Plugin_2;
 
+// @public
+export type LoggingDestinationSettings = {
+    readonly to?: 'file';
+    readonly file?: string;
+    readonly level?: WrittenLevel;
+    readonly maxBytes?: number;
+    readonly keep?: number;
+    readonly onError?: (error: LoggingError) => undefined;
+} | {
+    readonly to: 'console';
+    readonly level?: WrittenLevel;
+};
+
 // @public @sealed
 export class LoggingError extends Error {
     constructor(kind: LoggingErrorKind, detail: LoggingErrorDetail);
@@ -22,16 +35,16 @@ export class LoggingError extends Error {
 export type LoggingErrorKind = 'unresolved-directory' | 'create-directory' | 'append' | 'rotate';
 
 // @public
-export type LoggingSettings = {
-    readonly to?: 'file';
-    readonly file?: string;
-    readonly level?: WrittenLevel;
-    readonly maxBytes?: number;
-    readonly keep?: number;
-    readonly onError?: (error: LoggingError) => undefined;
-} | {
-    readonly to: 'console';
-    readonly level?: WrittenLevel;
+export type LoggingSettings = (LoggingDestinationSettings & {
+    readonly destinations?: never;
+}) | {
+    readonly destinations: readonly LoggingDestinationSettings[];
+    readonly to?: never;
+    readonly file?: never;
+    readonly level?: never;
+    readonly maxBytes?: never;
+    readonly keep?: never;
+    readonly onError?: never;
 };
 
 // @public

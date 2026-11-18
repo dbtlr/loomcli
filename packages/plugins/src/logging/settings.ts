@@ -6,11 +6,11 @@ const defaultMaxBytes = 10_000_000;
 const defaultKeep = 5;
 
 /**
- * What the application tells the logging plugin.
+ * The settings of one file or console destination.
  *
  * @public
  */
-type LoggingSettings =
+type LoggingDestinationSettings =
   | {
       readonly to?: 'file';
       /** The log file: a name inside the default directory, an absolute path, or a path under ~/. */
@@ -29,6 +29,23 @@ type LoggingSettings =
       readonly level?: WrittenLevel;
     };
 
+/**
+ * One destination, or a list written in declaration order. With no settings, one default file is used.
+ *
+ * @public
+ */
+type LoggingSettings =
+  | (LoggingDestinationSettings & { readonly destinations?: never })
+  | {
+      readonly destinations: readonly LoggingDestinationSettings[];
+      readonly to?: never;
+      readonly file?: never;
+      readonly level?: never;
+      readonly maxBytes?: never;
+      readonly keep?: never;
+      readonly onError?: never;
+    };
+
 /** The settings with their defaults filled: where the records go and what the destination needs. */
 type LoggingPlan =
   | { readonly to: 'console'; readonly level: WrittenLevel }
@@ -42,7 +59,7 @@ type LoggingPlan =
     };
 
 /** Fills each omitted setting with its default. */
-function planOf(settings: LoggingSettings | undefined): LoggingPlan {
+function planOf(settings: LoggingDestinationSettings | undefined): LoggingPlan {
   if (settings?.to === 'console') {
     return { level: settings.level ?? 'info', to: 'console' };
   }
@@ -56,5 +73,12 @@ function planOf(settings: LoggingSettings | undefined): LoggingPlan {
   };
 }
 
-export type { LoggingPlan, LoggingSettings };
-export { planOf };
+/** Fills defaults for each destination, retaining the single-destination shorthand. */
+function plansOf(settings: LoggingSettings | undefined): readonly LoggingPlan[] {
+  return settings !== undefined && 'destinations' in settings
+    ? settings.destinations.map(planOf)
+    : [planOf(settings)];
+}
+
+export type { LoggingDestinationSettings, LoggingPlan, LoggingSettings };
+export { plansOf };
