@@ -8,6 +8,13 @@ import { packageName } from './constants.js';
  * it, as any third-party plugin declares its rules, and shared by every site that raises it.
  */
 
+/** An input that names a completer the completion plugin's settings do not define. */
+const completionUnknownCompleter = diagnosticRule(`${packageName}/completion/unknown-completer`, {
+  explanation:
+    'An option or an argument that hints its completion with completionInput({ values: name }) or completionArgument({ values: name }) takes its values from the completer of that name in the values setting of completion(). A name the setting does not hold would leave the input with no values at Tab time and no run to say why, so the graph build reports it, even on an input whose closed set wins at Tab time.',
+  headline: 'Completer not defined',
+});
+
 /** A configuration plugin `file` setting that is not a relative path. */
 const configFilePath = diagnosticRule(`${packageName}/config/file-path`, {
   explanation:
@@ -198,6 +205,7 @@ const dotenvVariableName = diagnosticRule(`${packageName}/dotenv/variable-name`,
 });
 
 export {
+  completionUnknownCompleter,
   dotenvVariableName,
   configEmptyFile,
   configFilePath,

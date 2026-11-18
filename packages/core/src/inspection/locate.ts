@@ -7,10 +7,32 @@ import {
   readOptionWord,
   readWords,
   refusesValue,
+  typedWords,
 } from '../invocation/parse.js';
 import type { AwaitingValue, WordsRead } from '../invocation/parse.js';
 import type { ArgumentNode, CommandGraph, CommandNode, OptionNode } from './inspect.js';
 import { graphMismatch, linkOf } from './inspect.js';
+
+/**
+ * The words the earlier words of an unfinished invocation gave each option and each argument, by
+ * the input's name, exactly as the parser read them and before any validation. An option's words
+ * are every word of every occurrence in the order read, a global option's included, and an arity
+ * option's words of all occurrences are one flat list, ending with the words an occurrence the line
+ * left open has received so far. A parent's own option that routing still holds unbound is listed
+ * under the name the reached Command's own entry gives its spelling. A bare spelling's implied value
+ * was never typed, so it adds none. A Boolean and a counted option take no word, so they have no
+ * entry, and neither has an input the earlier words gave nothing. An argument's words are its one
+ * word, or a variadic argument's every word so far.
+ *
+ * @public
+ * @sealed
+ */
+interface TypedInputs {
+  /** Each argument's words, by its declared name. */
+  readonly arguments: ReadonlyMap<string, readonly string[]>;
+  /** Each option's words, by its declared name, a global option's included. */
+  readonly options: ReadonlyMap<string, readonly string[]>;
+}
 
 /**
  * Where the last word of an unfinished invocation sits. Every node is the given graph's own, so a
@@ -29,6 +51,8 @@ type WordPosition =
        */
       readonly argument: ArgumentNode | null;
       readonly prefix: string;
+      /** What the earlier words gave each input. */
+      readonly typed: TypedInputs;
     }
   | {
       readonly kind: 'option';
@@ -38,6 +62,7 @@ type WordPosition =
       readonly counts: ReadonlyMap<string, number>;
       /** The value the earlier words gave each Boolean option, so a reader sees which gave false. */
       readonly booleans: ReadonlyMap<string, boolean>;
+      readonly typed: TypedInputs;
     }
   | {
       readonly kind: 'value';
@@ -45,14 +70,23 @@ type WordPosition =
       readonly option: OptionNode;
       readonly lead: string;
       readonly prefix: string;
+      /** What the earlier words gave each input. */
+      readonly typed: TypedInputs;
     }
   | {
       readonly kind: 'argument';
       readonly command: CommandNode;
       readonly argument: ArgumentNode;
       readonly prefix: string;
+      /** What the earlier words gave each input. */
+      readonly typed: TypedInputs;
     }
-  | { readonly kind: 'passthrough'; readonly command: CommandNode; readonly prefix: string }
+  | {
+      readonly kind: 'passthrough';
+      readonly command: CommandNode;
+      readonly prefix: string;
+      readonly typed: TypedInputs;
+    }
   | { readonly kind: 'none' };
 
 const none: WordPosition = Object.freeze({ kind: 'none' });
@@ -62,6 +96,7 @@ interface Scope {
   command: CommandNode;
   earlier: WordsRead;
   graph: CommandGraph;
+  typed: TypedInputs;
 }
 
 /**
@@ -84,14 +119,14 @@ function readEarlier(graph: BuiltGraph, words: readonly string[]): WordsRead | u
 
 /** The value position of one option in scope: a global, or the routed Command's own. */
 function valueOf(scope: Scope, name: string, word: { lead: string; prefix: string }): WordPosition {
-  const { command, graph } = scope;
+  const { command, graph, typed } = scope;
   const option: OptionNode | undefined =
     graph.globals.find((entry) => entry.name === name) ??
     command.options.find((entry) => entry.name === name);
   if (!option) {
     throw graphMismatch(`Option "${name}" is not in the inspected graph.`);
   }
-  return { command, kind: 'value', lead: word.lead, option, prefix: word.prefix };
+  return { command, kind: 'value', lead: word.lead, option, prefix: word.prefix, typed };
 }
 
 /**
@@ -108,13 +143,19 @@ function awaitedValue(scope: Scope, awaiting: AwaitingValue, last: string): Word
  * reading.
  */
 function plainWord(scope: Scope, last: string): WordPosition {
-  const { command, earlier } = scope;
+  const { command, earlier, typed } = scope;
   if (!earlier.delimited && !earlier.committed && earlier.command.children.size > 0) {
-    return { argument: command.arguments[0] ?? null, command, kind: 'command', prefix: last };
+    return {
+      argument: command.arguments[0] ?? null,
+      command,
+      kind: 'command',
+      prefix: last,
+      typed,
+    };
   }
   const slot = argumentSlot(earlier.command.arguments, earlier.positionals.length);
   const argument = slot && command.arguments[earlier.command.arguments.indexOf(slot)];
-  return argument ? { argument, command, kind: 'argument', prefix: last } : none;
+  return argument ? { argument, command, kind: 'argument', prefix: last, typed } : none;
 }
 
 /**
@@ -153,6 +194,7 @@ function optionPosition(scope: Scope, last: string): WordPosition {
     kind: 'option',
     prefix: last,
     supplied: scope.earlier.supplied,
+    typed: scope.typed,
   };
 }
 
@@ -167,10 +209,10 @@ function optionWord(scope: Scope, last: string): WordPosition {
 
 /** The last word, read as the parser would read the next word. */
 function lastWord(scope: Scope, last: string): WordPosition {
-  const { command, earlier } = scope;
+  const { command, earlier, typed } = scope;
   if (earlier.delimited) {
     return command.passthrough
-      ? { command, kind: 'passthrough', prefix: last }
+      ? { command, kind: 'passthrough', prefix: last, typed }
       : plainWord(scope, last);
   }
   if (earlier.awaiting) {
@@ -212,8 +254,8 @@ function locate(graph: CommandGraph, words: readonly string[]): WordPosition {
   if (!command) {
     throw graphMismatch('The routed command is not in the inspected graph.');
   }
-  return lastWord({ command, earlier, graph }, words.at(-1) ?? '');
+  return lastWord({ command, earlier, graph, typed: typedWords(earlier) }, words.at(-1) ?? '');
 }
 
-export type { WordPosition };
+export type { TypedInputs, WordPosition };
 export { locate };

@@ -1,11 +1,5 @@
-import { locate, readExtension } from '@loomcli/core';
-import type {
-  ArgumentNode,
-  CommandGraph,
-  CommandNode,
-  OptionNode,
-  WordPosition,
-} from '@loomcli/core';
+import { readExtension } from '@loomcli/core';
+import type { CommandGraph, CommandNode, OptionNode, WordPosition } from '@loomcli/core';
 
 import { aliasSpellings } from '../aliases.js';
 import { closedSet } from '../closed-set.js';
@@ -13,6 +7,7 @@ import { singleLine } from '../lines.js';
 import { addsOccurrence, noOccurrence, oneOccurrence } from '../occurrences.js';
 import { completionArgument, completionInput } from './extension.js';
 import type { CompletionValueFacts } from './extension.js';
+import type { NamedAnswer } from './named.js';
 
 /**
  * Cobra's directive numbers, of which the answer writes five: `0` leaves the shell its default,
@@ -31,6 +26,11 @@ type Directive =
   | typeof filesOff
   | typeof filterExtensions
   | typeof directoriesOnly;
+
+/** What an answer reads besides the position: the values its input's completer offered. */
+interface Reading {
+  readonly named: NamedAnswer | undefined;
+}
 
 /** One offered word and the display text shown beside it, if any. */
 interface Offer {
@@ -167,10 +167,6 @@ function optionOffers(
     });
 }
 
-/** Slice bounds: from the first word, up to the word before the last, and one word further. */
-const fromStart = 0;
-const beforeLast = -1;
-const nextWord = 1;
 const noChildren = 0;
 
 /** The Command a word names among a Command's children, by canonical name or any alias. */
@@ -179,32 +175,16 @@ function childNamed(command: CommandNode, word: string): CommandNode | undefined
 }
 
 /**
- * The words the earlier part of the line gave one argument: each earlier word that, read as the
- * last word of the line up to it, fills that argument. An option and its value are other positions,
- * so they are not among them.
- */
-function argumentWords(
-  graph: CommandGraph,
-  words: readonly string[],
-  argument: ArgumentNode,
-): string[] {
-  return words.slice(fromStart, beforeLast).filter((_word, index) => {
-    const at = locate(graph, words.slice(fromStart, index + nextWord));
-    return (at.kind === 'argument' || at.kind === 'command') && at.argument === argument;
-  });
-}
-
-/**
  * The listed children of the Command a `commands` hint has reached: the words the argument holds so
- * far name a path from the root, and an unknown word reaches nothing. Hidden and deprecated
- * Commands route, as `help` routes them, and are not offered.
+ * far, as the parser read them into `typed`, name a path from the root, and an unknown word reaches
+ * nothing. Hidden and deprecated Commands route, as `help` routes them, and are not offered.
  */
 function reachedOffers(
   graph: CommandGraph,
-  { argument, prefix, words }: { argument: ArgumentNode; prefix: string; words: readonly string[] },
+  { held, prefix }: { held: readonly string[]; prefix: string },
 ): Offer[] {
   let reached: CommandNode | undefined = graph.root;
-  for (const word of argumentWords(graph, words, argument)) {
+  for (const word of held) {
     reached = childNamed(reached, word);
     if (reached === undefined) {
       return [];
@@ -232,9 +212,15 @@ function hintOf(position: WordPosition): CompletionValueFacts | undefined {
  * file completion off, and `extensions` offers the extensions themselves, which the shell reads as
  * the filter and not as words to insert.
  */
-function hintOffers(hint: CompletionValueFacts | undefined, commands: () => Offer[]): Offers {
+function hintOffers(
+  hint: CompletionValueFacts | undefined,
+  sources: { readonly commands: () => Offer[]; readonly named: () => Offers },
+): Offers {
   if (hint === undefined || hint.files === true) {
     return { directive: shellDefault, offers: [] };
+  }
+  if (hint.values !== undefined) {
+    return sources.named();
   }
   if (hint.extensions !== undefined) {
     return {
@@ -245,7 +231,7 @@ function hintOffers(hint: CompletionValueFacts | undefined, commands: () => Offe
   if (hint.directories === true) {
     return { directive: directoriesOnly, offers: [] };
   }
-  return { directive: filesOff, offers: hint.commands === true ? commands() : [] };
+  return { directive: filesOff, offers: hint.commands === true ? sources.commands() : [] };
 }
 
 /**
@@ -255,7 +241,7 @@ function hintOffers(hint: CompletionValueFacts | undefined, commands: () => Offe
 function valueOffers(
   position: Extract<WordPosition, { kind: 'argument' | 'command' | 'value' }>,
   graph: CommandGraph,
-  words: readonly string[],
+  reading: Reading,
 ): Offers {
   const lead = position.kind === 'value' ? position.lead : '';
   const input = position.kind === 'value' ? position.option : position.argument;
@@ -266,11 +252,16 @@ function valueOffers(
       .map((value) => ({ word: `${lead}${value}` }));
     return { directive: filesOff, offers };
   }
-  const hinted = hintOffers(hintOf(position), () =>
-    position.kind === 'value' || position.argument === null
-      ? []
-      : reachedOffers(graph, { argument: position.argument, prefix: position.prefix, words }),
-  );
+  const hinted = hintOffers(hintOf(position), {
+    commands: () =>
+      position.kind === 'value' || position.argument === null
+        ? []
+        : reachedOffers(graph, {
+            held: position.typed.arguments.get(position.argument.name) ?? [],
+            prefix: position.prefix,
+          }),
+    named: () => namedOffers(lead, reading.named),
+  });
   return filtersFiles(hinted.directive) && lead !== ''
     ? { directive: hinted.directive, offers: [{ word: lead }, ...hinted.offers] }
     : hinted;
@@ -286,39 +277,79 @@ function filtersFiles(directive: Directive): boolean {
 }
 
 /**
+ * What the completer an input names offered, each word with the lead the typed word carries, as a
+ * closed set's values have. An empty value is left out before the lead is added, as a closed set's
+ * is, so the bare lead is never offered as a value. A completer that failed is an error, and one the
+ * run never called offers nothing. A completer never asks for file names, so the directive turns
+ * them off.
+ */
+function namedOffers(lead: string, named: NamedAnswer | undefined): Offers {
+  if (named === undefined) {
+    return { directive: filesOff, offers: [] };
+  }
+  if ('failed' in named) {
+    return { directive: errorDirective, offers: [] };
+  }
+  return {
+    directive: filesOff,
+    offers: named.offers
+      .filter(({ word }) => word !== '')
+      .map(({ description, word }) => ({ description, word: `${lead}${word}` })),
+  };
+}
+
+/**
+ * The name of the completer the position's input names, when the input names one and its schema
+ * names no closed set, which wins over any hint. The run calls that completer before it answers.
+ */
+function completerNameAt(position: WordPosition): string | undefined {
+  if (position.kind !== 'argument' && position.kind !== 'command' && position.kind !== 'value') {
+    return undefined;
+  }
+  const input = position.kind === 'value' ? position.option : position.argument;
+  if (input === null || closedSet(input.schema) !== undefined) {
+    return undefined;
+  }
+  return hintOf(position)?.values;
+}
+
+/**
  * The children's names, then what the position's other reading as the Command's first argument
  * offers. An argument that offers files leaves the shell its file names, which the directive says,
  * and one whose hint filters them does so only where no child's name starts with the prefix,
- * because a script that filters files lists no offered word.
+ * because a script that filters files lists no offered word. A completer that failed drops only its
+ * own values where a child's name starts with the prefix, because every script discards an answer
+ * that reports an error.
  */
 function commandOffers(
   graph: CommandGraph,
   position: Extract<WordPosition, { kind: 'command' }>,
-  words: readonly string[],
+  reading: Reading,
 ): Offers {
   const children = childOffers(position.command, position.prefix);
   if (position.argument === null) {
     return { directive: filesOff, offers: children };
   }
-  const values = valueOffers(position, graph, words);
-  if (filtersFiles(values.directive) && children.length !== noChildren) {
+  const values = valueOffers(position, graph, reading);
+  const yields = filtersFiles(values.directive) || values.directive === errorDirective;
+  if (yields && children.length !== noChildren) {
     return { directive: filesOff, offers: children };
   }
   return { directive: values.directive, offers: [...children, ...values.offers] };
 }
 
 /** What one position offers before the prefix filter and the exactness rule apply. */
-function offersAt(graph: CommandGraph, position: WordPosition, words: readonly string[]): Offers {
+function offersAt(graph: CommandGraph, position: WordPosition, reading: Reading): Offers {
   switch (position.kind) {
     case 'command': {
-      return commandOffers(graph, position, words);
+      return commandOffers(graph, position, reading);
     }
     case 'option': {
       return { directive: filesOff, offers: optionOffers(graph, position) };
     }
     case 'value':
     case 'argument': {
-      return valueOffers(position, graph, words);
+      return valueOffers(position, graph, reading);
     }
     case 'passthrough': {
       return { directive: shellDefault, offers: [] };
@@ -348,15 +379,11 @@ function line(offer: Offer): string {
  * The answer `__complete` writes for one located word, in Cobra's line protocol: one line per
  * offered word in graph order with repeats removed, then `:` and the directive. Only exact words
  * that start with the typed prefix are offered, except under directives `8` and `16`, whose words
- * are the lead of an attached value and the extensions the shell filters file names by. `words` are the words the position was located from,
- * which a `commands` hint reads for the words its argument already holds.
+ * are the lead of an attached value and the extensions the shell filters file names by. `named` is
+ * what the completer the position's input names offered, which the run called before it answered.
  */
-function answer(
-  graph: CommandGraph,
-  position: WordPosition,
-  words: readonly string[] = [],
-): string {
-  const { directive, offers } = offersAt(graph, position, words);
+function answerWith(graph: CommandGraph, position: WordPosition, reading: Reading): string {
+  const { directive, offers } = offersAt(graph, position, reading);
   const prefix = filtersFiles(directive) ? '' : typedPrefix(position);
   const seen = new Set<string>();
   const lines = offers.flatMap((offer) => {
@@ -369,4 +396,9 @@ function answer(
   return `${lines.join('')}:${directive}\n`;
 }
 
-export { answer };
+/** The answer for a position whose input names no completer. */
+function answer(graph: CommandGraph, position: WordPosition): string {
+  return answerWith(graph, position, { named: undefined });
+}
+
+export { answer, answerWith, completerNameAt };

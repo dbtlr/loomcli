@@ -395,3 +395,177 @@ test('reads 200000 words without exhausting the call stack', async () => {
 test('rejects a graph core did not produce as an internal error', async () => {
   await expect(locateAll([['k']], 'foreign')).resolves.toEqual([{ threw: 'InternalError' }]);
 });
+
+/** The position an argument word reads as, with the words the earlier words gave each input. */
+function typedAt(
+  position: Record<string, unknown>,
+  typed: Record<string, Record<string, string[]>>,
+) {
+  return {
+    command: ['typed'],
+    own: true,
+    prefix: '',
+    typed: { arguments: {}, options: {}, ...typed },
+    ...position,
+  };
+}
+
+test('reports the raw words of each option by its canonical name, in every form the parser reads', async () => {
+  await expect(
+    locateAll(
+      [
+        // A long option's next word, `=`, an attached short value, a short group, and an alias.
+        ['typed', '--tag', 'a', '--tag=b', '-tc', '-st', 'd', '--label', 'e', ''],
+        // An arity option's words, across occurrences.
+        ['typed', '-p', '1', '2', '--point', '3', '4', ''],
+        // A bare spelling's implied value was never typed.
+        ['typed', '--backup', ''],
+        ['typed', '--backup=v', ''],
+        ['typed', '--many', '--many=a', ''],
+        // A Boolean and a counted option take no word.
+        ['typed', '-vs', '-vv', ''],
+        // A global option, and the option whose value is being completed.
+        ['--file', 'f.txt', 'typed', '--tag', 'a', '--tag', ''],
+        ['-ff.txt', ''],
+      ],
+      'typed',
+    ),
+  ).resolves.toEqual([
+    typedAt(
+      { argument: 'first', kind: 'argument' },
+      { options: { tag: ['a', 'b', 'c', 'd', 'e'] } },
+    ),
+    typedAt({ argument: 'first', kind: 'argument' }, { options: { point: ['1', '2', '3', '4'] } }),
+    typedAt({ argument: 'first', kind: 'argument' }, {}),
+    typedAt({ argument: 'first', kind: 'argument' }, { options: { backup: ['v'] } }),
+    typedAt({ argument: 'first', kind: 'argument' }, { options: { many: ['a'] } }),
+    typedAt({ argument: 'first', kind: 'argument' }, {}),
+    typedAt(
+      { kind: 'value', lead: '', option: 'tag' },
+      { options: { file: ['f.txt'], tag: ['a'] } },
+    ),
+    {
+      command: [],
+      kind: 'command',
+      own: true,
+      prefix: '',
+      typed: { arguments: {}, options: { file: ['f.txt'] } },
+    },
+  ]);
+});
+
+test('reports the raw words of each argument by its name, a variadic one collecting every word', async () => {
+  await expect(
+    locateAll(
+      [
+        ['typed', 'x', ''],
+        ['typed', 'x', 'y', 'z', '--tag', 't', 'w', ''],
+        ['typed', 'x', '--', 'y', ''],
+        ['typed', ''],
+      ],
+      'typed',
+    ),
+  ).resolves.toEqual([
+    typedAt({ argument: 'rest', kind: 'argument' }, { arguments: { first: ['x'] } }),
+    typedAt(
+      { argument: 'rest', kind: 'argument' },
+      { arguments: { first: ['x'], rest: ['y', 'z', 'w'] }, options: { tag: ['t'] } },
+    ),
+    typedAt({ argument: 'rest', kind: 'argument' }, { arguments: { first: ['x'], rest: ['y'] } }),
+    typedAt({ argument: 'first', kind: 'argument' }, {}),
+  ]);
+});
+
+test('reports no typed words where a position is none', async () => {
+  await expect(
+    locateAll(
+      [
+        ['typed', '--bogus', ''],
+        ['typed', '--tag', '--x'],
+      ],
+      'typed',
+    ),
+  ).resolves.toEqual([none, none]);
+});
+
+test('reports the typed words at an option position and at a passthrough position', async () => {
+  await expect(
+    locateAll(
+      [
+        ['typed', '--tag', 'a', '--'],
+        ['pass', '--mode', 'm', '--', 'x', ''],
+      ],
+      'typed',
+    ),
+  ).resolves.toEqual([
+    typedAt({ kind: 'option', prefix: '--', supplied: ['tag'] }, { options: { tag: ['a'] } }),
+    {
+      command: ['pass'],
+      kind: 'passthrough',
+      own: true,
+      prefix: '',
+      typed: { arguments: {}, options: { mode: ['m'] } },
+    },
+  ]);
+});
+
+test("reports a parent's own options that routing still holds under the reached Command's names", async () => {
+  await expect(
+    locateAll(
+      [
+        ['mid', '--project', 'foo', '--json', '--'],
+        ['mid', '--proj=foo', '--task', ''],
+        ['mid', '--project', 'foo', ''],
+      ],
+      'typed',
+    ),
+  ).resolves.toEqual([
+    {
+      command: ['mid'],
+      kind: 'option',
+      own: true,
+      prefix: '--',
+      supplied: ['project', 'json'],
+      typed: { arguments: {}, options: { project: ['foo'] } },
+    },
+    {
+      command: ['mid'],
+      kind: 'value',
+      lead: '',
+      option: 'task',
+      own: true,
+      prefix: '',
+      typed: { arguments: {}, options: { project: ['foo'] } },
+    },
+    {
+      command: ['mid'],
+      kind: 'command',
+      own: true,
+      prefix: '',
+      typed: { arguments: {}, options: { project: ['foo'] } },
+    },
+  ]);
+});
+
+test('reports the words an open arity occurrence received after those of its completed ones', async () => {
+  await expect(
+    locateAll(
+      [
+        ['typed', '-p', '1', ''],
+        ['typed', '-p', '1', '2', '--point', '3', ''],
+        ['typed', '-p', ''],
+      ],
+      'typed',
+    ),
+  ).resolves.toEqual([
+    typedAt(
+      { kind: 'value', lead: '', option: 'point', prefix: '' },
+      { options: { point: ['1'] } },
+    ),
+    typedAt(
+      { kind: 'value', lead: '', option: 'point', prefix: '' },
+      { options: { point: ['1', '2', '3'] } },
+    ),
+    typedAt({ kind: 'value', lead: '', option: 'point', prefix: '' }, {}),
+  ]);
+});

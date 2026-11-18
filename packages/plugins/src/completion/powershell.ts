@@ -40,7 +40,8 @@ import { identifier, powershellQuoted } from '../shell-quoting.js';
  * - Offered words are filtered by an ordinal string comparison rather than `-like`, which reads
  *   wildcards.
  * - The PSReadLine mode switch is removed. Each word is one `CompletionResult` whose text is the
- *   word, bare when it holds only ASCII letters, digits, and `-`, `_`, `.`, `/`, `:`, and `=`, and
+ *   word, bare when it holds only ASCII letters, digits, and `-`, `_`, `.`, `/`, `:`, and `=` and
+ *   does not start with one `-` and hold a `.`, which PowerShell would split at that `.`, and
  *   otherwise in single quotes with each `'` and each of U+2018 through U+201B written twice; its
  *   list text is the word and its tooltip the description. The space Cobra's Complete mode adds
  *   after a sole word is kept, unless directive 2 is set; the descriptions it wrote into the text
@@ -66,11 +67,12 @@ function __${id}_debug {
 }
 
 # A word as the text of a CompletionResult: bare when it holds only ASCII
-# letters, digits, and - _ . / : =, and otherwise in single quotes, where each
-# ' and each of U+2018 through U+201B, which PowerShell also reads as a single
-# quote, is written twice.
+# letters, digits, and - _ . / : =, unless it starts with one - and holds a .,
+# which PowerShell splits at that . when it passes the word bare to a program,
+# and otherwise in single quotes, where each ' and each of U+2018 through
+# U+201B, which PowerShell also reads as a single quote, is written twice.
 filter __${id}_quote {
-    if ($_ -cmatch '\\A[A-Za-z0-9_./:=-]+\\z') {
+    if ($_ -cmatch '\\A[A-Za-z0-9_./:=-]+\\z' -and $_ -cnotmatch '\\A-[^-].*\\.') {
         return $_
     }
     $Quoted = "'"

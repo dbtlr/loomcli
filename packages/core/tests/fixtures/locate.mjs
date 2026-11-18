@@ -23,10 +23,30 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         .argument('root', { required: true })
         .argument('rest', { variadic: true })
         .action(dispatch);
+      // Every way a word reaches an input: multiple, arity, alias, implied, and positional.
+      const typed = new Command('typed', { hidden: true })
+        .option('tag', { aliases: ['label'], multiple: true, short: 't', type: 'string' })
+        .option('point', { arity: 2, multiple: true, short: 'p', type: 'string' })
+        .option('backup', { implied: 'simple', short: 'b', type: 'string' })
+        .option('many', { implied: 'all', multiple: true, type: 'string' })
+        .option('verbose', { short: 'v', type: 'count' })
+        .option('sort', { short: 's', type: 'boolean' })
+        .argument('first')
+        .argument('rest', { variadic: true })
+        .action(dispatch);
       const debug = new Command('debug', { hidden: true }).action(dispatch);
+      // A passthrough Command, whose words after `--` are its passthrough.
+      const pass = new Command('pass', { hidden: true })
+        .option('mode', { type: 'string' })
+        .passthrough()
+        .action(dispatch);
       // A parent with an action and children that declares the root's -a under its own name.
+      // Its string and Boolean options stay unbound while routing is open after them.
       const mid = new Command('mid')
         .option('any', { short: 'a', type: 'boolean' })
+        .option('project', { aliases: ['proj'], type: 'string' })
+        .option('task', { type: 'string' })
+        .option('json', { type: 'boolean' })
         .command(new Command('leaf').action(dispatch))
         .action(dispatch);
       const cache = new Command('cache')
@@ -40,6 +60,8 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         .command(keys)
         .command(paths)
         .command(debug)
+        .command(typed)
+        .command(pass)
         .command(cache)
         .command(mid)
         .action(dispatch);
@@ -58,12 +80,18 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
       // This graph declares no counted option, so an option position's counts are always empty.
       // Counted-options.test.ts reads them against a graph that declares one.
       // Only the `booleans` mode keeps the Booleans the earlier words gave.
-      const { argument, booleans, command, counts: _counts, option, ...rest } = position;
+      const { argument, booleans, command, counts: _counts, option, typed, ...rest } = position;
       const node = nodeAt(graph, command.path);
       let own = node === command;
       const reduced = { ...rest, command: command.path };
       if (mode === 'booleans' && booleans !== undefined) {
         reduced.booleans = Object.fromEntries(booleans);
+      }
+      if (mode === 'typed' && typed !== undefined) {
+        reduced.typed = {
+          arguments: Object.fromEntries(typed.arguments),
+          options: Object.fromEntries(typed.options),
+        };
       }
       if (option !== undefined) {
         reduced.option = option.name;

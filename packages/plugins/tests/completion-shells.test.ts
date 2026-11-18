@@ -706,8 +706,10 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       },
     );
 
+    // PowerShell splits a bare native argument that starts with one - and holds a . at that dot.
+    // The PowerShell script inserts such a word single-quoted, so the program receives it whole.
     it.each([
-      ['kit scan -ca', 'kit scan -calpha.json'],
+      ['kit scan -ca', shell === 'pwsh' ? "kit scan '-calpha.json'" : 'kit scan -calpha.json'],
       ['kit scan -id', 'kit scan -idocs/'],
     ])('%s<Tab> completes the value attached to the short option as %s', async (typed, done) => {
       const { line } = await complete(typed);
@@ -758,6 +760,53 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     it('app help task shel<Tab> inserts shelve', async () => {
       const { line } = await complete('app help task shel');
       expect(line.trimEnd()).toBe('app help task shelve');
+    });
+  });
+});
+
+const dynamicFixture = new URL('fixtures/completion-dynamic.mjs', import.meta.url);
+
+describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
+  // The values come from the author's own function, which narrows by the word typed so far. The
+  // Directory holds files that start like the values, so a shell that fell back to file names shows.
+  describe.skipIf(!installed)('a named completer', () => {
+    const { complete } = useSession({
+      files: ['q-local.json', 'task-1-local.json'],
+      main: dynamicFixture,
+      name: 'kit',
+      shell,
+      sources,
+    });
+
+    it.each(['kit task --id ', 'kit task --id=', 'kit task '])(
+      '%s<Tab> lists every value, with the description beside it',
+      async (line) => {
+        const { listed, listing } = await complete(line);
+        expect(names(listed)).toEqual(['task-1', 'task-2', 'zeta']);
+        expect(listing).toContain('Fix the build.');
+        expect(listing).toContain('Write the docs.');
+      },
+    );
+
+    it('kit task --id=task-<Tab> lists the two values that start with task-', async () => {
+      const { listed } = await complete('kit task --id=task-');
+      expect(names(listed)).toEqual(['task-1', 'task-2']);
+    });
+
+    it('kit task --id=ze<Tab> inserts the one value that starts with ze', async () => {
+      const { line } = await complete('kit task --id=ze');
+      expect(line.trimEnd()).toBe('kit task --id=zeta');
+    });
+
+    it('kit task --id task-1<Tab> inserts the value, and no file name', async () => {
+      const { line } = await complete('kit task --id task-1');
+      expect(line.trimEnd()).toBe('kit task --id task-1');
+    });
+
+    it('kit task --id q<Tab> offers nothing and no file name', async () => {
+      const { line, listed } = await complete('kit task --id q');
+      expect(line.trimEnd()).toBe('kit task --id q');
+      expect(listed).toEqual([]);
     });
   });
 });

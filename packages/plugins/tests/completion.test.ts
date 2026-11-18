@@ -134,13 +134,14 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Application, Command, DeclarationError, locate } from '@loomcli/core';
-import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
+import { Application, Command, DeclarationError, locate, plugin } from '@loomcli/core';
+import type { LogEvent, Plugin, StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
 import { describe, expect, it } from 'vite-plus/test';
 
 import { sealedShellEnvironment } from '../../../scripts/test-shell.js';
 import { answer } from '../src/completion/answer.js';
 import { bashScript } from '../src/completion/bash.js';
+import type { Completer, CompleterContext } from '../src/completion/completer.js';
 import { completionArgument, completionInput } from '../src/completion/extension.js';
 import { fishScript } from '../src/completion/fish.js';
 import { completion } from '../src/completion/plugin.js';
@@ -151,6 +152,7 @@ import { help } from '../src/help/plugin.js';
 import { identifier, powershellQuoted } from '../src/shell-quoting.js';
 import { verbose } from '../src/verbose/plugin.js';
 import { run as fixtureRun } from './fixtures/completion-app.js';
+import { runOnMock } from './fixtures/in-process.js';
 
 /** The answer `__complete` writes for the words after the application name. */
 async function complete(...words: string[]) {
@@ -522,7 +524,15 @@ describe('the answer', () => {
         { ...one, description: '\t', name: 'five' },
       ],
     };
-    expect(answer(graph, { argument: null, command: root, kind: 'command', prefix: '' })).toBe(
+    expect(
+      answer(graph, {
+        argument: null,
+        command: root,
+        kind: 'command',
+        prefix: '',
+        typed: { arguments: new Map(), options: new Map() },
+      }),
+    ).toBe(
       framed(
         ['one\tLine one. Line two.', 'two\tTwo. More.', 'three', 'four\tFour. Four more.', 'five'],
         4,
@@ -598,7 +608,7 @@ describe('a static value hint', () => {
     .command(new Command('team', { description: 'Work with teams.' }).action(() => {}))
     .command(new Command('secret', { hidden: true }).action(() => {}))
     .inspect();
-  const at = (...words: string[]) => answer(graph, locate(graph, words), words);
+  const at = (...words: string[]) => answer(graph, locate(graph, words));
 
   it('extensions offer the extensions themselves under directive 8, whatever is typed of the file', () => {
     const offered = framed(['json', 'tar.gz'], 8);
@@ -636,7 +646,7 @@ describe('a static value hint', () => {
           .action(() => {}),
       )
       .inspect();
-    const where = (...words: string[]) => answer(parent, locate(parent, words), words);
+    const where = (...words: string[]) => answer(parent, locate(parent, words));
     expect(where('table', 'sh')).toBe(framed(['show\tShow a table.'], 4));
     expect(where('table', 'data')).toBe(framed(['csv'], 8));
   });
@@ -710,7 +720,7 @@ describe('a static value hint', () => {
       )
       .command(new Command('task').command(new Command('show').action(() => {})))
       .inspect();
-    const where = (...words: string[]) => answer(wide, locate(wide, words), words);
+    const where = (...words: string[]) => answer(wide, locate(wide, words));
     expect(where('see', '--as', 'x', 'task', '--color', 'red', 's')).toBe(framed(['show'], 4));
   });
 
@@ -735,6 +745,293 @@ describe('a static value hint', () => {
   });
 });
 
+/** What one `__complete` call saw: the completer's context words, the log events, and the bytes. */
+interface Seen {
+  readonly contexts: CompleterContext[];
+  readonly events: LogEvent[];
+  readonly result: Awaited<ReturnType<typeof runOnMock>>;
+}
+
+/** An application whose inputs name completers, each defined by `values`. */
+function dynamicApplication(values: Record<string, Completer>, observers: Plugin[] = []) {
+  const task = new Command('task')
+    .option('project', {
+      extensions: [completionInput({ values: 'project' })],
+      short: 'p',
+      type: 'string',
+    })
+    .option('id', {
+      extensions: [completionInput({ values: 'task' })],
+      multiple: true,
+      short: 'i',
+      type: 'string',
+    })
+    .option('mode', {
+      extensions: [completionInput({ values: 'task' })],
+      type: 'string',
+      validate: shaped({ enum: ['fast', 'slow'] }),
+    })
+    .argument('ref', { extensions: [completionArgument({ values: 'task' })] })
+    .action(() => {});
+  return new Application('kit', { plugins: [completion({ values }), ...observers] })
+    .globalOption('glob', { extensions: [completionInput({ values: 'task' })], type: 'string' })
+    .command(task);
+}
+
+/** An application whose `table` Command has a child, and an argument that names a completer. */
+function sharedPosition(values: Record<string, Completer>, observers: Plugin[] = []) {
+  const table = new Command('table')
+    .argument('ref', { extensions: [completionArgument({ values: 'task' })] })
+    .command(new Command('show', { description: 'Show a table.' }).action(() => {}))
+    .action(() => {});
+  return new Application('kit', { plugins: [completion({ values }), ...observers] }).command(table);
+}
+
+/** The application one `__complete` call runs against, and the run's signal. */
+interface AskOptions {
+  readonly application?: (
+    values: Record<string, Completer>,
+    observers: Plugin[],
+  ) => ReturnType<typeof dynamicApplication> | ReturnType<typeof sharedPosition>;
+  readonly signal?: AbortSignal;
+}
+
+/** Answers one `__complete` call and records what the completers and the log saw. */
+async function ask(
+  values: Record<string, Completer>,
+  words: string[],
+  { application = dynamicApplication, signal }: AskOptions = {},
+): Promise<Seen> {
+  const contexts: CompleterContext[] = [];
+  const events: LogEvent[] = [];
+  const recording = Object.fromEntries(
+    Object.entries(values).map(([name, completer]): [string, Completer] => [
+      name,
+      (context) => {
+        contexts.push(context);
+        return completer(context);
+      },
+    ]),
+  );
+  const observer = plugin('fixture/observer', {
+    onLog: (event) => {
+      events.push(event);
+      return undefined;
+    },
+  });
+  const app = application({ project: () => [], ...recording }, [observer]);
+  const result = await runOnMock(
+    app,
+    { argv: ['completion', '__complete', '--', ...words] },
+    signal === undefined ? {} : { signal },
+  );
+  return { contexts, events, result };
+}
+
+const tasks: Completer = () => [
+  { description: 'First task.', value: 'a-1' },
+  { description: 'Second task.', value: 'a-2' },
+  'b-1',
+];
+
+/** A completer whose values include each one a shell cannot hold, and a repeat. */
+const odd: Completer = () => [
+  'plain',
+  'plain',
+  '',
+  '~root',
+  'a\nb',
+  '_activeHelp_ x',
+  `${String.fromCharCode(55_296)}e`,
+  { description: 'Line\nbreak.', value: '$(touch sentinel)' },
+];
+
+/** A completer that narrows by the project the line gave. */
+const narrowed: Completer = ({ typed }) =>
+  (typed.options.get('project') ?? ['none']).map((project) => `${project}-1`);
+
+/** A completer that settles later, with a set. */
+const later: Completer = async () => {
+  await Promise.resolve();
+  return new Set(['x-1', 'x-2']);
+};
+
+/** The bytes the answer writes for the words after `__complete --`. */
+async function bytesOf(values: Record<string, Completer>, words: string[]) {
+  const { result } = await ask(values, words);
+  return result.stdout;
+}
+
+describe('a named completer', () => {
+  it('offers a value at an option value, after its equals sign, after an attached short letter, and at an argument', async () => {
+    const lines = ['a-1\tFirst task.', 'a-2\tSecond task.', 'b-1'];
+    await expect(bytesOf({ task: tasks }, ['task', '--id', ''])).resolves.toBe(framed(lines, 4));
+    await expect(bytesOf({ task: tasks }, ['task', '--id='])).resolves.toBe(
+      framed(['--id=a-1\tFirst task.', '--id=a-2\tSecond task.', '--id=b-1'], 4),
+    );
+    await expect(bytesOf({ task: tasks }, ['task', '-ia'])).resolves.toBe(
+      framed(['-ia-1\tFirst task.', '-ia-2\tSecond task.'], 4),
+    );
+    await expect(bytesOf({ task: tasks }, ['task', ''])).resolves.toBe(framed(lines, 4));
+  });
+
+  it('hands the completer the word without its lead, and filters what it returns by that word', async () => {
+    const seen = await ask({ task: tasks }, ['task', '--id=a-']);
+    expect(seen.contexts.map(({ word }) => word)).toEqual(['a-']);
+    expect(seen.result.stdout).toBe(framed(['--id=a-1\tFirst task.', '--id=a-2\tSecond task.'], 4));
+    await expect(bytesOf({ task: tasks }, ['task', '--id', 'b'])).resolves.toBe(framed(['b-1'], 4));
+    await expect(bytesOf({ task: tasks }, ['task', '--id', 'zzz'])).resolves.toBe(framed([], 4));
+  });
+
+  it('leaves out each value a shell cannot hold, and each repeat, as it does a closed set', async () => {
+    const seen = await ask({ task: odd }, ['task', '']);
+    expect(seen.result.stdout).toBe(framed(['plain', '$(touch sentinel)\tLine break.'], 4));
+    // An empty value is left out before the lead is added, so the bare lead is never offered.
+    // After a lead, the word no longer starts with a tilde or the ActiveHelp marker, as for a closed set.
+    const behind = (lead: string) =>
+      framed(
+        ['plain', '~root', '_activeHelp_ x', '$(touch sentinel)\tLine break.'].map(
+          (line) => `${lead}${line}`,
+        ),
+        4,
+      );
+    await expect(bytesOf({ task: odd }, ['task', '--id='])).resolves.toBe(behind('--id='));
+    await expect(bytesOf({ task: odd }, ['--glob='])).resolves.toBe(behind('--glob='));
+  });
+
+  it('hands the completer the typed words of every input, narrowing by an option the line gave', async () => {
+    const seen = await ask({ task: narrowed }, ['task', '-p', 'alpha', '--id', 'x', '--id', '']);
+    expect(seen.result.stdout).toBe(framed(['alpha-1'], 4));
+    const [context] = seen.contexts;
+    expect(context?.typed.options.get('id')).toEqual(['x']);
+    expect(context?.typed.options.get('project')).toEqual(['alpha']);
+    await expect(bytesOf({ task: narrowed }, ['task', ''])).resolves.toBe(framed(['none-1'], 4));
+  });
+
+  it('awaits an async completer, and reads any iterable', async () => {
+    await expect(bytesOf({ task: later }, ['task', 'x'])).resolves.toBe(framed(['x-1', 'x-2'], 4));
+  });
+
+  it.each([
+    [
+      'throws',
+      () => {
+        throw new Error('boom');
+      },
+    ],
+    ['rejects', () => Promise.reject(new Error('boom'))],
+  ])(
+    'a completer that %s offers nothing, answers directive 1, and logs one warn event',
+    async (_how, failing) => {
+      const seen = await ask({ task: failing }, ['task', '--id', '']);
+      expect(seen.result).toMatchObject({ status: 0, stderr: '', stdout: framed([], 1) });
+      const warnings = seen.events.filter(({ level }) => level === 'warn');
+      expect(warnings.map(({ message }) => message)).toEqual([
+        'A completer failed, so completion offered no values.',
+      ]);
+      expect(warnings[0]?.fields).toMatchObject({ completer: 'task' });
+    },
+  );
+
+  it.each([
+    [
+      'throws',
+      () => {
+        throw new Error('boom');
+      },
+    ],
+    ['rejects', () => Promise.reject(new Error('boom'))],
+  ])(
+    'a completer that %s beside child Commands drops only its values and offers the matching children under directive 4',
+    async (_how, failing) => {
+      const options = { application: sharedPosition };
+      const seen = await ask({ task: failing }, ['table', 'sh'], options);
+      expect(seen.result.stdout).toBe(framed(['show\tShow a table.'], 4));
+      const warnings = seen.events.filter(({ level }) => level === 'warn');
+      expect(warnings.map(({ fields }) => fields)).toMatchObject([{ completer: 'task' }]);
+      // No child's name starts with the word, so the answer still reports the error.
+      await expect(ask({ task: failing }, ['table', 'zz'], options)).resolves.toMatchObject({
+        result: { stdout: framed([], 1) },
+      });
+    },
+  );
+
+  it('an aborted signal ends the answer with directive 1 and no event, even for a completer that never settles', async () => {
+    const controller = new AbortController();
+    const waiting: Completer = () =>
+      new Promise<never>(() => {
+        controller.abort();
+      });
+    const seen = await ask({ task: waiting }, ['task', '--id', ''], {
+      signal: controller.signal,
+    });
+    expect(seen.events.filter(({ level }) => level === 'warn')).toEqual([]);
+    expect(seen.result.stdout).toBe(framed([], 1));
+  });
+
+  it('a closed set the schema names wins over the named completer, which is never called', async () => {
+    const seen = await ask({ task: tasks }, ['task', '--mode', '']);
+    expect(seen.contexts).toEqual([]);
+    expect(seen.result.stdout).toBe(framed(['fast', 'slow'], 4));
+  });
+
+  it('a name the settings do not define is a declaration fault at the graph build, whatever the settings hold', () => {
+    const faults = sharedPosition({}).check();
+    expect(faults).toHaveLength(1);
+    expect(faults[0]).toBeInstanceOf(DeclarationError);
+    expect(faults[0]?.rule?.identity).toBe('@loomcli/plugins/completion/unknown-completer');
+    expect(faults[0]?.sentence).toBe(
+      'Argument "ref" of Command "table" names completer "task", which the values setting of the completion plugin does not define.',
+    );
+    const option = new Application('kit', { plugins: [completion()] })
+      .command(
+        new Command('task')
+          .option('id', { extensions: [completionInput({ values: 'task' })], type: 'string' })
+          .action(() => {}),
+      )
+      .check();
+    expect(option[0]?.sentence).toBe(
+      'Option "id" of Command "task" names completer "task", which the values setting of the completion plugin does not define.',
+    );
+    // A global option belongs to no Command, so the sentence names it as a global option.
+    expect(dynamicApplication({ project: tasks }).check()[0]?.sentence).toBe(
+      'Global option "glob" names completer "task", which the values setting of the completion plugin does not define.',
+    );
+    expect(faults[0]?.correction).toBe(
+      'Add a completer named "task" to the values setting of completion(), or name one it defines.',
+    );
+    expect(dynamicApplication({ project: tasks, task: tasks }).check()).toEqual([]);
+    const inherited = new Application('kit', { plugins: [completion()] })
+      .command(
+        new Command('x')
+          .argument('a', { extensions: [completionArgument({ values: 'toString' })] })
+          .action(() => {}),
+      )
+      .check();
+    expect(inherited.map(({ rule }) => rule?.identity)).toEqual([
+      '@loomcli/plugins/completion/unknown-completer',
+    ]);
+  });
+
+  it('a value that holds a completer name beside another hint, or no name, is the invalid-extension-value fault', () => {
+    const faults = [
+      // @ts-expect-error A value holds one hint.
+      completionInput({ files: true, values: 'task' }),
+      // @ts-expect-error A completer's name is text.
+      completionInput({ values: 3 }),
+      completionInput({ values: '' }),
+    ];
+    for (const value of faults) {
+      expect(declared(value)).toThrow(DeclarationError);
+    }
+    // @ts-expect-error A completer's name is text.
+    const argumentFault = completionArgument({ values: ['task'] });
+    expect(() => new Command('x').argument('a', { extensions: [argumentFault] })).toThrow(
+      DeclarationError,
+    );
+  });
+});
+
 describe('the help Command', () => {
   const graph = new Application('app', { plugins: [help({ command: true }), completion()] })
     .command(
@@ -744,12 +1041,17 @@ describe('the help Command', () => {
     )
     .command(new Command('secret', { hidden: true }).action(() => {}))
     .inspect();
-  const at = (...words: string[]) => answer(graph, locate(graph, words), words);
+  const at = (...words: string[]) => answer(graph, locate(graph, words));
 
   it('offers the Commands its words have reached, and never a hidden one', () => {
     expect(at('help', 'ta')).toBe(framed(['task\tWork with tasks.'], 4));
     expect(at('help', 'task', 'sh')).toBe(framed(['show\tShow a task.'], 4));
     expect(at('help', 's')).toBe(framed([], 4));
+  });
+
+  it('reads the words the argument holds as the parser read them, so a word that names nothing reaches nothing', () => {
+    // The parser binds a lone - to the argument; a Command path through it reaches no Command.
+    expect(at('help', '-', 'ta')).toBe(framed([], 4));
   });
 });
 
@@ -1019,4 +1321,21 @@ a=\~root
       }
     },
   );
+});
+
+describe('the completer fault', () => {
+  it('escapes a control character in the names it repeats', () => {
+    const faults = new Application('kit', { plugins: [completion()] })
+      .globalOption('glob', {
+        extensions: [completionInput({ values: 'a\u001Bb' })],
+        type: 'string',
+      })
+      .check();
+    expect(faults[0]?.sentence).toBe(
+      String.raw`Global option "glob" names completer "a\u001bb", which the values setting of the completion plugin does not define.`,
+    );
+    expect(faults[0]?.correction).toBe(
+      String.raw`Add a completer named "a\u001bb" to the values setting of completion(), or name one it defines.`,
+    );
+  });
 });

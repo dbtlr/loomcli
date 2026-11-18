@@ -126,7 +126,8 @@ Changes made to the Cobra scripts:
   -like, removes the directive line by its position, and no longer handles a
   flag with an equal sign. Its PSReadLine mode switch is removed: each word is
   one CompletionResult whose text is the word, bare when it holds only ASCII
-  letters, digits, and - _ . / : =, and otherwise single-quoted with each '
+  letters, digits, and - _ . / : = and does not start with one - and hold a .,
+  which PowerShell would split at that ., and otherwise single-quoted with each '
   and each of U+2018 through U+201B written twice. Its list text is the word
   and its tooltip the description. A sole word takes a space after it, as in
   Cobra's Complete mode, unless directive 2 is set; no description is written

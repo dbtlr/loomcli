@@ -355,7 +355,7 @@ An option word the routed Command's table does not hold, while a visible Command
 _Avoid_: Early option, out-of-scope option
 
 **Word position**:
-Where the last word of an unfinished invocation sits under core's token grammar: a Command name, an option spelling, the value of one option, one argument, the passthrough tokens of a Command that declares passthrough, or nowhere. Core reads it with the parser's own grammar, so completion and parsing never disagree.
+Where the last word of an unfinished invocation sits under core's token grammar: a Command name, an option spelling, the value of one option, one argument, the passthrough tokens of a Command that declares passthrough, or nowhere, with the typed inputs the earlier words gave. Core reads it with the parser's own grammar, so completion and parsing never disagree.
 _Avoid_: Slot (a single-owner contribution), cursor context, completion state
 
 **Dispatch**:
@@ -749,7 +749,7 @@ _Avoid_: Log files node, graph.logging
 ## Product surface
 
 **Projection**:
-A public surface derived from the Command graph, such as help, a manifest, completions, or the MCP tool listing. A projection reads the graph and adds nothing the graph does not hold.
+A public surface derived from the Command graph, such as help, a manifest, completions, or the MCP tool listing. A projection reads the graph and adds nothing the graph does not hold, with one exception: completion also offers the values a named completer, which the author installs in the completion plugin's settings, returns at Tab.
 _Avoid_: Export, output format, adapter
 
 **Help page**:
@@ -793,12 +793,20 @@ The help plugin's opt-in plugin Command, `help`, attached by `help({ command: tr
 _Avoid_: Help subcommand, help topic, `helpCommand` (the extension that carries a Command's help values)
 
 **Completion**:
-The projection a shell reads while the operator types: a script, printed or installed, that calls back into the application on each Tab and inserts the offered words, the canonical Command names, option spellings, and closed-set values that fit the word under the cursor. It never offers an alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
+The projection a shell reads while the operator types: a script, printed or installed, that calls back into the application on each Tab and inserts the offered words that fit the word under the cursor: the canonical Command names, option spellings, closed-set values, the Commands a `commands` value hint reaches, and the values a named completer returns, with a file listing a value hint filters left to the shell. It offers a visible alias only where its member's canonical name does not match, never any other alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
 **Value hint**:
-The one static fact an author gives about how an option's or an argument's value completes when its schema names no closed set: file names, files of some extensions, directories only, nothing, or, for an argument only, the Commands the argument's earlier words have reached. It is a `completionInput` value on an option or a `completionArgument` value on an argument, which completion reads and core reports as any extension value.
-_Avoid_: Completer (a function that computes values), completion type, value kind
+The one static fact an author gives about how an option's or an argument's value completes when its schema names no closed set: file names, files of some extensions, directories only, nothing, the name of a completer, or, for an argument only, the Commands the argument's earlier words have reached. It is a `completionInput` value on an option or a `completionArgument` value on an argument, which completion reads and core reports as any extension value.
+_Avoid_: completion type, value kind
+
+**Completer**:
+The author's function, held in the completion plugin's `values` setting under a name, that supplies an option's or an argument's values at Tab time. An input names it with the `values` value hint. It reads the word being completed, the typed inputs, the run signal, and the host, and returns the values to offer, which completion filters by the typed word and offers under its exact-or-omitted rules. It runs only in an answer to a shell, never for help, the manifest, MCP, or `inspect()`.
+_Avoid_: Completion function, completion callback, value provider
+
+**Typed inputs**:
+The words the earlier words of an unfinished invocation gave each option and each argument, by declared name, exactly as the parser read them and before any validation, which a word position reports as `typed`. The word being completed is in none of them.
+_Avoid_: Parsed values, partial values, line state
 
 **Man page**:
 The projection of one Command that the manpage plugin writes as a section-1 roff file for `man`: its name and summary, usage, details, members with their environment and configuration bindings, and examples. Each Command that is neither hidden nor under a hidden Command has one, named for the Command's path, such as `jsonkit-get`, and a page's bytes depend only on the graph.

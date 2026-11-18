@@ -4,7 +4,9 @@ import { oneOf } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
 import { exactText } from '../exact-text.js';
+import type { CompletionSettings } from './completer.js';
 import { completionArgument, completionInput } from './extension.js';
+import { judgeCompleters } from './judge.js';
 import type { ChildRun } from './run.js';
 import { shells } from './shell-names.js';
 
@@ -25,15 +27,26 @@ function shellCommand(name: string, shell: string, script: () => Promise<ShellSc
 }
 
 // The words arrive after a bare `--`, so the parser never reads one of them as an option.
-const answerCommand = new Command('__complete', {
-  description: 'Answer a completion script.',
-  hidden: true,
-})
-  .passthrough()
-  .action(async ({ graph, out, passthrough }) => {
-    const { answer } = await import('./answer.js');
-    return out.render(answer(graph, locate(graph, passthrough), passthrough), exactText);
-  });
+function answerCommand(settings: CompletionSettings) {
+  return new Command('__complete', {
+    description: 'Answer a completion script.',
+    hidden: true,
+  })
+    .passthrough()
+    .action(async ({ graph, host, log, out, passthrough, signal }) => {
+      const { answerWith, completerNameAt } = await import('./answer.js');
+      const position = locate(graph, passthrough);
+      const name = completerNameAt(position);
+      // The completer's module loads only when an input names one.
+      const named =
+        name === undefined
+          ? undefined
+          : await import('./named.js').then((module) =>
+              module.namedAnswer(settings, { at: position, name }, { host, log, signal }),
+            );
+      return out.render(answerWith(graph, position, { named }), exactText);
+    });
+}
 
 /** The four shell names `install` and `uninstall` accept. */
 const shellInput = oneOf(shells);
@@ -90,30 +103,36 @@ const uninstallCommand = new Command('uninstall', {
   });
 
 // This package compiles outside any Application's registration, so the Command requires no globals.
-const completionCommand = new Command('completion', {
-  description: 'Print or install a shell completion script.',
-})
-  .command(
-    shellCommand('bash', 'Bash', () => import('./bash.js').then(({ bashScript }) => bashScript)),
-  )
-  .command(shellCommand('zsh', 'Zsh', () => import('./zsh.js').then(({ zshScript }) => zshScript)))
-  .command(
-    shellCommand('fish', 'Fish', () => import('./fish.js').then(({ fishScript }) => fishScript)),
-  )
-  .command(
-    shellCommand('powershell', 'PowerShell', () =>
-      import('./powershell.js').then(({ powershellScript }) => powershellScript),
-    ),
-  )
-  .command(installCommand)
-  .command(updateCommand)
-  .command(uninstallCommand)
-  .command(answerCommand);
+function completionCommand(settings: CompletionSettings) {
+  return new Command('completion', {
+    description: 'Print or install a shell completion script.',
+  })
+    .command(
+      shellCommand('bash', 'Bash', () => import('./bash.js').then(({ bashScript }) => bashScript)),
+    )
+    .command(
+      shellCommand('zsh', 'Zsh', () => import('./zsh.js').then(({ zshScript }) => zshScript)),
+    )
+    .command(
+      shellCommand('fish', 'Fish', () => import('./fish.js').then(({ fishScript }) => fishScript)),
+    )
+    .command(
+      shellCommand('powershell', 'PowerShell', () =>
+        import('./powershell.js').then(({ powershellScript }) => powershellScript),
+      ),
+    )
+    .command(installCommand)
+    .command(updateCommand)
+    .command(uninstallCommand)
+    .command(answerCommand(settings));
+}
 
 /**
  * A plugin that prints Bash, Zsh, Fish, and PowerShell completion scripts, installs them into the
  * operator's shell on Linux and macOS, and answers them. Its contribution is the `completion`
- * Command and the two extensions that hint an input's values; it declares no option or middleware. Each child loads its work when it runs.
+ * Command, the two extensions that hint an input's values, and an `onGraphBuilt` hook that judges
+ * each completer name an input gives; it declares no option or middleware. Each child loads its
+ * work when it runs.
  *
  * @example
  * ```ts
@@ -127,12 +146,20 @@ const completionCommand = new Command('completion', {
  *
  * @public
  */
-export function completion(): Plugin {
+export function completion(settings: CompletionSettings = {}): Plugin {
   return plugin(`${packageName}/completion`, {
-    commands: [completionCommand],
+    commands: [completionCommand(settings)],
     extensions: [completionInput, completionArgument],
+    onGraphBuilt: judgeCompleters(settings),
   });
 }
 
+export type {
+  Completer,
+  CompleterContext,
+  CompletionSettings,
+  CompletionValue,
+  CompletionValues,
+} from './completer.js';
 export type { RefreshContext } from '../refresh.js';
 export { refreshCompletion } from './refresh.js';

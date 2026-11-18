@@ -25,30 +25,42 @@ export type CompletionValueFacts = {
     readonly directories?: undefined;
     readonly none?: undefined;
     readonly commands?: undefined;
+    readonly values?: undefined;
 } | {
     readonly extensions: readonly string[];
     readonly files?: undefined;
     readonly directories?: undefined;
     readonly none?: undefined;
     readonly commands?: undefined;
+    readonly values?: undefined;
 } | {
     readonly directories: true;
     readonly files?: undefined;
     readonly extensions?: undefined;
     readonly none?: undefined;
     readonly commands?: undefined;
+    readonly values?: undefined;
 } | {
     readonly none: true;
     readonly files?: undefined;
     readonly extensions?: undefined;
     readonly directories?: undefined;
     readonly commands?: undefined;
+    readonly values?: undefined;
 } | {
     readonly commands: true;
     readonly files?: undefined;
     readonly extensions?: undefined;
     readonly directories?: undefined;
     readonly none?: undefined;
+    readonly values?: undefined;
+} | {
+    readonly values: string;
+    readonly files?: undefined;
+    readonly extensions?: undefined;
+    readonly directories?: undefined;
+    readonly none?: undefined;
+    readonly commands?: undefined;
 };
 
 // (No @packageDocumentation comment for this package)
