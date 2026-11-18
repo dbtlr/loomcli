@@ -97,6 +97,7 @@ describe('logDestination', () => {
         info: expect.any(Function),
         trace: expect.any(Function),
         warn: expect.any(Function),
+        with: expect.any(Function),
       },
       platform: 'linux',
       stderr: null,
@@ -115,6 +116,20 @@ describe('logDestination', () => {
     });
     destination.log.debug('Logging to {path}.');
     expect(lines).toEqual(['Logging to {path}.']);
+  });
+
+  it('a log stated level by level keeps the other levels inert and binds fields', () => {
+    const heard: unknown[] = [];
+    const destination = logDestination({
+      log: {
+        debug: (message: string, fields?: Readonly<Record<string, unknown>>) => {
+          heard.push([message, fields]);
+        },
+      },
+    });
+    expect(destination.log.info('Kept inert.')).toBeUndefined();
+    destination.log.with({ path: '/x' }).debug('Logging to {path}.');
+    expect(heard).toEqual([['Logging to {path}.', { path: '/x' }]]);
   });
 
   it('a stated stream is the stream the hook writes to', () => {

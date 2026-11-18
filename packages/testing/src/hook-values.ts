@@ -4,7 +4,7 @@
  * fixed default, because a hook that serializes or compares a whole value reads every member, and
  * a member a later release adds must not break the test.
  */
-import type { LogDestination, LogEvent, ProgressEvent } from '@loomcli/core';
+import type { Log, LogDestination, LogEvent, ProgressEvent } from '@loomcli/core';
 
 import { logWith } from './unstated-members.js';
 
@@ -16,11 +16,14 @@ import { logWith } from './unstated-members.js';
 type LogEventValues = Partial<LogEvent>;
 
 /**
- * What a test states to build a log destination: any member it means the hook to read.
+ * What a test states to build a log destination: any member it means the hook to read, and `log`
+ * level by level, as the context builders state it.
  *
  * @public
  */
-type LogDestinationValues = Partial<LogDestination>;
+type LogDestinationValues = Partial<Omit<LogDestination, 'log'>> & {
+  readonly log?: Partial<Log>;
+};
 
 /**
  * What a test states to build a progress event: any member it means the observer to read.
@@ -46,7 +49,8 @@ const eventDefaults = {
 
 /**
  * The members of a log destination a test does not state: `mockProcess`'s home and platform, the
- * `null` stderr of an invocation by name, and a `log` whose every level does nothing. Each call
+ * `null` stderr of an invocation by name, and a `log` whose every level does nothing. A stated
+ * `log` replaces the levels it names. Each call
  * answers its own `env`, because the destination freezes only its top level.
  */
 function destinationDefaults(): LogDestination {
@@ -112,7 +116,7 @@ function logEvent(values: LogEventValues = {}): LogEvent {
  * @public
  */
 function logDestination(values: LogDestinationValues = {}): LogDestination {
-  return Object.freeze({ ...destinationDefaults(), ...values });
+  return Object.freeze({ ...destinationDefaults(), ...values, log: logWith(values.log) });
 }
 
 /**

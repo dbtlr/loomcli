@@ -113,7 +113,7 @@ import type {
 import { fillFolder, folderHoldsExactly, writeFolder } from '../src/installation/folders.js';
 
 /** A log that keeps nothing: these cases read the files the module leaves, not its change events. */
-const log: Log = { debug() {}, error() {}, info() {}, trace() {}, warn() {} };
+const log: Log = { debug() {}, error() {}, info() {}, trace() {}, warn() {}, with: () => log };
 
 /** The SHA-256 digests of the bytes `test`, `abc`, and `new`, from independent sources. */
 const digests = {

@@ -77,6 +77,7 @@ function fakeManager(options: {
     info: unused,
     trace: unused,
     warn: unused,
+    with: () => log,
   };
   const manager: Manager = {
     env: {},

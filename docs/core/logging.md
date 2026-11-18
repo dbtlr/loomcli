@@ -1,10 +1,10 @@
 ---
-description: "The log events core publishes from the log member of each context, the message templates they carry, the log lines -v shows, and the onLog hook through which a plugin observes them."
+description: "The log events core publishes from the log member of each context, the fields a Log binds and the paths an Application redacts, the message templates they carry, the log lines -v shows, and the onLog hook through which a plugin observes them."
 ---
 
 # Logging
 
-This page states the log events core publishes from the `log` member of each context, the message templates they carry, the log lines `-v` shows, and the `onLog` hook through which a plugin observes them. An author calls `log` from an action or a middleware, the operator reads the log at `-v`, and the [logging plugin](../plugins/logging.md) writes the records.
+This page states the log events core publishes from the `log` member of each context, the fields a `log` binds and the paths an Application redacts, the message templates they carry, the log lines `-v` shows, and the `onLog` hook through which a plugin observes them. An author calls `log` from an action or a middleware, the operator reads the log at `-v`, and the [logging plugin](../plugins/logging.md) writes the records.
 
 ```ts
 interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
@@ -19,6 +19,7 @@ interface Log {
   info(message: string, fields?: LogFields): void;
   warn(message: string, fields?: LogFields): void;
   error(message: string, fields?: LogFields): void;
+  with(fields: LogFields): Log; // a Log whose every event carries these fields, under Bound fields
 }
 type LogFields = Readonly<Record<string, unknown>>; // any value: the copy turns it into JSON
 type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
@@ -64,7 +65,7 @@ Core gives author and plugin code a `log`, shows each call as a log line when th
 
 - **Where.** The action, middleware, [configuration source](input-sources.md), [provider](providers.md#the-opener), and [`onFailure`](lifecycle-hooks.md#failure-hints) contexts carry `log`, in every run, an action's `invoke` and `app.invoke` included. `onCommandAttach` and `onGraphBuilt` receive none: they run at graph build, under `inspect()` and `check()` as well, where no run exists. Each context's `log` is bound to it: a middleware's, a source's, and an `onFailure` hook's name the plugin core is calling, and an action's names the plugin whose `commands` list contributed its [plugin Command](plugin-contract.md#plugin-commands), or a Command above it, and none for any other Command, so the application's own actions, and a nested `invoke` of one, name none. A provider's names none either, because no plugin installs a provider. An [`onEnvironment`](plugin-contract.md#environment-preparation) hook's `log` names its plugin.
 - **A call.** `log.info(message, fields)` and its siblings create one event and deliver it to every installed `onLog` before they return. A call returns `undefined`, and a hook's throw never reaches its caller, under [Observing log events](lifecycle-hooks.md#observing-log-events). A message or a field whose value the types reject gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md). A call creates its event when an installed `onLog` hook hears it or the run's verbosity shows its level, and otherwise creates none and reads nothing from the call, `fields` included.
-- **The copy.** Core copies `fields` at the call into plain JSON data and freezes the copy, so a later change to the caller's object changes nothing. The copy is the value `JSON.stringify` produces, `toJSON()` included, so a `Date` reads its ISO string, `undefined`, a function, and a symbol are omitted from an object and read `null` inside an array, a number that is not finite reads `null`, and a class instance keeps its own enumerable properties. Three values differ: an `Error` reads `{ name, message, stack, cause }` with whichever of them it holds, its `cause` copied by the same rule; a `bigint` reads its decimal string; and a value that holds itself reads `"[Circular]"` where it repeats. A property whose read throws throws from the call. Omitted fields read `{}`.
+- **The copy.** Core copies `fields` at the call into plain JSON data and freezes the copy, so a later change to the caller's object changes nothing. The copy is the value `JSON.stringify` produces, `toJSON()` included, so a `Date` reads its ISO string, `undefined`, a function, and a symbol are omitted from an object and read `null` inside an array, a number that is not finite reads `null`, and a class instance keeps its own enumerable properties. Three values differ: an `Error` reads `{ name, message, stack, cause }` with whichever of them it holds, its `cause` copied by the same rule; a `bigint` reads its decimal string; and a value that holds itself reads `"[Circular]"` where it repeats. A property whose read throws throws from the call. Omitted fields read `{}`. A path the Application redacts reads `"[Redacted]"` in the copy, under [Redaction](#redaction), and the fields `with` bound join it, under [Bound fields](#bound-fields).
 - **The event.** `time` is `new Date().toISOString()` at the call. `application` is the graph's `name` and `version`, `0.0.0` when the Application declares none. `run` is 16 random bytes from `crypto.getRandomValues`, written as 32 lowercase hex characters: the same on every event of one run and new for each run, each `invoke` and `app.invoke` included, in the format of an OpenTelemetry trace id. `path` is the path a [failure view](failure-views.md#failure-view-context) reads: `[]` before routing, the partial path before an unknown Command, and the routed Command's path after. `plugin` is the identity of the plugin whose `log` it is, or `null`. The event and everything it holds are frozen.
 - **Failure events.** Core logs one event for each failure it reports in a run, the primary failure, each fault reported after the outcome, and a host stream that fails a write (`@loomcli/core/broken-destination`), once translators and `onFailure` hooks have run: `message` is the failure form's `message`, `failure` is the [failure form](failures.md#the-failure-form) the run reports, and `plugin` is `null`. A defect, which is an `InternalError`, a `ResultError`, or a `DeclarationError` met during a run, logs at `fatal` and also carries `defect`, in both builds: the name and message of the value the run caught, read as a [Developer Diagnostic](declaration-faults.md#developer-diagnostics) reads a cause, from an `InternalError`'s `cause` or from the failure itself, and its `stack` as the runtime formats it, absent when the value has none. Every other failure logs at `error`. What the run writes to stderr is unchanged, so a distributed build still prints the generic defect message. A cancelled run that reports its cancellation silently logs no failure event, and a failure a cancelled run still renders logs like any other. A declaration fault raised at graph build logs none, as no hook runs for it. `fatal` is a level core alone logs: `Log` has no `fatal`, because `out.fatal()` throws and ends the run.
 - **Shutdown handler failures.** A run-scoped `onShutdown` handler that throws, under [A handler that fails](signals.md#onshutdown), logs one `error` event: `message` is `A shutdown handler failed.`, `fields` holds `error`, the thrown value copied by the rule above, and `plugin` is the identity of the plugin whose middleware registered the handler, or `null` for an action's. Core delivers it to each `onLog` synchronously, as any call does, and the process ends once the shutdown returns. A process-scoped handler's throw is dropped, because no run is there to log it. A run-scoped [`onSuspend` or `onResume`](signals.md#suspend-and-resume) handler that throws logs the same event with the message `A suspend handler failed.` or `A resume handler failed.`.
@@ -79,6 +80,54 @@ A message is a [Message Template](https://messagetemplates.org), as Serilog and 
 - **Braces.** `{{` writes `{` and `}}` writes `}`. Any other brace is written as it stands, and so is a placeholder whose field the event does not hold, so `{missing}` reads `{missing}`, as Serilog renders a property the event lacks.
 - **The record keeps the template.** The event's `message` is the text as written. Core stores no filled copy, so the message stays constant and searchable, and a reader fills it from `fields` as the log line does.
 - **What Loom reads.** Core fills named placeholders alone. The standard's capturing operators, `@` and `$`, and its format and alignment parts, such as `{count:000}`, are not placeholders to core, so their braces are written as they stand.
+
+## Bound fields
+
+```ts
+// src/commands/serve.ts, an action that binds the request's id to every event it logs for it
+import { Command } from '@loomcli/core';
+
+import { answer, requests } from '../server.js';
+
+export const serve = new Command('serve').action(async ({ log }) => {
+  for await (const request of requests()) {
+    const requestLog = log.with({ requestId: request.id });
+    requestLog.debug('Received {method} {path}.', { method: request.method, path: request.path });
+    requestLog.info('Answered with {status}.', { status: await answer(request) });
+  }
+});
+```
+
+`log.with(fields)` returns a `Log` whose every event carries `fields`, as a pino or winston child logger does. Every `log` has it: the action's, a middleware's, a source's, a provider's, an `onFailure` and an `onEnvironment` hook's, a log destination's, and the self-update plugin's `afterReplace` and refresh contexts', which are an action's.
+
+- **The copy.** `with` copies its fields at once, by the rule under The copy, redaction included, so a later change to the object changes nothing. A property whose read throws throws from `with`.
+- **A call's own field wins.** An event's fields are the bound fields with the call's own copied fields beside them, and a field the call's copy holds replaces a bound one of the same name. A field the copy omits, such as one whose value is `undefined`, leaves the bound one in place.
+- **Nesting.** `log.with(a).with(b)` carries `a` and `b`, and a field of `b` replaces one of `a` of the same name. The returned `Log` keeps its receiver's plugin and, for a destination's `log`, its rule that the event never reaches the hook whose destination it is. The receiver is unchanged.
+- **Placeholders.** A bound field is a field like any other: it fills a placeholder of that name under [Message templates](#message-templates), and it trails at `-v` when the message does not place it, so for a request whose id is `r1`, `requestLog.debug('Answered {requestId}.')` shows `› Answered r1.`.
+
+## Redaction
+
+```ts
+import { Application } from '@loomcli/core';
+import { logging } from '@loomcli/plugins/logging';
+import { verbose } from '@loomcli/plugins/verbose';
+
+export const app = new Application('notes', {
+  log: { redact: ['password', 'session.token', 'accounts.secret'] },
+  plugins: [verbose(), logging()],
+});
+```
+
+An Application names the field paths whose values no reader of a log event may see, once, as `log: { redact }`. Core applies the list when it copies an event's fields, the bound fields included, so a redacted value reads `"[Redacted]"` in the event every `onLog` hook receives, on the log line `-v` shows, filling a placeholder or trailing, and in every record a logging plugin writes or exports, since each reads that one copy.
+
+- **A path.** A path splits on `.` into object keys, each nonempty, with no escaping and no array index, as the configuration plugin's `strict` paths read. The first key names a field, and each later key a key inside the value before it: `session.token` redacts `token` inside the `session` field, and a `token` field elsewhere keeps its value. A path names keys from the top of the fields alone, so `password` redacts the `password` field and no `password` key below it.
+- **Arrays.** A path steps through an array: its next key applies to every item, nested arrays included, so `accounts.secret` redacts `secret` in each item of an `accounts` list. A redacted key whose value is an array reads `"[Redacted]"` whole.
+- **What it covers.** A redacted key's whole value reads `"[Redacted]"`, whatever it holds, and a path under a redacted one adds nothing. A path whose key the copy does not hold adds none, and a value the copy omits, such as `undefined`, stays omitted. An `Error`'s copy is an object like any other, so `error.stack` redacts the stack and keeps its name and message. When a declared path redacts an Error copy's `message`, core also redacts that copy's `stack`, because the stack repeats the message.
+- **What it leaves.** The message is the template as written, so a value the author writes into the message text itself stays there. A failure event's form, a defect's detail, and the event's other facts are core's, outside the fields, and no path reaches them.
+- **Nothing by default.** Loom redacts no name of its own, such as `password` or `token`: an Application that declares no paths keeps every value.
+- **A bad path.** A path that is not dotted nonempty keys, such as `''`, `.password`, or `user..token`, is a [declaration error](declaration-faults.md) from the Application constructor, `@loomcli/core/invalid-redact-path`, `The Application redacts ".password", which is not a dotted path of nonempty keys.`, corrected by `List dotted paths of nonempty keys, such as password or user.token.`
+
+[ADR-0176](../decisions/0176-a-log-binds-fields-with-with-and-an-application-redacts-field-paths-from-every-log-event-at-the-copy.md) records bound fields and redaction.
 
 ## At -v
 

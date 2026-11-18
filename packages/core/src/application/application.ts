@@ -131,6 +131,8 @@ import { RunLog } from '../output/log.js';
 import type { DestinationFacts, LogOutlet, LogScreen } from '../output/log.js';
 import { Output, reportPlainly } from '../output/output.js';
 import type { WriteState } from '../output/output.js';
+import { redactionOf } from '../output/redaction.js';
+import type { Redaction } from '../output/redaction.js';
 import type {
   MessageArguments,
   ProgressEvent,
@@ -284,6 +286,13 @@ export interface ApplicationOptions<
   /** How a signal ends the process: `timeout` is the shutdown budget, 500 milliseconds by default. */
   shutdown?: { readonly timeout?: number };
   /**
+   * What core does with every log event: `redact` lists the dotted field paths whose values read
+   * `"[Redacted]"` wherever the event goes, every `onLog` hook and log line included.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/logging.md#redaction
+   */
+  log?: { readonly redact?: readonly string[] };
+  /**
    * The Application's view overrides, each pairing a declared view or a failure class with a
    * replacement, which resolve ahead of every plugin's.
    *
@@ -325,6 +334,8 @@ interface ApplicationConfig {
   /** The parent that claimed each node the graph holds, so one value attaches at one point. */
   owners: ReadonlyMap<CommandNodeHandle, ChildOwner>;
   plugins: readonly BuiltPlugin[];
+  /** The field paths every log event's copy redacts, which the constructor checked, or none. */
+  redaction: Redaction | undefined;
   rendering: RenderingPolicy;
   /** The milliseconds a run gets to unwind after an ending signal, which the constructor checked. */
   shutdown: number;
@@ -1156,6 +1167,7 @@ class ApplicationBuilder<
           screen,
         },
         path: () => walked,
+        redaction: this.#config.redaction,
       });
       return logged.current;
     };
@@ -1968,6 +1980,7 @@ function declareApplication<Plugins extends readonly Plugin[]>(
   );
   const rendering = renderingPolicy(slot?.rendering);
   const shutdown = shutdownTimeout(name, slot?.shutdown);
+  const redaction = redactionOf(name, slot?.log);
   const facts = applicationFacts(slot);
   const installed = installPlugins(name, slot?.plugins ?? []);
   const { plugins } = installed;
@@ -2007,6 +2020,7 @@ function declareApplication<Plugins extends readonly Plugin[]>(
       facts,
       owners,
       plugins,
+      redaction,
       rendering,
       shutdown,
       translators: [translations, ...plugins.map((entry) => entry.translators)],

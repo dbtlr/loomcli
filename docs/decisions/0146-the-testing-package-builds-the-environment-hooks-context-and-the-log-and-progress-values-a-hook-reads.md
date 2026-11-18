@@ -4,7 +4,7 @@ title: ADR-0146 - The testing package builds the environment hook's context and 
 description: '@loomcli/testing adds environmentContext(hook, values), whose host is stated member by member and whose unstated host member throws its sentence when read, as ADR-0110''s builders do. It adds logEvent, logDestination, and progressEvent, which build the plain values an onLog hook and a progress observer read; each member a test does not state takes a fixed, documented default. It supersedes ADR-0110''s sentence that a test writes the arguments of onLog and onEnvironment by hand.'
 status: accepted
 created: 2026-11-12
-modified: 2026-11-17
+modified: 2026-11-18
 ---
 
 # ADR-0146 - The testing package builds the environment hook's context and the log and progress values a hook reads
@@ -67,3 +67,4 @@ Accepted in 0.19.0.
 ## Changelog
 
 - 2026-11-12: Proposed with the builders (LM-477). It supersedes ADR-0110's sentence that a test writes the arguments of `onLog` and `onEnvironment` by hand, and makes `environmentContext`'s `host` an exception to ADR-0110's rule that `host` is stated whole; ADR-0110 carries a dated entry.
+- 2026-11-18: [ADR-0176](0176-a-log-binds-fields-with-with-and-an-application-redacts-field-paths-from-every-log-event-at-the-copy.md), proposed, narrows the rule that a stated value member replaces the default whole: `logDestination` takes `log` member by member, retaining inert unstated levels and a working `with` that binds fields. It binds when that record is accepted.

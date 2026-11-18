@@ -7,6 +7,7 @@ import type {
   EnvironmentHook,
   FailureHook,
   FailureHookContext,
+  Log,
   LogDestination,
   LogEvent,
   Middleware,
@@ -233,7 +234,9 @@ describe('the environment hook builder and the value builders', () => {
     expectTypeOf(logDestination()).toEqualTypeOf<LogDestination>();
     expectTypeOf(progressEvent()).toEqualTypeOf<ProgressEvent>();
     expectTypeOf<LogEventValues>().toEqualTypeOf<Partial<LogEvent>>();
-    expectTypeOf<LogDestinationValues>().toEqualTypeOf<Partial<LogDestination>>();
+    expectTypeOf<LogDestinationValues>().toEqualTypeOf<
+      Partial<Omit<LogDestination, 'log'>> & { readonly log?: Partial<Log> }
+    >();
     expectTypeOf<ProgressEventValues>().toEqualTypeOf<Partial<ProgressEvent>>();
     // @ts-expect-error A level core's events do not carry.
     logEvent({ level: 'notice' });

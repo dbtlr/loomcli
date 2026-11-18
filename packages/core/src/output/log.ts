@@ -6,6 +6,8 @@ import { isAuthorFault } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import type { FailureForm } from '../failures/form.js';
 import type { LogLineLevel } from './log-line.js';
+import { redactedValue } from './redaction.js';
+import type { Redaction } from './redaction.js';
 
 /**
  * The levels a log event carries. `fatal` is core's alone: `Log` has no method for it.
@@ -84,6 +86,12 @@ interface Log {
   warn(message: string, fields?: LogFields): void;
   /** Logs an `error` event with a message and optional fields. */
   error(message: string, fields?: LogFields): void;
+  /**
+   * A `log` whose every event also carries `fields`, copied now, beside its own: a call's own field
+   * wins over a bound one of the same name, and a nested `with` wins over the one it is called on.
+   * The receiver is unchanged.
+   */
+  with(fields: LogFields): Log;
 }
 
 /**
@@ -165,6 +173,8 @@ type LogBinder = (plugin: string | null) => Log;
 /** What one run's events read beside the call itself. */
 interface LogScene {
   readonly application: { readonly name: string; readonly version: string };
+  /** The field paths the Application redacts from every event's fields, or none. */
+  readonly redaction: Redaction | undefined;
   /** The outermost run's outlet, which a nested run takes from its parent, or the parts to build it. */
   readonly outlet: LogOutlet | OutletParts;
   /** The path a failure view reads, which routing publishes as it walks. */
@@ -181,28 +191,54 @@ const errorKeys = ['name', 'message', 'stack', 'cause'] as const;
 
 type Copied = JsonValue | typeof omitted;
 
-/** The copy of one property of `holder`. */
-function copyProperty(holder: object, key: string, ancestors: Set<object>): Copied {
-  return copyValue(Reflect.get(holder, key), key, ancestors);
+/**
+ * Where the copy stands as it walks the fields: the objects that hold the value being copied, and
+ * the node of the redaction tree at that value, whose keys below read `"[Redacted]"`, or
+ * `undefined` where nothing below is redacted.
+ */
+interface Place {
+  readonly ancestors: Set<object>;
+  readonly redaction: Redaction | undefined;
 }
 
-/** The copy of an array: each index in order, an omitted one reading `null`. */
-function copyArray(value: readonly unknown[], ancestors: Set<object>): JsonValue {
+/** The copy of one property of `holder`, at the place of `holder`'s own value. */
+function copyProperty(holder: object, key: string, at: Place): Copied {
+  return copyValue(Reflect.get(holder, key), key, at);
+}
+
+/**
+ * The copy of an array: each index in order, an omitted one reading `null`. A redaction path steps
+ * through an array, so each item copies at the array's place.
+ */
+function copyArray(value: readonly unknown[], at: Place): JsonValue {
   const items: JsonValue[] = [];
   for (let index = 0; index < value.length; index += 1) {
-    const item = copyProperty(value, String(index), ancestors);
+    const item = copyProperty(value, String(index), at);
     items.push(item === omitted ? null : item);
   }
   return Object.freeze(items);
 }
 
-/** The copy of the named properties of an object, a property that copies to nothing left out. */
-function copyKeys(value: object, keys: readonly string[], ancestors: Set<object>): JsonValue {
+/**
+ * The copy of the named properties of an object, a property that copies to nothing left out, and
+ * one the redaction tree marks reading `"[Redacted]"` in place of its copy.
+ */
+function copyKeys(value: object, keys: readonly string[], at: Place): JsonValue {
   const entries: [string, JsonValue][] = [];
   for (const key of keys) {
-    const item = copyProperty(value, key, ancestors);
+    const below = at.redaction?.keys.get(key);
+    const item = copyProperty(
+      value,
+      key,
+      below === at.redaction ? at : { ...at, redaction: below },
+    );
     if (item !== omitted) {
-      entries.push([key, item]);
+      // An Error's stack repeats its message, so hiding the message also hides the stack.
+      const hidesStack =
+        value instanceof Error &&
+        key === 'stack' &&
+        at.redaction?.keys.get('message')?.redacted === true;
+      entries.push([key, below?.redacted === true || hidesStack ? redactedValue : item]);
     }
   }
   return Object.freeze(Object.fromEntries(entries));
@@ -212,16 +248,17 @@ function copyKeys(value: object, keys: readonly string[], ancestors: Set<object>
  * The copy of an object that holds `ancestors`' chain, or `"[Circular]"` where it repeats one. An
  * object leaves the chain once copied, so a value shared twice without a cycle copies twice.
  */
-function copyObject(value: object, ancestors: Set<object>): JsonValue {
+function copyObject(value: object, at: Place): JsonValue {
+  const { ancestors } = at;
   if (ancestors.has(value)) {
     return circular;
   }
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
-      return copyArray(value, ancestors);
+      return copyArray(value, at);
     }
-    return copyKeys(value, value instanceof Error ? errorKeys : Object.keys(value), ancestors);
+    return copyKeys(value, value instanceof Error ? errorKeys : Object.keys(value), at);
   } finally {
     ancestors.delete(value);
   }
@@ -241,7 +278,7 @@ function jsonOf(value: unknown, key: string): unknown {
  * stack, and cause, a `bigint` reads its decimal string, and a value that holds itself reads
  * `"[Circular]"`. `omitted` stands for a value an object leaves out.
  */
-function copyValue(value: unknown, key: string, ancestors: Set<object>): Copied {
+function copyValue(value: unknown, key: string, at: Place): Copied {
   if (typeof value === 'bigint') {
     return value.toString();
   }
@@ -258,7 +295,7 @@ function copyValue(value: unknown, key: string, ancestors: Set<object>): Copied 
       return resolved.toString();
     }
     case 'object': {
-      return resolved === null ? null : copyObject(resolved, ancestors);
+      return resolved === null ? null : copyObject(resolved, at);
     }
     default: {
       return omitted;
@@ -274,12 +311,23 @@ function isJsonRecord(copied: Copied): copied is Readonly<Record<string, JsonVal
 const noFields: Readonly<Record<string, JsonValue>> = Object.freeze({});
 
 /**
- * A call's fields as the frozen JSON copy of the event. Omitted fields read `{}`, and so does
- * anything that does not copy to an object.
+ * A call's fields as the frozen JSON copy of the event, each path the redaction tree names reading
+ * `"[Redacted]"`. Omitted fields read `{}`, and so does anything that does not copy to an object.
  */
-function copyFields(fields: LogFields | undefined): Readonly<Record<string, JsonValue>> {
-  const copied = copyProperty({ fields }, 'fields', new Set());
+function copyFields(
+  fields: LogFields | undefined,
+  redaction: Redaction | undefined,
+): Readonly<Record<string, JsonValue>> {
+  const copied = copyProperty({ fields }, 'fields', { ancestors: new Set(), redaction });
   return isJsonRecord(copied) ? copied : noFields;
+}
+
+/** The bound fields with a call's own copied fields beside them, the call's winning a shared name. */
+function withBound(
+  bound: Readonly<Record<string, JsonValue>>,
+  own: Readonly<Record<string, JsonValue>>,
+): Readonly<Record<string, JsonValue>> {
+  return bound === noFields ? own : Object.freeze({ ...bound, ...own });
 }
 
 /** How many random bytes a run's id holds, and the radix their characters are written in. */
@@ -292,9 +340,10 @@ function newRunId(): string {
   return Array.from(bytes, (byte) => byte.toString(hexRadix).padStart(2, '0')).join('');
 }
 
-/** A `Log` whose methods hand each call to `emit`. */
+/** A `Log` whose methods hand each call to `emit`, and whose `with` hands its fields to `bind`. */
 function logOf(
   emit: (level: CallLevel, message: string, fields: LogFields | undefined) => void,
+  bind: (fields: LogFields) => Log,
 ): Log {
   const method =
     (level: CallLevel) =>
@@ -307,11 +356,9 @@ function logOf(
     info: method('info'),
     trace: method('trace'),
     warn: method('warn'),
+    with: bind,
   });
 }
-
-/** A `log` whose calls create no event and read nothing. */
-const silentLog: Log = logOf(() => undefined);
 
 /** What the parts of one event are, before the facts every event of the run shares are added. */
 interface EventParts {
@@ -352,7 +399,7 @@ class RunLog {
 
   /** The `log` of one context, bound to the plugin core is calling, or to none. */
   bind(plugin: string | null): Log {
-    return this.#logFor(plugin, undefined);
+    return this.#logFor(plugin, undefined, noFields);
   }
 
   /**
@@ -377,7 +424,7 @@ class RunLog {
   #outletOf({ facts, hooks, screen }: OutletParts): LogOutlet {
     const receivers = hooks.map(({ hook, plugin }) =>
       Object.freeze({
-        destination: Object.freeze({ ...facts, log: this.#logFor(plugin, hook) }),
+        destination: Object.freeze({ ...facts, log: this.#logFor(plugin, hook, noFields) }),
         hook,
       }),
     );
@@ -385,17 +432,28 @@ class RunLog {
   }
 
   /**
-   * A `log` bound to `plugin` whose events reach every hook but `except`. A call creates an event
-   * only when a hook hears it or the verbosity shows its level, and reads nothing otherwise.
+   * A `log` bound to `plugin` whose events reach every hook but `except` and carry `bound` beside
+   * each call's own fields. A call creates an event only when a hook hears it or the verbosity
+   * shows its level, and reads nothing otherwise. Its `with` copies the fields it binds at once,
+   * redacted as a call's are.
    */
-  #logFor(plugin: string | null, except: LogHook | undefined): Log {
-    return logOf((level, message, fields) => {
-      const { receivers, screen } = this.#outlet;
-      if (!screen.shows(level) && receivers.every(({ hook }) => hook === except)) {
-        return;
-      }
-      this.#deliver({ fields: copyFields(fields), level, message, plugin }, except);
-    });
+  #logFor(
+    plugin: string | null,
+    except: LogHook | undefined,
+    bound: Readonly<Record<string, JsonValue>>,
+  ): Log {
+    const { redaction } = this.#scene;
+    return logOf(
+      (level, message, fields) => {
+        const { receivers, screen } = this.#outlet;
+        if (!screen.shows(level) && receivers.every(({ hook }) => hook === except)) {
+          return;
+        }
+        const copied = withBound(bound, copyFields(fields, redaction));
+        this.#deliver({ fields: copied, level, message, plugin }, except);
+      },
+      (fields) => this.#logFor(plugin, except, withBound(bound, copyFields(fields, redaction))),
+    );
   }
 
   #runId(): string {
@@ -447,5 +505,5 @@ export type {
   LogScreen,
   PluginLogHook,
 };
-export { RunLog, silentLog };
+export { RunLog };
 export type { LogDefect } from '../diagnostics/defect.js';
