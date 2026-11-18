@@ -9,12 +9,14 @@ import {
   defaultText,
   foreignFailure,
   genericDefectText,
+  InputError,
   InternalError,
   isAuthorFault,
 } from '../failures/errors.js';
-import type { DeclarationError, InvokedBy, LoomError } from '../failures/errors.js';
+import type { DeclarationError, InputProblem, InvokedBy, LoomError } from '../failures/errors.js';
 import { failureForm } from '../failures/form.js';
 import type { FailureForm } from '../failures/form.js';
+import { received } from '../inputs/received.js';
 import { nodeAt } from '../inspection/inspect.js';
 import type { CommandGraph, CommandNode } from '../inspection/inspect.js';
 import type { FailureSelection } from '../invocation/chain.js';
@@ -32,7 +34,8 @@ import type { BuiltPlugin } from './plugin.js';
  * invocation by name, and `style` is the contextual style for stderr, so a hook escapes text the
  * operator typed. `graph` is the frozen graph `inspect()` returns for the run, and `command` is the
  * node at `path` inside it; reading either builds the run's graph once. `log` records a log event
- * under the identity of the plugin whose hook is running.
+ * under the identity of the plugin whose hook is running. `received` reads the raw value of an
+ * invalid problem without adding it to the failure or the failure view context.
  *
  * @public
  * @sealed
@@ -58,6 +61,8 @@ interface FailureHookContext {
   readonly command: CommandNode;
   /** The run's identifier, which every log event of the run carries as `run`. */
   readonly run: string;
+  /** The raw value an invalid problem received, kept off the failure to avoid exposing secrets. */
+  readonly received: (problem: InputProblem) => unknown;
 }
 
 /**
@@ -147,7 +152,7 @@ function hintsOf(returned: string | readonly string[] | undefined): readonly str
  */
 function hookContext(
   scene: FailureScene & { built: BuiltRun },
-  shared: { log: Log; run: string; style: ContextualStyle },
+  shared: { failure: LoomError; log: Log; run: string; style: ContextualStyle },
 ): FailureHookContext {
   const { application, built, invokedBy, path, selection } = scene;
   const { log, style } = shared;
@@ -165,6 +170,10 @@ function hookContext(
     log,
     mediaType: selection.mediaType,
     path,
+    received: (problem: InputProblem) =>
+      shared.failure instanceof InputError && shared.failure.problems.includes(problem)
+        ? received(problem)
+        : undefined,
     run: shared.run,
     style,
     view: selection.view,
@@ -187,6 +196,7 @@ function callHook(
     return { hints: [], kind: 'hints' };
   }
   const context = hookContext(reading.scene, {
+    failure,
     log: reading.logging.bind(identity),
     run: reading.logging.run,
     style: reading.style,

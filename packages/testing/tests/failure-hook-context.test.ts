@@ -1,6 +1,6 @@
 import { UnknownCommandError } from '@loomcli/core';
-import type { FailureHook } from '@loomcli/core';
-import { describe, expect, it } from 'vite-plus/test';
+import type { FailureHook, InputProblem } from '@loomcli/core';
+import { describe, expect, it, test } from 'vite-plus/test';
 
 import { failureHookContext } from '../src/index.js';
 
@@ -37,4 +37,23 @@ describe('failureHookContext', () => {
     expect(hints(new UnknownCommandError('lsit', ['list']), context)).toBeUndefined();
     expect(context.mediaType).toBe('application/json');
   });
+});
+
+test('received defaults to absence and accepts the reader a test states', () => {
+  const values = {
+    application: 'notes',
+    invokedBy: 'argv',
+    mediaType: undefined,
+    path: [],
+    view: undefined,
+  } satisfies Parameters<typeof failureHookContext>[1];
+  const problem = {
+    input: { global: false, kind: 'option', name: 'format' },
+    issues: [{ message: 'Expected JSON.' }],
+    reason: 'invalid',
+    spelling: '--format',
+  } satisfies InputProblem;
+  expect(failureHookContext(hints, values).received(problem)).toBeUndefined();
+  const context = failureHookContext(hints, { ...values, received: () => 'jsno' });
+  expect(context.received(problem)).toBe('jsno');
 });

@@ -197,6 +197,7 @@ Each record captures one hard-to-reverse decision, the reasoning behind it, and 
 | [ADR-0177](0177-one-logging-installation-writes-to-several-destinations.md) | One logging installation writes identical JSONL records to an ordered list of destinations, each with its own level and each file with its own path, rotation, and error callback; existing single-destination settings remain supported. | proposed |
 | [ADR-0178](0178-operators-control-log-files-and-levels-and-failures-name-the-runs-log.md) | Two operator variables set file levels and redirect the first file; failures name the file and run, and the logging plugin publishes its files as an extension fact with a host-aware resolver. | proposed |
 | [ADR-0179](0179-the-logging-plugin-emits-opentelemetry-records-through-the-authors-logger.md) | The logging plugin emits OpenTelemetry records through the author's structural logger, preserving templates, fields, and failure facts without an SDK dependency. | proposed |
+| [ADR-0182](0182-failure-hooks-read-received-values-without-putting-them-on-failures.md) | Failure hooks read received values through their context while failures and problems carry no received value. | proposed |
 
 ## Adding a record
 

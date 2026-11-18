@@ -26,4 +26,10 @@ function unknownWithSuggestion(
     : `Unknown ${shown(kind)} "${shown(typed)}". ${didYouMean(first, names)}`;
 }
 
-export { unknownWithSuggestion };
+/** The fix for a rejected value names accepted candidates alone, never the received value. */
+function valueSuggestion(names: readonly string[]): string | undefined {
+  const [first] = names;
+  return first === undefined ? undefined : didYouMean(first, names);
+}
+
+export { unknownWithSuggestion, valueSuggestion };

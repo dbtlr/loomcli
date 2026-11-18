@@ -37,6 +37,7 @@ import {
   withdrawFill,
 } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
+import { rememberReceived } from './received.js';
 import { invalidDefault, invalidImplied } from './rules.js';
 import type {
   ArgumentConfig,
@@ -1044,17 +1045,16 @@ export async function validateValues(invocation: Invocation): Promise<Validation
   const reject = (
     entry: ScopedInput,
     issues: readonly StandardSchemaV1.Issue[],
-    subject: InputSubject,
+    subject: InputSubject & { raw?: unknown },
   ) => {
-    reports.set(entry.input, {
-      lines: messages(subject, issues),
-      problem: {
-        input: identityOf(entry),
-        issues,
-        reason: 'invalid',
-        spelling: spellingOf(entry.input, invocation),
-      },
-    });
+    const problem: InputProblem = {
+      input: identityOf(entry),
+      issues,
+      reason: 'invalid',
+      spelling: spellingOf(entry.input, invocation),
+    };
+    rememberReceived(problem, subject.raw);
+    reports.set(entry.input, { lines: messages(subject, issues), problem });
   };
   /** One path for every value a validator reads, so a raw shape and its issues meet it once. */
   const accept = async (
@@ -1079,7 +1079,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       await absent(entry, spelling, true);
       return;
     }
-    reject(entry, issues, suppliedName(entry.input, spelling, origin));
+    reject(entry, issues, { ...suppliedName(entry.input, spelling, origin), raw });
   };
   /**
    * Drops a value the configuration source filled, recording the `-v` log line that names its
@@ -1196,7 +1196,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
           omit(entry, spelling, messages(suppliedName(input, spelling), result.issues).join('\n'));
         } else {
           const origin = dropped.has(input) ? undefined : originOf(input);
-          reject(entry, result.issues, suppliedName(input, spelling, origin));
+          reject(entry, result.issues, { ...suppliedName(input, spelling, origin), raw: words });
         }
       } else if (raw === undefined) {
         await absent(entry, spelling, false);
