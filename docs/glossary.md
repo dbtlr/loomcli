@@ -680,11 +680,19 @@ One entry in an input error: an omitted required input, a rejected value togethe
 
 ## Logging
 
-Log, Log event, Message template, Log line, Change event, and Log destination follow the [logging contract](core/logging.md) and the [`onLog` hook](core/lifecycle-hooks.md#observing-log-events); Log record follows the [logging plugin](plugins/logging.md).
+Log, Bound fields, Redaction, Log event, Message template, Log line, Change event, and Log destination follow the [logging contract](core/logging.md) and the [`onLog` hook](core/lifecycle-hooks.md#observing-log-events); Log record follows the [logging plugin](plugins/logging.md).
 
 **Log**:
-The member of the action, middleware, source, provider, `onEnvironment`, and `onFailure` contexts, and of a log destination, that records what happened, with the methods `trace`, `debug`, `info`, `warn`, and `error`, each taking a message template and fields. Each call becomes a log event when an `onLog` hook hears it or the verbosity shows it as a log line, and does nothing otherwise. Out tells the operator and Log records: one call for each job.
+The member of the action, middleware, source, provider, `onEnvironment`, and `onFailure` contexts, and of a log destination, that records what happened, with the methods `trace`, `debug`, `info`, `warn`, and `error`, each taking a message template and fields, and `with`, which returns a Log that carries bound fields. Each call becomes a log event when an `onLog` hook hears it or the verbosity shows it as a log line, and does nothing otherwise. Out tells the operator and Log records: one call for each job.
 _Avoid_: Logger, console, out (for the log)
+
+**Bound fields**:
+The fields `log.with(fields)` copies once and adds to every event of the Log it returns, as a pino or winston child logger does. A call's own field wins over a bound one of the same name, a nested `with` wins over the Log it is called on, and a bound field fills a message template's placeholder as a call's field does.
+_Avoid_: Child logger, context fields, default metadata, tags
+
+**Redaction**:
+The field paths an Application declares once, as `log: { redact }`, whose values core replaces with `"[Redacted]"` when it copies an event's fields, so no `onLog` hook, log line, or log record reads them. A path is dotted object keys from the top of the fields, and it steps through every item of an array it meets. Loom redacts no name of its own.
+_Avoid_: Masking, scrubbing, filtering, censoring
 
 **Log event**:
 The frozen value one `log` call or one failure core reports creates: its time, level, message, fields copied as JSON, application, run id, path, the plugin that logged it, and, on core's failure events, the failure form and a defect's detail. Core hands it to every `onLog` hook.

@@ -102,6 +102,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Implied value rejected.** Each run passes every implied value through its validator before it reads a token, because a bare spelling supplies it to the action as a validated value. An implied value the validator rejects is the declaration at fault, whatever the operator supplies, so the run reports it whether or not a bare spelling was typed.
 
+### @loomcli/core/invalid-redact-path
+
+**Invalid redact path.** Core redacts each path log.redact lists from every log event when it copies the fields, so no onLog hook, log line, or record reads the value. A path splits on dots into object keys, so each key is nonempty.
+
 ### @loomcli/core/invalid-release-facts
 
 **Invalid release facts.** The build bakes the release facts into \_\_LOOM\_RELEASE\_\_: a build of source, development, or distributed, and an optional release group with a semantic version, a repository as owner/name, and an optional asset name. A malformed value leaves the build unknown, so core shows the author this diagnostic in every build.

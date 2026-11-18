@@ -1,5 +1,7 @@
 import { Application, plugin } from '@loomcli/core';
 import type {
+  EnvironmentContext,
+  FailureHookContext,
   JsonValue,
   Log,
   LogDefect,
@@ -10,6 +12,7 @@ import type {
   LogLevel,
   MiddlewareContext,
   PluginDefinition,
+  ProviderContext,
   SourceContext,
 } from '@loomcli/core';
 
@@ -77,6 +80,25 @@ const inline: PluginDefinition = { onLog: (event) => void event.time };
 
 const looseFields: LogFields = { anything: new Map() };
 
+// Every context that carries log binds fields through with, which returns a Log that nests.
+const bindings = (
+  action: Log,
+  middleware: MiddlewareContext,
+  source: SourceContext,
+  provider: ProviderContext,
+  failure: FailureHookContext,
+  environment: EnvironmentContext,
+  destination: LogDestination,
+): readonly Log[] => [
+  action.with({ requestId: 'r1' }).with({ at: new Date() }),
+  middleware.log.with({ requestId: 'r1' }),
+  source.log.with({ requestId: 'r1' }),
+  provider.log.with({ requestId: 'r1' }),
+  failure.log.with({ requestId: 'r1' }),
+  environment.log.with({ requestId: 'r1' }),
+  destination.log.with({ requestId: 'r1' }),
+];
+
 // @ts-expect-error TS2339: Log has no fatal, because out.fatal() throws and ends the run.
 const fatal = new Application('probe').action(({ log }) => log.fatal('gone'));
 
@@ -97,4 +119,4 @@ const noAttachLog: PluginDefinition = {
 };
 
 void [app, reaching, resolve, observing, inline, looseFields, fatal, returning, asynchronous];
-void [noGraphLog, noAttachLog];
+void [noGraphLog, noAttachLog, bindings];

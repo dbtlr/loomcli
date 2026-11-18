@@ -267,6 +267,24 @@ describe('an unstated member', () => {
     expect(print).toHaveBeenCalledWith('printed');
     expect(warn).toHaveBeenCalledWith('warned');
   });
+
+  it("of log binds fields with with, which reach the stated level beside the call's own", () => {
+    const info = vi.fn((_message: string, _fields?: Readonly<Record<string, unknown>>) => {});
+    const context = actionContext(getValue, {
+      args: { path: 'name' },
+      log: { info },
+      options: {},
+      provided: {},
+    });
+    const request = context.log.with({ requestId: 'r1', stage: 'outer' });
+    request.info('bound');
+    request.with({ stage: 'inner' }).info('nested', { requestId: 'r2' });
+    expect(request.warn('kept inert')).toBeUndefined();
+    expect(info.mock.calls).toEqual([
+      ['bound', { requestId: 'r1', stage: 'outer' }],
+      ['nested', { requestId: 'r2', stage: 'inner' }],
+    ]);
+  });
 });
 
 test('the inert out lends the terminal by calling work and returning its answer', async () => {
@@ -274,4 +292,41 @@ test('the inert out lends the terminal by calling work and returning its answer'
   const work = vi.fn(() => 42);
   await expect(context.out.lendTerminal(work)).resolves.toBe(42);
   expect(work).toHaveBeenCalledExactlyOnceWith();
+});
+
+test('a built log snapshots bindings and leaves bound fields in place for undefined values', () => {
+  const info = vi.fn((_message: string, _fields?: Readonly<Record<string, unknown>>) => {});
+  const context = actionContext(getValue, {
+    args: { path: 'name' },
+    log: { info },
+    options: {},
+    provided: {},
+  });
+  const bound = { requestId: 'r1' };
+  const request = context.log.with(bound);
+  bound.requestId = 'changed';
+  request.info('snapshot');
+  request.info('omitted', { requestId: undefined });
+  request.with({ requestId: undefined, stage: 'inner' }).info('nested');
+  expect(info.mock.calls).toEqual([
+    ['snapshot', { requestId: 'r1' }],
+    ['omitted', { requestId: 'r1' }],
+    ['nested', { requestId: 'r1', stage: 'inner' }],
+  ]);
+});
+
+test('a built log snapshots nested bound values, as core copies them', () => {
+  const info = vi.fn((_message: string, _fields?: Readonly<Record<string, unknown>>) => {});
+  const context = actionContext(getValue, {
+    args: { path: 'name' },
+    log: { info },
+    options: {},
+    provided: {},
+  });
+  const bound = { tags: ['a'], user: { id: 'original' } };
+  const request = context.log.with(bound);
+  bound.user.id = 'changed';
+  bound.tags.push('b');
+  request.info('nested');
+  expect(info.mock.calls).toEqual([['nested', { tags: ['a'], user: { id: 'original' } }]]);
 });

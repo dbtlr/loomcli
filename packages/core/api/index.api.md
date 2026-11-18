@@ -112,6 +112,9 @@ export type ApplicationMethod = Exclude<CommandMethod, 'alias' | 'visibleAlias'>
 export interface ApplicationOptions<Plugins extends readonly Plugin_2[] = readonly Plugin_2[], Uses extends readonly AnyProvider[] = []> {
     description?: string;
     extensions?: readonly ExtensionValue<'command'>[];
+    log?: {
+        readonly redact?: readonly string[];
+    };
     plugins?: Plugins;
     rendering?: RenderingPolicy;
     shutdown?: {
@@ -1086,6 +1089,7 @@ export interface Log {
     info(message: string, fields?: LogFields): void;
     trace(message: string, fields?: LogFields): void;
     warn(message: string, fields?: LogFields): void;
+    with(fields: LogFields): Log;
 }
 
 // @public @sealed

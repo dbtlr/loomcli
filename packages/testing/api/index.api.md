@@ -12,6 +12,7 @@ import type { EnvironmentContext } from '@loomcli/core';
 import type { EnvironmentHook } from '@loomcli/core';
 import type { FailureHook } from '@loomcli/core';
 import type { FailureHookContext } from '@loomcli/core';
+import type { Log } from '@loomcli/core';
 import type { LogDestination } from '@loomcli/core';
 import type { LogEvent } from '@loomcli/core';
 import type { MiddlewareContext } from '@loomcli/core';
@@ -84,7 +85,9 @@ export type KeyLetter = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j
 export function logDestination(values?: LogDestinationValues): LogDestination;
 
 // @public
-export type LogDestinationValues = Partial<LogDestination>;
+export type LogDestinationValues = Partial<Omit<LogDestination, 'log'>> & {
+    readonly log?: Partial<Log>;
+};
 
 // @public
 export function logEvent(values?: LogEventValues): LogEvent;

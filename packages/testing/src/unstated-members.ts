@@ -6,6 +6,7 @@
 import { FatalError } from '@loomcli/core';
 import type {
   Log,
+  LogFields,
   MessageArguments,
   OnResume,
   OnShutdown,
@@ -161,16 +162,65 @@ function outWith<Result>(
   };
 }
 
-/** The builder's `log`, whose levels do nothing, with each level the test stated in place of its own. */
+/**
+ * The builder's `log`, whose levels do nothing, with each level the test stated in place of its own.
+ * Its `with` returns a `log` whose levels call these with the bound fields beside the call's own,
+ * the call's winning a shared name, unless the test states `with` itself.
+ */
 function logWith(stated: Partial<Log> | undefined): Log {
-  return {
+  const log: Log = {
     debug: nothing,
     error: nothing,
     info: nothing,
     trace: nothing,
     warn: nothing,
+    with: (bound) => boundLog(log, bound),
     ...stated,
   };
+  return log;
+}
+
+/** Leaves undefined fields out so they cannot replace a bound value. */
+function definedFields(fields: LogFields | undefined): LogFields {
+  return Object.fromEntries(
+    Object.entries(fields ?? {}).filter(([, value]) => value !== undefined),
+  );
+}
+
+/** Copies plain objects and arrays all the way down, so a later change to the caller's value changes nothing. */
+function snapshotOf(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(snapshotOf);
+  }
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    Object.getPrototypeOf(value) === Object.prototype
+  ) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshotOf(item)]));
+  }
+  return value;
+}
+
+/** A `log` whose levels call `log`'s with a snapshot of `bound` beside each call's own fields. */
+function boundLog(log: Log, bound: LogFields): Log {
+  const snapshot = Object.fromEntries(
+    Object.entries(definedFields(bound)).map(([key, value]) => [key, snapshotOf(value)]),
+  );
+  const level =
+    (name: Exclude<keyof Log, 'with'>) =>
+    (message: string, fields?: LogFields): void => {
+      log[name](message, { ...snapshot, ...definedFields(fields) });
+    };
+  const bounded: Log = {
+    debug: level('debug'),
+    error: level('error'),
+    info: level('info'),
+    trace: level('trace'),
+    warn: level('warn'),
+    with: (more) => boundLog(bounded, more),
+  };
+  return bounded;
 }
 
 export {

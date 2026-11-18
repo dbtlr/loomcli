@@ -4,7 +4,7 @@ title: ADR-0174 - -v shows the log through message templates, and out keeps what
 description: One call per job. Out keeps print, info, success, warn, and error, which tell the operator, and loses debug and trace. Log records, and core shows each log event as a log line on stderr when the run's verbosity asks for it, debug and above at -v and trace too at -vv, with or without an onLog hook, never a failure event, through the declared view @loomcli/core/log/line. A message is a Message Template from messagetemplates.org, whose {name} placeholders the line fills from the event's fields, trailing the rest as dim name=value, every value escaped, while the record keeps the template as written. A log call creates its event when a hook hears it or the verbosity shows it. Log lines follow the outermost run's verbosity. A log destination's out becomes log, whose events reach every other hook and never the hook itself, so the logging plugin's lines do not recurse. The first-party plugins' -v and -vv lines and core's dropped-fill line move onto log.debug and log.trace with constant templates. It supersedes ADR-0090's debug and trace lanes and its rule that verbose output renders no log event, ADR-0165's lanes and the out members it added, ADR-0069's rule that core creates no event without an onLog hook where the verbosity shows one, and ADR-0070's rejection of a readable console line.
 status: proposed
 created: 2026-11-17
-modified: 2026-11-17
+modified: 2026-11-18
 ---
 
 # ADR-0174 - -v shows the log through message templates, and out keeps what the operator is told
@@ -84,3 +84,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-17: Proposed with the contract and the implementation (LM-372). The builder settled what the task left open: the view `@loomcli/core/log/line` and its look, a new view rather than `lanes.debug` and `lanes.trace`, the destination's `log` that skips its own hook, `out` removed from the destination, and a placeholder whose field is absent written as it stands.
+- 2026-11-18: [ADR-0176](0176-a-log-binds-fields-with-with-and-an-application-redacts-field-paths-from-every-log-event-at-the-copy.md), proposed, applies the redaction this record's context names: the Application declares `log: { redact }`, core writes `"[Redacted]"` for each listed path when it copies the fields, and the log line reads that copy, a placeholder included. A field `log.with` binds fills a placeholder and trails as a call's field does. It binds when that record is accepted.
