@@ -35,6 +35,7 @@ import type {
   ProgressEvent,
   RegionCloser,
   ResultBinding,
+  ResultTransform,
   ResultView,
   RowView,
   View,
@@ -629,6 +630,31 @@ interface RejectedCall {
 }
 
 /**
+ * The view a rows result writes through with the run's result transform ahead of it: a row view
+ * reads each row through the transform as the row arrives, and a whole view reads the collected rows
+ * through it one by one. A throw in the transform is the piece's failure, as a view's throw is, so
+ * the rows already written stay.
+ */
+function transformed(view: SequenceView<never>, transform: ResultTransform): SequenceView<never> {
+  if (view.kind === 'whole') {
+    const { render } = view;
+    return {
+      kind: 'whole',
+      render: (rows, context) => render(erased(rows.map(transform)), context),
+    };
+  }
+  const { head, row, tail } = view.view;
+  return {
+    kind: 'rows',
+    view: {
+      head,
+      row: (each, index, context) => row(erased(transform(each)), index, context),
+      tail,
+    },
+  };
+}
+
+/**
  * The data one view reads back through the key that resolved it. A result's views are stored with
  * their data type erased, as the view registry erases a declared view's, so the write site hands
  * each function the value its own declaration checked.
@@ -639,6 +665,7 @@ function erased(value: unknown): never {
   // Every view it stores reads its data as the erased type the registry uses.
   // It holds because the authoring call checked the value against the declaration the record answers.
   // Build proved every entry in that record renders the declared type.
+  // A result transform's answer is the claim of the middleware that assigned it, which runs no check.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   return value as never;
 }
@@ -936,8 +963,10 @@ export class Output {
       // So an empty views record or a default no view matches fails here, as a broken view does.
       return this.renderFailed(new Error(`The view "${selected}" is not declared.`));
     }
+    const { transform } = binding;
     if (result.kind === 'rows') {
-      return this.sequence(erased(value), this.sequenceView(view, bare), {
+      const resolved = this.sequenceView(view, bare);
+      return this.sequence(erased(value), transform ? transformed(resolved, transform) : resolved, {
         destination: 'stdout',
         live: emission.live,
       });
@@ -946,7 +975,8 @@ export class Output {
       if (typeof view.render !== 'function') {
         throw new TypeError(`The view "${selected}" renders rows, not a value.`);
       }
-      return resolveView(bare, view)(erased(value), this.context('stdout'));
+      const data = transform ? transform(value) : value;
+      return resolveView(bare, view)(erased(data), this.context('stdout'));
     });
   }
 

@@ -102,6 +102,7 @@ import type {
   OpenResult,
   Out,
   ResultBinding,
+  ResultTransform,
   ResultView,
   ResultViews,
   ResultViewsOf,
@@ -3110,7 +3111,10 @@ export type Prepared = {
   result: DeclaredResult | undefined;
 } & (
   | {
-      dispatch: (view: string | null) => Promise<DispatchOutcome>;
+      dispatch: (
+        view: string | null,
+        transform: ResultTransform | undefined,
+      ) => Promise<DispatchOutcome>;
       kind: 'ready';
       request: Request;
     }
@@ -3399,13 +3403,19 @@ function readyDispatch(
     options: Readonly<Record<string, unknown>> | null;
     supplied: ActionContext<unknown>['supplied'];
   },
-): { dispatch: (view: string | null) => Promise<DispatchOutcome>; request: Request } {
+): {
+  dispatch: (
+    view: string | null,
+    transform: ResultTransform | undefined,
+  ) => Promise<DispatchOutcome>;
+  request: Request;
+} {
   const { command, path } = routed;
   const [top] = path;
   // An action under a plugin Command logs as that plugin, and the application's own as none.
   const plugin = (top === undefined ? undefined : graph.listedBy.get(top)) ?? null;
   return {
-    dispatch: async (view) => {
+    dispatch: async (view, transform) => {
       const { signal } = invocation;
       const runValues = invocation.providers({
         graph: invocation.inspected,
@@ -3431,7 +3441,7 @@ function readyDispatch(
         return 'cancelled';
       }
       // The channel is built at the boundary, because the view a middleware selected is read there.
-      const channel = invocation.channel({ path, result: command.result, view });
+      const channel = invocation.channel({ path, result: command.result, transform, view });
       try {
         rememberInputNames(invocation.host, invocation.invokedBy);
         await local.dispatch({

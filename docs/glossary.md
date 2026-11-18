@@ -522,7 +522,7 @@ One entry of a table view's `columns` list: a key of the row, an optional header
 _Avoid_: Field (for a column), table column definition, Columns (the destination's width, a separate term)
 
 **Field**:
-One entry of a records view's `fields` list: a key of the row and an optional `format`. A field carries no header and no alignment, because the key is the label the line prints and the value column is one lane. An omitted list makes every key that appears in the record a field in first-seen order. On a terminal its value wraps at the width left after the key column, and a table whose columns cannot fit renders its rows in this layout.
+One entry of a records view's `fields` list: a key of the row and an optional `format`. The formatter's `--fields` option uses the word for a top-level key of its json or jsonl output, which it keeps, and applies to no records view. A field carries no header and no alignment, because the key is the label the line prints and the value column is one lane. An omitted list makes every key that appears in the record a field in first-seen order. On a terminal its value wraps at the width left after the key column, and a table whose columns cannot fit renders its rows in this layout.
 _Avoid_: Column (for a field), property, attribute, row key
 
 **Identifier**:
@@ -576,6 +576,10 @@ _Avoid_: Presentation, presentation name, format name, view identity, encoding n
 **Selected view**:
 The view a result renders through on one run: the view name a middleware assigned to `view` on its context before the dispatch boundary, or the declaration's default when none did.
 _Avoid_: Active view, current format, output mode
+
+**Result transform**:
+The function a middleware assigns to `transform` on its context before the dispatch boundary, which reshapes a run's result before the selected view renders it: a value once, and each row of a rows result as it arrives under a row view or when the collected rows render under a whole view. The view stays pure; the formatter's `--fields` sets one.
+_Avoid_: Filter, projection (for the function), view map (a view's own `map` belongs to the view)
 
 ## Failures
 
@@ -805,7 +809,7 @@ An entry in one coding agent's own MCP configuration that names the application 
 _Avoid_: Installation (for the registration), host configuration, agent target (the agent is one program, not a folder layout), MCP install
 
 **Formatter**:
-The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, `jsonlRows()` as the row view of `jsonl` that the hook declares under `rows()` so each line prints as the row arrives, and failure encoders for their two media types. A result has no encoding outside the view model: a machine view is a view like a table is.
+The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, `jsonlRows()` as the row view of `jsonl` that the hook declares under `rows()` so each line prints as the row arrives, failure encoders for their two media types, and `--fields`, which keeps the named top-level keys of its own json and jsonl output through a result transform and applies to no view an author declared. A result has no encoding outside the view model: a machine view is a view like a table is.
 _Avoid_: Format plugin, encoder (for the plugin), serializer, format (for the view), output mode
 
 **Theme**:

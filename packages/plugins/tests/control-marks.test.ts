@@ -57,6 +57,7 @@ test('the first-party plugins mark their options as controls, and a work option 
     color: true,
     config: true,
     field: false,
+    fields: true,
     file: false,
     format: true,
     help: true,

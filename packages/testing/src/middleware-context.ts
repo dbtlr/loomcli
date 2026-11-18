@@ -2,7 +2,7 @@
  * The context a test calls one middleware with. The test imports the middleware's module itself, so
  * no loader runs and no activation is checked.
  */
-import type { MiddlewareContext, PluginOptions } from '@loomcli/core';
+import type { MiddlewareContext, PluginOptions, ResultTransform } from '@loomcli/core';
 
 import {
   logWith,
@@ -31,9 +31,10 @@ type MiddlewareValues<Options extends PluginOptions> = Pick<
 
 /**
  * Builds the context a middleware takes from the values the test states. The context keeps the
- * last view and the last media type the middleware assigns, so a test reads `context.view` and
- * `context.mediaType` after the call; no check runs on either, because no dispatch boundary
- * follows. An unstated `mediaType` reads `undefined`, and nothing derives it from `view`.
+ * last view, the last media type, and the last result transform the middleware assigns, so a test
+ * reads `context.view`, `context.mediaType`, and `context.transform` after the call; no check runs
+ * on any of them, because no dispatch boundary follows. An unstated `mediaType` reads `undefined`,
+ * and nothing derives it from `view`. An unstated `transform` reads `undefined`.
  *
  * @example
  * ```ts
@@ -61,7 +62,7 @@ function middlewareContext<Options extends PluginOptions>(
   middleware: (context: MiddlewareContext<Options>) => Promise<void> | void,
   values: MiddlewareValues<Options>,
 ): MiddlewareContext<Options> {
-  let { mediaType, view } = values;
+  let { mediaType, transform, view } = values;
   return {
     ...values,
     get command() {
@@ -86,6 +87,12 @@ function middlewareContext<Options extends PluginOptions>(
     onSuspend: values.onSuspend ?? registersNothing,
     out: outWith(values.out, 'middlewareContext'),
     signal: values.signal ?? neverAborts(),
+    get transform(): ResultTransform | undefined {
+      return transform;
+    },
+    set transform(next: ResultTransform) {
+      transform = next;
+    },
     get view(): string | null {
       return view;
     },

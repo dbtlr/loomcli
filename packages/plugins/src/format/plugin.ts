@@ -4,6 +4,7 @@ import type { FailureEncoder, Plugin, StringOption } from '@loomcli/core';
 import { packageName } from '../constants.js';
 import { escapeControls } from '../encode.js';
 import { attachFormat } from './attach.js';
+import { providedViews } from './extension.js';
 
 const identity = `${packageName}/format`;
 
@@ -48,6 +49,7 @@ export interface FormatSettings {
  */
 export function format(settings?: FormatSettings): Plugin<{}> {
   return plugin(identity, {
+    extensions: [providedViews],
     failureEncoders: [
       encodeFailure('application/json', errorLine),
       encodeFailure('application/jsonl', errorLine),

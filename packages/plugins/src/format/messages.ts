@@ -11,4 +11,71 @@ function formatIssue(names: readonly string[]): string {
   return `Supply one of ${shownNames(names)}.`;
 }
 
-export { formatIssue };
+/** The issue `--fields` reports for a value with an empty name, such as `name,` or `,`. */
+const fieldsIssue = 'Supply field names separated by commas, such as name,size.';
+
+/** The fields an operator named, each quoted and escaped, joined as a list. */
+function shownFields(fields: readonly string[]): string {
+  return fields.map((field) => `"${escapeControlCharacters(field)}"`).join(', ');
+}
+
+/** `--fields` beside a view that is not one of the formatter's encodings. */
+const fieldsNeedEncoding =
+  'Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format json or --format jsonl.';
+
+/** The opening of the sentence below, naming the fields the output does not hold. */
+function namedFields(unknown: readonly string[]): string {
+  return `Option "--fields" names ${shownFields(unknown)}`;
+}
+
+/** `--fields` naming keys the output does not hold, with the keys it does hold. */
+function unknownFields(unknown: readonly string[], available: readonly string[]): string {
+  return `${namedFields(unknown)}, which the output does not hold. Supply fields from ${shownNames(available)}.`;
+}
+
+/** `--fields` naming keys of an output that holds no keys at all. */
+function noFieldsHeld(unknown: readonly string[]): string {
+  return `${namedFields(unknown)}, but the output holds no fields. Remove --fields.`;
+}
+
+/** The kinds of JSON value that hold no fields, as the sentence below names them. */
+type FieldlessKind = 'array' | 'boolean' | 'null' | 'number' | 'other' | 'string';
+
+/** How the sentence below names each kind. */
+function fieldlessKind(kind: FieldlessKind): string {
+  switch (kind) {
+    case 'array': {
+      return 'an array';
+    }
+    case 'boolean': {
+      return 'a Boolean';
+    }
+    case 'null': {
+      return 'null';
+    }
+    case 'number': {
+      return 'a number';
+    }
+    case 'string': {
+      return 'a string';
+    }
+    default: {
+      return 'a value that is not an object';
+    }
+  }
+}
+
+/** `--fields` over a value, an element, or a row that is not an object. */
+function fieldsNeedObjects(kind: FieldlessKind): string {
+  return `Option "--fields" selects fields of objects, but the output holds ${fieldlessKind(kind)}. Remove --fields.`;
+}
+
+export {
+  fieldsIssue,
+  fieldsNeedEncoding,
+  fieldsNeedObjects,
+  formatIssue,
+  noFieldsHeld,
+  unknownFields,
+};
+export type { FieldlessKind };
