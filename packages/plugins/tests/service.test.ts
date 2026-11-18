@@ -162,6 +162,8 @@ interface Answer {
 type Answers = Record<string, Answer | readonly Answer[]>;
 
 interface Scenario {
+  readonly logging?: 'files' | 'console';
+  readonly logFiles?: readonly string[];
   readonly platform?: string;
   readonly program?: readonly string[];
   readonly release?: ReleaseFacts;
@@ -196,6 +198,8 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
       XDG_STATE_HOME: box.state,
       ...scenario.env,
     },
+    logging: scenario.logging,
+    logFiles: scenario.logFiles,
     label: scenario.label,
     platform: scenario.platform ?? 'linux',
     probe: scenario.probe,
@@ -1005,6 +1009,122 @@ function shown(active: string, pid: number): Answers {
 }
 
 describe('status', () => {
+  it.each(['linux', 'darwin'])('names each log file and its absence on %s', async (platform) => {
+    const box = sandbox();
+    const first = join(box.root, 'first.jsonl');
+    const second = join(box.root, 'second.jsonl');
+    writeFileSync(first, 'a record\n');
+    const installed = await run(box, ['install'], { platform, answers: notLoaded });
+    expect(installed.status).toBe(0);
+    const scenario = {
+      platform,
+      logging: 'files',
+      logFiles: [first, second],
+      answers: platform === 'linux' ? shown('active', 4120) : loaded,
+    } satisfies Scenario;
+    const text = await run(box, ['status'], scenario);
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain(`  log   ${first}\n  log   ${second} (no records yet)\n`);
+    const json = await run(box, ['status', '--format', 'json'], scenario);
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout).logs).toEqual({
+      kind: 'files',
+      files: [
+        { path: first, exists: true },
+        { path: second, exists: false },
+      ],
+    });
+    expect(existsSync(second)).toBe(false);
+  });
+
+  it.each(['linux', 'darwin'])('names console capture on %s', async (platform) => {
+    const box = sandbox();
+    const installed = await run(box, ['install'], { platform, answers: notLoaded });
+    expect(installed.status).toBe(0);
+    const scenario = {
+      platform,
+      logging: 'console',
+      answers: platform === 'linux' ? shown('active', 4120) : loaded,
+    } satisfies Scenario;
+    const text = await run(box, ['status'], scenario);
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain(
+      platform === 'linux'
+        ? '  log   Service console output goes to journald.\n'
+        : '  log   Service console output goes nowhere: launchd discards it.\n',
+    );
+    const json = await run(box, ['status', '--format', 'json'], scenario);
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout).logs).toEqual({
+      kind: 'manager',
+      capture: platform === 'linux' ? 'journald' : 'none',
+    });
+  });
+
+  it.each(['linux', 'darwin'])(
+    'reads whether a file exists before its own debug records reach it on %s',
+    async (platform) => {
+      const box = sandbox();
+      const file = join(box.root, 'logs', 'debug.jsonl');
+      const scenario = {
+        platform,
+        logging: 'files',
+        logFiles: [file],
+        env: { NOTES_LOG_LEVEL: 'debug' },
+        answers: platform === 'linux' ? shown('active', 4120) : loaded,
+      } satisfies Scenario;
+      const json = await run(box, ['status', '--format', 'json'], scenario);
+      expect(json.status).toBe(0);
+      expect(JSON.parse(json.stdout).logs).toEqual({
+        kind: 'files',
+        files: [{ path: file, exists: false }],
+      });
+    },
+  );
+
+  it.each(['linux', 'darwin'])(
+    'resolves the first file using the status environment on %s',
+    async (platform) => {
+      const box = sandbox();
+      const override = join(box.root, 'operator.jsonl');
+      const scenario = {
+        platform,
+        logging: 'files',
+        logFiles: ['declared.jsonl', '~/other.jsonl'],
+        env: { NOTES_LOG_FILE: override },
+        answers: platform === 'linux' ? shown('active', 4120) : loaded,
+      } satisfies Scenario;
+      const text = await run(box, ['status'], scenario);
+      expect(text.status).toBe(0);
+      expect(text.stdout).toContain(
+        `  log   ${override} (no records yet)\n  log   ${box.home}/other.jsonl (no records yet)\n`,
+      );
+      const json = await run(box, ['status', '--format', 'json'], scenario);
+      expect(JSON.parse(json.stdout).logs).toEqual({
+        kind: 'files',
+        files: [
+          { path: override, exists: false },
+          { path: join(box.home, 'other.jsonl'), exists: false },
+        ],
+      });
+      expect(existsSync(override)).toBe(false);
+    },
+  );
+
+  it('escapes control characters in log paths in text and preserves them in JSON', async () => {
+    const box = sandbox();
+    const path = join(box.root, 'a\nb.jsonl');
+    const scenario = {
+      logging: 'files',
+      logFiles: [path],
+      answers: shown('active', 4120),
+    } satisfies Scenario;
+    const text = await run(box, ['status'], scenario);
+    expect(text.stdout).toContain(`  log   ${box.root}/a\\u000ab.jsonl (no records yet)\n`);
+    const json = await run(box, ['status', '--format', 'json'], scenario);
+    expect(JSON.parse(json.stdout).logs.files).toEqual([{ path, exists: false }]);
+  });
+
   it('prints the same bytes on a narrow terminal as on a pipe, its unit path whole', async () => {
     const box = sandbox();
     const fixtureResult25 = await run(box, ['install']);

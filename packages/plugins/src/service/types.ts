@@ -36,7 +36,7 @@ export interface ServiceState {
 }
 
 /**
- * The result status sends: the state, then the probe's rows.
+ * The result status sends: the state, the probe's rows, and any logging destinations.
  *
  * @public
  * @sealed
@@ -44,6 +44,13 @@ export interface ServiceState {
 export interface ServiceStatus extends ServiceState {
   /** The probe's rows, or none. */
   readonly details: readonly ServiceDetail[];
+  /** Logging destinations resolved for the status host, absent without the logging plugin. */
+  readonly logs?:
+    | {
+        readonly kind: 'files';
+        readonly files: readonly { readonly path: string; readonly exists: boolean }[];
+      }
+    | { readonly kind: 'manager'; readonly capture: 'journald' | 'none' };
 }
 
 /**

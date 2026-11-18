@@ -48,6 +48,16 @@ export interface ServiceState {
 // @public @sealed
 export interface ServiceStatus extends ServiceState {
     readonly details: readonly ServiceDetail[];
+    readonly logs?: {
+        readonly kind: 'files';
+        readonly files: readonly {
+            readonly path: string;
+            readonly exists: boolean;
+        }[];
+    } | {
+        readonly kind: 'manager';
+        readonly capture: 'journald' | 'none';
+    };
 }
 
 // (No @packageDocumentation comment for this package)

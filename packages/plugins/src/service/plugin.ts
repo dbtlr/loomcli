@@ -6,7 +6,7 @@ import { control, installChild, isPresent, prepare, uninstallChild } from './chi
 import type { ChildRun } from './children.js';
 import { judgeRun } from './route.js';
 import { identity, judgeSettings } from './settings.js';
-import { stateOf, statusOf, statusText } from './status.js';
+import { logsOf, stateOf, statusOf, statusText } from './status.js';
 import type { ServiceDetail, ServiceSettings, ServiceState, ServiceStatus } from './types.js';
 
 /** What every child reads from its action context. */
@@ -64,10 +64,12 @@ function statusCommand(settings: ServiceSettings) {
     .views({ json: json<ServiceStatus>() })
     .action(async (context) => {
       const { backend, service: unit } = prepare(childRun(settings.label, context));
+      // Read the log files before any manager call, so status's own records never decide whether a file exists.
+      const logs = logsOf(context.graph, context.host);
       const installed = isPresent(unit.unit);
       const reading = await backend.read(unit, installed);
       const state = stateOf({ installed, label: settings.label, unit: unit.unit }, reading);
-      await context.out.results(statusOf(state, await detailsOf(settings, state, context)));
+      await context.out.results(statusOf(state, await detailsOf(settings, state, context), logs));
     });
 }
 

@@ -246,3 +246,5 @@ export function logFilePaths(graph: CommandGraph, host: Host): string[] {
 ```
 
 [ADR-0178](../decisions/0178-operators-control-log-files-and-levels-and-failures-name-the-runs-log.md) records the variables, the hint, the fact, and the resolver.
+
+The [service plugin's status](service.md#status) reads this fact and resolver to show each file path, or the manager's console capture when no files are declared. It resolves paths for the host running status; a service whose manager supplies different environment variables can write elsewhere.
