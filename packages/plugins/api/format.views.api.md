@@ -4,6 +4,7 @@
 
 ```ts
 
+import type { RowView } from '@loomcli/core';
 import type { View } from '@loomcli/core';
 
 // @public
@@ -16,6 +17,9 @@ export function json<Data>(config?: EncodingConfig<Data>): View<Data>;
 
 // @public
 export function jsonl<Data>(config?: EncodingConfig<Data>): View<Data>;
+
+// @public
+export function jsonlRows<Row>(config?: EncodingConfig<Row>): RowView<Row>;
 
 // (No @packageDocumentation comment for this package)
 

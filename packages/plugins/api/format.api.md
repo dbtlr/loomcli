@@ -5,6 +5,7 @@
 ```ts
 
 import type { Plugin as Plugin_2 } from '@loomcli/core';
+import type { RowView } from '@loomcli/core';
 import type { StringOption } from '@loomcli/core';
 import type { View } from '@loomcli/core';
 
@@ -26,6 +27,9 @@ export function json<Data>(config?: EncodingConfig<Data>): View<Data>;
 
 // @public
 export function jsonl<Data>(config?: EncodingConfig<Data>): View<Data>;
+
+// @public
+export function jsonlRows<Row>(config?: EncodingConfig<Row>): RowView<Row>;
 
 // (No @packageDocumentation comment for this package)
 

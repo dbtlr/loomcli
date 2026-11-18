@@ -1,4 +1,4 @@
-import type { View } from '@loomcli/core';
+import type { RowView, View } from '@loomcli/core';
 
 import { encodeText } from './encode.js';
 
@@ -106,5 +106,35 @@ export function jsonl<Data>(config: EncodingConfig<Data> = {}): View<Data> {
       }
       return encodeText(`${stringify(mapped)}\n`, context);
     },
+  };
+}
+
+/**
+ * A row view over JSON Lines: one compact `JSON.stringify` line per row, written as the row
+ * arrives, with no head and no tail. Its lines are the bytes `jsonl()` writes for the same rows,
+ * and an empty sequence prints nothing. `map` applies to each row, where `jsonl()`'s applies to the
+ * collected array, so a mapped row is always one line. It is declared `application/jsonl` under
+ * every `map`. A source that stops early leaves the lines already written, as core's row contract
+ * states. A bare pack view, so two calls with one configuration are two distinct views.
+ *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ * import { jsonlRows } from '@loomcli/plugins/format/views';
+ *
+ * export const list = new Command('list')
+ *   .rows<{ name: string }>({ views: { jsonl: jsonlRows() } })
+ *   .action(async ({ out }) => out.results([{ name: 'notes' }, { name: 'todo' }]));
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/format.md
+ *
+ * @public
+ */
+export function jsonlRows<Row>(config: EncodingConfig<Row> = {}): RowView<Row> {
+  const map = config.map ?? identity<Row>;
+  return {
+    mediaType: 'application/jsonl',
+    row: (row, _index, context) => encodeText(`${stringify(map(row))}\n`, context),
   };
 }

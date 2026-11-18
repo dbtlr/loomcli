@@ -805,7 +805,7 @@ An entry in one coding agent's own MCP configuration that names the application 
 _Avoid_: Installation (for the registration), host configuration, agent target (the agent is one program, not a folder layout), MCP install
 
 **Formatter**:
-The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, and failure encoders for their two media types. A result has no encoding outside the view model: a machine view is a view like a table is.
+The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, `jsonlRows()` as the row view of `jsonl` that the hook declares under `rows()` so each line prints as the row arrives, and failure encoders for their two media types. A result has no encoding outside the view model: a machine view is a view like a table is.
 _Avoid_: Format plugin, encoder (for the plugin), serializer, format (for the view), output mode
 
 **Theme**:

@@ -2,7 +2,7 @@ import type { AttachedCommand, CommandAttachHook } from '@loomcli/core';
 
 import { formatName } from './names.js';
 import type { FormatSettings } from './plugin.js';
-import { json, jsonl } from './views.js';
+import { json, jsonl, jsonlRows } from './views.js';
 
 /**
  * The names a group's `--format` accepts: the formatter's own views, whose media types its
@@ -28,10 +28,11 @@ function attachToGroup(command: AttachedCommand, short: FormatSettings['short'])
 }
 
 /**
- * The hook that appends `json` and `jsonl` to a Command's result where its record lacks the key,
- * then declares `--format` over the resulting names, with `short` as its short spelling or none
- * when it is undefined, and that declares a hidden `--format` on a group. `format()` has already
- * judged that spelling at its call. A Command with an action and no result is returned unchanged.
+ * The hook that appends `json` and `jsonl`, `jsonl` as a row view under a rows result, to a
+ * Command's result where its record lacks the key, then declares `--format` over the resulting
+ * names, with `short` as its short spelling or none when it is undefined, and that declares a
+ * hidden `--format` on a group. `format()` has already judged that spelling at its call.
+ * A Command with an action and no result is returned unchanged.
  */
 export function attachFormat(short: FormatSettings['short']): CommandAttachHook {
   return (command) => {
@@ -39,7 +40,11 @@ export function attachFormat(short: FormatSettings['short']): CommandAttachHook 
     if (result === null) {
       return command.hasAction ? command : attachToGroup(command, short);
     }
-    const machine = { json: json(), jsonl: jsonl() };
+    // Rows stream through a row view, so a jq-style pipeline reads each record as it arrives.
+    const machine = {
+      json: json(),
+      jsonl: result.kind === 'rows' ? jsonlRows() : jsonl(),
+    };
     const added = Object.entries(machine).filter(([name]) => !result.views.includes(name));
     const reshaped = command.views(Object.fromEntries(added));
     // `views()` appends a name the record lacks and leaves the place of one it holds.

@@ -14,7 +14,7 @@ const identity = `${packageName}/format`;
  */
 const errorLine: FailureEncoder = (form) => `${escapeControls(JSON.stringify({ error: form }))}\n`;
 
-export { json, jsonl } from './views.js';
+export { json, jsonl, jsonlRows } from './views.js';
 export type { EncodingConfig } from './views.js';
 
 /**

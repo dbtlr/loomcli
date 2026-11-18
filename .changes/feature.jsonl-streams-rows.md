@@ -1,0 +1,2 @@
+- Add `jsonlRows()`, a row view that writes one JSON Lines line per row as the row arrives, exported from `@loomcli/plugins/format` and `@loomcli/plugins/format/views`. Its `map` applies to each row, and its bytes equal `jsonl()`'s for the same rows.
+- Change `--format jsonl` on a Command that declares `rows()` to write each line as its row arrives, so an unbounded source prints as it goes and a source that fails mid-run now leaves the rows already written on stdout. A value result and a `jsonl()` an author declares keep the whole view.
