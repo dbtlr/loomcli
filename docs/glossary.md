@@ -812,6 +812,10 @@ _Avoid_: Parsed values, partial values, line state
 The projection of one Command that the manpage plugin writes as a section-1 roff file for `man`: its name and summary, usage, details, members with their environment and configuration bindings, and examples. Each Command that is neither hidden nor under a hidden Command has one, named for the Command's path, such as `jsonkit-get`, and a page's bytes depend only on the graph.
 _Avoid_: Manual page, manpage (outside the plugin's name), roff page, help page
 
+**Command reference**:
+The projection of one Command as a Markdown file: its usage, visible aliases, terminal need, deprecated mark, description, arguments, standard input, options, result, skill guidance, and the details, examples, and failures the manifest carries, with no option alias. The skills plugin generates one for each Command a skill selects that is neither hidden nor under a hidden Command, named for the Command's path, such as `notes-note-list.md`, under the installed skill's `references/commands/`, beside an `index.md` that lists them and the global options and is not a command reference itself. A command reference's bytes depend only on the graph. It is not one of the author's reference files, which the skill supplies.
+_Avoid_: Command docs, generated skill file, man page, reference file (for a generated one)
+
 **MCP tool**:
 One opted-in Command as the MCP plugin serves it to a Model Context Protocol client: a name that is the Command's path joined with `_`, or the application name for the root, with each `-` written as `_`, a description for an agent, the Command's inputs as one object keyed by declared name, and the effect hints its author set. A Command is a tool only when it carries an `mcpCommand` value, and an alias never is. A call of the tool is an invocation by name of its Command.
 _Avoid_: Endpoint, function, MCP command, tool (for a Command that has not opted in)
@@ -1127,7 +1131,7 @@ The file that has the platform supervise one of the application's own Commands f
 _Avoid_: Daemon (for the file), job, supervisor config
 
 **Agent skill**:
-A folder of instructions a coding agent loads to use the application, holding `SKILL.md` and any reference files beside it, named by a skill name of lowercase letters, digits, and hyphens. The application ships its skills inside itself, and the skills plugin writes each one where agents read it as a whole folder, so an installed skill speaks the surface of the binary that installed it.
+A folder of instructions a coding agent loads to use the application, holding `SKILL.md` and any reference files beside it, named by a skill name of lowercase letters, digits, and hyphens. The application ships its skills inside itself, and the skills plugin writes each one where agents read it as a whole folder, with a command reference for each Command the skill selects, so an installed skill speaks the surface of the binary that installed it.
 _Avoid_: Prompt, plugin (for the folder), instructions file
 
 **Agent target**:

@@ -131,6 +131,7 @@ const exceptions: VoiceExceptions = {
       'error.cause': { reason: carried, sites: 1 },
     },
     'self-update/request.ts': { 'options.cause': { reason: carried, sites: 1 } },
+    'skills/extension.ts': { 'markdownRule.message': { reason: ruleSentence, sites: 1 } },
     'suggestions/plugin.ts': {
       'failure.message': {
         reason:

@@ -2,7 +2,10 @@ import { DeclarationError, escapeControlCharacters } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { skillsSettings } from '../rules.js';
-import type { Skill, SkillsSettings } from './types.js';
+import type { FolderSkillCommands, FolderSkillsSettings, Skill, SkillsSettings } from './types.js';
+
+/** Either shape `skills()` takes. */
+type Settings = SkillsSettings | FolderSkillsSettings;
 
 const identity = `${packageName}/skills`;
 
@@ -17,11 +20,26 @@ function isSkillName(name: string): boolean {
   return name.length <= longestName && nameGrammar.test(name);
 }
 
-/** What the settings declare once judged: the folder as given, and the listed skills. */
+/** The Commands one entry of the `skills` list selects, by the entry's name. */
+interface Selection {
+  readonly name: string;
+  readonly commands: readonly (readonly string[])[];
+}
+
+/**
+ * What the settings declare once judged: the folder as given, the listed skills, which a loader
+ * supplies, the names of the entries without files, which the folder's skills supply, and the
+ * Commands every entry selects, in declaration order.
+ */
 interface Declared {
   readonly folder: URL | string | undefined;
   readonly skills: readonly Skill[];
+  readonly folderEntries: readonly string[];
+  readonly selections: readonly Selection[];
 }
+
+/** One entry of the `skills` list: a listed skill, or one that selects for a folder skill. */
+type Entry = Skill | FolderSkillCommands;
 
 /** What a setting's fault says: the sentence after the plugin's name, its correction, and its mark. */
 interface FaultText {
@@ -32,7 +50,7 @@ interface FaultText {
 }
 
 /** A fault of the settings, marked on the key at fault. */
-function settingFault(settings: SkillsSettings, text: FaultText): DeclarationError {
+function settingFault(settings: Settings, text: FaultText): DeclarationError {
   return new DeclarationError(skillsSettings, {
     correction: text.correction,
     findings: [
@@ -51,7 +69,7 @@ const folderCorrection =
   "Name the folder with a file: URL, such as new URL('../skills/', import.meta.url), or a path.";
 
 /** Judges the `folder` setting: a `file:` URL, or a string that is not empty. */
-function judgeFolder(settings: SkillsSettings): void {
+function judgeFolder(settings: Settings): void {
   const { folder } = settings;
   if (folder instanceof URL && folder.protocol !== 'file:') {
     throw settingFault(settings, {
@@ -69,8 +87,8 @@ function judgeFolder(settings: SkillsSettings): void {
   }
 }
 
-/** Judges the listed skills' names, in order: each a skill name, and none an earlier skill's. */
-function judgeNames(settings: SkillsSettings, listed: readonly Skill[]): void {
+/** Judges the entries' names, in order: each a skill name, and none an earlier entry's. */
+function judgeNames(settings: Settings, listed: readonly Entry[]): void {
   const seen = new Set<string>();
   for (const { name } of listed) {
     if (!isSkillName(name)) {
@@ -94,12 +112,12 @@ function judgeNames(settings: SkillsSettings, listed: readonly Skill[]): void {
 
 /**
  * Judges the settings at the `skills()` call, throwing the first fault: settings that hold neither
- * a folder nor a list, a folder that is not a `file:` URL or is an empty string, then each listed
- * name outside the Agent Skills grammar or held by an earlier skill. An empty list with no folder
+ * a folder nor a list, a folder that is not a `file:` URL or is an empty string, then each entry's
+ * name outside the Agent Skills grammar or held by an earlier entry. An empty list with no folder
  * declares no skill, as it did before the folder existed. A folder skill's name is judged when the
  * folder is read, because only the folder knows it. It answers what the settings declare.
  */
-function judgeSettings(settings: SkillsSettings): Declared {
+function judgeSettings(settings: Settings): Declared {
   if (settings.folder === undefined && settings.skills === undefined) {
     throw settingFault(settings, {
       correction:
@@ -107,11 +125,32 @@ function judgeSettings(settings: SkillsSettings): Declared {
       sentence: 'settings name no skills folder and list no skill.',
     });
   }
-  const listed = settings.skills ?? [];
+  const listed: readonly Entry[] = settings.skills ?? [];
   judgeFolder(settings);
   judgeNames(settings, listed);
-  return { folder: settings.folder, skills: listed };
+  return { folder: settings.folder, ...entriesOf(listed) };
 }
 
-export type { Declared };
+/**
+ * The entries of the `skills` list apart: the listed skills, the names of the entries without
+ * files, and the Commands every entry selects, in declaration order.
+ */
+function entriesOf(listed: readonly Entry[]): Omit<Declared, 'folder'> {
+  const skills: Skill[] = [];
+  const folderEntries: string[] = [];
+  for (const entry of listed) {
+    if (entry.files === undefined) {
+      folderEntries.push(entry.name);
+    } else {
+      skills.push(entry);
+    }
+  }
+  return {
+    folderEntries,
+    selections: listed.map(({ commands, name }) => ({ commands: commands ?? [], name })),
+    skills,
+  };
+}
+
+export type { Declared, Selection };
 export { identity, isSkillName, judgeSettings };

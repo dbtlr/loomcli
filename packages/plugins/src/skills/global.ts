@@ -6,7 +6,7 @@
 import { join } from 'node:path';
 
 import { FatalError } from '@loomcli/core';
-import type { Host, Log } from '@loomcli/core';
+import type { CommandGraph, Host, Log } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
 import { realPath } from '../installation/disk.js';
@@ -19,7 +19,7 @@ import {
 } from '../installation/files.js';
 import type { InstalledFolder, InstallOutcome, Refusal } from '../installation/files.js';
 import { folderHoldsExactly } from '../installation/folders.js';
-import { loadSkills } from './load.js';
+import { loadSkills, withModes } from './load.js';
 import type { LoadedSkill } from './load.js';
 import {
   folderGone,
@@ -32,6 +32,7 @@ import {
   removedFolder,
   replacedFolder,
   sameSkillsFolder,
+  skillFileLeftOut,
   skillsInTheWay,
   updatedSkill,
 } from './messages.js';
@@ -42,6 +43,8 @@ import type { Place, Target } from './targets.js';
 /** What a child reads from its action: the application, the run, and the lanes it writes. */
 interface ChildRun {
   readonly name: string;
+  /** The run's graph, which the generated command references come from. */
+  readonly graph: CommandGraph;
   readonly host: Host;
   readonly signal: AbortSignal;
   /** The action's log, which records each file the child writes or removes. */
@@ -65,6 +68,18 @@ interface NamedFolder extends InstalledFolder {
 /** The folders of the loaded skills under a skills directory. */
 function foldersIn(directory: string, loaded: readonly LoadedSkill[]): NamedFolder[] {
   return loaded.map(({ files, name }) => ({ files, name, path: join(directory, name) }));
+}
+
+/**
+ * Every skill's files, the generated files included, from the run's build and graph, with a `-vv`
+ * line for each author's file left out at a name the plugin owns, in install order.
+ */
+async function loadForRun(run: ChildRun, declared: Declared): Promise<readonly LoadedSkill[]> {
+  const loaded = await loadSkills(declared, { build: run.host.release.build, graph: run.graph });
+  for (const { path, skill } of loaded.leftOut) {
+    run.log.trace(skillFileLeftOut, { path, skill });
+  }
+  return loaded.skills.map(({ files, name }) => ({ files: withModes(files), name }));
 }
 
 /** The run and the record's directory, which every read of a plugin's file needs. */
@@ -237,7 +252,7 @@ async function chosenTargets(
   places: readonly Place[],
 ): Promise<readonly Wanted[]> {
   const acting = await actingPlaces(where.run, places);
-  const loaded = await loadSkills(request.skills, where.run.host.release.build);
+  const loaded = await loadForRun(where.run, request.skills);
   const entries = recordedBy(where, acting, 'install');
   const chosen =
     request.verb === 'update' ? entries.filter(({ folders }) => folders.length > none) : entries;
@@ -318,4 +333,4 @@ async function uninstallGlobal(run: ChildRun, agent: Target | undefined): Promis
 }
 
 export type { ChildRun };
-export { installGlobal, uninstallGlobal };
+export { installGlobal, loadForRun, uninstallGlobal };

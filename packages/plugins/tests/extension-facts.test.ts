@@ -3,7 +3,7 @@
  * A value that holds every field the interface names passes the descriptor's call, and its schema
  * outputs every field, so the interface and the schema behind it agree.
  */
-import { EX_DATAERR, FatalError } from '@loomcli/core';
+import { Application, DeclarationError, EX_DATAERR, FatalError, extension } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 import { configInput } from '@loomcli/plugins/config/extension';
 import type { ConfigInputFacts } from '@loomcli/plugins/config/extension';
@@ -22,6 +22,9 @@ import type {
 } from '@loomcli/plugins/manifest/extension';
 import { mcpArgument, mcpCommand, mcpInput } from '@loomcli/plugins/mcp/extension';
 import type { McpArgumentFacts, McpCommandFacts } from '@loomcli/plugins/mcp/extension';
+import { skills } from '@loomcli/plugins/skills';
+import { skillCommand } from '@loomcli/plugins/skills/extension';
+import type { SkillCommandFacts } from '@loomcli/plugins/skills/extension';
 import { expect, test } from 'vite-plus/test';
 
 /** The schema's output for a value, or the thrown sentences of its issues. */
@@ -120,4 +123,25 @@ test('the logging fact keeps every file and both variable names', async () => {
 
   expect(() => loggingFiles(facts)).not.toThrow();
   await expect(validated(loggingFiles.schema, facts)).resolves.toEqual(facts);
+});
+
+test('skill guidance keeps its Markdown as written', async () => {
+  const facts: Required<SkillCommandFacts> = { guidance: '\n## Next\n\nRun `notes note add`.\n' };
+
+  expect(() => skillCommand(facts)).not.toThrow();
+  await expect(validated(skillCommand.schema, facts)).resolves.toEqual(facts);
+});
+
+test('skills registers its skillCommand descriptor even when no Command carries guidance', () => {
+  const twin = extension(skillCommand.identity, {
+    schema: skillCommand.schema,
+    target: 'command',
+  });
+  const application = () =>
+    new Application('notes', {
+      extensions: [twin({ guidance: 'Read the notes.' })],
+      plugins: [skills({ skills: [] })],
+    });
+  expect(application).toThrow(DeclarationError);
+  expect(application).toThrow('Extension "@loomcli/plugins/skills/command" is defined twice.');
 });

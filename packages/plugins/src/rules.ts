@@ -179,7 +179,7 @@ const skillsSettings = diagnosticRule(`${packageName}/skills/settings`, {
 /** A skills folder the plugin cannot read as skills, or a carried folder it cannot find. */
 const skillsFolder = diagnosticRule(`${packageName}/skills/folder`, {
   explanation:
-    "The skills plugin installs each directory of the folder its folder setting names as one skill named by the directory, and skips every entry whose name starts with ., so the folder exists, holds a skill unless the application lists its skills, each skill directory's name is a skill name, and each entry inside a skill is a file, a link to a file, or a folder, never a link to a folder. A relative folder resolves against the application module, which only loom build knows, so a run loom build did not make reads the folder through a URL or an absolute path, and an artifact loom build made reads the copy it carries.",
+    "The skills plugin installs each directory of the folder its folder setting names as one skill named by the directory, and skips every entry whose name starts with ., so the folder exists, holds a skill unless the application lists its skills, holds each skill an entry without files names, each skill directory's name is a skill name, and each entry inside a skill is a file, a link to a file, or a folder, never a link to a folder. A relative folder resolves against the application module, which only loom build knows, so a run loom build did not make reads the folder through a URL or an absolute path, and an artifact loom build made reads the copy it carries.",
   headline: 'Unreadable skills folder',
 });
 
@@ -188,6 +188,20 @@ const skillsFiles = diagnosticRule(`${packageName}/skills/files`, {
   explanation:
     "The skills plugin writes each skill as one folder in the operator's agent folders, so each file's path is relative to that folder, with no .. part that would write outside it, and the list holds the skill's SKILL.md, the file every agent reads first, and no listed skill holds a name the skills folder holds.",
   headline: 'Invalid skill files',
+});
+
+/** A path a skill selects whose names lead to no Command. */
+const skillsCommands = diagnosticRule(`${packageName}/skills/commands`, {
+  explanation:
+    'A skill selects the Commands whose references the skills plugin generates by their paths, each path the names of the Commands on the way down from the root, so a path whose names lead to no Command the application holds selects nothing the author meant, and the skill would install without the reference it was meant to carry.',
+  headline: 'Unknown skill command path',
+});
+
+/** Two Commands a skill selects that give one command reference file, or a root that gives the index's. */
+const skillsReferenceNameTaken = diagnosticRule(`${packageName}/skills/reference-name-taken`, {
+  explanation:
+    "The skills plugin writes one command reference for each Command a skill selects, named by the application name and the Command's path joined with hyphens, beside the skill's index.md, so a Command named with a hyphen can give the name of a child's command reference, the root of an application named index gives the name of the index, and one file would replace the other.",
+  headline: 'Command reference name taken',
 });
 
 /** A version plugin `postfix` setting that is not one line of prose. */
@@ -228,8 +242,10 @@ export {
   selfUpdateSettings,
   serviceRunUnrouted,
   serviceSettings,
+  skillsCommands,
   skillsFiles,
   skillsFolder,
+  skillsReferenceNameTaken,
   skillsSettings,
   versionPostfix,
 };

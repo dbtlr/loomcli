@@ -4,9 +4,38 @@
 
 ```ts
 
+import type { CommandGraph } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 import type { Log } from '@loomcli/core';
 import type { Plugin as Plugin_2 } from '@loomcli/core';
+
+// @public @sealed
+export interface CommandReferenceFile {
+    readonly content: string;
+    readonly name: string;
+}
+
+// @public
+export function commandReferences(graph: CommandGraph, settings: CommandReferenceSettings): readonly CommandReferenceFile[];
+
+// @public
+export interface CommandReferenceSettings {
+    readonly commands: readonly (readonly string[])[];
+    readonly guidance: boolean;
+}
+
+// @public
+export interface FolderSkillCommands {
+    readonly commands: readonly (readonly string[])[];
+    readonly files?: never;
+    readonly name: string;
+}
+
+// @public
+export interface FolderSkillsSettings {
+    readonly folder: URL | string;
+    readonly skills?: readonly (Skill | FolderSkillCommands)[];
+}
 
 // @public
 export interface RefreshContext {
@@ -22,6 +51,7 @@ export function refreshSkills(context: RefreshContext): Promise<void>;
 
 // @public
 export interface Skill {
+    readonly commands?: readonly (readonly string[])[];
     readonly files: () => Promise<readonly SkillFile[]> | readonly SkillFile[];
     readonly name: string;
 }
@@ -33,8 +63,22 @@ export interface SkillFile {
     readonly path: string;
 }
 
+// @public @sealed
+export interface SkillFolder {
+    readonly files: readonly SkillFile[];
+    readonly name: string;
+}
+
 // @public
-export function skills(settings: SkillsSettings): Plugin_2;
+export function skillFolders(graph: CommandGraph, options?: SkillFoldersOptions): Promise<readonly SkillFolder[] | undefined>;
+
+// @public
+export interface SkillFoldersOptions {
+    readonly moduleDirectory?: string;
+}
+
+// @public
+export function skills(settings: SkillsSettings | FolderSkillsSettings): Plugin_2;
 
 // @public
 export interface SkillsSettings {

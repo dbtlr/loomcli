@@ -155,8 +155,9 @@ test.each(Object.entries(settingsCases))(
  * fault and link faults, which the configuration test pins, the one `--manifest` raises, which
  * the manifest failures test pins, the MCP plugin's build faults, which the MCP test pins, the
  * completion plugin's unknown completer name, which the completion test pins, the
- * service plugin's, which the service test pins, the skills plugin's file and folder faults, which
- * the skills tests pin, and the manpage plugin's page names, which the man page test pins.
+ * service plugin's, which the service test pins, the skills plugin's file and folder faults and
+ * the faults of the Commands a skill selects, which the skills tests pin, and the manpage plugin's
+ * page names, which the man page test pins.
  */
 const pinnedElsewhere = [
   'completion/unknown-completer',
@@ -173,8 +174,10 @@ const pinnedElsewhere = [
   'mcp/tool-needs-terminal',
   'mcp/tool-without-action',
   'service/run-unrouted',
+  'skills/commands',
   'skills/files',
   'skills/folder',
+  'skills/reference-name-taken',
 ];
 
 /** Every rule the pack's registry declares, under the pack's name and its plugin's subpath. */

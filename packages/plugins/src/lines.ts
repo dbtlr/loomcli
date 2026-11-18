@@ -61,6 +61,7 @@ const markdownRule: TextRule = {
 
 export type { TextRule };
 export {
+  allBreaks,
   breaks,
   lineRule,
   markdownRule,

@@ -6,16 +6,14 @@
  * files.
  */
 import { readFileSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import type { ReleaseFacts } from '@loomcli/core';
-import { escapeControlCharacters } from '@loomcli/core';
 
 import { isRecord } from '../plain-data.js';
-import { folderFault, readSkillsFolder } from './folder.js';
-import type { FolderSkill } from './folder.js';
-import { identity } from './settings.js';
+import { folderFault } from './folder-fault.js';
+import { folderPath } from './folder-path.js';
+import { readSkillsFolder } from './folder.js';
+import type { FolderSkill, ListedNames } from './folder.js';
 import type { SkillFile } from './types.js';
 
 /** The format of `__LOOM_SKILLS__` this plugin reads, which `loom build` at its version bakes. */
@@ -31,8 +29,10 @@ const carriedIndex = 'index.json';
 interface FolderRequest {
   /** The `folder` setting as the application gave it, or none. */
   readonly setting: URL | string | undefined;
-  /** The names of the listed skills, which a folder skill may not hold. */
-  readonly listed: readonly string[];
+  /** The names the `skills` list holds, which the folder's skills are judged against. */
+  readonly names: ListedNames;
+  /** The application module's directory, which a relative setting resolves against, when known. */
+  readonly moduleDirectory?: string | undefined;
   /** The value `loom build` baked into `__LOOM_SKILLS__`, or `undefined` when it baked none. */
   readonly carried: unknown;
   /** The address `loom-skills/` sits beside in an artifact that carries a copy. */
@@ -49,11 +49,6 @@ const exportCorrection =
 const faults = {
   none: () =>
     folderFault('loom build found no skills folder in the application module.', exportCorrection),
-  relative: (path: string) =>
-    folderFault(
-      `Plugin "${identity}" setting "folder" is the relative path ${escapeControlCharacters(path)}, which only loom build resolves.`,
-      `Name the folder with new URL('${escapeControlCharacters(path)}', import.meta.url), resolved against the module that calls skills().`,
-    ),
   unread: () =>
     folderFault(
       'loom build could not read the skills folder, because it could not load the application module.',
@@ -65,24 +60,6 @@ const faults = {
       'Install @loomcli/plugins and @loomcli/loom at one version, and build again.',
     ),
 };
-
-/**
- * The absolute folder a `folder` setting names: a URL's path, a `file:` string's, an absolute path,
- * or a relative path resolved against the application module's directory. Only `loom build` knows
- * that directory, so a run that passes none, an unbuilt run, fails on a relative path.
- */
-function folderPath(setting: URL | string, moduleDirectory?: string): string {
-  if (setting instanceof URL || setting.startsWith('file:')) {
-    return resolve(fileURLToPath(setting));
-  }
-  if (isAbsolute(setting)) {
-    return resolve(setting);
-  }
-  if (moduleDirectory === undefined) {
-    throw faults.relative(setting);
-  }
-  return resolve(moduleDirectory, setting);
-}
 
 /** One carried file as the index names it, or `undefined` when it is not one. */
 function carriedFile(value: unknown): { path: string; executable: boolean } | undefined {
@@ -160,7 +137,7 @@ function carriedFolderSkills(request: FolderRequest, carried: unknown): readonly
     throw faults.versions();
   }
   if (carried.kind === 'source' && typeof carried.folder === 'string') {
-    return readSkillsFolder(carried.folder, request.listed);
+    return readSkillsFolder(carried.folder, request.names);
   }
   if (carried.kind === 'carried') {
     return carriedCopy(request.base);
@@ -183,10 +160,10 @@ function folderSkills(request: FolderRequest): readonly FolderSkill[] {
   }
   if (carried === undefined) {
     const missing = request.build === 'source' ? 'setting' : 'built';
-    return readSkillsFolder(folderPath(setting), request.listed, missing);
+    return readSkillsFolder(folderPath(setting, request.moduleDirectory), request.names, missing);
   }
   return carriedFolderSkills(request, carried);
 }
 
 export type { FolderRequest };
-export { folderPath, folderSkills };
+export { folderSkills };

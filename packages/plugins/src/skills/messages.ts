@@ -79,6 +79,13 @@ function skillsNotRefreshed(path: string, name: string): string {
   return `The skills were not refreshed because ${shown(path)} could not start. Run ${shown(name)} skills update.\n`;
 }
 
+/**
+ * The `-vv` line of an author's file `install` or `update` left out of a skill, because the plugin
+ * owns its name for the skill's command references, with the fields `path` and `skill`.
+ */
+const skillFileLeftOut =
+  'Left out {path}, which the skill {skill} supplies, because the plugin owns that name for its command references.';
+
 /** The refresh's `-vv` line when the installation record holds none of the plugin's files. */
 const skillsRefreshSkipped = 'Skipped the skills refresh: nothing is installed.';
 
@@ -99,6 +106,7 @@ export {
   removedFolder,
   replacedFolder,
   sameSkillsFolder,
+  skillFileLeftOut,
   skillsInTheWay,
   skillsNotRefreshed,
   skillsRefreshSkipped,

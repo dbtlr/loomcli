@@ -15,7 +15,7 @@ import {
   pageOptionFacts,
   rightCell,
 } from './help-cells.js';
-import type { Row, StringOption, UsageWriter } from './help-cells.js';
+import type { CellText, Fact, Row, StringOption, UsageWriter } from './help-cells.js';
 import { renderDetails } from './help-details.js';
 import { epilogsOf } from './help-epilogs.js';
 import { hangLines, onTerminal, prose } from './help-layout.js';
@@ -133,10 +133,7 @@ function masthead(path: string, command: CommandNode, context: ViewContext): str
       ? []
       : labeled({ label: 'Deprecated: ', text: deprecated, tone: 'warning' }, context);
   const terminal = command.needsTerminal
-    ? labeled(
-        { label: 'Needs a terminal: ', text: 'stdin and stderr, outside CI.', tone: 'dim' },
-        context,
-      )
+    ? labeled({ label: terminalNeed.label, text: terminalNeed.text, tone: 'dim' }, context)
     : [];
   return [...opening, ...aliasLine(command, context), ...terminal, ...deprecation];
 }
@@ -194,6 +191,14 @@ function usageForms({ children, command, graph }: UsageSubject, writer: UsageWri
   return forms;
 }
 
+/** The line that says a Command needs a terminal, which help, the man page, and a command reference each show. */
+const terminalNeed = { label: 'Needs a terminal: ', text: 'stdin and stderr, outside CI.' };
+
+/** Whether the first usage form begins with a producer for required standalone input. */
+function needsProducer(command: CommandNode): boolean {
+  return command.stdin?.required === true && command.hasAction;
+}
+
 /** The USAGE block: one line per form, its words styled as the page styles them. */
 function usage(subject: UsageSubject, { style }: ViewContext): string[] {
   const forms = usageForms(subject, {
@@ -208,7 +213,7 @@ function usage(subject: UsageSubject, { style }: ViewContext): string[] {
         style.dim('USAGE'),
         ...forms.map(
           (form) =>
-            `  ${subject.command.stdin?.required && subject.command.hasAction && form === firstForm ? `${style.dim.italic('<producer>')} | ` : ''}${form}`,
+            `  ${needsProducer(subject.command) && form === firstForm ? `${style.dim.italic('<producer>')} | ` : ''}${form}`,
         ),
       ];
 }
@@ -274,31 +279,58 @@ function notesEscape(command: CommandNode, children: readonly CommandNode[]): bo
   return !isEmpty(command.arguments) && !isEmpty(children) && !command.passthrough;
 }
 
-function args(
-  { command, children }: { command: CommandNode; children: readonly CommandNode[] },
-  context: ViewContext,
-): string[] {
-  const rows = command.arguments.map((argument) => ({
-    left: context.style.dim.italic(context.style.escape(argument.name)),
-    right: rightCell(
-      { accepts: argumentAccepts(argument), description: argument.description },
-      argumentFacts(argument),
-      context,
-    ),
+/**
+ * One ARGUMENTS row before a projection styles it: the left cell's literal lead and the word after
+ * it that help prints dim and italic, and the right cell's text and facts.
+ */
+interface ArgumentRowParts {
+  readonly lead: string;
+  readonly word: string;
+  readonly text: CellText;
+  readonly facts: readonly Fact[];
+}
+
+/**
+ * The ARGUMENTS rows of a Command, in help's order: each argument, the passthrough row, and the
+ * `--` row when the page notes the escape.
+ */
+function argumentRows({
+  command,
+  children,
+}: {
+  command: CommandNode;
+  children: readonly CommandNode[];
+}): ArgumentRowParts[] {
+  const rows: ArgumentRowParts[] = command.arguments.map((argument) => ({
+    facts: argumentFacts(argument),
+    lead: '',
+    text: { accepts: argumentAccepts(argument), description: argument.description },
+    word: argument.name,
   }));
   if (command.passthrough) {
     rows.push({
-      left: `-- ${context.style.dim.italic('<args>...')}`,
-      right: rightCell({ description: command.passthrough.description }, [], context),
+      facts: [],
+      lead: '-- ',
+      text: { description: command.passthrough.description },
+      word: '<args>...',
     });
   }
   if (notesEscape(command, children)) {
-    rows.push({
-      left: '--',
-      right: rightCell({ description: escapeDescription }, [], context),
-    });
+    rows.push({ facts: [], lead: '--', text: { description: escapeDescription }, word: '' });
   }
-  return isEmpty(rows) ? [] : [context.style.dim('ARGUMENTS'), ...column(rows, context)];
+  return rows;
+}
+
+function args(
+  subject: { command: CommandNode; children: readonly CommandNode[] },
+  context: ViewContext,
+): string[] {
+  const { style } = context;
+  const rows = argumentRows(subject).map(({ facts, lead, text, word }) => ({
+    left: `${lead}${word === '' ? '' : style.dim.italic(style.escape(word))}`,
+    right: rightCell(text, facts, context),
+  }));
+  return isEmpty(rows) ? [] : [style.dim('ARGUMENTS'), ...column(rows, context)];
 }
 
 function optionRow(option: OptionNode, context: ViewContext): Row {
@@ -421,26 +453,42 @@ function hints(
   return lines;
 }
 
-function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewContext): string[] {
-  const { style } = context;
+/**
+ * The plain text of the INPUT block's lines for a Command that declares a standalone stdin: the
+ * description on one line, when it has one, the sentence that says whether stdin is required, and
+ * the example line. A Command with no stdin has none.
+ */
+function stdinParts(
+  command: CommandNode,
+  graph: CommandGraph,
+): { summary: string | undefined; sentence: string; example: string } | undefined {
   const input = command.stdin;
   if (input === undefined) {
+    return undefined;
+  }
+  return {
+    example: `Example: <producer> | ${pathOf(graph, command)}`,
+    sentence: `${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`,
+    summary: singleLineOf(input.description),
+  };
+}
+
+function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewContext): string[] {
+  const { style } = context;
+  const parts = stdinParts(command, graph);
+  if (parts === undefined) {
     return [];
   }
   // The description and the stdin sentence are prose, and the example line is a literal.
-  const summary = singleLineOf(input.description);
   const description =
-    summary === undefined
+    parts.summary === undefined
       ? []
-      : prose(style.primary(style.escape(summary)), { lead: '  ' }, context);
-  const sentence = style.primary(
-    `${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`,
-  );
+      : prose(style.primary(style.escape(parts.summary)), { lead: '  ' }, context);
   return [
     style.dim('INPUT'),
     ...description,
-    ...prose(sentence, { lead: '  ' }, context),
-    `  ${style.primary(style.escape(`Example: <producer> | ${pathOf(graph, command)}`))}`,
+    ...prose(style.primary(parts.sentence), { lead: '  ' }, context),
+    `  ${style.primary(style.escape(parts.example))}`,
   ];
 }
 
@@ -487,8 +535,9 @@ function renderPage({ command, graph, variant }: HelpPage, context: ViewContext)
   return onTerminal(context) ? context.expandTabs(page) : page;
 }
 
-export type { Example, UsageSubject };
+export type { ArgumentRowParts, Example, UsageSubject };
 export {
+  argumentRows,
   childSuffix,
   commandHelp,
   commandMembers,
@@ -498,6 +547,9 @@ export {
   optionMembers,
   pathOf,
   renderPage,
+  stdinParts,
   usageForms,
+  needsProducer,
+  terminalNeed,
   visible,
 };
