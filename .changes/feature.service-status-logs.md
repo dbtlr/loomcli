@@ -1,0 +1,1 @@
+- Add logging destinations to `service status` text and JSON when the logging plugin is installed. Status names every resolved file, notes files with no records yet, and reports journald or discarded console output for installations without files. Paths use the environment running status; a service manager with different variables can resolve different paths.

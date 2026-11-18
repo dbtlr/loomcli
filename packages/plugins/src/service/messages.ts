@@ -136,6 +136,18 @@ function callUnreadableNote({ manager, report, target }: UnreadableCall, code: n
   return `${shown(manager)} could not report ${shown(target)} (exit ${String(code)}). Run ${shown(report)} to see why.`;
 }
 
+/** The log path remains useful before the first record creates the file. */
+function logFileRow(path: string, exists: boolean): string {
+  return `${shown(path)}${exists ? '' : ' (no records yet)'}`;
+}
+
+/** The capture of the unmodified unit's console output. */
+function managerLogRow(capture: 'journald' | 'none'): string {
+  return capture === 'journald'
+    ? 'Service console output goes to journald.'
+    : 'Service console output goes nowhere: launchd discards it.';
+}
+
 export type { Child, UnreadableCall };
 export {
   fileGone,
@@ -163,5 +175,7 @@ export {
   unitUnrecorded,
   unitUnrecordedUninstall,
   callUnreadableNote,
+  logFileRow,
+  managerLogRow,
   wroteUnit,
 };

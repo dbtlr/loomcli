@@ -3,6 +3,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { Application, Command } from '@loomcli/core';
 import type { ProcessTerminal, ReleaseFacts } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
+import { logging } from '@loomcli/plugins/logging';
 import { service } from '@loomcli/plugins/service';
 import type { ServiceSettings } from '@loomcli/plugins/service';
 import type { MockFields } from '@loomcli/testing';
@@ -10,6 +11,8 @@ import type { MockFields } from '@loomcli/testing';
 import { runOnMock } from './in-process.ts';
 
 interface Scenario {
+  logging?: 'files' | 'console' | undefined;
+  logFiles?: readonly string[] | undefined;
   cwd: string;
   env: Record<string, string | undefined>;
   platform: string;
@@ -64,6 +67,16 @@ function serviceApplication(scenario: Scenario) {
       : { description: scenario.description ?? 'Keep notes in sync.' }),
     plugins: [
       format(),
+      ...(scenario.logging === undefined
+        ? []
+        : [
+            logging({
+              destinations:
+                scenario.logging === 'console'
+                  ? [{ to: 'console' }]
+                  : (scenario.logFiles ?? []).map((file) => ({ file, level: 'error', to: 'file' })),
+            }),
+          ]),
       service({
         label: scenario.label ?? 'com.acme.notes',
         run: scenario.run ?? ['serve'],
