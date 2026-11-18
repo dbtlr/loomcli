@@ -3,9 +3,10 @@ import { join } from 'node:path';
 import type { Threw } from './helpers/application-load-failure.js';
 
 /*
- * What the processes that load an application module share: `loom init`'s read of its exports and
- * `loom build`'s read of its skills folder each import the module under Bun in a process of their
- * own, take the same arguments, resolve the package's own core the same way, and read a throw while
+ * What the processes that load an application module share: `loom init`'s read of its exports,
+ * `loom skills export`'s projection, and `loom build`'s read of its skills folder each import the
+ * module under Bun in a process of their own, take the same arguments, resolve the package's own
+ * core the same way, and read a throw while
  * the module loads the same way. They import no module of `@loomcli/core` themselves, only the
  * package's own core at run time, so each bundles to a few kilobytes; the `loom` process formats
  * the Developer Diagnostic of a throw.
@@ -19,11 +20,12 @@ interface ReaderArguments {
   readonly path: string;
   /** The module as the operator reads it. */
   readonly module: string;
+  readonly projection: string | undefined;
 }
 
 /** A reader's arguments, read from the words after the script, or a throw when one is missing. */
 function readerArguments(words: readonly string[], reader: string): ReaderArguments {
-  const [resultFile, directory, path, module] = words;
+  const [resultFile, directory, path, module, projection] = words;
   if (
     resultFile === undefined ||
     directory === undefined ||
@@ -32,7 +34,7 @@ function readerArguments(words: readonly string[], reader: string): ReaderArgume
   ) {
     throw new Error(`${reader} takes a result file, a package directory, a module, and its name.`);
   }
-  return { directory, module, path, resultFile };
+  return { directory, module, path, projection, resultFile };
 }
 
 /**
@@ -42,8 +44,13 @@ function readerArguments(words: readonly string[], reader: string): ReaderArgume
  * parent, so a package directory whose path holds a space would resolve nothing.
  */
 function coreAddress(directory: string): string | undefined {
+  return packageAddress(directory, '@loomcli/core');
+}
+
+/** Resolves a public package entry from the application package, or none when it is absent. */
+function packageAddress(directory: string, specifier: string): string | undefined {
   try {
-    return import.meta.resolve('@loomcli/core', join(directory, 'package.json'));
+    return import.meta.resolve(specifier, join(directory, 'package.json'));
   } catch {
     return undefined;
   }
@@ -79,4 +86,4 @@ function loadThrow(
   return { threw: reasonOf(error) };
 }
 
-export { coreAddress, coreClass, loadThrow, member, readerArguments };
+export { coreAddress, coreClass, loadThrow, member, packageAddress, readerArguments };

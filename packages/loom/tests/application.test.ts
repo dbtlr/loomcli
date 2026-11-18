@@ -13,7 +13,7 @@ import { run } from './run.js';
 
 afterEach(removeRoots);
 
-test('build, init, and the changelog are public while the release commands stay hidden', () => {
+test('build, init, skills, and the changelog are public while the release commands stay hidden', () => {
   const children = loom.inspect().root.children.map(({ hidden, name }) => ({ hidden, name }));
   expect(children).toEqual([
     { hidden: false, name: 'build' },
@@ -21,16 +21,18 @@ test('build, init, and the changelog are public while the release commands stay 
     { hidden: false, name: 'init' },
     { hidden: true, name: 'pr' },
     { hidden: true, name: 'release' },
+    { hidden: false, name: 'skills' },
   ]);
 });
 
-test('--help lists build, init, and the changelog and advertises no release command', async () => {
+test('--help lists build, init, skills, and the changelog and advertises no release command', async () => {
   const result = await run(['--help']);
   expect(result.status).toBe(0);
   expect(result.stdout).toMatch(/^ {2}build +/mu);
   expect(result.stdout).toMatch(/^ {2}changelog +/mu);
   expect(result.stdout).not.toMatch(/^ {2}check +/mu);
   expect(result.stdout).toMatch(/^ {2}init +/mu);
+  expect(result.stdout).toMatch(/^ {2}skills +/mu);
   expect(result.stdout).not.toMatch(/^ {2}(?:pr|release) +/mu);
 });
 
@@ -75,6 +77,7 @@ test('--help loads every command declaration and the work of no command', () => 
     'src/commands/init/command.ts',
     'src/commands/pr/command.ts',
     'src/commands/release/command.ts',
+    'src/commands/skills/command.ts',
   ]);
 });
 

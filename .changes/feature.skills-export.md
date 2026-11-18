@@ -1,0 +1,2 @@
+- Add `loom skills export <directory>` to write all or selected application skills with the same files and generated command references as an install.
+- Add `assertSkillsMatch(application, directory, options?)` to `@loomcli/testing` to fail a test at the first file that differs from a committed skill copy. Select skills with `options.skills` and resolve a relative source folder with `options.moduleDirectory`. It loads the optional `@loomcli/plugins` companion only when called.

@@ -391,6 +391,9 @@ importers:
       '@loomcli/core':
         specifier: workspace:*
         version: link:../core
+      '@loomcli/plugins':
+        specifier: workspace:*
+        version: link:../plugins
 
   packages/validators:
     dependencies:

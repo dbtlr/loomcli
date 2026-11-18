@@ -142,8 +142,9 @@ function unloadedApplication(
   application: string,
   reason: string,
   noun: string,
+  command = 'loom init',
 ): string {
-  return `warning: ${escaped(path)} was not written because ${escaped(application)} could not be loaded: ${escaped(reason)}. Install the package and run loom init again, or write the ${escaped(noun)} by hand.`;
+  return `warning: ${escaped(path)} was not written because ${escaped(application)} could not be loaded: ${escaped(reason)}. Install the package and run ${escaped(command)} again, or write the ${escaped(noun)} by hand.`;
 }
 
 function unexportedApplication(path: string, application: string, noun: string): string {

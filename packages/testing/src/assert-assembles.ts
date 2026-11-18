@@ -1,5 +1,7 @@
 import type { Application } from '@loomcli/core';
 
+import { assemblyLead } from './messages.js';
+
 /**
  * Throws when the application does not assemble, and returns when it does. It calls
  * `application.check()` and covers what that covers: every build rule, the input-schema converter
@@ -31,12 +33,11 @@ import type { Application } from '@loomcli/core';
  */
 export function assertAssembles(application: Pick<Application, 'check'>): void {
   const faults = application.check();
-  const [first, second] = faults;
+  const [first] = faults;
   if (first === undefined) {
     return;
   }
-  const noun = second === undefined ? 'fault' : 'faults';
-  const lead = `The application does not assemble: ${faults.length} ${noun}.`;
+  const lead = assemblyLead(faults.length);
   const diagnostics = faults.map((fault) => fault.message);
   throw new Error([lead, ...diagnostics].join('\n\n'), { cause: faults });
 }

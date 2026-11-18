@@ -771,3 +771,30 @@ test('path rejects a file the working directory does not hold', async () => {
 ### Substituting a provider
 
 A provider's opener loads through `import()`, so the test runner's module mocking substitutes it, under [Testing a Command that uses a provider](../core/providers.md#testing-a-command-that-uses-a-provider). Core has no member that supplies a provided value to a run. A test that calls one extracted handler states its provided values through [`actionContext`](#actioncontext) instead, and no opener loads.
+
+## assertSkillsMatch
+
+```ts
+function assertSkillsMatch(
+  application: Pick<Application, 'inspect'>,
+  directory: string,
+  options?: { skills?: readonly string[]; moduleDirectory?: string },
+): Promise<void>;
+```
+
+`assertSkillsMatch` calls `inspect()` and the skills plugin's public `skillFolders()` in the test's process. It compares each declared skill folder with the committed copy: file bytes and executable bits, missing files, and extra files within that skill folder. It ignores sibling folders and dot entries at every depth. The first difference, in skill declaration order and then sorted file-path order, throws an `Error` naming the file and asking for a fresh export. That includes stale files under the plugin's owned generated names.
+
+```ts
+import { test } from 'vitest';
+import { assertSkillsMatch } from '@loomcli/testing';
+
+import { application } from './application.js';
+
+test('committed skills match the application', async () => {
+  await assertSkillsMatch(application, 'committed-skills', { moduleDirectory: import.meta.dirname });
+});
+```
+
+Refresh the copy with [`loom skills export`](../toolchain/skills.md), then commit it. The committed-copy directory resolves against the test's working directory. Pass `options.moduleDirectory` to resolve a relative skills `folder` against the application module's directory. `options.skills` selects declared skill names; omitting it checks every declared skill. An undeclared name fails with a correction.
+
+`@loomcli/plugins` is an optional companion, loaded only when this assertion runs. Install it alongside `@loomcli/testing`. Without it, the assertion throws a sentence asking to install it; other testing helpers remain usable. An application with no recorded skills plugin or no declared skills fails with a correction. Loader and assembly errors propagate to the test runner.
