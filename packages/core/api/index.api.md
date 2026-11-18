@@ -1852,6 +1852,12 @@ export type Translation = Pick<TranslationDeclaration, typeof translation>;
 export type Translator<Thrown extends object> = (error: Thrown) => LoomError | undefined;
 
 // @public @sealed
+export interface TypedInputs {
+    readonly arguments: ReadonlyMap<string, readonly string[]>;
+    readonly options: ReadonlyMap<string, readonly string[]>;
+}
+
+// @public @sealed
 export class UnexpectedArgumentError extends UsageError {
     constructor(command: readonly string[], accepted: number, extra: readonly string[]);
     readonly accepted: number;
@@ -1996,6 +2002,7 @@ export type WordPosition = {
     readonly command: CommandNode;
     readonly argument: ArgumentNode | null;
     readonly prefix: string;
+    readonly typed: TypedInputs;
 } | {
     readonly kind: 'option';
     readonly command: CommandNode;
@@ -2003,21 +2010,25 @@ export type WordPosition = {
     readonly supplied: readonly string[];
     readonly counts: ReadonlyMap<string, number>;
     readonly booleans: ReadonlyMap<string, boolean>;
+    readonly typed: TypedInputs;
 } | {
     readonly kind: 'value';
     readonly command: CommandNode;
     readonly option: OptionNode;
     readonly lead: string;
     readonly prefix: string;
+    readonly typed: TypedInputs;
 } | {
     readonly kind: 'argument';
     readonly command: CommandNode;
     readonly argument: ArgumentNode;
     readonly prefix: string;
+    readonly typed: TypedInputs;
 } | {
     readonly kind: 'passthrough';
     readonly command: CommandNode;
     readonly prefix: string;
+    readonly typed: TypedInputs;
 } | {
     readonly kind: 'none';
 };

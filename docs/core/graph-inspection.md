@@ -187,6 +187,7 @@ type WordPosition =
       readonly command: CommandNode;
       readonly argument: ArgumentNode | null;
       readonly prefix: string;
+      readonly typed: TypedInputs;
     }
   | {
       readonly kind: 'option';
@@ -195,6 +196,7 @@ type WordPosition =
       readonly supplied: readonly string[];
       readonly counts: ReadonlyMap<string, number>;
       readonly booleans: ReadonlyMap<string, boolean>;
+      readonly typed: TypedInputs;
     }
   | {
       readonly kind: 'value';
@@ -202,10 +204,27 @@ type WordPosition =
       readonly option: OptionNode;
       readonly lead: string;
       readonly prefix: string;
+      readonly typed: TypedInputs;
     }
-  | { readonly kind: 'argument'; readonly command: CommandNode; readonly argument: ArgumentNode; readonly prefix: string }
-  | { readonly kind: 'passthrough'; readonly command: CommandNode; readonly prefix: string }
+  | {
+      readonly kind: 'argument';
+      readonly command: CommandNode;
+      readonly argument: ArgumentNode;
+      readonly prefix: string;
+      readonly typed: TypedInputs;
+    }
+  | {
+      readonly kind: 'passthrough';
+      readonly command: CommandNode;
+      readonly prefix: string;
+      readonly typed: TypedInputs;
+    }
   | { readonly kind: 'none' };
+
+interface TypedInputs {
+  readonly options: ReadonlyMap<string, readonly string[]>; // each option's words, by declared name
+  readonly arguments: ReadonlyMap<string, readonly string[]>; // each argument's words, by declared name
+}
 ```
 
 ```ts
@@ -215,6 +234,8 @@ const graph = jsonkit.inspect();
 locate(graph, ['g']); // { kind: 'command', command: <root>, argument: null, prefix: 'g' }
 locate(graph, ['ls', '--']); // { kind: 'option', command: <keys>, prefix: '--', supplied: [], counts: Map(0) {}, booleans: Map(0) {} }
 locate(graph, ['paths', '--format=j']); // { kind: 'value', option: <format>, lead: '--format=', prefix: 'j', ... }
+const at = locate(graph, ['get', 'name', '--indent', '4', '--']); // kind: 'option'
+if (at.kind !== 'none') at.typed; // { options: Map { 'indent' => ['4'] }, arguments: Map { 'path' => ['name'] } }
 ```
 
 `locate(graph, words)` reads an unfinished invocation against a graph and reports where its last word sits. [ADR-0042](../decisions/0042-core-reads-a-partial-invocation-with-the-parsers-own-grammar.md) records the decision. `words` holds the tokens after the application name, and the last one is the word being completed, which may be empty; an empty list reads as one empty word.
@@ -230,6 +251,7 @@ locate(graph, ['paths', '--format=j']); // { kind: 'value', option: <format>, le
   - any other option word, and `-` and `--`, which may still become one, `option`;
   - any other word, `command` while routing has not ended and the current Command has children, with `argument` holding the Command's first argument when it declares one and `null` otherwise, `argument` for the argument the word fills, and `none` when neither applies. Without a variadic argument, that is the next argument the routed Command accepts. With one, a word reads as the next argument before the variadic until those are filled, and every later word reads as the variadic, because the operator is still typing the line and any later word may be another of its values; the arguments after the variadic fill from the end of a complete line, so `locate` never reads a word as one of them. After a bare `--` on a Command without the passthrough mode, routing has ended, so the word is never `command`.
 - **The members.** `command` is the routed `CommandNode`, reached through a canonical name or an alias alike; for `command`, it is the node whose children the word would name. For `command`, `argument` is the argument the word fills when it names no child, which is the routed Command's first argument on a Command that declares one and `null` otherwise, under [ADR-0160](../decisions/0160-a-command-with-an-action-may-declare-arguments-and-hold-children-and-an-exact-child-name-routes-first.md). No position kind is added for it. `prefix` is the part of the word being completed, the whole word except under `value` after an `=` or a short value letter. The options in scope are the graph's `globals` and the routed Command's `options`. `supplied` lists, in supplied order, the name of each option in scope that an earlier word supplied. A parent's own option that routing still holds unbound lists under the name the routed Command's own entry gives its spelling, and lists nothing when that Command does not hold the spelling, so a root's own `-p` lists as `plain` when the routed Command declares `-p` as `plain`. `counts` holds how many times the earlier words gave each counted option in scope, across every spelling, keyed by name, so `-v -vv --` holds `verbose` at 3; a counted option no earlier word gave, and a parent's own option routing still holds unbound, has no entry. `booleans` holds the value the earlier words gave each Boolean option in scope, keyed by name, so `--no-json` holds `json` at `false`, which tells a reader whether a member of an [exclusive option group](options.md#declared-option-groups) gave its absent value and so claims nothing. A Boolean option no earlier word gave has no entry, and a parent's own Boolean option routing still holds unbound holds the value its spelling gives the routed Command's own entry, under the name `supplied` lists it. Every node is the graph's own, so a reader compares by identity.
+- **The typed words.** Every position but `none` holds `typed`, the words the earlier words gave each option and each argument, exactly as the parser read them and before any validation, so a reader that completes one input narrows by the others. It is the parser's own assignment of words to inputs, the one `parse` uses, so no second reading of the grammar exists. `options` is keyed by the option's declared name, a global option's and a bound own option's alike, and holds the words of every occurrence in the order read: a scalar option's one word, a [multiple option](options.md#repeated-string-values)'s every word, an [arity option](options.md#option-value-arity)'s words of every completed occurrence as one flat list, followed by the words an occurrence the line left open has received so far, whatever the spelling that gave them: `--opt v`, `--opt=v`, `-o v`, `-ov`, a letter of a short group, or an [alias](options.md#option-aliases), which reads under the canonical name. A [last-wins option](options.md#last-occurrence-wins) holds the words of its last completed occurrence alone, one word for a scalar one and its tuple for an arity one, followed by the words an open occurrence has received, so `--resize 800 600 --resize 1024` with the cursor on the next word holds `['800', '600', '1024']`. A bare spelling's [implied value](options.md#implied-values) was never typed, so it adds none. A Boolean option, a counted option, and an option no earlier word gave have no entry. An own option of a Command with children that routing still holds unbound holds its words under the name the reached Command's own entry gives its spelling, the name `supplied` lists it by, so `mid --project foo --json --` reads `options: Map { 'project' => ['foo'] }` beside `supplied: ['project', 'json']`. An arity option's open occurrence, such as `-p 1` with the cursor on its second word, holds the words it received, so a reader learns which word of the tuple it completes from the count modulo the arity: `['t', '-p', '1', '']` for an arity of 2 reads `options: Map { 'point' => ['1'] }`. `arguments` is keyed by the declared name and holds each argument's words, a variadic argument's every word so far, bound as the last word reads them: the next argument until it is filled, and the variadic after, with the arguments that follow a variadic absent, because they bind from the end of a complete line. The word being completed is in neither map. [ADR-0186](../decisions/0186-core-reports-the-words-an-unfinished-invocation-gave-each-input.md) records the decision, which narrows the contract of [ADR-0042](../decisions/0042-core-reads-a-partial-invocation-with-the-parsers-own-grammar.md).
 - **Pure.** `locate` is synchronous, reads no host fact, and, given a graph `inspect()` returned, throws nothing for any array of strings. Any other graph, such as a spread copy or a `structuredClone` of one, throws an `InternalError`, because `locate` reads the parser's tables through that graph's identity. It reads neither `hidden` nor `deprecated`, because routing selects and parsing binds without reading either; the reader decides what to offer.
 
 ## Checking the declarations

@@ -154,10 +154,12 @@ test.each(Object.entries(settingsCases))(
  * The pack's rules a build raises rather than a factory call: the configuration plugin's empty-file
  * fault and link faults, which the configuration test pins, the one `--manifest` raises, which
  * the manifest failures test pins, the MCP plugin's build faults, which the MCP test pins, the
+ * completion plugin's unknown completer name, which the completion test pins, the
  * service plugin's, which the service test pins, the skills plugin's file and folder faults, which
  * the skills tests pin, and the manpage plugin's page names, which the man page test pins.
  */
 const pinnedElsewhere = [
+  'completion/unknown-completer',
   'config/empty-file',
   'config/link-path',
   'config/link-type',

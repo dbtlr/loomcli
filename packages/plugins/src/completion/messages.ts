@@ -138,6 +138,9 @@ function completionNotRefreshed(path: string, name: string): string {
   return `Completion was not refreshed because ${shown(path)} could not start. Run ${shown(name)} completion update.\n`;
 }
 
+/** The `warn` event's message when a completer throws or rejects, with the completer and error as fields. */
+const completerFailedEvent = 'A completer failed, so completion offered no values.';
+
 /** The refresh's `-vv` line when the installation record holds none of the plugin's files. */
 const completionRefreshSkipped = 'Skipped the completion refresh: nothing is installed.';
 
@@ -147,6 +150,7 @@ export {
   addLineInPlace,
   addLineYourself,
   alreadyLoads,
+  completerFailedEvent,
   completionNotRefreshed,
   completionRefreshSkipped,
   installedScript,

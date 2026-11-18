@@ -57,6 +57,9 @@ test('--version loads each plugin Command declaration, no Command implementation
   expect(result.modules).toEqual(
     new Set([
       'completion/extension.js',
+      // Every launch's synchronous graph build runs the judge of completer names, so it loads.
+      // The judge holds its fault's sentence, so the plugin's message module stays unloaded.
+      'completion/judge.js',
       'completion/plugin.js',
       'completion/shell-names.js',
       // Bun shares these helpers with the change-event templates in the common message module.

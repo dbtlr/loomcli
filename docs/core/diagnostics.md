@@ -220,6 +220,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ## @loomcli/plugins
 
+### @loomcli/plugins/completion/unknown-completer
+
+**Completer not defined.** An option or an argument that hints its completion with completionInput({ values: name }) or completionArgument({ values: name }) takes its values from the completer of that name in the values setting of completion(). A name the setting does not hold would leave the input with no values at Tab time and no run to say why, so the graph build reports it, even on an input whose closed set wins at Tab time.
+
 ### @loomcli/plugins/config/empty-file
 
 **Configuration schema rejects an empty file.** A command-line application runs before its operator has written any configuration, so the configuration schema accepts an empty file. The plugin drops every value the schema rejects and validates again, and a schema that still reports an issue once every key is gone, such as a refinement that fails for an empty object, leaves the plugin no file to give the application.

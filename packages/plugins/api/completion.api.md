@@ -7,9 +7,35 @@
 import type { Host } from '@loomcli/core';
 import type { Log } from '@loomcli/core';
 import type { Plugin as Plugin_2 } from '@loomcli/core';
+import type { TypedInputs } from '@loomcli/core';
 
 // @public
-export function completion(): Plugin_2;
+export type Completer = (context: CompleterContext) => CompletionValues | Promise<CompletionValues>;
+
+// @public @sealed
+export interface CompleterContext {
+    readonly host: Host;
+    readonly signal: AbortSignal;
+    readonly typed: TypedInputs;
+    readonly word: string;
+}
+
+// @public
+export function completion(settings?: CompletionSettings): Plugin_2;
+
+// @public
+export interface CompletionSettings {
+    readonly values?: Readonly<Record<string, Completer>>;
+}
+
+// @public
+export type CompletionValue = string | {
+    readonly value: string;
+    readonly description?: string;
+};
+
+// @public
+export type CompletionValues = Iterable<CompletionValue> & object;
 
 // @public
 export function refreshCompletion(context: RefreshContext): Promise<void>;

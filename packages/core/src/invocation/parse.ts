@@ -31,8 +31,9 @@ function refusesValue(word: string): boolean {
 /**
  * One occurrence an option word holds, read against one table before it touches a value. `lead`
  * marks a value the word itself carries, after `=` or a short value letter, and holds the part of
- * the word before it. `received` counts the words an arity option's occurrence took before it
- * ended short, and `refused` is the spelling of the option word that ended it.
+ * the word before it. A missing value's `received` counts the words an arity option's occurrence
+ * took before it ended short, and `refused` is the spelling of the option word that ended it. An
+ * awaiting occurrence's `received` holds the words it took before the line ended.
  */
 type Occurrence =
   | {
@@ -59,7 +60,7 @@ type Occurrence =
       received?: number;
       refused?: string;
     }
-  | { kind: 'awaiting'; option: TableSpelling; spelling: string; received: number };
+  | { kind: 'awaiting'; option: TableSpelling; spelling: string; received: readonly string[] };
 
 /**
  * A spelling that refuses a value in its own word: a Boolean or counted option, which takes none,
@@ -227,7 +228,7 @@ function arityValue(
   }
   const ended = wordAt(following, taken);
   if (ended === undefined) {
-    return { occurrences: [{ kind: 'awaiting', option, received: taken, spelling }], taken };
+    return { occurrences: [{ kind: 'awaiting', option, received: words, spelling }], taken };
   }
   const missing: Occurrence =
     ended === '--'
@@ -246,7 +247,7 @@ function separateValue(option: TableSpelling, spelling: string, following: Follo
   }
   const next = wordAt(following, 0);
   if (next === undefined) {
-    return { occurrences: [{ kind: 'awaiting', option, received: 0, spelling }], taken: 0 };
+    return { occurrences: [{ kind: 'awaiting', option, received: [], spelling }], taken: 0 };
   }
   if (refusesValue(next)) {
     return { occurrences: [{ kind: 'missing', option, spelling }], taken: 0 };
@@ -438,7 +439,7 @@ interface AwaitingValue {
   arity: number | undefined;
   global: boolean;
   name: string;
-  received: number;
+  received: readonly string[];
   spelling: string;
 }
 
@@ -966,6 +967,8 @@ interface WordsRead {
   heldBooleans: ReadonlyMap<string, boolean>;
   passthrough: string[];
   path: string[];
+  /** The occurrences of a parent's own options routing still holds unbound, empty once it binds. */
+  pending: readonly PendingOccurrence[];
   positionals: string[];
   /** How many occurrences and positionals were read, the order a fault at the end ranks by. */
   read: number;
@@ -1128,6 +1131,23 @@ function bindTrailingArguments(
 }
 
 /**
+ * Binds the positionals to the slots in order, a variadic slot collecting every word
+ * from its position on. The one place a positional word is assigned to a slot.
+ */
+function bindLeading(
+  values: Map<InputDeclaration, string | string[]>,
+  slots: readonly ArgumentSlot[],
+  positionals: readonly string[],
+): void {
+  for (const [position, word] of positionals.entries()) {
+    const slot = argumentSlot(slots, position);
+    if (slot) {
+      bindWord(values, slot, word);
+    }
+  }
+}
+
+/**
  * The words each positional slot received. Parsing already held the first positional no slot
  * accepts, so every positional here has a slot. An omitted required argument binds nothing and
  * reports as a missing input in the validation phase, so omission has one class whether the input
@@ -1139,14 +1159,110 @@ function bindArguments(command: BuiltCommand, positionals: readonly string[]): B
   const slots = command.arguments;
   const variadic = slots.findIndex((slot) => slot.variadic);
   const end = bindTrailingArguments(values, slots, { positionals, variadic });
-  for (let position = 0; position < end; position += 1) {
-    const slot = argumentSlot(slots, position);
-    const word = positionals[position];
-    if (slot && word !== undefined) {
-      bindWord(values, slot, word);
-    }
-  }
+  bindLeading(values, slots, positionals.slice(0, end));
   return values;
+}
+
+/** The words one input of an unfinished invocation holds so far, by the input's name. */
+type TypedInputs = ReadonlyMap<string, readonly string[]>;
+
+/** The words the earlier words of an unfinished invocation gave each option and each argument. */
+interface TypedWords {
+  readonly arguments: TypedInputs;
+  readonly options: TypedInputs;
+}
+
+/**
+ * The words one option's occurrences gave, in the order they were read: a scalar's one word, a
+ * multiple option's every word, and an arity option's every word of every occurrence. A bare
+ * spelling's implied value was never typed, so it is left out.
+ */
+function optionWords(values: OptionValues, name: string): string[] {
+  const implied = new Set(values.implied.get(name));
+  const scalar = values.strings.get(name);
+  const words = [
+    ...(scalar === undefined ? [] : [scalar]),
+    ...(values.lists.get(name) ?? []),
+    ...(values.tuples.get(name) ?? []).flat(),
+  ];
+  return words.filter((_word, index) => !implied.has(index));
+}
+
+/**
+ * The words each option of one value scope holds, an option that holds none left out. The words
+ * an open occurrence at the end of the line already received follow those of its completed ones.
+ */
+function optionsOf(
+  values: OptionValues,
+  awaiting: AwaitingValue | undefined,
+): [string, string[]][] {
+  const open = awaiting === undefined ? [] : [awaiting.name];
+  const names = new Set([
+    ...values.strings.keys(),
+    ...values.lists.keys(),
+    ...values.tuples.keys(),
+    ...open,
+  ]);
+  return [...names]
+    .map((name): [string, string[]] => [
+      name,
+      [...optionWords(values, name), ...(name === awaiting?.name ? awaiting.received : [])],
+    ])
+    .filter(([, words]) => words.length > 0);
+}
+
+/**
+ * The values the occurrences routing still holds would give the reached Command's own options,
+ * bound as `bindPending` binds them once routing ends, each under the name that Command's own entry
+ * gives its spelling. Routing is still open only where the reached Command read no word of its
+ * own, so its own values are those alone. A fault the binding finds is not held.
+ */
+function heldValues(read: WordsRead): OptionValues {
+  const scratch: ReadState = {
+    at: 0,
+    awaiting: undefined,
+    command: read.command,
+    escapable: undefined,
+    fault: undefined,
+    faulted: new Set(),
+    globalFault: false,
+    heldBooleans: new Map(),
+    path: [...read.path],
+    pending: [...read.pending],
+    positionals: [],
+    read: 0,
+    routed: true,
+    supplied: [],
+    values: { globals: emptyValues(), locals: emptyValues() },
+  };
+  bindPending(scratch);
+  return scratch.values.locals;
+}
+
+/**
+ * The words of each option and each argument the earlier words of an unfinished invocation gave,
+ * exactly as the parser read them and before any validation. A Boolean and a counted option take no
+ * word, so they are absent. A parent's own option that routing still holds is listed under the name
+ * the reached Command's own entry gives it, and an option still waiting for words at the end of the
+ * line lists those it received after its completed occurrences. The leading arguments bind as
+ * `locate` reads a word, a variadic taking every word from its position on, and the arguments after
+ * a variadic, which bind from the end of a complete line, are absent.
+ */
+function typedWords(read: WordsRead): TypedWords {
+  const bound = new Map<InputDeclaration, string | string[]>();
+  bindLeading(bound, read.command.arguments, read.positionals);
+  return {
+    arguments: new Map(
+      [...bound].map(([input, words]) => [input.name, typeof words === 'string' ? [words] : words]),
+    ),
+    options: new Map([
+      ...optionsOf(read.values.globals, read.awaiting?.global === true ? read.awaiting : undefined),
+      ...optionsOf(
+        read.pending.length > 0 ? heldValues(read) : read.values.locals,
+        read.awaiting?.global === false ? read.awaiting : undefined,
+      ),
+    ]),
+  };
 }
 
 /** The failure a held fault reports once every word is read. */
@@ -1165,7 +1281,7 @@ function awaitedFailure(awaiting: AwaitingValue): MissingValueError {
   const { arity, received, spelling } = awaiting;
   return arity === undefined
     ? new MissingValueError(spelling)
-    : new MissingValueError(spelling, 'separate', { arity, received });
+    : new MissingValueError(spelling, 'separate', { arity, received: received.length });
 }
 
 /**
@@ -1196,7 +1312,7 @@ function parseInvocation(
   };
 }
 
-export type { AwaitingValue, BoundArguments, Occurrence, ParsedInvocation, WordsRead };
+export type { AwaitingValue, BoundArguments, Occurrence, ParsedInvocation, TypedWords, WordsRead };
 export {
   argumentSlot,
   candidatesOf,
@@ -1206,5 +1322,6 @@ export {
   readOptionWord,
   readWords,
   refusesValue,
+  typedWords,
   write,
 };

@@ -125,7 +125,7 @@ export type { CancellationReason } from './signals/signals.js';
 export type { EndingSignal } from './signals/signal-lane.js';
 export type { ErrorClass, Translation, Translator } from './failures/translators.js';
 export type { IncompleteResult, Lane } from './output/lanes.js';
-export type { WordPosition } from './inspection/locate.js';
+export type { TypedInputs, WordPosition } from './inspection/locate.js';
 export type {
   AnyDeclaredView,
   AnyOverrideKey,

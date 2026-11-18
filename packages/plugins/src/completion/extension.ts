@@ -25,11 +25,10 @@ import { exactFacts } from '../exact-facts.js';
  */
 
 /**
- * The hint for an argument's value, exactly one of five, because an input completes one way. Each
+ * The hint for an argument's value, exactly one of six, because an input completes one way. Each
  * member names its own key and holds every other hint's key absent, so a value with two hints is a
  * type error, and a value that bypasses the types is rejected as an invalid extension value. Only
- * an argument takes `commands`; an option's hint is a {@link CompletionInputFacts}. A later task
- * adds a member that names a completer, so a reader never reads the value as closed.
+ * an argument takes `commands`; an option's hint is a {@link CompletionInputFacts}.
  *
  * @public
  */
@@ -41,6 +40,7 @@ type CompletionValueFacts =
       readonly directories?: undefined;
       readonly none?: undefined;
       readonly commands?: undefined;
+      readonly values?: undefined;
     }
   | {
       /** Offer the directories, and the files whose name ends in one of these extensions. */
@@ -49,6 +49,7 @@ type CompletionValueFacts =
       readonly directories?: undefined;
       readonly none?: undefined;
       readonly commands?: undefined;
+      readonly values?: undefined;
     }
   | {
       /** Offer the directories only. */
@@ -57,6 +58,7 @@ type CompletionValueFacts =
       readonly extensions?: undefined;
       readonly none?: undefined;
       readonly commands?: undefined;
+      readonly values?: undefined;
     }
   | {
       /** Offer nothing, and no file name. */
@@ -65,6 +67,7 @@ type CompletionValueFacts =
       readonly extensions?: undefined;
       readonly directories?: undefined;
       readonly commands?: undefined;
+      readonly values?: undefined;
     }
   | {
       /** Offer the Commands the earlier words of the input have reached, as a path from the root. */
@@ -73,6 +76,16 @@ type CompletionValueFacts =
       readonly extensions?: undefined;
       readonly directories?: undefined;
       readonly none?: undefined;
+      readonly values?: undefined;
+    }
+  | {
+      /** Offer the values the plugin's settings' completer of this name returns at Tab time. */
+      readonly values: string;
+      readonly files?: undefined;
+      readonly extensions?: undefined;
+      readonly directories?: undefined;
+      readonly none?: undefined;
+      readonly commands?: undefined;
     };
 
 /**
@@ -96,6 +109,9 @@ const extensionName = pipe(string(), regex(/^[\dA-Za-z][\w.+-]*$/u));
 const leastOne = 1;
 const extensionList = pipe(array(extensionName), minLength(leastOne));
 
+/** A completer's name: any nonempty text, since the settings' record keys it. */
+const completerName = pipe(string(), minLength(leastOne));
+
 const fileHints = [
   object({
     commands: absent,
@@ -103,6 +119,7 @@ const fileHints = [
     extensions: absent,
     files: literal(true),
     none: absent,
+    values: absent,
   }),
   object({
     commands: absent,
@@ -110,6 +127,7 @@ const fileHints = [
     extensions: extensionList,
     files: absent,
     none: absent,
+    values: absent,
   }),
   object({
     commands: absent,
@@ -117,6 +135,7 @@ const fileHints = [
     extensions: absent,
     files: absent,
     none: absent,
+    values: absent,
   }),
   object({
     commands: absent,
@@ -124,6 +143,15 @@ const fileHints = [
     extensions: absent,
     files: absent,
     none: literal(true),
+    values: absent,
+  }),
+  object({
+    commands: absent,
+    directories: absent,
+    extensions: absent,
+    files: absent,
+    none: absent,
+    values: completerName,
   }),
 ] as const;
 const commandsHint = object({
@@ -132,6 +160,7 @@ const commandsHint = object({
   extensions: absent,
   files: absent,
   none: absent,
+  values: absent,
 });
 const inputFacts = exactFacts<CompletionInputFacts>()(union(fileHints));
 const argumentFacts = exactFacts<CompletionValueFacts>()(union([...fileHints, commandsHint]));
@@ -139,7 +168,7 @@ const argumentFacts = exactFacts<CompletionValueFacts>()(union([...fileHints, co
 /**
  * An option's value hint for shell completion: file names, the files of some extensions, the
  * directories, or nothing. An input whose schema names a closed set offers that set, and its hint
- * is not read.
+ * is not read for the answer; a completer name it holds is still checked at graph build.
  *
  * @example
  * ```ts
