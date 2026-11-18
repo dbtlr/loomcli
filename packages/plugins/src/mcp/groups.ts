@@ -1,5 +1,6 @@
 import type { CommandNode, OptionNode, OptionGroup } from '@loomcli/core';
 
+import { completionInput } from '../completion/extension.js';
 import { groupMembers } from '../option-groups.js';
 import { excluded, exposed } from './exposure.js';
 import { mcpArgument, mcpInput } from './extension.js';
@@ -25,12 +26,17 @@ function namedPresence(option: OptionNode): Schema {
   };
 }
 
-/** The extensions this plugin owns, which bind nothing. */
-const ownExtensions: ReadonlySet<string> = new Set([mcpInput.identity, mcpArgument.identity]);
+/** The extensions this plugin owns, and the completion plugin's value hint, none of which binds anything. */
+const ownExtensions: ReadonlySet<string> = new Set([
+  mcpInput.identity,
+  mcpArgument.identity,
+  completionInput.identity,
+]);
 
 /**
  * Another plugin's extension may include an arbitrary configuration binding, so uncertain
- * requirements stay runtime-only. This plugin's own extensions bind nothing.
+ * requirements stay runtime-only. This plugin's own extensions and the completion plugin's value hint
+ * bind nothing.
  */
 function externallyUnbound(option: OptionNode): boolean {
   return (

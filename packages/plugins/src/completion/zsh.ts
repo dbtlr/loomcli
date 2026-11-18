@@ -32,7 +32,7 @@ _loom_${id}()
     local shellCompDirectiveFilterDirs=16
     local shellCompDirectiveKeepOrder=32
 
-    local out directive comp lastLine filter subdir result
+    local out directive comp lastLine filter
     local -a completions request describe globs
 
     __loom_${id}_debug "\\n========= starting completion logic =========="
@@ -98,30 +98,27 @@ _loom_${id}()
         fi
     done <<< "$out"
 
-    if [ $((directive & shellCompDirectiveFilterFileExt)) -ne 0 ]; then
-        # File extension filtering. Each extension is quoted as a pattern,
-        # so no glob qualifier in it runs.
-        for filter in "\${lines[@]}"; do
-            globs+=(-g "*.\${(b)filter}")
-        done
+    if [ $((directive & shellCompDirectiveFilterFileExt)) -ne 0 ] || [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ]; then
+        # The script lists the file names itself. A first word that starts
+        # with - is the lead of a value attached to its option, such as
+        # --config= or -c: it moves from PREFIX to IPREFIX as a literal, so the
+        # names after it are listed, and a word without it lists nothing.
+        if [[ \${lines[1]-} == -* ]]; then
+            compset -P "\${(b)lines[1]}" || return 1
+            shift lines
+        fi
+        if [ $((directive & shellCompDirectiveFilterFileExt)) -ne 0 ]; then
+            # Each extension is quoted as a pattern, so no glob qualifier in it
+            # runs.
+            for filter in "\${lines[@]}"; do
+                globs+=(-g "*.\${(b)filter}")
+            done
+        fi
         __loom_${id}_debug "File filtering patterns: \${globs[*]}"
-        _files "\${globs[@]}"
-    elif [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ]; then
-        # File completion for directories only
-        subdir="\${lines[1]}"
-        if [ -n "$subdir" ]; then
-            __loom_${id}_debug "Listing directories in $subdir"
-            pushd -q -- "\${subdir}" >/dev/null 2>&1 || return 1
-        else
-            __loom_${id}_debug "Listing directories in ."
-        fi
-
-        _files -/
-        result=$?
-        if [ -n "$subdir" ]; then
-            popd -q >/dev/null 2>&1
-        fi
-        return $result
+        # _path_files offers the directories and the names the patterns
+        # match, and unlike _files never falls back to every file name.
+        _path_files -/ "\${globs[@]}"
+        return
     else
         if [ $((directive & shellCompDirectiveKeepOrder)) -ne 0 ]; then
             __loom_${id}_debug "Activating keep order."
@@ -200,6 +197,12 @@ fi
  *   `_arguments`. The file still runs the function when compinit autoloads it as `_<name>`.
  * - The `#compdef` line and the autoload check carry the name as it is, because the Application's
  *   name is a portable name.
+ * - Directives 8 and 16 call `_path_files -/` with the extension patterns rather than `_files`,
+ *   so the directories and the names an extension matches are offered, and no other file name is,
+ *   where `_files` falls back to every file.
+ * - Under directives 8 and 16, a first answer word that starts with `-` is the lead of a value
+ *   attached to its option, such as `--config=` or `-c`, moved from `$PREFIX` to `$IPREFIX` as a
+ *   literal, so the names after it are listed. No answer word names a folder to list in.
  */
 export function zshScript(name: string): string {
   return zshText(name, { guard: '', loadedAs: `_${name}` });

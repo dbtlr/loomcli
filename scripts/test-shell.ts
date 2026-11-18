@@ -822,7 +822,8 @@ interface SuiteSession {
 
 /**
  * Opens a session before the suite's cases and closes it after them, in a fresh temporary
- * directory holding the given files, each written as `{}`.
+ * directory holding the given files, each written as `{}`, and the given folders, each a name that
+ * ends in `/`.
  */
 function useSession(
   options: Omit<SessionOptions, 'cwd'> & { files?: readonly string[] },
@@ -832,7 +833,11 @@ function useSession(
   beforeAll(async () => {
     state.cwd = mkdtempSync(join(tmpdir(), 'loom-completion-'));
     for (const file of files) {
-      writeFileSync(join(state.cwd, file), '{}');
+      if (file.endsWith('/')) {
+        mkdirSync(join(state.cwd, file));
+      } else {
+        writeFileSync(join(state.cwd, file), '{}');
+      }
     }
     state.session = await openSession({ ...rest, cwd: state.cwd });
   });

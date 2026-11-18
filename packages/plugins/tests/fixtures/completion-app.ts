@@ -1,6 +1,7 @@
 import { Application, Command } from '@loomcli/core';
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
+import { completionArgument, completionInput } from '@loomcli/plugins/completion/extension';
 import { help } from '@loomcli/plugins/help';
 
 import { runOnMock } from './in-process.ts';
@@ -110,6 +111,25 @@ function completionApplication() {
     })
     .action(() => {});
 
+  /**
+   * One input of each file hint: an option that lists the `.json` files, one that lists directories
+   * only, and an argument that lists the `.csv` files. Each option has a short spelling, so a test
+   * completes a value attached to it. The Command is hidden, so no root listing shows it.
+   */
+  const scan = new Command('scan', { hidden: true })
+    .option('config', {
+      extensions: [completionInput({ extensions: ['json'] })],
+      short: 'c',
+      type: 'string',
+    })
+    .option('into', {
+      extensions: [completionInput({ directories: true })],
+      short: 'i',
+      type: 'string',
+    })
+    .argument('table', { extensions: [completionArgument({ extensions: ['csv'] })] })
+    .action(() => {});
+
   const cache = new Command('cache', { description: String.fromCodePoint(1) })
     .command(new Command('clear').action(() => {}))
     .command(new Command('list', { description: 'List entries.' }).action(() => {}));
@@ -135,7 +155,8 @@ function completionApplication() {
     .command(odd)
     .command(quotes)
     .command(backups)
-    .command(stats);
+    .command(stats)
+    .command(scan);
 
   return app;
 }

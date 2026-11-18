@@ -4,6 +4,7 @@ import { oneOf } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
 import { exactText } from '../exact-text.js';
+import { completionArgument, completionInput } from './extension.js';
 import type { ChildRun } from './run.js';
 import { shells } from './shell-names.js';
 
@@ -31,7 +32,7 @@ const answerCommand = new Command('__complete', {
   .passthrough()
   .action(async ({ graph, out, passthrough }) => {
     const { answer } = await import('./answer.js');
-    return out.render(answer(graph, locate(graph, passthrough)), exactText);
+    return out.render(answer(graph, locate(graph, passthrough), passthrough), exactText);
   });
 
 /** The four shell names `install` and `uninstall` accept. */
@@ -111,8 +112,8 @@ const completionCommand = new Command('completion', {
 
 /**
  * A plugin that prints Bash, Zsh, Fish, and PowerShell completion scripts, installs them into the
- * operator's shell on Linux and macOS, and answers them. Its whole contribution is the `completion`
- * Command; it declares no option, middleware, or extension. Each child loads its work when it runs.
+ * operator's shell on Linux and macOS, and answers them. Its contribution is the `completion`
+ * Command and the two extensions that hint an input's values; it declares no option or middleware. Each child loads its work when it runs.
  *
  * @example
  * ```ts
@@ -127,7 +128,10 @@ const completionCommand = new Command('completion', {
  * @public
  */
 export function completion(): Plugin {
-  return plugin(`${packageName}/completion`, { commands: [completionCommand] });
+  return plugin(`${packageName}/completion`, {
+    commands: [completionCommand],
+    extensions: [completionInput, completionArgument],
+  });
 }
 
 export type { RefreshContext } from '../refresh.js';

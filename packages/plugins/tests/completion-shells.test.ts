@@ -616,3 +616,148 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     });
   });
 });
+
+const helpFixture = new URL('fixtures/completion-help.mjs', import.meta.url);
+
+/**
+ * The names a listing offers, without the `./` PowerShell puts before one, the `/` that marks a
+ * folder, or the `--option=` that Fish and PowerShell write before each name after an attached
+ * value. Bash may print several names on one listing line.
+ */
+function names(listed: readonly string[]): string[] {
+  return listed
+    .flatMap((word) => word.split(/\s+/u))
+    .map((word) =>
+      word
+        .replace(/^--[a-z]+=/u, '')
+        .replace(/^\.\//u, '')
+        .replace(/\/$/u, ''),
+    )
+    .toSorted();
+}
+
+describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
+  // The directory holds JSON and CSV documents, a text file, an archive, a name whose extension
+  // Differs from json only in case, and two folders.
+  describe.skipIf(!installed)('a static value hint on file names', () => {
+    const { complete } = useSession({
+      files: [
+        'A.JSON',
+        'alpha.json',
+        'beta.json',
+        'notes.txt',
+        'one.csv',
+        'two.csv',
+        'x.tar.gz',
+        'docs/',
+        'more/',
+      ],
+      main: fixture,
+      name: 'kit',
+      shell,
+      sources,
+    });
+
+    it.each(['kit scan --config ', 'kit scan --config='])(
+      '%s<Tab> lists the JSON files and the folders, and no other file',
+      async (line) => {
+        const { listed } = await complete(line);
+        expect(names(listed)).toEqual(['alpha.json', 'beta.json', 'docs', 'more']);
+      },
+    );
+
+    it.each(['kit scan --into ', 'kit scan --into='])(
+      '%s<Tab> lists the folders only',
+      async (line) => {
+        const { listed } = await complete(line);
+        expect(names(listed)).toEqual(['docs', 'more']);
+      },
+    );
+
+    it('kit scan <Tab> lists the CSV files and the folders for the argument', async () => {
+      const { listed } = await complete('kit scan ');
+      expect(names(listed)).toEqual(['docs', 'more', 'one.csv', 'two.csv']);
+    });
+
+    it('kit scan --config=a<Tab> inserts the one JSON file that starts with a', async () => {
+      const { line } = await complete('kit scan --config=a');
+      expect(line.trimEnd()).toBe('kit scan --config=alpha.json');
+    });
+
+    it('kit scan --into=d<Tab> inserts the folder that starts with d, and no file', async () => {
+      const { line } = await complete('kit scan --into=d');
+      expect(line.trimEnd()).toBe('kit scan --into=docs/');
+    });
+
+    // The one name that starts with x is a file no hint accepts, so no shell falls back to it.
+    // An extension compares by case, so A.JSON is no JSON file in any shell, bash-completion's
+    // Case-insensitive listing included.
+    it.each([
+      'kit scan --config A',
+      'kit scan --into x',
+      'kit scan --into=x',
+      'kit scan --config x',
+      'kit scan --config=x',
+    ])(
+      '%s<Tab> leaves the line as it is, because no name it may take starts with what was typed',
+      async (typed) => {
+        const { line } = await complete(typed);
+        expect(line.trimEnd()).toBe(typed);
+      },
+    );
+
+    it.each([
+      ['kit scan -ca', 'kit scan -calpha.json'],
+      ['kit scan -id', 'kit scan -idocs/'],
+    ])('%s<Tab> completes the value attached to the short option as %s', async (typed, done) => {
+      const { line } = await complete(typed);
+      expect(line.trimEnd()).toBe(done);
+    });
+  });
+
+  describe.runIf(installed && shell === 'fish')('the Fish listing of hinted file names', () => {
+    // A name that holds a tab would split the listing line, so Fish leaves it out.
+    const { complete } = useSession({
+      files: ['ok.json', 'tab\tname.json'],
+      main: fixture,
+      name: 'kit',
+      shell,
+      sources,
+    });
+
+    it('kit scan --config <Tab> lists ok.json and leaves out the name that holds a tab', async () => {
+      const { listed } = await complete('kit scan --config ');
+      expect(listed).toEqual(['ok.json']);
+    });
+  });
+
+  // `task` has the children `show` and `shelve`, and a hidden `shred`; `tidy` is hidden at the root.
+  describe.skipIf(!installed)('the help Command', () => {
+    const { complete } = useSession({
+      main: helpFixture,
+      name: 'app',
+      shell,
+      sources,
+    });
+
+    it('app help ta<Tab> inserts task, the one Command that starts with ta', async () => {
+      const { line } = await complete('app help ta');
+      expect(line.trimEnd()).toBe('app help task');
+    });
+
+    it('app help t<Tab> lists task and team and never the hidden tidy', async () => {
+      const { listed } = await complete('app help t');
+      expect(names(listed)).toEqual(['task', 'team']);
+    });
+
+    it('app help task sh<Tab> lists the children show and shelve and never the hidden shred', async () => {
+      const { listed } = await complete('app help task sh');
+      expect(names(listed)).toEqual(['shelve', 'show']);
+    });
+
+    it('app help task shel<Tab> inserts shelve', async () => {
+      const { line } = await complete('app help task shel');
+      expect(line.trimEnd()).toBe('app help task shelve');
+    });
+  });
+});

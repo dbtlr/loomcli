@@ -5,6 +5,7 @@
  */
 import { Application, Command, DeclarationError } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
+import { completionInput } from '@loomcli/plugins/completion/extension';
 import { help } from '@loomcli/plugins/help';
 import { manifest } from '@loomcli/plugins/manifest';
 import { mcp } from '@loomcli/plugins/mcp';
@@ -18,12 +19,17 @@ const excluding = [mcpInput({ exclude: true })];
 
 /**
  * `login` holds a requirement of several options, one of a Boolean, one over a hidden option, one
- * of a multiple option, and one whose option is excluded from the MCP tool.
+ * of a multiple option, and one whose option is excluded from the MCP tool. `host` carries a
+ * completion value hint, which binds nothing, so the MCP tool still states its requirement.
  */
 const login = new Command('login', { description: 'Sign in.' })
   .option('user', { description: 'The account name.', type: 'string' })
   .option('password', { description: 'The password.', type: 'string' })
-  .option('host', { description: 'The server.', type: 'string' })
+  .option('host', {
+    description: 'The server.',
+    extensions: [completionInput({ none: true })],
+    type: 'string',
+  })
   .option('pretty', { description: 'Pretty output.', polarity: 'both', type: 'boolean' })
   .option('format', { description: 'The format.', type: 'string' })
   .option('wide', { description: 'Wide output.', polarity: 'both', type: 'boolean' })

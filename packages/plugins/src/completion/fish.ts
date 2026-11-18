@@ -23,9 +23,12 @@ import { fishQuoted, identifier } from '../shell-quoting.js';
  * - The ActiveHelp environment variable is no longer set on the request.
  * - Trailing empty lines are no longer dropped from the answer.
  * - An error directive or a failed call offers nothing rather than file names.
- *
- * As in Cobra's script, directives 8 and 16 complete every file name: Fish filters neither by
- * extension nor to directories.
+ * - Directives 8 and 16 list the names that start with the word under the cursor by Fish's own
+ *   pathname expansion of a variable, which expands no wildcard, command, or tilde the word holds,
+ *   instead of completing every file name: the directories, and under 8 the files that end in an
+ *   offered extension, compared as strings. A first answer word that starts with `-` is the lead
+ *   of a value attached to its option, such as `--config=` or `-c`: the names after it are
+ *   listed, each written behind the lead.
  */
 export function fishScript(name: string): string {
   const id = identifier(name);
@@ -139,6 +142,51 @@ function __${id}_requires_order_preservation
 end
 
 
+# Replaces the offered extensions in __${id}_comp_results with the names that start with the word
+# under the cursor: its directories, and unless dirsOnly is 1 the files that end in an offered
+# extension. A first offered word that starts with - is the lead of a value attached to its
+# option, such as --config= or -c: the names are listed for the rest of the word, each written
+# behind the lead, and a word without the lead lists nothing. Fish expands a variable's value
+# before a trailing *, so a wildcard, a command, or a tilde in the typed word is read as text.
+function __${id}_filtered_files --argument-names dirsOnly
+    set -l typed (commandline -ct | string unescape --style=script | string collect)
+    set -l extensions
+    for comp in $__${id}_comp_results
+        set -a extensions (string split --max 1 \\t -- $comp)[1]
+    end
+
+    set -l lead ''
+    if string match -q -- '-*' "$extensions[1]"
+        set lead $extensions[1]
+        set -e extensions[1]
+        set -l length (string length -- "$lead")
+        set -l head (string sub --length $length -- "$typed")
+        if test "$head" != "$lead"
+            set --global __${id}_comp_results
+            return
+        end
+        set typed (string sub --start (math $length + 1) -- "$typed")
+    end
+
+    set -l found
+    for file in $typed*
+        if string match -q -r -- '[[:cntrl:]]' "$file"
+            continue
+        end
+        if test -d "$file"
+            set -a found "$lead$file/"
+        else if test $dirsOnly -eq 0
+            for extension in $extensions
+                if string match -q -- "*.$extension" "$file"
+                    set -a found "$lead$file"
+                    break
+                end
+            end
+        end
+    end
+    set --global __${id}_comp_results $found
+end
+
 # This function does two things:
 # - Obtain the completions and store them in the global __${id}_comp_results
 # - Return false if file completion should be performed
@@ -185,9 +233,9 @@ function __${id}_prepare_completions
     set -l filefilter (math (math --scale 0 $directive / $shellCompDirectiveFilterFileExt) % 2)
     set -l dirfilter (math (math --scale 0 $directive / $shellCompDirectiveFilterDirs) % 2)
     if test $filefilter -eq 1; or test $dirfilter -eq 1
-        __${id}_debug "File extension filtering or directory filtering not supported"
-        # Do full file completion instead
-        return 1
+        __${id}_debug "Listing the files and directories the word names"
+        __${id}_filtered_files $dirfilter
+        return 0
     end
 
     set -l nospace (math (math --scale 0 $directive / $shellCompDirectiveNoSpace) % 2)
