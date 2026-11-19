@@ -208,11 +208,13 @@ test('an argv passthrough tail stays untouched, including later delimiters', asy
 
 test('named passthrough ranks after unknown option and argument names', async () => {
   const app = new Application('app').command(new Command('get').action(() => {}));
+  // A literal path rejects an unknown name at compile time, so a dynamic path carries these names to the run.
+  const get: readonly string[] = ['get'];
   await expect(
-    app.invoke(['get'], { options: { unknown: true }, passthrough: ['tail'] }),
+    app.invoke(get, { options: { unknown: true }, passthrough: ['tail'] }),
   ).resolves.toMatchObject({ failure: { name: 'UnknownOptionError' }, status: 'failed' });
   await expect(
-    app.invoke(['get'], { args: { unknown: 'x' }, passthrough: ['tail'] }),
+    app.invoke(get, { args: { unknown: 'x' }, passthrough: ['tail'] }),
   ).resolves.toMatchObject({
     failure: { extra: ['unknown'], name: 'UnexpectedArgumentError' },
     status: 'failed',

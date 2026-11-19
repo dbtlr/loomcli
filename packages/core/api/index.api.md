@@ -27,7 +27,7 @@ export interface ActionContext<Args, Options = {}, Result = unknown, Provided = 
     readonly graph: CommandGraph;
     host: Host;
     readonly interactive: boolean;
-    readonly invoke: <Mapped = LoomError>(path: readonly string[], values: InvocationValues, options?: InvokeOptions<Mapped>) => Promise<InvocationOutcome<Mapped>>;
+    readonly invoke: ActionInvoke;
     readonly log: Log;
     readonly onResume: OnResume;
     readonly onShutdown: OnShutdown;
@@ -84,7 +84,7 @@ export type AnyOverrideKey = AnyDeclaredView | FailureClass<LoomError>;
 export type AnyProvider = Provider<string, unknown, never, Lifetime, readonly AnyProvider[]>;
 
 // @public @sealed
-export type Application<Args = {}, Options = {}, Globals = {}, State extends ApplicationMethod = AfterAction, Plugins extends readonly Plugin_2[] = readonly Plugin_2[], Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}, Requires = {}> = Pick<ApplicationBuilder<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>, typeof applicationEnvironment | typeof declaredTypes | 'check' | 'extend' | 'inspect' | 'invoke' | 'name' | 'run' | State | ResultMethod<Result>>;
+export type Application<Args = {}, Options = {}, Globals = {}, State extends ApplicationMethod = AfterAction, Plugins extends readonly Plugin_2[] = readonly Plugin_2[], Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}, Requires = {}, Paths = unknown> = Pick<ApplicationBuilder<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths>, typeof applicationEnvironment | typeof declaredTypes | typeof commandPaths | 'check' | 'extend' | 'inspect' | 'invoke' | 'name' | 'run' | State | ResultMethod<Result>>;
 
 // @public
 export const Application: ApplicationConstructor;
@@ -249,7 +249,7 @@ export interface ColorFallbacks {
 }
 
 // @public @sealed
-export type Command<Args = {}, Options = {}, Globals = {}, State extends CommandMethod = AfterAction, Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}> = Pick<CommandBuilder<Args, Options, Globals, State, Result, Stdin, Provided>, typeof commandValue | typeof declaredTypes | 'extend' | State | ResultMethod<Result>>;
+export type Command<Args = {}, Options = {}, Globals = {}, State extends CommandMethod = AfterAction, Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}, CommandName extends string = string, Paths = unknown> = Pick<CommandBuilder<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>, typeof commandValue | typeof declaredTypes | typeof commandPaths | 'extend' | State | ResultMethod<Result>>;
 
 // @public
 export const Command: CommandConstructor;
@@ -303,6 +303,14 @@ export interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
     extensions?: readonly ExtensionValue<'command'>[];
     hidden?: boolean;
     uses?: MetByRegistration<Uses, OptIn<Uses>>;
+}
+
+// @public @sealed
+export interface CommandPaths<Args = {}, Options = {}, Commands = {}, Globals = {}> {
+    readonly args: Args;
+    readonly commands: Commands;
+    readonly globals: Globals;
+    readonly options: Options;
 }
 
 // @public @sealed
@@ -989,6 +997,9 @@ export interface InvocationValues {
     readonly passthrough?: readonly string[];
 }
 
+// @public @sealed
+export type Invoke<Paths, Extra = {}> = <Mapped = LoomError, const Path extends readonly string[] = readonly string[]>(path: PathParameter<Paths, Path>, values: NoInfer<PathValues<Paths, Path>>, options?: InvokeOptions<Mapped> & Extra) => Promise<InvocationOutcome<Mapped>>;
+
 // @public
 export type InvokedBy = 'argv' | 'name';
 
@@ -1378,6 +1389,11 @@ export function override<Key extends AnyOverrideKey>(key: Key, replacement: NoIn
 export function pad(text: string, minimumWidth: number, options?: {
     align?: Alignment;
 }): string;
+
+// @public @sealed
+export type PathsOf<Value extends {
+    readonly [commandPaths]: unknown;
+}> = Value[typeof commandPaths];
 
 // @public
 export function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMapping = {}>(identity: string, definition: PluginDefinition<Options, Theme>): Plugin_2<NoInfer<Options>, NoInfer<Theme>>;

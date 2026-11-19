@@ -20,7 +20,7 @@ const plain: Promise<InvocationOutcome> = app.invoke(['get'], { args: { path: 'n
 async function mapped(): Promise<string> {
   const outcome = await app.invoke(
     ['get'],
-    { args: { path: 'name' }, options: { verbose: 2 } },
+    { args: { path: 'name' } },
     { failure: (failure, { exitCode }) => ({ code: exitCode, message: failure.message }) },
   );
   switch (outcome.status) {

@@ -1,3 +1,4 @@
+import type { RegisteredPaths } from '../application/environment.js';
 import type { LoomError } from '../failures/errors.js';
 import type { FailureExitCode } from '../failures/exit-codes.js';
 import type { FailureForm } from '../failures/form.js';
@@ -9,6 +10,7 @@ import type { Log } from '../output/log.js';
 import type { OpenResult, Out, ProgressEvent } from '../output/types.js';
 import type { OnResume, OnShutdown, OnSuspend } from '../signals/signal-lane.js';
 import type { ContextualStyle } from '../style/style.js';
+import type { Invoke } from './paths.js';
 
 type ActionArgument<Declaration> =
   ActionHandler<Declaration> extends (context: infer Context) => unknown ? Context : never;
@@ -156,6 +158,15 @@ export type InvocationOutcome<Mapped = LoomError> =
   | { readonly status: 'cancelled'; readonly exitCode: 129 | 130 | 131 | 141 | 143 };
 
 /**
+ * An action's `invoke`, over the Command paths the Application registers. It names them only in its
+ * base type, which TypeScript resolves when a call reads it, so a context an action reads without
+ * calling `invoke` never resolves the registered Application's type.
+ */
+// An interface defers its base type; a type alias would resolve the registration with the context.
+// oxlint-disable-next-line typescript/no-empty-interface
+export interface ActionInvoke extends Invoke<RegisteredPaths> {}
+
+/**
  * What an action receives. `graph` is the frozen graph `inspect()` returns for this run, and
  * `command` is the routed node inside it: the same two values the run's middleware receive.
  * `invoke` runs another Command of that graph by name.
@@ -207,12 +218,13 @@ export interface ActionContext<Args, Options = {}, Result = unknown, Provided = 
   readonly onResume: OnResume;
   /** The value of each provider the Command's `uses` lists, under its provider's name. */
   readonly provided: Provided;
-  /** Runs another Command of the graph this run built, by name, and captures what it writes. */
-  readonly invoke: <Mapped = LoomError>(
-    path: readonly string[],
-    values: InvocationValues,
-    options?: InvokeOptions<Mapped>,
-  ) => Promise<InvocationOutcome<Mapped>>;
+  /**
+   * Runs another Command of the graph this run built, by name, and captures what it writes. Where
+   * the Application registers its Command paths, a literal path it declares types its values.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/invocation.md#typed-paths
+   */
+  readonly invoke: ActionInvoke;
 }
 
 /**

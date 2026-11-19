@@ -18,7 +18,7 @@ Write the application module in this order, because each step types the next:
 
 1. `const configured = new Application(name, { ... })` with every plugin, view override, translator, and Application-level extension value.
 2. Each `globalOption()` call, then any root-local `option()`.
-3. When the root has children, the [Application registration](../../../../../docs/core/commands.md#modular-authoring): `declare module '@loomcli/core'` with `Register.environment` set to `EnvironmentOf<typeof configured>`. Register this configured value, never the finished Application, because the finished one imports the Commands that read the registered types.
+3. When the root has children, the [Application registration](../../../../../docs/core/commands.md#modular-authoring): `declare module '@loomcli/core'` with `Register.environment` set to `EnvironmentOf<typeof configured>`. Register this configured value, never the finished Application, because the finished one imports the Commands that read the registered types. To type an action's `invoke`, also set `Register.paths` to `PathsOf<typeof app>` of the finished Application from step 4: Command paths are read only where a call reads them, so this one registration of the finished value is not circular, under [Typed paths](../../../../../docs/core/invocation.md#typed-paths).
 4. The exported Application: `configured.command(...)` for each child, then `rows()` or `result()` and `action()` for a root that runs.
 
 Keep one registration per TypeScript project. A second application, an example, or a test with its own registration needs its own `tsconfig.json`.

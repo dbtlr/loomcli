@@ -16,6 +16,11 @@ interface ApplicationEnvironment<Globals = {}, Plugins extends readonly Plugin[]
 interface RegistrationShape {
   /** The Application's environment, once its registration is visible in this compilation. */
   environment?: ApplicationEnvironment<unknown, readonly Plugin[]>;
+  /**
+   * The Application's Command paths, which `PathsOf` reads from the completed Application, so an
+   * action's `invoke` types a literal path's values.
+   */
+  paths?: unknown;
 }
 
 /**
@@ -43,6 +48,12 @@ type RegisteredEnvironment = Register extends { environment: infer Environment }
 
 type RegisteredGlobals = RegisteredEnvironment['globals'];
 
+/**
+ * The Command paths of the Application that registered them in this compilation, or `unknown` when
+ * none did, which an action's `invoke` reads as the dynamic form for every path.
+ */
+type RegisteredPaths = Register extends { paths: infer Paths } ? Paths : unknown;
+
 /** Whether an Application's registration is visible in this compilation context. */
 type RegistrationVisible = Register extends { environment: unknown } ? true : false;
 
@@ -69,6 +80,7 @@ export type {
   Register,
   RegisteredEnvironment,
   RegisteredGlobals,
+  RegisteredPaths,
   RegistrationVisible,
   applicationEnvironment,
 };

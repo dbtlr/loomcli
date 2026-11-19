@@ -272,7 +272,9 @@ async function invoked({
   readonly env: Env;
   readonly values: InvocationValues;
 }) {
-  const outcome = await application(declared).invoke([], values, {
+  // The values are dynamic, so the path is too: a literal path would type them against the root.
+  const root: readonly string[] = [];
+  const outcome = await application(declared).invoke(root, values, {
     process: mockProcess({ env, ...(cwd === undefined ? {} : { cwd }) }),
   });
   return structuredClone({

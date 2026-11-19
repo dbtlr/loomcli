@@ -12,6 +12,8 @@ export const surfacePackages = [
         forgottenExports: {
           ActionArgument:
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
+          ActionInvoke:
+            "Interface behind the action context's `invoke`, which defers the registration; the author calls `invoke`.",
           AfterAction: 'Default type-state parameter of the Command builder.',
           ApplicationBuilder:
             'Builder class behind the exported `Application`; the author names `Application`.',
@@ -67,6 +69,10 @@ export const surfacePackages = [
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
           OverrideDeclaration:
             'Declaration class behind the exported `ViewOverride`; the author names `ViewOverride`.',
+          PathParameter:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
+          PathValues:
+            'Type machinery that computes a signature from type arguments; the author names the computed export.',
           PersistentProvider:
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
           PluginDeclaration: 'Class behind the exported `Plugin`; the author names `Plugin`.',

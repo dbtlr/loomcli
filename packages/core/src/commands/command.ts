@@ -14,6 +14,14 @@ import type {
   ImpliedConstraint,
   OptionValue,
 } from '../inputs/types.js';
+import type {
+  CommandPaths,
+  commandPaths,
+  WithArgument,
+  WithChild,
+  WithOption,
+  WithOptions,
+} from '../invocation/paths.js';
 import type { StdinContext, declaredTypes, DeclaredTypes, Action } from '../invocation/types.js';
 import type { ResultViews, RowViews, ResultViewsOf } from '../output/types.js';
 import type { ExtensionValue } from '../plugins/extension.js';
@@ -95,6 +103,8 @@ export class CommandBuilder<
   Result = unknown,
   Stdin extends StdinContext = StdinContext,
   Provided = {},
+  CommandName extends string = string,
+  Paths = unknown,
 > {
   /**
    * A type-only marker that tells a Command declaration from any other value. It holds no runtime
@@ -106,6 +116,11 @@ export class CommandBuilder<
    * types, which `ActionHandler` reads. It holds no runtime value.
    */
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
+  /**
+   * A type-only marker that carries the Command's entry in its Application's Command paths under its
+   * canonical name, which its parent's `command()` joins to its own. It holds no runtime value.
+   */
+  declare readonly [commandPaths]: Readonly<Record<CommandName, Paths>>;
 
   readonly #name: string;
   readonly #state: CommandState<Args, Options, Globals>;
@@ -142,7 +157,9 @@ export class CommandBuilder<
     Exclude<State, 'needsTerminal'>,
     Result,
     Stdin,
-    Provided
+    Provided,
+    CommandName,
+    Paths
   > {
     return new CommandBuilder(
       this.#name,
@@ -165,7 +182,9 @@ export class CommandBuilder<
     Exclude<State, 'passthrough'>,
     Result,
     Stdin & { passthrough: string[] },
-    Provided
+    Provided,
+    CommandName,
+    Paths
   > {
     return new CommandBuilder(
       this.#name,
@@ -192,7 +211,9 @@ export class CommandBuilder<
     State,
     Result,
     Omit<Stdin, 'stdin'> & { readonly stdin: Content },
-    Provided
+    Provided,
+    CommandName,
+    Paths
   >;
   /**
    * Declares the Command's stdin as optional, so the action's `stdin` is absent when the operator
@@ -202,10 +223,30 @@ export class CommandBuilder<
    */
   stdin(
     config: StdinConfig,
-  ): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided>;
+  ): Command<
+    Args,
+    Options,
+    Globals,
+    State,
+    Result,
+    Omit<Stdin, 'stdin'> & StdinContext,
+    Provided,
+    CommandName,
+    Paths
+  >;
   stdin(
     config: StdinConfig,
-  ): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided> {
+  ): Command<
+    Args,
+    Options,
+    Globals,
+    State,
+    Result,
+    Omit<Stdin, 'stdin'> & StdinContext,
+    Provided,
+    CommandName,
+    Paths
+  > {
     const state = declareStdin(this.#state, config);
     return new CommandBuilder<
       Args,
@@ -214,7 +255,9 @@ export class CommandBuilder<
       State,
       Result,
       Omit<Stdin, 'stdin'> & StdinContext,
-      Provided
+      Provided,
+      CommandName,
+      Paths
     >(this.#name, state, {
       provided: this.#providedBind,
       stdin: (source, passthrough) => ({
@@ -244,7 +287,9 @@ export class CommandBuilder<
     AfterArgument<State>,
     Result,
     Stdin,
-    Provided
+    Provided,
+    CommandName,
+    WithArgument<Paths, Name, Config>
   > {
     const input: ArgumentInput<Name, Config> = {
       config,
@@ -276,7 +321,9 @@ export class CommandBuilder<
     State,
     Result,
     Stdin,
-    Provided
+    Provided,
+    CommandName,
+    WithOption<Paths, Name, Config>
   > {
     const input: OptionInput<Name, Config> = {
       config,
@@ -303,7 +350,9 @@ export class CommandBuilder<
     State,
     Result,
     Stdin,
-    Provided
+    Provided,
+    CommandName,
+    WithOptions<Paths, Configs>
   > {
     return this.#derive(declareOptionSet(this.#state, set));
   }
@@ -319,7 +368,7 @@ export class CommandBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths> {
     return this.#derive(declareOptionGroup(this.#state, 'exclusive', names));
   }
 
@@ -334,7 +383,7 @@ export class CommandBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths> {
     return this.#derive(declareOptionGroup(this.#state, 'oneRequired', names));
   }
 
@@ -349,7 +398,7 @@ export class CommandBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths> {
     return this.#derive(declareOptionGroup(this.#state, 'requiredTogether', names));
   }
 
@@ -363,7 +412,7 @@ export class CommandBuilder<
   requires(
     option: Extract<keyof Options, string>,
     ...needed: [Extract<keyof Options, string>, ...Extract<keyof Options, string>[]]
-  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths> {
     return this.#derive(declareOptionGroup(this.#state, 'requires', [option, ...needed]));
   }
 
@@ -373,7 +422,7 @@ export class CommandBuilder<
    */
   alias(
     ...names: [string, ...string[]]
-  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths> {
     return this.#derive(declareAlias(this.#state, names, 'alias'));
   }
 
@@ -396,7 +445,7 @@ export class CommandBuilder<
    */
   visibleAlias(
     ...names: [string, ...string[]]
-  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths> {
     return this.#derive(declareAlias(this.#state, names, 'visibleAlias'));
   }
 
@@ -413,11 +462,18 @@ export class CommandBuilder<
     AfterCommand<State>,
     Result,
     Stdin,
-    Provided
+    Provided,
+    CommandName,
+    WithChild<Paths, Child>
   > {
-    return this.#derive<Args, Options, AfterCommand<State>, Result, PassedUp<Globals, Child>>(
-      attachChild(this.#state, child),
-    );
+    return this.#derive<
+      Args,
+      Options,
+      AfterCommand<State>,
+      Result,
+      PassedUp<Globals, Child>,
+      WithChild<Paths, Child>
+    >(attachChild(this.#state, child));
   }
 
   /**
@@ -433,7 +489,9 @@ export class CommandBuilder<
     AfterResult<State>,
     { kind: 'value'; value: Value },
     Stdin,
-    Provided
+    Provided,
+    CommandName,
+    Paths
   > {
     return this.#derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
       declareResult(this.#state, 'value', declaration),
@@ -450,7 +508,9 @@ export class CommandBuilder<
     AfterResult<State>,
     { kind: 'rows'; row: Row },
     Stdin,
-    Provided
+    Provided,
+    CommandName,
+    Paths
   > {
     return this.#derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
       declareResult(this.#state, 'rows', declaration),
@@ -465,14 +525,14 @@ export class CommandBuilder<
   views<const Replacements extends ResultViewsOf<Result>>(
     replacements: Replacements,
     options?: { default?: keyof Replacements & string },
-  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths> {
     return this.#derive(declareResultViews(this.#state, replacements, options));
   }
 
   /** The action closes input authoring; `extend()` remains outside this state transition. */
   action(
     handler: Action<Args, Globals & Options, Result, Stdin, Provided>,
-  ): Command<Args, Options, Globals, AfterAction, Result, Stdin, Provided> {
+  ): Command<Args, Options, Globals, AfterAction, Result, Stdin, Provided, CommandName, Paths> {
     return this.#derive(
       declareAction(this.#state, handler, { provided: this.#providedBind, stdin: this.#stdinBind }),
     );
@@ -485,7 +545,7 @@ export class CommandBuilder<
    */
   extend(
     ...values: readonly ExtensionValue<'command'>[]
-  ): Command<Args, Options, Globals, State, Result, Stdin, Provided> {
+  ): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths> {
     return this.#derive(declareExtensions(this.#state, values));
   }
 
@@ -499,9 +559,20 @@ export class CommandBuilder<
     Next extends CommandMethod,
     DerivedResult = Result,
     DerivedGlobals = Globals,
+    DerivedPaths = Paths,
   >(
     state: CommandState<DerivedArgs, DerivedOptions, DerivedGlobals>,
-  ): Command<DerivedArgs, DerivedOptions, DerivedGlobals, Next, DerivedResult, Stdin, Provided> {
+  ): Command<
+    DerivedArgs,
+    DerivedOptions,
+    DerivedGlobals,
+    Next,
+    DerivedResult,
+    Stdin,
+    Provided,
+    CommandName,
+    DerivedPaths
+  > {
     return new CommandBuilder<
       DerivedArgs,
       DerivedOptions,
@@ -509,7 +580,9 @@ export class CommandBuilder<
       Next,
       DerivedResult,
       Stdin,
-      Provided
+      Provided,
+      CommandName,
+      DerivedPaths
     >(this.#name, state, { provided: this.#providedBind, stdin: this.#stdinBind });
   }
 }
@@ -532,9 +605,16 @@ export type Command<
   Result = unknown,
   Stdin extends StdinContext = StdinContext,
   Provided = {},
+  CommandName extends string = string,
+  Paths = unknown,
 > = Pick<
-  CommandBuilder<Args, Options, Globals, State, Result, Stdin, Provided>,
-  typeof commandValue | typeof declaredTypes | 'extend' | State | ResultMethod<Result>
+  CommandBuilder<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>,
+  | typeof commandValue
+  | typeof declaredTypes
+  | typeof commandPaths
+  | 'extend'
+  | State
+  | ResultMethod<Result>
 >;
 
 /**
@@ -607,8 +687,15 @@ export type PassedUp<Globals, Child> = [Globals] extends [RequirementOf<Child>]
   ? Globals
   : Globals & RequirementOf<Child>;
 
-type CommandConstructor = new <const Uses extends readonly AnyProvider[] = []>(
-  name: string,
+/**
+ * The name is inferred as written, so a literal name keys the Command's entry in its parent's
+ * Command paths, and a name typed as the wide `string` leaves a level `invoke` reads dynamically.
+ */
+type CommandConstructor = new <
+  const Uses extends readonly AnyProvider[] = [],
+  const Name extends string = string,
+>(
+  name: Name,
   options?: CommandOptions<Uses>,
 ) => Command<
   {},
@@ -617,23 +704,30 @@ type CommandConstructor = new <const Uses extends readonly AnyProvider[] = []>(
   CommandMethod,
   unknown,
   StdinContext,
-  ProvidedValues<Uses>
+  ProvidedValues<Uses>,
+  Name,
+  CommandPaths
 >;
 
 /**
  * The constructor uses the Application registration; public type defaults stay library-neutral.
  * Every rule on the name and the options slot throws before the value exists.
  */
-class CommandDeclaration<const Uses extends readonly AnyProvider[] = []> extends CommandBuilder<
+class CommandDeclaration<
+  const Uses extends readonly AnyProvider[] = [],
+  const Name extends string = string,
+> extends CommandBuilder<
   {},
   {},
   WithProviderGlobals<RegisteredGlobals, Uses>,
   CommandMethod,
   unknown,
   StdinContext,
-  ProvidedValues<Uses>
+  ProvidedValues<Uses>,
+  Name,
+  CommandPaths
 > {
-  constructor(name: string, options?: CommandOptions<Uses>) {
+  constructor(name: Name, options?: CommandOptions<Uses>) {
     const declared = namedState<WithProviderGlobals<RegisteredGlobals, Uses>>(name, options);
     super(declared.name, declared.state, {
       provided: providedBinder<Uses>(options?.uses),

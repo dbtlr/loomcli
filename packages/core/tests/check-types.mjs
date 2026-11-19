@@ -114,6 +114,8 @@ const projects = [
   'nested-states',
   'validate-omitted',
   'scaffold-tsconfig',
+  'fifty',
+  'fifty-registered',
 ];
 for (const project of projects) {
   const workspace = await compile(join(source, project), project === 'library');

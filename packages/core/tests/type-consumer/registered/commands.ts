@@ -1,4 +1,4 @@
-import type { EnvironmentOf } from '@loomcli/core';
+import type { EnvironmentOf, PathsOf } from '@loomcli/core';
 import { Application, Command, plugin } from '@loomcli/core';
 import { z } from 'zod';
 
@@ -45,6 +45,16 @@ const keys = new Command('keys').passthrough().action(({ args, options, passthro
 // @ts-expect-error TS2345: A registered Command's local option cannot take the name of a plugin's option.
 new Command('shadow').option('level', { type: 'string' });
 
+// A Command the registered Application attaches calls `invoke` over the paths that Application
+// Registers, which include this Command's own, so the registration is read with no circular type.
+const echo = new Command('echo').action(async ({ invoke }) => {
+  const read = await invoke(['get'], { args: { path: 'user' }, options: { raw: true } });
+  // @ts-expect-error TS2353: An option the routed Command and the globals do not declare is rejected.
+  await invoke(['get'], { options: { rw: true } });
+  const again = await invoke(['echo'], {});
+  return [read, again];
+});
+
 const jsonkit = new Application('jsonkit', { plugins: [vocabulary()] })
   .globalOption('file', { default: 'jsonkit.json', short: 'f', type: 'string' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
@@ -52,6 +62,7 @@ const jsonkit = new Application('jsonkit', { plugins: [vocabulary()] })
   .option('pretty', { short: 'p', type: 'boolean' })
   .command(get)
   .command(keys)
+  .command(echo)
   .action(summary);
 
 const configured = new Application('registered', { plugins: [vocabulary()] })
@@ -61,7 +72,9 @@ const configured = new Application('registered', { plugins: [vocabulary()] })
 declare module '@loomcli/core' {
   interface Register {
     environment: EnvironmentOf<typeof configured>;
+    // The completed Application's Command paths, which every action's `invoke` reads.
+    paths: PathsOf<typeof jsonkit>;
   }
 }
 
-export { configured, get, keys, jsonkit, vocabulary };
+export { configured, echo, get, keys, jsonkit, vocabulary };
