@@ -218,6 +218,9 @@ export default defineConfig({
           'packages/core/src/inputs/options.ts',
           'packages/core/src/plugins/plugin.ts',
           'packages/core/src/inputs/sources.ts',
+          'packages/core/src/inputs/declarations.ts',
+          'packages/core/src/inputs/declared-values.ts',
+          'packages/core/src/inputs/supplied.ts',
           'packages/core/src/inputs/validation.ts',
         ],
         rules: {

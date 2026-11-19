@@ -9,7 +9,7 @@ const packages = new URL('../../', import.meta.url);
  * The seams where validated `unknown` values meet declaration-inferred types, by path under
  * `packages`, across every package's sources. Nothing else.
  * `option-sets.ts` types the one runtime set class as the set of the record `optionSet()` received.
- * `validation.ts` reads one input's value as its config's output, and an option set's values as the
+ * `ledger.ts` reads one input's value as its config's output, and an option set's values as the
  * record its configs name.
  * `extension.ts` reads a stored output back from the record the graph keys by string identity,
  * after the descriptor that produced it has been compared by reference. `view.ts` reads one stored
@@ -28,7 +28,7 @@ const packages = new URL('../../', import.meta.url);
 const allowed = {
   'core/src/commands/command.ts': 1,
   'core/src/commands/option-sets.ts': 1,
-  'core/src/inputs/validation.ts': 2,
+  'core/src/inputs/ledger.ts': 2,
   'core/src/invocation/invoke.ts': 1,
   'core/src/output/output.ts': 1,
   'core/src/output/view.ts': 1,

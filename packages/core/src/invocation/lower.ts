@@ -6,9 +6,9 @@ import {
   unknownOptionName,
 } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
+import type { InputDeclaration } from '../inputs/declarations.js';
 import { emptyValues } from '../inputs/options.js';
 import type { OptionValues, TableSpelling } from '../inputs/options.js';
-import type { InputDeclaration } from '../inputs/validation.js';
 import {
   takesBoolean,
   takesCount,

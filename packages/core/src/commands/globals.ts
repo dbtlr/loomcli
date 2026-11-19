@@ -4,6 +4,9 @@ import { DeclarationError } from '../failures/errors.js';
 import { quoted } from '../failures/messages.js';
 import { claimVariables, envNames } from '../inputs/bindings.js';
 import type { BoundOption } from '../inputs/bindings.js';
+import { configUnread } from '../inputs/declarations.js';
+import type { InputDeclaration, OptionInput } from '../inputs/declarations.js';
+import type { ValidatedInputs } from '../inputs/ledger.js';
 import { checkOptionName, compileOptions, spellingMark, tableEntries } from '../inputs/options.js';
 import type {
   CompileScope,
@@ -13,8 +16,6 @@ import type {
 } from '../inputs/options.js';
 import { optionDeclaredTwice, spellingTaken } from '../inputs/rules.js';
 import type { OptionConfig } from '../inputs/types.js';
-import { configUnread } from '../inputs/validation.js';
-import type { InputDeclaration, OptionInput, ValidatedInputs } from '../inputs/validation.js';
 import { background } from '../marks/background-mark.js';
 import { color } from '../marks/color.js';
 import { interaction } from '../marks/interaction.js';

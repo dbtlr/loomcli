@@ -28,11 +28,12 @@ import type { BuiltPlugin, BuiltSource, SourceContext } from '../plugins/plugin.
 import type { ContextualStyle } from '../style/style.js';
 import { isPlainObject } from '../support/plain.js';
 import { envNames } from './bindings.js';
+import type { OptionInput, Provenance } from './declarations.js';
 import { absentBooleans, claims, losingMembers } from './option-groups.js';
 import type { OptionGroup, Tier } from './option-groups.js';
 import { arityOf, isSupplied, withdrawFill } from './options.js';
 import type { OptionValues } from './options.js';
-import type { OptionInput, Provenance, Validation } from './validation.js';
+import type { Validation } from './validation.js';
 
 /**
  * One scope the stage fills: its options in declaration order, and the values argv supplied them.

@@ -10,9 +10,9 @@ import {
   unknownOptionBeforeArguments,
 } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
+import type { InputDeclaration } from '../inputs/declarations.js';
 import { emptyValues, isSupplied } from '../inputs/options.js';
 import type { OptionValues, SpellingTable, TableSpelling } from '../inputs/options.js';
-import type { InputDeclaration } from '../inputs/validation.js';
 
 /**
  * Whether a word is an option word: `--` and at least one more character, or `-` and an ASCII

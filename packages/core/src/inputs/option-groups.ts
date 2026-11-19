@@ -3,11 +3,11 @@ import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { DeclarationError } from '../failures/errors.js';
 import type { InputProblem } from '../failures/errors.js';
 import { commandSentence, quoted } from '../failures/messages.js';
+import type { InputDeclaration } from './declarations.js';
 import { groupSentence, requirementSentence } from './messages.js';
 import type { GroupMember } from './messages.js';
 import { absentBoolean, isSupplied, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
-import type { InputDeclaration } from './validation.js';
 
 /**
  * A relationship over supplied local options, in declaration order: a group that states one rule

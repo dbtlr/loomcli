@@ -5,6 +5,7 @@ import type { InputSite } from '../diagnostics/facts.js';
 import { DeclarationError } from '../failures/errors.js';
 import { quoted } from '../failures/messages.js';
 import { claimsStdin, stdinClaimedTwice } from '../inputs/content-rules.js';
+import type { OptionInput } from '../inputs/declarations.js';
 import { declareSetGroup } from '../inputs/option-groups.js';
 import type { OptionGroup } from '../inputs/option-groups.js';
 import { compileNext } from '../inputs/options.js';
@@ -18,7 +19,6 @@ import type {
   Unmarked,
   ValidateOmittedConstraint,
 } from '../inputs/types.js';
-import type { OptionInput } from '../inputs/validation.js';
 import type { AdmittedDescriptor } from '../plugins/extension.js';
 import { admitLocalOption, copyLocalOption } from './globals.js';
 import type { GlobalTable } from './globals.js';

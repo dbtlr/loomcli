@@ -6,18 +6,14 @@ import type { InputSite } from '../diagnostics/facts.js';
 import { foreignGraph, foreignGraphCorrection } from '../diagnostics/rules.js';
 import { asSentence, DeclarationError, InternalError, reasonOf } from '../failures/errors.js';
 import { envNames } from '../inputs/bindings.js';
+import type { InputDeclaration, OptionInput } from '../inputs/declarations.js';
+import { declarationSubject, declaringSite, inputPlace } from '../inputs/declarations.js';
 import type { OptionGroup } from '../inputs/option-groups.js';
 import { distinctAliases, reportedOf, spellingsOf } from '../inputs/options.js';
 import type { OptionSpelling } from '../inputs/options.js';
 import { schemaConverterFailed } from '../inputs/rules.js';
+import { validatesOmission } from '../inputs/supplied.js';
 import type { ArgumentConfig, OptionConfig } from '../inputs/types.js';
-import type { InputDeclaration, OptionInput } from '../inputs/validation.js';
-import {
-  declarationSubject,
-  declaringSite,
-  inputPlace,
-  validatesOmission,
-} from '../inputs/validation.js';
 import type { DeclaredResult } from '../output/types.js';
 import { noExtensions } from '../plugins/extension.js';
 import type { ExtensionRecords } from '../plugins/extension.js';
