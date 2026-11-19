@@ -39,7 +39,7 @@ npm shows the README a version was published with, so each packed README links t
 
 Every third-party action is pinned to a full commit SHA with its version tag in a comment. GitHub-owned `actions/*` stay on their major tags.
 
-The packed consumer runs in CI on every pull request that changes code, on Linux and macOS: the Node jobs prove it under Node and the Bun jobs prove it under Bun, each selected by `LOOM_TEST_RUNTIME`.
+The packed consumer runs in CI under Node and Bun, each selected by `LOOM_TEST_RUNTIME`: on Linux for every push to `main` and every pull request that changes code, and on macOS for every pull request and every push to `main`. The macOS jobs, `node_macos` and `bun_macos`, declare no `needs`, so Hugi can run them as the lanes `.github/hugi.yaml` declares, and they cannot skip a documentation-only change.
 
 ## Release tool
 
@@ -143,7 +143,7 @@ A version whose published bytes are defective stays on the registry with its tag
 The workflow depends on settings that live outside this repository's files.
 
 - Every PR merges with squash, and the squash title comes from the PR title. Branch protection on `main` stays required for administrators, and it requires a branch to be up to date with `main`, so a PR whose base moves rebases and passes CI again before it merges.
-- Branch protection requires three status checks: `Node LTS / verify`, `Bun / verify`, and `PR / fragment and version guards`. Each verify check reports once its slowest matrix job finishes, so a merge waits for it.
+- Branch protection requires three status checks: `Node LTS / verify`, `Bun / verify`, and `PR / fragment and version guards`. Each verify check reports once its slowest job finishes, and requires its macOS job on every change, so a merge waits for both.
 - The `release` environment exists, holds no secrets, has no reviewers, and its deployment branch policy allows `main` alone. That policy is the only control that pins publication, the tag, and the Release to `main`, because a dispatch can name any ref.
 - Each library has an npm trusted publisher configured on npmjs.com or through `npm trust` in npm 11.15.0 or newer. The publisher carries exactly these values:
 
