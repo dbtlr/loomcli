@@ -1,0 +1,5 @@
+9ae9b9a749ebc6dfa5f23bf7de22842354e7bba255a096ecccd6470e24df85b8  loom-notes-darwin-arm64
+71de85fdcc062c1dca63c49827c46144a8f26d996f4d97f253cf322edc5fd810 *loom-notes-darwin-x64
+460ecafe42c68d9301946f5f55faf19583a9b63c6378f766e7eb267f375c6794  loom-notes-linux-arm64
+108d3e2bbf34c32a3ff6fa9f0c7ab9cc58c1cb5291152f3248ee7b313ab516d3  loom-notes-linux-x64
+390a2b0dfc0e8ee59ef32e528ea9bf0072d2044cc6880bc30a125abcb55845e4  loom-notes-linux-x64-musl

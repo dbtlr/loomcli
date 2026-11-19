@@ -301,6 +301,33 @@ function lockExists(lock: string): string {
 
 const tokenRequired = 'Recording a release requires GH_TOKEN.';
 
+const formulaRepositoryRequired =
+  'package.json names no GitHub repository. Set repository to a GitHub address such as owner/name, then run loom release formula again.';
+
+function formulaMetadataRequired(field: string): string {
+  return `package.json has no text for ${escaped(field)}. Set that field, then run loom release formula again.`;
+}
+
+function invalidFormulaPath(path: string): string {
+  return `${escaped(path)} cannot name a Homebrew formula. Pass a path such as Formula/my-app.rb with --output.`;
+}
+
+function missingFormulaChecksum(path: string, asset: string): string {
+  return `${escaped(path)} has no SHA-256 checksum for ${escaped(asset)}. Pass the published release's SHA256SUMS listing that asset with --checksums.`;
+}
+
+function conflictingFormulaChecksums(path: string, asset: string): string {
+  return `${escaped(path)} lists different SHA-256 checksums for ${escaped(asset)}. Regenerate SHA256SUMS with one checksum per asset, then run loom release formula again.`;
+}
+
+function unsupportedFormulaLicense(license: string): string {
+  return `package.json's license, ${escaped(license)}, is an SPDX expression a Homebrew formula cannot state as written. Simplify it to one license, or to licenses joined only by OR or only by AND, then run loom release formula again, or edit the license line of the formula by hand.`;
+}
+
+function wroteFormula(path: string): string {
+  return `Wrote the Homebrew formula to ${escaped(path)}.\n`;
+}
+
 export {
   abandonedVersion,
   answerBrokeOff,
@@ -309,12 +336,16 @@ export {
   checkoutChanged,
   cleanCheckoutRequired,
   commitOutsideCheckout,
+  conflictingFormulaChecksums,
   createdRelease,
   createdTag,
   cutFromRoot,
   deletedAsset,
+  formulaMetadataRequired,
+  formulaRepositoryRequired,
   initialNeedsZero,
   integrityMismatch,
+  invalidFormulaPath,
   invalidJsonAnswer,
   keptAsset,
   libraryState,
@@ -322,6 +353,7 @@ export {
   lockfileInvalidYaml,
   lockfilePreparationFailed,
   lockfileTimedOut,
+  missingFormulaChecksum,
   neverAppeared,
   noChangelogSection,
   noFragments,
@@ -370,4 +402,6 @@ export {
   uploadedAsset,
   uploadsDisagree,
   verifiedTarball,
+  unsupportedFormulaLicense,
+  wroteFormula,
 };

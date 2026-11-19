@@ -118,6 +118,10 @@ function releaseVersion(manifest: Manifest): string {
   return version;
 }
 
+function releaseAssetName(name: string, platform: string): string {
+  return `${name}-${platform}`;
+}
+
 /** The release group one build bakes, computed from the package and the release options. */
 function releaseGroup(
   request: FactsRequest,
@@ -135,7 +139,7 @@ function releaseGroup(
   if (target.kind === 'bundle') {
     return group;
   }
-  const asset = `${applicationName(manifest, request.name)}-${target.platform}`;
+  const asset = releaseAssetName(applicationName(manifest, request.name), target.platform);
   return { asset, ...group };
 }
 
@@ -245,3 +249,5 @@ export function manifestOf(source: string, path: string): Manifest {
 export function readManifest(directory: string): Manifest {
   return manifestOf(readWorkingFile(directory, 'package.json'), join(directory, 'package.json'));
 }
+
+export { releaseAssetName, releaseVersion };

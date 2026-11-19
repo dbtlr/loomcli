@@ -1134,6 +1134,9 @@ _Avoid_: Signature (for the whole bundle), provenance (for the attestation), che
 One platform's binary on an application's GitHub Release of the tag `v<version>`, named `<name>-<os>-<arch>`, with `-musl` for a musl Linux build, and listed with its digest in the release's `SHA256SUMS`. The installer script and self-update read this shape, and each repository's own release workflow publishes it.
 _Avoid_: Artifact, download
 
+**Homebrew formula**:
+A Ruby file in a Homebrew tap that describes how to install and test an application. `loom release formula` renders it from the release's package metadata and the checksums of the macOS and glibc Linux release assets.
+
 **Self-update**:
 The plugin Command that replaces the running binary with a verified release asset from the application's GitHub repository, the newest on its release channel or a version the operator names. It replaces only a binary whose installation record reads the method `script` and whose digest still matches, rewrites `install.json` afterwards, and keeps no copy of what it replaced.
 _Avoid_: Auto-update, upgrade (for the Command), updater
