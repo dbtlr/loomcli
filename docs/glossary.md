@@ -1122,6 +1122,10 @@ _Avoid_: Retry, rebuild, republish, repair
 A throwaway package that installs the tarballs a release would publish, compiles against their declarations, and runs what it built as processes under Node and Bun. It is the closest proof of what an author installs from the registry, and it runs on every pull request that changes code and before every publication.
 _Avoid_: Smoke test, integration package, runtime fixture
 
+**Attestation**:
+A statement, signed through Sigstore, that a run of a GitHub Actions workflow built a release asset with a given name and SHA-256 digest. Its certificate names the workflow file, the repository the run belongs to, and the ref the run started on. A release workflow makes one with `actions/attest-build-provenance`, and GitHub stores it. When the author sets `attestation`, self-update verifies one before it downloads the asset: from the workflow the author pinned, run in the application's repository on the release's own tag. Where `SHA256SUMS` proves that an asset is the file the release lists, an attestation shows which workflow run built it, not who started that run. The value the author passes to turn this on is the attestation setting, not an attestation.
+_Avoid_: Signature (for the whole bundle), provenance (for the attestation), checksum
+
 **Release asset**:
 One platform's binary on an application's GitHub Release of the tag `v<version>`, named `<name>-<os>-<arch>`, with `-musl` for a musl Linux build, and listed with its digest in the release's `SHA256SUMS`. The installer script and self-update read this shape, and each repository's own release workflow publishes it.
 _Avoid_: Artifact, download

@@ -19,6 +19,11 @@ export interface AfterReplaceContext {
   readonly signal: AbortSignal; // the run signal
   readonly log: Log; // the run's log, through which a hook logs what it did
 }
+/** A value only attestation() in @loomcli/plugins/self-update/attestation makes; members other than workflow are internal. */
+export interface AttestationSetting {
+  readonly [attestationSetting]: true; // attestationSetting is an unexported unique symbol, so an object literal cannot supply it
+  readonly workflow: string; // the attesting workflow's path, as attestation() was given it
+}
 export interface NoticeSettings {
   /** A variable that turns notices off when it is set and not empty, beside NO_UPDATE_NOTIFIER. */
   readonly env?: string;
@@ -26,6 +31,8 @@ export interface NoticeSettings {
 export interface SelfUpdateSettings {
   /** Called once after the binary is replaced and the record rewritten. */
   readonly afterReplace?: (context: AfterReplaceContext) => Promise<void> | void;
+  /** Verify a GitHub artifact attestation of the asset before it is downloaded. */
+  readonly attestation?: AttestationSetting;
   /** Update notices: on unless false. */
   readonly notices?: boolean | NoticeSettings;
 }
@@ -58,7 +65,7 @@ Updated notes from 1.6.0-next.2 to 1.5.0.
 
 `selfUpdate()` is the self-update plugin. It replaces the running binary with a verified release from the application's GitHub repository, and only when the [installer script](../toolchain/install.md) placed the binary and nothing has changed it since. Its identity is `@loomcli/plugins/self-update`, and it contributes one [plugin Command](../core/plugin-contract.md#plugin-commands) and, unless the author turns them off, the middleware of [update notices](#update-notices). [ADR-0073](../decisions/0073-the-self-update-plugin-replaces-a-script-installed-binary-with-a-verified-release.md) records the decision.
 
-- **Settings.** The settings type bounds `afterReplace` and `notices`, and `selfUpdate()` judges only `notices.env` at the call, as [Update notices](#update-notices) states.
+- **Settings.** The settings type bounds `afterReplace`, `attestation`, and `notices`, and `selfUpdate()` judges `notices.env` at the call, as [Update notices](#update-notices) states, and `attestation`, as [Attestation](#attestation) states.
 - **The Command.** `self-update`, visible, with the description `Replace this application with another release.`, the optional argument `version`, `A release version to install, newer or older, such as 1.4.0.`, the string option `--channel`, `The release channel to follow, such as stable or next.`, the Boolean option `--check`, `Report what an update would do and replace nothing.`, and the hidden Boolean option `--refresh-notice`, `Refresh the update notices' cache.`, which [update notices](#update-notices) runs. It declares no result. A version may carry a leading `v` and must otherwise be a semantic version, and a channel must be `stable` or a SemVer prerelease identifier, the set a version's derived channel comes from; each is judged by its input's validator, so a malformed one is core's usage error for that input, with exit 2. `--channel` beside a version is an `InputError` the action throws, `Option "--channel" cannot be given with a version. Leave out --channel, or the version.`, with exit 2. A root that declares arguments holds the plugin's Commands like any children, so such an application can install the plugin, as [completion](completion.md) does.
 - **Refusals.** Before any request, in this order, the Command fails with a `FatalError` and exit 1, replacing nothing and writing no record, when:
 
@@ -73,13 +80,13 @@ Updated notes from 1.6.0-next.2 to 1.5.0.
   | cannot write to the recorded path's directory or the installation record's | `notes cannot write to /home/me/.local/bin. Run self-update as the user who installed notes.` |
 
   The recorded path is `installation.path`, read without resolving a symbolic link at the path itself: the installer script always leaves a regular file there, so a link was put there by someone else and may point into another installer's files. A symbolic link among the path's parent directories is followed. Core never hashes the binary, so the Command hashes it on every run that passes its usage checks, `--check` included. Every path, URL, and version a message repeats passes through [`escapeControlCharacters`](../core/styles.md#strings-and-composition).
-- **Requests.** Every request starts at an HTTPS URL on `https://github.com/` and follows each redirect itself, at most 20 for one request, and only to a URL whose scheme is `https:`. The Command sends no token and calls no API. It adds no time limit and no size limit, and every request reads the run signal. These responses fail the run with exit 1:
+- **Requests.** Every request starts at an HTTPS URL on `https://github.com/`, except the requests [Attestation](#attestation) adds when the author sets it, which start at `https://api.github.com/`, at the bundle URLs GitHub's API answers with, and, through sigstore-js, at `https://tuf-repo-cdn.sigstore.dev`. Each request the Command makes itself follows each redirect itself, at most 20 for one request, and only to a URL whose scheme is `https:`. The Command sends no token and calls no API, apart from those added requests. It adds no time limit and no size limit, and every request reads the run signal. These responses fail the run with exit 1:
 
   | The response | The sentence and correction |
   | --- | --- |
   | a redirect to a scheme other than `https:` | `notes was redirected away from HTTPS while downloading https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64. Run self-update again later.` |
   | a 21st redirect | `notes was redirected too many times while downloading https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64. Run self-update again later.` |
-  | a status other than `200` at the end of the redirects, or no response at all | `notes could not download https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64 (503). Run self-update again later.`, with `(no response)` when none arrived or the body ended before it was whole, and for a `404` of a named version the correction `Check that release v1.4.0 exists, then run self-update again.` |
+  | a status other than `200` at the end of the redirects, or no response at all | `notes could not download https://github.com/acme/notes/releases/download/v1.5.0/notes-linux-x64 (503). Run self-update again later.`, with `(no response)` when none arrived or the body ended before it was whole, and for a `404` of a named version's `SHA256SUMS` or asset the correction `Check that release v1.4.0 exists, then run self-update again.` |
 
   A rejection that carries the run signal's reason propagates as it is, so a cancelled run writes none of these sentences and resolves its cancellation code under [Signals, cancellation, and shutdown](../core/signals.md). The runtime's own error is kept as the failure's `cause` and never printed, under [failure message voice](../core/failures.md#failure-message-voice).
 - **The repository.** `<repository>` starts as `host.release.repository`. GitHub redirects a renamed or transferred repository, so the Command takes the repository from where a redirect on `https://github.com/` leads, and every later request uses it. Owners and names compare without regard to case, as GitHub's do.
@@ -97,7 +104,7 @@ Updated notes from 1.6.0-next.2 to 1.5.0.
 - **`afterReplace`.** Once the record is written, the Command prints `Updated notes from 1.4.2 to 1.5.0.`, then calls `afterReplace` with the replaced and new versions, the recorded path, the graph's name, and the run's host, signal, and log, and awaits it. It is called even when the signal aborted after the rename, so the hook reads `signal.aborted`, and the run then resolves its cancellation code. It runs in the process that replaced the binary, so it runs the old version's code, and anything that needs the new version runs `path`. A hook that throws or rejects takes the ordinary failure path, as [When author code fails](#when-author-code-fails) states.
 - **No copy, no lock.** The Command keeps no copy of the binary it replaced: a release that runs goes back with `self-update <version>`, and one that cannot start with `install.sh <version>`. Two runs at once each place whole, verified bytes, and the last rename wins the binary and, separately, the record; one run's removal of leftover staging files can remove the other's staging file, and that run then fails with the write sentence before its rename, leaving the binary whole. A record that then disagrees with the binary, as can also follow a process ended between the rename and the record, such as by a `SIGINT` whose [shutdown](../core/signals.md#the-shutdown) budget runs out before the record is written, refuses the next run as changed until `install.sh` installs again.
 - **Output.** `Downloading notes-linux-x64 from v1.5.0 of acme/notes.` goes through `out.info`, and the update line, the `--check` line, and the newer-only and already-installed lines through `out.success`, so stdout stays empty. The examples above omit the glyph each lane view adds. Every other failure sentence above, a refusal, a failed request, a failed verification, a channel with no release, and a failed write or record, is a `FatalError` that exits 1; the `--channel` conflict is the `InputError` above.
-- **Names.** `selfUpdate`, `SelfUpdateSettings`, `AfterReplaceContext`, and `NoticeSettings` are exported from `@loomcli/plugins/self-update`.
+- **Names.** `selfUpdate`, `SelfUpdateSettings`, `AfterReplaceContext`, `AttestationSetting`, and `NoticeSettings` are exported from `@loomcli/plugins/self-update`.
 
 ## Update notices
 
@@ -142,6 +149,8 @@ The Command's lines fall between the lines it already prints:
 | --- | --- | --- |
 | `-vv` | `Requested <url>.` | Before each request the Command sends, each redirect it follows included, under `--check` and `--refresh-notice` too. The line shows the URL's scheme, host, and path, and leaves out its userinfo, query, and fragment, which may carry a credential or a signature, as an asset store's signed redirect does. |
 | `-v` | `Resolved v1.5.1 on the stable channel.` | A run without a version found the newest release on the channel it follows, and that release is newer, so the run goes on to replace. It is written once the lookup ends and before the `Downloading` line. On the stable channel the `SHA256SUMS` request follows it; on any other channel the lookup has already requested each candidate's `SHA256SUMS`, newest first, until one answered, and no request follows. A newer-only line or a `--check` line already names the release, so those runs write none, and a named version writes none. |
+| `-v` | `Checked Sigstore's trust root in /home/me/.cache/notes/sigstore.` | With `attestation` set, sigstore-js brought the trust root current, before the first bundle is read, as [Attestation](#attestation) states. |
+| `-v` | `Verified notes-linux-x64 against its attestation from .github/workflows/release.yml.` | With `attestation` set, an attestation passed, before the `Downloading` line. |
 | `-v` | `Verified notes-linux-x64 against SHA256SUMS.` | The downloaded asset's digest matches the one `SHA256SUMS` lists. |
 
 The update notices' middleware writes these after the action, in the order it acts: `Read` once it reads the cache, then the notice when the cache names a newer release, then `Started` once the refresh starts:
@@ -170,3 +179,121 @@ $ notes self-update -v
 ## When author code fails
 
 `afterReplace` is the one author function the plugin calls. A hook that throws or rejects takes the [ordinary failure path](../core/failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). The run fails after the update line, and the new binary and record stay.
+
+
+## Attestation
+
+```ts
+// @loomcli/plugins/self-update/attestation
+import type { AttestationSetting } from '@loomcli/plugins/self-update';
+
+export interface AttestationSettings {
+  /** The path of the workflow that runs the attestation job, in the application's repository, such as .github/workflows/release.yml. */
+  readonly workflow: string;
+}
+export declare function attestation(settings: AttestationSettings): AttestationSetting;
+```
+
+```ts
+import { Application } from '@loomcli/core';
+import { selfUpdate } from '@loomcli/plugins/self-update';
+import { attestation } from '@loomcli/plugins/self-update/attestation';
+
+export const notes = new Application('notes', {
+  plugins: [selfUpdate({ attestation: attestation({ workflow: '.github/workflows/release.yml' }) })],
+});
+```
+
+```text
+$ notes self-update -v
+› Resolved v1.5.1 on the stable channel.
+› Checked Sigstore's trust root in /home/me/.cache/notes/sigstore.
+› Verified notes-linux-x64 against its attestation from .github/workflows/release.yml.
+ℹ Downloading notes-linux-x64 from v1.5.1 of acme/notes.
+› Verified notes-linux-x64 against SHA256SUMS.
+› Replaced /home/me/.local/bin/notes.
+✓ Updated notes from 1.5.0 to 1.5.1.
+```
+
+An [attestation](../glossary.md#releases) is a statement, signed through Sigstore, that a run of a GitHub Actions workflow built a file with a given name and SHA-256 digest. `SHA256SUMS` proves that the asset is the file the release lists. A verified attestation also shows that the pinned workflow, run on the release's own tag in the application's repository, built it, so a binary uploaded to the release by hand, or built by another workflow, on another ref, or in another repository, does not pass. It does not show who started that run: anyone who can push a `v*` tag, or dispatch the workflow on one, can have it build and attest their own commit, so the author protects those refs, as [The release workflow](#attestation) states. With `attestation` set, self-update verifies an attestation of the asset before it downloads the asset, and an update with no attestation that verifies fails. [ADR-0212](../decisions/0212-self-update-verifies-a-github-artifact-attestation-when-the-author-opts-in.md) records the decision.
+
+- **The setting.** `attestation({ workflow })` returns the value `selfUpdate()` takes as `attestation`. `workflow` is the path, in the application's repository, of the workflow file that runs the attestation job: `.github/workflows/`, then a file name that holds no `/` and ends in `.yml` or `.yaml`, because GitHub runs workflows only from that folder. When the job runs in a reusable workflow of the same repository, the pinned path is that reusable workflow's, because the signing identity names the file that ran the job. `attestation()` throws a `DeclarationError` at the call for any other value, with the diagnostic code `@loomcli/plugins/self-update/attestation-workflow`.
+- **Only `attestation()` makes it.** `AttestationSetting` carries a member keyed by an unexported unique symbol, so an object literal such as `{ workflow: '.github/workflows/release.yml' }` does not compile as one. `selfUpdate()` throws a `DeclarationError` at the call, with the diagnostic code `@loomcli/plugins/self-update/attestation-setting`, for an `attestation` that is neither `undefined` nor a value `attestation()` made, which reaches it from JavaScript or through `any`. A set attestation is never read as unset: when the Command cannot run it, the update fails. Without `attestation`, self-update makes the same requests, in the same order, with the same outcomes as the sections above state.
+- **The packages.** The subpath verifies with sigstore-js: `@sigstore/verify`, `@sigstore/bundle`, and `@sigstore/tuf`, which are optional peer dependencies of `@loomcli/plugins`. An application that imports the subpath adds them to its own dependencies. Only the subpath imports them, so an application that does not import it bundles no sigstore code, and `@loomcli/plugins/self-update` alone stays as small as before. The subpath runs on Node `^22.22.2 || ^24.15.0 || >=26.0.0`, the range sigstore-js declares, narrower than the package's own; the rest of `@loomcli/plugins` keeps its range.
+- **When it runs.** Once the release's `SHA256SUMS` lists the asset under [Verifying](#self-update-plugin), and before the asset is downloaded, the Command verifies an attestation for the digest `SHA256SUMS` lists. It then downloads the asset and checks it against that digest, as before, so it places nothing whose name and SHA-256 the verified attestation does not name. `--check`, the update notices, and `--refresh-notice` make no attestation request, read no trust root, and do not resolve the cache directory for it, so the refusal below never stops them.
+- **Before any request.** The trust root lives in the cache directory, so the Command resolves `applicationDirectory('cache', name, host)` after the refusals above and before any request. When it answers `{ variable }`, the Command refuses with exit 1: `notes cannot find its cache directory, where it keeps Sigstore's trust root, because HOME is not an absolute path. Set HOME to an absolute path, then run self-update again.`, naming the variable the lookup answers.
+- **The requests.** After `SHA256SUMS`, the Command makes these, in this order. Each request it makes itself follows the rules of [Requests](#self-update-plugin): an HTTPS start, each redirect followed by the Command itself and only to HTTPS, at most 20, no token, no time limit, and the run signal read throughout.
+  1. **The list.** `https://api.github.com/repos/<owner>/<name>/attestations/sha256:<digest>?per_page=10&predicate_type=provenance`, once, for the repository the Command resolved and the digest `SHA256SUMS` lists, with `Accept: application/vnd.github+json` and `X-GitHub-Api-Version: 2026-03-10`. Its `200` body lists the attestations as `{"attestations":[…]}`. The Command reads this one page and follows no `Link` header, because each further page would spend another request of the address's hourly limit, and a release attests a digest once for each run of its workflow. The page bounds the attestations it tries at ten. An empty list fails here, before the trust root.
+  2. **The trust root.** Sigstore-js brings Sigstore's trust root current from `https://tuf-repo-cdn.sigstore.dev`, once, before the first bundle, because every attestation is verified against the same trust root and a fault there is one fault of the run, not one per attestation. It starts from the root that `@sigstore/tuf` ships, every time. With a current cache, that is two small requests; each version of Sigstore's root since that one adds one, and a change on Sigstore's side adds up to three more. Each update also writes the `trusted_root.json` that `@sigstore/tuf` ships over the cached one, so once Sigstore's trust root has changed since that package version, every update downloads it again, one more request of a few kilobytes, until the application ships a newer `@sigstore/tuf`.
+  3. **The bundles.** For each listed attestation, in the order GitHub lists them, the Command reads its bundle, verifies it, and stops at the first that passes. A bundle that GitHub gives inline as an object needs no request. Otherwise the Command requests the attestation's `bundle_url`, on any HTTPS host. An attestation whose `bundle` is not an object and whose `bundle_url` is missing or not an absolute HTTPS URL makes no request, and its bundle does not read. GitHub serves it from short-lived signed URLs on its blob storage. A bundle request that fails, by a status other than `200`, no response, or a redirect fault, fails the run under the rows of [Requests](#self-update-plugin), with no further attestation tried, because that storage serves every bundle of the answer; the URL is shown without its query, which carries a signature.
+
+  The TUF requests are sigstore-js's own. Each has sigstore-js's 5-second limit and up to two retries after a network error or a `5xx`, because no abort signal reaches them. Sigstore-js follows their redirects through the platform's `fetch`, and TUF's signatures decide what the files may say. When the run signal aborts, the Command stops waiting and propagates the reason, as for every other request.
+- **Reading a bundle.** The bundle URL's body is the bundle's JSON in Snappy's block format. The subpath decodes it with a small decoder of Loom's own, which reads only that format, not Snappy's framing format, and takes no dependency. The decoder reads the declared uncompressed length first and refuses a length above 1 MiB before it allocates anything, since a bundle is a few kilobytes, and it refuses an element that would write past that length or copy from before the start of what it has written. The decoded bytes, or the inline bundle, then parse as JSON and as a Sigstore bundle that `@sigstore/bundle` reads, with a DSSE envelope.
+- **The verification.** An attestation passes when each step holds, in this order:
+  1. **The bundle reads.** It decodes and parses as above.
+  2. **Sigstore's checks.** `@sigstore/verify`'s `Verifier`, built with no options, verifies the bundle in full against the trust root. It requires all of these at once, each threshold sigstore-js's default of one: a certificate that chains to a Fulcio authority in the trust root; at least one signed certificate timestamp from a certificate-transparency log in the trust root; at least one transparency-log entry whose body matches the signature and whose inclusion verifies, by a signed entry timestamp or by an inclusion proof against a signed checkpoint; at least one verified timestamp, from a log entry with a signed entry timestamp or from a timestamp authority in the trust root; and the envelope's signature by the certificate's key. Neither the author nor the operator can lower them.
+  3. **The identity.** The certificate's issuer is `https://token.actions.githubusercontent.com`. Its subject alternative name starts with `https://github.com/<owner>/<name>/<workflow>@`, where the ref after the `@` is any ref. Its Source Repository URI extension, OID `1.3.6.1.4.1.57264.1.12`, is `https://github.com/<owner>/<name>`, which refuses a run of another repository that calls the pinned workflow as a reusable workflow. In each, `<owner>/<name>` is either `host.release.repository`, the repository the release facts hold, or the repository the Command resolved through GitHub's redirect, as [The repository](#self-update-plugin) states, so an update across a rename or a transfer passes. The owner and name compare without regard to case, as GitHub's do, and every other character compares exactly. The Command compares the name itself and does not hand it to sigstore-js as a pattern, which sigstore-js would read as an unanchored regular expression.
+  4. **The release.** The certificate's Source Repository Ref extension, OID `1.3.6.1.4.1.57264.1.14`, is exactly `refs/tags/v<version>` for the version being installed, such as `refs/tags/v1.5.1`. So an attestation of an older release, or of a build from a branch, does not pass for this one.
+  5. **The statement.** The envelope's payload type is `application/vnd.in-toto+json`. Its statement's `_type` is `https://in-toto.io/Statement/v1` and its `predicateType` is `https://slsa.dev/provenance/v1`. One of its subjects has both a `name` equal to `host.release.asset`, such as `notes-linux-x64`, and a `sha256` digest equal to the digest `SHA256SUMS` lists, compared in lowercase.
+
+  The Command reads both extensions from the signer `@sigstore/verify` returns and decodes each as a DER `UTF8String`. A missing extension, or one that does not decode, fails the step that reads it. The Command never falls back to the digest alone. A rate limit, a missing attestation, and a failed step each fail the update.
+- **Failures.** Each of these fails the run with exit 1 before the asset is downloaded. It replaces nothing and writes no record. Each sentence lives in the plugin's messages module, escapes every value it repeats, and quotes no Node.js, engine, or library reason. When every listed attestation fails, the sentence is the fault of the attestation that got furthest through the verification's steps, and the first of those when several tie.
+
+  | The case | The sentence and correction |
+  | --- | --- |
+  | The API answers `403` or `429` with `x-ratelimit-remaining: 0` or a `retry-after` header: GitHub's limit for the address. | `GitHub refused to list the attestations of notes-linux-x64 from v1.5.1 of acme/notes, because this address reached its hourly limit of requests. Run self-update again in 12 minutes.`, with the minutes rounded up from `retry-after`, or else `x-ratelimit-reset`, `1 minute` for one, and `Run self-update again later.` when neither gives a time. |
+  | The API answers any other status than `200`, such as `404` for a repository the API no longer serves or `400` for an API version GitHub retired. | `GitHub could not list the attestations of notes-linux-x64 from v1.5.1 of acme/notes (404). Run self-update again later. If it fails again, install the newest release with install.sh.` No response and a redirect fault fail under the rows of [Requests](#self-update-plugin). |
+  | The API's `200` body is not an object whose `attestations` is a list of objects. | `GitHub's list of the attestations of notes-linux-x64 from v1.5.1 of acme/notes is not in a form notes 1.5.0 reads. Install the newest release with install.sh.` |
+  | The API lists no attestation for the digest, as for a release published before the repository attested its assets. | `Release v1.5.1 of acme/notes has no attestation for notes-linux-x64. Install a release that has one by naming its version, or ask its maintainers to attest their release assets.` |
+  | Sigstore-js cannot reach `tuf-repo-cdn.sigstore.dev`: a `TUFError` whose `cause` carries a numeric `statusCode`, tuf-js's fault for a response, or is a rejection of the platform's `fetch`, a `TypeError` or a `DOMException` named `TimeoutError`. A `TypeError` cause is always this row, even when it carries a `code` and a `path`, as Bun's `fetch` rejection does for `ENOTFOUND` or `ECONNREFUSED`. | `notes could not reach tuf-repo-cdn.sigstore.dev to bring Sigstore's trust root current (503). Run self-update again later.`, with `(no response)` when none arrived. |
+  | The trust root's folder cannot be created, written, or read: a system error, one that is not a `TypeError` and has a string `code` and a `path` inside the trust root's folder, that the call throws or that a `TUFError` carries as its `cause`. A file in place of the folder is one. | `notes could not use /home/me/.cache/notes/sigstore, where it keeps Sigstore's trust root. Free space there, check its permissions, or remove it, then run self-update again.` |
+  | Sigstore-js cannot stage a download in the temporary folder: a system error, one that is not a `TypeError` and has a string `code` and a `path` outside the trust root's folder, that a `TUFError` carries as its `cause`. | `notes could not use the temporary folder /tmp to download Sigstore's trust root. Free space there or check its permissions, then run self-update again.` |
+  | Any other fault of the trust root: metadata that does not verify or has expired, which a wrong clock also causes, a write that tuf-js reports without a path, and every fault of the snapshot or targets metadata, which tuf-js reports as a `RuntimeError` that carries only message text. | `notes could not bring Sigstore's trust root current from tuf-repo-cdn.sigstore.dev. Check that this computer's clock is right and that /home/me/.cache/notes/sigstore and the temporary folder /tmp have free space and can be written, then run self-update again later.` |
+  | No bundle reads: the body does not decode, declares more than 1 MiB, or does not parse as a Sigstore bundle that this binary's `@sigstore/bundle` reads, with a DSSE envelope, or the attestation's `bundle` is not an object and its `bundle_url` is missing or not an absolute HTTPS URL. | `notes cannot read the attestation of notes-linux-x64 from v1.5.1 of acme/notes. Run self-update again later. If it fails again, install the newest release with install.sh.` |
+  | The bundle fails Sigstore's checks: a tampered signature, a certificate outside the trust root, or a missing log entry, certificate timestamp, or verified timestamp. | `The attestation of notes-linux-x64 from v1.5.1 of acme/notes does not verify against Sigstore's trust root. Tell its maintainers, and name another version to install a release that verifies.` |
+  | The bundle names another issuer, workflow, or repository. | `The attestation of notes-linux-x64 from v1.5.1 of acme/notes was not made by .github/workflows/release.yml in acme/notes. Tell its maintainers, and name another version to install a release that verifies.` |
+  | The bundle comes from a run on another ref than `refs/tags/v1.5.1`. | `The attestation of notes-linux-x64 from v1.5.1 of acme/notes comes from a run that was not on tag v1.5.1. Tell its maintainers to attest from the tag, and name another version to install a release that verifies.` |
+  | The bundle's statement has another payload, statement, or predicate type, or no subject with both the asset's name and the digest. GitHub listed it for that digest, so this is not a fault that goes away later. | `The attestation of notes-linux-x64 from v1.5.1 of acme/notes does not name notes-linux-x64 with the digest its SHA256SUMS lists. Tell its maintainers, and name another version to install a release that verifies.` |
+
+  The trust-root rows are told apart by facts alone: the `TUFError` class and `code` that `@sigstore/tuf` exports, the `statusCode` and class of its `cause`, and a system error's `code` and `path`, never the text of a message. The rows are read in order: a `TypeError` cause is the unreachable row before any folder row reads its `code` or `path`, and a system error is one that is not a `TypeError`. A system error's path counts as inside the trust root's folder when it is that folder or below it. The temporary folder the sentences name is `host.tmpdir`, the folder sigstore-js's `os.tmpdir()` gives too unless `TMPDIR` is unset or relative and `TMP` or `TEMP` is set. A rejection that carries the run signal's reason propagates as it is.
+- **The trust root's folder.** Sigstore-js keeps the trust root in `sigstore` in the cache directory, `applicationDirectory('cache', name, host)`, such as `/home/me/.cache/notes/sigstore` on Linux and `/Users/me/Library/Caches/notes/sigstore` on macOS, beside the update notices' `update.json`. It creates the folders it needs, and under `sigstore/tuf-repo-cdn.sigstore.dev/` it writes `root.json`, `timestamp.json`, `snapshot.json`, `targets.json`, and in `targets/` the `trusted_root.json` that verification reads, with a seeded npm key file that self-update does not read. It writes each file in place, and stages each download in a folder under the temporary folder that it removes afterwards.
+- **The folder is security state.** The trust root decides which signatures verify, so what is in this folder matters, not only whether it is there. The Command calls sigstore-js so that every update writes the root `@sigstore/tuf` ships over the cached one and walks forward from it over TUF. A planted or damaged file in the folder is then replaced, discarded because the shipped root's chain does not sign it, or downloaded again. The most it can do is stop updates, with one of the sentences above, and removing the folder always recovers: the next update seeds it again. Every update checks for a new trust root. The cache saves the download of metadata that has not changed, not the check, and it does not save the download of the trust root itself once Sigstore's differs from the one `@sigstore/tuf` ships.
+- **Bundle size.** Sigstore's code is present only when the application imports `@loomcli/plugins/self-update/attestation`. The settings type names `AttestationSetting` from `@loomcli/plugins/self-update`, which imports no sigstore package, so an application that leaves `attestation` unset bundles none of it.
+- **At -v and in the log.** `-vv` writes `Requested <url>.` before the API request and each bundle request, under [At -v and in the log](#at--v-and-in-the-log). `-v` writes `Checked Sigstore's trust root in /home/me/.cache/notes/sigstore.` once the trust root is current, and `Verified notes-linux-x64 against its attestation from .github/workflows/release.yml.` once an attestation passes, both before the `Downloading` line. Sigstore-js makes the TUF requests and writes the cache files itself, and reports neither, so no `Requested` line names a TUF request and no `File written.` event records a cache file. Its `debug` package writes its own lines to the process's stderr when the operator sets `DEBUG`, such as `DEBUG=tuf:*`, outside the run's verbosity.
+- **The release workflow.** The author's release workflow attests each binary asset with `actions/attest-build-provenance`, which needs the `id-token: write` and `attestations: write` permissions, in a job of the pinned workflow that runs on the release's tag: on a push of a `v*` tag, as below, on a `release` event, or on a dispatch whose ref is the tag. A workflow that attests from a branch and tags afterwards makes attestations whose ref is the branch, and they do not verify. Every release published after the setting ships needs an attestation, so an operator on that binary cannot self-update to a release without one.
+
+  ```yaml
+  # .github/workflows/release.yml
+  on:
+    push:
+      tags: ['v*']
+  permissions:
+    contents: write
+    id-token: write
+    attestations: write
+  jobs:
+    release:
+      runs-on: ubuntu-latest
+      environment: release
+      steps:
+        - uses: actions/checkout@v5
+        - uses: oven-sh/setup-bun@v2
+        - run: bun install --frozen-lockfile
+        - run: |
+            for target in darwin-arm64 linux-x64 linux-arm64; do
+              bunx loom build --release --target "bun-$target" --out "dist/notes-$target"
+            done
+            (cd dist && sha256sum notes-* > SHA256SUMS)
+        - uses: actions/attest-build-provenance@v3
+          with:
+            subject-path: 'dist/notes-*'
+        - run: gh release create "$GITHUB_REF_NAME" dist/notes-* dist/SHA256SUMS
+          env:
+            GH_TOKEN: ${{ github.token }}
+  ```
+
+  The build and publish steps follow [the release shape](../toolchain/install.md#the-release-shape). The attestation step comes after the assets are built and before they are published, and `subject-path` matches every binary asset and not `SHA256SUMS`. Each subject's name is its file's base name, so each file is built under its asset's name, as `dist/notes-linux-x64` is here, and is not renamed on upload.
+
+  An attestation names the tag by name, not by commit, so an attestation from a deleted tag's run still verifies for a tag made again with that name. Publish a new version rather than re-tag one. An attestation shows which workflow ran on which tag, not who pushed the tag. The author protects that with a tag ruleset on `v*` that limits who can create, update, or delete those tags, and with an environment, `release` above, whose required reviewers approve each run before the job gets its signing identity.
+
+  The repository must be public, because self-update reads the attestations, like the release itself, without a token. The pinned workflow is the one that runs the attestation job, and it must be in the application's own repository: a reusable workflow from another repository signs with that repository's path, and a run of another repository that calls this one signs with the caller's repository, so neither passes.

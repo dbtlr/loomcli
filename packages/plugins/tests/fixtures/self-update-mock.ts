@@ -20,12 +20,15 @@ export async function runSelfUpdate(
     readonly afterRun?: (mock: MockProcess) => void;
     /** Receives each log event the run raises. */
     readonly observe?: (event: LogEvent) => void;
+    /** Answers a request off github.com before the fake GitHub does. */
+    readonly answer?: (url: URL, init: RequestInit) => Response | undefined;
   } = {},
 ) {
-  const { requested = () => {}, afterRun, observe } = options;
+  const { requested = () => {}, afterRun, observe, answer } = options;
   let recording: Writable | undefined = undefined;
   const controller = new AbortController();
   const { app, fetch, stderr } = selfUpdateApplication(scenario, controller, {
+    answer,
     observe,
     requested,
     writeStderr: (chunk) => {

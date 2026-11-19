@@ -19,6 +19,12 @@ export interface AfterReplaceContext {
     readonly signal: AbortSignal;
 }
 
+// @public @sealed
+export interface AttestationSetting {
+    readonly [attestationSetting]: true;
+    readonly workflow: string;
+}
+
 // @public
 export interface NoticeSettings {
     readonly env?: string;
@@ -30,6 +36,7 @@ export function selfUpdate(settings?: SelfUpdateSettings): Plugin_2;
 // @public
 export interface SelfUpdateSettings {
     readonly afterReplace?: (context: AfterReplaceContext) => Promise<void> | void;
+    readonly attestation?: AttestationSetting;
     readonly notices?: boolean | NoticeSettings;
 }
 

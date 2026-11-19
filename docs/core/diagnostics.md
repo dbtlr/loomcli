@@ -304,6 +304,14 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **MCP tool without an action.** An MCP tool call runs the Command's action, so a Command with no action, such as a group, has nothing to run when a client calls it.
 
+### @loomcli/plugins/self-update/attestation-setting
+
+**Attestation setting not made by attestation().** The self-update plugin verifies a release's attestation only through the value attestation() from @loomcli/plugins/self-update/attestation makes, and a set attestation is never read as unset. A value attestation() did not make, such as an object literal from JavaScript or through any, would otherwise switch the check off in silence, so selfUpdate() refuses it.
+
+### @loomcli/plugins/self-update/attestation-workflow
+
+**Invalid attestation workflow.** GitHub runs workflows only from .github/workflows, and the signing identity of an attestation names the workflow file that ran the job, so workflow is .github/workflows/ followed by a file name that holds no / and ends in .yml or .yaml.
+
 ### @loomcli/plugins/self-update/settings
 
 **Invalid self-update setting.** The self-update plugin reads the variable that notices.env names from the environment, as an input binds one, and turns update notices off when it is set and not empty, so env is a variable name: letters, digits, and underscores, not starting with a digit.

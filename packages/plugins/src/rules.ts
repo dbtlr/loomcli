@@ -152,6 +152,20 @@ const mcpRequiredInputExcluded = diagnosticRule(`${packageName}/mcp/required-inp
   headline: 'Required MCP input excluded',
 });
 
+/** A self-update `attestation` setting that `attestation()` did not make. */
+const attestationSettingRule = diagnosticRule(`${packageName}/self-update/attestation-setting`, {
+  explanation:
+    "The self-update plugin verifies a release's attestation only through the value attestation() from @loomcli/plugins/self-update/attestation makes, and a set attestation is never read as unset. A value attestation() did not make, such as an object literal from JavaScript or through any, would otherwise switch the check off in silence, so selfUpdate() refuses it.",
+  headline: 'Attestation setting not made by attestation()',
+});
+
+/** An `attestation()` workflow that is not a workflow file's path in `.github/workflows`. */
+const attestationWorkflowRule = diagnosticRule(`${packageName}/self-update/attestation-workflow`, {
+  explanation:
+    'GitHub runs workflows only from .github/workflows, and the signing identity of an attestation names the workflow file that ran the job, so workflow is .github/workflows/ followed by a file name that holds no / and ends in .yml or .yaml.',
+  headline: 'Invalid attestation workflow',
+});
+
 /** A self-update `notices.env` setting that is not an environment variable name. */
 const selfUpdateSettings = diagnosticRule(`${packageName}/self-update/settings`, {
   explanation:
@@ -226,6 +240,8 @@ const dotenvVariableName = diagnosticRule(`${packageName}/dotenv/variable-name`,
 });
 
 export {
+  attestationSettingRule,
+  attestationWorkflowRule,
   completionUnknownCompleter,
   dotenvVariableName,
   configEmptyFile,

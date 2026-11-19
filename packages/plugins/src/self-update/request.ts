@@ -83,6 +83,8 @@ interface Walk {
 interface Requesting {
   readonly signal: AbortSignal;
   readonly requested: (url: string) => void;
+  /** Headers every request of the walk sends, such as the attestations API's version. */
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 /** One request of a walk, then the rest of the walk after the redirect it was answered with. */
@@ -139,10 +141,14 @@ function shownAddress(url: URL): string {
  * before a response named for `start`.
  */
 async function request(url: URL, start: URL, requesting: Requesting): Promise<Response> {
-  const { requested, signal } = requesting;
+  const { headers, requested, signal } = requesting;
   requested(shownAddress(url));
   try {
-    return await fetch(url, { redirect: 'manual', signal });
+    return await fetch(url, {
+      redirect: 'manual',
+      signal,
+      ...(headers === undefined ? {} : { headers }),
+    });
   } catch (error) {
     if (signal.aborted) {
       throw error;
@@ -200,4 +206,4 @@ async function fetchBytes(url: URL, requesting: Requesting): Promise<Uint8Array>
 }
 
 export type { Followed, Requesting };
-export { fetchBytes, fetchText, follow, notFound, ok, RequestError };
+export { fetchBytes, fetchText, follow, notFound, ok, readBody, RequestError, shownAddress };

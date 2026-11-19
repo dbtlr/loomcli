@@ -1,0 +1,9 @@
+{
+  "attestations": [
+    {
+      "repository_id": 868811259,
+      "bundle_url": "https://tmaproduction.blob.core.windows.net/attestations/868811259/2026/11/16/67995650.json.sn?sig=recorded",
+      "initiator": "user"
+    }
+  ]
+}

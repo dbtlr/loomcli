@@ -13,14 +13,17 @@ import {
   removeStagingFiles,
   replaceFile,
 } from '../installation/disk.js';
-import { selfUpdateSettings } from '../rules.js';
+import { attestationSettingRule, selfUpdateSettings } from '../rules.js';
 import { isVariableName } from '../variable-name.js';
+import { attesterOf } from './attestation-setting.js';
+import type { Attest, AttestationCheck, AttestationSetting } from './attestation-setting.js';
 import { releaseBinary } from './binary.js';
 import type { ReleaseBinary } from './binary.js';
 import { fatal } from './fatal.js';
 import {
   alreadyInstalled,
   assetNotListed,
+  attestationCacheNotAbsolute,
   binaryChanged,
   binaryIsLink,
   binaryMissing,
@@ -106,6 +109,8 @@ interface NoticeSettings {
 interface SelfUpdateSettings {
   /** Called once after the binary is replaced and the record rewritten. */
   readonly afterReplace?: (context: AfterReplaceContext) => Promise<void> | void;
+  /** Verify a GitHub artifact attestation of the asset before it is downloaded. */
+  readonly attestation?: AttestationSetting;
   /** Update notices: on unless false. */
   readonly notices?: boolean | NoticeSettings;
 }
@@ -121,6 +126,27 @@ function judgeNoticeVariable(settings: SelfUpdateSettings | undefined): void {
       sentence: `Plugin "${identity}" setting "notices.env" is not an environment variable name.`,
     });
   }
+}
+
+/**
+ * The verification a set `attestation` carries, judged at the `selfUpdate()` call: a value
+ * `attestation()` did not make is refused, because reading it as unset would turn the check off.
+ */
+function judgeAttestation(settings: SelfUpdateSettings | undefined): Attest | undefined {
+  const value: unknown = settings?.attestation;
+  if (value === undefined) {
+    return undefined;
+  }
+  const attest = attesterOf(value);
+  if (attest === undefined) {
+    throw new DeclarationError(attestationSettingRule, {
+      correction:
+        'Pass the value attestation() from @loomcli/plugins/self-update/attestation returns, or leave attestation out.',
+      findings: [{ arguments: [settings], call: 'selfUpdate', mark: '0.attestation' }],
+      sentence: `Plugin "${identity}" setting "attestation" is not a value attestation() made.`,
+    });
+  }
+  return attest;
 }
 
 /** A string input that `accepts` or the one-sentence `message`, published as a plain string. */
@@ -149,6 +175,34 @@ function recordDirectory(name: string, host: Host): string {
     throw fatal(recordNotAbsolute(name, directory.variable));
   }
   return directory.path;
+}
+
+/**
+ * The cache directory, which holds Sigstore's trust root, or the refusal when the environment
+ * cannot name one.
+ */
+function attestationCache(name: string, host: Host): string {
+  const directory = applicationDirectory('cache', name, host);
+  if ('variable' in directory) {
+    throw fatal(attestationCacheNotAbsolute(name, directory.variable));
+  }
+  return directory.path;
+}
+
+/**
+ * The verification a run makes before it downloads, with the cache directory it keeps its trust
+ * root in, when the author set an attestation and the run would replace the binary. A `--check`
+ * run resolves no cache directory.
+ */
+function attestingFor(
+  request: Request,
+  attest: Attest | undefined,
+): ((facts: Omit<AttestationCheck, 'cache'>) => Promise<void>) | undefined {
+  if (attest === undefined || request.checkOnly) {
+    return undefined;
+  }
+  const cache = attestationCache(request.name, request.host);
+  return (facts) => attest({ ...facts, cache });
 }
 
 /** What the installation record holds for a binary the installer script placed. */
@@ -488,6 +542,27 @@ function checkLine(request: Request, checked: Checked, found: Version): string {
   return canUpdate({ channel, found: found.text, name, running: checked.running.text });
 }
 
+/** What verifying an attestation of the resolved release reads, except the cache directory. */
+function attestationCheck(
+  request: Request,
+  checked: Checked,
+  resolved: Resolved,
+): Omit<AttestationCheck, 'cache'> {
+  const { host, log, name, requesting } = request;
+  const { digest, release } = resolved;
+  return {
+    asset: checked.asset,
+    digest,
+    host,
+    log,
+    name,
+    repository: release.repository,
+    requesting,
+    running: checked.running.text,
+    version: release.version.text,
+  };
+}
+
 /** Downloads the resolved release, places it, and reports the update. */
 async function install(request: Request, checked: Checked, resolved: Resolved): Promise<void> {
   const { log, name, out, requesting, signal } = request;
@@ -498,9 +573,23 @@ async function install(request: Request, checked: Checked, resolved: Resolved): 
   await out.success(updated(name, checked.running.text, release.version.text));
 }
 
-/** The Command's run, in the contract's order: refusals, resolving, `--check`, replacing. */
-async function update(request: Request, settings: SelfUpdateSettings | undefined): Promise<void> {
+/** The refusals, then the cache directory an attestation needs, both before any request. */
+function prepare(request: Request, attest: Attest | undefined) {
   const checked = check(request.name, request.host);
+  return { attesting: attestingFor(request, attest), checked };
+}
+
+/**
+ * The Command's run, in the contract's order: refusals, the cache directory an attestation needs,
+ * resolving, `--check`, verifying the attestation for the digest `SHA256SUMS` lists, and
+ * replacing. A `--check` run resolves no cache directory and makes no attestation request.
+ */
+async function update(
+  request: Request,
+  settings: SelfUpdateSettings | undefined,
+  attest: Attest | undefined,
+): Promise<void> {
+  const { attesting, checked } = prepare(request, attest);
   const resolved = await resolve(request, checked);
   if (resolved === undefined) {
     return;
@@ -509,6 +598,7 @@ async function update(request: Request, settings: SelfUpdateSettings | undefined
     await request.out.success(checkLine(request, checked, resolved.release.version));
     return;
   }
+  await attesting?.(attestationCheck(request, checked, resolved));
   await install(request, checked, resolved);
   await settings?.afterReplace?.({
     current: resolved.release.version.text,
@@ -571,8 +661,11 @@ function refuseConflicts({ channel, checkOnly, refreshing, version }: Given): vo
   }
 }
 
-/** The `self-update` Command, its action calling `afterReplace` from the settings. */
-function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
+/**
+ * The `self-update` Command, its action calling `afterReplace` from the settings and verifying an
+ * attestation with `attest` when the author set one.
+ */
+function selfUpdateCommand(settings: SelfUpdateSettings | undefined, attest: Attest | undefined) {
   return new Command('self-update', {
     description: 'Replace this application with another release.',
   })
@@ -625,6 +718,7 @@ function selfUpdateCommand(settings: SelfUpdateSettings | undefined) {
             signal,
           },
           settings,
+          attest,
         );
       } catch (error) {
         if (error instanceof RequestError && !signal.aborted) {
@@ -665,8 +759,9 @@ function noticeOptOut(notices: boolean | NoticeSettings): string | undefined {
  */
 function selfUpdate(settings?: SelfUpdateSettings): Plugin {
   judgeNoticeVariable(settings);
+  const attest = judgeAttestation(settings);
   const notices = settings?.notices ?? true;
-  const commands = [selfUpdateCommand(settings)];
+  const commands = [selfUpdateCommand(settings, attest)];
   if (notices === false) {
     return plugin(identity, { commands });
   }
@@ -683,5 +778,6 @@ function selfUpdate(settings?: SelfUpdateSettings): Plugin {
   });
 }
 
+export type { AttestationSetting } from './attestation-setting.js';
 export type { AfterReplaceContext, NoticeSettings, SelfUpdateSettings };
 export { selfUpdate };
