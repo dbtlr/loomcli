@@ -225,6 +225,27 @@ interface BuildChecks {
   readonly fault: (fault: DeclarationError) => void;
 }
 
+/**
+ * What a run reads of every input in one graph: where each was declared, and the local ones, which
+ * the declared defaults and implied values are collected from. Both follow from the graph alone.
+ */
+interface GraphInputs {
+  locals: ReturnType<typeof collectInputs>;
+  places: InputPlaces;
+}
+
+/**
+ * What one graph build hands back: the facts, the graph, its frozen graph, what a run reads of its
+ * inputs, and the built plugins. The frozen graph and the inputs are each derived at most once.
+ */
+interface BuiltApplication {
+  facts: ApplicationFacts;
+  graph: BuiltGraph;
+  inputs: () => GraphInputs;
+  inspected: () => CommandGraph;
+  plugins: readonly BuiltPlugin[];
+}
+
 /** The fault handler of a run and of `inspect()`: the first fault ends the build. */
 function raise(fault: DeclarationError): never {
   throw fault;
@@ -392,6 +413,13 @@ class ApplicationBuilder<
         readonly background: ReadonlyMap<string, OptionSpelling> | undefined;
       }
     | undefined = undefined;
+  /**
+   * The graph the first successful graph build of each build produced, development or distributed,
+   * which a later `run()`, `invoke()`, or `inspect()` in that build reuses, so no build hook runs
+   * again (ADR-0191). The declarations it was built from never change on this value, because every
+   * authoring call returns a new Application, and a kept graph holds nothing of one run.
+   */
+  readonly #kept: { development?: KeptGraph; distributed?: KeptGraph } = {};
 
   constructor(
     name: string,
@@ -920,20 +948,11 @@ class ApplicationBuilder<
    * published first, so a build fault reports through them. The merged registry is published once
    * the build has succeeded, so a build fault never resolves through a plugin's overrides.
    * `inspected` is the frozen graph `inspect()` returns, built at most once, whoever reads it
-   * first. `reuse` is the graph an action's run built, which its call reuses.
+   * first. It always builds anew, as `check()` does, and reuses no kept graph.
    */
-  private prepare(
-    stage: PrepareStage,
-    checks: BuildChecks,
-    reuse?: Pick<BoundGraph, 'graph' | 'inspected'>,
-  ): {
-    facts: ApplicationFacts;
-    graph: BuiltGraph;
-    inspected: () => CommandGraph;
-    plugins: readonly BuiltPlugin[];
-  } {
+  private prepare(stage: PrepareStage, checks: BuildChecks): BuiltApplication {
     this.stage(stage);
-    return this.build(stage, checks, reuse);
+    return this.build(stage, checks);
   }
 
   /**
@@ -947,24 +966,43 @@ class ApplicationBuilder<
     stage.plugins(plugins);
   }
 
-  /** The graph build after the stages `stage()` published, as `prepare()` states it. */
-  private build(
+  /**
+   * The graph of a run, an invocation by name, or `inspect()` in one build. An action's call reuses
+   * its run's graph, and any other call reuses the graph kept for its build, or builds and keeps one.
+   * A build that faults throws before it is kept, so the next call builds again and meets the fault.
+   */
+  private keptBuild(
     stage: PrepareStage,
-    checks: BuildChecks,
-    reuse?: Pick<BoundGraph, 'graph' | 'inspected'>,
-  ): {
-    facts: ApplicationFacts;
-    graph: BuiltGraph;
-    inspected: () => CommandGraph;
-    plugins: readonly BuiltPlugin[];
-  } {
+    development: boolean,
+    bound?: KeptGraph,
+  ): BuiltApplication {
+    if (bound) {
+      return this.build(stage, { development, fault: raise }, bound);
+    }
+    const slot = development ? 'development' : 'distributed';
+    const built = this.build(stage, { development, fault: raise }, this.#kept[slot]);
+    this.#kept[slot] ??= { graph: built.graph, inputs: built.inputs, inspected: built.inspected };
+    return built;
+  }
+
+  /** The graph build after the stages `stage()` published, as `prepare()` states it. */
+  private build(stage: PrepareStage, checks: BuildChecks, reuse?: KeptGraph): BuiltApplication {
     const { contributors, facts, plugins, views } = this.#config;
-    // An action's call reuses the graph its run built and judged, so no lifecycle hook runs again.
+    // A graph already built and judged is reused, so no lifecycle hook runs again.
     if (reuse) {
       stage.views([views, ...contributors]);
-      return { facts, graph: reuse.graph, inspected: reuse.inspected, plugins };
+      return {
+        facts,
+        graph: reuse.graph,
+        inputs: reuse.inputs,
+        inspected: reuse.inspected,
+        plugins,
+      };
     }
     const graph = buildGraph(this.#root, this.#globals, plugins);
+    let derived: GraphInputs | undefined = undefined;
+    const inputs = () =>
+      (derived ??= { locals: collectInputs(graph.root), places: inputPlaces(graph) });
     let frozen: CommandGraph | undefined = undefined;
     const converterFault = checks.development ? checks.fault : undefined;
     const inspected = () =>
@@ -981,20 +1019,23 @@ class ApplicationBuilder<
       judgeGraph(inspected(), plugins, checks.fault);
     }
     stage.views([views, ...contributors]);
-    return { facts, graph, inspected, plugins };
+    return { facts, graph, inputs, inspected, plugins };
   }
 
   /**
    * The built graph as plain, frozen data. It builds the graph as `run()` does and throws
    * `DeclarationError` for the same build faults. Validating a declared default through its schema
    * can be asynchronous, so that one rule stays in `run()`. It takes no host, so it learns its build
-   * from the release facts the build baked in, and malformed ones throw their `InternalError`.
-   * Nothing is cached: each call builds the graph anew.
+   * from the release facts the build baked in, and malformed ones throw their `InternalError`. The
+   * Application keeps the graph of each build, so a later call in the same build, or a call after a
+   * run in it, returns the same object and runs no lifecycle hook again.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/graph-inspection.md#reusing-the-built-graph
    */
   inspect(): CommandGraph {
     const development = isDevelopment(bakedFacts());
-    const built = this.prepare(unstaged, { development, fault: raise });
-    return built.inspected();
+    this.stage(unstaged);
+    return this.keptBuild(unstaged, development).inspected();
   }
 
   /**
@@ -1003,7 +1044,8 @@ class ApplicationBuilder<
    * graph as `inspect()` does and runs the development checks whatever the release facts read,
    * reading no host and no baked facts. A build rule's fault ends the build, so it is the one fault;
    * past a built graph, each failing converter and each rejecting `onGraphBuilt` hook is kept and
-   * the build goes on. Any other throw leaves it as it is. Nothing is cached.
+   * the build goes on. Any other throw leaves it as it is. It builds anew on every call, whatever
+   * graph the Application keeps, and keeps nothing.
    */
   check(): readonly DeclarationError[] {
     const faults: DeclarationError[] = [];
@@ -1037,8 +1079,9 @@ class ApplicationBuilder<
   }
 
   /**
-   * Runs one Command of a graph built for this call by its path, with named values in place of
-   * argv, captures what the run writes, and resolves a structured outcome. It touches no process.
+   * Runs one Command by its path, with named values in place of argv, captures what the run writes,
+   * and resolves a structured outcome. It builds the graph as `run()` does, reusing the graph the
+   * Application keeps for the build its release facts name. It touches no process.
    */
   invoke<Mapped = LoomError>(
     path: readonly string[],
@@ -1102,8 +1145,8 @@ class ApplicationBuilder<
 
   /**
    * The one run body `run()` and `invoke()` share. The door decides what differs: where the run
-   * reads its inputs and host, where it writes, which signals cancel it, whether it builds its own
-   * graph or reuses an action's run's, and whether it touches the process.
+   * reads its inputs and host, where it writes, which signals cancel it, whether it reuses an
+   * action's run's graph or the one kept for its build, and whether it touches the process.
    */
   async #execute(door: RunDoor): Promise<RunEnd> {
     // The marked options' spellings, known from the declarations before any graph builds.
@@ -1312,7 +1355,7 @@ class ApplicationBuilder<
         });
         settleTerminal(host.terminal, settled);
         invocationOutput.configure(policy, themePalette(theme, settled));
-        const built = this.build(stage, { development: build.development, fault: raise }, bound);
+        const built = this.keptBuild(stage, build.development, bound);
         const { graph, inspected } = built;
         // Nothing has written a lane yet: graph build's hooks receive no out.
         invocationOutput.useVerbosity(entered.verbosity(graph, host));
@@ -1332,15 +1375,11 @@ class ApplicationBuilder<
             signal: controller.signal,
           });
         }
-        const places = bound?.places ?? inputPlaces(graph);
+        const { locals, places } = built.inputs();
         // A nested run reuses its outer run's declared values, so only an outermost run collects inputs.
         const declaredValues =
           bound?.declaredValues ??
-          (await prepareDeclaredValues(
-            { globals: graph.globals.inputs, locals: collectInputs(graph.root) },
-            host,
-            places,
-          ));
+          (await prepareDeclaredValues({ globals: graph.globals.inputs, locals }, host, places));
         graphBuilt = true;
         if (!controller.signal.aborted) {
           /**
@@ -1350,7 +1389,7 @@ class ApplicationBuilder<
           let persistent = door.persistent;
           // An action's own call reuses this run's graph, host fields, signal, and lane.
           const action: ActionCall = {
-            bound: { declaredValues, graph, inspected, places },
+            bound: { declaredValues, graph, inputs: built.inputs, inspected },
             fields: fieldsOf(host),
             lane: door.lane,
             listens: door.listens,
@@ -1594,14 +1633,21 @@ type RunEnd =
     };
 
 /**
+ * A built and judged graph that a later call reuses, so no lifecycle hook runs again: the graph,
+ * what a run reads of its inputs, and its frozen graph, each derived at most once, whoever reads it
+ * first. None holds anything of one run, so runs that overlap share it.
+ */
+type KeptGraph = Pick<BoundGraph, 'graph' | 'inputs' | 'inspected'>;
+
+/**
  * The graph an action's run built and validated, which a call the action makes reuses: no lifecycle
  * hook runs again, and each declared default and implied value is that run's validated output.
  */
 interface BoundGraph {
   declaredValues: DeclaredValues;
   graph: BuiltGraph;
+  inputs: () => GraphInputs;
   inspected: () => CommandGraph;
-  places: InputPlaces;
 }
 
 /**

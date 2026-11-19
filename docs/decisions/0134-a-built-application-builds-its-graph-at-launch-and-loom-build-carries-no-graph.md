@@ -4,7 +4,7 @@ title: ADR-0134 - A built application builds its graph at launch, and loom build
 description: A built application runs graph build when its process starts, from the declarations its module evaluates, exactly as an unbuilt run does. loom build bundles the application and carries its release facts and skills folder, and it carries no Command graph into the artifact. Launch cost may be cut only by work that changes no contract. Carrying a graph built during loom build, and building only the routed path at launch, were measured and rejected.
 status: accepted
 created: 2026-11-02
-modified: 2026-11-02
+modified: 2026-11-19
 ---
 
 # ADR-0134 - A built application builds its graph at launch, and loom build carries no graph
@@ -52,3 +52,4 @@ Accepted on merge. It keeps the behavior every form already has and binds the de
 ## Changelog
 
 - 2026-11-02: Recorded after two measured comparisons (LM-328). It supersedes no record.
+- 2026-11-19: [ADR-0191](0191-an-application-keeps-its-built-graph-for-each-build-and-reuses-it-within-one-process.md), proposed, extends this record for repeated calls in one process without changing its launch decision: an Application keeps the graph its first successful build produced for each build, development or distributed, and a later `run()`, `app.invoke()`, or `inspect()` on it reuses that graph. The consequence that `onCommandAttach` and `onGraphBuilt` run at every graph build still holds, and a graph build happens once per Application and build within one process. It binds when that record is accepted.

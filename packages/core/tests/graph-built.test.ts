@@ -4,9 +4,10 @@ import { expect, test } from 'vite-plus/test';
  *
  * The hook is proven when public APIs alone produce these results under Node and Bun:
  *
- * - Order and reach. A fixture hook records each call: it runs once per `run()`, `inspect()`, and
- *   `app.invoke()`, after every `onCommandAttach` and with the Commands and options those hooks
- *   added, in installation order across two plugins, and never for an action's `invoke`.
+ * - Order and reach. A fixture hook records each call: it runs once per graph build, after every
+ *   `onCommandAttach` and with the Commands and options those hooks added, in installation order
+ *   across two plugins. A distributed `run()` and a source `inspect()` each build once, and
+ *   `app.invoke()` in the run's build and an action's `invoke` reuse the run's graph.
  * - Rejection. A hook that throws a `DeclarationError` fails `run()` with exit 1, its Developer
  *   Diagnostic from source and the generic defect message from a bundle, makes `inspect()` throw
  *   it, runs no `onFailure` hook, and stops later hooks.
@@ -43,7 +44,7 @@ interface Rejected {
   ran: Ran;
 }
 
-test('every hook runs once per run(), inspect(), and app.invoke(), in installation order, never for an action invoke', async () => {
+test('every hook runs once per graph build, in installation order, and app.invoke() and an action invoke reuse the run graph', async () => {
   expect(JSON.parse(await report('order'))).toEqual({
     calls: [
       {
@@ -59,9 +60,10 @@ test('every hook runs once per run(), inspect(), and app.invoke(), in installati
     ],
     marks: [
       { calls: 2, label: 'run' },
+      // A source inspect() reads no baked facts, so it builds the development graph once.
       { calls: 4, label: 'inspect' },
-      { calls: 6, label: 'app.invoke' },
-      { calls: 8, label: 'app.invoke with an action invoke' },
+      { calls: 4, label: 'app.invoke' },
+      { calls: 4, label: 'app.invoke with an action invoke' },
     ],
     sameAsAction: true,
   });

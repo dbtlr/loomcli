@@ -4,7 +4,7 @@ title: ADR-0060 - onGraphBuilt judges the built graph and never contributes
 description: A plugin definition gains a third lifecycle hook, onGraphBuilt, which core calls once per graph build with the frozen graph, after every onCommandAttach hook. It may reject the graph by throwing a DeclarationError, and it cannot attach, rewrite, or store anything. Any other throw or a returned value is the broken-graph-hook build fault.
 status: accepted
 created: 2026-10-05
-modified: 2026-11-18
+modified: 2026-11-19
 ---
 
 # ADR-0060 - onGraphBuilt judges the built graph and never contributes
@@ -43,3 +43,4 @@ Accepted in 0.9.0.
 - 2026-10-05: Proposed with the contract.
 - 2026-10-20: [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, removes the `@loomcli/core/broken-graph-hook` fault for a hook that returns a value, a promise included, because `GraphBuiltHook`'s type rejects it. A hook that throws anything but a `DeclarationError` stays the `@loomcli/core/broken-graph-hook` build fault, which names the plugin, and as a build fault it reaches neither `onFailure` nor `onLog`. [ADR-0097](0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md), proposed, does not change it: that record's hook rules apply to a broken `onFailure` or `onLog` hook during a run. Both bind when those records are accepted.
 - 2026-11-18: [ADR-0188](0188-the-skills-plugin-generates-each-skills-command-references-from-the-graph-at-install.md), proposed, narrows the rule that the hook stores nothing: a plugin's `onGraphBuilt` hook may record the graph object against that plugin's own declaration, outside the graph, adding nothing to it. The skills plugin keeps a weak map from each graph to the reader of the `skills()` call that built it, so a tool given a graph finds the skills that application declares. The hook still contributes nothing to the graph, rewrites no fact, and stores nothing derived from the graph. It binds when that record is accepted.
+- 2026-11-19: [ADR-0191](0191-an-application-keeps-its-built-graph-for-each-build-and-reuses-it-within-one-process.md), proposed, narrows **When**: the hook runs once per graph build, and an Application builds its graph once for each build, development or distributed, within one process, so a later `run()`, `inspect()`, or `app.invoke()` on it reuses the judged graph and calls no hook. `check()` builds anew and calls every hook on each call. Each converter runs once per graph build rather than once per run. It binds when that record is accepted.

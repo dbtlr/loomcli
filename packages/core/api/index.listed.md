@@ -87,6 +87,7 @@ declare class ApplicationBuilder<Args, Options, Globals, State extends Applicati
     private derive;
     private prepare;
     private stage;
+    private keptBuild;
     private build;
     inspect(): CommandGraph;
     check(): readonly DeclarationError[];

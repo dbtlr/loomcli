@@ -267,7 +267,7 @@ The validated, frozen tree that core builds from an Application's declarations. 
 _Avoid_: Command tree, AST, registry, model (unqualified)
 
 **Graph build**:
-The phase of `run()` and `inspect()` that turns the declarations into a Command graph. It applies only the declaration rules no earlier moment can judge: the root's finished-Command checks, the lifecycle hooks, and what the hooks contribute. A rejected declaration is a declaration error, reported before any invocation token is read.
+The phase of `run()` and `inspect()` that turns the declarations into a Command graph. It applies only the declaration rules no earlier moment can judge: the root's finished-Command checks, the lifecycle hooks, and what the hooks contribute. A rejected declaration is a declaration error, reported before any invocation token is read. An Application keeps the graph its first successful build produced for each build, development or distributed, and a later `run()`, `app.invoke()`, or `inspect()` on it in that build reuses that graph and runs no graph build; `check()` runs one on every call.
 _Avoid_: Compilation, registration, setup
 
 **Inspection**:
@@ -327,7 +327,7 @@ The `plain: true` fact on the one Boolean global option whose spellings turn the
 _Avoid_: Plain flag (for the mark), accessible option
 
 **Invocation**:
-One `run()` or `invoke()` call: host capture, graph build, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` captures no host and builds no graph: it takes its host fields and its graph from its own run.
+One `run()` or `invoke()` call: host capture, graph build or the reuse of the graph its Application already built, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` captures no host and builds no graph: it takes its host fields and its graph from its own run.
 _Avoid_: Execution, call, request
 
 **Invocation by name**:
