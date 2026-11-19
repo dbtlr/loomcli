@@ -951,6 +951,59 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     },
   );
 
+  /**
+   * A word that ends at its lead, as in `--path=` or `-p=`, gets no lead from the answer under
+   * directive 0, so the Zsh and PowerShell scripts read the lead from the word itself. The folder
+   * holds one visible name, so the listing inserts it, and a dot-name the listing leaves out. The
+   * option label hints `none`, so its word lists nothing. After `--` on paths, the passthrough
+   * position answers directive 0 with no word, so a typed word there reaches the script's reading.
+   * Bash leaves such a word to readline's own file completion, which lists the dot-name too, so
+   * its cases that insert the one name are not run.
+   */
+  describe.skipIf(!installed || shell === 'nu')(
+    'a value attached to an option whose word ends at its lead',
+    () => {
+      const { complete, cwd } = useSession({
+        before: shell === 'zsh' ? ["bindkey '^I' complete-word"] : [],
+        files: ['.hidden.json', 'alpha.json'],
+        main: fixture,
+        name: 'kit',
+        shell,
+        sources,
+      });
+      const quoted = (word: string) => (shell === 'pwsh' ? `'${word}'` : word);
+
+      it.skipIf(shell === 'bash').each([
+        ['kit scan --path=', 'kit scan --path=alpha.json'],
+        ['kit scan --data=', 'kit scan --data=alpha.json'],
+        ['kit scan -p=', `kit scan ${quoted('-p=alpha.json')}`],
+        ['kit scan -vp=', `kit scan ${quoted('-vp=alpha.json')}`],
+        ['kit scan --path=a', 'kit scan --path=alpha.json'],
+        ['kit paths -- --x=', 'kit paths -- --x=alpha.json'],
+      ])('%s<Tab> inserts the file name behind the lead as %s', async (typed, done) => {
+        const { line } = await complete(typed);
+        expect(line.trimEnd()).toBe(done);
+      });
+
+      it.each(['kit scan --label=', 'kit scan -l='])(
+        '%s<Tab> lists nothing, because the option completes no file name',
+        async (typed) => {
+          await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
+        },
+      );
+
+      it
+        .runIf(shell === 'zsh' || shell === 'pwsh')
+        .each([
+          'kit paths -- --x$(touch PWNED)=',
+          ...(shell === 'zsh' ? ['kit paths -- --x`touch PWNED`='] : []),
+        ])('%s<Tab> reads no lead and runs nothing the typed word holds', async (typed) => {
+        await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
+        expect(existsSync(join(cwd(), 'PWNED'))).toBe(false);
+      });
+    },
+  );
+
   // Tab is bound to complete-word, which runs completion alone, so only the script can evaluate.
   // HOME is the home folder in the working directory, so a typed ~/ lists files the test wrote.
   // A dynamic named directory hook touches the sentinel, so a typed ~[x] that reaches it shows.

@@ -119,7 +119,8 @@ function completionApplication() {
   /**
    * One input of each file hint: an option that lists the `.json` files, one that lists directories
    * only, and an argument that lists the `.csv` files. Two options leave the shell its file names:
-   * `path` with no hint and `data` with `files: true`. Each option has a short spelling, and a
+   * `path` with no hint and `data` with `files: true`, and `label` hints `none`, so it completes
+   * nothing. Each option has a short spelling, and a
    * counted `verbose` letter clusters before them, so a test completes a value attached to it. The
    * Command is hidden, so no root listing shows it.
    */
@@ -136,6 +137,7 @@ function completionApplication() {
     })
     .option('path', { short: 'p', type: 'string' })
     .option('data', { extensions: [completionInput({ files: true })], short: 'd', type: 'string' })
+    .option('label', { extensions: [completionInput({ none: true })], short: 'l', type: 'string' })
     .option('verbose', { short: 'v', type: 'count' })
     .argument('table', { extensions: [completionArgument({ extensions: ['csv'] })] })
     .action(() => {});

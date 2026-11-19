@@ -54,6 +54,12 @@ import { identifier, powershellQuoted } from '../shell-quoting.js';
  *   Command name starts with `-`: every name in the folder the rest of the word names is listed
  *   the same way, each inserted behind the lead, rather than leaving PowerShell its own file
  *   completion.
+ * - Under directive 0 with no answer word, a word under the cursor that is `--` and a name of ASCII
+ *   letters, digits, `_`, `.`, and `-` that starts with a letter or digit, or `-` and ASCII letters,
+ *   followed by `=` and nothing else,
+ *   such as `--path=` or `-p=`, is read as such a lead, matched as text, so every name in the
+ *   current folder is listed behind it. A word that holds any other character, such as `$(…)`, is
+ *   no lead.
  * - Directive numbers are written as literals, and values are kept in arrays.
  */
 export function powershellScript(name: string): string {
@@ -327,6 +333,20 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
             # remove the space here
             __${id}_debug "ShellCompDirectiveNoSpace is called"
             $Space = ""
+        }
+
+        # Under directive 0 the answer writes no lead for a word that ends at
+        # it, such as --path= or -p=, so such a typed word is read as the lead
+        # itself: -- and a name that starts with an ASCII letter or digit and
+        # holds ASCII letters, digits, _, ., and -, or - and ASCII letters, and
+        # then =, matched as text.
+        if ($Values.Count -eq 0 -and
+            (($Directive -band ($ShellCompDirectiveNoFileComp -bor $ShellCompDirectiveFilterFileExt -bor $ShellCompDirectiveFilterDirs)) -eq 0) -and
+            $Current -cmatch '\\A(--[A-Za-z0-9][A-Za-z0-9_.-]*|-[A-Za-z]+)=\\z') {
+            $Values = @(New-Object -TypeName PSCustomObject -Property @{
+                Name = $Current
+                Description = " "
+            })
         }
 
         # No Command name starts with -, so where files are allowed a first
