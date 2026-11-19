@@ -9,6 +9,14 @@
  *   the characters it lays out over the message stay within a small multiple of its length, and
  *   twice the text takes about twice the layout. A lane view an author overrode is a function of
  *   the whole message, so it lays out the whole text so far at every chunk.
+ * - A finished line that leaves the lines after it a raw color, a raw link, a pad frame, or a style
+ *   that names a token the application's theme adds is not laid out again either, so the
+ *   characters laid out stay within the same multiple of the message's length.
+ * - A message that sets SGR attributes on every line carries only the commands that leave what
+ *   they set, so the characters laid out stay within the same multiple of its length: a color
+ *   that changes on every line and is never reset, modifiers toggled on and off so that more than
+ *   one command is needed, and attributes Loom does not track, such as blink, double underline,
+ *   underline color, and a font, which the terminal's default rendering strips.
  *
  * The cases run an Application from source on a mock process in the test's own process. They read
  * each live set the channel hands a semantic method through a spy on the output's `emit`, and the
@@ -18,7 +26,7 @@
 import { mockProcess } from '@loomcli/testing';
 import { expect, test, vi } from 'vite-plus/test';
 
-import { Application, lanes, override, style } from '../src/index.js';
+import { Application, lanes, override, pad, plugin, style } from '../src/index.js';
 import type { Out } from '../src/index.js';
 import { Output } from '../src/output/output.js';
 
@@ -109,11 +117,17 @@ test('an action that streams many messages holds none of them once each has ende
 /** A line of 78 characters, which a terminal 100 columns wide shows on one row beside a lane's glyph. */
 const sentence = 'Loom lays out each chunk of a streamed answer as it arrives from the model now.';
 
-/** The text of `lines` such lines, as a model streams it: one word a chunk, with its space or line break. */
-function answer(lines: number): string[] {
+/**
+ * The text of `lines` such lines, as a model streams it: one word a chunk, with its space or line
+ * break. `first` dresses the first line's first word, as a raw sequence or a style call does.
+ */
+function answer(lines: number, first: (word: string) => string = (word) => word): string[] {
   const words = sentence.split(' ');
-  return Array.from({ length: lines }, () =>
-    words.map((word, index) => (index === words.length - 1 ? `${word}\n` : `${word} `)),
+  return Array.from({ length: lines }, (_line, line) =>
+    words.map((word, index) => {
+      const shown = line === 0 && index === 0 ? first(word) : word;
+      return index === words.length - 1 ? `${shown}\n` : `${shown} `;
+    }),
   ).flat();
 }
 
@@ -121,9 +135,9 @@ function answer(lines: number): string[] {
  * Streams `parts` on the `info` lane on a terminal 100 columns wide and answers the length of the
  * text and the characters the lane view laid out over the whole message. The run's output is the
  * one its start configured last, and from the action on each context it hands out counts what the
- * lane view passes its `expandTabs`.
+ * lane view passes its `expandTabs`. With `themed`, the application's theme adds the token `accent`.
  */
-async function laidOut(parts: readonly string[]) {
+async function laidOut(parts: readonly string[], { themed = false } = {}) {
   const configure = vi.spyOn(Output.prototype, 'configure');
   let laid = 0;
   const count = (): void => {
@@ -146,8 +160,9 @@ async function laidOut(parts: readonly string[]) {
     env: { TERM: 'xterm-256color' },
     terminal: { columns: 100, rows: 24, streams: ['stdout', 'stderr'] },
   });
+  const plugins = themed ? [plugin('fixture/theme', { theme: { accent: style.cyan } })] : [];
   try {
-    const code = await new Application('laid')
+    const code = await new Application('laid', { plugins })
       .action(async ({ out }) => {
         count();
         await out.info(chunks(...parts));
@@ -167,6 +182,96 @@ test('a lane view core ships lays out a streamed message in work that grows with
   expect(single.laid).toBeLessThan(single.length * 12);
   expect(double.laid).toBeLessThan(single.laid * 2.2);
 });
+
+const leftOpen: readonly {
+  readonly name: string;
+  readonly first: (word: string) => string;
+  readonly themed?: boolean;
+}[] = [
+  { first: (word) => `\u001B[31m${word}\u001B[0m`, name: 'a raw color reset on its own line' },
+  {
+    first: (word) => `\u001B[31m${word}`,
+    name: 'a raw color left open for the rest of the message',
+  },
+  {
+    first: (word) => `\u001B]8;;https://example.com\u001B\\${word}\u001B]8;;\u001B\\`,
+    name: 'a raw link',
+  },
+  { first: (word) => pad(word, 8), name: 'a pad frame' },
+  {
+    // The frame the context's `style.accent` writes, which the root style cannot name.
+    first: (word) => `\uE000["style",[["token","accent"]]]\uE001${word}\uE002`,
+    name: "a style that names a token the application's theme adds",
+    themed: true,
+  },
+];
+
+test.each(leftOpen)(
+  'a first line that holds $name is not laid out again, so the work grows with the length',
+  async ({ first, themed }) => {
+    const single = await laidOut(answer(50, first), { themed });
+    const double = await laidOut(answer(100, first), { themed });
+    expect(single).toMatchObject({ code: 0 });
+    expect(single.laid).toBeLessThan(single.length * 12);
+    expect(double.laid).toBeLessThan(single.laid * 2.2);
+  },
+);
+
+/** What a line opens with and closes with before its break, given its index. */
+interface Dress {
+  readonly name: string;
+  readonly on: (line: number) => string;
+  readonly off: (line: number) => string;
+}
+
+/** The text of `lines` such lines, each opened with `on` and closed with `off` before its break. */
+function dressed(lines: number, { on, off }: Dress): string[] {
+  let line = 0;
+  return answer(lines).map((part, index, parts) => {
+    const opened =
+      index === 0 || parts[index - 1]?.endsWith('\n') === true ? `${on(line)}${part}` : part;
+    if (!opened.endsWith('\n')) {
+      return opened;
+    }
+    line += 1;
+    return `${opened.slice(0, -1)}${off(line - 1)}\n`;
+  });
+}
+
+const everyLine: readonly Dress[] = [
+  {
+    name: 'a color that changes on every line and is never reset',
+    off: () => '',
+    on: (line) => `\u001B[38;5;${String(line % 256)}m`,
+  },
+  {
+    // Bold, italic, and underline stay set at each line's end, which no single command leaves.
+    name: 'modifiers toggled on and off',
+    off: () => '\u001B[23m\u001B[3m\u001B[4m',
+    on: () => '\u001B[22m\u001B[1m\u001B[24m',
+  },
+  { name: 'blink reset by its own command', off: () => '\u001B[25m', on: () => '\u001B[5m' },
+  { name: 'blink reset by a full reset', off: () => '\u001B[0m', on: () => '\u001B[5m' },
+  { name: 'a double underline', off: () => '\u001B[24m', on: () => '\u001B[21m' },
+  {
+    name: 'an underline color',
+    off: () => '\u001B[59m',
+    on: (line) => `\u001B[58;5;${String(line % 256)}m`,
+  },
+  { name: 'an alternative font', off: () => '\u001B[10m', on: () => '\u001B[11m' },
+];
+
+test.each(everyLine)(
+  'a message that sets $name carries a bounded state, so the work grows with the length',
+  async (dress) => {
+    const single = await laidOut(dressed(50, dress));
+    const double = await laidOut(dressed(100, dress));
+    expect(single).toMatchObject({ code: 0 });
+    // The commands on every line are laid out with it, so the multiple is a little larger.
+    expect(single.laid).toBeLessThan(single.length * 16);
+    expect(double.laid).toBeLessThan(single.laid * 2.2);
+  },
+);
 
 test('a lane view an author overrode lays out the whole text so far at every chunk', async () => {
   const laid: string[] = [];
