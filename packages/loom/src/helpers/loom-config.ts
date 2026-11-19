@@ -2,9 +2,15 @@ import { join, relative, resolve, sep } from 'node:path';
 
 import { configuration } from '@loomcli/plugins/config';
 import {
+  array,
+  boolean,
+  check,
+  checkItems,
+  forward,
   minLength,
   object,
   optional,
+  picklist,
   pipe,
   rawTransform,
   safeParse,
@@ -15,7 +21,7 @@ import {
 import type { InferOutput } from 'valibot';
 
 import { conventionalChangelog, conventionalFragments } from './conventions.js';
-import { notAWordList } from './messages.js';
+import { notAWordList, platformsNeedLauncher, repeatedPlatform } from './messages.js';
 
 /**
  * One path the configuration file names. An empty string or a value of another type is an issue at
@@ -52,12 +58,52 @@ const postInstall = object({
 });
 
 /**
+ * The six release asset platforms, which name the platform packages `loom build --target npm`
+ * writes, in the order the launcher package lists them, under ADR-0213.
+ */
+const npmPlatforms = [
+  'darwin-arm64',
+  'darwin-x64',
+  'linux-arm64',
+  'linux-arm64-musl',
+  'linux-x64',
+  'linux-x64-musl',
+] as const;
+
+/** A nonempty list of release asset platforms, each named once. */
+const platformList = pipe(
+  array(picklist(npmPlatforms)),
+  minLength(1),
+  checkItems((item, index, items) => items.indexOf(item) === index, repeatedPlatform),
+);
+
+/** The keys of the `npm` object, each optional. */
+const npmFields = object({ launcher: optional(boolean()), platforms: optional(platformList) });
+
+/**
+ * The npm launcher packages' opt-in, under ADR-0213: `launcher` turns the mode on, and `platforms`
+ * names the platform packages, each of the six once. A list without `launcher: true` is an issue at
+ * `platforms`, so the run fails rather than ignore a list that turns nothing on.
+ */
+const npmSettings = pipe(
+  npmFields,
+  forward(
+    check(
+      (settings) => settings.platforms === undefined || settings.launcher === true,
+      platformsNeedLauncher,
+    ),
+    ['platforms'],
+  ),
+);
+
+/**
  * The schema of `loom.config.json`. Every key is optional, and valibot's `object` strips a key it
  * does not describe, so an unknown key is ignored. The file names no skills folder, which the
  * skills plugin's `folder` setting names. `sharedVersion` passes through as written, and
  * `loom changelog write` checks it as one value and fails on a malformed one.
  */
 const loomConfigSchema = object({
+  npm: optional(npmSettings),
   paths: optional(
     object({
       application: pathValue,
@@ -166,3 +212,8 @@ export function changelogFiles(directory: string, paths: PackagePaths) {
     changes: packageRelative(directory, paths.changes),
   };
 }
+
+/** One release asset platform, such as `linux-x64-musl`. */
+export type NpmPlatform = (typeof npmPlatforms)[number];
+
+export { npmPlatforms };

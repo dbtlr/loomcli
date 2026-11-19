@@ -16,9 +16,12 @@ const compileTarget =
   /^bun-(?<platform>linux-(?:x64(?:-musl)?(?:-baseline|-modern)?|arm64(?:-musl)?)|darwin-(?:x64(?:-baseline|-modern)?|arm64))$/u;
 
 /** Reads one `--target` value, or answers the sentence that refuses it. */
-function readTarget(value: string): BuildTarget | { readonly refused: string } {
+function readTarget(value: string): TargetChoice | { readonly refused: string } {
   if (value === 'node' || value === 'bun') {
     return { kind: 'bundle', name: value };
+  }
+  if (value === 'npm') {
+    return { kind: 'npm', name: value };
   }
   const platform = compileTarget.exec(value)?.groups?.platform;
   if (platform !== undefined) {
@@ -36,10 +39,21 @@ export type BuildTarget =
   | { readonly kind: 'bundle'; readonly name: 'bun' | 'node' }
   | { readonly kind: 'compile'; readonly name: string; readonly platform: string };
 
+/**
+ * What `--target` names: one target, or `npm`, the launcher and platform packages, which a build
+ * writes from one compile target per platform, under ADR-0213.
+ */
+export type TargetChoice = BuildTarget | { readonly kind: 'npm'; readonly name: 'npm' };
+
+/** The compile target that builds one platform package's binary, such as `bun-linux-x64-musl`. */
+export function platformTarget(platform: string): BuildTarget {
+  return { kind: 'compile', name: `bun-${platform}`, platform };
+}
+
 /** The `--target` validator, whose output is the target it read. */
 export const targetOption = createValidator({
   inputSchema: { type: 'string' },
-  parse: (raw): ParseResult<BuildTarget> => {
+  parse: (raw): ParseResult<TargetChoice> => {
     const target = readTarget(raw);
     return 'refused' in target ? { issues: [{ message: target.refused }] } : { value: target };
   },
@@ -53,7 +67,7 @@ export function hostTarget(host: Pick<Host, 'arch' | 'libc' | 'platform'>): Buil
   const variant = host.libc === 'musl' ? '-musl' : '';
   const name = `bun-${host.platform}-${host.arch}${variant}`;
   const target = readTarget(name);
-  if ('refused' in target) {
+  if ('refused' in target || target.kind === 'npm') {
     throw new Error(noHostTarget(name));
   }
   return target;

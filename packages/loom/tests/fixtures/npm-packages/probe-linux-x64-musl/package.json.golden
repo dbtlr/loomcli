@@ -1,0 +1,26 @@
+{
+  "name": "@acme/probe-linux-x64-musl",
+  "version": "1.2.3",
+  "description": "The linux-x64-musl binary of @acme/probe.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acme/probe.git"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "musl"
+  ],
+  "files": [
+    "bin"
+  ],
+  "preferUnplugged": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}

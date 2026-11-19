@@ -1,26 +1,31 @@
 import { existsSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, join, parse, resolve, sep } from 'node:path';
+import { basename, dirname, join, parse, resolve } from 'node:path';
 
-import { InputError } from '@loomcli/core';
+import { InputError, isNpmPackageName, isPortableName, UsageError } from '@loomcli/core';
 import type { ActionHandler } from '@loomcli/core';
 
 import {
   applicationName,
   buildFacts,
   definePair,
+  manifestOf,
   readManifest,
   scaffoldName,
 } from '../../helpers/build-facts.js';
 import type { Manifest } from '../../helpers/build-facts.js';
-import { hostTarget } from '../../helpers/build-target.js';
+import { hostTarget, platformTarget } from '../../helpers/build-target.js';
 import type { BuildTarget } from '../../helpers/build-target.js';
 import { build, carriedFolder, watch } from '../../helpers/build.js';
 import type { BuildPlan } from '../../helpers/build.js';
-import { packagePaths } from '../../helpers/loom-config.js';
-import type { PackagePaths } from '../../helpers/loom-config.js';
+import { npmPlatforms, packagePaths } from '../../helpers/loom-config.js';
+import type { LoomConfig, PackagePaths } from '../../helpers/loom-config.js';
+import { parseManifest } from '../../helpers/manifest.js';
 import { existingModule, shown } from '../../helpers/modules.js';
+import { buildNpm, unownedFolder } from '../../helpers/npm-packages.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
+import { relationOf } from '../../helpers/path-relation.js';
 import { report } from '../../helpers/report.js';
+import { readWorkingFile } from '../../helpers/repository.js';
 import type { RunHost } from '../../helpers/run-host.js';
 import { readSkillsDeclaration } from '../../helpers/skills-declaration.js';
 import type { SkillsCarry } from '../../helpers/skills-declaration.js';
@@ -30,6 +35,15 @@ import {
   built,
   carriedFolderOverlap,
   factsWithDefine,
+  noNameField,
+  npmDoesNotWatch,
+  npmFactsPerPlatform,
+  npmIsDistributed,
+  npmFolderNotOwned,
+  npmModeOff,
+  npmOutOverlap,
+  npmApplicationNameInvalid,
+  npmPackageNameInvalid,
   optionLine,
   outputIsDirectory,
   repositoryNeedsRelease,
@@ -49,6 +63,74 @@ function optionError(name: string, message: string): InputError {
       spelling: `--${name}`,
     },
   ]);
+}
+
+/**
+ * A `--target npm` in a package whose configuration file does not turn the launcher packages on,
+ * which fails with exit code 2 before the build reads anything else, under ADR-0213.
+ */
+class NpmModeOffError extends UsageError {
+  constructor() {
+    super(npmModeOff);
+    this.name = 'NpmModeOffError';
+  }
+}
+
+/**
+ * A `--target npm` output directory that is the package directory or holds it, which fails with
+ * exit code 2 before the build compiles, under ADR-0213.
+ */
+class NpmOutOverlapError extends UsageError {
+  constructor(out: string, relation: string, directory: string) {
+    super(npmOutOverlap(out, relation, directory));
+    this.name = 'NpmOutOverlapError';
+  }
+}
+
+/**
+ * A `--target npm` package whose `name` is outside npm's package name rule, which fails with exit
+ * code 2 before the build compiles, under ADR-0213, because each package's folder is named for it.
+ */
+class NpmPackageNameError extends UsageError {
+  constructor(name: string) {
+    super(npmPackageNameInvalid(name));
+    this.name = 'NpmPackageNameError';
+  }
+}
+
+/**
+ * A `--target npm` application name, from `--name` or the one `bin` key, that is not a portable
+ * name, which fails with exit code 2 before the build compiles, because the binary's file name and
+ * the launcher's bin entry are the name.
+ */
+class NpmApplicationNameError extends UsageError {
+  constructor(name: string) {
+    super(npmApplicationNameInvalid(name));
+    this.name = 'NpmApplicationNameError';
+  }
+}
+
+/**
+ * The option errors of a `--target npm` build, which writes distributed release packages and
+ * compiles one binary per platform, each with facts of its own.
+ */
+function refuseNpmOptions(options: {
+  build: string | undefined;
+  define: boolean | undefined;
+  facts: boolean | undefined;
+  watch: boolean | undefined;
+}) {
+  if (options.build === 'development') {
+    throw optionError('build', npmIsDistributed);
+  }
+  if (options.watch) {
+    throw optionError('watch', npmDoesNotWatch);
+  }
+  for (const option of ['facts', 'define'] as const) {
+    if (options[option]) {
+      throw optionError(option, npmFactsPerPlatform(option));
+    }
+  }
 }
 
 /**
@@ -154,17 +236,6 @@ function realThrough(path: string): string {
   return join(realpathSync.native(current), ...missing);
 }
 
-/** How one real path stands to another: the same, inside it, holding it, or apart. */
-function relationOf(path: string, other: string): 'is' | 'is inside' | 'holds' | undefined {
-  if (path === other) {
-    return 'is';
-  }
-  if (path.startsWith(`${other}${sep}`)) {
-    return 'is inside';
-  }
-  return other.startsWith(`${path}${sep}`) ? 'holds' : undefined;
-}
-
 /**
  * Fails a bundle whose `loom-skills/` would be the skills folder, sit inside it, or hold it, before
  * it builds, because every bundle build removes or replaces that folder whole, a development one
@@ -182,6 +253,20 @@ function separateCarriedFolder(cwd: string, plan: BuildPlan): void {
     throw new Error(
       carriedFolderOverlap(shown(cwd, carried), relation, shown(cwd, plan.skills.folder)),
     );
+  }
+}
+
+/**
+ * Fails a `--target npm` build whose output directory is the package directory or holds it, with
+ * code 2 before it compiles, because the build replaces each package's directory whole, and the
+ * launcher's directory or a platform's could be the package directory. Real paths are compared, so
+ * a link on either side is seen. An output inside the package directory, as `dist/npm` is, is
+ * where the packages belong.
+ */
+function separateNpmOutput(cwd: string, out: string, directory: string): void {
+  const relation = relationOf(realThrough(out), realThrough(directory));
+  if (relation === 'is' || relation === 'holds') {
+    throw new NpmOutOverlapError(shown(cwd, out), relation, shown(cwd, directory));
   }
 }
 
@@ -222,6 +307,92 @@ function skillsOf(
   });
 }
 
+/** What a `--target npm` build reads from its run, beyond the package itself. */
+interface NpmRequest {
+  readonly config: LoomConfig;
+  readonly cwd: string;
+  readonly options: {
+    readonly entry: string | undefined;
+    readonly name: string | undefined;
+    readonly out: string | undefined;
+    readonly repository: string | undefined;
+  };
+  readonly run: RunHost;
+}
+
+/**
+ * Writes the launcher package and a platform package per listed platform into `<out>/npm`, or the
+ * directory `--out` names, under ADR-0213. Each binary is the one `loom build --release --target
+ * bun-<platform>` compiles, whose release facts bake the launcher package's name as `npmPackage`.
+ * It answers the directory it wrote, and the warning of a build that carried no skills folder.
+ */
+async function buildNpmPackages({ config, cwd, options, run }: NpmRequest) {
+  const directory = packageDirectory(cwd);
+  const source = readWorkingFile(directory, 'package.json');
+  const raw = parseManifest(source, join(directory, 'package.json'));
+  const manifest = manifestOf(source, join(directory, 'package.json'));
+  const pkg = typeof manifest.name === 'string' && manifest.name !== '' ? manifest.name : undefined;
+  if (pkg === undefined) {
+    throw new Error(noNameField);
+  }
+  if (!isNpmPackageName(pkg)) {
+    throw new NpmPackageNameError(pkg);
+  }
+  const appName = applicationName(manifest, options.name);
+  if (!isPortableName(appName)) {
+    throw new NpmApplicationNameError(appName);
+  }
+  const listed = new Set(config.npm?.platforms ?? npmPlatforms);
+  const binaries = npmPlatforms
+    .filter((platform) => listed.has(platform))
+    .map((platform) => ({
+      facts: buildFacts({
+        build: 'distributed',
+        manifest,
+        name: options.name,
+        release: { repository: options.repository },
+        target: platformTarget(platform),
+      }),
+      platform,
+    }));
+  const version = binaries[0]?.facts.release?.version ?? '';
+  const name = appName;
+  const paths = packagePaths(directory, config);
+  const entry = entryModule(cwd, paths, options.entry);
+  const out = options.out === undefined ? join(paths.out, 'npm') : resolve(cwd, options.out);
+  separateNpmOutput(cwd, out, directory);
+  const unowned = unownedFolder(
+    out,
+    pkg,
+    binaries.map(({ platform }) => platform),
+  );
+  if (unowned !== undefined) {
+    throw new Error(npmFolderNotOwned(shown(cwd, unowned.path), unowned.name));
+  }
+  const module = existsSync(paths.application) ? paths.application : undefined;
+  const skills = await skillsOf(run, { cwd, directory, entry, module });
+  const plans = binaries.map(({ facts, platform }) => ({
+    plan: {
+      application: undefined,
+      directory,
+      entry,
+      facts,
+      out,
+      skills,
+      target: platformTarget(platform),
+    },
+    platform,
+  }));
+  const outcome = await buildNpm(
+    { binaries: plans, directory, manifest: raw, name, out, pkg, version },
+    run,
+  );
+  const warning = outcome.uncarriedSkillsPlugin
+    ? uncarriedWarning(warningName(manifest, options.name, directory), skills)
+    : undefined;
+  return { out, warning };
+}
+
 /** Builds the package's application for one target, or prints its facts or define pair. */
 export const buildApplication: ActionHandler<typeof buildCommand> = async ({
   host,
@@ -237,14 +408,33 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
   if (options.application !== undefined && options.target?.kind !== 'bundle') {
     throw optionError('application', applicationNeedsBundle);
   }
-  if (options.repository !== undefined && !options.release) {
+  const npm = options.target?.kind === 'npm';
+  if (options.repository !== undefined && !options.release && !npm) {
     throw optionError('repository', repositoryNeedsRelease);
+  }
+  if (npm) {
+    refuseNpmOptions(options);
+    if (provided.config.npm?.launcher !== true) {
+      throw new NpmModeOffError();
+    }
   }
   if (options.watch && options.build === 'distributed') {
     throw optionError('build', watchIsDevelopment);
   }
   await report({ out, signal }, async () => {
     const { cwd } = host;
+    if (options.target?.kind === 'npm') {
+      const run = { host, onShutdown, signal };
+      const npmBuild = await buildNpmPackages({ config: provided.config, cwd, options, run });
+      // A cancelled build undid what it wrote, so it reports nothing built.
+      if (signal.aborted) {
+        return '';
+      }
+      if (npmBuild.warning !== undefined) {
+        await out.warn(npmBuild.warning);
+      }
+      return `${built(shown(cwd, npmBuild.out), 'npm')}\n`;
+    }
     const directory = packageDirectory(cwd);
     const manifest = readManifest(directory);
     const target = options.target ?? hostTarget(host);

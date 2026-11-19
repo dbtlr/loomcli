@@ -12,7 +12,7 @@ The toolchain has no `check` command: the assembly check from [`@loomcli/testing
 
 ## Commands
 
-- [loom build](build.md): open it when you build an application for Node, Bun, or a compiled binary, or need the facts a build bakes in.
+- [loom build](build.md): open it when you build an application for Node, Bun, or a compiled binary, ship its binaries through npm as launcher and platform packages, or need the facts a build bakes in.
 - [The package changelog](changelog.md): open it when you write change fragments, cut a package's version or prerelease, or print a version's release notes.
 - [loom docs](docs.md): open it when you publish a Markdown command reference for the whole application.
 - [loom init](init.md): open it when you scaffold a new application or refresh the files init manages.

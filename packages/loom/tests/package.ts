@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { childEnvironment } from '../../../scripts/test-process.js';
 import { put, temporaryRoot } from './fixture.js';
 import { run } from './run.js';
+import type { BunStandIn } from './run.js';
 
 /** The repository root, whose installed packages a fixture package links. */
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
@@ -64,7 +65,7 @@ export function linkInstalled(root: string, links: readonly Link[]) {
 export function loom(
   cwd: string,
   args: string[],
-  options: { env?: Record<string, string | undefined> } = {},
+  options: { bun?: BunStandIn; env?: Record<string, string | undefined> } = {},
 ) {
   return run(args, { ...options, cwd });
 }

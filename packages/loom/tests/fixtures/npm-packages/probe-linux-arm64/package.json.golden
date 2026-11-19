@@ -1,0 +1,26 @@
+{
+  "name": "@acme/probe-linux-arm64",
+  "version": "1.2.3",
+  "description": "The linux-arm64 binary of @acme/probe.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acme/probe.git"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "files": [
+    "bin"
+  ],
+  "preferUnplugged": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}

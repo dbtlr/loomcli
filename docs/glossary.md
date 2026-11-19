@@ -1173,7 +1173,7 @@ The directory of the nearest `package.json` at or above where a `loom` command r
 _Avoid_: Project root, workspace, repository root
 
 **Toolchain configuration file**:
-`loom.config.json`, the configuration file the `loom` bin reads at or below the package directory and never above it. Its `paths` key names where the package keeps what the bin reads and writes, each path defaulting to the convention and resolving against the package directory, and its `postInstall` key holds the post-install command and message. A command option beats the file, and the file beats the convention.
+`loom.config.json`, the configuration file the `loom` bin reads at or below the package directory and never above it. Its `paths` key names where the package keeps what the bin reads and writes, each path defaulting to the convention and resolving against the package directory, its `postInstall` key holds the post-install command and message, and its `npm` key turns on the launcher package and platform packages. A command option beats the file, and the file beats the convention.
 _Avoid_: Loom config, toolchain settings, rc file
 
 **Entry**:
@@ -1195,6 +1195,14 @@ _Avoid_: Generated file, owned file, vendored file
 **Authoring skill**:
 The skill `loom init` writes as managed files at `.agents/skills/loom/`, which teaches a coding agent to author a Loom application: how the parts fit, which the code and its doc comments do not show. It is written by hand, never generated, and its `metadata.version` names the release it was last reviewed against.
 _Avoid_: Loom skill, author guide
+
+**Launcher package**:
+The npm package, named for the application's own package, that `loom build --target npm` writes when `loom.config.json` sets `npm.launcher`. It holds a Loom-rendered Node.js launcher as its bin and lists each platform package as an optional dependency at the exact version. When the launcher runs, it finds the platform package that matches the host, at its own version, and replaces itself with that package's binary, passing its arguments, or, on a Node without `process.execve`, runs the binary as a child and ends as the child ended. It has no dependencies and no install script.
+_Avoid_: Wrapper package, shim, meta package, root package
+
+**Platform package**:
+An npm package named `<pkg>-<os>-<arch>`, with `-musl` for a musl Linux build, after the release asset it matches, that holds one platform's compiled binary for the launcher package `<pkg>`. Its `os`, `cpu`, and, on Linux, `libc` fields let the package manager install only the one that matches the host. It links no bin of its own.
+_Avoid_: Binary package, native package, optional package, platform target
 
 **Installer script**:
 The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary. When `loom.config.json` declares them, it runs its post-install command and prints its post-install message. Under `--unmanaged` it installs a side copy instead, writes no record, and runs no post-install command.

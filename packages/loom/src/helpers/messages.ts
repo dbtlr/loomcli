@@ -39,6 +39,9 @@ function systemCause(code: string | undefined): string {
     case 'ENOSPC': {
       return ', because no space is left';
     }
+    case 'ENOEXEC': {
+      return ', because it is not a program this system can run';
+    }
     default: {
       return codeNote(code);
     }
@@ -142,7 +145,7 @@ const noApplicationName =
   'package.json names no application in bin or name, so set its name field and run loom init again.';
 
 const acceptedTargets =
-  'Use node, bun, or a Bun compile target bun-<os>-<arch> for linux or darwin on x64 or arm64, with -musl on linux and -baseline or -modern on x64, such as bun-linux-x64.';
+  'Use node, bun, npm, or a Bun compile target bun-<os>-<arch> for linux or darwin on x64 or arm64, with -musl on linux and -baseline or -modern on x64, such as bun-linux-x64.';
 
 function refusedTarget(value: string): string {
   const problem =
@@ -188,6 +191,10 @@ function notAString(value: unknown): string {
 }
 
 const notAWordList = 'Expected a non-empty array of strings';
+
+const repeatedPlatform = 'Expected each platform once';
+
+const platformsNeedLauncher = 'Expected npm.launcher to be true beside npm.platforms';
 
 // Repository reads.
 
@@ -259,8 +266,10 @@ export {
   notAString,
   notAWordList,
   notAnObject,
+  platformsNeedLauncher,
   refusedTarget,
   releaseShallow,
+  repeatedPlatform,
   symlinkedPackage,
   systemCause,
   systemFailure,
