@@ -4,6 +4,9 @@
  */
 import { escapeControlCharacters } from '@loomcli/core';
 
+/** The length of a view list with no formatter-appended view. */
+const EMPTY = 0;
+
 const shownNames = (names: readonly string[]): string =>
   names.map(escapeControlCharacters).join(', ');
 
@@ -19,9 +22,18 @@ function shownFields(fields: readonly string[]): string {
   return fields.map((field) => `"${escapeControlCharacters(field)}"`).join(', ');
 }
 
-/** `--fields` beside a view that is not one of the formatter's encodings. */
-const fieldsNeedEncoding =
-  'Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format json or --format jsonl.';
+/** Only views appended by the formatter are valid corrections for `--fields`. */
+function fieldsNeedEncoding(views: readonly string[]): string {
+  if (views.length === EMPTY) {
+    return 'Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields.';
+  }
+  return `Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with ${shownFormats(views)}.`;
+}
+
+/** Each view as the `--format` spelling that selects it, joined with `or`. */
+function shownFormats(views: readonly string[]): string {
+  return views.map((view) => `--format ${escapeControlCharacters(view)}`).join(' or ');
+}
 
 /** The opening of the sentence below, naming the fields the output does not hold. */
 function namedFields(unknown: readonly string[]): string {

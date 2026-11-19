@@ -30,8 +30,9 @@ function selectFields(context: MiddlewareContext): void {
   if (result === null) {
     return;
   }
-  if (!readExtension(context.command, providedViews)?.includes(context.view ?? '')) {
-    throw fieldsFailure(fieldsNeedEncoding);
+  const appended = readExtension(context.command, providedViews) ?? [];
+  if (!appended.includes(context.view ?? '')) {
+    throw fieldsFailure(fieldsNeedEncoding(appended));
   }
   context.transform = result.kind === 'rows' ? rowFields(fields) : valueFields(fields);
 }
