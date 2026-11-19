@@ -717,6 +717,128 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     });
   });
 
+  // Tab is bound to complete-word, which runs completion alone, so only the script can evaluate.
+  // HOME is the home folder in the working directory, so a typed ~/ lists files the test wrote.
+  // A dynamic named directory hook touches the sentinel, so a typed ~[x] that reaches it shows.
+  describe.runIf(installed && shell === 'zsh')('the Zsh listing of file names', () => {
+    const { complete, cwd } = useSession({
+      before: [
+        "bindkey '^I' complete-word",
+        'HOME=$PWD/home',
+        'zsh_directory_name() { touch sentinel; return 1; }',
+      ],
+      files: [
+        '.hidden.json',
+        'alpha.json',
+        'docs/',
+        'docs/a.json',
+        'docs/b.csv',
+        'docs/inner/',
+        'home/',
+        'home/h.json',
+        'home/idir/',
+        'spaced/',
+        'spaced/my dir/',
+        'spaced/my dir/c.json',
+      ],
+      main: fixture,
+      name: 'kit',
+      shell,
+      sources,
+    });
+    const sentinel = () => join(cwd(), 'sentinel');
+
+    /** Whether the typed text ran a command, and the sentinel removed so the next case starts clean. */
+    const ran = (): boolean => {
+      const found = existsSync(sentinel());
+      rmSync(sentinel(), { force: true });
+      return found;
+    };
+
+    const typedFolders = [
+      '$(touch sentinel)/',
+      '`touch sentinel`/',
+      // A parameter subscript, written so it reads as no template placeholder.
+      `\${HOME[$(touch sentinel)]}/`,
+      '$((x[$(touch sentinel)]))/',
+      "x(e:'touch sentinel':)/",
+      "*(e:'touch sentinel':)",
+      '=(touch sentinel)/',
+      '~/$(touch sentinel)/',
+      '~[x]/',
+    ];
+    const typedLeads = [
+      'kit --file ',
+      'kit scan --config ',
+      'kit scan --config=',
+      'kit scan -c',
+      'kit scan --into ',
+      'kit scan --into=',
+      'kit scan -i',
+    ];
+
+    it.each(typedLeads.flatMap((lead) => typedFolders.map((folder) => `${lead}${folder}`)))(
+      '%s<Tab> runs nothing the typed word holds',
+      async (typed) => {
+        const { line } = await complete(typed);
+        expect(line.startsWith(typed)).toBe(true);
+        expect(ran()).toBe(false);
+      },
+    );
+
+    it.each([
+      ['kit --file docs/', ['a.json', 'b.csv', 'inner']],
+      ['kit scan --config docs/', ['a.json', 'inner']],
+      ['kit --file ~/', ['h.json', 'idir']],
+      ['kit scan --config ', ['alpha.json', 'docs', 'home', 'spaced']],
+    ])('%s<Tab> lists %j', async (typed, listed) => {
+      const { listed: found } = await complete(typed);
+      expect(names(found)).toEqual(listed);
+    });
+
+    it.each([
+      ['kit scan --config ./docs/a', 'kit scan --config ./docs/a.json'],
+      ['kit scan --config docs/inner/../a', 'kit scan --config docs/inner/../a.json'],
+      ['kit scan --config=docs/a', 'kit scan --config=docs/a.json'],
+      ['kit scan -cdocs/a', 'kit scan -cdocs/a.json'],
+      ['kit scan --into=docs/i', 'kit scan --into=docs/inner/'],
+      ['kit scan -idocs/i', 'kit scan -idocs/inner/'],
+      ['kit scan --config ~/h', 'kit scan --config ~/h.json'],
+      ['kit scan --into ~/', 'kit scan --into ~/idir/'],
+      ['kit scan --into docs/', 'kit scan --into docs/inner/'],
+      ['kit scan --config .', 'kit scan --config .hidden.json'],
+      [String.raw`kit scan --config spaced/my\ d`, String.raw`kit scan --config spaced/my\ dir/`],
+      [
+        String.raw`kit scan --config spaced/my\ dir/`,
+        String.raw`kit scan --config spaced/my\ dir/c.json`,
+      ],
+      ['kit --file docs/b', 'kit --file docs/b.csv'],
+    ])('%s<Tab> inserts %s', async (typed, done) => {
+      const { line } = await complete(typed);
+      expect(line.trimEnd()).toBe(done);
+    });
+
+    it('a sole folder takes no space after it, and a sole file one', async () => {
+      await expect(complete('kit scan --into=docs/i')).resolves.toMatchObject({
+        line: 'kit scan --into=docs/inner/',
+      });
+      await expect(complete('kit scan --config=docs/a')).resolves.toMatchObject({
+        line: 'kit scan --config=docs/a.json ',
+      });
+    });
+
+    it('an absolute folder lists the names in it', async () => {
+      const typed = `kit scan --config ${cwd()}/docs/a`;
+      const { line } = await complete(typed);
+      expect(line.trimEnd()).toBe(`${typed}.json`);
+    });
+
+    it('a typed $HOME/ is read as text: it lists nothing and stays as typed', async () => {
+      const typed = 'kit scan --into $HOME/';
+      await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
+    });
+  });
+
   describe.runIf(installed && shell === 'fish')('the Fish listing of hinted file names', () => {
     // A name that holds a tab would split the listing line, so Fish leaves it out.
     const { complete } = useSession({

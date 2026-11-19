@@ -72,7 +72,11 @@ interface SessionOptions {
   installed?: { file: string; text: string };
   /** Executables written beside the program on PATH, each name with the `sh` body it runs. */
   programs?: Readonly<Record<string, string>>;
-  /** PowerShell statements run before the script is dot-sourced, such as a preference. */
+  /**
+   * Statements run before the script is loaded: in PowerShell before it is dot-sourced, such as a
+   * preference, and in Bash, Zsh, and Fish before the harness's own setup lines, such as a key
+   * binding.
+   */
   before?: readonly string[];
   /**
    * A home folder the test owns and keeps, whose startup files load the script in place of the
@@ -730,7 +734,8 @@ async function openSession(options: SessionOptions): Promise<Session> {
   const setup = join(root, `setup.${shell}`);
   const sourced = (options.sources ?? []).map((file) => `source ${quoted(file)}`);
   const load = script === undefined ? undefined : { installed: options.installed, script };
-  writeFileSync(setup, `${[...sourced, ...setupLines(shell, load)].join('\n')}\n`);
+  const lines = [...sourced, ...(options.before ?? []), ...setupLines(shell, load)];
+  writeFileSync(setup, `${lines.join('\n')}\n`);
 
   const ownStartup = options.home !== undefined;
   const child = spawn('zsh', [driver, ...shellCommand(shell, setup, ownStartup)], {
