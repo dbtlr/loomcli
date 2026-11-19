@@ -32,6 +32,7 @@ const fixture = new URL('fixtures/completion.mjs', import.meta.url);
 const quotedPrograms: Record<Shell, string[]> = {
   bash: ['kit'],
   fish: ['kit', "'kit'"],
+  nu: ['kit'],
   pwsh: ['kit', "& 'kit'"],
   zsh: ['kit', "'kit'"],
 };
@@ -66,6 +67,17 @@ function unquoted(word: string): string {
     /\\(?<escaped>.)|'(?<quoted>[^']*)'/gu,
     (_match, escaped?: string, quoted?: string) => escaped ?? quoted ?? '',
   );
+}
+
+/**
+ * The words of a Zsh command line as Zsh reads them: split by its parser and with one level of
+ * quoting removed, which expands nothing and runs nothing.
+ */
+function zshWords(line: string): string[] {
+  // A Zsh parameter expansion, written so it reads as no template placeholder.
+  const program = `print -rN -- "\${(@Q)\${(z)1}}"`;
+  const result = spawnSync('zsh', ['-f', '-c', program, 'zsh', line], { encoding: 'utf8' });
+  return result.stdout.split('\0').slice(0, -1);
 }
 
 /**
@@ -210,9 +222,10 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       });
     });
 
+    // The typed word starts like alpha.json, so a shell that fell back to file names would show it.
     it('an unclosed quote under the cursor inserts and lists nothing', async () => {
-      await expect(complete('kit keys "p')).resolves.toMatchObject({
-        line: 'kit keys "p',
+      await expect(complete('kit keys "a')).resolves.toMatchObject({
+        line: 'kit keys "a',
         listed: [],
       });
     });
@@ -283,7 +296,8 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     const { complete, cwd } = useSession({ main: fixture, name: 'kit', shell, sources });
     const sentinel = () => existsSync(join(cwd(), 'sentinel'));
 
-    it.each([
+    // Nushell reads a typed $, backtick, or ; as its own syntax, so its values are checked below.
+    it.skipIf(shell === 'nu').each([
       ['$', '$(touch sentinel)'],
       ['`', '`touch sentinel`'],
       [';', ';touch sentinel'],
@@ -299,14 +313,30 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       },
     );
 
-    it('the listed values leave out the one holding a newline and every other unsafe value', async () => {
-      const { listed } = await complete('kit keys ');
-      // Bash lists each word escaped, as it would insert it.
-      expect(listed.map((word) => unquoted(word)).toSorted()).toEqual(
-        ['plain', '$(touch sentinel)', '`touch sentinel`', ';touch sentinel'].toSorted(),
-      );
-      expect(sentinel()).toBe(false);
-    });
+    it.skipIf(shell === 'nu')(
+      'the listed values leave out the one holding a newline and every other unsafe value',
+      async () => {
+        const { listed } = await complete('kit keys ');
+        // Bash lists each word escaped, as it would insert it.
+        expect(listed.map((word) => unquoted(word)).toSorted()).toEqual(
+          ['plain', '$(touch sentinel)', '`touch sentinel`', ';touch sentinel'].toSorted(),
+        );
+        expect(sentinel()).toBe(false);
+      },
+    );
+
+    // Nushell lists each value as it inserts it.
+    // That is a bare word, or a string that holds the value as text.
+    it.runIf(shell === 'nu')(
+      'the listed values are each a bare word or a string, never code',
+      async () => {
+        const { listed } = await complete('kit keys ');
+        expect(listed.toSorted()).toEqual(
+          ['plain', '`$(touch sentinel)`', '"`touch sentinel`"', '`;touch sentinel`'].toSorted(),
+        );
+        expect(sentinel()).toBe(false);
+      },
+    );
 
     it.each(['kit "$(touch sentinel)" ', 'kit $(touch sentinel) ', 'kit keys `touch sentinel` '])(
       'a typed word in %s reaches the program as text and runs nothing',
@@ -317,24 +347,37 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     );
 
     // PowerShell's Tab inserts no common prefix of several matches, so only the other shells do.
-    describe.runIf(shell !== 'pwsh')('the common prefix of several values', () => {
-      it.each([
-        [String.raw`\$`, '$(touch sentinel)'],
-        [String.raw`a\ `, 'a b'],
-      ])(
-        'several values that share a prefix insert the prefix after %s as quoted text',
-        async (typed, prefix) => {
-          const { line } = await complete(`kit odd values ${typed}`);
-          const inserted = line.slice('kit odd values '.length).trimEnd();
-          expect(line.startsWith('kit odd values ')).toBe(true);
-          expect(inserted).not.toBe(prefix);
-          expect(unquoted(inserted)).toBe(prefix);
-          expect(sentinel()).toBe(false);
-        },
-      );
+    // Nushell inserts the prefix inside a string it leaves open, which the case below checks.
+    describe.runIf(shell !== 'pwsh' && shell !== 'nu')(
+      'the common prefix of several values',
+      () => {
+        it.each([
+          [String.raw`\$`, '$(touch sentinel)'],
+          [String.raw`a\ `, 'a b'],
+        ])(
+          'several values that share a prefix insert the prefix after %s as quoted text',
+          async (typed, prefix) => {
+            const { line } = await complete(`kit odd values ${typed}`);
+            const inserted = line.slice('kit odd values '.length).trimEnd();
+            expect(line.startsWith('kit odd values ')).toBe(true);
+            expect(inserted).not.toBe(prefix);
+            expect(unquoted(inserted)).toBe(prefix);
+            expect(sentinel()).toBe(false);
+          },
+        );
+      },
+    );
+
+    it.runIf(shell === 'nu').each([
+      ['p', '`p\\q`'],
+      ['r', '`r\\:s`'],
+    ])('a value after %s that holds a backslash inserts as the string %s', async (typed, value) => {
+      const { line } = await complete(`kit odd values ${typed}`);
+      expect(line.slice('kit odd values '.length).trimEnd()).toBe(value);
+      expect(sentinel()).toBe(false);
     });
 
-    it.each([
+    it.skipIf(shell === 'nu').each([
       ['p', String.raw`p\q`],
       ['r', String.raw`r\:s`],
     ])('a value after %s that holds a backslash inserts as %s', async (typed, value) => {
@@ -382,6 +425,47 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         const { line } = await complete(`kit odd values ${typed}`);
         expect(line.slice('kit odd values '.length).trimEnd()).toBe(inserted);
       });
+    });
+
+    /**
+     * The script inserts a value with a space as a backtick string, so its scanner must read its own
+     * quoting back as one word. It also reads a double-quoted string with a backtick or an escaped
+     * quote, and a raw string, as one word.
+     */
+    it.runIf(shell === 'nu').each([
+      ['a backtick string with a space', '`a b`'],
+      ['a backtick string that holds a quote and a backslash', '`a "b\' \\ c`'],
+      ['a double-quoted string that holds a backtick', '"a`b c"'],
+      ['a double-quoted string that holds an escaped quote', String.raw`"a\"b c"`],
+      ["the script's own double-quoted form of a backtick and a quote", `"a\`\\"b c"`],
+      ['a raw string with a space', "r#'a b'#"],
+      ['a raw string with two # that holds a quote and a #', "r##'a 'b'# c'##"],
+    ])('--fo<Tab> completes an option after %s', async (_title, value) => {
+      const typed = `kit paths --field ${value} --fo`;
+      const { line } = await complete(typed);
+      expect(line.trimEnd()).toBe(`${typed}rmat`);
+      expect(sentinel()).toBe(false);
+    });
+
+    // A quoted span inside a bare word belongs to that word, as Nushell reads it.
+    it.runIf(shell === 'nu').each([
+      ['an option with a double-quoted value attached', 'kit paths --field="a b" --fo'],
+      ['an option with a single-quoted value attached', "kit paths --field='a b' --fo"],
+      ['a value with a single-quoted span in it', "kit paths --field foo'b c' --fo"],
+    ])('--fo<Tab> completes an option after %s', async (_title, typed) => {
+      const { line } = await complete(typed);
+      expect(line.trimEnd()).toBe(`${typed}rmat`);
+      expect(sentinel()).toBe(false);
+    });
+
+    it.runIf(shell === 'nu').each([
+      ['an unclosed backtick string', 'kit paths --field `a b --fo'],
+      ['an unclosed span inside a word', "kit paths --field='a b --fo"],
+      ['an unclosed raw string', "kit paths --field r#'a b --fo"],
+      ['a raw string closed by too few #', "kit paths --field r##'a b'# --fo"],
+    ])('%s offers nothing', async (_title, typed) => {
+      await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
+      expect(sentinel()).toBe(false);
     });
 
     it('a typed $(...) value is read as the option value it is, and completion continues past it', async () => {
@@ -639,7 +723,7 @@ function names(listed: readonly string[]): string[] {
 describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
   // The directory holds JSON and CSV documents, a text file, an archive, a name whose extension
   // Differs from json only in case, and two folders.
-  describe.skipIf(!installed)('a static value hint on file names', () => {
+  describe.skipIf(!installed || shell === 'nu')('a static value hint on file names', () => {
     const { complete } = useSession({
       files: [
         'A.JSON',
@@ -734,6 +818,7 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
         'docs/a.json',
         'docs/b.csv',
         'docs/inner/',
+        'empty/',
         'home/',
         'home/h.json',
         'home/idir/',
@@ -790,7 +875,7 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       ['kit --file docs/', ['a.json', 'b.csv', 'inner']],
       ['kit scan --config docs/', ['a.json', 'inner']],
       ['kit --file ~/', ['h.json', 'idir']],
-      ['kit scan --config ', ['alpha.json', 'docs', 'home', 'spaced']],
+      ['kit scan --config ', ['alpha.json', 'docs', 'empty', 'home', 'spaced']],
     ])('%s<Tab> lists %j', async (typed, listed) => {
       const { listed: found } = await complete(typed);
       expect(names(found)).toEqual(listed);
@@ -837,7 +922,200 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       const typed = 'kit scan --into $HOME/';
       await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
     });
+
+    it.each([
+      'kit scan --config empty/',
+      'kit --file empty/',
+      'kit scan --into empty/',
+      'kit scan --config missing/',
+      'kit --file missing/a',
+      'kit scan --into=missing/',
+    ])('%s<Tab> lists nothing, says nothing, and leaves the line as typed', async (typed) => {
+      await expect(complete(typed)).resolves.toEqual({ line: typed, listed: [], listing: '' });
+    });
   });
+
+  // The matcher-list below is the oh-my-zsh and prezto default.
+  // It matches a typed lowercase letter against an uppercase one, and the format heads each group.
+  describe.runIf(installed && shell === 'zsh')(
+    "the Zsh listing under the operator's styles",
+    () => {
+      const { complete } = useSession({
+        before: [
+          "bindkey '^I' complete-word",
+          "zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'",
+          "zstyle ':completion:*:descriptions' format 'heading:%d'",
+        ],
+        files: ['Docs/', 'Docs/Readme.json', 'More/', 'Notes.json', 'Notes.csv'],
+        main: fixture,
+        name: 'kit',
+        shell,
+        sources,
+      });
+
+      it.each([
+        ['kit scan --config doc', 'kit scan --config Docs/'],
+        ['kit scan --config=doc', 'kit scan --config=Docs/'],
+        ['kit --file doc', 'kit --file Docs/'],
+        ['kit scan --into doc', 'kit scan --into Docs/'],
+        ['kit scan --into=doc', 'kit scan --into=Docs/'],
+        ['kit scan --config Docs/r', 'kit scan --config Docs/Readme.json'],
+        ['kit scan --config n', 'kit scan --config Notes.json'],
+      ])('%s<Tab> matches by the matcher-list and inserts %s', async (typed, done) => {
+        const { line } = await complete(typed);
+        expect(line.trimEnd()).toBe(done);
+      });
+
+      it.each([
+        ['kit scan --config ', 'heading:file'],
+        ['kit --file ', 'heading:file'],
+        ['kit scan --into ', 'heading:directory'],
+      ])('%s<Tab> lists under the format heading %s', async (typed, heading) => {
+        const { listing } = await complete(typed);
+        expect(listing).toContain(heading);
+      });
+    },
+  );
+
+  // Zsh reads a leading ~ as a home folder and a leading = as a command's path, so each is escaped.
+  describe.runIf(installed && shell === 'zsh')('the Zsh listing of a sole ~ name', () => {
+    const { complete } = useSession({
+      before: ["bindkey '^I' complete-word"],
+      files: ['~lead.json'],
+      main: fixture,
+      name: 'kit',
+      shell,
+      sources,
+    });
+
+    // A bare -c is read as the option itself, so the short option's case types the value's ~.
+    it.each([
+      ['kit --file ', '~lead.json'],
+      ['kit scan --config ', '~lead.json'],
+      ['kit scan --config=', '--config=~lead.json'],
+      [String.raw`kit scan -c\~`, '-c~lead.json'],
+    ])('%s<Tab> inserts the word %s and a space after it', async (typed, word) => {
+      const { line } = await complete(typed);
+      expect(line.endsWith(String.raw`\~lead.json `)).toBe(true);
+      expect(zshWords(line).at(-1)).toBe(word);
+    });
+  });
+
+  describe.runIf(installed && shell === 'zsh')('the Zsh listing of names with a lead', () => {
+    const { complete } = useSession({
+      before: ["bindkey '^I' complete-word"],
+      files: ['~lead.json', '~load.json', '=eq.json'],
+      main: fixture,
+      name: 'kit',
+      shell,
+      sources,
+    });
+
+    it.each([
+      [String.raw`kit --file \~le`, String.raw`kit --file \~lead.json `],
+      [String.raw`kit scan --config \~lo`, String.raw`kit scan --config \~load.json `],
+      [String.raw`kit --file \=`, String.raw`kit --file \=eq.json `],
+      [String.raw`kit scan --config=\=`, String.raw`kit scan --config=\=eq.json `],
+    ])('%s<Tab> inserts the one name it matches as %s', async (typed, done) => {
+      await expect(complete(typed)).resolves.toMatchObject({ line: done });
+    });
+
+    it('several names that share an escaped prefix insert it', async () => {
+      const { line } = await complete(String.raw`kit --file \~`);
+      expect(line).toBe(String.raw`kit --file \~l`);
+    });
+
+    // Every name starts with an escaped character, so the backslash is their shared prefix.
+    // Zsh's own _files inserts it too.
+    it('kit scan --config <Tab> inserts the backslash every quoted name starts with', async () => {
+      const { line } = await complete('kit scan --config ');
+      expect(line).toBe('kit scan --config \\');
+    });
+
+    it.each(['kit scan --config \\', 'kit --file \\'])(
+      '%s<Tab> lists each name as text',
+      async (typed) => {
+        const { line, listed } = await complete(typed);
+        expect(line).toBe(typed);
+        expect(names(listed)).toEqual(['=eq.json', '~lead.json', '~load.json']);
+      },
+    );
+  });
+
+  // Each name below holds a character Zsh reads as syntax, and no other name starts like it.
+  // Zsh adds no space after a word it ends in $'…' quoting, so only the inserted word is checked.
+  describe.runIf(installed && shell === 'zsh')(
+    'the Zsh listing of a name Zsh reads as syntax',
+    () => {
+      const special = [
+        'a b.json',
+        'c*.json',
+        'd[.json',
+        'e(.json',
+        'f#.json',
+        'g!.json',
+        'h$.json',
+        'i;.json',
+        "j'.json",
+        'k\nl.json',
+        'm~n.json',
+        'o=p.json',
+      ];
+      const { complete } = useSession({
+        before: ["bindkey '^I' complete-word"],
+        files: ['odd/', ...special.map((name) => `odd/${name}`)],
+        main: fixture,
+        name: 'kit',
+        shell,
+        sources,
+      });
+
+      it.each(
+        special.flatMap((name) =>
+          ['kit scan --config ', 'kit --file '].map((lead) => [lead, name]),
+        ),
+      )('%sodd/<first letter><Tab> inserts the name %j exactly', async (lead, name) => {
+        const { line } = await complete(`${lead}odd/${name[0]}`);
+        expect(zshWords(line).at(-1)).toBe(`odd/${name}`);
+      });
+    },
+  );
+
+  // Nushell offers no extension and no lead as a value: under a hint the script returns nothing, so
+  // Nushell lists the file names itself, every one, and lists none after an attached `=`.
+  describe.runIf(installed && shell === 'nu')(
+    'a static value hint on file names in Nushell',
+    () => {
+      const { complete } = useSession({
+        files: ['A.JSON', 'alpha.json', 'notes.txt', 'one.csv', 'x.tar.gz', 'docs/'],
+        main: fixture,
+        name: 'kit',
+        shell,
+        sources,
+      });
+      const every = ['A.JSON', 'alpha.json', 'docs', 'notes.txt', 'one.csv', 'x.tar.gz'];
+
+      it.each(['kit scan --config ', 'kit scan --into ', 'kit scan '])(
+        '%s<Tab> lists every file name and offers no extension as a value',
+        async (line) => {
+          const { listed } = await complete(line);
+          expect(names(listed)).toEqual(every);
+        },
+      );
+
+      it.each(['kit scan --config=', 'kit scan --into=', 'kit scan --config=a'])(
+        '%s<Tab> lists and inserts nothing, because Nushell completes no file name after an =',
+        async (typed) => {
+          await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
+        },
+      );
+
+      it('kit scan --config x<Tab> inserts the name Nushell finds, which no hint narrows', async () => {
+        const { line } = await complete('kit scan --config x');
+        expect(line.trimEnd()).toBe('kit scan --config x.tar.gz');
+      });
+    },
+  );
 
   describe.runIf(installed && shell === 'fish')('the Fish listing of hinted file names', () => {
     // A name that holds a tab would split the listing line, so Fish leaves it out.

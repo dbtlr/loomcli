@@ -48,7 +48,7 @@ function answerCommand(settings: CompletionSettings) {
     });
 }
 
-/** The four shell names `install` and `uninstall` accept. */
+/** The five shell names `install` and `uninstall` accept. */
 const shellInput = oneOf(shells);
 
 /** What every installing child reads from its action context. */
@@ -73,7 +73,7 @@ const installCommand = new Command('install', {
   description: 'Install completion for your shell.',
 })
   .argument('shell', {
-    description: 'The shell: bash, zsh, fish, or pwsh. Your login shell when left out.',
+    description: 'The shell: bash, zsh, fish, pwsh, or nu. Your login shell when left out.',
     validate: shellInput,
   })
   .action(async (context) => {
@@ -94,7 +94,7 @@ const uninstallCommand = new Command('uninstall', {
   description: 'Remove completion from your shell.',
 })
   .argument('shell', {
-    description: 'The shell: bash, zsh, fish, or pwsh. Every installed shell when left out.',
+    description: 'The shell: bash, zsh, fish, pwsh, or nu. Every installed shell when left out.',
     validate: shellInput,
   })
   .action(async (context) => {
@@ -117,6 +117,9 @@ function completionCommand(settings: CompletionSettings) {
       shellCommand('fish', 'Fish', () => import('./fish.js').then(({ fishScript }) => fishScript)),
     )
     .command(
+      shellCommand('nu', 'Nushell', () => import('./nu.js').then(({ nuScript }) => nuScript)),
+    )
+    .command(
       shellCommand('powershell', 'PowerShell', () =>
         import('./powershell.js').then(({ powershellScript }) => powershellScript),
       ),
@@ -128,7 +131,7 @@ function completionCommand(settings: CompletionSettings) {
 }
 
 /**
- * A plugin that prints Bash, Zsh, Fish, and PowerShell completion scripts, installs them into the
+ * A plugin that prints Bash, Zsh, Fish, Nushell, and PowerShell completion scripts, installs them into the
  * operator's shell on Linux and macOS, and answers them. Its contribution is the `completion`
  * Command, the two extensions that hint an input's values, and an `onGraphBuilt` hook that judges
  * each completer name an input gives; it declares no option or middleware. Each child loads its

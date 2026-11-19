@@ -179,7 +179,7 @@ test('completion alone fails with the sentence that says how to count a file of 
   expect(status).toBe(2);
   expect(stdout).toBe('');
   expect(stderr).toContain(
-    'Command "completion" requires a subcommand. Use one of: bash, zsh, fish, powershell, install, update, uninstall. To pass "completion" as an argument, write -- before it.',
+    'Command "completion" requires a subcommand. Use one of: bash, zsh, fish, nu, powershell, install, update, uninstall. To pass "completion" as an argument, write -- before it.',
   );
 });
 

@@ -55,7 +55,7 @@ Each entry links to its reference page.
 
 - `@loomcli/plugins/manifest`: a machine-readable description of the application, for agents and tools. [Manifest](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/manifest.md)
 - `@loomcli/plugins/mcp`: the application's Commands served as MCP tools. [MCP](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/mcp.md)
-- `@loomcli/plugins/completion`: shell completion for Bash, Zsh, Fish, and PowerShell, and `completion install` to set it up. [Completion](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/completion.md)
+- `@loomcli/plugins/completion`: shell completion for Bash, Zsh, Fish, Nushell, and PowerShell, and `completion install` to set it up. [Completion](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/completion.md)
 - `@loomcli/plugins/manpage`: man pages, written or installed. [Man pages](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/manpage.md)
 - `@loomcli/plugins/skills`: the application's agent skills, installed. [Skills](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/skills.md)
 

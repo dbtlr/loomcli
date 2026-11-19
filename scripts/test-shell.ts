@@ -7,6 +7,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -19,10 +20,10 @@ import { afterAll, beforeAll } from 'vite-plus/test';
 import { childEnvironment } from './test-process.js';
 
 /**
- * The shells the completion scripts support: Bash, Fish, and Zsh driven through a pseudo-terminal,
- * and PowerShell answering through `TabExpansion2`, the function its Tab calls.
+ * The shells the completion scripts support: Bash, Fish, Zsh, and Nushell driven through a
+ * pseudo-terminal, and PowerShell answering through `TabExpansion2`, the function its Tab calls.
  */
-const shells = ['bash', 'fish', 'zsh', 'pwsh'] as const;
+const shells = ['bash', 'fish', 'zsh', 'nu', 'pwsh'] as const;
 type Shell = (typeof shells)[number];
 
 /** The shells the harness drives through a pseudo-terminal. */
@@ -207,6 +208,25 @@ function setupLines(shell: TerminalShell, load: Load | undefined): string[] {
         ...loadLines(shell, load),
       ];
     }
+    case 'nu': {
+      // This is Nushell's own configuration file.
+      // It sets a fixed prompt, a one-column menu, and the script's load line.
+      // Its read-back on Ctrl-] prints the line after `@@LINE@@` and clears it without running it.
+      // Crossterm reads the byte of Ctrl-] as Ctrl-5.
+      // The `source` path is a literal, which Nushell reads at parse time.
+      return [
+        `$env.PROMPT_COMMAND = {|| ${quoted(prompt)} }`,
+        "$env.PROMPT_COMMAND_RIGHT = {|| '' }",
+        "$env.PROMPT_INDICATOR = ''",
+        "$env.PROMPT_INDICATOR_VI_INSERT = ''",
+        "$env.PROMPT_INDICATOR_VI_NORMAL = ''",
+        "$env.PROMPT_MULTILINE_INDICATOR = ''",
+        '$env.config.show_banner = false',
+        '$env.config.menus = ($env.config.menus | each {|m| if $m.name == completion_menu { $m | update type.columns 1 } else { $m } })',
+        `$env.config.keybindings = ($env.config.keybindings | append {name: loom_readback, modifier: control, keycode: char_5, mode: [emacs vi_insert vi_normal], event: {send: executehostcommand, cmd: "print ('@@LI' + 'NE@@' + (commandline)); commandline edit --replace ''"}})`,
+        ...loadLines(shell, load),
+      ];
+    }
     default: {
       throw new Error('Unreachable.');
     }
@@ -242,6 +262,14 @@ function shellCommand(shell: TerminalShell, setup: string, ownStartup: boolean):
     case 'fish': {
       const config = ownStartup ? [] : ['--no-config'];
       return [path, ...config, '-i', '-C', `source ${quoted(setup)}`];
+    }
+    case 'nu': {
+      // The terminal's size is set first, because Nushell sizes its menu by it.
+      // The configuration file replaces the operator's, which would otherwise draw a prompt of its own.
+      // Nushell still loads its vendor autoload folder under the home.
+      // That is how a script that `completion install` wrote loads.
+      const sized = 'stty cols 200 rows 50; exec "$@"';
+      return ['/bin/sh', '-c', sized, 'sh', path, '--config', setup, '--env-config', '/dev/null'];
     }
     default: {
       throw new Error('Unreachable.');
@@ -297,6 +325,41 @@ function readLine(shell: TerminalShell, block: string): string {
   return shell === 'bash' ? line.replace(/^\s*#/u, '') : line;
 }
 
+/** An operating system command, which Nushell writes around its prompt: `ESC ]` to a bell or `ESC \`. */
+const operatingCommand = new RegExp(
+  `${String.fromCodePoint(27)}\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)`,
+  'gu',
+);
+
+/** A terminal control sequence of either kind: a control sequence introducer, or a saved cursor. */
+const anySequence = new RegExp(`${String.fromCodePoint(27)}(?:\\[[0-9;?]*[A-Za-z]|[78])`, 'gu');
+
+/**
+ * The lines Nushell's menu listed: the text its last erase before the read-back painted, without
+ * the signature hint it draws a line below the typed one, which starts with two spaces.
+ */
+function nuListing(block: string): string {
+  const painted = block.split(readback)[0] ?? '';
+  const eraseDisplay = `${String.fromCodePoint(27)}[J`;
+  const erase = painted.lastIndexOf(eraseDisplay);
+  return painted
+    .slice(erase + eraseDisplay.length)
+    .replaceAll(operatingCommand, '')
+    .replaceAll(anySequence, '')
+    .split('\n')
+    .map((line) => line.replaceAll('\r', '').trimEnd())
+    .filter((line) => line !== '' && !line.startsWith('  '))
+    .join('\n');
+}
+
+/** The words of a Nushell listing: each row up to its first run of two spaces. */
+function nuWords(listing: string): string[] {
+  return listing
+    .split('\n')
+    .map((line) => line.split(/\s{2,}/u)[0] ?? line)
+    .filter((word) => word !== '');
+}
+
 /**
  * What Fish would list for the line, from `complete -C` in a separate Fish: word, tab, text. That
  * Fish sources the script, or, with no script, reads its configuration and finds the script in its
@@ -325,6 +388,36 @@ function fishWords(listing: string): string[] {
     .split('\n')
     .filter((entry) => entry !== '')
     .map((entry) => entry.split('\t')[0] ?? entry);
+}
+
+/** What the shell listed for the Tab, as a listing: Fish's from its own `complete -C`. */
+function shellListing(shell: TerminalShell, block: string, fish: () => string): string {
+  switch (shell) {
+    case 'fish': {
+      return fish();
+    }
+    case 'nu': {
+      return nuListing(block);
+    }
+    default: {
+      return listingLines(block);
+    }
+  }
+}
+
+/** The words of a listing, read as the shell lays it out. */
+function shellWords(shell: TerminalShell, listing: string): string[] {
+  switch (shell) {
+    case 'fish': {
+      return fishWords(listing);
+    }
+    case 'nu': {
+      return nuWords(listing);
+    }
+    default: {
+      return listedWords(listing);
+    }
+  }
 }
 
 /**
@@ -388,6 +481,7 @@ interface Prepared {
 const printChild: Record<Shell, string> = {
   bash: 'bash',
   fish: 'fish',
+  nu: 'nu',
   pwsh: 'powershell',
   zsh: 'zsh',
 };
@@ -543,7 +637,23 @@ function prepareProgram(options: SessionOptions): Prepared {
   } else if (options.callback === 'records its words') {
     writeExecutable(program, String.raw`printf '%s\n' "$@" > received; printf ':4\n'`);
   }
+  if (options.shell === 'nu') {
+    answerCounted(program, join(root, 'answered'));
+  }
   return { env, root, script };
+}
+
+/**
+ * Wraps the program so each call that ends adds a byte to the file, which tells the harness the
+ * shell's Tab has its answer.
+ */
+function answerCounted(program: string, answered: string): void {
+  writeFileSync(answered, '');
+  renameSync(program, `${program}.run`);
+  writeExecutable(
+    program,
+    `${quoted(`${program}.run`)} "$@"; status=$?; printf . >> ${quoted(answered)}; exit $status`,
+  );
 }
 
 /** The environment a session started from a real home runs in, with the parent's PATH. */
@@ -731,6 +841,7 @@ async function openSession(options: SessionOptions): Promise<Session> {
     return openPowerShellSession(options);
   }
   const { env, root, script } = prepareProgram(options);
+  const answered = join(root, 'answered');
   const setup = join(root, `setup.${shell}`);
   const sourced = (options.sources ?? []).map((file) => `source ${quoted(file)}`);
   const load = script === undefined ? undefined : { installed: options.installed, script };
@@ -738,9 +849,12 @@ async function openSession(options: SessionOptions): Promise<Session> {
   writeFileSync(setup, `${lines.join('\n')}\n`);
 
   const ownStartup = options.home !== undefined;
+  // Nushell draws no menu on a terminal that calls itself dumb.
+  // It also asks the terminal where the cursor is, which the driver answers for it.
+  const driverEnv = shell === 'nu' ? { ...env, LOOM_PTY_REPORTS_CURSOR: '1', TERM: 'xterm' } : env;
   const child = spawn('zsh', [driver, ...shellCommand(shell, setup, ownStartup)], {
     cwd,
-    env,
+    env: driverEnv,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   let output = '';
@@ -796,9 +910,10 @@ async function openSession(options: SessionOptions): Promise<Session> {
 
   let startup = '';
   try {
-    // Bash and Zsh read PS1 from the environment; Fish sources its setup through -C.
+    // Bash and Zsh read PS1 from the environment, and Fish sources its setup through -C.
+    // Nushell reads its configuration file at its start.
     startup = plain(await step([], prompt));
-    if (shell !== 'fish') {
+    if (shell !== 'fish' && shell !== 'nu') {
       await step([send(`source ${quoted(setup)}`, String.raw`\n`)], prompt);
     }
   } catch (error) {
@@ -807,12 +922,16 @@ async function openSession(options: SessionOptions): Promise<Session> {
   }
 
   const complete = async (line: string): Promise<Completed> => {
+    // Nushell completes in the background and drops a read-back that arrives first.
+    // So the driver waits for the program to answer, and for the shell to fall silent after it.
+    // A Tab that never calls the program, such as one after an unclosed quote, waits the seconds out.
+    const settled = shell === 'nu' ? [`settle 400 ${answered} 5`] : [];
     const block = await step(
-      [send(line, String.raw`\t`), send('', String.raw`\x1d`)],
+      [send(line, String.raw`\t`), ...settled, send('', String.raw`\x1d`)],
       `${readback}*${prompt}`,
     );
-    const listing = shell === 'fish' ? fishListing(line, script, cwd, env) : listingLines(block);
-    const listed = shell === 'fish' ? fishWords(listing) : listedWords(listing);
+    const listing = shellListing(shell, block, () => fishListing(line, script, cwd, env));
+    const listed = shellWords(shell, listing);
     return { line: readLine(shell, block), listed, listing };
   };
 

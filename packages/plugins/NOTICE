@@ -88,10 +88,13 @@ Changes made to the Cobra scripts:
   the typed word. It lists file names itself: the folder part moves to IPREFIX
   and is inserted as typed, its quoting is removed with (Q), and it is listed
   by a glob of the quoted folder with only a trailing "*" live, so nothing
-  typed is expanded or run. Only a leading "~/" is read as the home folder.
-  The names are offered with compadd -f. Directive 0 offers every name,
-  directive 16 the folders, and directive 8 the folders and the names that end
-  in an offered extension, compared as strings.
+  typed is expanded or run. Only a leading "~/" is read as the home folder,
+  and only the last path component is matched. Each name is quoted with
+  compquote, which escapes a leading "~" or "=" too, and offered with
+  compadd -Q -f and the name as its display, with the operator's styles for the
+  files or directories tag read through _description. Directive 0 offers every
+  name, directive 16 the folders, and directive 8 the folders and the names
+  that end in an offered extension, compared as strings.
 - Fish filters by prefix with a string comparison, keeps trailing empty lines
   in the answer, and offers nothing rather than file names after an error. Fish
   honors directives 8 and 16 by listing the names that start with the typed

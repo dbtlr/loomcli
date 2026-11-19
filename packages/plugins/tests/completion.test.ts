@@ -144,12 +144,13 @@ import { bashScript } from '../src/completion/bash.js';
 import type { Completer, CompleterContext } from '../src/completion/completer.js';
 import { completionArgument, completionInput } from '../src/completion/extension.js';
 import { fishScript } from '../src/completion/fish.js';
+import { nuScript } from '../src/completion/nu.js';
 import { completion } from '../src/completion/plugin.js';
 import { powershellScript } from '../src/completion/powershell.js';
 import { zshInstalledScript, zshScript } from '../src/completion/zsh.js';
 import { format } from '../src/format/plugin.js';
 import { help } from '../src/help/plugin.js';
-import { identifier, powershellQuoted } from '../src/shell-quoting.js';
+import { identifier, nuQuoted, powershellQuoted } from '../src/shell-quoting.js';
 import { verbose } from '../src/verbose/plugin.js';
 import { run as fixtureRun } from './fixtures/completion-app.js';
 import { runOnMock } from './fixtures/in-process.js';
@@ -253,6 +254,7 @@ describe('the answer', () => {
           'bash\tPrint the Bash completion script.',
           'zsh\tPrint the Zsh completion script.',
           'fish\tPrint the Fish completion script.',
+          'nu\tPrint the Nushell completion script.',
           'powershell\tPrint the PowerShell completion script.',
           'install\tInstall completion for your shell.',
           'update\tBring installed completion up to date with this version.',
@@ -262,7 +264,7 @@ describe('the answer', () => {
       ),
     );
     await expect(complete('completion', 'install', '')).resolves.toBe(
-      framed(['bash', 'zsh', 'fish', 'pwsh'], 4),
+      framed(['bash', 'zsh', 'fish', 'pwsh', 'nu'], 4),
     );
     await expect(complete('completion', '_')).resolves.toBe(framed([], 4));
   });
@@ -1060,6 +1062,7 @@ describe('the Commands', () => {
     const shells = {
       bash: bashScript,
       fish: fishScript,
+      nu: nuScript,
       powershell: powershellScript,
       zsh: zshScript,
     };
@@ -1076,7 +1079,7 @@ describe('the Commands', () => {
     const result = await fixtureRun(['completion']);
     expect(result.status).not.toBe(0);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('bash, zsh, fish, powershell');
+    expect(result.stderr).toContain('bash, zsh, fish, nu, powershell');
     expect(result.stderr).not.toContain('__complete');
   });
 
@@ -1337,5 +1340,38 @@ describe('the completer fault', () => {
     expect(faults[0]?.correction).toBe(
       String.raw`Add a completer named "a\u001bb" to the values setting of completion(), or name one it defines.`,
     );
+  });
+});
+
+describe('the Nushell script', () => {
+  it('holds the application name only as a double-quoted string and in function identifiers', () => {
+    const script = nuScript('my-app');
+    expect(script).toContain(
+      'export extern "my-app" [ ...arguments: string@"__my_2d_app_complete" ]',
+    );
+    expect(script).toContain('let program = "my-app"');
+    expect(script.replaceAll('my_2d_app', '').replaceAll('"my-app"', '')).not.toContain('my-app');
+  });
+
+  it('writes a double-quoted string that reads its backslashes and quotes as themselves', () => {
+    expect(nuQuoted('plain')).toBe('"plain"');
+    expect(nuQuoted(String.raw`a"b\c`)).toBe(String.raw`"a\"b\\c"`);
+  });
+
+  it('evaluates nothing the operator typed: no source, eval, or nested nu', () => {
+    const script = nuScript('kit');
+    expect(script).not.toMatch(/\b(?:source|eval|nu -c|nu --commands)\b/u);
+  });
+
+  it('offers nothing and no file for a failed call, an unclosed quote, a bad directive line, and the error directive', () => {
+    const script = nuScript('kit');
+    for (const guard of [
+      '$result.exit_code != 0',
+      '$words | any {|w| $w.open}',
+      "'^:[0-9]+$'",
+      '($directive mod 2) == 1',
+    ]) {
+      expect(script).toContain(guard);
+    }
   });
 });
