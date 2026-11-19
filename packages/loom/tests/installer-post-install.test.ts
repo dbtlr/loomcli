@@ -16,13 +16,15 @@
  *   `/dev/tty`.
  * - A failure warns with the status and the command line, and the script exits 0. A signal the
  *   script receives while the command runs exits 1 and leaves the install in place.
+ * - `--unmanaged` writes no record and prints no PATH advice. With a declared command it runs
+ *   nothing and prints the skipped line as `--skip-post-install` does, and it prints no message.
  * - `--skip-post-install` skips the command and prints the line to run it. In a script whose
  *   application declares no command it is an unknown option, and `--help` lists it only where it
  *   exists.
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterEach, expect, test } from 'vite-plus/test';
@@ -88,9 +90,9 @@ function installLines(box: Sandbox) {
   ];
 }
 
-test('an Application with no post-install declaration gets the script an earlier toolchain rendered, byte for byte', () => {
-  // The digest of the script before the post-install step existed.
-  const earlier = '577782aa8d38b434894dca7259a782ef6985e0632ee22db442251d2154c04be5';
+test('an Application with no post-install declaration gets the script with no post-install step, byte for byte', () => {
+  // The digest of the script after --unmanaged joined it with its own path check; the post-install step adds nothing to it.
+  const earlier = 'd9eec7df1e7df5f23318e065e97204186a2dbd52cc20cd4666ee70df44d0a059';
   expect(sha256(renderManaged(installerScript('notes', 'me/notes')))).toBe(earlier);
   expect(sha256(renderManaged(installerScript('notes', 'me/notes', undefined)))).toBe(earlier);
 });
@@ -180,8 +182,34 @@ test('--skip-post-install runs nothing and prints the line to run the command, t
   expect(entries(recordDirectory(box))).toEqual(['install.json']);
 });
 
+test('--unmanaged runs nothing, prints the skipped command line, prints no message, and leaves install.json as it was', () => {
+  const box = postInstallSandbox({ command: ['setup'], message: 'Run notes init next.' });
+  const directory = join(box.root, 'scratch');
+  const record = join(recordDirectory(box), 'install.json');
+  mkdirSync(recordDirectory(box), { recursive: true });
+  writeFileSync(record, 'live record\n');
+  const result = runScript(box, ['--unmanaged', '--dir', directory]);
+  expect(result.status).toBe(0);
+  expect(result.stderr.split('\n').slice(2)).toEqual([
+    'notes: Skipped the post-install command, which would point shared setup at this copy. Run it only to make this copy the one that is set up:',
+    `  ${directory}/${app} setup`,
+    '',
+  ]);
+  expect(binaryRecord(box).argv).toBeUndefined();
+  expect(readFileSync(record, 'utf8')).toBe('live record\n');
+});
+
+test('--unmanaged with a message and no command prints neither', () => {
+  const box = postInstallSandbox({ message: 'Run notes init next.' });
+  const result = runScript(box, ['--unmanaged', '--dir', join(box.root, 'scratch')]);
+  expect(result.status).toBe(0);
+  expect(result.stderr.split('\n')).toHaveLength(3);
+  expect(entries(box.state)).toEqual([]);
+});
+
 /** The usage line of a script whose application declares a post-install command. */
-const usage = 'Usage: install.sh [--dir <directory>] [--skip-post-install] [<version>]';
+const usage =
+  'Usage: install.sh [--dir <directory>] [--skip-post-install] [--unmanaged] [<version>]';
 
 test.each([
   ['no declaration', undefined],
@@ -194,7 +222,7 @@ test.each([
     expect(result).toEqual({
       status: 2,
       stderr:
-        'notes: install.sh has no option --skip-post-install.\nnotes: Usage: install.sh [--dir <directory>] [<version>]\n',
+        'notes: install.sh has no option --skip-post-install.\nnotes: Usage: install.sh [--dir <directory>] [--unmanaged] [<version>]\n',
       stdout: '',
     });
     expect(runScript(box, ['--help']).stdout).not.toContain('--skip-post-install');

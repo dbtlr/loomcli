@@ -36,6 +36,11 @@
  *   variable }` exits 1 with nothing downloaded. The rendered script holds both parts of the recipe
  *   in `docs/core/installation-record.md` byte for byte. A rendered script cut short at any line
  *   runs nothing.
+ * - Unmanaged. `--unmanaged --dir <d>` installs the verified binary at `<d>/<name>` and leaves an
+ *   existing `install.json` byte for byte as it was, or absent when none existed, creating no
+ *   record directory, and prints no PATH advice. An install path that holds a backslash, a quote,
+ *   or a newline exits 1 with the record's sentence and downloads nothing, as without the flag.
+ *   Without the flag, behavior is unchanged.
  * - Init. The loom init acceptance plan in packages/loom/tests/init.test.ts covers rendering,
  *   drift, and the missing repository.
  */
@@ -106,6 +111,68 @@ test('with no arguments the script installs the latest release into ~/.local/bin
   expect(entries(recordDirectory(box))).toEqual(['install.json']);
 });
 
+test('--unmanaged installs a verified binary and leaves an existing install.json byte for byte as it was', () => {
+  const box = sandbox();
+  const live = join(box.root, 'live', app);
+  const record = join(recordDirectory(box), 'install.json');
+  mkdirSync(recordDirectory(box), { recursive: true });
+  writeFileSync(record, recordBytes(live, 'f'.repeat(64)));
+  const directory = join(box.root, 'scratch');
+  const result = runScript(box, ['--unmanaged', '--dir', directory]);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe(
+    `notes: Downloading ${app}-linux-x64 from the latest release of ${repo}.\nnotes: Installed ${directory}/${app}.\n`,
+  );
+  expect(readFileSync(join(directory, app), 'utf8')).toBe('test');
+  expect(statSync(join(directory, app)).mode & 0o777).toBe(0o755);
+  expect(readFileSync(record, 'utf8')).toBe(recordBytes(live, 'f'.repeat(64)));
+  expect(entries(recordDirectory(box))).toEqual(['install.json']);
+  expect(entries(directory)).toEqual([app]);
+});
+
+test('--unmanaged with no existing record writes none and creates no record directory', () => {
+  const box = sandbox();
+  const directory = join(box.root, 'scratch');
+  const result = runScript(box, ['--dir', directory, '--unmanaged']);
+  expect(result.status).toBe(0);
+  expect(result.stderr).not.toContain('PATH');
+  expect(readFileSync(join(directory, app), 'utf8')).toBe('test');
+  expect(entries(box.state)).toEqual([]);
+});
+
+test('--unmanaged still refuses a download whose digest does not match', () => {
+  const box = sandbox({
+    release: {
+      ...release(latest, { [`${app}-linux-x64`]: 'test' }),
+      [`${latest}${app}-linux-x64`]: 'tampered',
+    },
+  });
+  const directory = join(box.root, 'scratch');
+  expect(runScript(box, ['--unmanaged', '--dir', directory]).status).toBe(1);
+  expect(entries(directory)).toEqual([]);
+  expect(entries(box.state)).toEqual([]);
+});
+
+test.each([
+  ['a backslash', String.raw`scratch\side`],
+  ['a quote', 'scratch"side'],
+  ['a newline', 'scratch\nside'],
+])(
+  '--unmanaged refuses an install path that holds %s, before it downloads anything',
+  (_held, name) => {
+    const box = sandbox();
+    const directory = join(box.root, name);
+    const result = runScript(box, ['--unmanaged', '--dir', directory]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(
+      'notes: The install path holds a quote, a backslash, or a control character. Choose another install directory.\n',
+    );
+    expect(requested(box)).toEqual([]);
+    expect(existsSync(directory)).toBe(false);
+    expect(entries(box.state)).toEqual([]);
+  },
+);
+
 test('the rendered script holds both parts of the recipe in docs/core/installation-record.md byte for byte', () => {
   const script = installerScript(app, repo);
   const { prepare, record } = installationRecipeParts();
@@ -164,7 +231,7 @@ test('--dir with an absolute directory installs into it, creating it, and record
 });
 
 /** The usage line, as `--help` opens it and an argument error repeats it. */
-const usage = 'Usage: install.sh [--dir <directory>] [<version>]';
+const usage = 'Usage: install.sh [--dir <directory>] [--unmanaged] [<version>]';
 
 test.each([['--help'], ['-h']])(
   '%s prints the usage to stdout, exits 0, and downloads nothing',
@@ -175,12 +242,16 @@ test.each([['--help'], ['-h']])(
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain(`${usage}\n`);
     expect(result.stdout).toContain('--dir <directory>');
+    expect(result.stdout).toContain(
+      '\n  --unmanaged        Install a side copy: no installation record, PATH advice, or post-install command.\n',
+    );
     expect(requested(box)).toEqual([]);
   },
 );
 
 test.each([
   ['an unknown option', ['--force']],
+  ['--unmanaged without --dir', ['--unmanaged']],
   ['a --dir without a value', ['--dir']],
   ['a relative --dir', ['--dir', 'bin']],
   ['an empty --dir', ['--dir', '']],
@@ -201,6 +272,16 @@ test.each([
   expect(requested(box)).toEqual([]);
   expect(entries(box.home)).toEqual([]);
   expect(entries(box.state)).toEqual([]);
+});
+
+test('--unmanaged without --dir names the directory it needs', () => {
+  const box = sandbox();
+  const result = runScript(box, ['--unmanaged']);
+  expect(result.status).toBe(2);
+  expect(result.stderr.split('\n')[0]).toBe(
+    'notes: --unmanaged needs --dir <directory>, the directory for the side copy.',
+  );
+  expect(requested(box)).toEqual([]);
 });
 
 test('a version may hold letters, digits, ., -, and +', () => {
