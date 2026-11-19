@@ -7,6 +7,9 @@ type AcceptedDefault<Config> = DefaultInput<Config> | (DefaultInput<Config> exte
 
 type ActionArgument<Declaration> = ActionHandler<Declaration> extends (context: infer Context) => unknown ? Context : never;
 
+export interface ActionInvoke extends Invoke<RegisteredPaths> {
+}
+
 interface AdaptiveSides {
     readonly dark: ConcreteStyle;
     readonly light: ConcreteStyle;
@@ -21,68 +24,69 @@ export type AfterCommand<State> = State;
 export type AfterResult<State> = Exclude<State, 'result' | 'rows'>;
 
 declare class ApplicationBuilder<Args, Options, Globals, State extends ApplicationMethod = ApplicationMethod, Plugins extends readonly Plugin[] = readonly [
-], Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}, Requires = {}> {
+], Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}, Requires = {}, Paths = unknown> {
     #private;
     readonly [applicationEnvironment]: ApplicationEnvironment<Globals, Plugins>;
     readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
+    readonly [commandPaths]: ApplicationPaths<Paths, Plugins>;
     get name(): string;
-    needsTerminal(): Application<Args, Options, Globals, Exclude<State, 'needsTerminal'>, Plugins, Result, Stdin, Provided, Requires>;
+    needsTerminal(): Application<Args, Options, Globals, Exclude<State, 'needsTerminal'>, Plugins, Result, Stdin, Provided, Requires, Paths>;
     passthrough(config?: {
         description?: string;
     }): Application<Args, Options, Globals, Exclude<State, 'passthrough'>, Plugins, Result, Stdin & {
         passthrough: string[];
-    }, Provided, Requires>;
+    }, Provided, Requires, Paths>;
     stdin(config: StdinConfig & {
         required: true;
     }): Application<Args, Options, Globals, State, Plugins, Result, Omit<Stdin, 'stdin'> & {
         readonly stdin: Content;
-    }, Provided, Requires>;
-    stdin(config: StdinConfig): Application<Args, Options, Globals, State, Plugins, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided, Requires>;
-    argument<const Name extends string, const Config extends ArgumentConfig>(name: Name, config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>> & NoInfer<ArgumentKeyConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Application<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>, Plugins, Result, Stdin, Provided, Requires>;
-    option<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & Unmarked & NameConstraint<Name> & GlobalNameConstraint<Name, Globals> & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
+    }, Provided, Requires, Paths>;
+    stdin(config: StdinConfig): Application<Args, Options, Globals, State, Plugins, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided, Requires, Paths>;
+    argument<const Name extends string, const Config extends ArgumentConfig>(name: Name, config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>> & NoInfer<ArgumentKeyConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Application<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>, Plugins, Result, Stdin, Provided, Requires, WithArgument<Paths, Name, Config>>;
+    option<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & Unmarked & NameConstraint<Name> & GlobalNameConstraint<Name, Globals> & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Application<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Plugins, Result, Stdin, Provided, Requires, WithOption<Paths, Name, Config>>;
     options<Configs extends Readonly<Record<string, OptionConfig>>>(set: OptionSet<Configs> & NoInfer<OptionSetNameConstraint<Configs, Options, Globals>>): Application<Args, Options & {
         [Name in Extract<keyof Configs, string>]: OptionValue<Configs[Name]>;
-    }, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
+    }, Globals, State, Plugins, Result, Stdin, Provided, Requires, WithOptions<Paths, Configs>>;
     exclusive(...names: [
         Extract<keyof Options, string>,
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
-    ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
+    ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths>;
     oneRequired(...names: [
         Extract<keyof Options, string>,
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
-    ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
+    ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths>;
     requiredTogether(...names: [
         Extract<keyof Options, string>,
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
-    ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
+    ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths>;
     requires(option: Extract<keyof Options, string>, ...needed: [
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
-    ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
+    ]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths>;
     globalOption<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & NameConstraint<Name> & (Name extends keyof Options ? {
         'This option name is already declared as a local option': Name;
-    } : unknown) & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>> & NoInfer<GlobalOmissionConstraint<Config>>): Application<Args, Options, Globals & Record<Name, OptionValue<Config>>, State, Plugins, Result, Stdin, Provided, Requires>;
-    action(handler: Action<Args, Globals & Options, Result, Stdin, Provided> & RootRequirement<Globals, Requires>): Application<Args, Options, Globals, AfterAction, Plugins, Result, Stdin, Provided, Requires>;
-    command<const Child extends Command<unknown, unknown, Globals>>(child: Child & NoInfer<AttachmentConstraint<Globals, Child>>): Application<Args, Options, Globals, AfterCommand<Exclude<State, 'globalOption'>>, Plugins, Result, Stdin, Provided, Requires>;
+    } : unknown) & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>> & NoInfer<GlobalOmissionConstraint<Config>>): Application<Args, Options, Globals & Record<Name, OptionValue<Config>>, State, Plugins, Result, Stdin, Provided, Requires, WithGlobal<Paths, Name, Config>>;
+    action(handler: Action<Args, Globals & Options, Result, Stdin, Provided> & RootRequirement<Globals, Requires>): Application<Args, Options, Globals, AfterAction, Plugins, Result, Stdin, Provided, Requires, Paths>;
+    command<const Child extends Command<unknown, unknown, Globals>>(child: Child & NoInfer<AttachmentConstraint<Globals, Child>>): Application<Args, Options, Globals, AfterCommand<Exclude<State, 'globalOption'>>, Plugins, Result, Stdin, Provided, Requires, WithChild<Paths, Child>>;
     result<Value>(declaration: {
         views: ResultViews<NoInfer<Value>>;
     }): Application<Args, Options, Globals, AfterResult<State>, Plugins, {
         kind: 'value';
         value: Value;
-    }, Stdin, Provided, Requires>;
+    }, Stdin, Provided, Requires, Paths>;
     rows<Row>(declaration: {
         views: RowViews<NoInfer<Row>>;
     }): Application<Args, Options, Globals, AfterResult<State>, Plugins, {
         kind: 'rows';
         row: Row;
-    }, Stdin, Provided, Requires>;
+    }, Stdin, Provided, Requires, Paths>;
     views<const Replacements extends ResultViewsOf<Result>>(replacements: Replacements, options?: {
         default?: keyof Replacements & string;
-    }): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
-    extend(...values: readonly ExtensionValue<'command'>[]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>;
+    }): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths>;
+    extend(...values: readonly ExtensionValue<'command'>[]): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths>;
     private table;
     private derive;
     private prepare;
@@ -92,19 +96,22 @@ declare class ApplicationBuilder<Args, Options, Globals, State extends Applicati
     inspect(): CommandGraph;
     check(): readonly DeclarationError[];
     run(options?: RunOptions): Promise<ExitCode>;
-    invoke<Mapped = LoomError>(path: readonly string[], values: InvocationValues, options?: InvokeOptions<Mapped> & {
+    readonly invoke: Invoke<ApplicationPaths<Paths, Plugins>, {
         readonly process?: ProcessHandle;
-    }): Promise<InvocationOutcome<Mapped>>;
+    }>;
 }
 
 interface ApplicationConstructor {
     new (name: string): Application<{}, {}, {}, ApplicationMethod, readonly [
-    ]>;
+    ], unknown, StdinContext, {}, {}, CommandPaths>;
     new <const Plugins extends readonly Plugin[] = readonly [
     ], const Uses extends readonly AnyProvider[] = [
-    ]>(name: string, options: ApplicationOptions<Plugins, Uses>): Application<{}, {}, InstalledOptionValues<Plugins>, ApplicationMethod, Plugins, unknown, StdinContext, ProvidedValues<Uses>, ProviderGlobals<Uses>>;
+    ]>(name: string, options: ApplicationOptions<Plugins, Uses>): Application<{}, {}, InstalledOptionValues<Plugins>, ApplicationMethod, Plugins, unknown, StdinContext, ProvidedValues<Uses>, ProviderGlobals<Uses>, CommandPaths>;
     [Symbol.hasInstance](value: unknown): value is Application;
 }
+
+type ApplicationPaths<Paths, Plugins extends readonly Plugin[]> = Paths extends CommandPaths<infer Args, infer Options, infer Commands, infer Globals> ? CommandPaths<Args, Options, Plugins extends readonly [
+] ? Commands : Commands & Readonly<Record<string, unknown>>, Globals & InstalledNamedOptionValues<Plugins>> : unknown;
 
 interface ArgumentExtensions {
     extensions?: readonly ExtensionValue<'argument'>[];
@@ -127,6 +134,8 @@ export type ArgumentValue<Config extends ArgumentConfig> = Config extends {
 } | {
     validateOmitted: true;
 } ? never : undefined);
+
+type ArgumentValue = NonNullable<InvocationValues['args']>[string];
 
 type ArityBinding = {
     multiple: true;
@@ -198,76 +207,77 @@ type BooleanFacts = Described & Listed & Controlled & OptionExtensions & {
     lastWins?: never;
 };
 
-export declare class CommandBuilder<Args, Options, Globals, State extends CommandMethod = CommandMethod, Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}> {
+export declare class CommandBuilder<Args, Options, Globals, State extends CommandMethod = CommandMethod, Result = unknown, Stdin extends StdinContext = StdinContext, Provided = {}, CommandName extends string = string, Paths = unknown> {
     #private;
     readonly [commandValue]: true;
     readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
-    needsTerminal(): Command<Args, Options, Globals, Exclude<State, 'needsTerminal'>, Result, Stdin, Provided>;
+    readonly [commandPaths]: Readonly<Record<CommandName, Paths>>;
+    needsTerminal(): Command<Args, Options, Globals, Exclude<State, 'needsTerminal'>, Result, Stdin, Provided, CommandName, Paths>;
     passthrough(config?: {
         description?: string;
     }): Command<Args, Options, Globals, Exclude<State, 'passthrough'>, Result, Stdin & {
         passthrough: string[];
-    }, Provided>;
+    }, Provided, CommandName, Paths>;
     stdin(config: StdinConfig & {
         required: true;
     }): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & {
         readonly stdin: Content;
-    }, Provided>;
-    stdin(config: StdinConfig): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided>;
-    argument<const Name extends string, const Config extends ArgumentConfig>(name: Name, config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>> & NoInfer<ArgumentKeyConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>, Result, Stdin, Provided>;
-    option<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & Unmarked & NameConstraint<Name> & GlobalNameConstraint<Name, Globals> & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result, Stdin, Provided>;
+    }, Provided, CommandName, Paths>;
+    stdin(config: StdinConfig): Command<Args, Options, Globals, State, Result, Omit<Stdin, 'stdin'> & StdinContext, Provided, CommandName, Paths>;
+    argument<const Name extends string, const Config extends ArgumentConfig>(name: Name, config: Config & NameConstraint<Name> & NoInfer<DefaultConstraint<Config>> & NoInfer<ArgumentKeyConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Command<Args & Record<Name, ArgumentValue<Config>>, Options, Globals, AfterArgument<State>, Result, Stdin, Provided, CommandName, WithArgument<Paths, Name, Config>>;
+    option<const Name extends string, const Config extends OptionConfig>(name: Name, config: Config & Unmarked & NameConstraint<Name> & GlobalNameConstraint<Name, Globals> & NoInfer<DefaultConstraint<Config>> & NoInfer<ImpliedConstraint<Config>> & NoInfer<PerValueConstraint<Config>> & NoInfer<ValidateOmittedConstraint<Config>>): Command<Args, Options & Record<Name, OptionValue<Config>>, Globals, State, Result, Stdin, Provided, CommandName, WithOption<Paths, Name, Config>>;
     options<Configs extends Readonly<Record<string, OptionConfig>>>(set: OptionSet<Configs> & NoInfer<OptionSetNameConstraint<Configs, Options, Globals>>): Command<Args, Options & {
         [Name in Extract<keyof Configs, string>]: OptionValue<Configs[Name]>;
-    }, Globals, State, Result, Stdin, Provided>;
+    }, Globals, State, Result, Stdin, Provided, CommandName, WithOptions<Paths, Configs>>;
     exclusive(...names: [
         Extract<keyof Options, string>,
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
-    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
+    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>;
     oneRequired(...names: [
         Extract<keyof Options, string>,
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
-    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
+    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>;
     requiredTogether(...names: [
         Extract<keyof Options, string>,
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
-    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
+    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>;
     requires(option: Extract<keyof Options, string>, ...needed: [
         Extract<keyof Options, string>,
         ...Extract<keyof Options, string>[]
-    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
+    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>;
     alias(...names: [
         string,
         ...string[]
-    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
+    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>;
     visibleAlias(...names: [
         string,
         ...string[]
-    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
-    command<const Child extends Command<unknown, unknown, never>>(child: Child & NoInfer<AttachmentConstraint<Globals, Child>>): Command<Args, Options, PassedUp<Globals, Child>, AfterCommand<State>, Result, Stdin, Provided>;
+    ]): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>;
+    command<const Child extends Command<unknown, unknown, never>>(child: Child & NoInfer<AttachmentConstraint<Globals, Child>>): Command<Args, Options, PassedUp<Globals, Child>, AfterCommand<State>, Result, Stdin, Provided, CommandName, WithChild<Paths, Child>>;
     result<Value>(declaration: {
         views: ResultViews<NoInfer<Value>>;
     }): Command<Args, Options, Globals, AfterResult<State>, {
         kind: 'value';
         value: Value;
-    }, Stdin, Provided>;
+    }, Stdin, Provided, CommandName, Paths>;
     rows<Row>(declaration: {
         views: RowViews<NoInfer<Row>>;
     }): Command<Args, Options, Globals, AfterResult<State>, {
         kind: 'rows';
         row: Row;
-    }, Stdin, Provided>;
+    }, Stdin, Provided, CommandName, Paths>;
     views<const Replacements extends ResultViewsOf<Result>>(replacements: Replacements, options?: {
         default?: keyof Replacements & string;
-    }): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
-    action(handler: Action<Args, Globals & Options, Result, Stdin, Provided>): Command<Args, Options, Globals, AfterAction, Result, Stdin, Provided>;
-    extend(...values: readonly ExtensionValue<'command'>[]): Command<Args, Options, Globals, State, Result, Stdin, Provided>;
+    }): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>;
+    action(handler: Action<Args, Globals & Options, Result, Stdin, Provided>): Command<Args, Options, Globals, AfterAction, Result, Stdin, Provided, CommandName, Paths>;
+    extend(...values: readonly ExtensionValue<'command'>[]): Command<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>;
 }
 
 type CommandConstructor = new <const Uses extends readonly AnyProvider[] = [
-]>(name: string, options?: CommandOptions<Uses>) => Command<{}, {}, WithProviderGlobals<RegisteredGlobals, Uses>, CommandMethod, unknown, StdinContext, ProvidedValues<Uses>>;
+], const Name extends string = string>(name: Name, options?: CommandOptions<Uses>) => Command<{}, {}, WithProviderGlobals<RegisteredGlobals, Uses>, CommandMethod, unknown, StdinContext, ProvidedValues<Uses>, Name, CommandPaths>;
 
 interface ConditionalPresence {
     required: 'non-interactive';
@@ -294,6 +304,10 @@ interface Controlled {
     control?: boolean;
 }
 
+type DeclaredNames<Commands> = Extract<keyof {
+    [Name in keyof Commands as string extends Name ? never : Name]: unknown;
+}, string>;
+
 type DeclaredPresenceRule<Config> = {
     [Key in PresenceRuleKey]: [
         Extract<Config, Record<Key, unknown>>
@@ -319,6 +333,13 @@ type DeepReadonlyArray<Value> = Value extends readonly unknown[] ? {
     readonly [Index in keyof Value]: DeepReadonlyArray<Value[Index]>;
 } : Value;
 
+type DeepestPath = readonly [
+    string,
+    string,
+    string,
+    string
+];
+
 export type DefaultConstraint<Config> = [
     DefaultFault<Config>
 ] extends [
@@ -340,6 +361,8 @@ type DefaultInput<Config> = 'validate' extends keyof Config ? PerValue<Config, S
 interface Described {
     description?: string;
 }
+
+type DynamicPath<Path extends readonly string[]> = number extends Path['length'] ? true : string extends Path[number] ? true : IsUnion<Path>;
 
 type EnvironmentStyle<Environment extends ApplicationEnvironment<unknown, readonly Plugin[]>> = Style<CoreToken | ThemeNames<Environment['plugins'][number]>>;
 
@@ -385,10 +408,23 @@ export type ImpliedConstraint<Config> = Config extends {
     'An implied value must be in the validator input type': Config['validate'];
 } : unknown : unknown;
 
+type InstalledNamedOptionValues<Plugins extends readonly Plugin[]> = Plugins extends readonly [
+    infer First extends Plugin,
+    ...infer Rest extends readonly Plugin[]
+] ? (string extends keyof OptionsOf<First> ? {} : {
+    readonly [Name in keyof OptionsOf<First> & string]: NamedOptionValue<OptionsOf<First>[Name]>;
+}) & InstalledNamedOptionValues<Rest> : {};
+
 type InstalledOptionValues<Plugins extends readonly Plugin[]> = Plugins extends readonly [
     infer First extends Plugin,
     ...infer Rest extends readonly Plugin[]
 ] ? (string extends keyof OptionsOf<First> ? {} : PluginOptionValues<OptionsOf<First>>) & InstalledOptionValues<Rest> : {};
+
+type IsUnion<Type, Whole = Type> = Type extends unknown ? [
+    Whole
+] extends [
+    Type
+] ? false : true : never;
 
 type IsUnion<Member, Whole = Member> = Member extends unknown ? [
     Whole
@@ -438,6 +474,32 @@ export type NameConstraint<Name extends string, Whole extends string = Name> = {
 ] extends [
     Name
 ] ? unknown : LiteralNameFault : LiteralNameFault;
+
+type NamedArgumentValue<Config extends ArgumentConfig> = Config extends {
+    variadic: true;
+} ? string | number | readonly (string | number)[] : string | number;
+
+type NamedOptionValue<Config extends OptionConfig> = Config extends {
+    type: 'boolean';
+} ? boolean : Config extends {
+    type: 'count';
+} ? number : Config extends {
+    arity: number;
+} ? Config extends {
+    multiple: true;
+} ? readonly (string | number)[] | readonly (readonly (string | number)[])[] : readonly (string | number)[] : (Config extends {
+    multiple: true;
+} ? string | number | readonly (string | number)[] : string | number) | (Config extends {
+    implied: unknown;
+} ? true : never);
+
+type NamedValues<Values, Accepted, Empty> = [
+    keyof Values
+] extends [
+    never
+] ? Empty : {
+    readonly [Name in keyof Values]?: Extract<Values[Name], Accepted> | undefined;
+};
 
 type NodeFor<Target extends ExtensionTarget> = Target extends 'command' ? CommandNode | AttachedCommand : Target extends 'option' ? OptionNode : ArgumentNode;
 
@@ -499,6 +561,8 @@ export type OptionValue<Config extends OptionConfig> = Config extends StringOpti
     validateOmitted: true;
 } ? never : undefined) : Config extends CountOption ? number : boolean;
 
+type OptionValue = NonNullable<InvocationValues['options']>[string];
+
 declare class OverrideDeclaration {
     readonly [viewOverride]: true;
 }
@@ -512,6 +576,22 @@ export type PassedUp<Globals, Child> = [
 ] extends [
     RequirementOf<Child>
 ] ? Globals : Globals & RequirementOf<Child>;
+
+type PathParameter<Paths, Path extends readonly string[]> = DynamicPath<Path> extends true ? Path : Walk<Paths, Path> extends {
+    fault: infer Fault extends readonly string[];
+} ? NoInfer<Fault> : Path;
+
+type PathValues<Paths, Path extends readonly string[]> = DynamicPath<Path> extends true ? InvocationValues : Walk<Paths, Path> extends {
+    entry: infer Entry extends CommandPaths;
+} ? {
+    readonly args?: NamedValues<Entry['args'], ArgumentValue, {
+        readonly 'The Command declares no arguments'?: never;
+    }>;
+    readonly options?: NamedValues<Entry['options'] & (Paths extends CommandPaths ? Paths['globals'] : {}), OptionValue, {
+        readonly 'The Command and the Application declare no options'?: never;
+    }>;
+    readonly passthrough?: readonly string[];
+} : InvocationValues;
 
 type PerValue<Config, Value> = Config extends {
     arity: infer Count extends number;
@@ -575,8 +655,13 @@ type RawValue<Config> = PerValue<Config, string>;
 
 type RegisteredGlobals = RegisteredEnvironment['globals'];
 
+type RegisteredPaths = Register extends {
+    paths: infer Paths;
+} ? Paths : unknown;
+
 interface RegistrationShape {
     environment?: ApplicationEnvironment<unknown, readonly Plugin[]>;
+    paths?: unknown;
 }
 
 type RegistrationVisible = Register extends {
@@ -738,11 +823,48 @@ export type ValidatedValue<Config, Raw> = Config extends {
 
 type ValueOf<Declared extends AnyProvider> = Declared[typeof providerTypes]['value'];
 
+type Walk<Node, Path extends readonly string[], Walked extends readonly string[] = [
+]> = Path extends readonly [
+    infer Head extends string,
+    ...infer Rest extends readonly string[]
+] ? Walked extends DeepestPath ? 'dynamic' : Node extends CommandPaths<unknown, unknown, infer Commands, unknown> ? Head extends DeclaredNames<Commands> ? Walk<Commands[Head], Rest, readonly [
+    ...Walked,
+    Head
+]> : string extends keyof Commands ? 'dynamic' : {
+    fault: [
+        DeclaredNames<Commands>
+    ] extends [
+        never
+    ] ? readonly [
+        ...Walked
+    ] : readonly [
+        ...Walked,
+        DeclaredNames<Commands>,
+        ...Rest
+    ];
+} : 'dynamic' : Node extends CommandPaths ? {
+    entry: Node;
+} : 'dynamic';
+
 type WholeNumbersBelow<Bound extends number, Counted extends number[] = [
 ]> = Counted['length'] extends Bound ? Counted[number] : WholeNumbersBelow<Bound, [
     ...Counted,
     Counted['length']
 ]>;
+
+type WithArgument<Paths, Name extends string, Config extends ArgumentConfig> = Paths extends CommandPaths<infer Args, infer Options, infer Commands, infer Globals> ? CommandPaths<Args & Readonly<Record<Name, NamedArgumentValue<Config>>>, Options, Commands, Globals> : Paths;
+
+type WithChild<Paths, Child> = Child extends {
+    readonly [commandPaths]: infer Entry;
+} ? Paths extends CommandPaths<infer Args, infer Options, infer Commands, infer Globals> ? CommandPaths<Args, Options, Commands & Entry, Globals> : Paths : Paths;
+
+type WithGlobal<Paths, Name extends string, Config extends OptionConfig> = Paths extends CommandPaths<infer Args, infer Options, infer Commands, infer Globals> ? CommandPaths<Args, Options, Commands, Globals & Readonly<Record<Name, NamedOptionValue<Config>>>> : Paths;
+
+type WithOption<Paths, Name extends string, Config extends OptionConfig> = Paths extends CommandPaths<infer Args, infer Options, infer Commands, infer Globals> ? CommandPaths<Args, Options & Readonly<Record<Name, NamedOptionValue<Config>>>, Commands, Globals> : Paths;
+
+type WithOptions<Paths, Configs extends Readonly<Record<string, OptionConfig>>> = Paths extends CommandPaths<infer Args, infer Options, infer Commands, infer Globals> ? CommandPaths<Args, Options & {
+    readonly [Name in Extract<keyof Configs, string>]: NamedOptionValue<Configs[Name]>;
+}, Commands, Globals> : Paths;
 
 type WithProviderGlobals<Globals, Uses extends readonly AnyProvider[]> = Uses extends readonly [
 ] ? Globals : Globals & ProviderGlobals<Uses>;
@@ -767,6 +889,8 @@ declare const colors: {
     white: number;
     yellow: number;
 };
+
+declare const commandPaths: unique symbol;
 
 export declare const commandValue: unique symbol;
 

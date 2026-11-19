@@ -41,7 +41,6 @@ import { freshState, layerOf } from '../commands/state.js';
 import type { CommandState } from '../commands/state.js';
 import type { CommandNodeHandle, GlobalNameConstraint, NameConstraint } from '../commands/types.js';
 import { DeclarationError } from '../failures/errors.js';
-import type { LoomError } from '../failures/errors.js';
 import { quoted } from '../failures/messages.js';
 import { readTranslations } from '../failures/translators.js';
 import type { ProcessHandle } from '../host/types.js';
@@ -67,14 +66,17 @@ import type {
 import { inspectGraph } from '../inspection/inspect.js';
 import type { CommandGraph } from '../inspection/inspect.js';
 import type {
-  StdinContext,
-  Action,
-  declaredTypes,
-  DeclaredTypes,
-  InvocationOutcome,
-  InvocationValues,
-  InvokeOptions,
-} from '../invocation/types.js';
+  ApplicationPaths,
+  CommandPaths,
+  commandPaths,
+  Invoke,
+  WithArgument,
+  WithChild,
+  WithGlobal,
+  WithOption,
+  WithOptions,
+} from '../invocation/paths.js';
+import type { StdinContext, Action, declaredTypes, DeclaredTypes } from '../invocation/types.js';
 import { background } from '../marks/background-mark.js';
 import { color } from '../marks/color.js';
 import { plain } from '../marks/plain.js';
@@ -155,6 +157,7 @@ class ApplicationBuilder<
   Stdin extends StdinContext = StdinContext,
   Provided = {},
   Requires = {},
+  Paths = unknown,
 > {
   /**
    * A type-only marker that carries the Application's global option types and plugins, which
@@ -166,6 +169,11 @@ class ApplicationBuilder<
    * types, which `ActionHandler` reads. It holds no runtime value.
    */
   declare readonly [declaredTypes]: DeclaredTypes<Args, Options, Globals, Result, Stdin, Provided>;
+  /**
+   * A type-only marker that carries the root's entry in the Application's Command paths, its global
+   * options included, which `invoke` and `PathsOf` read. It holds no runtime value.
+   */
+  declare readonly [commandPaths]: ApplicationPaths<Paths, Plugins>;
 
   /** Composes the declared stdin and passthrough fragments of the action context. */
   readonly #stdinBind: (source: Content | undefined, passthrough: string[]) => Stdin;
@@ -237,7 +245,8 @@ class ApplicationBuilder<
     Result,
     Stdin,
     Provided,
-    Requires
+    Requires,
+    Paths
   > {
     return new ApplicationBuilder(
       this.#name,
@@ -266,7 +275,8 @@ class ApplicationBuilder<
     Result,
     Stdin & { passthrough: string[] },
     Provided,
-    Requires
+    Requires,
+    Paths
   > {
     return new ApplicationBuilder(
       this.#name,
@@ -299,7 +309,8 @@ class ApplicationBuilder<
     Result,
     Omit<Stdin, 'stdin'> & { readonly stdin: Content },
     Provided,
-    Requires
+    Requires,
+    Paths
   >;
   /**
    * Declares the root's stdin as optional, so the action's `stdin` is absent when the operator
@@ -318,7 +329,8 @@ class ApplicationBuilder<
     Result,
     Omit<Stdin, 'stdin'> & StdinContext,
     Provided,
-    Requires
+    Requires,
+    Paths
   >;
   stdin(
     config: StdinConfig,
@@ -331,7 +343,8 @@ class ApplicationBuilder<
     Result,
     Omit<Stdin, 'stdin'> & StdinContext,
     Provided,
-    Requires
+    Requires,
+    Paths
   > {
     const root = declareStdin(this.#root, config);
     return new ApplicationBuilder<
@@ -343,7 +356,8 @@ class ApplicationBuilder<
       Result,
       Omit<Stdin, 'stdin'> & StdinContext,
       Provided,
-      Requires
+      Requires,
+      Paths
     >(
       this.#name,
       { config: this.#config, globals: this.#globals, root },
@@ -379,7 +393,8 @@ class ApplicationBuilder<
     Result,
     Stdin,
     Provided,
-    Requires
+    Requires,
+    WithArgument<Paths, Name, Config>
   > {
     const input: ArgumentInput<Name, Config> = {
       config,
@@ -413,7 +428,8 @@ class ApplicationBuilder<
     Result,
     Stdin,
     Provided,
-    Requires
+    Requires,
+    WithOption<Paths, Name, Config>
   > {
     const input: OptionInput<Name, Config> = {
       config,
@@ -442,7 +458,8 @@ class ApplicationBuilder<
     Result,
     Stdin,
     Provided,
-    Requires
+    Requires,
+    WithOptions<Paths, Configs>
   > {
     return this.derive(declareOptionSet(this.#root, set, this.table()));
   }
@@ -458,7 +475,7 @@ class ApplicationBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths> {
     return this.derive(declareOptionGroup(this.#root, 'exclusive', names));
   }
 
@@ -473,7 +490,7 @@ class ApplicationBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths> {
     return this.derive(declareOptionGroup(this.#root, 'oneRequired', names));
   }
 
@@ -488,7 +505,7 @@ class ApplicationBuilder<
       Extract<keyof Options, string>,
       ...Extract<keyof Options, string>[],
     ]
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths> {
     return this.derive(declareOptionGroup(this.#root, 'requiredTogether', names));
   }
 
@@ -502,7 +519,7 @@ class ApplicationBuilder<
   requires(
     option: Extract<keyof Options, string>,
     ...needed: [Extract<keyof Options, string>, ...Extract<keyof Options, string>[]]
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths> {
     return this.derive(declareOptionGroup(this.#root, 'requires', [option, ...needed]));
   }
 
@@ -533,7 +550,8 @@ class ApplicationBuilder<
     Result,
     Stdin,
     Provided,
-    Requires
+    Requires,
+    WithGlobal<Paths, Name, Config>
   > {
     const input: OptionInput<Name, Config> = {
       config,
@@ -562,7 +580,8 @@ class ApplicationBuilder<
       Result,
       Stdin,
       Provided,
-      Requires
+      Requires,
+      WithGlobal<Paths, Name, Config>
     >(
       this.#name,
       { config: this.#config, globals, root },
@@ -580,7 +599,18 @@ class ApplicationBuilder<
   action(
     handler: Action<Args, Globals & Options, Result, Stdin, Provided> &
       RootRequirement<Globals, Requires>,
-  ): Application<Args, Options, Globals, AfterAction, Plugins, Result, Stdin, Provided, Requires> {
+  ): Application<
+    Args,
+    Options,
+    Globals,
+    AfterAction,
+    Plugins,
+    Result,
+    Stdin,
+    Provided,
+    Requires,
+    Paths
+  > {
     return this.derive(
       declareAction(this.#root, handler, { provided: this.#providedBind, stdin: this.#stdinBind }),
       { composed: true },
@@ -599,7 +629,8 @@ class ApplicationBuilder<
     Result,
     Stdin,
     Provided,
-    Requires
+    Requires,
+    WithChild<Paths, Child>
   > {
     const scope = {
       descriptors: new Map(this.#root.descriptors),
@@ -630,7 +661,8 @@ class ApplicationBuilder<
     { kind: 'value'; value: Value },
     Stdin,
     Provided,
-    Requires
+    Requires,
+    Paths
   > {
     return this.derive<Args, Options, AfterResult<State>, { kind: 'value'; value: Value }>(
       declareResult(this.#root, 'value', declaration),
@@ -649,7 +681,8 @@ class ApplicationBuilder<
     { kind: 'rows'; row: Row },
     Stdin,
     Provided,
-    Requires
+    Requires,
+    Paths
   > {
     return this.derive<Args, Options, AfterResult<State>, { kind: 'rows'; row: Row }>(
       declareResult(this.#root, 'rows', declaration),
@@ -660,7 +693,7 @@ class ApplicationBuilder<
   views<const Replacements extends ResultViewsOf<Result>>(
     replacements: Replacements,
     options?: { default?: keyof Replacements & string },
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths> {
     return this.derive(declareResultViews(this.#root, replacements, options));
   }
 
@@ -671,7 +704,7 @@ class ApplicationBuilder<
    */
   extend(
     ...values: readonly ExtensionValue<'command'>[]
-  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires> {
+  ): Application<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires, Paths> {
     return this.derive(declareExtensions(this.#root, values));
   }
 
@@ -685,7 +718,13 @@ class ApplicationBuilder<
    * The next state travels through this call: each method names its transition in its return type,
    * and the wrapper publishes the same runtime value in exactly that state.
    */
-  private derive<DerivedArgs, DerivedOptions, Next extends ApplicationMethod, Declared = Result>(
+  private derive<
+    DerivedArgs,
+    DerivedOptions,
+    Next extends ApplicationMethod,
+    Declared = Result,
+    DerivedPaths = Paths,
+  >(
     root: CommandState<DerivedArgs, DerivedOptions, Globals>,
     changed: Partial<Pick<ApplicationConfig, 'composed' | 'owners'>> = {},
   ): Application<
@@ -697,7 +736,8 @@ class ApplicationBuilder<
     Declared,
     Stdin,
     Provided,
-    Requires
+    Requires,
+    DerivedPaths
   > {
     return new ApplicationBuilder<
       DerivedArgs,
@@ -708,7 +748,8 @@ class ApplicationBuilder<
       Declared,
       Stdin,
       Provided,
-      Requires
+      Requires,
+      DerivedPaths
     >(
       this.#name,
       { config: { ...this.#config, ...changed }, globals: this.#globals, root },
@@ -855,18 +896,19 @@ class ApplicationBuilder<
   /**
    * Runs one Command by its path, with named values in place of argv, captures what the run writes,
    * and resolves a structured outcome. It builds the graph as `run()` does, reusing the graph the
-   * Application keeps for the build its release facts name. It touches no process.
+   * Application keeps for the build its release facts name. It touches no process. A literal path
+   * the Application declares types its values against that Command, and any other path takes the
+   * dynamic `InvocationValues`, under Typed paths.
+   *
+   * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/invocation.md#typed-paths
    */
-  invoke<Mapped = LoomError>(
-    path: readonly string[],
-    values: InvocationValues,
-    options?: InvokeOptions<Mapped> & {
+  readonly invoke: Invoke<
+    ApplicationPaths<Paths, Plugins>,
+    {
       /** The process the call reads its facts from: `processHandle()` when omitted. */
       readonly process?: ProcessHandle;
-    },
-  ): Promise<InvocationOutcome<Mapped>> {
-    return invoke(this.#runContext(), { options, path, values }, undefined);
-  }
+    }
+  > = (path, values, options) => invoke(this.#runContext(), { options, path, values }, undefined);
 
   /** The runner's access to declaration-owned facts and the kept graph. */
   #runContext(): RunContext {
@@ -909,10 +951,23 @@ export type Application<
   Stdin extends StdinContext = StdinContext,
   Provided = {},
   Requires = {},
+  Paths = unknown,
 > = Pick<
-  ApplicationBuilder<Args, Options, Globals, State, Plugins, Result, Stdin, Provided, Requires>,
+  ApplicationBuilder<
+    Args,
+    Options,
+    Globals,
+    State,
+    Plugins,
+    Result,
+    Stdin,
+    Provided,
+    Requires,
+    Paths
+  >,
   | typeof applicationEnvironment
   | typeof declaredTypes
+  | typeof commandPaths
   | 'check'
   | 'extend'
   | 'inspect'
@@ -1035,7 +1090,8 @@ class ApplicationDeclaration<
   unknown,
   StdinContext,
   ProvidedValues<Uses>,
-  ProviderGlobals<Uses>
+  ProviderGlobals<Uses>,
+  CommandPaths
 > {
   /**
    * Each declaring call returns a new builder rather than an instance of this class, so

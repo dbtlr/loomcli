@@ -9,6 +9,7 @@ import type { ProcessHandle } from '../host/types.js';
 import type { DeclaredValues, InputPlaces } from '../inputs/declarations.js';
 import type { collectInputs } from '../inputs/places.js';
 import type { CommandGraph } from '../inspection/inspect.js';
+import type { CommandPaths } from '../invocation/paths.js';
 import type { StdinContext } from '../invocation/types.js';
 import type { Redaction } from '../output/redaction.js';
 import type { ViewContributions, ViewOverride, ViewRegistry } from '../output/view.js';
@@ -26,7 +27,20 @@ import type { ApplicationFacts } from './facts.js';
  */
 interface ApplicationConstructor {
   /** Creates an Application with the given name, which every authoring call then declares onto. */
-  new (name: string): Application<{}, {}, {}, ApplicationMethod, readonly []>;
+  new (
+    name: string,
+  ): Application<
+    {},
+    {},
+    {},
+    ApplicationMethod,
+    readonly [],
+    unknown,
+    StdinContext,
+    {},
+    {},
+    CommandPaths
+  >;
   /**
    * Creates an Application with the given name and options: its plugins, views, translators,
    * shutdown budget, and core facts.
@@ -46,7 +60,8 @@ interface ApplicationConstructor {
     unknown,
     StdinContext,
     ProvidedValues<Uses>,
-    ProviderGlobals<Uses>
+    ProviderGlobals<Uses>,
+    CommandPaths
   >;
   /**
    * Holds for an Application in every authoring state, and narrows to the default `Application`,

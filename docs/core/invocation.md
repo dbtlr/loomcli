@@ -81,23 +81,32 @@ type InvocationOutcome<Mapped = LoomError> =
     }
   | { readonly status: 'cancelled'; readonly exitCode: 129 | 130 | 131 | 141 | 143 };
 
+// One signature over an Application's Command paths, under Typed paths: a literal path the paths
+// declare types `values` against that Command, and any other path takes `InvocationValues`.
+type Invoke<Paths, Extra = {}> = <
+  Mapped = LoomError,
+  const Path extends readonly string[] = readonly string[],
+>(
+  path: PathParameter<Paths, Path>, // a literal path, checked against the declared canonical names
+  values: PathValues<Paths, NoInfer<Path>>, // that Command's values, or InvocationValues
+  options?: InvokeOptions<Mapped> & Extra,
+) => Promise<InvocationOutcome<Mapped>>;
+// The action's `invoke` names the registered paths in its base type alone, so they resolve only
+// when a call reads them.
+interface ActionInvoke extends Invoke<RegisteredPaths> {}
+
 interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
   // ...the members under Invocation...
-  readonly invoke: <Mapped = LoomError>(
-    path: readonly string[],
-    values: InvocationValues,
-    options?: InvokeOptions<Mapped>,
-  ) => Promise<InvocationOutcome<Mapped>>; // bound to the graph this run built
+  readonly invoke: ActionInvoke; // bound to the graph this run built; typed by Register.paths
 }
-declare class Application {
+declare class Application<Paths, Plugins extends readonly Plugin[]> {
   // ...the members under Application declarations; published in every state, as run() is...
-  invoke<Mapped = LoomError>(
-    path: readonly string[],
-    values: InvocationValues,
-    options?: InvokeOptions<Mapped> & {
+  readonly invoke: Invoke<
+    ApplicationPaths<Paths, Plugins>, // the root's entry, every global option included
+    {
       readonly process?: ProcessHandle; // the real process's handle when omitted
-    },
-  ): Promise<InvocationOutcome<Mapped>>; // builds the graph as run() does, reusing a kept one
+    }
+  >; // builds the graph as run() does, reusing a kept one
 }
 ```
 
@@ -167,7 +176,44 @@ export const report = new Command('report').action(async ({ invoke, out, style }
 - **The call's time zone.** `timeZone` sets `host.timeZone` for this invocation before validation, without changing its process handle or its parent's zone. Without it, `app.invoke` reads the handle's zone, and an action's `invoke` inherits its immediate parent's effective zone. Nested calls inherit that zone unless they supply their own `timeZone`; siblings and concurrent calls are independent. No other host fact has a per-call override. A supplied zone-less token read by `dateTime()` uses this zone unless the validator declares its own; an offset or `Z` still names its own instant. If the effective zone differs from the zone the reused declared values were validated under, the call validates every declared default and implied value again against its own host. Both doors therefore resolve an omitted zone-less `dateTime()` default in the same zone as a supplied zone-less token. A call in the same resolved zone, or one that omits `timeZone`, reuses its parent's validated values.
 - **A valid time-zone name.** Core's public `resolveTimeZone(timeZone: string): string | undefined` constructs `new Intl.DateTimeFormat('en-US', { timeZone })` and returns `resolvedOptions().timeZone`, unless that resolved name starts with `+` or `-`. It returns `undefined` for an offset or failed construction. This refuses numeric offsets, including a Unicode-minus input that the formatter resolves to an offset, and accepts `UTC` and runtime-known aliases. `host.timeZone` holds the resolved spelling. The check neither trims input nor reads a `process` global or default zone, and invoke and MCP share this one core implementation. A `dateTime({ timeZone })` pin remains the author's value under the validators' existing `isKnownZone` rule, which accepts offsets. An invalid per-call name resolves `failed` with `InputError`, exit 2, and an empty `problems` list, because the invocation option names no declared input. Its own sentence is `invoke() timeZone is not an IANA time zone name this runtime knows. Use a name such as "Asia/Tokyo".`, without repeating the received value. It follows the ordinary failure view, hints, form, and `failure` handler. It fails during host assembly, after existing working-directory and release-fact failures and before validation or middleware. [ADR-0193](../decisions/0193-invoke-takes-a-per-call-time-zone-and-mcp-reads-it-from-request-metadata.md) records the contract.
 - **The call's shape.** The types reject a malformed call, such as a `path` that is not an array of strings, an `exclude` that is not an array of strings, a `signal` that is not an `AbortSignal`, or a `failure` or an `onProgress` that is not a function. A value that bypasses them gets no rule, under [ADR-0093](../decisions/0093-a-value-that-bypasses-the-types-gets-no-rule.md): the platform's own error reports it, as a rejection of the call or as a defect of its run. A `values` key other than `args`, `options`, and `passthrough` is not read. The call copies `path`, `passthrough`, and `exclude` where it enters, so a later change to any of those arrays changes nothing the run reads.
-- **Names.** `resolveTimeZone`, `InvocationValues`, `InvokeOptions`, and `InvocationOutcome` are exported from `@loomcli/core`, and `ActionContext` carries `invoke`. `ProgressEvent` is exported under [Progress events](output.md#progress-events).
+- **Names.** `resolveTimeZone`, `InvocationValues`, `InvokeOptions`, `InvocationOutcome`, `Invoke`, `CommandPaths`, and `PathsOf` are exported from `@loomcli/core`, and `ActionContext` carries `invoke`. `ProgressEvent` is exported under [Progress events](output.md#progress-events).
+
+### Typed paths
+
+`invoke` types a literal path and its values from the Command paths the Application declares, so `invoke(['gte'], …)` and `invoke(['get'], { options: { flie: 'x' } })` are compile errors rather than an `UnknownCommandError` and an `UnknownOptionError` at run time. Nothing changes at run time: the typing narrows what a call compiles with, and the rules above hold for every call that compiles.
+
+- **Command paths.** Each Command carries its entry under its canonical name: the value each of its arguments and local options takes, by declared name, and its children's entries, by canonical name. `command()` joins a child's entry to its parent's, and the Application's root entry adds every global option, a plugin's included. `PathsOf<typeof app>` reads an Application's paths, and `CommandPaths` names one entry's shape.
+- **A literal path.** A path written as a tuple of string literals, `[]` for the root, is checked one name at a time against the canonical names its level declares, so a mistyped name reads `Type '"gte"' is not assignable to type '"get" | "remote"'`, and a name after a Command with no children reads as a path one element too long. Its `values` take the routed Command's arguments and local options and every global option, each optional, so an undeclared name is an excess property and a wrongly typed value a type error. Each value takes what [Lowering](#invocation-by-name) accepts for its input: a string or a number on a string option or a scalar argument, a list of them on a multiple option or a variadic argument, `true` as well on an option with an implied value, a Boolean on a Boolean option, a count on a counted option, and a list of words on an arity option, whose length the run checks. `passthrough` is accepted on every path, and the run refuses a non-empty one on a Command without the passthrough mode.
+- **A dynamic path.** A path typed as an array, such as `readonly string[]`, or a tuple with an element typed as the wide `string`, takes the dynamic `InvocationValues`, as every call did before. The MCP plugin and a caller that walks the graph pass their paths this way, and so does a caller whose values are typed as `InvocationValues`.
+- **Canonical names only.** A literal path checked against canonical names takes canonical names alone. An [alias](commands.md#aliases) routes at run time, so a call that names one passes its path as `readonly string[]`; on an Application that installs a plugin, an undeclared root name, an alias at the root included, already reads dynamically, as the next bullets state.
+- **One path, one Command.** A union of literal paths, such as `dry ? ['plan'] : ['apply']`, names no one Command whose values could type the call, so it takes the dynamic `InvocationValues`, and the run reports a misspelled branch. An explicit type argument, such as `invoke<string>(['get'], …)`, leaves the path at its default, so that call is dynamic too.
+- **Options a hook adds.** The values type the options a declaration states. An option a plugin's [`onCommandAttach`](lifecycle-hooks.md) hook adds exists only at run time, so a literal path rejects it: the [formatter](../plugins/format.md)'s `--format` and `--fields`, which it adds to every Command with a result, are such options. Select a view with the call's `view`, as `invoke(['list'], {}, { view: 'json' })` does in place of `--format json`, or pass the path as a `readonly string[]` to supply them by name.
+- **Where no type states the names.** A path deeper than four Commands reads dynamically, and so does a path through a Command whose name is typed as the wide `string`, from its level on. A plugin may contribute Commands at the root, which no type names, so on an Application that installs any plugin a first name the Application does not declare reads dynamically; the Commands it declares stay typed. The neutral `Application` annotation states no paths, so each of its calls is dynamic.
+- **An action's `invoke`.** A Command declared in its own module cannot name the Application it attaches to, so an action's `invoke` reads the paths the Application registers under `Register.paths`, beside its [environment](commands.md#modular-authoring), and is dynamic where none is registered. Register the completed Application's paths: unlike the environment, they are read only inside an action's body, so the registration creates no circular dependency. The context's `invoke` names them only in the base type of its own interface, so they resolve where a call reads `invoke`, and an action that never calls it does not resolve the Application's type.
+
+```ts
+// src/application.ts
+import { Application } from '@loomcli/core';
+import type { EnvironmentOf, PathsOf } from '@loomcli/core';
+import { get } from './commands/get.js';
+import { report } from './commands/report.js';
+
+const configured = new Application('jsonkit').globalOption('file', { type: 'string' });
+
+export const jsonkit = configured.command(get).command(report);
+
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+    paths: PathsOf<typeof jsonkit>;
+  }
+}
+
+// src/commands/report.ts: `invoke(['get'], { args: { path: 'user' }, options: { file: 'doc.json' } })`
+// compiles, and `invoke(['get'], { options: { flie: 'doc.json' } })` is rejected.
+```
+
+- **Two Applications, two types.** An Application's type carries its Command paths, so two Applications that declare different Commands have different types. A variable or a parameter that holds either takes the `Application` annotation, whose calls are dynamic.
 
 ## When author code fails
 

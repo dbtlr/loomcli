@@ -70,8 +70,12 @@ The shallow type information extracted before Command composition: global output
 _Avoid_: Runtime context, global singleton
 
 **Application registration**:
-The Application-owned `Register.environment` module augmentation that supplies its environment to one TypeScript compilation context.
+The Application-owned `Register` module augmentation that supplies its environment to one TypeScript compilation context under `environment`, and, under `paths`, the completed Application's Command paths, which an action's `invoke` reads.
 _Avoid_: Command wiring, plugin installation
+
+**Command paths**:
+The type-level map each Command and the Application carry of the Commands below them: at each level, each child's entry under its canonical name, with the value an invocation by name may supply for each of its arguments and local options, and, at the root, for each global option, a plugin's included. `invoke` reads it to check a literal path and type its values; an alias, a path deeper than four Commands, and a level no type names read dynamically.
+_Avoid_: Route table, command map, path registry
 
 ## Inputs
 

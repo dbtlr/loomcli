@@ -211,6 +211,7 @@ export type {
   InvokeOptions,
   Request,
 } from './invocation/types.js';
+export type { CommandPaths, Invoke, PathsOf } from './invocation/paths.js';
 export type {
   MessageArguments,
   Out,

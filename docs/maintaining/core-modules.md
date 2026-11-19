@@ -10,11 +10,11 @@ description: The map of @loomcli/core's source modules. Which folder under packa
 
 | Module | What it holds |
 | --- | --- |
-| `application/` | The `Application` declaration, `run()`, `check()`, and `inspect()`, and the type-level registration that publishes an application's globals and styles. |
+| `application/` | The `Application` declaration, `run()`, `check()`, and `inspect()`, and the type-level registration that publishes an application's globals, styles, and Command paths. |
 | `commands/` | The Command tree, its declaration rules, and the globals table that global options share. |
 | `inputs/` | Options, arguments, option groups, bindings, input sources, Standard Schema validation, and content inputs. |
 | `marks/` | The run-wide marks that one global option carries: color, verbosity, interaction, and background. |
-| `invocation/` | One run from argv to the action: parsing, lowering an invocation by name, `invoke()`, and the middleware chain. |
+| `invocation/` | One run from argv to the action: parsing, lowering an invocation by name, `invoke()` and its typed paths, the middleware chain, and dispatch preparation. |
 | `inspection/` | The built Command graph that projections read, and locating a word in an unfinished invocation. |
 | `plugins/` | The plugin contract: plugins, extensions, providers, environment preparation, and the graph and failure hooks. |
 | `failures/` | Failure classes, exit codes, the plain-data failure form, failure encoders, and translators. |
@@ -58,3 +58,5 @@ description: The map of @loomcli/core's source modules. Which folder under packa
 - `inputs/declared-values.ts` prepares declared defaults and implied values.
 - `inputs/validation.ts` holds Standard Schema validation, reports, and `validateValues`.
 - `invocation/prepare.ts` prepares dispatch from a parsed invocation.
+- `invocation/paths.ts` types `invoke()`'s literal paths and values from the Command paths.
+- `host/time-zone.ts` resolves a time zone name to the runtime's spelling, for the process handle and a per-call zone.

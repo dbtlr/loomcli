@@ -49,7 +49,7 @@ function fixture() {
   const repo = join(root, 'repo');
   mkdirSync(join(repo, '.git'), { recursive: true });
   mkdirSync(home);
-  const run = (argv: string[], application = app()) =>
+  const run = (argv: string[], application: Application = app()) =>
     runOnMock(application, {
       argv: ['skills', ...argv],
       cwd: repo,
@@ -60,7 +60,7 @@ function fixture() {
     });
   const folder = join(home, '.claude', 'skills', 'notes');
   const record = join(state, 'notes', 'installation', 'skills.claude.json');
-  const report = async (args: string[] = [], application = app()) => {
+  const report = async (args: string[] = [], application: Application = app()) => {
     const result = await run(
       ['status', '--agent', 'claude', '--format', 'json', ...args],
       application,
