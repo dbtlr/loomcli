@@ -90,12 +90,21 @@ test('a middleware renders help for the routed group without the callable check'
   });
 });
 
-test('an unknown command fails in routing before any middleware runs', async () => {
+test("an unknown command runs only the 'always' middleware, then fails as before", async () => {
   const result = await loaded('wrapped', ['nope']);
-  expect(result.marks).toEqual([]);
+  expect(result.marks).toEqual(['loaded:outer', 'loaded:inner']);
+  // Each wrapper's next() rejects with the unknown command the boundary raises, and the run reports it as before.
   expect(result).toMatchObject({
     status: 2,
-    stderr: 'app: Unknown command "nope". Use one of: get, cache.\n',
+    stderr: [
+      'ℹ outer:start',
+      'ℹ inner:start',
+      'ℹ inner:rejected:Unknown command "nope". Use one of: get, cache.',
+      'ℹ inner:cleanup',
+      'ℹ outer:rejected:Unknown command "nope". Use one of: get, cache.',
+      'ℹ outer:cleanup',
+      'app: Unknown command "nope". Use one of: get, cache.\n',
+    ].join('\n'),
   });
 });
 

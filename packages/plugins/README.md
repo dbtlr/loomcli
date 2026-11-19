@@ -48,6 +48,7 @@ Each entry links to its reference page.
 - `@loomcli/plugins/interaction`: an option that turns off questions for a run. [Interaction](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/interaction.md)
 - `@loomcli/plugins/dotenv`: variables read from `.env` files. [Dotenv](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/dotenv.md)
 - `@loomcli/plugins/config`: configuration and option values read from configuration files. [Configuration](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/config.md)
+- `@loomcli/plugins/external-commands`: `<application>-<word>` programs on `PATH`, which an operator runs as `<application> <word>`. [External commands](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/external-commands.md)
 - `@loomcli/plugins/suggestions`: the closest name for an unknown Command or option. [Suggestions](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/suggestions.md)
 
 ### Projections

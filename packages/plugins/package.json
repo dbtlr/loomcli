@@ -47,6 +47,10 @@
       "types": "./dist/src/dotenv/plugin.d.ts",
       "import": "./dist/src/dotenv/plugin.js"
     },
+    "./external-commands": {
+      "types": "./dist/src/external-commands/plugin.d.ts",
+      "import": "./dist/src/external-commands/plugin.js"
+    },
     "./format": {
       "types": "./dist/src/format/plugin.d.ts",
       "import": "./dist/src/format/plugin.js"

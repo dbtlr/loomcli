@@ -4,6 +4,9 @@
  */
 const firstReserved = 126;
 
+/** The first code past the 8 bits a process exit status holds. */
+const pastStatus = 256;
+
 /** Every whole number below `Bound`, counted up from 0, as one union of literal types. */
 type WholeNumbersBelow<
   Bound extends number,
@@ -18,6 +21,15 @@ type WholeNumbersBelow<
  * @public
  */
 export type FailureExitCode = Exclude<WholeNumbersBelow<typeof firstReserved>, 0>;
+
+/**
+ * Every exit status a process reports, 0 through 255: success, a failure class's code, a
+ * cancellation code, and any code a middleware's takeover states, such as a child program's.
+ *
+ * @public
+ * @sealed
+ */
+export type ExitCode = WholeNumbersBelow<typeof pastStatus>;
 
 // The failure codes BSD's `sysexits.h` names, as flat constants with literal types.
 // A failure class declares one by name: `static override readonly exitCode = EX_UNAVAILABLE;`.

@@ -533,7 +533,7 @@ export const EX_UNAVAILABLE = 69;
 export const EX_USAGE = 64;
 
 // @public @sealed
-export type ExitCode = 0 | FailureExitCode | 129 | 130 | 131 | 141 | 143;
+export type ExitCode = WholeNumbersBelow<typeof pastStatus>;
 
 // @public @sealed
 export interface Extension<Target extends ExtensionTarget = ExtensionTarget, Schema extends StandardSchemaV1 = StandardSchemaV1, Collect extends boolean = false> extends AnyExtension {
@@ -976,6 +976,7 @@ export interface InterruptKeys {
 // @public @sealed
 export type InvocationOutcome<Mapped = LoomError> = {
     readonly status: 'completed';
+    readonly exitCode?: ExitCode;
     readonly output: string;
     readonly messages: string;
 } | {
@@ -1187,8 +1188,11 @@ export type Middleware<Contributor extends Plugin_2 | ((...args: never[]) => Plu
 // @public @sealed
 export interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
     readonly command: CommandNode;
+    get exitCode(): ExitCode | undefined;
+    set exitCode(code: ExitCode);
     readonly graph: CommandGraph;
     readonly host: Host;
+    readonly invokedBy: InvokedBy;
     readonly log: Log;
     get mediaType(): string | undefined;
     set mediaType(type: string);
@@ -1204,6 +1208,7 @@ export interface MiddlewareContext<Options extends PluginOptions = PluginOptions
     readonly spellings: PluginOptionSpellings<Options>;
     get transform(): ResultTransform | undefined;
     set transform(transform: ResultTransform);
+    readonly unknownCommand: UnknownCommand | null;
     get view(): string | null;
     set view(name: string);
 }
@@ -1892,6 +1897,12 @@ export class UnexpectedValueError extends UsageError {
     static readonly code: string;
     readonly spelling: string;
     readonly value: string;
+}
+
+// @public @sealed
+export interface UnknownCommand {
+    readonly rest: readonly string[];
+    readonly word: string;
 }
 
 // @public @sealed

@@ -105,6 +105,7 @@ export const surfacePackages = [
           colors: 'Constant behind an exported type union; the author names the union.',
           firstReserved: 'Constant behind an exported type union; the author names the union.',
           modifiers: 'Constant behind an exported type union; the author names the union.',
+          pastStatus: 'Constant behind an exported type union; the author names the union.',
           reservedCallableNames:
             'Constant behind an exported type union; the author names the union.',
           tokens: 'Constant behind an exported type union; the author names the union.',

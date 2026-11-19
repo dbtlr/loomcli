@@ -72,8 +72,8 @@ const value: Synchronous<string> = 'kept';
 // @ts-expect-error TS2322: No value satisfies a synchronous promise.
 const never: Synchronous<Promise<void>> = Promise.resolve();
 
-// Every member of the widened `ExitCode`: core's codes by name, and the range a class declares.
-// A further member outside the declarable range would fail to compile here.
+// Every member of `ExitCode`, 0 through 255: core's codes by name, then any code a class declares or a takeover states.
+// The rest is no longer only a declared failure code, so it reads as a whole exit status.
 function describe(status: ExitCode): string {
   switch (status) {
     case 0: {
@@ -101,8 +101,10 @@ function describe(status: ExitCode): string {
       return 'terminated';
     }
     default: {
+      const stated: ExitCode = status;
+      // @ts-expect-error TS2322: A takeover's code, such as 255, is no failure class's code.
       const declared: FailureExitCode = status;
-      return `declared ${String(declared)}`;
+      return `exited ${String(stated)} ${String(declared)}`;
     }
   }
 }

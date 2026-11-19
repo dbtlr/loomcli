@@ -96,7 +96,7 @@ In an invocation by name, `UnknownOptionError` names the key the caller wrote an
 
 ```ts
 type FailureExitCode = 1 | 2 | 3 /* … every whole number through */ | 125; // 1 through 125
-type ExitCode = 0 | FailureExitCode | 129 | 130 | 131 | 141 | 143;
+type ExitCode = 0 | 1 | 2 /* … every whole number through */ | 255; // 0 through 255
 
 abstract class LoomError extends Error {
   static readonly exitCode: FailureExitCode; // 1

@@ -122,6 +122,7 @@ export type Prepared = {
       dispatch: (
         view: string | null,
         transform: ResultTransform | undefined,
+        invoked: () => void,
       ) => Promise<DispatchOutcome>;
       kind: 'ready';
       request: Request;
@@ -415,6 +416,7 @@ function readyDispatch(
   dispatch: (
     view: string | null,
     transform: ResultTransform | undefined,
+    invoked: () => void,
   ) => Promise<DispatchOutcome>;
   request: Request;
 } {
@@ -423,7 +425,7 @@ function readyDispatch(
   // An action under a plugin Command logs as that plugin, and the application's own as none.
   const plugin = (top === undefined ? undefined : graph.listedBy.get(top)) ?? null;
   return {
-    dispatch: async (view, transform) => {
+    dispatch: async (view, transform, invoked) => {
       const { signal } = invocation;
       const runValues = invocation.providers({
         graph: invocation.inspected,
@@ -452,6 +454,7 @@ function readyDispatch(
       const channel = invocation.channel({ path, result: command.result, transform, view });
       try {
         rememberInputNames(invocation.host, invocation.invokedBy);
+        invoked();
         await local.dispatch({
           cancel: invocation.cancel,
           // The run builds its graph once, so every read answers the same node.

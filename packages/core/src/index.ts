@@ -210,6 +210,7 @@ export type {
   InvocationValues,
   InvokeOptions,
   Request,
+  UnknownCommand,
 } from './invocation/types.js';
 export type { CommandPaths, Invoke, PathsOf } from './invocation/paths.js';
 export type {

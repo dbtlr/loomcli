@@ -87,15 +87,19 @@ function verbosityOf(values: OptionValues, names: MarkedNames): number {
 
 /**
  * The run's verbosity, read from the graph's global values that `read` produces, or 0 when the
- * graph carries no mark or the words name an unknown command, a run that fails in routing.
+ * graph carries no mark or the words name an unknown command, a run that holds it.
  */
-function settleWith(graph: BuiltGraph, read: () => { values: { globals: OptionValues } }): number {
+function settleWith(
+  graph: BuiltGraph,
+  read: () => { values: { globals: OptionValues } } | { unknown: unknown },
+): number {
   const names = markedNames(graph);
   if (names === undefined) {
     return 0;
   }
   try {
-    return verbosityOf(read().values.globals, names);
+    const reading = read();
+    return 'unknown' in reading ? 0 : verbosityOf(reading.values.globals, names);
   } catch (error) {
     if (error instanceof UnknownCommandError) {
       return 0;

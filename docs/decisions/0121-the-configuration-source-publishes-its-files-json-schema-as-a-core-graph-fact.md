@@ -4,7 +4,7 @@ title: ADR-0121 - The configuration source publishes its file's JSON Schema as a
 description: The configuration source slot takes an optional Standard Schema for the file it reads. Core derives its input-side JSON Schema at graph build through the Standard JSON Schema channel, as it derives an input's, and the graph carries it as configuration { schema }, null when no plugin claims the slot. The manifest prints it in its envelope. The configuration plugin passes its schema with a $schema string property added to the published JSON Schema, and removes a top-level $schema key from the file before validating, so a file may point at a hosted schema. Loom writes no schema file; hosting is the author's choice, and the author's own code writes the pointer into a file it creates.
 status: accepted
 created: 2026-10-29
-modified: 2026-11-02
+modified: 2026-11-19
 ---
 
 # ADR-0121 - The configuration source publishes its file's JSON Schema as a core graph fact
@@ -46,3 +46,4 @@ Accepted in 0.17.0.
 
 - 2026-10-29: Proposed with the contract (LM-377). It extends ADR-0030's schema fact to the configuration source's file, adds `schema` to ADR-0032's source slot, adds a field to ADR-0010's graph that names no plugin, and narrows ADR-0118's link check, which reads the graph's fact in place of its own conversion. ADR-0010, ADR-0030, ADR-0032, and ADR-0118 carry dated entries.
 - 2026-10-29: A converter that fails publishes `null` with no fault in every build, by owner ruling after the code review found that zod's converter throws for `z.bigint()` and dates; the development fault the contract first gave it is withdrawn.
+- 2026-11-19: [ADR-0191](0191-an-application-keeps-its-built-graph-for-each-build-and-reuses-it-within-one-process.md), proposed, narrows the consequence that every run of an application that installs the configuration plugin converts its schema once at graph build: an Application keeps its graph for each build within one process, so the schema is converted once per graph build that renders the frozen graph. It binds when accepted; every other clause remains unchanged.

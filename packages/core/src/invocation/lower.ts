@@ -19,8 +19,14 @@ import {
   takesScalar,
   takesTuple,
 } from './messages.js';
-import { candidatesOf, write } from './parse.js';
-import type { BoundArguments, Occurrence, ParsedInvocation } from './parse.js';
+import { candidatesOf, unknownCommand, write } from './parse.js';
+import type {
+  BoundArguments,
+  Occurrence,
+  ParsedInvocation,
+  Routed,
+  UnknownRouting,
+} from './parse.js';
 
 /**
  * What an invocation by name names, read once where the call entered: the path from the root, the
@@ -61,20 +67,28 @@ function tokensOf(value: unknown): string[] | undefined {
 /**
  * Routing by name: each element reads as a plain word reads during routing, a canonical name or an
  * alias descending and a hidden Command routing. An element no child holds is the unknown Command
- * routing raises, and so is one after a Command with no children, which offers no candidates
- * because a path names Commands alone. `walked` hears the path as each name routes.
+ * routing holds, with the elements after it, and so is one after a Command with no children, which
+ * offers no candidates because a path names Commands alone. `walked` hears the path as each name
+ * routes.
  */
 function routeByName(
   graph: BuiltGraph,
   path: readonly string[],
   walked: (path: readonly string[]) => void,
-): { command: BuiltCommand; path: string[] } {
+): { command: BuiltCommand; path: string[] } | UnknownRouting {
   let command = graph.root;
   const routed: string[] = [];
-  for (const name of path) {
+  for (const [index, name] of path.entries()) {
     const child = command.routes.get(name);
     if (!child) {
-      throw new UnknownCommandError(name, command.children.size === 0 ? [] : candidatesOf(command));
+      return {
+        fault: new UnknownCommandError(
+          name,
+          command.children.size === 0 ? [] : candidatesOf(command),
+        ),
+        path: Object.freeze([...routed]),
+        unknown: unknownCommand(name, path.slice(index + 1)),
+      };
     }
     command = child.command;
     routed.push(child.name);
@@ -363,15 +377,25 @@ function checkPassthrough(read: Reading, passthrough: readonly string[]): void {
 /**
  * An invocation by name read into the result the parser produces for argv words: routing by path,
  * then each value lowered to the tokens a command line would give, once, with no argv text built.
- * The first held fault is the first in the order `options` keys, then `exclude` names, then `args` keys arrive. Only
- * an unknown Command throws.
+ * The first held fault is the first in the order `options` keys, then `exclude` names, then `args`
+ * keys arrive. An unknown Command stops it, and nothing is lowered.
  */
 function lowerInvocation(
   graph: BuiltGraph,
   call: NamedCall,
   walked: (path: readonly string[]) => void,
+): Routed {
+  const route = routeByName(graph, call.path, walked);
+  return 'unknown' in route ? route : lowerRouted(graph, call, route);
+}
+
+/** The values of an invocation by name whose path routed to a Command, lowered against its table. */
+function lowerRouted(
+  graph: BuiltGraph,
+  call: NamedCall,
+  route: { command: BuiltCommand; path: string[] },
 ): ParsedInvocation {
-  const { command, path } = routeByName(graph, call.path, walked);
+  const { command, path } = route;
   const read: Reading = {
     args: new Map(),
     command,
