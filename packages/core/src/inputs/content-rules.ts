@@ -1,5 +1,5 @@
 import { registerRule } from '../diagnostics/diagnostic-text.js';
-import type { InputDeclaration } from './validation.js';
+import type { InputDeclaration } from './declarations.js';
 
 export const stdinClaimedTwice = registerRule('@loomcli/core/stdin-claimed-twice', {
   explanation:

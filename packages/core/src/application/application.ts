@@ -69,6 +69,13 @@ import type { HandleFacts, HostCapture, ReportHost } from '../host/host.js';
 import { laneOf, processHandle } from '../host/process-handle.js';
 import type { Host, ProcessHandle } from '../host/types.js';
 import type { Content } from '../inputs/content.js';
+import type {
+  ArgumentInput,
+  DeclaredValues,
+  InputPlaces,
+  OptionInput,
+} from '../inputs/declarations.js';
+import { prepareDeclaredValues } from '../inputs/declared-values.js';
 import type { OptionSpelling } from '../inputs/options.js';
 import { installedSource } from '../inputs/sources.js';
 import type {
@@ -85,13 +92,6 @@ import type {
   ArgumentKeyConstraint,
   Unmarked,
 } from '../inputs/types.js';
-import type {
-  ArgumentInput,
-  DeclaredValues,
-  InputPlaces,
-  OptionInput,
-} from '../inputs/validation.js';
-import { prepareDeclaredValues } from '../inputs/validation.js';
 import { inspectGraph } from '../inspection/inspect.js';
 import type { CommandGraph } from '../inspection/inspect.js';
 import { noSelection, runInvocation } from '../invocation/chain.js';

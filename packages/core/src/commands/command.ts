@@ -18,6 +18,17 @@ import { underCI } from '../host/host.js';
 import type { Host } from '../host/types.js';
 import { claimsStdin, stdinClaimedTwice } from '../inputs/content-rules.js';
 import type { Content } from '../inputs/content.js';
+import { configUnread, declaringSite, inputPlace, markApplied } from '../inputs/declarations.js';
+import type {
+  ArgumentInput,
+  InputPlaces,
+  InputDeclaration,
+  OptionInput,
+  DeclaredValues,
+  Provenance,
+} from '../inputs/declarations.js';
+import { ValidationLedger } from '../inputs/ledger.js';
+import type { ValidatedInputs } from '../inputs/ledger.js';
 import { rememberInputNames } from '../inputs/missing-input.js';
 import { declareGroup, membersOf } from '../inputs/option-groups.js';
 import type { OptionGroup } from '../inputs/option-groups.js';
@@ -48,6 +59,7 @@ import type {
 import { nameSharedAcrossKinds, optionDeclaredTwice, spellingTaken } from '../inputs/rules.js';
 import { fillInputs } from '../inputs/sources.js';
 import type { SourceOutcome } from '../inputs/sources.js';
+import { suppliedInputs } from '../inputs/supplied.js';
 import type {
   ArgumentConfig,
   ArgumentValue,
@@ -61,26 +73,8 @@ import type {
   ArgumentKeyConstraint,
   Unmarked,
 } from '../inputs/types.js';
-import {
-  suppliedInputs,
-  configUnread,
-  declaringSite,
-  inputPlace,
-  markApplied,
-  rejectsGlobal,
-  validateValues,
-  ValidationLedger,
-} from '../inputs/validation.js';
-import type {
-  ArgumentInput,
-  InputPlaces,
-  InputDeclaration,
-  OptionInput,
-  DeclaredValues,
-  Provenance,
-  ValidatedInputs,
-  Validation,
-} from '../inputs/validation.js';
+import { rejectsGlobal, validateValues } from '../inputs/validation.js';
+import type { Validation } from '../inputs/validation.js';
 import { graphMismatch, nodeAt, resultNode } from '../inspection/inspect.js';
 import type { CommandGraph, CommandNode, OptionNode, ResultNode } from '../inspection/inspect.js';
 import { candidatesOf } from '../invocation/parse.js';

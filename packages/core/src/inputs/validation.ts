@@ -1,465 +1,52 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import type { AppliedSet, OptionSetValues } from '../commands/option-sets.js';
-import { called, elided, spelled } from '../diagnostics/diagnostic-text.js';
-import type { Finding } from '../diagnostics/diagnostic-text.js';
-import { callSite, partOf, siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
+import { partOf, siteFinding } from '../diagnostics/facts.js';
 import { validatorFailed } from '../diagnostics/rules.js';
 import { asSentence, DeclarationError, InputError, reasonOf } from '../failures/errors.js';
 import type { InputProblem } from '../failures/errors.js';
 import type { Host } from '../host/types.js';
-import { defineEntry } from '../support/plain.js';
 import type { Content } from './content.js';
 import { prepareContent } from './content.js';
-import { holdsTuples, schemaOptions } from './context.js';
+import { schemaOptions } from './context.js';
+import { declarationSubject, identityOf, scoped } from './declarations.js';
+import type {
+  DeclaredValues,
+  InputDeclaration,
+  Invocation,
+  OptionInput,
+  ScopedInput,
+  ScopedInputs,
+} from './declarations.js';
+import { ValidatedInputs } from './ledger.js';
+import type { Report } from './ledger.js';
 import {
   environmentBoolean,
   environmentCount,
   environmentTuple,
   ignoredFill,
-  inputSubject,
   issueLine,
-  requiredArgument,
-  requiredOption,
   silentRejection,
   stdinIssue,
 } from './messages.js';
 import type { InputSubject, LogLineText } from './messages.js';
 import { absentBooleans, groupReports } from './option-groups.js';
-import type { OptionGroup } from './option-groups.js';
-import {
-  arityOf,
-  booleanValue,
-  copyValues,
-  reportedOf,
-  spellingsOf,
-  withdrawFill,
-} from './options.js';
-import type { OptionValues, SpellingTable } from './options.js';
+import { arityOf, booleanValue, copyValues, withdrawFill } from './options.js';
+import type { OptionValues } from './options.js';
 import { rememberReceived } from './received.js';
-import { invalidDefault, invalidImplied } from './rules.js';
-import type {
-  ArgumentConfig,
-  ArgumentValue,
-  InputIdentity,
-  OptionConfig,
-  OptionValue,
-  SuppliedInputs,
-  StdinConfig,
-  ValidationContext,
-} from './types.js';
-
-/**
- * One declared input, typed by its literal name and its own config. The value type is derived from
- * the config, never claimed apart from it, so a declaration cannot be written under a value type
- * that its config does not produce. Untyped readers use the defaults.
- */
-export interface ArgumentInput<
-  Name extends string = string,
-  Config extends ArgumentConfig = ArgumentConfig,
-> {
-  readonly kind: 'argument';
-  readonly name: Name;
-  readonly config: Config;
-}
-export interface OptionInput<
-  Name extends string = string,
-  Config extends OptionConfig = OptionConfig,
-> {
-  readonly kind: 'option';
-  readonly name: Name;
-  readonly config: Config;
-}
-export type InputDeclaration<Name extends string = string> =
-  | ArgumentInput<Name>
-  | OptionInput<Name>;
-
-/**
- * The declared values validated before any token is parsed: each default, and each implied value a
- * bare spelling supplies. Values stay `unknown` here.
- */
-export interface DeclaredValues {
-  readonly defaults: ReadonlyMap<InputDeclaration, unknown>;
-  readonly implied: ReadonlyMap<InputDeclaration, unknown>;
-}
-
-/** The declarations one pass reads, by the scope that holds them: the graph's, then a Command's. */
-export interface ScopedInputs {
-  globals: readonly InputDeclaration[];
-  locals: readonly InputDeclaration[];
-}
-
-/** One declaration under its scope, which the context reports as part of its identity. */
-interface ScopedInput {
-  global: boolean;
-  input: InputDeclaration;
-}
-
-/**
- * What the input-source stage leaves for validation's messages, by option name: the label of each
- * value it filled, and the variable of each Boolean or counted option whose value is outside its
- * grammar. `unanswered` holds each option a configuration source would have filled had one of its own
- * options not been rejected; such an option reports no missing value and no absence rule judges it,
- * because the operator's configuration may hold it.
- */
-export interface Provenance {
-  /**
-   * The options the configuration source filled, by option name, with the directory of the file
-   * each answer came from, and whether the answer is strict. A rejected one is dropped unless it is
-   * strict, and its validator reads that directory as `host.cwd`.
-   */
-  fills?: ReadonlyMap<string, { directory: string | undefined; strict: boolean }>;
-  labels: ReadonlyMap<string, string>;
-  rejected: ReadonlyMap<string, string>;
-  unanswered?: ReadonlySet<InputDeclaration>;
-  /**
-   * The names of the options the stage withdrew as the losing members of an exclusive option group.
-   * Each reads as unfilled; `oneRequired` counts it, and a `requiredTogether` group that holds it is
-   * not checked.
-   */
-  withdrawn?: ReadonlySet<string>;
-}
-
-/** The raw tokens one invocation collected, keyed by declaration and by option name. */
-interface SuppliedValues {
-  args: ReadonlyMap<InputDeclaration, string | string[]>;
-  options: OptionValues;
-}
-
-/** Everything one invocation validates: its declarations, its tokens, and where they were read. */
-export interface Invocation {
-  optionGroups: readonly OptionGroup[];
-  interactive: boolean;
-  stdin?: (StdinConfig & { readonly position: number }) | undefined;
-  command: readonly string[];
-  /** Every declared default and implied value, validated before any token was read. */
-  declaredValues: DeclaredValues;
-  host: Host;
-  inputs: ScopedInputs;
-  /**
-   * Present for an invocation by name, which types no spelling, so every problem names an option by
-   * its declared name. `unlowered` holds each input whose value no token spells, with the issue
-   * that says what the input takes; each reports as a rejected value in authoring order.
-   */
-  named?: { unlowered: ReadonlyMap<InputDeclaration, string> } | undefined;
-  passthrough: readonly string[];
-  /**
-   * The declarations this pass validates, when it validates only some of `inputs`, such as a
-   * configuration source's own options ahead of its call. Every declaration of `inputs` still
-   * appears in the validation context's `supplied` record.
-   */
-  only?: ReadonlySet<InputDeclaration>;
-  /** Where each declaration was declared, which a broken validator's finding rebuilds. */
-  places: InputPlaces;
-  /**
-   * What the run's earlier passes settled, such as the one over a configuration source's own
-   * options, which this pass reads and adds to. This pass reads each value an earlier pass accepted
-   * and each problem it reported, in this pass's own order, and calls no validator a second time.
-   */
-  ledger: ValidationLedger;
-  /** The run's cancellation signal, which stops this phase between two validator calls. */
-  signal: AbortSignal;
-  sources: Provenance;
-  supplied: SuppliedValues;
-  /** The routed Command's spelling table, which names each option the way a problem reports it. */
-  table: SpellingTable;
-}
-
-/** Every declaration in validation order: the globals first, then the reading Command's own. */
-function scoped(inputs: ScopedInputs): ScopedInput[] {
-  return [
-    ...inputs.globals.map((input) => ({ global: true, input })),
-    ...inputs.locals.map((input) => ({ global: false, input })),
-  ];
-}
-
-function identityOf({ global, input }: ScopedInput): InputIdentity {
-  return { global, kind: input.kind, name: input.name };
-}
-
-/**
- * The validated values of one invocation, keyed by declaration. Only `validateValues` and the
- * validation ledger construct one, and its three readers are the only places where a validated value
- * takes its declared type, so every binder reads through them and none asserts on its own.
- */
-class ValidatedInputs {
-  readonly #values: ReadonlyMap<InputDeclaration, unknown>;
-
-  constructor(values: ReadonlyMap<InputDeclaration, unknown>) {
-    this.#values = values;
-  }
-
-  /** The one-key record this argument contributes to `args`, typed by its own config. */
-  argument<Name extends string, Config extends ArgumentConfig>(
-    input: ArgumentInput<Name, Config>,
-  ): Record<Name, ArgumentValue<Config>> {
-    return this.#field(input);
-  }
-
-  /** The one-key record this option contributes to `options`, typed by its own config. */
-  option<Name extends string, Config extends OptionConfig>(
-    input: OptionInput<Name, Config>,
-  ): Record<Name, OptionValue<Config>> {
-    return this.#field(input);
-  }
-
-  /** The record the options one `options(set)` call declared contribute, typed by the set's configs. */
-  optionSet<Configs extends Readonly<Record<string, OptionConfig>>>(
-    applied: AppliedSet<Configs>,
-  ): OptionSetValues<Configs> {
-    // Last resort: no typed path exists. The map stores every validated value as `unknown`.
-    // A record built from a list of inputs types its keys as `string`, never as the set's names.
-    // A typed accessor where a set's entries are stored needs an assertion, and so does this record.
-    // It holds because `applied.inputs` copy the entries `optionSet()` built from `Configs`.
-    // `AppliedSet` states why they belong to that set, and validation stores each one's output.
-    // `Object.fromEntries` defines each name as an own key, a name such as `__proto__` included.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return Object.fromEntries(
-      applied.inputs.map((input) => [input.name, this.#values.get(input)]),
-    ) as OptionSetValues<Configs>;
-  }
-
-  /**
-   * One validated value read without its declared type, which is what an untyped reader such as a
-   * middleware's request receives. The declared types stay with the three readers above.
-   */
-  read(input: InputDeclaration): unknown {
-    return this.#values.get(input);
-  }
-
-  /** Whether this pass validated the declaration's value. */
-  has(input: InputDeclaration): boolean {
-    return this.#values.has(input);
-  }
-
-  #field<Name extends string, Value>(input: InputDeclaration<Name>): Record<Name, Value> {
-    // Last resort: no typed path exists. The map stores every validated value as `unknown`.
-    // An object literal with a generic computed key does not type as `Record<Name, _>` either.
-    // So neither the value nor the key can reach `Record<Name, Value>` without this assertion.
-    // It holds because validation stores the output the config declares under this declaration.
-    // The two callers above derive `Value` from that same config.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    return { [input.name]: this.#values.get(input) } as Record<Name, Value>;
-  }
-}
-export type { ValidatedInputs };
-
-/**
- * Every outcome one run's validation passes settled, which each later pass of the run reads, so a
- * validator runs at most once per run: each value a pass accepted, each input's report, and each
- * input whose validator threw. A pass records its outcomes even when a validator throws, so every
- * value it accepted before the throw stays readable and the input that threw is never validated
- * again.
- */
-export class ValidationLedger {
-  readonly #reports = new Map<InputDeclaration, Report>();
-  readonly #threw = new Set<InputDeclaration>();
-  readonly #values = new Map<InputDeclaration, unknown>();
-
-  /** Every value a pass of the run accepted, read as one pass's are. */
-  get values(): ValidatedInputs {
-    return new ValidatedInputs(this.#values);
-  }
-
-  /** Whether a pass of the run reached the declaration: accepted it, reported it, or threw on it. */
-  reached(input: InputDeclaration): boolean {
-    return this.#values.has(input) || this.#reports.has(input) || this.#threw.has(input);
-  }
-
-  /** The report a pass of the run made for the declaration, or `undefined`. */
-  report(input: InputDeclaration): Report | undefined {
-    return this.#reports.get(input);
-  }
-
-  /** Whether the declaration's validator threw in a pass of the run. */
-  threw(input: InputDeclaration): boolean {
-    return this.#threw.has(input);
-  }
-
-  /** One pass's outcomes, and the declaration whose validator threw when the pass stopped on one. */
-  record(
-    pass: {
-      reports: ReadonlyMap<InputDeclaration, Report>;
-      values: ReadonlyMap<InputDeclaration, unknown>;
-    },
-    threw: InputDeclaration | undefined,
-  ): void {
-    for (const [input, value] of pass.values) {
-      this.#values.set(input, value);
-    }
-    for (const [input, report] of pass.reports) {
-      this.#reports.set(input, report);
-    }
-    if (threw !== undefined) {
-      this.#threw.add(threw);
-    }
-  }
-}
-
-/**
- * A declaration error names the declaration, because the author reads the declaration to fix it.
- * An argument declares and reads under one name, so the two namings differ for options alone.
- */
-export function declarationSubject(input: InputDeclaration): string {
-  return inputSubject({ kind: input.kind, spelling: input.name });
-}
-
-/** Where the call that declared one input sits: the call's name and the Command it is on. */
-export type InputPlace = Pick<Finding, 'call' | 'path'>;
-
-/**
- * Where one Command's own input was declared: its `argument()` or `option()` call on the Command at
- * `path`. A global option's site is the built table's, under `BuiltGlobals.sites`.
- */
-export function inputPlace(input: InputDeclaration, path: readonly string[]): InputPlace {
-  return { call: input.kind, path };
-}
-
-/**
- * The options an `options(set)` call declared. The author wrote that call and no `option()` call,
- * so every finding about one of them rebuilds the call that applied it.
- */
-const appliedOptions = new WeakSet<InputDeclaration>();
-
-/** Records that an `options(set)` call declared this option, before any rule judges it. */
-export function markApplied(input: OptionInput): void {
-  appliedOptions.add(input);
-}
-
-/**
- * The site of the call that declared one input at `place`, rebuilt as `call(name, config)`. Every
- * finding for an input's own call starts from it, so each marks the call the same way. `subject`
- * is the sentence's name for the input. An option a set applied is rebuilt as the call that
- * applied it, `options(optionSet({ name: config }))` with that entry alone, whose entry stands for
- * the name.
- */
-export function declaringSite(
-  input: InputDeclaration,
-  place: InputPlace,
-  subject: string = declarationSubject(input),
-): InputSite {
-  if (appliedOptions.has(input)) {
-    const at = `0.0.${input.name}`;
-    // `Object.fromEntries` defines the key as an own property whatever its name.
-    const entry = Object.fromEntries([[input.name, input.config]]);
-    const declaration = { arguments: [called('optionSet', [entry])], call: 'options' };
-    return {
-      at,
-      declaration: place.path === undefined ? declaration : { ...declaration, path: place.path },
-      named: at,
-      subject,
-    };
-  }
-  return callSite(subject, { arguments: [input.name, input.config], ...place });
-}
-
-/**
- * One input's site with its config printed elided, for a fault judged before the config is read,
- * such as an invalid name, so the fault reads none of the config.
- */
-export function configUnread(site: InputSite): InputSite {
-  const [name, config] = site.declaration.arguments;
-  const shown = config === undefined ? [name] : [name, spelled(elided)];
-  return { ...site, declaration: { ...site.declaration, arguments: shown } };
-}
-
-/**
- * The token an operator would type for one declaration: an option's reported spelling, read from
- * the routed Command's table, and the declared name for an argument. Every input diagnostic and
- * every reported problem names the declaration this way, so an omission and a rejected value read
- * alike and a `shortOnly` option is never named by a long form it does not accept. An invocation by
- * name types no spelling, so there an option is named by its declared name, the key the caller wrote.
- */
-function spellingOf(
-  input: InputDeclaration,
-  invocation: Pick<Invocation, 'named' | 'table'>,
-): string {
-  return input.kind === 'argument' || invocation.named !== undefined
-    ? input.name
-    : reportedOf(spellingsOf(invocation.table, input.name), input.name);
-}
-
-/**
- * An input diagnostic names the declaration by kind and by the spelling that reaches it, and a
- * value an input source filled by its source too. An argument has no source.
- */
-function suppliedName(input: InputDeclaration, spelling: string, origin?: string): InputSubject {
-  return input.kind === 'argument'
-    ? { kind: 'argument', spelling }
-    : { kind: 'option', origin, spelling };
-}
-
-/**
- * The default sentence for an omitted required input. An argument and an option keep the wording
- * each phase used before omission became one problem, and a collected input asks for one value
- * more than a scalar does.
- */
-function missingMessage(
-  input: InputDeclaration,
-  spelling: string,
-  facts: { collected: boolean; origin?: string | undefined },
-) {
-  const { collected, origin } = facts;
-  const whenNotInteractive = input.config.required === 'non-interactive';
-  return input.kind === 'argument'
-    ? requiredArgument(spelling, collected, whenNotInteractive)
-    : requiredOption({ kind: 'option', origin, spelling }, whenNotInteractive, {
-        arity: arityOf(input.config),
-        collected,
-        kind: 'values',
-      });
-}
-
-/**
- * A multiple option collects its occurrences and a variadic argument collects the remaining
- * tokens, so either one carries a `string[]` as its raw value and validates each value alone.
- */
-function collects(input: InputDeclaration) {
-  return input.kind === 'option' ? input.config.multiple === true : input.config.variadic === true;
-}
-
-/**
- * The declaration flag that sends an omitted value to its own validator. Every declaration reads it
- * here, and the types allow it only where no other rule already decides absence.
- */
-export function validatesOmission(input: InputDeclaration) {
-  const { config } = input;
-  return 'validateOmitted' in config && config.validateOmitted;
-}
-
-/**
- * One accessor for a supplied option value, so the collected, single, and arity shapes read alike:
- * an arity option's one tuple, or a multiple one's list of tuples.
- */
-function suppliedOption(
-  options: OptionValues,
-  input: OptionInput,
-  collected: boolean,
-): string | string[] | string[][] | undefined {
-  const { name } = input;
-  if (arityOf(input.config) !== undefined) {
-    const tuples = options.tuples.get(name);
-    return collected ? tuples : tuples?.[0];
-  }
-  return wordsOf(options, name, collected);
-}
-
-/** A one-word option's supplied value: its one word, or a multiple option's list of them. */
-function wordsOf(options: OptionValues, name: string, collected: boolean) {
-  return collected ? options.lists.get(name) : options.strings.get(name);
-}
-
-/**
- * The copy a collected value is handed out as, a list of tuples copied at both depths, because the
- * parser's arrays are the action's.
- */
-function copied(value: string | string[] | string[][] | undefined) {
-  if (value === undefined || typeof value === 'string') {
-    return value;
-  }
-  return holdsTuples(value) ? value.map((words) => [...words]) : [...value];
-}
+import {
+  collects,
+  freshDeclaredValue,
+  holdsTupleList,
+  missingMessage,
+  spellingOf,
+  suppliedInputs,
+  suppliedName,
+  suppliedOption,
+  validatesOmission,
+  wordsOf,
+} from './supplied.js';
+import type { SuppliedInputs, ValidationContext } from './types.js';
 
 /**
  * One issue a validator returned, checked where it enters. Core keeps every own enumerable field
@@ -497,7 +84,7 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
  * names the declaration and its finding marks the validator on the call at `place`. Returned issues
  * belong to the value, so the caller names those.
  */
-async function validate(
+export async function validate(
   input: InputDeclaration,
   raw: unknown,
   call: { context: ValidationContext; site: InputSite | undefined },
@@ -658,7 +245,7 @@ async function validateWords(
  * arrays are copies, so a write to them never reaches the next call. The host is the one captured
  * object that every call and the action share.
  */
-async function validateDeclared(
+export async function validateDeclared(
   input: InputDeclaration,
   raw: unknown,
   call: {
@@ -725,7 +312,9 @@ export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
  * placeholder stands in for its silence. Reporting takes this list once: the reported problem
  * carries it and the default text is derived from it, so a view and core read the same issues.
  */
-function reported(issues: readonly StandardSchemaV1.Issue[]): readonly StandardSchemaV1.Issue[] {
+export function reported(
+  issues: readonly StandardSchemaV1.Issue[],
+): readonly StandardSchemaV1.Issue[] {
   return issues.length === 0 ? [{ message: silentRejection }] : issues;
 }
 
@@ -733,165 +322,8 @@ function reported(issues: readonly StandardSchemaV1.Issue[]): readonly StandardS
  * One line per issue under the input's subject. A path segment can hold text the operator typed,
  * such as a key of a record, so the line escapes the path; `issuePath` keeps it raw for a view.
  */
-function messages(subject: InputSubject, issues: readonly StandardSchemaV1.Issue[]) {
+export function messages(subject: InputSubject, issues: readonly StandardSchemaV1.Issue[]) {
   return issues.map((issue) => issueLine(subject, issuePath(issue), issue.message));
-}
-
-/** A declared `default: undefined` is a default, so presence is the key, never the value. */
-function hasDefault(input: InputDeclaration) {
-  return Object.hasOwn(input.config, 'default');
-}
-
-/**
- * The site of the call that declared each input, which a fault about its default or its validator
- * rebuilds: `globalOption()` or a plugin's `options` record for a global option, and the input's
- * own call on its Command for every other input.
- */
-export type InputPlaces = ReadonlyMap<InputDeclaration, InputSite>;
-
-/**
- * Every declared default and implied value, validated before any token is read, in declaration
- * order, a declaration's default before its implied value. The host is captured by then, so each
- * validator reads the same Host its action will, under the `default` phase. `places` says where each
- * declaration sits, which a rejected value's finding rebuilds. An implied value is judged whether or
- * not an invocation holds a bare spelling, because the author declared it.
- */
-export async function prepareDeclaredValues(
-  inputs: ScopedInputs,
-  host: Host,
-  places: InputPlaces,
-): Promise<DeclaredValues> {
-  const defaults = new Map<InputDeclaration, unknown>();
-  const implied = new Map<InputDeclaration, unknown>();
-  for (const entry of scoped(inputs)) {
-    const { input } = entry;
-    const call = {
-      context: (): ValidationContext => ({ host, input: identityOf(entry), phase: 'default' }),
-      site: places.get(input),
-    };
-    if (hasDefault(input)) {
-      const result = await validateDeclared(input, input.config.default, call);
-      defaults.set(input, declaredOutput(input, result, { fault: 'default', site: call.site }));
-    }
-    const value = impliedOf(input);
-    if (value !== undefined) {
-      // A bare spelling supplies one value, so even a multiple option's validator reads it alone.
-      const result = await validate(input, value, { context: call.context(), site: call.site });
-      implied.set(input, declaredOutput(input, result, { fault: 'implied', site: call.site }));
-    }
-  }
-  return { defaults, implied };
-}
-
-/** How each declared value names itself when its validator rejects it, and the fix. */
-const declaredFaults = {
-  default: {
-    correction: 'Fix the default or its validator.',
-    noun: 'default',
-    rule: invalidDefault,
-  },
-  implied: {
-    correction: 'Fix the implied value or its validator.',
-    noun: 'implied value',
-    rule: invalidImplied,
-  },
-} as const;
-
-/**
- * The output of a declared value its validator accepted, or the declaration fault it is when the
- * validator rejected it, one line per issue under the sentence, marking the key that declares it.
- */
-function declaredOutput(
-  input: InputDeclaration,
-  result: StandardSchemaV1.Result<unknown>,
-  declared: { fault: keyof typeof declaredFaults; site: InputSite | undefined },
-): unknown {
-  if (result.issues === undefined) {
-    return result.value;
-  }
-  const { fault, site } = declared;
-  const { correction, noun, rule } = declaredFaults[fault];
-  throw new DeclarationError(rule, {
-    correction,
-    findings: site === undefined ? [] : [siteFinding(site, partOf(site, fault))],
-    sentence: [
-      `${declarationSubject(input)} has an invalid ${noun}.`,
-      ...messages({ kind: input.kind, spelling: input.name }, reported(result.issues)),
-    ].join('\n'),
-  });
-}
-
-/** The implied value a string option declares, which a bare spelling supplies, or `undefined`. */
-function impliedOf(input: InputDeclaration): string | undefined {
-  return input.kind === 'option' && input.config.type === 'string'
-    ? input.config.implied
-    : undefined;
-}
-
-/**
- * An array default or implied output reaches the action as its own mutable copy, so an action that
- * mutates its array rewrites neither the declaration nor the next invocation. One prepared declared
- * value serves every invocation of a run, and an unvalidated default is the value the author
- * declared, so each read copies it. A multiple arity option's list of tuples is copied at both
- * depths, under `nested`. The copy keeps a hole where the value has one, as the graph's does. Every
- * other output passes through unchanged.
- */
-function freshDeclaredValue(value: unknown, nested = false): unknown {
-  if (!Array.isArray(value)) {
-    return value;
-  }
-  const elements: readonly unknown[] = value;
-  // A spread reads a hole as `undefined`, and `slice` and `map` keep it.
-  // oxlint-disable-next-line unicorn/prefer-spread
-  return nested ? elements.map((element) => freshDeclaredValue(element)) : elements.slice();
-}
-
-/** Whether an input's value is a list of tuples, which a fresh copy copies at both depths. */
-function holdsTupleList(input: InputDeclaration): boolean {
-  return input.kind === 'option' && collects(input) && arityOf(input.config) !== undefined;
-}
-
-/**
- * The raw tokens of one invocation, keyed by declared name. Every declared input of the routed
- * Command and every global appears, so absence reads as the shape its declaration collects. Each
- * collected value is copied, because the parser's own array is what the action reads.
- */
-export function suppliedInputs(
-  declarations: readonly InputDeclaration[],
-  supplied: SuppliedValues,
-  freeze = false,
-): SuppliedInputs {
-  const args: Record<string, string | readonly string[] | undefined> = {};
-  const options: Record<string, string | readonly string[] | boolean | number | undefined> = {};
-  for (const input of declarations) {
-    const collected = collects(input);
-    if (input.kind === 'argument') {
-      defineEntry(
-        args,
-        input.name,
-        copied(supplied.args.get(input)) ?? (collected ? [] : undefined),
-      );
-    } else if (input.config.type === 'boolean') {
-      defineEntry(options, input.name, supplied.options.booleans.get(input.name));
-    } else if (input.config.type === 'count') {
-      defineEntry(options, input.name, supplied.options.counts.get(input.name));
-    } else {
-      defineEntry(
-        options,
-        input.name,
-        copied(suppliedOption(supplied.options, input, collected)) ?? (collected ? [] : undefined),
-      );
-    }
-  }
-  if (freeze) {
-    for (const value of [...Object.values(args), ...Object.values(options)]) {
-      if (Array.isArray(value)) {
-        Object.freeze(value);
-      }
-    }
-    return Object.freeze({ args: Object.freeze(args), options: Object.freeze(options) });
-  }
-  return { args, options };
 }
 
 /**
@@ -908,12 +340,6 @@ function grammarIssues(input: OptionInput): readonly StandardSchemaV1.Issue[] {
   return config.type === 'count'
     ? [{ message: environmentCount }]
     : [{ message: environmentBoolean }];
-}
-
-/** One validation problem and the lines core's default text holds. */
-interface Report {
-  readonly lines: readonly string[];
-  readonly problem: InputProblem;
 }
 
 /** A stdin declaration is not a token slot, but its problems retain its authoring position. */
