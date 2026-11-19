@@ -6,7 +6,7 @@ description: "The version plugin: the --version option, the version line it prin
 
 This page documents the version plugin, which declares the `--version` option, the line it prints, the extended output an author opts in to, and the views an author overrides to restyle them. An author installs it so an operator can ask which version is running, and opts in to the extended output so an operator or an agent can also learn how that copy was built, released, and installed.
 
-```ts
+```ts sketch
 // @loomcli/plugins/version
 export interface VersionSettings {
   readonly postfix?: string;
@@ -57,13 +57,19 @@ jsonkit v0.2.0 (Report schema v1)
 An application opts in to the extended output with `version({ extended: true })`. Then `-V` and `--version` both print the version line and, below it, the run's [release facts](../core/release-facts.md), runtime, and platform. They stay one option with one meaning: the operator gets no second spelling and no switch between the two outputs, and the author's setting decides which one the application prints. `extended` is `false` when omitted, and only `true` turns the extended output on. Without it, the plugin prints the version line alone, byte for byte as the sections above state, and reads no media type.
 
 ```ts
-import { Application } from '@loomcli/core';
-import { format } from '@loomcli/plugins/format';
+// src/application.ts
+import { Application, Command } from '@loomcli/core';
+import { format, json } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { version } from '@loomcli/plugins/version';
 
 import Package from '../package.json' with { type: 'json' };
-import { add, list } from './commands.js';
+const add = new Command('add')
+  .command(new Command('add').stdin({ required: true }).action(async ({ stdin, out }) => out.print(await stdin.text())))
+  .command(new Command('list').action(({ out }) => out.print('Write the reference.')));
+const list = new Command('list')
+  .rows<string>({ views: { json: json() } })
+  .action(({ out }) => out.results(['Write the reference.']));
 
 // The root registers no action, so it is a group; `list` declares a result.
 export const notes = new Application('notes', {
@@ -72,6 +78,9 @@ export const notes = new Application('notes', {
 })
   .command(add)
   .command(list);
+
+// package.json
+{ "name": "notes", "version": "1.1.0-next.3", "type": "module" }
 ```
 
 A compiled binary built with `loom build --target bun-linux-x64 --release` at version `1.1.0-next.3`, installed by the installer script and run on Bun 1.3.2, prints this with color and modifiers disabled:

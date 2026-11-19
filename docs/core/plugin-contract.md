@@ -8,7 +8,7 @@ Core installs no plugins. Every capability beyond authoring, graph build, invoca
 
 The optional [theme contribution](styles.md#plugindefinitiontheme-field) claims the single theme slot, and the optional configuration source claims the single source slot. A plugin declares no part in the process's signals: it registers an [`onShutdown`](signals.md#onshutdown) handler from its middleware's context when it must restore something at a shutdown.
 
-```ts
+```ts sketch
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
   theme?: Theme & ThemeConstraint<Theme>;
   options?: Options;
@@ -37,7 +37,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
 
 `Plugin<Options>` carries its options as a type parameter used in a read position alone and defaults to `Plugin<PluginOptions>`, so a `plugins` list holds plugins with different options the way `views` holds overrides for different keys. The parameter is therefore covariant, which is what lets `plugins`, `Middleware`, and `load` accept a narrower plugin; Command globals instead express a requirement on the receiving Application. `AnyExtension` is the descriptor supertype a plugin's `extensions` list uses: it publishes the identity, the target, and whether the extension collects, and erases both the schema and the factory call signature, because a schema-typed call signature relates only by schema identity and a list cannot name one schema per element. A descriptor is assignable to it; an extension value is not. A plugin that loads a middleware annotates its factory's return type, and exports its options type when it declares options. That annotation is the boundary that breaks the type cycle between the entry module, which names the middleware module in `load`, and the middleware module, which type-imports the plugin.
 
-```ts
+```ts sketch
 // src/help/plugin.ts, the entry module of the @loomcli/plugins/help subpath
 import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
@@ -76,6 +76,7 @@ For a plugin, the convention is the package name for a package that ships one pl
 An Application installs plugins through `plugins` in its options object. Installation order is the order every plugin contribution composes in, so the application source shows the precedence. The list is the only way in: there is no install call on the fluent chain, no default set, and no removal. Replacing a first-party behavior means omitting one plugin and installing another. The constructor rejects a plugin another installed copy of `@loomcli/core` built and an identity installed twice.
 
 ```ts
+// src/application.ts
 import { Application } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 
@@ -85,11 +86,14 @@ export const jsonkit = new Application('jsonkit', {
   plugins: [help()],
   version: Package.version,
 });
+
+// package.json
+{ "name": "jsonkit", "version": "0.2.0", "type": "module" }
 ```
 
 ## Global options from plugins
 
-```ts
+```ts sketch
 type GlobalOptionConfig = OptionConfig & { readonly required?: never; readonly validateOmitted?: never };
 type PluginOptions = Readonly<Record<string, GlobalOptionConfig>>;
 type PluginOptionValues<Options extends PluginOptions> = {
@@ -98,12 +102,12 @@ type PluginOptionValues<Options extends PluginOptions> = {
 ```
 
 ```ts
-// src/plugin.ts, the entry module of a package that ships one plugin
+// src/plugin.ts
 import { plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 import { oneOf } from '@loomcli/validators';
 
-import { packageName } from './constants.js';
+const packageName = '@acme/log';
 
 const options = {
   level: { description: 'Set the log level.', env: 'ACME_LOG', type: 'string', validate: oneOf(['debug', 'info', 'warn']) },
@@ -116,6 +120,16 @@ export function log(): Plugin<LogOptions> {
 
 // Any action of an application that installs log() reads it typed:
 //   const level: 'debug' | 'info' | 'warn' | undefined = options.level;
+
+// src/middleware.ts
+import type { Middleware } from '@loomcli/core';
+import type { log } from './plugin.js';
+
+const middleware: Middleware<typeof log> = async ({ next, options, log }) => {
+  if (options?.level === 'debug') log.debug('Dispatching command');
+  await next();
+};
+export default middleware;
 ```
 
 A plugin declares global options under `options`, keyed by name. They are global options with no difference from the ones `globalOption()` declares, under [ADR-0055](../decisions/0055-an-invocation-routes-on-global-options-then-parses-the-routed-commands-words-against-one-table.md).
@@ -132,7 +146,7 @@ A plugin declares global options under `options`, keyed by name. They are global
 
 A plugin factory that lets an application choose a spelling takes one optional settings object, and a chosen short spelling is its `short` key, one ASCII letter, so `format({ short: 'f' })` gives `--format` the spelling `-f`. Every first-party plugin that offers a short spelling takes it this way, and none of them renames its long spelling. A factory with no settings, or settings without `short`, declares its option with the short spelling it ships with, which may be none.
 
-```ts
+```ts sketch
 function isProseLine(value: unknown): value is string;
 ```
 
@@ -166,7 +180,7 @@ Help, version, and verbose have fixed short spellings. Configuration, the format
 
 A plugin attaches Commands to the root through `commands`, a list of the same Command values an application builds with `new Command(name)`. Once attached, a plugin Command is an ordinary child of the root.
 
-```ts
+```ts sketch
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
   commands?: readonly Command<unknown, unknown, PluginOptionValues<Options>>[];
   // ...
@@ -183,7 +197,7 @@ import { heading } from '@loomcli/plugins/heading';
 import { list } from '@loomcli/plugins/list';
 import { rule } from '@loomcli/plugins/rule';
 
-import { packageName } from './constants.js';
+const packageName = '@acme/cache';
 
 const doctorCommand = new Command('doctor', { description: 'Check the host this application runs on.' }).action(
   async ({ host, out }) => {
@@ -222,7 +236,7 @@ A plugin's `onEnvironment` hook returns additions before any declared value or i
 Core calls hooks in installation order after graph build, only for a new outer run.
 `inspect()` and `check()` call none. An action's `invoke()` inherits preparation.
 
-```ts
+```ts sketch
 import type { Host, Log, Out } from '@loomcli/core';
 
 type EnvironmentHook = (context: EnvironmentContext) =>
@@ -262,15 +276,19 @@ A plugin's `views` list holds the views it declares and the overrides it makes, 
 
 Overriding a plugin's view replaces its function alone: the plugin stays installed and its middleware, options, and facts are unchanged. Replacing the capability itself still means omitting the plugin and installing another, the rule the [first-party plugins](../plugins/README.md) follow.
 
-```ts
+```ts sketch
 // src/help/plugin.ts
 import { plugin } from '@loomcli/core';
+import type { Plugin } from '@loomcli/core';
+import type { HelpOptions } from '@loomcli/plugins/help';
 
+import { packageName } from '../constants.js';
 import { attachHelp } from './attach.js';
 import { helpArgument, helpCommand, helpInput } from './extension.js';
 import { helpHint } from './hint.js';
 import { helpPage } from './views.js';
 
+// The options are declared in the plugin entry module shown above.
 export function help(): Plugin<HelpOptions> {
   return plugin(`${packageName}/help`, {
     extensions: [helpArgument, helpCommand, helpInput],

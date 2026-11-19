@@ -7,8 +7,11 @@ description: Descriptor-keyed extension values and how core collects them.
 `Command.extend(...values)` and `Application.extend(...values)` return new declarations and remain available after `action()`. They accept command-targeted extension values, including help details and examples on an imported library Command:
 
 ```ts
+import { Application, Command } from '@loomcli/core';
 import { helpCommand } from '@loomcli/plugins/help/extension';
-import { build } from 'command-library';
+
+const build = new Command('build').action(({ out }) => out.print('Build complete.'));
+const configured = new Application('builder');
 
 const customized = build.extend(helpCommand({ details: 'Build this application.' }));
 const app = configured.command(customized);
@@ -25,7 +28,7 @@ An extension is a typed fact a plugin defines and a declaration carries. `extens
 import { extension } from '@loomcli/core';
 import { array, object, optional, string } from 'valibot';
 
-import { packageName } from '../constants.js';
+const packageName = '@loomcli/plugins';
 
 export const helpCommand = extension(`${packageName}/help/command`, {
   schema: object({
@@ -41,6 +44,9 @@ export const helpInput = extension(`${packageName}/help/input`, {
 ```
 
 ```ts
+import { Command } from '@loomcli/core';
+import { helpCommand } from '@loomcli/plugins/help/extension';
+
 const get = new Command('get', {
   description: 'Read one value at a path.',
   extensions: [helpCommand({ examples: [{ command: 'get user.name', note: 'a nested key' }] })],
@@ -61,7 +67,7 @@ Core owns the facts every projection needs: `description` on the Application, on
 
 ## Collecting extensions
 
-```ts
+```ts sketch
 function extension<Target extends ExtensionTarget, Schema extends StandardSchemaV1>(
   identity: string,
   config: { schema: Schema; target: Target; collect?: false | undefined },
@@ -106,6 +112,12 @@ function readExtension<Target extends ExtensionTarget, Schema extends StandardSc
 ```
 
 ```ts
+import { Command, extension, plugin, readExtension } from '@loomcli/core';
+import type { Middleware, Plugin } from '@loomcli/core';
+import { z } from 'zod';
+
+const packageName = '@acme/notes';
+
 // A plugin declares the extension in its declarations module.
 export const notesCommand = extension(`${packageName}/command`, {
   collect: true,

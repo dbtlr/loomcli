@@ -10,7 +10,7 @@ This page documents the pack views: table, records, list, heading, rule, prose, 
 
 The table is `@loomcli/plugins/table`. Its factory `table<Row>(config?)` takes a column list and returns a whole view over the collected rows, `View<readonly Row[]>`, so the same value reaches a `views` record under `rows<Row>` and the second argument of `out.render`. Nothing is installed: there is no plugin factory at the subpath, no option, no lifecycle hook, and no graph fact, and what the call returns is a bare pack view under [Row views](../core/results.md#row-views). The view measures every row before it writes its first line, which is what buys a column as wide as its widest cell and a fit to the screen, so a sequence rendered through it is buffered whatever its source. It takes one reading of the context's [`columns`](../core/styles.md#width-padding-and-multiline-lanes) for the whole render. [ADR-0086](../decisions/0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md) records the fit.
 
-```ts
+```ts sketch
 // @loomcli/plugins/table
 function table<Row>(config?: TableConfig<Row>): View<readonly Row[]>;
 
@@ -30,10 +30,9 @@ interface ColumnDefinition<Row, Key extends keyof Row & string> {
 ```
 
 ```ts
+import { readFile } from 'node:fs/promises';
 import { Command } from '@loomcli/core';
 import { table } from '@loomcli/plugins/table';
-
-import { countFiles } from '../actions/count-files.js';
 
 interface Row {
   count: number;
@@ -52,7 +51,13 @@ export const count = new Command('count')
       }),
     },
   })
-  .action(countFiles);
+  .action(async ({ args, out }) => {
+    const rows = await Promise.all(args.files.map(async (source) => ({
+      source,
+      count: (await readFile(source)).length,
+    })));
+    await out.results(rows);
+  });
 ```
 
 ```text
@@ -89,7 +94,7 @@ COUNT  SOURCE
 
 The records list is `@loomcli/plugins/records`. Its factory `records<Row>(config)` takes an identifier and an optional field list and returns a row view, `RowView<Row>`, so a record prints as its source yields it and no row waits on the rows behind it. Like the table it installs nothing and returns a bare pack view. `identifier` is required: it names the key whose value identifies the record, which the view styles apart so an operator scanning a long list finds the record it names. The view takes a fresh reading of the context's [`columns`](../core/styles.md#width-padding-and-multiline-lanes) for each row, so a record that arrives after a resize wraps at the new width. [ADR-0086](../decisions/0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md) records the wrapping.
 
-```ts
+```ts sketch
 // @loomcli/plugins/records
 function records<Row>(config: RecordsConfig<Row>): RowView<Row>;
 
@@ -111,8 +116,6 @@ interface FieldDefinition<Row, Key extends keyof Row & string> {
 import { Command } from '@loomcli/core';
 import { records } from '@loomcli/plugins/records';
 
-import { listMembers } from '../actions/list-members.js';
-
 interface Member {
   key: string;
   kind: string;
@@ -120,7 +123,10 @@ interface Member {
 
 export const members = new Command('members')
   .rows<Member>({ views: { records: records({ identifier: 'key' }) } })
-  .action(listMembers);
+  .action(({ out }) => out.results([
+    { key: 'user', kind: 'object with 3 keys' },
+    { key: 'tags', kind: 'array with 2 items' },
+  ]));
 ```
 
 ```text
@@ -153,7 +159,7 @@ kind  array with 2 items
 
 The list is `@loomcli/plugins/list`. Its factory `list<Item>(config?)` returns a whole view over the collected items, `View<readonly Item[]>`, so the same value reaches a `views` record under `rows<Item>` and the second argument of `out.render`. Like the table it installs nothing and returns a bare pack view under [Row views](../core/results.md#row-views). It is a whole view because an ordered list right-aligns its numbers against the widest one among its siblings, which a row view cannot know, so a sequence rendered through it is buffered whatever its source. It takes one reading of the context's [`columns`](../core/styles.md#width-padding-and-multiline-lanes) for the whole render. [ADR-0088](../decisions/0088-pack-views-lay-out-lists-headings-rules-prose-and-boxes.md) records the list.
 
-```ts
+```ts sketch
 // @loomcli/plugins/list
 function list<Item>(config?: ListConfig<Item>): View<readonly Item[]>;
 
@@ -168,8 +174,6 @@ interface ListConfig<Item> {
 import { Command } from '@loomcli/core';
 import { list } from '@loomcli/plugins/list';
 
-import { listServices } from '../actions/list-services.js';
-
 interface Service {
   name: string;
   parts?: readonly Service[];
@@ -179,7 +183,11 @@ export const services = new Command('services')
   .rows<Service>({
     views: { list: list({ children: (service) => service.parts, format: (service) => service.name }) },
   })
-  .action(listServices);
+  .action(({ out }) => out.results([
+    { name: 'api-gateway' },
+    { name: 'billing', parts: [{ name: 'invoices' }, { name: 'refunds' }] },
+    { name: 'search' },
+  ]));
 ```
 
 ```text
@@ -217,7 +225,7 @@ The heading, the rule, prose, the step, and the box are views over a string: eac
 
 The heading is `@loomcli/plugins/heading`. Its factory `heading(config?)` returns `View<string>`, a section heading over its text at one of two levels, as the [help page](help-page.md#the-help-page) has two, with a form of its own. The heading is wayfinding, not content, so both levels are `dim`, and an underline tells level 1 from level 2.
 
-```ts
+```ts sketch
 // @loomcli/plugins/heading
 function heading(config?: HeadingConfig): View<string>;
 
@@ -227,10 +235,13 @@ interface HeadingConfig {
 ```
 
 ```ts
+import type { Out } from '@loomcli/core';
 import { heading } from '@loomcli/plugins/heading';
 
-await out.render('Deployment summary', heading());
-await out.render('Services', heading({ level: 2 }));
+export async function show(out: Out) {
+  await out.render('Deployment summary', heading());
+  await out.render('Services', heading({ level: 2 }));
+}
 ```
 
 ```text
@@ -247,16 +258,19 @@ Services
 
 The rule is `@loomcli/plugins/rule`. Its factory `rule()` returns `View<string>`, a horizontal line across the destination that carries its text as a label, so `out.render('', rule())` draws a bare line and `out.render('Checks', rule())` a labelled one.
 
-```ts
+```ts sketch
 // @loomcli/plugins/rule
 function rule(): View<string>;
 ```
 
 ```ts
+import type { Out } from '@loomcli/core';
 import { rule } from '@loomcli/plugins/rule';
 
-await out.render('Checks', rule());
-await out.render('', rule());
+export async function show(out: Out) {
+  await out.render('Checks', rule());
+  await out.render('', rule());
+}
 ```
 
 At 60 columns they print:
@@ -274,18 +288,21 @@ At 60 columns they print:
 
 Prose is `@loomcli/plugins/prose`. Its factory `prose()` returns `View<string>`, paragraphs wrapped to the destination. It is the wrapped counterpart of `print`, which writes its text as it is under [ADR-0086](../decisions/0086-renders-fit-the-destinations-live-columns-and-tables-shrink-to-fit.md).
 
-```ts
+```ts sketch
 // @loomcli/plugins/prose
 function prose(): View<string>;
 ```
 
 ```ts
+import type { Out } from '@loomcli/core';
 import { prose } from '@loomcli/plugins/prose';
 
-await out.render(
-  'Three services rolled out to the staging cluster. One health check is still warming up.',
-  prose(),
-);
+export async function show(out: Out) {
+  await out.render(
+    'Three services rolled out to the staging cluster. One health check is still warming up.',
+    prose(),
+  );
+}
 ```
 
 At 34 columns it prints:
@@ -303,18 +320,21 @@ is still warming up.
 
 The step is `@loomcli/plugins/step`. Its factory `step()` returns `View<string>`, a line that marks a stage of the work, such as building or testing, so the lines under it read as that stage's outcome. An action writes it at a level, usually `info`'s, so `-q` hides it.
 
-```ts
+```ts sketch
 // @loomcli/plugins/step
 function step(): View<string>;
 ```
 
 ```ts
+import type { Out } from '@loomcli/core';
 import { step } from '@loomcli/plugins/step';
 
-await out.info('Building 3 packages', step());
-await out.success('Built @acme/core, @acme/cli, and @acme/web');
-await out.info('Running the test suite against the built packages, with coverage', step());
-await out.success('128 tests passed');
+export async function show(out: Out) {
+  await out.info('Building 3 packages', step());
+  await out.success('Built @acme/core, @acme/cli, and @acme/web');
+  await out.info('Running the test suite against the built packages, with coverage', step());
+  await out.success('128 tests passed');
+}
 ```
 
 At 44 columns on a terminal they print:
@@ -335,7 +355,7 @@ At 44 columns on a terminal they print:
 
 The box is `@loomcli/plugins/box`. Its factory `box(config?)` frames text, or the output of another view, in a border with an optional title. With no `content` it returns `View<string>` and frames its text. With `content` it returns a view over the content's data, renders the content inside the frame, and narrows the content's `columns` by the frame, so a table framed in a box shrinks to fit inside it, or falls back to the records layout, under [Table](#table).
 
-```ts
+```ts sketch
 // @loomcli/plugins/box
 function box<Data = string>(
   ...config: [Data] extends [string] ? [config?: BoxConfig<Data>] : [config: BoxConfig<Data>]
@@ -348,10 +368,9 @@ type BoxConfig<Data> = { title?: string } & ([Data] extends [string]
 
 ```ts
 import { Command } from '@loomcli/core';
+import type { Out } from '@loomcli/core';
 import { box } from '@loomcli/plugins/box';
 import { table } from '@loomcli/plugins/table';
-
-import { listPools } from '../actions/list-pools.js';
 
 interface Pool {
   pool: string;
@@ -359,11 +378,16 @@ interface Pool {
   status: string;
 }
 
-await out.render('All three services passed their health checks.', box({ title: 'Totals' }));
+export function showTotals(out: Out) {
+  return out.render('All three services passed their health checks.', box({ title: 'Totals' }));
+}
 
 export const pools = new Command('pools')
   .rows<Pool>({ views: { boxed: box({ content: table(), title: 'Pools' }), table: table() } })
-  .action(listPools);
+  .action(({ out }) => out.results([
+    { pool: 'blue', instances: 4, status: 'ready' },
+    { pool: 'green', instances: 4, status: 'warming' },
+  ]));
 ```
 
 ```text

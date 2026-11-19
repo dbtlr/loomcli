@@ -6,7 +6,7 @@ description: "The suggestions plugin: did-you-mean hints for an unknown Command,
 
 This page documents the suggestions plugin, which offers a near match as the fix for an unknown Command, unknown option, or rejected closed-set value. An author installs it to help an operator recover from a mistyped name or value.
 
-```ts
+```ts sketch
 // @loomcli/plugins/suggestions
 import type { Plugin } from '@loomcli/core';
 

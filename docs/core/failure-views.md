@@ -13,12 +13,18 @@ Core keys each failure class's default text function as that class's default vie
 ```ts
 import { Application, InputError, override, UnknownCommandError } from '@loomcli/core';
 
-import { summarize } from './actions/summarize.js';
-import { inputProblems, unknownCommand } from './views.js';
+import type { FailureView } from '@loomcli/core';
+
+const inputProblems: FailureView<InputError> = {
+  render: (failure, { style }) => `Invalid input: ${style.escape(failure.message)}\n`,
+};
+const unknownCommand: FailureView<UnknownCommandError> = {
+  render: (failure, { style }) => `Unknown Command: ${style.escape(failure.token)}\n`,
+};
 
 export const jsonkit = new Application('jsonkit', {
   views: [override(InputError, inputProblems), override(UnknownCommandError, unknownCommand)],
-}).action(summarize);
+}).action(({ out }) => out.print('JSON document summary.'));
 ```
 
 The view receives the failure instance and the [failure view context](#failure-view-context): the stderr view context, where the run was, and the hints plugins added. It returns marked text that core resolves for stderr without adding a newline, so the view owns its trailing newline. Core's default diagnostics escape raw facts; `FatalError` retains the authored marked message supplied to `out.fatal()`. A working view cannot change the exit code, which is a fact of the class.
@@ -45,7 +51,7 @@ Its actions call `out.fatal(message)`, and its helpers throw `new FatalError(mes
 
 ### Failure view context
 
-```ts
+```ts sketch
 interface FailureViewContext extends ViewContext {
   readonly application: string;
   readonly path: readonly string[];
@@ -96,7 +102,7 @@ A failure carries what went wrong, and the run carries where it happened. [ADR-0
 
 ## Failure encoders
 
-```ts
+```ts sketch
 type FailureEncoder = (form: FailureForm) => string;
 function encodeFailure(mediaType: string, encoder: FailureEncoder): FailureEncoding; // FailureEncoding is opaque and branded
 
@@ -106,7 +112,7 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
 }
 ```
 
-```ts
+```ts sketch
 // src/format/plugin.ts, the entry module of the @loomcli/plugins/format subpath
 import { encodeFailure, plugin } from '@loomcli/core';
 import type { FailureEncoder, Plugin, StringOption } from '@loomcli/core';

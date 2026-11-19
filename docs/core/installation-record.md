@@ -6,7 +6,7 @@ description: "The installation record: reading the installation and the files an
 
 This page states the installation record, the per-application directory that says how the application was installed and which files its installers wrote. An author reads it when code needs the installation or the files an install wrote.
 
-```ts
+```ts sketch
 type ApplicationDirectory = 'installation' | 'logs' | 'cache';
 type DirectoryLookup =
   | { readonly path: string } // the absolute directory
@@ -25,9 +25,13 @@ declare function applicationDirectory(
 ```
 
 ```ts
+import { Command } from '@loomcli/core';
+
 // src/commands/about.ts: the binary at that path reads it
-const { installation } = host.release;
-return out.print(installation === undefined ? 'Installed some other way.' : `Installed by ${installation.method} at ${installation.path}.`);
+export const about = new Command('about').action(({ host, out }) => {
+  const { installation } = host.release;
+  return out.print(installation === undefined ? 'Installed some other way.' : `Installed by ${installation.method} at ${installation.path}.`);
+});
 ```
 
 The installation record is one directory per application and per user that says how the application was installed and which files its installers wrote. It holds `install.json`, the installation, and one file for each first-party plugin that installs files or registers with an agent, named for the plugin, such as `service.json`, or one for each of its targets when a plugin installs into independent targets, named for the plugin and the target, such as `skills.claude.json`. Each file has its own writers, and each writer replaces only its own file, whole, through a temporary file in the same directory and a rename, so no writer reads or merges another's. Core reads `install.json` and writes nothing. A file the application writes there under a name no first-party writer uses, such as `<app>.json`, is the application's own: no Loom writer reads, replaces, or removes it, so it survives a self-update, and an application's [post-install command](../toolchain/install.md#the-post-install-command) can record what it binds at install there, under [ADR-0113](../decisions/0113-an-application-declares-a-post-install-message-and-command-that-the-installer-script-prints-and-runs.md). [ADR-0071](../decisions/0071-an-installation-record-per-application-says-how-it-was-installed-and-what-its-installers-wrote.md) records the decision.

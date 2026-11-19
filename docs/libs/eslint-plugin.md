@@ -107,6 +107,8 @@ The rule reads an absent description and no other, as core did. A hidden or depr
 Reports an authoring call on a Loom declaration whose result is discarded. A declaration is immutable, so the call builds a new declaration and changes nothing on the receiver.
 
 ```ts
+import { Command } from '@loomcli/core';
+
 const base = new Command('base', { description: 'Base.' });
 
 // Reported: the call returns a new Command, and nothing uses it.
@@ -119,6 +121,10 @@ const verbose = base.option('verbose', { description: 'Print more.', type: 'bool
 The rule reads an `options(set)` call like any other authoring call, and a group call on an [option set](../core/options.md#sharing-options) the same way, because it returns a new set and leaves its receiver unchanged.
 
 ```ts
+import { Command, optionSet } from '@loomcli/core';
+
+const base = new Command('base', { description: 'Base.' });
+
 const output = optionSet({
   json: { description: 'Print JSON.', type: 'boolean' },
   yaml: { description: 'Print YAML.', type: 'boolean' },
@@ -142,6 +148,10 @@ Reports a literal name that core rejects when the module loads. The rule calls t
 - The key of each entry of an `optionSet({...})` record from `@loomcli/core`, and each literal in that entry's `aliases` or `visibleAliases` array, answer the same declared-name rule, under any import of `optionSet`.
 
 ```ts
+import { Command } from '@loomcli/core';
+
+const base = new Command('base', { description: 'Base.' });
+
 // Reported: a space is not a portable name character.
 new Command('deploy now', { description: 'Deploy.' });
 

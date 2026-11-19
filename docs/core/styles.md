@@ -53,6 +53,8 @@ The modifier catalog is `bold`, `faint`, `italic`, `underline`, `inverse`, `hidd
 Custom colors return the same callable chain:
 
 ```ts
+import { style } from '@loomcli/core';
+
 style.hex('#C97B36').bold('Ready');
 style.rgb(201, 123, 54)('Ready');
 style.ansi256(172)('Ready');
@@ -77,7 +79,7 @@ Three scoped resets are chainable:
 
 An explicit fallback keeps a themed color's hue at a lower color depth. [ADR-0029](../decisions/0029-explicit-color-fallbacks-preserve-theme-hues.md) records the decision, and core exports the three types below.
 
-```ts
+```ts sketch
 import type { Style } from '@loomcli/core';
 
 export type Ansi16Color =
@@ -104,6 +106,8 @@ interface ColorHelpers<Names extends string, Semantic extends boolean> {
 ```
 
 ```ts
+import { style } from '@loomcli/core';
+
 const sage = style.hex('#7A8F7B', { ansi256: 108, ansi16: 'green' });
 const rgbSage = style.rgb(122, 143, 123, { ansi256: 108, ansi16: 'green' });
 const indexedSage = style.ansi256(108, { ansi16: 'green' });
@@ -181,6 +185,20 @@ Core supplies `style` on the action context and in the second view-function argu
 Actions use the supplied `style` to access the installed theme's custom names. Pass that style to helpers that compose action output.
 
 ```ts
+import { Application, style } from '@loomcli/core';
+import type { EnvironmentOf } from '@loomcli/core';
+import { theme } from '@loomcli/plugins/theme';
+
+const configured = new Application('notes', {
+  plugins: [theme({ identifier: style.cyan })],
+});
+
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+  }
+}
+
 import { Command } from '@loomcli/core';
 
 export const show = new Command('show')
@@ -191,6 +209,20 @@ export const show = new Command('show')
 This action belongs to the Application compilation context that declares `identifier`, as does the view below.
 
 ```ts
+import { Application, style } from '@loomcli/core';
+import type { EnvironmentOf } from '@loomcli/core';
+import { theme } from '@loomcli/plugins/theme';
+
+const configured = new Application('notes', {
+  plugins: [theme({ identifier: style.cyan })],
+});
+
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+  }
+}
+
 import type { View } from '@loomcli/core';
 
 interface Item {
@@ -212,6 +244,8 @@ This example belongs to the Application compilation context that declares `ident
 `glyph` contains the complete [glyph catalog](../maintaining/glyphs.md), derived from a pinned Inquirer figures inventory. Each property is an unstyled marked string. `success` aliases `tick`, and `error` aliases `cross`; `info` and `warning` retain the upstream names. A glyph carries no theme token or automatic color.
 
 ```ts
+import { glyph, style } from '@loomcli/core';
+
 style.success(glyph.success);
 style.cyan(glyph.success);
 glyph.success;
@@ -226,6 +260,8 @@ Core applies the pinned Inquirer detection rule to captured facts on each run. O
 Both Application options and `run()` options accept `rendering`:
 
 ```ts
+import { Application } from '@loomcli/core';
+
 const app = new Application('example', {
 	rendering: {
 		color: 'auto',
@@ -303,6 +339,8 @@ The view context supplies `columns: number | undefined`, the effective width of 
 `pad(text, minimumWidth, options?)` returns a marked string. `options.align` is `'left'`, `'right'`, or `'center'`, defaulting to `'left'`. Padding uses spaces only. It supplies a minimum width, never truncates text, and puts an odd extra space on the right for center alignment. Width arguments are nonnegative safe integers.
 
 ```ts
+import { pad } from '@loomcli/core';
+
 pad('cat', 8);
 pad('cat', 8, { align: 'right' });
 pad('cat', 8, { align: 'center' });
@@ -315,9 +353,12 @@ Padding applies to each line independently and preserves line breaks. A trailing
 `nowrap(text)` returns a marked string, as `pad` does. It takes one string and throws `TypeError('Style helpers require a string.')` for any other value, as `pad` does. The frame is deferred and resolves to its body exactly: it adds no byte, expands no tab itself, and measures as its body, so copying the printed text gives the exact text. A view that expands tabs with `expandTabs` expands a tab inside the frame as any other, and the frame still keeps its body whole. Frames nest, so a style or a glyph inside it is fine. It exists for line breaking: `wrap` keeps its body whole, and a table's floor counts it whole. A path that holds spaces is the case it serves.
 
 ```ts
+import type { Out } from '@loomcli/core';
 import { nowrap } from '@loomcli/core';
 
-out.info(`Wrote ${nowrap(path)}`);
+export function writePath(out: Out, path: string) {
+  return out.info(`Wrote ${nowrap(path)}`);
+}
 ```
 
 With `path` set to `/Users/a/Library/Application Support/x` and a lane that leaves 30 columns for the message, the path stays on one line and the text before it wraps:
@@ -373,7 +414,7 @@ Lane views receive the original message string, including line breaks and author
 
 ### Measuring written text
 
-```ts
+```ts sketch
 function width(text: string): number;
 ```
 

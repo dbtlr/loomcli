@@ -6,7 +6,7 @@ description: "The formatter plugin: the --format and --fields options, the json 
 
 The formatter is `@loomcli/plugins/format`. Its factory `format(settings?)` takes one optional setting, `short`, the short spelling `--format` takes, under the convention of [Plugin settings](../core/plugin-contract.md#plugin-settings), and with none `--format` has no short spelling. It declares no global option and claims no slot. It ships three views, `json()`, `jsonl()`, and the row view `jsonlRows()`, one hook that puts `--format` on every Command that declares a [result](../core/results.md) and a hidden `--format` on every [group](../core/commands.md#nested-commands-and-groups), a `--fields` option beside each `--format` that keeps the named top-level keys of the json and jsonl output the formatter provides, one always-on middleware that copies a supplied name into `view`, or at a group its media type into `mediaType`, and sets the run's [result transform](../core/middleware.md) from `--fields`, and two [failure encoders](../core/failure-views.md#failure-encoders), for `application/json` and `application/jsonl`. The plugin owns the encodings and the option; core owns the selection and the run's media type.
 
-```ts
+```ts sketch
 // @loomcli/plugins/format
 interface FormatSettings {
   readonly short?: NonNullable<StringOption['short']>; // one ASCII letter, as every option's short spelling is
@@ -21,14 +21,17 @@ function jsonlRows<Row>(config?: EncodingConfig<Row>): RowView<Row>; // mediaTyp
 ```
 
 ```ts
+import { readFile } from 'node:fs/promises';
 import { Application } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { table } from '@loomcli/plugins/table';
 import { version } from '@loomcli/plugins/version';
 
+interface Row { count: number; source: string }
+
 export const textstat = new Application('textstat', { plugins: [help(), version(), format({ short: 'f' })] })
-  // ...
+  .argument('files', { required: true, variadic: true })
   .rows<Row>({
     views: {
       table: table({
@@ -39,7 +42,13 @@ export const textstat = new Application('textstat', { plugins: [help(), version(
       }),
     },
   })
-  .action(countFiles);
+  .action(async ({ args, out }) => {
+    const rows = await Promise.all(args.files.map(async (source) => ({
+      source,
+      count: (await readFile(source)).length,
+    })));
+    await out.results(rows);
+  });
 ```
 
 ```text
@@ -58,6 +67,10 @@ With help installed, [help's failure hint](suggestions.md#helps-failure-hint) pr
 An application whose operators and scripts already type `-f` for the format gives it as the short spelling, and the help row carries it:
 
 ```ts
+import { Application } from '@loomcli/core';
+import { format } from '@loomcli/plugins/format';
+import { help } from '@loomcli/plugins/help';
+
 new Application('store', { plugins: [help(), format({ short: 'f' })] });
 ```
 
@@ -98,7 +111,7 @@ When declaring views by hand, pick `jsonl()` to map and encode the whole value o
 - **The middleware.** `activate: 'always'`, because a hook-declared option cannot activate it. When the routed Command declares a result and [`ownOptions`](../core/middleware.md) holds a string under `format`, it assigns that string to `view` and calls `next()`; when the option was omitted it assigns nothing, so an earlier plugin's selection stands. When the routed Command is a group and `ownOptions` holds `json` or `jsonl` under `format`, it assigns `application/json` or `application/jsonl`, the media type that name's view declares, to `mediaType`, and calls `next()`; core validates the group's `--format` for `ownOptions` under the held missing-subcommand fault, so the value is there whenever it validated. On a Command that declares a result it never assigns `mediaType`, because there the selected view states it. Every other run it assigns nothing and calls `next()`. Before it calls `next()` it also sets the run's result transform from `--fields`, or fails the run, under [Selecting fields](#selecting-fields). A held fault on another input, a structural one such as `--bogus` and an input-source one such as a configuration file that cannot be read included, leaves `format` in `ownOptions`, so the selection stands for the failure, and the fault is raised at the dispatch boundary unless a later middleware takes over. A `--format` its validator rejected is absent from `ownOptions`, so the middleware assigns nothing and the failure's selection stays as it was, the default view when nothing else selected one: `textstat --format yaml one.txt` is the validator's issue, exit 2, written as text because textstat's default view, `table`, declares no media type, and `--format yaml --help` with help installed after the formatter still prints the page. At a group, `notes --format yaml` is the missing subcommand, exit 2, written as text, because the missing subcommand ranks ahead of the rejected value and no media type was assigned.
 - **The failure encoders.** The plugin registers one encoder for `application/json` and one for `application/jsonl`, the media types its views declare, so a failed run whose [media type](../core/failure-views.md#failure-view-context) is one of them, a selected `json()`, `jsonl()`, or `jsonlRows()` view or `--format json` or `--format jsonl` at a group, writes its [failure form](../core/failures.md#the-failure-form) as JSON. Both write the same bytes: one line, `JSON.stringify({ error: form })` with the form's keys in the order `code`, `exitCode`, `message`, `hints`, then one newline, to stderr. Every character from U+007F to U+009F is replaced by its `\uXXXX` escape, four lowercase hex digits, as the views replace it, and no style applies. An author's own view that declares either media type selects the same encoder. `--format` on a Command that registers an action and declares no result is the unknown-option error, and `--format` twice or with no value follows the rules every string option follows.
 
-```ts
+```ts sketch
 // src/format/middleware.ts, loaded on every invocation that reaches it
 import { readExtension } from '@loomcli/core';
 import type { Middleware, MiddlewareContext } from '@loomcli/core';

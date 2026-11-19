@@ -6,7 +6,7 @@ description: "The process handle a run reads its facts from and sends its effect
 
 ## The process handle
 
-```ts
+```ts sketch
 import type { Readable, Writable } from 'node:stream';
 
 import type {
@@ -78,7 +78,7 @@ interface RunOptions {
 }
 ```
 
-```ts
+```ts sketch
 import { processHandle } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 
@@ -162,9 +162,9 @@ import { join } from 'node:path';
 
 import { applicationDirectory, Command } from '@loomcli/core';
 
-import { writeArchive } from './archive.js';
-
-export const archive = new Command('archive', { description: 'Write every note to one archive.' }).action(
+export const archive = (
+  writeArchive: (scratch: string, cache: string | undefined) => Promise<void>,
+) => new Command('archive', { description: 'Write every note to one archive.' }).action(
   async ({ host }) => {
     // With home `/home/me` and no XDG_CACHE_HOME: { path: '/home/me/.cache/notes' }.
     // With XDG_CACHE_HOME `/srv/cache` in host.env: { path: '/srv/cache/notes' }.
@@ -189,7 +189,7 @@ export const archive = new Command('archive', { description: 'Write every note t
 
 ## Child programs
 
-```ts
+```ts sketch
 import type { Writable } from 'node:stream';
 
 import type { ProcessSignal } from '@loomcli/core';
@@ -253,7 +253,7 @@ export const revision = new Command('revision', { description: 'Print the commit
 
 ## An unreadable working directory
 
-```ts
+```ts sketch
 class WorkingDirectoryError extends LoomError {
   static override readonly code: string; // 'working-directory-unreadable'; the exit code is LoomError's 1
   constructor(options?: ErrorOptions); // the message is fixed
@@ -261,16 +261,16 @@ class WorkingDirectoryError extends LoomError {
 ```
 
 ```ts
-import { WorkingDirectoryError } from '@loomcli/core';
+import { WorkingDirectoryError, type Application } from '@loomcli/core';
 
-import { jsonkit } from './application.js';
-
-// The process sits in a directory another process removed, such as a deleted git worktree.
-// run() writes `jsonkit: The current working directory cannot be read. Change to a directory that
-// exists and run the command again.` to stderr and resolves 1; invoke() resolves failed.
-const outcome = await jsonkit.invoke(['keys'], { options: { file: '/srv/doc.json' } });
-if (outcome.status === 'failed' && outcome.failure instanceof WorkingDirectoryError) {
-  // outcome.form.code is 'working-directory-unreadable', and outcome.exitCode is 1.
+export async function readKeys(jsonkit: Pick<Application, 'invoke'>) {
+  // The process sits in a directory another process removed, such as a deleted git worktree.
+  // run() writes `jsonkit: The current working directory cannot be read. Change to a directory that
+  // exists and run the command again.` to stderr and resolves 1; invoke() resolves failed.
+  const outcome = await jsonkit.invoke(['keys'], { options: { file: '/srv/doc.json' } });
+  if (outcome.status === 'failed' && outcome.failure instanceof WorkingDirectoryError) {
+    // outcome.form.code is 'working-directory-unreadable', and outcome.exitCode is 1.
+  }
 }
 ```
 

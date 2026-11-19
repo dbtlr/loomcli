@@ -8,7 +8,7 @@ A lifecycle hook is a function on the plugin definition that core calls at one n
 
 A new hook earns its place when it reaches a point no `'always'` middleware reaches and serves a use the log events do not. That entry rejected a run-start, a run-end, and a progress hook as second ways to do one job: a failure event already carries its exit code, an invocation's caller already receives its outcome, and a progress event reaches only the caller of its run. Symmetry with an existing hook is not a reason to add one.
 
-```ts
+```ts sketch
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
   onCommandAttach?: CommandAttachHook;
   // ...
@@ -40,9 +40,14 @@ type ResultView = View<never> | RowView<never>; // the erased view a result name
 // src/format/attach.ts, the hook of the @loomcli/plugins/format subpath
 import type { AttachedCommand, CommandAttachHook } from '@loomcli/core';
 
-import { formatName } from './names.js';
-import type { FormatSettings } from './plugin.js';
-import { json, jsonl } from './views.js';
+import { json, jsonl } from '@loomcli/plugins/format';
+import type { FormatSettings } from '@loomcli/plugins/format';
+import { oneOf } from '@loomcli/validators';
+
+function formatName([first, ...rest]: readonly string[]) {
+  if (first === undefined) throw new Error('Declare at least one format.');
+  return oneOf([first, ...rest]);
+}
 
 const groupNames = ['json', 'jsonl'];
 
@@ -89,7 +94,7 @@ The hook includes the declared default in its description, as specified by the [
 
 ## Judging the built graph
 
-```ts
+```ts sketch
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
   onGraphBuilt?: GraphBuiltHook;
   // ...
@@ -102,7 +107,7 @@ type GraphBuiltHook = (graph: CommandGraph) => undefined;
 import { DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
 import type { CommandNode, GraphBuiltHook, Plugin } from '@loomcli/core';
 
-import { packageName } from './constants.js';
+const packageName = '@acme/distinct';
 
 const sharedDescription = diagnosticRule(`${packageName}/shared-description`, {
   explanation: 'An agent tells two Commands apart by their descriptions, so each Command describes its own job.',
@@ -145,7 +150,7 @@ A plugin judges the whole built graph through `onGraphBuilt`, and it may reject 
 
 ## Failure hints
 
-```ts
+```ts sketch
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
   onFailure?: FailureHook;
   // ...
@@ -172,22 +177,20 @@ interface FailureHookContext {
 import { plugin, UnknownOptionError } from '@loomcli/core';
 import type { FailureHook, Plugin } from '@loomcli/core';
 
-import { packageName } from './constants.js';
-import { nearest } from './nearest.js';
+const packageName = '@acme/suggest';
 
-const suggestOption: FailureHook = (failure, { command, graph, style }) => {
-  if (!(failure instanceof UnknownOptionError)) {
-    return undefined;
-  }
-  const offered = [...graph.globals, ...command.options].filter(
-    (option) => !option.hidden && option.deprecated === undefined,
-  );
-  const spellings = offered.flatMap((option) => (option.long === null ? [] : [option.long]));
-  const match = nearest(failure.spelling, spellings);
-  return match === undefined ? undefined : `${style.escape(failure.spelling)}: did you mean ${match}?`;
-};
-
-export function suggest(): Plugin {
+export function suggest(nearest: (spelling: string, candidates: readonly string[]) => string | undefined): Plugin {
+  const suggestOption: FailureHook = (failure, { command, graph, style }) => {
+    if (!(failure instanceof UnknownOptionError)) {
+      return undefined;
+    }
+    const offered = [...graph.globals, ...command.options].filter(
+      (option) => !option.hidden && option.deprecated === undefined,
+    );
+    const spellings = offered.flatMap((option) => (option.long === null ? [] : [option.long]));
+    const match = nearest(failure.spelling, spellings);
+    return match === undefined ? undefined : `${style.escape(failure.spelling)}: did you mean ${match}?`;
+  };
   return plugin(packageName, { onFailure: suggestOption });
 }
 ```
@@ -206,7 +209,7 @@ A hint is a line a plugin adds under a failure message. Plugins add hints to a f
 
 ## Observing log events
 
-```ts
+```ts sketch
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
   onLog?: LogHook;
   // ...
@@ -228,7 +231,7 @@ interface LogDestination {
 import { plugin } from '@loomcli/core';
 import type { LogHook, Plugin } from '@loomcli/core';
 
-import { packageName } from './constants.js';
+const packageName = '@acme/stacks';
 
 const printStack: LogHook = (event, destination) => {
   if (event.defect?.stack !== undefined && destination.stderr !== null) {
@@ -253,7 +256,7 @@ A plugin observes the run's [log events](logging.md) through `onLog`, and decide
 
 ## Observing live regions
 
-```ts
+```ts sketch
 interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMapping = ThemeMapping> {
   onLiveRegions?: LiveRegionsHook;
   // ...
@@ -270,22 +273,23 @@ interface LiveRegionsHookContext {
 import { plugin } from '@loomcli/core';
 import type { LiveRegionsHook, Plugin, View } from '@loomcli/core';
 
-import { packageName } from './constants.js';
-import { logger, writeToStderr } from './logger.js'; // the dependency's logger writes each line through logger.sink
+const packageName = '@acme/routed-logger';
 
 const literal: View<string> = { render: (line, { style }) => style.escape(line) };
 
-const routeLogger: LiveRegionsHook = (state, { out }) => {
-  logger.sink =
-    state === 'drawn'
-      ? (line) => {
-          void out.error(line, literal);
-        }
-      : writeToStderr;
-  return undefined;
-};
-
-export function routedLogger(): Plugin {
+export function routedLogger(
+  logger: { sink: (line: string) => void },
+  writeToStderr: (line: string) => void,
+): Plugin {
+  const routeLogger: LiveRegionsHook = (state, { out }) => {
+    logger.sink =
+      state === 'drawn'
+        ? (line) => {
+            void out.error(line, literal);
+          }
+        : writeToStderr;
+    return undefined;
+  };
   return plugin(packageName, { onLiveRegions: routeLogger });
 }
 ```

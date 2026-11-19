@@ -6,7 +6,7 @@ description: "The Loom theme plugin: loomTheme()'s named palette of seven tokens
 
 This page documents `loomTheme()`, the first-party theme: a named palette of seven tokens with dark and light sides, and how an author overrides them. An author installs it to color an application's output consistently.
 
-```ts
+```ts sketch
 import type { AdaptiveStyle, ConcreteStyle, Plugin, ThemeConstraint, ThemeMapping } from '@loomcli/core';
 
 export type LoomThemeDefaults = Readonly<

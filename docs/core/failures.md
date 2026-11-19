@@ -10,7 +10,7 @@ This page states the failure classes core reports, their exit codes and failure 
 
 Every failure `run()` reports is an instance of a public class. Each class carries the facts its sentence interpolates, so a view reads them instead of parsing prose. `message` is the sentence without its category prefix, except a `DeclarationError`'s, which holds its whole [Developer Diagnostic](declaration-faults.md#developer-diagnostics) while `sentence` holds the sentence. The exit code is a static field the class declares, so a subclass inherits it and a view reads it on the instance, as [Declared exit codes](#declared-exit-codes) describes. The failure code is a static field too, which a machine reader branches on, as [Failure codes](#failure-codes) describes.
 
-```ts
+```ts sketch
 abstract class LoomError extends Error {
   static readonly code: string; // 'failure'; see Failure codes
   static readonly exitCode: FailureExitCode; // 1
@@ -94,7 +94,7 @@ In an invocation by name, `UnknownOptionError` names the key the caller wrote an
 
 ## Declared exit codes
 
-```ts
+```ts sketch
 type FailureExitCode = 1 | 2 | 3 /* … every whole number through */ | 125; // 1 through 125
 type ExitCode = 0 | 1 | 2 /* … every whole number through */ | 255; // 0 through 255
 
@@ -166,7 +166,7 @@ A failure class states its exit code once, on the class, so a script branches on
 
 ## Failure codes
 
-```ts
+```ts sketch
 abstract class LoomError extends Error {
   static readonly code: string; // 'failure'; a kebab-case code
   static readonly exitCode: FailureExitCode; // 1
@@ -229,7 +229,7 @@ A failure class states a failure code once, on the class, so a script or an agen
 
 ## The failure form
 
-```ts
+```ts sketch
 interface FailureForm {
   readonly code: string; // the class's failure code; 'internal' for a defect or a declaration fault
   readonly exitCode: FailureExitCode; // the failure's declared exit code
@@ -239,7 +239,13 @@ interface FailureForm {
 ```
 
 ```ts
-import { textstat } from './application.js';
+import { Application } from '@loomcli/core';
+import { oneOf } from '@loomcli/validators';
+
+const textstat = new Application('textstat')
+  .argument('files', { required: true, variadic: true })
+  .option('metric', { type: 'string', validate: oneOf(['bytes', 'words', 'lines']) })
+  .action(({ args, out }) => out.print(args.files.join('\n')));
 
 // `textstat --metric nope one.txt`, run by name: the form is the same data a failure encoder writes.
 const outcome = await textstat.invoke([], { args: { files: ['one.txt'] }, options: { metric: 'nope' } });
@@ -262,7 +268,7 @@ The failure form is one failure as plain data, so a reader that cannot parse pro
 
 ## Translators
 
-```ts
+```ts sketch
 type ErrorClass<Thrown extends object> = abstract new (...args: never[]) => Thrown;
 type Translator<Thrown extends object> = (error: Thrown) => LoomError | undefined;
 function translate<Thrown extends object>(key: ErrorClass<Thrown>, translator: Translator<Thrown>): Translation; // Translation is opaque and branded
@@ -280,10 +286,8 @@ interface PluginDefinition<Options extends PluginOptions, Theme extends ThemeMap
 ```ts
 import { Application, EX_DATAERR, FatalError, translate } from '@loomcli/core';
 
-import { summarize } from './actions/summarize.js';
-
 // JSON.parse throws a SyntaxError for a malformed document, and the reader no longer catches it:
-// `jsonkit get name -f broken.json` exits 65 and writes the class's sentence.
+// `jsonkit -f broken.json` exits 65 and writes the class's sentence.
 export class InvalidJsonError extends FatalError {
   static override readonly exitCode = EX_DATAERR;
 
@@ -295,7 +299,12 @@ export class InvalidJsonError extends FatalError {
 
 export const jsonkit = new Application('jsonkit', {
   translators: [translate(SyntaxError, (error) => new InvalidJsonError({ cause: error }))],
-}).action(summarize);
+})
+  .option('file', { type: 'content', required: true, short: 'f' })
+  .action(async ({ options, out }) => {
+    const document: unknown = JSON.parse(await options.file.text());
+    await out.print(JSON.stringify(document));
+  });
 ```
 
 A translator turns a foreign throw, an error a library or the platform raised, into one of the author's failure classes, so the failure exits with the class's code and renders through its view, and no action repeats the catch. [ADR-0049](../decisions/0049-a-translator-turns-a-foreign-throw-into-a-failure-class.md) records the decision.

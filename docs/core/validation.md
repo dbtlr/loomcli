@@ -42,6 +42,8 @@ A scalar argument's validator receives its one token. A variadic argument's vali
 An argument or local option declares `type: 'content'` to accept readable file paths and give its action lazy `Content` handles. A content option consumes words like a string option with a separate value. It remains local to the Command that reads it.
 
 ```ts
+import { Command } from '@loomcli/core';
+
 new Command('count')
 	.argument('files', {
 		description: 'The files and piped text to count.',
@@ -72,6 +74,8 @@ Each frozen handle carries `kind` (`file` or `stdin`), `name` (the original file
 A Command that accepts stdin alone declares it without a positional argument or option:
 
 ```ts
+import { Command } from '@loomcli/core';
+
 new Command('events')
 	.stdin({ description: 'The event stream.', required: true })
 	.action(async ({ stdin }) => {
@@ -122,7 +126,7 @@ A [question](../libs/prompts.md) validates its submitted answer with `phase: 'qu
 
 A linked select or multiselect question has no validator of its own, so the value it answers passes the linked input's, through core's `validateLinkedValue`. Core exports the function and the four types its signature names, `LinkedValue`, `LinkedValueContext`, `ValueLink`, and `LinkedOutput`.
 
-```ts
+```ts sketch
 /** One element of a collected input's list, or the whole value of an input that takes one value and is not an array. */
 type LinkedValue<Value> = [Value] extends [readonly (infer Element)[]] ? Element : Value;
 type LinkedValueContext<Args, Options> = Pick<
@@ -176,7 +180,7 @@ An omitted Boolean or counted option reads as `undefined` here, because the pola
 
 ### Validation options outside a run
 
-```ts
+```ts sketch
 import type { InputIdentity, ProcessHandle, StandardSchemaV1, SuppliedInputs } from '@loomcli/core';
 
 type ValidationOptionsContext =
@@ -298,7 +302,7 @@ A validator that throws, rejects, or returns a malformed result is a developer e
 
 A validated input carries the JSON Schema its validator publishes as a core fact, `schema` on every `ArgumentNode` and `OptionNode` under [Graph inspection](graph-inspection.md). Build derives it through the [Standard JSON Schema](https://standardschema.dev/json-schema) channel, the converter `@standard-schema/spec` defines beside `validate`, and stores the plain result. The fact reaches every projection with no plugin installed, and it changes nothing at run time: validation is unchanged, and no rule reads the stored schema.
 
-```ts
+```ts sketch
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@loomcli/core';
 
 interface ArgumentNode {
@@ -315,6 +319,9 @@ type Validator = StandardSchemaV1 | (StandardSchemaV1 & StandardJSONSchemaV1);
 ```
 
 ```ts
+import { Application } from '@loomcli/core';
+import { z } from 'zod';
+
 // Zod illustrates a library's converter here; textstat itself declares oneOf() from the validator catalog.
 const app = new Application('textstat')
   .option('metric', {
@@ -322,7 +329,7 @@ const app = new Application('textstat')
     default: 'bytes',
     validate: z.enum(['bytes', 'words', 'lines'], { error: 'Use bytes, words, or lines.' }),
   })
-  .action(count);
+  .action(({ options, out }) => out.print(options.metric));
 
 const [metric] = app.inspect().root.options;
 metric.schema;

@@ -6,7 +6,7 @@ description: "Where an input reads a value besides argv: environment bindings, c
 
 This page states where an input reads a value besides argv: environment bindings and configuration sources. An author uses it to bind an option to a variable or a configuration key, and to write a configuration source.
 
-```ts
+```ts sketch
 // `StringOption`, `ContentOption`, `BooleanOption`, `CountOption`, and `GlobalOptionConfig` accept `env`, except an option that carries the color, verbose, or quiet mark, so `{ type: 'count', verbose: true, env: 'V' }` fails to compile.
 // A multiple option binds `env` only beside `envDelimiter`, so `{ multiple: true, env: 'FIELDS' }` fails to compile and `{ multiple: true, env: 'FIELDS', envDelimiter: ',' }` compiles. `envDelimiter` on an option that is neither multiple nor a scalar arity option, or on one that binds no variable, fails to compile.
 // Only a scalar string option that binds `env` declares `envAllowEmpty`, so `{ type: 'string', env: 'APP_PREFIX', envAllowEmpty: true }` compiles, and the key on an option that binds no variable, on a multiple option, or on a Boolean, counted, or content option fails to compile.
@@ -62,37 +62,66 @@ interface SourceAnswer {
 ```
 
 ```ts
-// src/config/extension.ts: the binding names a key in the plugin's settings file.
+// src/config/extension.ts
+import { extension } from '@loomcli/core';
+import { z } from 'zod';
+
+// The binding names a key in the plugin's settings file.
 export const configKey = extension('@acme/config/key', { schema: z.string(), target: 'option' });
 
 // src/config/plugin.ts
-export function config(): Plugin<ConfigOptions> {
+import { plugin } from '@loomcli/core';
+import type { Plugin } from '@loomcli/core';
+import { configKey } from './extension.js';
+
+const options = { config: { description: 'Read settings from this file.', type: 'string' } } as const;
+
+export function config(): Plugin<typeof options> {
   return plugin('@acme/config', {
     extensions: [configKey],
-    options: { config: { description: 'Read settings from this file.', type: 'string' } },
+    options,
     source: { binding: configKey, load: () => import('./source.js') },
   });
 }
 
-// src/config/source.ts, loaded only when an unfilled option carries configKey
+// src/config/source.ts
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { readExtension } from '@loomcli/core';
+import type { SourceAnswer, SourceResolver } from '@loomcli/core';
+import { z } from 'zod';
+import { configKey } from './extension.js';
+import type { config } from './plugin.js';
+
+// Loaded only when an unfilled option carries configKey.
 const source: SourceResolver<typeof config> = async ({ host, options, requests }) => {
-  const settings = await readSettings(options.config ?? join(host.cwd, '.acme.json'));
+  const path = options.config ?? './.acme.json';
+  const file = await readFile(resolve(host.cwd, path), 'utf8');
+  const settings = z.record(z.string(), z.unknown()).parse(JSON.parse(file));
   const answers: Record<string, SourceAnswer> = {};
   for (const request of requests) {
     const key = readExtension(request, configKey);
-    const value = key === undefined ? undefined : settings.values[key];
+    const value = key === undefined ? undefined : settings[key];
     if (typeof value === 'string') {
-      answers[request.name] = { label: `${key} in ${settings.path}`, value };
+      answers[request.name] = { label: `${key} in ${path}`, value };
     }
   }
   return answers;
 };
 export default source;
 
+// src/application.ts
+import { Application } from '@loomcli/core';
+import { z } from 'zod';
+import { configKey } from './config/extension.js';
+import { config } from './config/plugin.js';
+
+const digits = z.string().regex(/^[0-9]+$/u, 'Supply a whole number.');
+
 // The application binds --limit to a variable and to a configuration key.
 const app = new Application('textstat', { plugins: [config()] })
   .option('limit', { env: 'TEXTSTAT_LIMIT', extensions: [configKey('limits.bytes')], type: 'string', validate: digits })
-  .action(count);
+  .action(({ options, out }) => out.print(String(options.limit ?? 'unlimited')));
 ```
 
 The environment and the configuration map into options, and everything downstream reads options. A value from either is an alternative to giving the option, in every way. [ADR-0032](../decisions/0032-environment-and-configuration-map-into-options-through-one-core-input-source-stage.md) records the decision.

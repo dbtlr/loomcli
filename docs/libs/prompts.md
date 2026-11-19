@@ -53,7 +53,7 @@ With `--no-input`, `--backend` and `--port` are required before the action runs,
 
 Each kind is a function of the action context and one settings object, and returns a promise of the answer.
 
-```ts
+```ts sketch
 type LinkKey<Options> = keyof Options & string;
 type Answer<Inputs, Key, Output> = [Key] extends [never]
   ? Output
@@ -126,6 +126,12 @@ Each signature above takes the whole action context, and any action context fits
 ```ts
 import { select, text, type PromptContext } from '@loomcli/prompts';
 
+interface DeployOptions {
+  region: string | undefined;
+  name: string | undefined;
+}
+const regions = ['us-east', 'eu-west'];
+
 async function askTarget(context: PromptContext<DeployOptions>) {
   const region = await select(context, { message: 'Region', option: 'region', choices: regions });
   const name = await text(context, { message: 'Service name', option: 'name' });
@@ -160,7 +166,7 @@ The return type is the question's own output: the validator's output for text, s
 
 ## Choices
 
-```ts
+```ts sketch
 interface ChoiceDetails {
   readonly description?: string;
   readonly disabled?: boolean | string; // a string is the reason
@@ -223,20 +229,27 @@ type MultiselectSettings<Key = never, Entry extends ChoiceEntry = ChoiceEntry, A
 `Link` is the existing union that admits `option`, `argument`, or neither, with `skipIfSupplied` beside a link. `ChoiceList` admits `choices` or `source`, never both, so `choices` is optional on `SelectSettings` and `MultiselectSettings`, and code that reads `settings.choices` from either type checks that it is present, a breaking change for `SelectSettings` that ADR-0138 records. A choice object has a `label` that is optional exactly when its `value` is a string: `ChoiceObject<string>` admits `{ value: 'a' }`, and `ChoiceObject<number>` requires `label`. `Choice` is a string or a choice object, and a separator is not a choice, so the list's entry type, which admits both, is `ChoiceEntry`.
 
 ```ts
-const engine = await select(context, {
-  message: 'Storage backend',
-  choices: [
-    'sqlite',
-    { value: 'postgres', label: 'PostgreSQL', description: 'A server you run or rent.' },
-    { separator: 'Hosted' },
-    { value: 'neon', label: 'Neon', disabled: 'needs an account' },
-  ],
-}); // 'sqlite' | 'postgres' | 'neon'
-const features = await multiselect(context, {
-  message: 'Features',
-  choices: [{ value: Feature.Backups, label: 'Backups' }, { value: Feature.Telemetry, label: 'Telemetry' }],
-  min: 1,
-}); // Feature[]
+import { multiselect, select, type PromptContext } from '@loomcli/prompts';
+
+enum Feature { Backups, Telemetry }
+
+export async function choose(context: PromptContext<unknown>) {
+  const engine = await select(context, {
+    message: 'Storage backend',
+    choices: [
+      'sqlite',
+      { value: 'postgres', label: 'PostgreSQL', description: 'A server you run or rent.' },
+      { separator: 'Hosted' },
+      { value: 'neon', label: 'Neon', disabled: 'needs an account' },
+    ],
+  }); // 'sqlite' | 'postgres' | 'neon'
+  const features = await multiselect(context, {
+    message: 'Features',
+    choices: [{ value: Feature.Backups, label: 'Backups' }, { value: Feature.Telemetry, label: 'Telemetry' }],
+    min: 1,
+  }); // Feature[]
+  return { engine, features };
+}
 ```
 
 Select and multiselect offer the same choices, so one list serves either kind.
@@ -254,6 +267,10 @@ Select and multiselect offer the same choices, so one list serves either kind.
 A question links at most one input of the routed Command: `option` names a local option, and `argument` names an argument. The types admit the keys of the action's `options` for `option` and of its `args` for `argument`, and they reject `option` and `argument` together, `argument` on confirm, and `skipIfSupplied` without either. The runtime link check refuses an option that declares an [arity](../core/options.md#option-value-arity), whose tuple, or list of tuples on a multiple option, no question kind answers. A linked argument works as a linked option does throughout [Resolving a question](#resolving-a-question): its raw supplied value prefills the question, and its validated value answers a skipped one. A multiselect links a list, a multiple string option or a variadic string argument, whose raw tokens preselect the choices they match and whose validated list answers a skipped question. A linked select or multiselect that asks passes each chosen value through its input's own validator, so its answer is that input's validated value either way.
 
 ```ts
+import { Command } from '@loomcli/core';
+import { text } from '@loomcli/prompts';
+import { url } from '@loomcli/validators';
+
 const clone = new Command('clone')
   .argument('url', { required: 'non-interactive', validate: url() })
   .action(async (context) => {
@@ -427,15 +444,21 @@ Text, secret, and confirm hold a typed line: the text typed so far and a cursor.
 ## Searching
 
 ```ts
-const country = await select(context, { message: 'Country', choices: countries, search: true });
-const repositories = await multiselect(context, {
-  message: 'Repositories',
-  source: async (term, { signal }) => {
-    const response = await fetch(`${api}/repositories?q=${encodeURIComponent(term)}`, { signal });
-    const found: { name: string; summary: string }[] = await response.json();
-    return found.map(({ name, summary }) => ({ value: name, label: name, description: summary }));
-  },
-});
+import { multiselect, select, type PromptContext } from '@loomcli/prompts';
+
+export async function choose(context: PromptContext<unknown>, api: string) {
+  const countries = ['Canada', 'Japan', 'Norway'];
+  const country = await select(context, { message: 'Country', choices: countries, search: true });
+  const repositories = await multiselect(context, {
+    message: 'Repositories',
+    source: async (term, { signal }) => {
+      const response = await fetch(`${api}/repositories?q=${encodeURIComponent(term)}`, { signal });
+      const found: { name: string; summary: string }[] = await response.json();
+      return found.map(({ name, summary }) => ({ value: name, label: name, description: summary }));
+    },
+  });
+  return { country, repositories };
+}
 ```
 
 A select or multiselect searches when it has `search: true` or a `source`. It holds a search term, which the operator types on the question's first line, and its list shows the choices for that term. The answer is always a choice: a typed term is never an answer, and no key submits it.
@@ -456,7 +479,7 @@ A select or multiselect searches when it has `search: true` or a `source`. It ho
 
 ## The editor question
 
-```ts
+```ts sketch
 type EditorSettings<Key = never, Output = string, Argument = never> = Link<Key, Argument> & {
   readonly message: string;
   readonly default?: string; // the text the file starts with
@@ -549,7 +572,7 @@ The editor is the operator's program. Three outcomes end the run rather than ask
 
 The editor starts through `host.spawn`, so a test under [`mockProcess`](testing.md#mockprocess) scripts `/bin/sh` in `programs`, and the script writes the answer to the file whose path is its last argument. The mock's keyboard hands its next entry each time the question enters raw mode, so the Enter that opens the editor is one entry, and the question takes another only when it keeps asking. A keyboard holds no keys while the terminal is lent, so a test cannot type during the lend.
 
-```ts
+```ts sketch
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -664,7 +687,7 @@ A question draws in an input region, which it opens with `out.region({ input: tr
 
 ### List frames
 
-```ts
+```ts sketch
 interface TypedFrame {
   readonly kind: 'text' | 'secret' | 'confirm';
   readonly message: string;
@@ -719,7 +742,7 @@ Select and multiselect draw one list frame, so a view override that restyles a c
 
 ### Line pieces
 
-```ts
+```ts sketch
 interface NumberedChoice {
   readonly kind: 'choice';
   readonly number: number | undefined; // from 1 in the list's order; undefined for a disabled choice
@@ -831,7 +854,7 @@ A question waits as long as the operator takes, and the library adds no timeout.
 
 ## Progress
 
-```ts
+```ts sketch
 import type { ActionContext, Out, OutputTerminal, Plugin } from '@loomcli/core';
 
 interface Spinner {
@@ -885,9 +908,10 @@ declare function progressStyle(settings?: ProgressStyleSettings): Plugin;
 import { Application } from '@loomcli/core';
 import { progress } from '@loomcli/prompts';
 
-import { buildIndex, fetchRecord } from './records.js';
-
-export const app = new Application('fetchit')
+export const fetchit = (
+  fetchRecord: (url: string) => Promise<void>,
+  buildIndex: () => Promise<number>,
+) => new Application('fetchit')
   .argument('urls', { required: true, variadic: true })
   .action(async (context) => {
     const { urls } = context.args;
@@ -928,6 +952,7 @@ With stderr piped, on a terminal whose `TERM` is `dumb`, or with the run's [plai
 Work that did nothing, finished short, or leaves nothing worth keeping ends with `skip`, `warn`, or `clear`:
 
 ```ts
+// src/sync.ts
 import { Command } from '@loomcli/core';
 import { progress } from '@loomcli/prompts';
 
@@ -949,6 +974,25 @@ export const sync = new Command('sync').action(async (context) => {
     await fetching.end(`Fetched ${String(fetched)} records`);
   }
 });
+
+// src/records.ts
+interface Cache {
+  readonly expectedCount: number;
+  readonly fresh: boolean;
+}
+
+export async function readCache(): Promise<Cache> {
+  return { expectedCount: 120, fresh: false };
+}
+
+export function cacheIsFresh(cache: Cache) {
+  return cache.fresh;
+}
+
+export async function fetchRecords(cache: Cache) {
+  // Sample counts exercise the warning for a short fetch.
+  return { fetched: 118, total: cache.expectedCount };
+}
 ```
 
 At a terminal, the cleared line leaves nothing, and the run leaves the skipped line, dim:
@@ -996,9 +1040,10 @@ A progress line shows an operator that work is under way: a spinner while the wo
 import { Command } from '@loomcli/core';
 import { progress } from '@loomcli/prompts';
 
-import { copyFile, listFiles } from './files.js';
-
-export const copy = new Command('copy').action(async (context) => {
+export const copy = (
+  listFiles: () => Promise<readonly string[]>,
+  copyFile: (file: string) => Promise<void>,
+) => new Command('copy').action(async (context) => {
   const files = await listFiles();
   const copying = progress(context, {
     estimate: true,
@@ -1164,9 +1209,14 @@ Where the line does not draw, it shows nothing while it runs, and the same failu
 import { Command } from '@loomcli/core';
 import { progress } from '@loomcli/prompts';
 
-import { buildImage, layersOf, pushLayer, runMigrations } from './deploy.js';
-
-export const deploy = new Command('deploy').action(async (context) => {
+export const deploy = ({
+  buildImage, layersOf, pushLayer, runMigrations,
+}: {
+  buildImage: () => Promise<void>;
+  layersOf: () => Promise<readonly string[]>;
+  pushLayer: (layer: string) => Promise<void>;
+  runMigrations: () => Promise<void>;
+}) => new Command('deploy').action(async (context) => {
   const { style } = context;
   const deploying = progress(context, { label: 'Deploying' });
   await deploying.task({ label: 'Building the image' }).track(buildImage(), { done: 'Built the image' });
@@ -1248,10 +1298,11 @@ Where the line does not draw, each line writes its plain lines as they happen, a
 ```ts
 import { Application } from '@loomcli/core';
 import { progressStyle } from '@loomcli/prompts';
-import spinners from 'cli-spinners';
+
+const spinner = { frames: ['|', '/', '-', '\\'], interval: 80 };
 
 export const app = new Application('fetchit', {
-  plugins: [progressStyle({ spinner: spinners.dots, bar: { complete: '█', incomplete: '░' } })],
+  plugins: [progressStyle({ spinner, bar: { complete: '█', incomplete: '░' } })],
 });
 ```
 
@@ -1264,7 +1315,7 @@ export const app = new Application('fetchit', {
 
 ### Progress view
 
-```ts
+```ts sketch
 interface ProgressLine {
   readonly state: 'running' | 'ended' | 'failed' | 'cancelled' | 'skipped' | 'warned';
   readonly label: string; // the end message once the line has ended, failed, been skipped, or warned

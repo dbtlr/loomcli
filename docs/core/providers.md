@@ -8,7 +8,7 @@ A provider hands an action a typed value, such as a database pool, an authentica
 
 ## The provider value
 
-```ts
+```ts sketch
 declare const providerTypes: unique symbol;
 
 type Lifetime = 'ephemeral' | 'persistent';
@@ -57,7 +57,7 @@ declare function provider<const Declared extends AnyProvider>(
 ): Declared;
 ```
 
-```ts
+```ts sketch
 // src/providers.ts in a database package: declarations only, so importing it opens nothing
 import { provider } from '@loomcli/core';
 import type { PluginOptionValues, Provider } from '@loomcli/core';
@@ -88,7 +88,7 @@ export const acmeSession: Provider<'acmeSession', Session, { token: string | und
 
 ## The opener
 
-```ts
+```ts sketch
 interface ProviderContext<Globals = {}, Provided = {}> {
   /** The validated global option values, frozen to every depth. */
   readonly options: Globals;
@@ -108,7 +108,7 @@ type Opener<Declared extends AnyProvider> = (
 ) => ValueOf<Declared> | Promise<ValueOf<Declared>>;
 ```
 
-```ts
+```ts sketch
 // src/open-session.ts, loaded only when a run builds the session
 import type { Opener } from '@loomcli/core';
 
@@ -133,7 +133,7 @@ The opener is the function that builds a provider's value. It types itself from 
 
 ## Opting in
 
-```ts
+```ts sketch
 interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
   // ...the members under Commands and global options...
   uses?: Uses;
@@ -150,7 +150,7 @@ interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
 }
 ```
 
-```ts
+```ts sketch
 // src/commands/get.ts
 import { Command } from '@loomcli/core';
 import { acmeSession } from 'acme-database/providers';

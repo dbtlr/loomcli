@@ -16,7 +16,7 @@ bun add -d @loomcli/testing
 
 ## assertAssembles
 
-```ts
+```ts sketch
 function assertAssembles(application: Pick<Application, 'check'>): void;
 ```
 
@@ -47,6 +47,7 @@ The parameter accepts an application in any authoring state, because `check()` i
 Place the test beside the application module, as `src/application.test.ts`, which is where `loom init` writes it.
 
 ```ts
+// src/application.test.ts
 /// <reference types="bun" />
 import { test } from 'bun:test';
 import { assertAssembles } from '@loomcli/testing';
@@ -58,11 +59,17 @@ import { application } from './application.js';
 test('the application assembles', () => {
   assertAssembles(application);
 });
+
+// src/application.ts
+import { Application } from '@loomcli/core';
+
+export const application = new Application('notes').action(({ out }) => out.print('Ready.'));
 ```
 
 ### A test under vitest
 
 ```ts
+// src/application.test.ts
 import { assertAssembles } from '@loomcli/testing';
 import { test } from 'vitest';
 
@@ -71,6 +78,11 @@ import { application } from './application.js';
 test('the application assembles', () => {
   assertAssembles(application);
 });
+
+// src/application.ts
+import { Application } from '@loomcli/core';
+
+export const application = new Application('notes').action(({ out }) => out.print('Ready.'));
 ```
 
 ## What it covers
@@ -84,7 +96,7 @@ It does not pass a declared default or an implied value through its validator. A
 
 ## mockProcess
 
-```ts
+```ts sketch
 import type { Readable, Writable } from 'node:stream';
 
 import type { Background, ProcessFields, ProcessHandle, ProcessSignal } from '@loomcli/core';
@@ -148,7 +160,7 @@ interface MockProcess extends ProcessHandle {
 function mockProcess(fields?: MockFields): MockProcess;
 ```
 
-```ts
+```ts sketch
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vitest';
 
@@ -245,7 +257,7 @@ const mock = mockProcess({
 
 `key` holds the bytes a terminal sends for the keys a [question](prompts.md#reading-keys) reads, so an entry of `terminal.keys` reads as the keys it presses rather than as escape codes. Each member is a string, and the two functions return one, so members join with `+` into one read.
 
-```ts
+```ts sketch
 type KeyLetter = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k' | 'l' | 'm'
   | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 't' | 'u' | 'v' | 'w' | 'x' | 'y' | 'z';
 declare const key: {
@@ -286,7 +298,7 @@ declare const key: {
 
 ## Testing one function alone
 
-```ts
+```ts sketch
 /** The members a test may state beside the inputs: out and log member by member, every other member whole. */
 type OptionalMembers<Context> = {
   readonly [Key in keyof Context]?: Key extends 'out' | 'log'
@@ -295,7 +307,7 @@ type OptionalMembers<Context> = {
 };
 ```
 
-```ts
+```ts sketch
 import { actionContext } from '@loomcli/testing';
 import { expect, test, vi } from 'vitest';
 
@@ -340,7 +352,7 @@ Each sentence is the message of an `Error`, and it opens with the builder that b
 
 ### actionContext
 
-```ts
+```ts sketch
 import type { Action, ActionContext, StdinContext } from '@loomcli/core';
 
 type ActionValues<Args, Options, Result, Stdin extends StdinContext, Provided> = Pick<
@@ -358,7 +370,7 @@ function actionContext<Args, Options, Result, Stdin extends StdinContext, Provid
 ): Omit<ActionContext<Args, Options, Result, Provided>, 'stdin'> & Stdin;
 ```
 
-```ts
+```ts sketch
 import { actionContext } from '@loomcli/testing';
 import { expect, test, vi } from 'vitest';
 
@@ -389,7 +401,7 @@ test('list prints each title the pool returns', async () => {
 
 ### middlewareContext
 
-```ts
+```ts sketch
 import type { MiddlewareContext, PluginOptions } from '@loomcli/core';
 
 type MiddlewareValues<Options extends PluginOptions> = Pick<
@@ -407,6 +419,7 @@ function middlewareContext<Options extends PluginOptions>(
 ```
 
 ```ts
+// tests/case.test.ts
 import type { ChainOutcome } from '@loomcli/core';
 import { middlewareContext } from '@loomcli/testing';
 import { expect, test, vi } from 'vitest';
@@ -429,6 +442,21 @@ test('--dry-run takes over before the action', async () => {
   expect(next).not.toHaveBeenCalled();
   expect(info).toHaveBeenCalledWith('Dry run: nothing was changed.');
 });
+
+// src/middleware.ts
+import type { Middleware, Plugin } from '@loomcli/core';
+
+type Options = { dryRun: { type: 'boolean' } };
+
+const middleware: Middleware<Plugin<Options>> = async ({ next, out, ownOptions }) => {
+  if (ownOptions.dryRun === true) {
+    await out.info('Dry run: nothing was changed.');
+    return;
+  }
+  await next();
+};
+
+export default middleware;
 ```
 
 - **The middleware.** The default export of the module its plugin's `middleware.load` imports. The test imports that module itself, so no loader runs and no activation is checked.
@@ -444,7 +472,7 @@ test('--dry-run takes over before the action', async () => {
 
 `received` accepts an optional reader for tests of hooks that inspect rejected inputs. Its default returns `undefined` for every problem.
 
-```ts
+```ts sketch
 import type { FailureHook, FailureHookContext } from '@loomcli/core';
 
 type FailureHookValues = Pick<
@@ -459,6 +487,7 @@ function failureHookContext(hook: FailureHook, values: FailureHookValues): Failu
 ```
 
 ```ts
+// tests/case.test.ts
 import { UnknownCommandError } from '@loomcli/core';
 import { failureHookContext } from '@loomcli/testing';
 import { expect, test } from 'vitest';
@@ -477,6 +506,15 @@ test('an unknown command at the command line points at help', () => {
     'Run notes --help to list the commands.',
   );
 });
+
+// src/hints.ts
+import { UnknownCommandError } from '@loomcli/core';
+import type { FailureHook } from '@loomcli/core';
+
+export const hints: FailureHook = (failure, { application, invokedBy }) =>
+  failure instanceof UnknownCommandError && invokedBy === 'argv'
+    ? `Run ${application} --help to list the commands.`
+    : undefined;
 ```
 
 - **The hook.** An `onFailure` hook takes the failure and its context, so the builder returns the context, the second argument, and the test calls `hook(failure, context)` with a failure it constructs.
@@ -485,7 +523,7 @@ test('an unknown command at the command line points at help', () => {
 
 ### providerContext
 
-```ts
+```ts sketch
 import type { ProviderContext } from '@loomcli/core';
 
 type ProviderValues<Globals, Provided> = Pick<
@@ -500,7 +538,7 @@ function providerContext<Globals, Provided>(
 ): ProviderContext<Globals, Provided>;
 ```
 
-```ts
+```ts sketch
 import { providerContext } from '@loomcli/testing';
 import { expect, test } from 'vitest';
 
@@ -523,7 +561,7 @@ test('the session starts with the token option', async () => {
 
 ### viewContext
 
-```ts
+```ts sketch
 import type { RowView, View, ViewContext } from '@loomcli/core';
 
 type ViewValues = OptionalMembers<ViewContext>;
@@ -552,7 +590,7 @@ test('the heading rule fills a 20-column terminal', () => {
 
 ### environmentContext
 
-```ts
+```ts sketch
 import type { EnvironmentContext, EnvironmentHook } from '@loomcli/core';
 
 interface EnvironmentValues {
@@ -565,6 +603,7 @@ function environmentContext(hook: EnvironmentHook, values: EnvironmentValues): E
 ```
 
 ```ts
+// tests/case.test.ts
 import { environmentContext } from '@loomcli/testing';
 import { expect, test, vi } from 'vitest';
 
@@ -576,6 +615,12 @@ test('an unset region defaults to us-east-1', async () => {
   expect(await regionDefault(context)).toEqual({ REGION: 'us-east-1' });
   expect(warn).not.toHaveBeenCalled();
 });
+
+// src/on-environment.ts
+import type { EnvironmentHook } from '@loomcli/core';
+
+export const regionDefault: EnvironmentHook = ({ host }) =>
+  host.env.REGION === undefined ? { REGION: 'us-east-1' } : undefined;
 ```
 
 - **The hook.** An `onEnvironment` hook takes its context alone, and the test calls `hook(context)` and reads the additions it returns.
@@ -592,7 +637,7 @@ test('an unset region defaults to us-east-1', async () => {
 
 ## Building the values a hook reads
 
-```ts
+```ts sketch
 import type { LogDestination, LogEvent, ProgressEvent } from '@loomcli/core';
 
 type LogEventValues = Partial<LogEvent>;
@@ -605,6 +650,7 @@ function progressEvent(values?: ProgressEventValues): ProgressEvent;
 ```
 
 ```ts
+// tests/case.test.ts
 import { Writable } from 'node:stream';
 
 import { logDestination, logEvent } from '@loomcli/testing';
@@ -623,6 +669,14 @@ test('an error event writes one line to stderr', () => {
   writeEvent(logEvent({ level: 'error', message: 'Sync failed.' }), logDestination({ stderr }));
   expect(written).toBe('error: Sync failed.\n');
 });
+
+// src/on-log.ts
+import type { LogHook } from '@loomcli/core';
+
+export const writeEvent: LogHook = (event, { stderr }) => {
+  stderr?.write(`${event.level}: ${event.message}\n`);
+  return undefined;
+};
 ```
 
 An `onLog` hook takes a log event and a log destination, and a progress observer, the `onProgress` function a caller hands to [`invoke`](../core/invocation.md), takes a progress event. Each is plain data, which a hook often reads whole, such as writing an event as one JSON record. `logEvent`, `logDestination`, and `progressEvent` build them from the members a test states, so a test states only what it checks, and a top-level member a later release adds to one of these types leaves the test compiling. A test that compares a whole value with a fixed one, such as a serialized event, sees the new member's default. A member the test states is written whole, as core types it: a test that states a log event's `application`, `failure`, or `defect` stops compiling when a release adds a required member inside it. A destination's `log` is the exception: it is stated level by level, as a builder's `log` is, so a test that states `debug` keeps the other levels inert and a `with` that binds fields.
@@ -662,7 +716,7 @@ Each recipe uses core's own entry points with a mock, so none of them needs an A
 
 ### Answering questions
 
-```ts
+```ts sketch
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vitest';
 
@@ -702,7 +756,7 @@ A signal raised on the mock reaches the runs that hold it, so a test cancels whe
 
 `app.invoke(path, values, { process: mock, onProgress })` runs one Command with typed values on the mock's facts and returns the [invocation outcome](../core/invocation.md#invocation-by-name), with the run's output and messages as text. `onProgress` receives each [progress event](../core/output.md#progress-events) in order, so a test collects them in an array and compares it.
 
-```ts
+```ts sketch
 import type { ProgressEvent } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vitest';
@@ -724,7 +778,7 @@ test('sync reports its progress to the end', async () => {
 
 A test reads the bytes the run wrote, so it measures them with core's [`width`](../core/styles.md#measuring-written-text), the measure core renders with, and strips styles with the runtime's own `stripVTControlCharacters` from `node:util`:
 
-```ts
+```ts sketch
 import { stripVTControlCharacters } from 'node:util';
 
 import { width } from '@loomcli/core';
@@ -775,7 +829,7 @@ A provider's opener loads through `import()`, so the test runner's module mockin
 
 ## assertSkillsMatch
 
-```ts
+```ts sketch
 function assertSkillsMatch(
   application: Pick<Application, 'inspect'>,
   directory: string,
@@ -786,6 +840,7 @@ function assertSkillsMatch(
 `assertSkillsMatch` calls `inspect()` and the skills plugin's public `skillFolders()` in the test's process. It compares each declared skill folder with the committed copy: file bytes and executable bits, missing files, and extra files within that skill folder. A link or a file where a skill's folder belongs differs, and so does a link where one of its files belongs. It ignores sibling folders, and it ignores an entry of the committed copy whose name starts with `.`, at every depth, unless the skill itself supplies a file at that path. The first difference, in the order an install writes the skills, the folder's skills by name and then the listed ones, and then in sorted file-path order, throws an `Error` naming the file and asking for a fresh export. An empty `options.skills` list checks no skill. That includes stale files under the plugin's owned generated names.
 
 ```ts
+// src/application.test.ts
 import { test } from 'vitest';
 import { assertSkillsMatch } from '@loomcli/testing';
 
@@ -794,6 +849,11 @@ import { application } from './application.js';
 test('committed skills match the application', async () => {
   await assertSkillsMatch(application, 'committed-skills', { moduleDirectory: import.meta.dirname });
 });
+
+// src/application.ts
+import { Application } from '@loomcli/core';
+
+export const application = new Application('notes').action(({ out }) => out.print('Ready.'));
 ```
 
 Refresh the copy with [`loom skills export`](../toolchain/skills.md), then commit it. The committed-copy directory resolves against the test's working directory. Pass `options.moduleDirectory` to resolve a relative skills `folder` against the application module's directory. `options.skills` selects declared skill names; omitting it checks every declared skill. An undeclared name fails with a correction.

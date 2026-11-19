@@ -6,7 +6,7 @@ description: "How an Application is declared: its name, version, description, ro
 
 `new Application(name)` creates an application with an unnamed root Command. The name is a [portable name](../glossary.md#names-and-routing): `A-Z`, `a-z`, `0-9`, `.`, `_`, and `-`, not starting with `-` or `.`, because an operator types it as a command at the shell prompt. Core exports the predicate as `isPortableName(name)`, which the [lint plugin](../libs/eslint-plugin.md) calls to judge a literal name as core does. The constructor takes no input type parameter. `new Application(name, options)` takes one options object. `plugins` installs the plugins described in [Plugins](plugin-contract.md) in composition order, and `views` holds the view overrides described in [Views](views.md), which is where an application replaces the view function of a failure class, a lane, a help page, or any other declared view. `description` and `version` are core graph facts every projection reads, and `extensions` carries the root's [extension values](extensions.md). An omitted `version` is `0.0.0`, which means unversioned, so the graph always carries one; the root cannot be hidden or deprecated, so the Application options carry neither fact. `translators` holds the application's [translators](failures.md#translators). `shutdown.timeout` is the [shutdown budget](signals.md#the-shutdown), the milliseconds a run gets to unwind after an ending signal, 500 unless the application sets another; it is a whole number from 0 through 2147483647, and any other value is a declaration error from the constructor. A larger budget makes every cancelled run take longer to end when its work does not stop, so an application keeps its unwind short and the budget small. `log.redact` lists the field paths whose values every [log event](logging.md#redaction) reads as `"[Redacted]"`, which core applies when it copies the fields, so no `onLog` hook, log line, or record sees them; a path that is not dotted nonempty keys is a declaration error from the constructor, and an Application that sets none redacts nothing. `uses` lists the [providers](providers.md) whose values the root's own action reads under `provided`; a child Command opts in through its own options. The build an application runs as is not an option: core reads it from the [release facts](release-facts.md) the build baked in.
 
-```ts
+```ts sketch
 interface ApplicationOptions<Plugins extends readonly Plugin[] = readonly Plugin[], Uses extends readonly AnyProvider[] = []> {
   plugins?: Plugins;
   rendering?: RenderingPolicy;
@@ -69,6 +69,8 @@ A scalar argument is optional when it omits `required` or declares `required: fa
 A variadic argument follows the presence rules of a [multiple option](options.md#repeated-string-values). `required: true` means at least one token and excludes `default`; without it the argument is optional and can declare a default. Its action value is `string[]`, or the array of its validator's outputs, and never `undefined`: an empty tail is an accurate empty list, and it calls no validator. A default is a `string[]`, or an array of the validator's input type when the declaration validates, each value passes through the validator, and it reaches each invocation as its own copy.
 
 ```ts
+import { Command } from '@loomcli/core';
+
 const keys = new Command('keys').argument('path', {}).action(({ args, out }) => {
   const path: string | undefined = args.path;
   return out.print(path ?? 'the root');

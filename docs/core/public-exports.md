@@ -61,7 +61,7 @@ Your editor's hover shows each declaration's doc comment, because the packed `.d
 - A comment says what the name is for in the [glossary](../glossary.md)'s terms. Where a page governs it, the comment links that page with `@see` and an absolute URL, such as `https://github.com/dbtlr/loomcli/blob/main/docs/core/public-exports.md`, and does not restate the page's rules.
 - An example imports what it uses from the published specifier, so it also shows where the name lives:
 
-````ts
+````ts sketch
 /**
  * Pads text with spaces to a minimum display width, measured in terminal cells.
  *

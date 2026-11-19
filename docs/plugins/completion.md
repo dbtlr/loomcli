@@ -6,7 +6,7 @@ description: "The completion plugin: shell completion scripts and installing, up
 
 This page documents the completion plugin, which prints shell completion scripts and installs, updates, and removes them. An author installs it to give an operator tab completion for the application's Commands and options.
 
-```ts
+```ts sketch
 // @loomcli/plugins/completion
 import type { Host, Log, Plugin, TypedInputs } from '@loomcli/core';
 
@@ -35,7 +35,7 @@ export type CompletionValue = string | { readonly value: string; readonly descri
 export type CompletionValues = Iterable<CompletionValue> & object; // a list or a set; never a bare text
 ```
 
-```ts
+```ts sketch
 // @loomcli/plugins/completion/extension
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
@@ -215,28 +215,33 @@ An author supplies an input's values at Tab time from the author's own code, as 
 ```ts
 import { Application, Command } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
-import { completionArgument, completionInput } from '@loomcli/plugins/completion/extension';
+import { completionArgument } from '@loomcli/plugins/completion/extension';
 
 const show = new Command('show')
   .option('project', { short: 'p', type: 'string' })
   .argument('id', { extensions: [completionArgument({ values: 'task' })] })
   .action(() => {});
 
-export const app = new Application('mimir', {
-  plugins: [
-    completion({
-      values: {
-        task: async ({ word, typed, signal }) => {
-          const project = typed.options.get('project')?.[0];
-          return (await listTasks({ project, signal })).map(({ id, title }) => ({
-            description: title,
-            value: id,
-          }));
+export function taskApp(
+  listTasks: (query: { project: string | undefined; signal: AbortSignal }) =>
+    Promise<readonly { id: string; title: string }[]>,
+) {
+  return new Application('mimir', {
+    plugins: [
+      completion({
+        values: {
+          task: async ({ typed, signal }) => {
+            const project = typed.options.get('project')?.[0];
+            return (await listTasks({ project, signal })).map(({ id, title }) => ({
+              description: title,
+              value: id,
+            }));
+          },
         },
-      },
-    }),
-  ],
-}).command(show);
+      }),
+    ],
+  }).command(show);
+}
 ```
 
 An option or an argument names a completer with `{ values: '<name>' }`, as one of the six hints, a member of both `CompletionInputFacts` and `CompletionValueFacts`, so a value with the name beside another hint is rejected as any value with two hints is. A name is any nonempty text. The completer is the function the settings' `values` record holds under that name, found among the record's own entries alone, so a name such as `toString` is never defined by inheritance.
@@ -324,6 +329,10 @@ Before it writes anything, a child that would add, replace, or remove a startup 
 `refreshCompletion` is an `afterReplace` function for the [self-update plugin](self-update.md), which passes it a context that holds every member `RefreshContext` names. A script changes only when a new version of Loom changes it, but the replaced process holds the old version's scripts, so `refreshCompletion` runs the new binary, and `update` decides what to refresh. It runs `path` with the words `completion update` exactly as [`refreshSkills`](skills.md#refreshing-after-a-self-update) runs `skills update`, under the same rules for the child, its output, and the run signal. A child that fails, or that cannot start, adds the `warn` log event `Completion was not refreshed after the update.`, with the same fields, and resolves; one that cannot start writes `Completion was not refreshed because /home/me/.local/bin/jsonkit could not start. Run jsonkit completion update.` to `host.stderr`. An application that also refreshes skills calls both from its own `afterReplace`:
 
 ```ts
+import { refreshCompletion } from '@loomcli/plugins/completion';
+import { selfUpdate } from '@loomcli/plugins/self-update';
+import { refreshSkills } from '@loomcli/plugins/skills';
+
 selfUpdate({
   afterReplace: async (context) => {
     await refreshSkills(context);

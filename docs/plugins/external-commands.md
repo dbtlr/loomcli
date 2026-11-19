@@ -6,7 +6,7 @@ description: "The external-commands plugin: an operator extends an application b
 
 This page documents the external-commands plugin. With it, an operator adds a word to an application by putting a program on `PATH`: with the plugin installed, `notes sync --all` runs a program named `notes-sync` with the argument `--all`, as `git foo` runs `git-foo`. An author installs it when the application's operators should be able to extend it without a release.
 
-```ts
+```ts sketch
 // @loomcli/plugins/external-commands
 import type { Plugin } from '@loomcli/core';
 

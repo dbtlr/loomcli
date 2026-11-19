@@ -73,7 +73,7 @@ Each factory's options type is exported under its name, such as `IntegerOptions`
 
 ### text
 
-```ts
+```ts sketch
 text(
   options?: { minLength?: number; maxLength?: number } & (
     | { pattern?: undefined; message?: undefined }
@@ -101,7 +101,7 @@ text(
 
 ### integer
 
-```ts
+```ts sketch
 integer(options?: { min?: number; max?: number }): Validator<number>
 ```
 
@@ -115,7 +115,7 @@ A negative number is a plain word, not an option word, because an option word af
 
 ### number
 
-```ts
+```ts sketch
 number(options?: { min?: number; max?: number }): Validator<number>
 ```
 
@@ -127,7 +127,7 @@ number(options?: { min?: number; max?: number }): Validator<number>
 
 ### port
 
-```ts
+```ts sketch
 port(): Validator<number>
 ```
 
@@ -138,7 +138,7 @@ port(): Validator<number>
 
 ### oneOf
 
-```ts
+```ts sketch
 oneOf<const Values extends readonly [string, ...string[]]>(values: Values): Validator<Values[number]>
 ```
 
@@ -150,7 +150,7 @@ oneOf<const Values extends readonly [string, ...string[]]>(values: Values): Vali
 
 ### url
 
-```ts
+```ts sketch
 url(options?: { protocols?: readonly [string, ...string[]] }): Validator<URL>
 ```
 
@@ -162,7 +162,7 @@ url(options?: { protocols?: readonly [string, ...string[]] }): Validator<URL>
 
 ### uuid
 
-```ts
+```ts sketch
 uuid(): Validator<string>
 ```
 
@@ -173,7 +173,7 @@ uuid(): Validator<string>
 
 ### date
 
-```ts
+```ts sketch
 date(options?: { layouts?: readonly [string, ...string[]] }): Validator<string>
 ```
 
@@ -185,7 +185,7 @@ date(options?: { layouts?: readonly [string, ...string[]] }): Validator<string>
 
 ### dateTime
 
-```ts
+```ts sketch
 dateTime(options?: { timeZone?: string; layouts?: readonly [string, ...string[]] }): Validator<Date>
 ```
 
@@ -198,7 +198,7 @@ dateTime(options?: { timeZone?: string; layouts?: readonly [string, ...string[]]
 
 ### time
 
-```ts
+```ts sketch
 time(options?: { min?: string; max?: string; layouts?: readonly [string, ...string[]] }): Validator<number>
 ```
 
@@ -211,7 +211,7 @@ time(options?: { min?: string; max?: string; layouts?: readonly [string, ...stri
 
 ### duration
 
-```ts
+```ts sketch
 duration(options?: { min?: string; max?: string }): Validator<number>
 ```
 
@@ -224,7 +224,7 @@ duration(options?: { min?: string; max?: string }): Validator<number>
 
 ### path
 
-```ts
+```ts sketch
 path(
   options?:
     | { access: 'read' | 'write'; kind?: 'file' | 'directory' | 'any' }
@@ -252,7 +252,7 @@ path(
 
 ### bytes
 
-```ts
+```ts sketch
 bytes(options?: { min?: string; max?: string }): Validator<number>
 ```
 
@@ -265,7 +265,7 @@ bytes(options?: { min?: string; max?: string }): Validator<number>
 
 ### host
 
-```ts
+```ts sketch
 host(options?: { ip?: boolean }): Validator<string>
 ```
 
@@ -277,7 +277,7 @@ host(options?: { ip?: boolean }): Validator<string>
 
 ### ip
 
-```ts
+```ts sketch
 ip(options?: { version?: 4 | 6 }): Validator<string>
 ```
 
@@ -288,7 +288,7 @@ ip(options?: { version?: 4 | 6 }): Validator<string>
 
 ### cidr
 
-```ts
+```ts sketch
 cidr(options?: { version?: 4 | 6 }): Validator<{ address: string; prefix: number }>
 ```
 
@@ -299,7 +299,7 @@ cidr(options?: { version?: 4 | 6 }): Validator<{ address: string; prefix: number
 
 ### keyValue
 
-```ts
+```ts sketch
 keyValue(options?: { separator?: string }): Validator<{ key: string; value: string }>
 ```
 
@@ -311,7 +311,7 @@ keyValue(options?: { separator?: string }): Validator<{ key: string; value: stri
 
 ### email
 
-```ts
+```ts sketch
 email(): Validator<string>
 ```
 
@@ -325,6 +325,8 @@ email(): Validator<string>
 `date`, `dateTime`, and `time` take `layouts`, a nonempty list of POSIX strftime layouts the factory reads beside its default grammar, under [ADR-0144](../decisions/0144-date-and-time-validators-read-strftime-layouts-and-time-reads-a-time-of-day-as-milliseconds-since-midnight.md).
 
 ```ts
+import { date, dateTime, time } from '@loomcli/validators';
+
 date({ layouts: ['%d/%m/%Y', '%Y%m%d'] }); // 2026-09-25, 25/09/2026, 25/9/2026, and 20260925
 dateTime({ layouts: ['%d/%m/%Y %H:%M'] }); // the ISO forms and 25/09/2026 14:30
 time({ layouts: ['%I:%M%p'] }); // 09:30 and 9:30pm
@@ -340,7 +342,7 @@ time({ layouts: ['%I:%M%p'] }); // 09:30 and 9:30pm
 
 ## createValidator
 
-```ts
+```ts sketch
 createValidator<Output, Return extends ParseReturn<Output> = ParseReturn<Output>>(definition: {
   parse: (raw: string, context: ValidationContext) => Return;
   inputSchema?: Readonly<Record<string, unknown>>;
@@ -357,6 +359,8 @@ type ParseResult<Output> = StandardSchemaV1.Result<Output>; // { value } or { is
 ```
 
 ```ts
+import { createValidator } from '@loomcli/validators';
+
 const branch = createValidator({
   parse: (raw) =>
     /^[a-z0-9-]+$/u.test(raw)
@@ -376,7 +380,7 @@ The catalog factories are built with `createValidator`, so a catalog validator a
 
 ## pipe
 
-```ts
+```ts sketch
 pipe(first, ...steps): StandardSchemaV1<Input, Output> // & StandardJSONSchemaV1<Input, Output> when first publishes
 
 // Exported as `Step`. `Previous` is the output of the validator or step before it.
@@ -413,7 +417,7 @@ const lanes = pipe(
 
 ## Issue codes
 
-```ts
+```ts sketch
 import type { StandardSchemaV1 } from '@loomcli/core';
 
 issueCode<Params>(
@@ -446,18 +450,22 @@ export const serve = new Application('serve', {
       render: (failure, { hints, style }) =>
         [
           ...failure.problems
-            .flatMap((problem) =>
-              problem.reason === 'missing'
-                ? [`${problem.spelling} is required. Supply a value.`]
-                : problem.issues.map((issue) => {
-                    const at = issuePath(issue);
-                    const subject = at === undefined ? problem.spelling : `${problem.spelling} at ${at}`;
-                    const range = integerRangeIssue.read(issue);
-                    return range === undefined
-                      ? `${subject}: ${issue.message}`
-                      : `${subject} takes from ${String(range.min)} to ${String(range.max)} workers.`;
-                  }),
-            )
+            .flatMap((problem) => {
+              if (problem.reason === 'missing') {
+                return [`${problem.spelling} is required. Supply a value.`];
+              }
+              if (problem.reason !== 'invalid') {
+                return [`Check the options ${problem.spellings.join(', ')}.`];
+              }
+              return problem.issues.map((issue) => {
+                const at = issuePath(issue);
+                const subject = at === undefined ? problem.spelling : `${problem.spelling} at ${at}`;
+                const range = integerRangeIssue.read(issue);
+                return range === undefined
+                  ? `${subject}: ${issue.message}`
+                  : `${subject} takes from ${String(range.min)} to ${String(range.max)} workers.`;
+              });
+            })
             .map((line) => `serve: ${style.escape(line)}`),
           ...hints,
         ]

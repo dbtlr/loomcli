@@ -6,7 +6,7 @@ description: "The middleware chain: what a middleware sees, how it continues or 
 
 An invocation runs one chain. After routing has selected a Command, and after core has parsed that Command's words, run the input-source stage, and validated the invocation, holding any fault it found, core runs the middleware of each installed plugin whose activation matched, in installation order. The selected Command's action terminates the chain. A middleware surrounds the whole request: it reads the request before the action runs, it can set the view the result renders through, and its code after `await next()` runs after the action. A middleware receives:
 
-```ts
+```ts sketch
 interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
   readonly options: (PluginOptionValues<Options> & Readonly<Record<string, unknown>>) | null;
   readonly ownOptions: Partial<PluginOptionValues<Options>> & Readonly<Record<string, unknown>>;
@@ -76,8 +76,8 @@ type Middleware<P extends Plugin | ((...args: never[]) => Plugin)> = (
 // src/middleware.ts, loaded only when --help or -h is supplied
 import type { Middleware } from '@loomcli/core';
 
-import type { help } from './plugin.js';
-import { helpPage } from './views.js';
+import type { help } from '@loomcli/plugins/help';
+import { helpPage } from '@loomcli/plugins/help/views';
 
 const middleware: Middleware<typeof help> = ({ command, graph, out, spellings }) =>
   out.render({ command, graph, variant: spellings.help === '-h' ? 'compact' : 'extended' }, helpPage);
@@ -86,16 +86,43 @@ export default middleware;
 ```
 
 ```ts
-// An always-on wrapper: cleanup in finally, the outcome from next()
-const timing: Middleware<typeof timer> = async ({ next, out }) => {
+// src/timing.ts
+import type { Middleware } from '@loomcli/core';
+import { stopClock } from './clock.js';
+import type { timer } from './timer.js';
+
+// The wrapper always cleans up, and the option selects the unit for dispatched runs.
+const timing: Middleware<typeof timer> = async ({ next, out, ownOptions }) => {
   const started = performance.now();
   try {
     const outcome = await next();
-    if (outcome === 'dispatched') await out.info(`${Math.round(performance.now() - started)} ms`);
+    if (outcome === 'dispatched') {
+      const elapsed = performance.now() - started;
+      await out.info(ownOptions.seconds ? `${(elapsed / 1000).toFixed(3)} s` : `${Math.round(elapsed)} ms`);
+    }
   } finally {
     stopClock();
   }
 };
+
+export default timing;
+
+// src/timer.ts
+import { plugin } from '@loomcli/core';
+import type { Plugin } from '@loomcli/core';
+
+const options = { seconds: { description: 'Report elapsed time in seconds.', type: 'boolean' } } as const;
+
+export function timer(): Plugin<typeof options> {
+  return plugin('@acme/timer', {
+    middleware: { activate: 'always', load: () => import('./timing.js') },
+    options,
+  });
+}
+
+// src/clock.ts
+// Stub for releasing resources held by the application's clock.
+export function stopClock() {}
 ```
 
 ## When author code fails

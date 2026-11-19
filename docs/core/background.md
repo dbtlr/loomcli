@@ -6,7 +6,7 @@ description: "How core settles the run's terminal background once, from the oper
 
 This page states the core rule for the run's terminal background: how core settles it once, from the operator's choice through the terminal's own answer, and how an adaptive theme entry resolves to it. The [background plugin](../plugins/background.md) documents the option that gives the operator that choice.
 
-```ts
+```ts sketch
 import type { ConcreteStyle, ExtensionValue, InputTerminal, OutputTerminal, StandardSchemaV1, Style } from '@loomcli/core';
 
 type Background = 'dark' | 'light';
@@ -73,10 +73,11 @@ type StringOption =
 
 ```ts
 import { Application, style } from '@loomcli/core';
+import type { EnvironmentOf } from '@loomcli/core';
 import { background } from '@loomcli/plugins/background';
 import { theme } from '@loomcli/plugins/theme';
 
-const app = new Application('notes', {
+const configured = new Application('notes', {
   plugins: [
     theme({
       highlight: style.adaptive({
@@ -87,7 +88,15 @@ const app = new Application('notes', {
     }),
     background(),
   ],
-}).action(({ host, out, style }) => {
+});
+
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+  }
+}
+
+const app = configured.action(({ host, out, style }) => {
   // On a light terminal, or under notes --background=light, highlight prints #9C5A1E and host.terminal.background reads 'light'.
   // When no source settles the background, host.terminal.background reads undefined and highlight prints its dark side.
   // identifier is a plain entry, so it prints cyan on either background.
