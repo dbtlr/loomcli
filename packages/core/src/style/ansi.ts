@@ -218,6 +218,11 @@ class AnsiState {
         this[code === 39 ? 'foreground' : 'background'] = undefined;
         continue;
       }
+      // The colon form of underline names its style, and style 0 turns underline off.
+      if (code === 4 && colon.length === 2 && colon[1] !== '' && Number(colon[1]) === 0) {
+        this.modifiers.delete('underline');
+        continue;
+      }
       const enabled = enableModifiers.get(code);
       if (enabled) {
         this.modifiers.set(enabled, true);
@@ -249,7 +254,7 @@ class AnsiState {
         }
         continue;
       }
-      if (code === 38 || code === 48) {
+      if (code === 38 || code === 48 || code === 58) {
         const mode = Number(colon.length > 1 ? colon[1] : parameters[index + 1]);
         let count = 0;
         if (mode === 2) {
@@ -257,13 +262,19 @@ class AnsiState {
         } else if (mode === 5) {
           count = 1;
         }
-        const values =
-          colon.length > 1
-            ? colon.slice(colon.length - count).map(Number)
-            : parameters.slice(index + 2, index + 2 + count).map(Number);
+        const start = index;
         if (colon.length === 1) {
           index += 1 + count;
         }
+        if (code === 58) {
+          // Underline color is untracked, so keep the original parameters together.
+          unknown.push(parameters.slice(start, index + 1).join(';'));
+          continue;
+        }
+        const values =
+          colon.length > 1
+            ? colon.slice(colon.length - count).map(Number)
+            : parameters.slice(start + 2, start + 2 + count).map(Number);
         if (
           values.length !== count ||
           !values.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)

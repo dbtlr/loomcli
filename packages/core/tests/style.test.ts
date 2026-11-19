@@ -236,6 +236,56 @@ test('preserved unmodeled SGR closes at each output boundary', async () => {
   ).resolves.toBe('\u001b[31m\u001b[5mX\u001b[39m\u001b[0m');
 });
 
+test.each([
+  {
+    preserve: 'a\u001b[58;5;3mb\u001b[59mc\u001b[0m',
+    strip: 'abc',
+    text: 'a\u001b[58;5;3mb\u001b[59mc',
+  },
+  {
+    preserve: 'a\u001b[58;2;1;3;4mb\u001b[0m',
+    strip: 'ab',
+    text: 'a\u001b[58;2;1;3;4mb',
+  },
+  { preserve: '\u001b[58:5:3mX\u001b[0m', strip: 'X', text: '\u001b[58:5:3mX' },
+  { preserve: '\u001b[58:2::1:3:4mX\u001b[0m', strip: 'X', text: '\u001b[58:2::1:3:4mX' },
+  {
+    preserve: '\u001b[1;4m\u001b[58;5;3mX\u001b[22;24m\u001b[0m',
+    strip: '\u001b[1;4mX\u001b[22;24m',
+    text: '\u001b[1;58;5;3;4mX',
+  },
+  { preserve: '\u001b[58;5mX\u001b[0m', strip: 'X', text: '\u001b[58;5mX' },
+  { preserve: '\u001b[58;2;1mX\u001b[0m', strip: 'X', text: '\u001b[58;2;1mX' },
+])(
+  'underline color follows terminal-control policy in $text',
+  async ({ preserve, strip, text }) => {
+    for (const terminalControls of ['preserve', 'strip'] as const) {
+      await expect
+        .soft(resolve(text, { rendering: { modifiers: 'always', terminalControls } }))
+        .resolves.toEqual({
+          status: 0,
+          stderr: '',
+          stdout: terminalControls === 'preserve' ? preserve : strip,
+        });
+    }
+  },
+);
+
+test.each([
+  { expected: '\u001b[4mA\u001b[24mB', text: '\u001b[4mA\u001b[4:0mB' },
+  { expected: 'X', text: '\u001b[4:0mX' },
+  { expected: '\u001b[4mA\u001b[24mB', text: '\u001b[4mA\u001b[4:00mB' },
+  { expected: '\u001b[4mAB\u001b[24m', text: '\u001b[4mA\u001b[4:mB' },
+  { expected: '\u001b[4mAB\u001b[24m', text: '\u001b[4mA\u001b[4::0mB' },
+  { expected: '\u001b[4mA\u001b[24mB', text: '\u001b[4:3mA\u001b[24mB' },
+])('the colon form of underline reads its style in $text', async ({ expected, text }) => {
+  await expect(resolve(text, { rendering: { modifiers: 'always' } })).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: expected,
+  });
+});
+
 test('closing a Loom frame restores outer raw and Loom attributes together', async () => {
   await expect(
     resolve(redSpan(`A${bold('\u001b[34mB')}C`), {
