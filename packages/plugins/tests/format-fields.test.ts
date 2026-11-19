@@ -181,9 +181,6 @@ test("a Command's own fields option is the hook-collision fault", () => {
   });
 });
 
-const ownViewsOnly =
-  'Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format json or --format jsonl.';
-
 test.each(['mapped', 'unmapped', 'jsonl'])(
   '--fields refuses an author-declared %s view before the action or map runs',
   async (kind) => {
@@ -218,9 +215,13 @@ test.each(['mapped', 'unmapped', 'jsonl'])(
       argv: ['get', '--format', kind === 'jsonl' ? 'jsonl' : 'json', '--fields', 'id'],
       release: { build: 'distributed' },
     });
+    const refusal =
+      kind === 'jsonl'
+        ? 'Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format json.'
+        : 'Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format jsonl.';
     expect(result).toEqual({
       status: 2,
-      stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify(ownViewsOnly)},"hints":[]}}\n`,
+      stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify(refusal)},"hints":[]}}\n`,
       stdout: '',
     });
     expect(acted).toBe(false);
@@ -232,6 +233,26 @@ test.each(['mapped', 'unmapped', 'jsonl'])(
     expect(selected).toEqual(done(kind === 'jsonl' ? '{\n  "name": "a"\n}\n' : '{"name":"a"}\n'));
   },
 );
+
+test('--fields with no formatter-appended view says only to remove --fields', async () => {
+  const app = new Application('app', { plugins: [format()] }).command(
+    new Command('get')
+      .result<{ id: number }>({ views: { json: json(), jsonl: jsonl() } })
+      .action(({ out }) => out.results({ id: 1 })),
+  );
+  for (const view of ['json', 'jsonl']) {
+    await expect(
+      runOnMock(app, {
+        argv: ['get', '--format', view, '--fields', 'id'],
+        release: { build: 'distributed' },
+      }),
+    ).resolves.toEqual({
+      status: 2,
+      stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify('Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields.')},"hints":[]}}\n`,
+      stdout: '',
+    });
+  }
+});
 
 test('a held missing required option ranks ahead of --fields under the default text view', async () => {
   const app = new Application('app', { plugins: [format()] }).command(

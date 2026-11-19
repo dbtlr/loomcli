@@ -90,6 +90,16 @@ test('reports missing declared skills as ordered JSON rows without installing an
   );
 });
 
+test('status refuses --fields under its own json view and names only the appended jsonl view', async () => {
+  const box = fixture();
+  const result = await box.run(['status', '--format', 'json', '--fields', 'skill,state']);
+  expect(result).toEqual({
+    status: 2,
+    stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify('Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format jsonl.')},"hints":[]}}\n`,
+    stdout: '',
+  });
+});
+
 test('records every file, protects changed generated references, and lets force replace them', async () => {
   const box = fixture();
   const observation1 = await box.run(['install']);
