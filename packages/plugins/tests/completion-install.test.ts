@@ -128,6 +128,7 @@ async function printed(box: Box, shell: string) {
 const scripts = {
   bash: (box: Box) => join(box.data, 'jsonkit', 'completion', 'jsonkit.bash'),
   fish: (box: Box) => join(box.config, 'fish', 'completions', 'jsonkit.fish'),
+  nu: (box: Box) => join(box.data, 'nushell', 'vendor', 'autoload', 'jsonkit.nu'),
   pwsh: (box: Box) => join(box.data, 'jsonkit', 'completion', 'jsonkit.pwsh.ps1'),
   zsh: (box: Box) => join(box.data, 'jsonkit', 'completion', 'zsh', '_loom_jsonkit'),
 };
@@ -310,6 +311,65 @@ describe('installing Bash and Zsh', () => {
     expect(lines(again.stderr)).toEqual([`${script} is unchanged.`]);
   });
 
+  // Nushell on macOS reads the vendor autoload folder under the platform's data folder.
+  it.each([
+    ['darwin', undefined, ['Library', 'Application Support', 'nushell', 'vendor', 'autoload']],
+    ['darwin', '', ['Library', 'Application Support', 'nushell', 'vendor', 'autoload']],
+    [
+      'darwin',
+      'relative/data',
+      ['Library', 'Application Support', 'nushell', 'vendor', 'autoload'],
+    ],
+    ['linux', undefined, ['.local', 'share', 'nushell', 'vendor', 'autoload']],
+  ])(
+    'on %s with XDG_DATA_HOME %j, installs Nushell’s script under the folder Nushell reads',
+    async (platform, variable, folder) => {
+      const box = sandbox();
+      const result = await run(box, ['completion', 'install', 'nu'], {
+        env: { XDG_DATA_HOME: variable },
+        platform,
+      });
+      expect(result.status).toBe(0);
+      expect(existsSync(join(box.home, ...folder, 'jsonkit.nu'))).toBe(true);
+    },
+  );
+
+  it('on darwin, an absolute XDG_DATA_HOME still wins for Nushell’s script', async () => {
+    const box = sandbox();
+    const result = await run(box, ['completion', 'install', 'nu'], { platform: 'darwin' });
+    expect(result.status).toBe(0);
+    expect(existsSync(scripts.nu(box))).toBe(true);
+  });
+
+  it('writes Nushell’s script into the vendor autoload folder, edits no configuration file, and reports it unchanged next time', async () => {
+    const box = sandbox();
+    const script = scripts.nu(box);
+    const configFolder = join(box.config, 'nushell');
+    mkdirSync(configFolder, { recursive: true });
+    writeFileSync(join(configFolder, 'config.nu'), '$env.config.show_banner = false\n');
+    const result = await run(box, ['completion', 'install', 'nu']);
+    expect(result.status).toBe(0);
+    expect(lines(result.stderr)).toEqual([
+      `Installed the nu completion script in ${script}.`,
+      'Open a new shell to use it.',
+    ]);
+    expect(readFileSync(script, 'utf8')).toBe(await printed(box, 'nu'));
+    expect(recorded(box, 'nu')).toMatchObject({ files: [{ path: script }], lines: [] });
+    expect(readdirSync(box.home)).toEqual([]);
+    expect(readFileSync(join(configFolder, 'config.nu'), 'utf8')).toBe(
+      '$env.config.show_banner = false\n',
+    );
+    const again = await run(box, ['completion', 'install', 'nu']);
+    expect(lines(again.stderr)).toEqual([`${script} is unchanged.`]);
+  });
+
+  it('follows SHELL for Nushell when the shell is left out', async () => {
+    const box = sandbox();
+    const result = await run(box, ['completion', 'install'], { env: { SHELL: '/usr/bin/nu' } });
+    expect(result.status).toBe(0);
+    expect(existsSync(scripts.nu(box))).toBe(true);
+  });
+
   it('follows SHELL when the shell is left out', async () => {
     const box = sandbox();
     const result = await run(box, ['completion', 'install'], { env: { SHELL: '/usr/bin/zsh' } });
@@ -327,7 +387,7 @@ describe('installing Bash and Zsh', () => {
     const result = await run(box, ['completion', 'install'], { env: { SHELL: shell } });
     expect(result.status).toBe(2);
     expect(lines(result.stderr)[0]).toBe(
-      `jsonkit: jsonkit cannot tell your shell from SHELL (${shown}). Name it: jsonkit completion install bash, zsh, fish, or pwsh.`,
+      `jsonkit: jsonkit cannot tell your shell from SHELL (${shown}). Name it: jsonkit completion install bash, zsh, fish, pwsh, or nu.`,
     );
     expect(readdirSync(box.data)).toEqual([]);
     expect(readdirSync(box.state)).toEqual([]);
@@ -582,7 +642,7 @@ describe('checks', () => {
       expect(result.status).toBe(1);
       expect(result.stdout).toBe('');
       expect(lines(result.stderr)).toEqual([
-        `jsonkit completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with jsonkit completion ${printer} and load it yourself.`,
+        `jsonkit completion installs bash, zsh, fish, pwsh, and nu completion on Linux and macOS. Print the script with jsonkit completion ${printer} and load it yourself.`,
       ]);
       expect([readdirSync(box.data), readdirSync(box.state), readdirSync(box.home)]).toEqual([
         [],
@@ -1019,6 +1079,22 @@ describe('update', () => {
     expect(existsSync(elsewhere)).toBe(false);
   });
 
+  it('rewrites Nushell’s recorded script at its recorded path and edits no configuration file', async () => {
+    const box = sandbox();
+    await run(box, ['completion', 'install', 'nu']);
+    writeFileSync(scripts.nu(box), 'old nu\n');
+    editRecord(box, 'nu', (file) => {
+      file.files = [{ digest: digestOf('old nu\n'), path: scripts.nu(box) }];
+    });
+    const result = await run(box, ['completion', 'update']);
+    expect(result.status).toBe(0);
+    expect(lines(result.stderr)).toEqual([
+      `Updated the nu completion script in ${scripts.nu(box)}.`,
+    ]);
+    expect(readFileSync(scripts.nu(box), 'utf8')).toBe(await printed(box, 'nu'));
+    expect(readdirSync(box.home)).toEqual([]);
+  });
+
   it('reports an up-to-date script unchanged', async () => {
     const box = sandbox();
     await run(box, ['completion', 'install', 'zsh']);
@@ -1204,6 +1280,20 @@ describe('uninstall', () => {
     ]);
     expect(readFileSync(script, 'utf8')).toBe('edited\n');
     expect(readFileSync(startup, 'utf8')).toBe(`${bashLine(script)} # mine\n`);
+  });
+
+  it('removes Nushell’s script and its record and leaves config.nu as it was', async () => {
+    const box = sandbox();
+    const configFile = join(box.config, 'nushell', 'config.nu');
+    mkdirSync(join(box.config, 'nushell'), { recursive: true });
+    writeFileSync(configFile, '$env.config.show_banner = false\n');
+    await run(box, ['completion', 'install', 'nu']);
+    const result = await run(box, ['completion', 'uninstall', 'nu']);
+    expect(result.status).toBe(0);
+    expect(lines(result.stderr)).toEqual([`Removed ${scripts.nu(box)}.`]);
+    expect(existsSync(scripts.nu(box))).toBe(false);
+    expect(existsSync(recordPath(box, 'nu'))).toBe(false);
+    expect(readFileSync(configFile, 'utf8')).toBe('$env.config.show_banner = false\n');
   });
 
   it('states a script already gone', async () => {

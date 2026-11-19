@@ -8,15 +8,32 @@
 #                  output through the first match between @@BEGIN@@ and @@END@@ lines, and keeps
 #                  the output after it; after 15 seconds it prints @@TIMEOUT@@ and the output,
 #                  and when the shell exits first it prints @@EXITED@@ and the output
+#   settle <ms> <file> <seconds>
+#                  reads the terminal until it has been silent for the milliseconds and the file has
+#                  grown, or until the seconds have passed, so a shell that completes in the
+#                  background has finished before the next step
 #   quit           closes the terminal
 # The reads use zpty -rt without a pattern, because a pattern read blocks until a newline and a
 # prompt never ends in one.
 emulate -L zsh
 zmodload zsh/zpty || exit 3
+zmodload zsh/datetime || exit 3
 # zpty joins its arguments and evaluates them, so each one is quoted to arrive as it is.
 zpty shell "${(j: :)${(q)@}}" || exit 4
 typeset buf='' line verb arg text pattern chunk
 integer deadline
+typeset -F stamp
+typeset -a words
+# Nushell asks where the cursor is, and waits two seconds for an answer a terminal gives.
+# The report puts the cursor in the first row, which leaves the menu room below it.
+reply_cursor_reports() {
+  [[ -n $LOOM_PTY_REPORTS_CURSOR ]] || return 0
+  local rest=$chunk
+  while [[ $rest == *$'\e[6n'* ]]; do
+    zpty -w -n shell $'\e[1;1R'
+    rest=${rest#*$'\e[6n'}
+  done
+}
 while IFS= read -r line; do
   verb=${line%% *}
   arg=${line#* }
@@ -34,6 +51,7 @@ while IFS= read -r line; do
         case $? in
           0)
             buf+=$chunk
+            reply_cursor_reports
             ;;
           2)
             # The shell exited. zpty -t would block here on macOS, so the read status tells.
@@ -55,6 +73,39 @@ while IFS= read -r line; do
       print -rn -- "${(M)buf#*${~pattern}}"
       print -r -- '@@END@@'
       buf=${buf#*${~pattern}}
+      ;;
+    settle)
+      words=(${=arg})
+      integer began=$SECONDS size
+      size=$(wc -c < $words[2])
+      stamp=$EPOCHREALTIME
+      deadline=$(( SECONDS + 15 ))
+      # The loop ends once the file has grown and the output has been quiet since, or when the
+      # seconds have passed and the output is quiet.
+      integer grown=0
+      while (( SECONDS <= deadline )); do
+        if (( ! grown )) && (( $(wc -c < $words[2]) > size )); then
+          grown=1
+          stamp=$EPOCHREALTIME
+        fi
+        if (( EPOCHREALTIME - stamp >= words[1] / 1000.0 )) && (( grown || SECONDS - began >= words[3] )); then
+          break
+        fi
+        zpty -rt shell chunk 2>/dev/null
+        case $? in
+          0)
+            buf+=$chunk
+            reply_cursor_reports
+            stamp=$EPOCHREALTIME
+            ;;
+          2)
+            break
+            ;;
+          *)
+            sleep 0.02
+            ;;
+        esac
+      done
       ;;
     quit)
       break

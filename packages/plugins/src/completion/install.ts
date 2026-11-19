@@ -1,5 +1,5 @@
 /**
- * `completion install`: one shell's script written to a file and, for every shell but Fish, one
+ * `completion install`: one shell's script written to a file and, for every shell but Fish and Nushell, one
  * startup line that loads it, both recorded in the shell's plugin's file. Every check runs before
  * anything is written, and a startup file the plugin cannot change gets the line printed instead.
  */
@@ -34,12 +34,13 @@ import type { ChildRun, ShellRecord } from './run.js';
 import { recordName } from './shell-names.js';
 import type { Shell } from './shell-names.js';
 import { scriptContent, scriptPath, selectedShell, startupLine, startupPath } from './shells.js';
+import type { FolderShell } from './shells.js';
 import { judgeStartup, mustRelease, placeLine } from './startup.js';
 import type { LinePlacement, StartupJudgement } from './startup.js';
 
 /** Where a shell's script goes, and how its startup file is found. */
 type Place =
-  | { readonly kind: 'fish'; readonly shell: 'fish'; readonly script: string }
+  | { readonly kind: 'folder'; readonly shell: FolderShell; readonly script: string }
   | {
       readonly kind: 'file';
       readonly shell: 'bash' | 'zsh';
@@ -60,8 +61,9 @@ type Place =
 function placeOf(run: ChildRun, shell: Shell): Place {
   const { host, name } = run;
   switch (shell) {
-    case 'fish': {
-      return { kind: 'fish', script: scriptPath(shell, name, host), shell };
+    case 'fish':
+    case 'nu': {
+      return { kind: 'folder', script: scriptPath(shell, name, host), shell };
     }
     case 'pwsh': {
       const home = requiredHome(name, host);
@@ -80,10 +82,10 @@ interface Startup {
   readonly line: string;
 }
 
-/** The startup file of the place, asking PowerShell for its profile; none for Fish. */
+/** The startup file of the place, asking PowerShell for its profile; none for Fish and Nushell. */
 async function startupOf(run: ChildRun, place: Place): Promise<Startup | undefined> {
   const { host, name, signal } = run;
-  if (place.kind === 'fish') {
+  if (place.kind === 'folder') {
     return undefined;
   }
   const line = startupLine({ name, script: place.script, shell: place.shell });
@@ -120,7 +122,7 @@ function otherLines(run: ChildRun, others: readonly StartupLine[]): LinePlacemen
 /**
  * The plan for the startup lines: the new startup file judged first, which fails as not a file,
  * then each recorded line in another file, then the new line, written and recorded in a file the
- * plugin may change, and printed with no line recorded in one it may not. Fish lists none.
+ * plugin may change, and printed with no line recorded in one it may not. Fish and Nushell list none.
  */
 function planLines(
   run: ChildRun,

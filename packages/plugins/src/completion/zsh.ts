@@ -31,13 +31,24 @@ __loom_${id}_debug()
 # expands nothing, and only a leading ~/ is read as the home folder. The folder
 # is listed by a glob in which only the trailing * is live, so no substitution,
 # parameter, glob qualifier, or tilde in the typed text is evaluated. A dot-name
-# is listed only when the typed name starts with a dot. compadd -f tests each
-# name in that folder, so a folder is shown and inserted with a / after it.
+# is listed only when the typed name starts with a dot. Each name is quoted by
+# compquote, which escapes a leading ~ or = too, and inserted as quoted with
+# compadd -Q, so the inserted word is the name; the listing shows the name. The
+# operator's styles for the files or directories tag, such as matcher-list and
+# format, reach compadd through _description, which only reads styles and runs
+# before emulate because it needs the completion system's options. compadd -f
+# tests each name in that folder, so a folder is shown and inserted with a /.
 __loom_${id}_offer_files()
 {
+    local -a expl
+    if [[ $1 == dirs ]]; then
+        _description directories expl directory
+    else
+        _description files expl file
+    fi
     emulate -L zsh
     local kind=$1 typed=$PREFIX lead=$IPREFIX folder name filter keep
-    local -a found names where
+    local -a found names shown where
 
     compset -P '*/'
     folder=\${(Q)typed[1,$#typed-$#PREFIX]}
@@ -65,7 +76,9 @@ __loom_${id}_offer_files()
     done
     [[ -n $folder ]] && where=(-W "$folder")
     __loom_${id}_debug "Offering \${#names[@]} file names in '\${folder}'"
-    compadd -f "\${where[@]}" -- "\${names[@]}"
+    shown=("\${(@V)names}")
+    compquote names
+    compadd -Q -f "\${expl[@]}" "\${where[@]}" -d shown -- "\${names[@]}"
 }
 
 _loom_${id}()
@@ -239,9 +252,14 @@ fi
  *   running a `$(…)` in it. `__loom_<id>_offer_files` lists file names itself: the folder part of
  *   the word moves to `$IPREFIX` and is inserted as typed, its quoting is removed with `(Q)`, and
  *   it is listed by a glob of the quoted folder with only a trailing `*` live, so nothing typed is
- *   expanded or run. Only a leading `~/`, with no lead before it, is read as `$HOME`. The names go
- *   to `compadd -f` with the folder as `-W`, which reads it as a literal path, so a folder is shown
- *   and inserted with a `/`. A dot-name is listed only when the typed name starts with a dot.
+ *   expanded or run. Only a leading `~/`, with no lead before it, is read as `$HOME`. Only the last
+ *   path component is matched, so an abbreviated folder such as `D/R` is not expanded. Each name is
+ *   quoted by `compquote`, which escapes a leading `~` or `=` too, and goes to `compadd -Q -f` with
+ *   the name itself as its display and the folder as `-W`, which reads it as a literal path, so the
+ *   inserted word is the name and a folder is shown and inserted with a `/`. The operator's styles
+ *   for the `files` tag, or `directories` under directive 16, such as `matcher-list` and `format`,
+ *   reach `compadd` through `_description`, which reads styles and evaluates nothing typed. A
+ *   dot-name is listed only when the typed name starts with a dot.
  * - Directive 0 falls back to that listing of every name, rather than to `_files`. Directive 16
  *   lists the folders, and directive 8 the folders and the names that end in an offered
  *   extension, compared as strings, so no other file name is offered.

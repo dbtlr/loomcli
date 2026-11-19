@@ -45,7 +45,7 @@ function startupNotAFile(name: string, startup: string): string {
 }
 
 function installsNotOnWindows(name: string, printer: string): string {
-  return `${shown(name)} completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with ${shown(name)} completion ${shown(printer)} and load it yourself.`;
+  return `${shown(name)} completion installs bash, zsh, fish, pwsh, and nu completion on Linux and macOS. Print the script with ${shown(name)} completion ${shown(printer)} and load it yourself.`;
 }
 
 function profileNotFound(name: string, shell: string, fault: ProfileFault): string {
@@ -57,7 +57,7 @@ function recordUnreadable(name: string, record: string, verb: 'install' | 'unins
 }
 
 function shellUnknown(name: string, login: string | undefined): string {
-  return `${shown(name)} cannot tell your shell from SHELL (${login === undefined ? '(unset)' : shown(login)}). Name it: ${shown(name)} completion install bash, zsh, fish, or pwsh.`;
+  return `${shown(name)} cannot tell your shell from SHELL (${login === undefined ? '(unset)' : shown(login)}). Name it: ${shown(name)} completion install bash, zsh, fish, pwsh, or nu.`;
 }
 
 function addLineInPlace(startup: string): string {

@@ -13,20 +13,24 @@ import { identifier, posixQuoted, powershellQuoted } from '../shell-quoting.js';
 import { bashScript } from './bash.js';
 import { fishScript } from './fish.js';
 import { shellUnknown } from './messages.js';
+import { nuScript } from './nu.js';
 import { powershellScript } from './powershell.js';
 import { shells } from './shell-names.js';
 import type { Shell } from './shell-names.js';
 import { zshInstalledScript } from './zsh.js';
 
-/** A shell whose startup file loads the script through a line: every one but Fish. */
-type LineShell = Exclude<Shell, 'fish'>;
+/** A shell that loads the script from a folder of its own: Fish and Nushell. */
+type FolderShell = Extract<Shell, 'fish' | 'nu'>;
+
+/** A shell whose startup file loads the script through a line: every one but Fish and Nushell. */
+type LineShell = Exclude<Shell, FolderShell>;
 
 /** The shell a name is, or none for any other name. */
 function shellNamed(name: string): Shell | undefined {
   return shells.find((shell) => shell === name);
 }
 
-/** The usage error of a `SHELL` that names none of the four shells, on the `shell` argument. */
+/** The usage error of a `SHELL` that names none of the five shells, on the `shell` argument. */
 function unknownShell(name: string, login: string | undefined): InputError {
   return new InputError(shellUnknown(name, login), [
     {
@@ -55,7 +59,7 @@ function loginShell(name: string, host: Host): Shell | undefined {
 
 /**
  * The shell `install` acts on: its argument, else the last segment of `SHELL` when it names one of
- * the four. An unset, empty, or any other `SHELL` is the operator's usage error.
+ * the five. An unset, empty, or any other `SHELL` is the operator's usage error.
  */
 function selectedShell(name: string, host: Host, argument: Shell | undefined): Shell {
   const shell = argument ?? loginShell(name, host);
@@ -70,6 +74,21 @@ function dataFolder(name: string, host: Host): string {
   return (
     absoluteVariable(host, 'XDG_DATA_HOME') ?? join(requiredHome(name, host), '.local', 'share')
   );
+}
+
+/**
+ * The data folder Nushell reads its vendor autoload folder from: an absolute `XDG_DATA_HOME` on
+ * every platform, else the platform's data folder, which on `darwin` is `Library/Application
+ * Support` under the home and elsewhere `.local/share`.
+ */
+function nushellDataFolder(name: string, host: Host): string {
+  const variable = absoluteVariable(host, 'XDG_DATA_HOME');
+  if (variable !== undefined) {
+    return variable;
+  }
+  return host.platform === 'darwin'
+    ? join(requiredHome(name, host), 'Library', 'Application Support')
+    : dataFolder(name, host);
 }
 
 /** The configuration folder: an absolute `XDG_CONFIG_HOME`, else `.config` under the home. */
@@ -90,6 +109,9 @@ function scriptPath(shell: Shell, name: string, host: Host): string {
     case 'fish': {
       return join(configFolder(name, host), 'fish', 'completions', `${name}.fish`);
     }
+    case 'nu': {
+      return join(nushellDataFolder(name, host), 'nushell', 'vendor', 'autoload', `${name}.nu`);
+    }
     default: {
       return join(dataFolder(name, host), name, 'completion', `${name}.${shell}.ps1`);
     }
@@ -108,6 +130,9 @@ function scriptContent(shell: Shell, name: string): string {
     case 'fish': {
       return fishScript(name);
     }
+    case 'nu': {
+      return nuScript(name);
+    }
     default: {
       return powershellScript(name);
     }
@@ -121,8 +146,8 @@ function darwinBashStartup(home: string): string {
 }
 
 /**
- * The startup file of Bash or Zsh, which the plugin computes. Fish loads the script from its own
- * folder, and PowerShell reports its own startup file, which `profile.ts` asks it for.
+ * The startup file of Bash or Zsh, which the plugin computes. Fish and Nushell load the script from
+ * their own folders, and PowerShell reports its own startup file, which `profile.ts` asks it for.
  */
 function startupPath(shell: 'bash' | 'zsh', name: string, host: Host): string {
   if (shell === 'zsh') {
@@ -162,5 +187,5 @@ function startupLine({ name, script, shell }: LineRequest): string {
   }
 }
 
-export type { LineShell };
+export type { FolderShell, LineShell };
 export { scriptContent, scriptPath, selectedShell, startupLine, startupPath };

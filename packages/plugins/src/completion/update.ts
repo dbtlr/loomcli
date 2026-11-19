@@ -64,7 +64,7 @@ interface Planned {
 function planShell(run: ChildRun, recorded: ShellRecord, script: string): Planned {
   const { shell } = recorded;
   const steps = recorded.lines.map((entry) =>
-    shell === 'fish'
+    shell === 'fish' || shell === 'nu'
       ? dropped
       : lineStep(run, entry, startupLine({ name: run.name, script, shell })),
   );

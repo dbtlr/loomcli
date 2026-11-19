@@ -42,6 +42,11 @@ function fishQuoted(name: string): string {
   return `'${name.replaceAll('\\', String.raw`\\`).replaceAll("'", String.raw`\'`)}'`;
 }
 
+/** The name as a Nushell double-quoted string, which reads `\\` and `\"` as escapes. */
+function nuQuoted(name: string): string {
+  return `"${name.replaceAll('\\', String.raw`\\`).replaceAll('"', String.raw`\"`)}"`;
+}
+
 /** The code point of `'`. */
 const apostrophe = 39;
 
@@ -68,4 +73,4 @@ function powershellQuoted(text: string): string {
   return `'${doubled.join('')}'`;
 }
 
-export { fishQuoted, identifier, posixQuoted, powershellQuoted };
+export { fishQuoted, identifier, nuQuoted, posixQuoted, powershellQuoted };
