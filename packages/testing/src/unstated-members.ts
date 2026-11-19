@@ -3,7 +3,7 @@
  * from core: a function that returns nothing does nothing, a member whose type has an inert answer
  * gives it, and every other member asks the test to state it.
  */
-import { FatalError } from '@loomcli/core';
+import { FatalError, Phrase } from '@loomcli/core';
 import type {
   Log,
   LogFields,
@@ -67,7 +67,7 @@ function resolved(): Promise<void> {
  */
 async function readsToEnd(...call: MessageArguments): Promise<void> {
   const [message] = call;
-  if (typeof message === 'string') {
+  if (typeof message === 'string' || message instanceof Phrase) {
     return;
   }
   const steps = message[Symbol.asyncIterator]();

@@ -1,4 +1,5 @@
 import type { Background } from '../host/background.js';
+import type { Phrase } from '../localization/phrase.js';
 import type { ContextualStyle } from '../style/style.js';
 
 /**
@@ -25,6 +26,12 @@ export interface ViewContext {
    * shows as it measures. A tab inside a `pad` frame is left to the frame, which expands it.
    */
   readonly expandTabs: (text: string) => string;
+  /**
+   * Renders a phrase in the run's language: the first installed phrasebook of the run's language
+   * that holds its sentence, else its English export. A context core builds outside a run renders
+   * English.
+   */
+  readonly localize: (phrase: Phrase) => string;
   /** Resolves marked text without styles or controls, keeping this destination's glyph forms. */
   readonly plain: (text: string) => string;
   /** The style chain a view applies to its text, carrying core's tokens and the installed theme's. */
@@ -179,7 +186,7 @@ export type RowViewOver<Data> = [Data] extends [Iterable<infer Row> | AsyncItera
  * @public
  */
 export type MessageArguments =
-  | [message: string, view?: View<string> | undefined]
+  | [message: string | Phrase, view?: View<string> | undefined]
   | [message: AsyncIterable<string>];
 
 /**
@@ -217,7 +224,7 @@ export interface Out<Result = unknown> {
    *   });
    * ```
    */
-  print(message: string, view?: View<string>): Promise<void>;
+  print(message: string | Phrase, view?: View<string>): Promise<void>;
   /**
    * The stream form, or either form when the caller forwards `MessageArguments` whole. The string
    * form is declared first, so a message a generic call returns, such as a prompt's answer, is
@@ -225,19 +232,19 @@ export interface Out<Result = unknown> {
    */
   print(...call: MessageArguments): Promise<void>;
   /** An informational message on stderr, hidden under `-q`. */
-  info(message: string, view?: View<string>): Promise<void>;
+  info(message: string | Phrase, view?: View<string>): Promise<void>;
   /** The stream form of `info`, or either form forwarded whole. */
   info(...call: MessageArguments): Promise<void>;
   /** A success message on stderr, hidden under `-q`. */
-  success(message: string, view?: View<string>): Promise<void>;
+  success(message: string | Phrase, view?: View<string>): Promise<void>;
   /** The stream form of `success`, or either form forwarded whole. */
   success(...call: MessageArguments): Promise<void>;
   /** A warning on stderr at every verbosity. */
-  warn(message: string, view?: View<string>): Promise<void>;
+  warn(message: string | Phrase, view?: View<string>): Promise<void>;
   /** The stream form of `warn`, or either form forwarded whole. */
   warn(...call: MessageArguments): Promise<void>;
   /** An error message on stderr at every verbosity, which changes no outcome. */
-  error(message: string, view?: View<string>): Promise<void>;
+  error(message: string | Phrase, view?: View<string>): Promise<void>;
   /** The stream form of `error`, or either form forwarded whole. */
   error(...call: MessageArguments): Promise<void>;
   /**
@@ -271,7 +278,7 @@ export interface Out<Result = unknown> {
    */
   results: (value: ResultInput<Result>) => Promise<void>;
   /** Ends the action with a message by throwing `FatalError` at once, writing nothing itself. */
-  fatal(message: string): never;
+  fatal(message: string | Phrase): never;
 }
 
 /**

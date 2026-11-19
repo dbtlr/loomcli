@@ -649,3 +649,115 @@ test('a site no pin covers, a pin whose count differs, and a pin that covers no 
     'escaping config/messages.ts: ${unused} has 0 sites and its pin names 1.',
   ]);
 });
+
+test('a wording module is read as a message module, so its interpolations are held to rule 5', () => {
+  const sites = sitesOf({
+    'inputs/wording.ts': 'function subject(name: string): string { return `Option ${name}`; }',
+  });
+  expect(sites).toEqual([{ check: 'escaping', file: 'inputs/wording.ts', text: '${name}' }]);
+});
+
+test('a sentence a message module imports from a wording module is a message function', () => {
+  const sites = sitesOf({
+    'inputs/messages.ts': [
+      "import { subject } from './wording.js';",
+      'function missing(name: string): string { return `${subject(name)} is required.`; }',
+      'export { missing };',
+    ].join('\n'),
+  });
+  expect(sites).toEqual([]);
+});
+
+/** The sites of the localization checks over one package's files, with `registry.ts` as its registry. */
+function localizationSites(files: Record<string, string>) {
+  return voiceSites(new Map(Object.entries(files)), {
+    banned: ['presentation'],
+    registry: 'localization/registry.ts',
+  }).filter((site) => site.check === 'export-shape' || site.check === 'registry');
+}
+
+/** A registry that names `inputs/messages.ts` under its key. */
+const registry = "interface Modules { readonly inputs: typeof import('../inputs/messages.js'); }";
+
+test('with a registry, every export of a message module is a string constant or a string function', () => {
+  const module = [
+    "import { quoted } from '../failures/wording.js';",
+    "const fixed = 'Use a value.';",
+    'const shaped: string = `Use ${String(1)} value.`;',
+    'function named(name: string): string { return `Name ${quoted(name)}.`; }',
+    'const arrow = (name: string): string => `Arrow ${quoted(name)}.`;',
+    'function untyped(name: string) { return `Untyped ${quoted(name)}.`; }',
+    'const computed = fixed + fixed;',
+    'const table = { a: 1 };',
+    'function twice(name: string): string;',
+    'function twice(name: number): string;',
+    'function twice(name: unknown): string { return `Twice ${quoted(name)}.`; }',
+    'type Hidden = string;',
+    'export type { Hidden };',
+    'export { arrow, computed, fixed, named, quoted, shaped, table, twice, untyped };',
+  ].join('\n');
+  expect(
+    localizationSites({ 'inputs/messages.ts': module, 'localization/registry.ts': registry }),
+  ).toEqual([
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'computed' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'quoted (not declared here)' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'table' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'twice (overloaded)' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'untyped' },
+  ]);
+});
+
+test('an inline type specifier in an export list is a type, not a sentence', () => {
+  const module = [
+    "const fixed = 'Use a value.';",
+    'interface Member { readonly name: string }',
+    'export { fixed, type Member };',
+  ].join('\n');
+  expect(
+    localizationSites({ 'inputs/messages.ts': module, 'localization/registry.ts': registry }),
+  ).toEqual([]);
+});
+
+test('without a registry, a message module may export a helper, as a package that has not joined does', () => {
+  const module = 'const table = { a: 1 };\nexport { table };';
+  expect(
+    voiceSites(new Map([['inputs/messages.ts', module]]), { banned: [] }).filter(
+      (site) => site.check === 'export-shape',
+    ),
+  ).toEqual([]);
+});
+
+test('the registry names every message module under its concept module, and no other', () => {
+  const sentence = "const fixed = 'Use a value.';\nexport { fixed };";
+  expect(
+    localizationSites({
+      'failures/messages.ts': sentence,
+      'inputs/messages.ts': sentence,
+      'localization/registry.ts': [
+        "import type * as inputs from '../inputs/messages.js';",
+        'interface Modules {',
+        "  readonly common: typeof import('../messages.js');",
+        '  readonly input: typeof inputs;',
+        "  readonly output: typeof import('../output/messages.js');",
+        '}',
+      ].join('\n'),
+      'messages.ts': sentence,
+    }),
+  ).toEqual([
+    {
+      check: 'registry',
+      file: 'localization/registry.ts',
+      text: 'failures/messages.ts (not registered)',
+    },
+    {
+      check: 'registry',
+      file: 'localization/registry.ts',
+      text: 'inputs/messages.ts (under input, not inputs)',
+    },
+    {
+      check: 'registry',
+      file: 'localization/registry.ts',
+      text: 'output (names no message module)',
+    },
+  ]);
+});

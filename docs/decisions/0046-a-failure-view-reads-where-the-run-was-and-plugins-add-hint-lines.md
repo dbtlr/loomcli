@@ -4,7 +4,7 @@ title: ADR-0046 - A failure view reads where the run was, and plugins add hint l
 description: Every failure view's context gains the application name and the Command path routing walked, filled where run() catches the failure. Plugins add hint lines to a failure through an optional onFailure lifecycle hook that reads the graph and the Command at that path, and the view receives the hints. A broken hook follows the broken-view rule. Core keeps an issue's own fields and rewrites only its path.
 status: accepted
 created: 2026-09-27
-modified: 2026-11-18
+modified: 2026-11-19
 ---
 
 # ADR-0046 - A failure view reads where the run was, and plugins add hint lines
@@ -73,3 +73,4 @@ Accepted 2026-09-27 with the implementation. Every failure view receives `applic
 - 2026-10-20: [ADR-0097](0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md), proposed, makes a hook that throws one defect reported beside the failure, through the same plain fallback path a broken failure view takes, with exit 1, and leaves the rest of the broken-hook rule, such as what the other plugins' hints do then, to its implementing phase. [ADR-0093](0093-a-value-that-bypasses-the-types-gets-no-rule.md), proposed, removes the checks on a returned value that is not a string or an array of strings, or a promise, because the hook's type rejects them. Both bind when those records are accepted.
 - 2026-11-18: [ADR-0178](0178-operators-control-log-files-and-levels-and-failures-name-the-runs-log.md), proposed, logs each failure's event before the `onFailure` hooks run, with no hints in it, and adds `run`, the run's identifier, to the hook context. It binds when that record is accepted.
 - 2026-11-18: [ADR-0182](0182-failure-hooks-read-received-values-without-putting-them-on-failures.md), proposed, adds `received(problem)` to the `onFailure` hook context: the raw value an invalid problem of the failure being reported received, kept off the failure and the failure view context. It binds when ADR-0182 is accepted.
+- 2026-11-19: [ADR-0200](0200-loom-says-its-own-sentences-in-the-operators-language-through-phrasebooks-the-localization-plugin-installs.md), proposed, lets an `onFailure` hook return a phrase, or a list that holds phrases, as a hint, rendered in the run's language for the view and in English for the failure form, and adds `message`, the failure's sentence in the run's language, to the failure view's context. It binds when ADR-0200 is accepted.

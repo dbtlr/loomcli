@@ -92,6 +92,10 @@
       "types": "./dist/src/list.d.ts",
       "import": "./dist/src/list.js"
     },
+    "./localization": {
+      "types": "./dist/src/localization/plugin.d.ts",
+      "import": "./dist/src/localization/plugin.js"
+    },
     "./logging": {
       "types": "./dist/src/logging/plugin.d.ts",
       "import": "./dist/src/logging/plugin.js"

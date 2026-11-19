@@ -53,7 +53,10 @@ function declaredOutput(
     findings: site === undefined ? [] : [siteFinding(site, partOf(site, fault))],
     sentence: [
       `${declarationSubject(input)} has an invalid ${noun}.`,
-      ...messages({ kind: input.kind, spelling: input.name }, reported(result.issues)),
+      // A Developer Diagnostic addresses the author, so its issue lines read in English.
+      ...messages({ kind: input.kind, spelling: input.name }, reported(result.issues)).map(
+        (line) => line.text,
+      ),
     ].join('\n'),
   });
 }

@@ -61,6 +61,7 @@ Each entry links to its reference page.
 
 ### Lifecycle
 
+- `@loomcli/plugins/localization`: installs phrasebooks per language, so Loom's own sentences render in the operator's language. [Localization](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/localization.md)
 - `@loomcli/plugins/logging`: log events written to JSONL files, the console, or an OpenTelemetry logger, each with its own level. [Logging](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/logging.md)
 - `@loomcli/plugins/self-update`: an installed application that updates itself and notices new releases. [Self-update](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/self-update.md)
 - `@loomcli/plugins/service`: the application run as a user service. [Service](https://github.com/dbtlr/loomcli/blob/main/docs/plugins/service.md)

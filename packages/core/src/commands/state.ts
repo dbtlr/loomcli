@@ -1,7 +1,7 @@
 import { spelled, elided } from '../diagnostics/diagnostic-text.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { DeclarationError } from '../failures/errors.js';
-import { commandSubject, commandSentence, quoted } from '../failures/messages.js';
+import { commandSentence, commandSubject, quoted } from '../failures/wording.js';
 import type { InputDeclaration } from '../inputs/declarations.js';
 import type { ValidatedInputs } from '../inputs/ledger.js';
 import type { OptionGroup } from '../inputs/option-groups.js';

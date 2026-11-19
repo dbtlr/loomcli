@@ -6,6 +6,7 @@ import { brokenDestination, brokenFailureView, viewCorrection } from '../diagnos
 import { callEncoder, encoderDefect } from '../failures/encoders.js';
 import type { EncoderAnswer, EncoderRegistry, InstalledEncoder } from '../failures/encoders.js';
 import {
+  defaultSentence,
   defaultText,
   foreignFailure,
   genericDefectText,
@@ -20,6 +21,8 @@ import { received } from '../inputs/received.js';
 import { nodeAt } from '../inspection/inspect.js';
 import type { CommandGraph, CommandNode } from '../inspection/inspect.js';
 import type { FailureSelection } from '../invocation/chain.js';
+import type { FailureLine } from '../localization/lines.js';
+import type { Phrase } from '../localization/phrase.js';
 import type { Log, RunLog } from '../output/log.js';
 import { reportPlainly } from '../output/output.js';
 import type { Output } from '../output/output.js';
@@ -67,16 +70,18 @@ interface FailureHookContext {
 
 /**
  * A plugin's `onFailure` hook: a synchronous function that returns one hint, a list of hints, or
- * nothing for a failure a run from `run()` or `invoke()` renders after graph build. It receives the
- * failure typed read-only, as a failure view does. Core does not freeze the failure, and it reads
- * the exit code before any hook runs, so a working hook cannot change the code.
+ * nothing for a failure a run from `run()` or `invoke()` renders after graph build. A hint may be a
+ * phrase, which the failure view receives rendered in the run's language and the failure form
+ * reads in English. It receives the failure typed read-only, as a failure view does. Core does not
+ * freeze the failure, and it reads the exit code before any hook runs, so a working hook cannot
+ * change the code.
  *
  * @public
  */
 type FailureHook = (
   failure: Readonly<LoomError>,
   context: FailureHookContext,
-) => string | readonly string[] | undefined;
+) => string | Phrase | readonly (string | Phrase)[] | undefined;
 
 /** What the hooks can read once the graph has built: the installed plugins and the run's graph. */
 interface BuiltRun {
@@ -139,11 +144,18 @@ interface FailureSink {
 }
 
 /** The hints one hook returned, as a list. */
-function hintsOf(returned: string | readonly string[] | undefined): readonly string[] {
+function hintsOf(returned: ReturnType<FailureHook>): readonly FailureLine[] {
   if (returned === undefined) {
     return [];
   }
-  return typeof returned === 'string' ? [returned] : returned;
+  return isHintList(returned) ? returned : [returned];
+}
+
+/** Whether a hook returned a list of hints rather than one. */
+function isHintList(
+  returned: FailureLine | readonly FailureLine[],
+): returned is readonly FailureLine[] {
+  return Array.isArray(returned);
 }
 
 /**
@@ -182,7 +194,7 @@ function hookContext(
 
 /** What the hooks answered for one failure: every hint, or the first throw, which ends the hooks. */
 type CollectedHints =
-  | { kind: 'hints'; hints: readonly string[] }
+  | { kind: 'hints'; hints: readonly FailureLine[] }
   | { kind: 'threw'; thrown: unknown };
 
 /** One installed plugin's hook call: the hints it returned, none without a hook, or what it threw. */
@@ -222,7 +234,7 @@ function collectHints(
   if (built === undefined) {
     return { hints: Object.freeze([]), kind: 'hints' };
   }
-  const hints: string[] = [];
+  const hints: FailureLine[] = [];
   for (const installed of built.plugins) {
     const answer = callHook(installed, failure, { ...shared, scene: { ...scene, built } });
     if (answer.kind === 'threw') {
@@ -276,10 +288,12 @@ function brokenViewLines(
 async function writeDiagnostic(
   sink: FailureSink,
   failure: DeclarationError | InternalError,
-  scene: { developer: DeveloperScene; hints: readonly string[] },
+  scene: { developer: DeveloperScene; hints: readonly FailureLine[] },
 ): Promise<void> {
   const { style } = sink.output.context('stderr');
-  const text = developerText(failure, { ...scene.developer, hints: scene.hints, style });
+  // A Developer Diagnostic addresses the author, so the hints under it read in English.
+  const hints = scene.hints.map((hint) => (typeof hint === 'string' ? hint : hint.text));
+  const text = developerText(failure, { ...scene.developer, hints, style });
   await sink.output.report(sink.build.reported ? `\n${text}` : text);
 }
 
@@ -310,7 +324,10 @@ async function renderFailure(
     await writeDiagnostic(sink, failure, scene);
     return { broken: false, plain: '' };
   }
-  const report = describeFailure(sink.registry, failure, failureContext(sink.output, scene));
+  const report = describeFailure(sink.registry, failure, {
+    application: scene.developer.application,
+    context: () => failureContext(sink.output, scene, failure),
+  });
   if (report.kind === 'unrendered') {
     return {
       broken: true,
@@ -341,20 +358,32 @@ function repeatsGeneric(build: BuildReports, report: FailureReport, failure: Loo
 /** Where one failure is rendered from: the run's scene and the hints its hooks returned. */
 interface FailureContextScene {
   developer: DeveloperScene;
-  hints: readonly string[];
+  hints: readonly FailureLine[];
   invokedBy: InvokedBy;
   path: readonly string[];
   selection: FailureSelection;
 }
 
-/** The context a failure view reads: the stderr view context, where the run was, and the hints. */
-function failureContext(output: Output, scene: FailureContextScene): FailureViewContext {
+/**
+ * The context a failure view reads: the stderr view context, where the run was, the hints, and the
+ * failure's sentence, each phrase rendered in the run's language.
+ */
+function failureContext(
+  output: Output,
+  scene: FailureContextScene,
+  failure: LoomError,
+): FailureViewContext {
+  const context = output.context('stderr');
+  const { localize } = context;
   return Object.freeze({
-    ...output.context('stderr'),
+    ...context,
     application: scene.developer.application,
-    hints: scene.hints,
+    hints: Object.freeze(
+      scene.hints.map((hint) => (typeof hint === 'string' ? hint : localize(hint))),
+    ),
     invokedBy: scene.invokedBy,
     mediaType: scene.selection.mediaType,
+    message: defaultSentence(failure, localize),
     path: scene.path,
     view: scene.selection.view,
   });

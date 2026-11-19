@@ -9,7 +9,7 @@ import { registerRule } from '../diagnostics/diagnostic-text.js';
 /** A value another installed copy of `@loomcli/core` built, which this copy's registry misses. */
 const foreignValue = registerRule('@loomcli/core/foreign-value', {
   explanation:
-    'Core reads a plugin, an extension value, a declared view, a view override, a translation, a failure encoding, a provider, and an option set through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.',
+    'Core reads a plugin, an extension value, a declared view, a view override, a translation, a failure encoding, a phrasebook, a provider, and an option set through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.',
   headline: 'Value from another copy of core',
 });
 
@@ -43,6 +43,13 @@ const failureEncoderTaken = registerRule('@loomcli/core/failure-encoder-taken', 
   explanation:
     'A failed run writes its failure through the one encoder registered for its media type: the one its selected view declares, or on a Command that declares no result the one a middleware assigned. Two encoders for one media type leave core no way to choose between them.',
   headline: 'Failure encoder taken',
+});
+
+/** A plugin's phrasebooks keyed by something other than a canonical language subtag. */
+const phrasebookLanguage = registerRule('@loomcli/core/phrasebook-language', {
+  explanation:
+    "A run renders a phrase through the phrasebooks installed for its language: the first subtag of the operator's canonical locale, two or three lowercase letters. A key in any other form, such as a region tag, an uppercase spelling, or a deprecated code Intl replaces, never equals a run's language, so its phrasebooks would never render.",
+  headline: 'Phrasebook language not canonical',
 });
 
 /** Two distinct objects under one extension or declared-view identity. */
@@ -88,6 +95,7 @@ export {
   foreignValue,
   foreignValueCorrection,
   invalidExtensionValue,
+  phrasebookLanguage,
   pluginInstalledTwice,
   providerNameTaken,
   slotTaken,

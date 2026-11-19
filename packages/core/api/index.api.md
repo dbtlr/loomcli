@@ -584,7 +584,7 @@ export interface FailureForm {
 }
 
 // @public
-export type FailureHook = (failure: Readonly<LoomError>, context: FailureHookContext) => string | readonly string[] | undefined;
+export type FailureHook = (failure: Readonly<LoomError>, context: FailureHookContext) => string | Phrase | readonly (string | Phrase)[] | undefined;
 
 // @public @sealed
 export interface FailureHookContext {
@@ -602,6 +602,9 @@ export interface FailureHookContext {
 }
 
 // @public
+export function failureLines(failure: LoomError): readonly (string | Phrase)[] | undefined;
+
+// @public
 export interface FailureView<Failure extends LoomError> {
     render: (failure: Readonly<Failure>, context: FailureViewContext) => string;
     row?: undefined;
@@ -613,13 +616,14 @@ export interface FailureViewContext extends ViewContext {
     readonly hints: readonly string[];
     readonly invokedBy: 'argv' | 'name';
     readonly mediaType: string | undefined;
+    readonly message: string;
     readonly path: readonly string[];
     readonly view: string | undefined;
 }
 
 // @public
 export class FatalError extends LoomError {
-    constructor(message: string, options?: ErrorOptions);
+    constructor(message: string | Phrase | readonly (string | Phrase)[], options?: ErrorOptions);
     static readonly code: string;
 }
 
@@ -881,6 +885,7 @@ export interface Host {
     env: Record<string, string | undefined>;
     home: string;
     readonly libc: 'glibc' | 'musl' | undefined;
+    readonly locale?: string | undefined;
     platform: string;
     program: readonly string[];
     raise: (signal: 'SIGINT' | 'SIGQUIT' | 'SIGTSTP') => boolean;
@@ -917,7 +922,7 @@ export const incompleteResult: DeclaredView<IncompleteResult>;
 
 // @public @sealed
 export class InputError extends UsageError {
-    constructor(message: string, problems: readonly InputProblem[], options?: ErrorOptions);
+    constructor(message: string | Phrase | readonly (string | Phrase)[], problems: readonly InputProblem[], options?: ErrorOptions);
     static readonly code: string;
     readonly problems: readonly InputProblem[];
 }
@@ -1041,6 +1046,9 @@ export function isRuleIdentity(value: unknown): value is string;
 export function issuePath(issue: StandardSchemaV1.Issue): string | undefined;
 
 // @public
+export function issuePhrase(issue: StandardSchemaV1.Issue): Phrase | undefined;
+
+// @public
 export interface JavaScriptRuntime {
     readonly name: 'bun' | 'node';
     readonly version: string;
@@ -1103,11 +1111,11 @@ export function locate(graph: CommandGraph, words: readonly string[]): WordPosit
 
 // @public @sealed
 export interface Log {
-    debug(message: string, fields?: LogFields): void;
-    error(message: string, fields?: LogFields): void;
-    info(message: string, fields?: LogFields): void;
-    trace(message: string, fields?: LogFields): void;
-    warn(message: string, fields?: LogFields): void;
+    debug(message: string | Phrase, fields?: LogFields): void;
+    error(message: string | Phrase, fields?: LogFields): void;
+    info(message: string | Phrase, fields?: LogFields): void;
+    trace(message: string | Phrase, fields?: LogFields): void;
+    warn(message: string | Phrase, fields?: LogFields): void;
     with(fields: LogFields): Log;
 }
 
@@ -1176,14 +1184,22 @@ export type LogLineLevel = Exclude<LogLevel, 'fatal'>;
 
 // @public
 export abstract class LoomError extends Error {
-    constructor(message: string, options?: ErrorOptions);
+    constructor(message: string | Phrase | readonly (string | Phrase)[], options?: ErrorOptions);
     static readonly code: string;
     static readonly exitCode: FailureExitCode;
     get exitCode(): FailureExitCode;
 }
 
 // @public
-export type MessageArguments = [message: string, view?: View<string> | undefined] | [message: AsyncIterable<string>];
+export type MessageArguments = [message: string | Phrase, view?: View<string> | undefined] | [message: AsyncIterable<string>];
+
+// @public
+export type MessagePackage = keyof MessagePackages;
+
+// @public
+export interface MessagePackages {
+    readonly '@loomcli/core': CoreMessageModules;
+}
 
 // @public
 export type Middleware<Contributor extends Plugin_2 | ((...args: never[]) => Plugin_2)> = (context: MiddlewareContext<OptionsOf<Contributor>>) => Promise<void> | void;
@@ -1366,21 +1382,21 @@ export type OptionsOf<Contributor> = Contributor extends Plugin_2<infer Options>
 // @public @sealed
 export interface Out<Result = unknown> {
     draw<Data>(data: Data, view: View<Data>): Promise<number>;
-    error(message: string, view?: View<string>): Promise<void>;
+    error(message: string | Phrase, view?: View<string>): Promise<void>;
     error(...call: MessageArguments): Promise<void>;
-    fatal(message: string): never;
-    info(message: string, view?: View<string>): Promise<void>;
+    fatal(message: string | Phrase): never;
+    info(message: string | Phrase, view?: View<string>): Promise<void>;
     info(...call: MessageArguments): Promise<void>;
     lendTerminal<Value>(work: () => Value | PromiseLike<Value>): Promise<Value>;
-    print(message: string, view?: View<string>): Promise<void>;
+    print(message: string | Phrase, view?: View<string>): Promise<void>;
     print(...call: MessageArguments): Promise<void>;
     region(options?: RegionOptions): Region;
     render<Data, Row = never>(data: RenderedData<Data, Row>, view: View<Data> | ([Row] extends [never] ? RowViewOver<Data> : RowView<Row>)): Promise<void>;
     results: (value: ResultInput<Result>) => Promise<void>;
-    success(message: string, view?: View<string>): Promise<void>;
+    success(message: string | Phrase, view?: View<string>): Promise<void>;
     success(...call: MessageArguments): Promise<void>;
     text<Data>(data: Data, view: View<Data>): string;
-    warn(message: string, view?: View<string>): Promise<void>;
+    warn(message: string | Phrase, view?: View<string>): Promise<void>;
     warn(...call: MessageArguments): Promise<void>;
 }
 
@@ -1405,6 +1421,51 @@ export function pad(text: string, minimumWidth: number, options?: {
 export type PathsOf<Value extends {
     readonly [commandPaths]: unknown;
 }> = Value[typeof commandPaths];
+
+// @public @sealed
+export class Phrase {
+    get text(): string;
+    toJSON(): string;
+}
+
+// @public @sealed
+export class Phrasebook {
+    readonly package: MessagePackage;
+}
+
+// @public
+export function phrasebook<Package extends MessagePackage>(packageName: Package, sentences: PhrasebookSentences<Package>): Phrasebook;
+
+// @public
+export type PhrasebookSentences<Package extends MessagePackage> = {
+    readonly [Module in keyof MessagePackages[Package]]?: {
+        readonly [Name in SentenceNames<MessagePackages[Package][Module]>]?: SentenceEntry<MessagePackages[Package][Module][Name]>;
+    };
+};
+
+// @public
+export function phrasedIssue<Fields extends object>(phrase: Phrase, fields?: Fields & {
+    readonly path?: StandardSchemaV1.Issue['path'];
+}): StandardSchemaV1.Issue & Omit<Fields, 'message'>;
+
+// @public
+export type PhraseMaker<Module> = <Name extends SentenceNames<Module> & string>(name: Name, ...values: PhraseValues<Module[Name]>) => Phrase;
+
+// @public
+export function phrases<Package extends MessagePackage>(packageName: Package): PhraseSource<Package>;
+
+// @public @sealed
+export interface PhraseSource<Package extends MessagePackage> {
+    module<Key extends keyof MessagePackages[Package] & string>(key: Key, sentences: MessagePackages[Package][Key]): PhraseMaker<MessagePackages[Package][Key]>;
+}
+
+// @public
+export type PhraseTuple<Values extends readonly unknown[]> = {
+    [Index in keyof Values]: string extends Values[Index] ? Values[Index] | Phrase : Values[Index];
+};
+
+// @public
+export type PhraseValues<Sentence> = Sentence extends (...values: infer Values) => string ? PhraseTuple<Values> : [];
 
 // @public
 export function plugin<Options extends PluginOptions = {}, const Theme extends ThemeMapping = {}>(identity: string, definition: PluginDefinition<Options, Theme>): Plugin_2<NoInfer<Options>, NoInfer<Theme>>;
@@ -1431,6 +1492,7 @@ export interface PluginDefinition<Options extends PluginOptions = PluginOptions,
     onLiveRegions?: LiveRegionsHook;
     onLog?: LogHook;
     options?: Options;
+    phrasebooks?: Readonly<Record<string, readonly Phrasebook[]>>;
     source?: {
         binding: AnyExtension & {
             readonly target: 'option';
@@ -1471,6 +1533,7 @@ export interface ProcessHandle {
     exitCode: ExitCode | undefined;
     readonly home: string;
     readonly libc: 'glibc' | 'musl' | undefined;
+    readonly locale?: string | undefined;
     readonly platform: string;
     readonly program: readonly string[];
     readonly publishEnv?: (name: string, value: string) => void;
@@ -1661,6 +1724,9 @@ export class RepeatedOptionError extends UsageError {
 export type ReplacementView<Key> = [Key] extends [DeclaredView<infer Data>] ? View<Data> : [Key] extends [DeclaredRowView<infer Row>] ? RowView<Row> : [Key] extends [FailureClass<infer Failure>] ? FailureView<Failure> : never;
 
 // @public
+export function replaceValue(phrase: Phrase, from: string | Phrase, to: string | Phrase): Phrase | undefined;
+
+// @public
 export function reportedSpelling(option: OptionNode): string;
 
 // @public
@@ -1671,6 +1737,9 @@ interface Request_2 {
     readonly stdin?: Content | undefined;
 }
 export { Request_2 as Request }
+
+// @public
+export function resolveLocale(env: Readonly<Record<string, string | undefined>>): string;
 
 // @public
 export function resolveTimeZone(timeZone: string): string | undefined;
@@ -1740,6 +1809,17 @@ export type ScalarArgument = ((Presence & Omission) | ConditionalPresence) & Des
     variadic?: false;
     validate?: StandardSchemaV1;
 };
+
+// @public
+export type SentenceEntry<Sentence> = Sentence extends string ? string : Sentence extends (...values: infer Values) => string ? (...values: Values) => string : never;
+
+// @public
+export type SentenceNames<Module> = {
+    [Name in keyof Module]: Module[Name] extends string | ((...values: never[]) => string) ? Name : never;
+}[keyof Module];
+
+// @public
+export type SentenceValues<Sentence> = Sentence extends (...values: infer Values) => string ? Values : [];
 
 // @public @sealed
 export interface ShutdownEvent {
@@ -1930,7 +2010,7 @@ export class UnknownOptionError extends UsageError {
 
 // @public
 export abstract class UsageError extends LoomError {
-    constructor(message: string, options?: ErrorOptions);
+    constructor(message: string | Phrase | readonly (string | Phrase)[], options?: ErrorOptions);
     static readonly code: string;
     static readonly exitCode: FailureExitCode;
 }
@@ -2020,6 +2100,7 @@ export interface ViewContext {
     readonly background: Background | undefined;
     readonly columns: number | undefined;
     readonly expandTabs: (text: string) => string;
+    readonly localize: (phrase: Phrase) => string;
     readonly plain: (text: string) => string;
     readonly style: ContextualStyle;
     readonly width: (text: string) => number;

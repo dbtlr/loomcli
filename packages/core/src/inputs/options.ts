@@ -2,7 +2,7 @@ import { declaredName } from '../commands/rules.js';
 import { siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import { DeclarationError } from '../failures/errors.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import { envDelimiterEmpty, optionArity, optionDeclaredTwice, spellingTaken } from './rules.js';
 import type { OptionConfig } from './types.js';
 

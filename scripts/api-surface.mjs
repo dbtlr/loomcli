@@ -34,6 +34,8 @@ export const surfacePackages = [
           ContentReader: 'Members both `Content` variants share; the author names `Content`.',
           Controlled:
             'Fragment of an exported option or argument configuration; the author names the whole configuration.',
+          CoreMessageModules:
+            "Core's member of `MessagePackages`, which names each message module and so every sentence's name and parameters; the author names `MessagePackages` or `PhrasebookSentences<'@loomcli/core'>`.",
           DeclaredTypes:
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
           Described:

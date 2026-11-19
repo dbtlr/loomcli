@@ -10,7 +10,7 @@ import {
 import { InternalError } from '../failures/errors.js';
 import type { InvokedBy, LoomError } from '../failures/errors.js';
 import type { ExitCode } from '../failures/exit-codes.js';
-import { routedSubject } from '../failures/messages.js';
+import { routedSubject } from '../failures/wording.js';
 import type { Host } from '../host/types.js';
 import type { InputPlaces, DeclaredValues } from '../inputs/declarations.js';
 import { emptyValues, isSupplied } from '../inputs/options.js';

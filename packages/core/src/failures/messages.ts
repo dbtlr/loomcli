@@ -1,36 +1,10 @@
 /*
- * The operator sentences of core's failure classes, under ADR-0164, with the quoting every sentence
- * of core repeats a value through. `tests/message-voice.test.ts` holds this module to the failure
- * message voice.
+ * The operator sentences of core's failure classes, under ADR-0164. Each export is a sentence a
+ * phrasebook may hold, under ADR-0200, and the phrasing they share lives in `wording.ts`.
+ * `tests/message-voice.test.ts` holds this module to the failure message voice.
  */
-import { valueCode } from '../diagnostics/diagnostic-text.js';
 import { escapeControlCharacters } from '../support/controls.js';
-
-/** Escapes a string, and prints any other value as the code a finding prints for it. */
-function quoted(value: unknown): string {
-  return typeof value === 'string' ? `"${escapeControlCharacters(value)}"` : valueCode(value);
-}
-
-function sentenceStart(text: string): string {
-  return text.slice(0, 1).toUpperCase() + text.slice(1);
-}
-
-function commandSubject(name: string | null): string {
-  return name === null ? 'the root Command' : `Command ${quoted(name)}`;
-}
-
-function routedSubject(command: readonly string[]): string {
-  const name = command.at(-1);
-  return name === undefined ? 'the root Command' : commandSubject(name);
-}
-
-function commandSentence(name: string | null): string {
-  return sentenceStart(commandSubject(name));
-}
-
-function routedSentence(command: readonly string[]): string {
-  return sentenceStart(routedSubject(command));
-}
+import { quoted, routedSentence } from './wording.js';
 
 /** Names a list joins, each escaped, separated by `separator`. */
 function escapedList(names: readonly string[], separator: string): string {
@@ -151,8 +125,6 @@ const genericDefect = 'Something went wrong.';
 
 export {
   booleanValue,
-  commandSentence,
-  commandSubject,
   countedValue,
   declaredNoPassthrough,
   genericDefect,
@@ -162,10 +134,7 @@ export {
   missingAttachedValue,
   missingSubcommand,
   missingValue,
-  quoted,
   repeatedOption,
-  routedSentence,
-  routedSubject,
   separateValues,
   undeclaredArgument,
   unexpectedArguments,

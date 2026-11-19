@@ -1,5 +1,5 @@
 import { DeclarationError } from '../failures/errors.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import type { DiagnosticRule, Finding } from './diagnostic-text.js';
 
 /**

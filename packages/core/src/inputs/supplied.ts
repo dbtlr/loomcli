@@ -1,11 +1,11 @@
 import { defineEntry } from '../support/plain.js';
 import { holdsTuples } from './context.js';
 import type { InputDeclaration, Invocation, OptionInput, SuppliedValues } from './declarations.js';
-import { requiredArgument, requiredOption } from './messages.js';
-import type { InputSubject } from './messages.js';
 import { arityOf, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues } from './options.js';
+import { inputPhrase } from './phrases.js';
 import type { SuppliedInputs } from './types.js';
+import type { InputSubject } from './wording.js';
 
 /**
  * The token an operator would type for one declaration: an option's reported spelling, read from
@@ -50,8 +50,8 @@ export function missingMessage(
   const { collected, origin } = facts;
   const whenNotInteractive = input.config.required === 'non-interactive';
   return input.kind === 'argument'
-    ? requiredArgument(spelling, collected, whenNotInteractive)
-    : requiredOption({ kind: 'option', origin, spelling }, whenNotInteractive, {
+    ? inputPhrase('requiredArgument', spelling, collected, whenNotInteractive)
+    : inputPhrase('requiredOption', { kind: 'option', origin, spelling }, whenNotInteractive, {
         arity: arityOf(input.config),
         collected,
         kind: 'values',

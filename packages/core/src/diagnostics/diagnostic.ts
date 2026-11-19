@@ -1,5 +1,5 @@
 import { DeclarationError } from '../failures/errors.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import { registerRule } from './diagnostic-text.js';
 import type { DiagnosticRule } from './diagnostic-text.js';
 import { isRuleIdentity } from './identity.js';

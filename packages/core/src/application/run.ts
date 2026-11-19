@@ -23,6 +23,7 @@ import {
   readCall,
 } from '../invocation/invoke.js';
 import type { InvocationOutcome, InvocationValues, InvokeOptions } from '../invocation/types.js';
+import { gathered } from '../localization/render.js';
 import { backgroundChoice } from '../marks/background-mark.js';
 import { chosenPolicy, colorChoice, uncapturedPolicy } from '../marks/color.js';
 import { plainSwitch } from '../marks/plain.js';
@@ -331,6 +332,8 @@ async function execute(context: RunContext, door: RunDoor): Promise<RunEnd> {
         plain: plainSwitch(host.argv, host.env, plainSpellings),
       });
       output = invocationOutput;
+      // The run's phrasebooks are its plugins' for its language, gathered on its first phrase.
+      invocationOutput.usePhrasebooks(() => gathered(context.config.plugins, host.locale));
       invocationOutput.useLiveRegionsHooks(
         context.config.plugins.flatMap(({ onLiveRegions }) =>
           onLiveRegions === undefined ? [] : [onLiveRegions],
@@ -489,11 +492,15 @@ async function execute(context: RunContext, door: RunDoor): Promise<RunEnd> {
         decisive = failure;
         // Output is unbuilt only when host capture failed, before the choice could be read.
         // Argv was never read, so the switch follows ACCESSIBLE alone.
-        const reporting = reportingHost();
-        output ??= door.output(reporting, controller.signal, {
-          early: uncapturedPolicy(spellings !== undefined),
-          plain: plainSwitch([], reporting.env, undefined),
-        });
+        if (output === undefined) {
+          const reporting = reportingHost();
+          output = door.output(reporting, controller.signal, {
+            early: uncapturedPolicy(spellings !== undefined),
+            plain: plainSwitch([], reporting.env, undefined),
+          });
+          // A failure the capture raised renders in the run's language too, from the same books.
+          output.usePhrasebooks(() => gathered(context.config.plugins, reporting.locale));
+        }
         const writes = answeredWrite(await output.settle(), translatedFrom.get(failure));
         if (writes.kind === 'ok' && !silenced(error, controller.signal, cancellation())) {
           // A broken failure view or a throwing onFailure hook forces 1 over the failure's code.

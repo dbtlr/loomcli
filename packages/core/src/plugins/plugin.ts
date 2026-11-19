@@ -15,9 +15,9 @@ import { pluginLoaderFailed } from '../diagnostics/rules.js';
 import { readEncodings } from '../failures/encoders.js';
 import type { FailureEncoder, FailureEncoding } from '../failures/encoders.js';
 import { DeclarationError, InternalError, midSentence, reasonOf } from '../failures/errors.js';
-import { quoted } from '../failures/messages.js';
 import { readTranslations } from '../failures/translators.js';
 import type { Translation, TranslationContributor } from '../failures/translators.js';
+import { quoted } from '../failures/wording.js';
 import type { Host } from '../host/types.js';
 import { claimVariables } from '../inputs/bindings.js';
 import type { InputDeclaration, OptionInput } from '../inputs/declarations.js';
@@ -26,6 +26,8 @@ import type { OptionValues } from '../inputs/options.js';
 import type { GlobalOptionConfig, OptionValue } from '../inputs/types.js';
 import type { CommandGraph, OptionNode } from '../inspection/inspect.js';
 import type { MiddlewareContext } from '../invocation/chain.js';
+import { readPhrasebooks } from '../localization/phrasebook.js';
+import type { InstalledPhrasebooks, Phrasebook } from '../localization/phrasebook.js';
 import { coreViews } from '../output/lanes.js';
 import type { LiveRegionsHook } from '../output/live-regions.js';
 import type { Log, LogHook } from '../output/log.js';
@@ -102,6 +104,7 @@ interface DeclaredPlugin {
   views?: readonly ViewContribution[] | undefined;
   translators?: readonly Translation[] | undefined;
   failureEncoders?: readonly FailureEncoding[] | undefined;
+  phrasebooks?: Readonly<Record<string, readonly Phrasebook[]>> | undefined;
   source?:
     | { binding: AnyExtension; load: () => unknown; schema?: StandardSchemaV1 | undefined }
     | undefined;
@@ -316,6 +319,11 @@ interface PluginDefinition<
   translators?: readonly Translation[];
   /** The encoders a failed `run()` writes its failure through, one per media type. */
   failureEncoders?: readonly FailureEncoding[];
+  /**
+   * The phrasebooks the plugin installs, by language: each key a canonical language subtag, such
+   * as `de`, and each list the phrasebooks for it, in the order a sentence is looked up.
+   */
+  phrasebooks?: Readonly<Record<string, readonly Phrasebook[]>>;
   /**
    * The plugin's configuration source. It fills the options that carry a value of `binding`, and
    * `load` imports the module that answers for them.
@@ -705,6 +713,8 @@ interface BuiltPlugin {
   translators: TranslationContributor;
   /** The failure encoders the plugin registers, by media type. */
   failureEncoders: ReadonlyMap<string, FailureEncoder>;
+  /** The phrasebooks the plugin installs, by language. */
+  phrasebooks: InstalledPhrasebooks;
   identity: string;
   inputs: readonly OptionInput[];
   middleware: BuiltMiddleware | undefined;
@@ -760,6 +770,10 @@ function readPlugin(identity: string, declaration: DeclaredPlugin): BuiltPlugin 
     pluginSlot(identity, 'failureEncoders', declaration.failureEncoders),
     declaration.failureEncoders,
   );
+  const phrasebooks = readPhrasebooks(
+    pluginSlot(identity, 'phrasebooks', declaration.phrasebooks),
+    declaration.phrasebooks,
+  );
   const { middleware } = declaration;
   return {
     commands,
@@ -774,6 +788,7 @@ function readPlugin(identity: string, declaration: DeclaredPlugin): BuiltPlugin 
     onGraphBuilt: declaration.onGraphBuilt,
     onLiveRegions: declaration.onLiveRegions,
     onLog: declaration.onLog,
+    phrasebooks,
     records: build.records,
     source,
     theme,

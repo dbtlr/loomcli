@@ -2,12 +2,13 @@ import { registerRule } from '../diagnostics/diagnostic-text.js';
 import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { DeclarationError } from '../failures/errors.js';
 import type { InputProblem } from '../failures/errors.js';
-import { commandSentence, quoted } from '../failures/messages.js';
+import { commandSentence, quoted } from '../failures/wording.js';
+import type { FailureLine } from '../localization/lines.js';
 import type { InputDeclaration } from './declarations.js';
-import { groupSentence, requirementSentence } from './messages.js';
 import type { GroupMember } from './messages.js';
 import { absentBoolean, isSupplied, reportedOf, spellingsOf } from './options.js';
 import type { OptionValues, SpellingTable } from './options.js';
+import { inputPhrase } from './phrases.js';
 
 /**
  * A relationship over supplied local options, in declaration order: a group that states one rule
@@ -366,7 +367,7 @@ function brokenGroup(group: OptionGroup, context: GroupContext): boolean {
 function reportGroup(
   group: OptionGroup,
   context: GroupContext,
-): { lines: readonly string[]; problem: InputProblem } {
+): { lines: readonly FailureLine[]; problem: InputProblem } {
   const members = membersOf(group);
   const spelling = (name: string): string =>
     context.named ? name : reportedOf(spellingsOf(context.table, name), name);
@@ -377,8 +378,12 @@ function reportGroup(
   return {
     lines: [
       group.kind === 'requires'
-        ? requirementSentence(member(group.option), lackingOf(group, context).map(spelling))
-        : groupSentence(group.kind, group.options.map(member)),
+        ? inputPhrase(
+            'requirementSentence',
+            member(group.option),
+            lackingOf(group, context).map(spelling),
+          )
+        : inputPhrase('groupSentence', group.kind, group.options.map(member)),
     ],
     problem: {
       inputs: members.map((name) => ({ global: false, kind: 'option', name })),
@@ -394,7 +399,7 @@ function reportGroup(
 /** Runs once after the complete individual-input pass, without placing group reports in its ledger. */
 function groupReports(
   context: GroupContext,
-): { lines: readonly string[]; problem: InputProblem }[] {
+): { lines: readonly FailureLine[]; problem: InputProblem }[] {
   return context.groups
     .filter((group) => brokenGroup(group, context))
     .map((group) => reportGroup(group, context));

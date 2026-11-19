@@ -17,6 +17,7 @@ const action: ActionHandler<typeof get> = ({ options }) => {
       background: undefined,
       columns: undefined,
       expandTabs: (text) => text,
+      localize: (phrase) => phrase.text,
       plain: (text) => text,
       style,
       width: () => 0,

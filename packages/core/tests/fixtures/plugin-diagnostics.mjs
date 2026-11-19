@@ -176,6 +176,9 @@ async function runFixture(words, fixtureOptions = {}) {
         })
           .command(new Command('count').option('file', { short: 'f', type: 'string' }).action(act))
           .inspect(),
+      // A phrasebook another installed copy of core built is no phrasebook this copy made, as this value is not.
+      'phrasebook-entry': () => plugin('@acme/german', { phrasebooks: { de: [{}] } }),
+      'phrasebook-language': () => plugin('@acme/german', { phrasebooks: { 'de-AT': [] } }),
       'plugin-entry': () => new Application('probe', { plugins: [{ identity: '@acme/log' }] }),
       'plugin-twice': () => {
         const log = plugin('@acme/log', {});

@@ -1,6 +1,6 @@
 import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { asSentence, DeclarationError, reasonOf } from '../failures/errors.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import type { CommandGraph } from '../inspection/inspect.js';
 import type { BuiltPlugin } from './plugin.js';
 import { brokenGraphHook } from './rules.js';

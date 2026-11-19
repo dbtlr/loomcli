@@ -3,11 +3,12 @@ import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { callSite } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import type { Host } from '../host/types.js';
+import type { Phrase } from '../localization/phrase.js';
 import type { ValidationLedger } from './ledger.js';
-import { inputSubject } from './messages.js';
 import type { OptionGroup } from './option-groups.js';
 import type { OptionValues, SpellingTable } from './options.js';
 import type { ArgumentConfig, InputIdentity, OptionConfig, StdinConfig } from './types.js';
+import { inputSubject } from './wording.js';
 
 /**
  * One declared input, typed by its literal name and its own config. The value type is derived from
@@ -101,7 +102,7 @@ export interface Invocation {
    * its declared name. `unlowered` holds each input whose value no token spells, with the issue
    * that says what the input takes; each reports as a rejected value in authoring order.
    */
-  named?: { unlowered: ReadonlyMap<InputDeclaration, string> } | undefined;
+  named?: { unlowered: ReadonlyMap<InputDeclaration, Phrase> } | undefined;
   passthrough: readonly string[];
   /**
    * The declarations this pass validates, when it validates only some of `inputs`, such as a

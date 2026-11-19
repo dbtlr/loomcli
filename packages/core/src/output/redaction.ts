@@ -6,7 +6,18 @@
 import { registerRule } from '../diagnostics/diagnostic-text.js';
 import { partFinding, slotSite } from '../diagnostics/facts.js';
 import { DeclarationError } from '../failures/errors.js';
-import { redactPathCorrection, redactPathSentence } from './messages.js';
+import { quoted } from '../failures/wording.js';
+
+/**
+ * The sentence of a `log.redact` entry that is not a dotted path of nonempty keys: the redaction
+ * fault's Developer Diagnostic, which addresses the author.
+ */
+function redactPathSentence(path: string): string {
+  return `The Application redacts ${quoted(path)}, which is not a dotted path of nonempty keys.`;
+}
+
+/** The redaction fault's correction. */
+const redactPathCorrection = 'List dotted paths of nonempty keys, such as password or user.token.';
 
 const invalidRedactPath = registerRule('@loomcli/core/invalid-redact-path', {
   explanation:

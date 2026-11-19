@@ -4,7 +4,7 @@ title: ADR-0007 - Failures are public classes with typed facts, rendered by clas
 description: Every failure run() reports is an instance of a public class carrying the facts its sentence interpolates and its exit code. Renderers are registered per class on the constructor, resolved along the prototype chain. A working renderer cannot change the exit code, and a broken one is an internal failure that never escapes.
 status: accepted
 created: 2026-09-07
-modified: 2026-10-21
+modified: 2026-11-19
 ---
 
 # ADR-0007 - Failures are public classes with typed facts, rendered by class-keyed renderers registered on the Application
@@ -45,3 +45,4 @@ An application registers renderers through the constructor's `failures` option a
 - 2026-09-29: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) and [ADR-0051](0051-a-developer-diagnostic-teaches-the-author-what-broke-and-how-to-fix-it.md), proposed, remove the two category prefixes the entry above kept. A `DeclarationError` or an `InternalError` that `run()` reports shows the generic defect message, `<application>: Something went wrong.`, in a distributed build and its Developer Diagnostic in a development build, so neither `Invalid declaration: ` nor `Internal error: ` prints. Both classes gain a structured constructor beside their current one, with `rule`, `sentence`, and `correction` facts, and `DeclarationError` also `findings`. Both bind when those records are accepted.
 - 2026-09-30: [ADR-0050](0050-a-packet-built-into-the-application-says-whether-it-is-in-development.md) is accepted, so the entry above binds with ADR-0051.
 - 2026-10-21: [ADR-0104](0104-a-closed-reader-on-stdout-ends-the-run-with-141.md), proposed, narrows the broken-destination rule. A write to `run()`'s own stdout that fails with `EPIPE`, because its reader closed the pipe, is no broken destination: it ends the run with 141 and no report. A closed reader on stderr and every other failed write keep the fallback report and exit 1. It binds when that record is accepted.
+- 2026-11-19: [ADR-0200](0200-loom-says-its-own-sentences-in-the-operators-language-through-phrasebooks-the-localization-plugin-installs.md), proposed, narrows the rule that core's default text runs no application code: the default text renders a failure's phrase through the run's phrasebooks, the author's code, while the plain fallback path renders English and runs none. A phrasebook entry that throws where a failure's text renders is a broken failure view. It binds when ADR-0200 is accepted.

@@ -10,15 +10,7 @@ import type { LoomError } from '../failures/errors.js';
 import type { InputDeclaration } from '../inputs/declarations.js';
 import { emptyValues } from '../inputs/options.js';
 import type { OptionValues, TableSpelling } from '../inputs/options.js';
-import {
-  takesBoolean,
-  takesCount,
-  takesImplied,
-  takesList,
-  takesListOrImplied,
-  takesScalar,
-  takesTuple,
-} from './messages.js';
+import type { Phrase } from '../localization/phrase.js';
 import { candidatesOf, unknownCommand, write } from './parse.js';
 import type {
   BoundArguments,
@@ -27,6 +19,7 @@ import type {
   Routed,
   UnknownRouting,
 } from './parse.js';
+import { invocationPhrase } from './phrases.js';
 
 /**
  * What an invocation by name names, read once where the call entered: the path from the root, the
@@ -105,7 +98,7 @@ interface Reading {
   graph: BuiltGraph;
   path: readonly string[];
   excluded: ReadonlySet<string>;
-  unlowered: Map<InputDeclaration, string>;
+  unlowered: Map<InputDeclaration, Phrase>;
   values: { globals: OptionValues; locals: OptionValues };
 }
 
@@ -137,7 +130,7 @@ function declarationOf(read: Reading, entry: TableSpelling): InputDeclaration | 
 type Lowered = Pick<Occurrence & { kind: 'value' }, 'implied' | 'option' | 'value'>;
 
 /** What one value lowers to: the occurrences argv would give, or the issue that says what it takes. */
-type Lowering<Occurrences> = { occurrences: Occurrences } | { issue: string };
+type Lowering<Occurrences> = { occurrences: Occurrences } | { issue: Phrase };
 
 /** The tokens of one scalar input's value: its one token, or none when no token spells it. */
 function scalarTokens(value: unknown): string[] | undefined {
@@ -151,7 +144,7 @@ function booleanOccurrences(
   value: unknown,
 ): Lowering<Lowered[]> {
   if (typeof value !== 'boolean') {
-    return { issue: takesBoolean };
+    return { issue: invocationPhrase('takesBoolean') };
   }
   const reading = entries.find((entry) => entry.type === 'boolean' && entry.value === value);
   return { occurrences: reading ? [{ option: reading, value }] : [] };
@@ -160,26 +153,26 @@ function booleanOccurrences(
 /** A whole number of 0 or more is that many occurrences of a counted option, so 0 is absence. */
 function countOccurrences(option: TableSpelling, value: unknown): Lowering<Lowered[]> {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-    return { issue: takesCount };
+    return { issue: invocationPhrase('takesCount') };
   }
   return { occurrences: value > 0 ? [{ option, value }] : [] };
 }
 
 /** The issue a string option reports for a value no token spells, by what the option takes. */
-function stringIssue(option: TableSpelling & { type: 'string' }): string {
+function stringIssue(option: TableSpelling & { type: 'string' }): Phrase {
   const implied = option.valueClass === 'implied';
   if (option.multiple) {
-    return implied ? takesListOrImplied : takesList;
+    return invocationPhrase(implied ? 'takesListOrImplied' : 'takesList');
   }
-  return implied ? takesImplied : takesScalar;
+  return invocationPhrase(implied ? 'takesImplied' : 'takesScalar');
 }
 
 /**
  * The issue an arity option reports for a value no tuple spells: a tuple of its count, or on a
  * multiple option a list of such tuples.
  */
-function arityIssue(option: TableSpelling & { valueClass: 'arity' }): string {
-  return takesTuple(option.arity, option.multiple);
+function arityIssue(option: TableSpelling & { valueClass: 'arity' }): Phrase {
+  return invocationPhrase('takesTuple', option.arity, option.multiple);
 }
 
 /** One tuple's words, or none when the value is not a list of exactly `arity` tokens. */
@@ -278,10 +271,12 @@ function optionOccurrences(entries: readonly TableSpelling[], value: unknown): L
 function argumentTokens(slot: ArgumentSlot, value: unknown): Lowering<string | string[]> {
   if (!slot.variadic) {
     const token = tokenOf(value);
-    return token === undefined ? { issue: takesScalar } : { occurrences: token };
+    return token === undefined
+      ? { issue: invocationPhrase('takesScalar') }
+      : { occurrences: token };
   }
   const tokens = tokensOf(value);
-  return tokens === undefined ? { issue: takesList } : { occurrences: tokens };
+  return tokens === undefined ? { issue: invocationPhrase('takesList') } : { occurrences: tokens };
 }
 
 /** Records one occurrence a value lowered to, under the spelling a problem names its option by. */

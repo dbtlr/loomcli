@@ -1,5 +1,6 @@
 import type { AppliedSet, OptionSetValues } from '../commands/option-sets.js';
 import type { InputProblem } from '../failures/errors.js';
+import type { FailureLine } from '../localization/lines.js';
 import type { ArgumentInput, InputDeclaration, OptionInput } from './declarations.js';
 import type { ArgumentConfig, ArgumentValue, OptionConfig, OptionValue } from './types.js';
 
@@ -123,6 +124,6 @@ export class ValidationLedger {
 
 /** One validation problem and the lines core's default text holds. */
 export interface Report {
-  readonly lines: readonly string[];
+  readonly lines: readonly FailureLine[];
   readonly problem: InputProblem;
 }

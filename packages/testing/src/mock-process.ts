@@ -826,6 +826,7 @@ function mockProcess(fields: MockFields = {}): MockProcess {
     transcript,
     uid,
     ...(fields.readSource === undefined ? {} : { readSource: fields.readSource }),
+    ...(fields.locale === undefined ? {} : { locale: fields.locale }),
   };
 }
 

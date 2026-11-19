@@ -375,7 +375,7 @@ A program a run starts through `host.spawn`, with no shell unless the call names
 _Avoid_: Child process (for what a run starts), subprocess
 
 **Host**:
-The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, the ceiling when the handle names one, environment, platform, architecture, C library, JavaScript runtime, user ID, the standard streams, terminal facts, the time zone, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. An invocation by name may set its time zone for itself and its nested invocations, while keeping its process handle unchanged. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, the ceiling when the handle names one, environment, platform, architecture, C library, JavaScript runtime, user ID, the standard streams, terminal facts, the time zone, the locale, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. An invocation by name may set its time zone for itself and its nested invocations, while keeping its process handle unchanged. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Process handle**:
@@ -648,8 +648,28 @@ A message that runs while the author develops the application, such as a declara
 _Avoid_: Developer error (for the message), debug message
 
 **Message module**:
-The internal `messages.ts` beside one concept module's code in a Loom package, which holds the operator messages that code raises or writes as named exports, each a function of the values it repeats or a constant. A voice test per package reads the message modules and holds their sentences to the failure message voice. No entry point exports one, and it is not a localization layer.
-_Avoid_: Message catalog (the validator catalog is the validators `@loomcli/validators` ships), strings file, locale file, message keys
+The internal `messages.ts` beside one concept module's code in a Loom package, which holds the operator messages that code raises or writes in English as named exports, each a function of the values it repeats or a constant, and exports nothing but sentences. A voice test per package reads the message modules and holds their sentences to the failure message voice. No entry point exports one, but each export's name and values are public through its package's member of `MessagePackages`, so a phrasebook can say the sentence in another language.
+_Avoid_: Message catalog (the validator catalog is the validators `@loomcli/validators` ships), strings file, locale file, message keys, resource bundle
+
+**Wording module**:
+The internal `wording.ts` in a concept module, which holds phrasing that another module's sentences or a Developer Diagnostic compose, such as core's `quoted` and its Command subjects. The voice test reads it as it reads a message module, and no phrasebook covers it, because a translation composes its own phrasing.
+_Avoid_: Fragments file, helpers (for shared phrasing)
+
+**Locale**:
+The operator's language and region as a canonical BCP 47 tag, such as `de-AT` or `sr-Latn-RS`, which core reads into the host from the POSIX variables `LC_ALL`, `LC_MESSAGES`, and `LANG`, once per run. `C` and `POSIX` read `en`. The run's language is its first subtag.
+_Avoid_: Language (for the whole tag), culture, locale setting
+
+**Phrasebook**:
+One package's sentences in one language, written by an author or a community: a partial set of the sentences the package's message modules export, keyed by module and export name, each a constant or a function of the same values as the English export. `phrasebook()` makes one and checks it against the package's message modules, so a wrong name or value type fails to compile. Loom ships English alone, as the message modules themselves.
+_Avoid_: Catalog, message catalog (the validator catalog is the validators `@loomcli/validators` ships), translation (a translator turns a foreign throw into a failure), language pack, locale file
+
+**Phrase**:
+One sentence of a message module said with its values, with its English text computed on first read and where a phrasebook finds the sentence. A failure line, an `out` line, a log template, a hint, an issue, or a view's label carries a phrase, and a phrase may stand for a string value of another, so sentences compose. Core renders it in the run's language where it renders text for a person, falling back to the English, while every surface a machine reads keeps the English.
+_Avoid_: Message key, message reference, localized string
+
+**Localization**:
+Rendering Loom's own sentences in the operator's language from the phrasebooks the installed plugins hold for the run's language, which the localization plugin installs. It changes text for a person alone; failure codes, the failure form, records, and every machine-read surface stay English.
+_Avoid_: Internationalization (for this mechanism), i18n, translation
 
 **Concept module**:
 A folder directly under a Loom package's `src`, which holds the code of one concept, such as core's `failures` or `inputs`, or one plugin's folder in `@loomcli/plugins`. A package whose `src` has no folders is one concept module.
@@ -660,7 +680,7 @@ The test of Loom's own repository, `tests/message-voice.test.ts` in each package
 _Avoid_: Message lint, voice rule (for the test), message check
 
 **Failure view**:
-The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, the hints plugins added, whether the run received argv or names, and the view the result would render through when the run failed, a middleware's assignment, else the view an invocation by name started with, else the Command's default view, with that view's media type. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
+The view core declares for one failure class, keyed by the class, whose function receives the failure instance and the failure view context: the stderr view context, the application name, the path routing walked, the hints plugins added, the failure's sentence in the run's language, whether the run received argv or names, and the view the result would render through when the run failed, a middleware's assignment, else the view an invocation by name started with, else the Command's default view, with that view's media type. An application or plugin replaces it with a view override keyed by the class, and resolution follows the thrown failure's prototype chain, most derived first. A failure carries what went wrong, and the context carries where the run was.
 _Avoid_: Failure renderer, error handler, error formatter, catch
 
 **Failure code**:

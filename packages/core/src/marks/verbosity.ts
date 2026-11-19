@@ -3,7 +3,7 @@ import { registerRule } from '../diagnostics/diagnostic-text.js';
 import { factFault } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { UnknownCommandError } from '../failures/errors.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import type { OptionValues } from '../inputs/options.js';
 import type { OptionConfig } from '../inputs/types.js';
 import { lowerInvocation } from '../invocation/lower.js';

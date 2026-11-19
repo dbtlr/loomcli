@@ -9,13 +9,8 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 
 import { aliasesProcessStdin } from '../host/process-handle.js';
 import type { Host } from '../host/types.js';
-import {
-  filePathsOnly,
-  pipedStdin,
-  tooFewSources,
-  tooManySources,
-  unreadableFile,
-} from './messages.js';
+import { carriedIssue, phrasedIssue } from '../localization/issues.js';
+import { inputPhrase } from './phrases.js';
 
 /**
  * A prepared source whose contents are read only when the action asks for them.
@@ -150,7 +145,7 @@ async function fileContent(
   name: string,
   scope: ContentScope,
 ): Promise<StandardSchemaV1.Result<Content>> {
-  const issues = [{ message: unreadableFile }];
+  const issues = [phrasedIssue(inputPhrase('unreadableFile'))];
   if (name.length === 0 || name.includes('\0')) {
     return { issues };
   }
@@ -197,11 +192,11 @@ function sourceContent(
   }
   if (!config.stdin) {
     return Promise.resolve({
-      issues: [{ message: filePathsOnly }],
+      issues: [phrasedIssue(inputPhrase('filePathsOnly'))],
     });
   }
   if (scope.named || scope.host.terminal.stdin.isTTY) {
-    return Promise.resolve({ issues: [{ message: pipedStdin }] });
+    return Promise.resolve({ issues: [phrasedIssue(inputPhrase('pipedStdin'))] });
   }
   return Promise.resolve({ value: stdinContent(scope.host) });
 }
@@ -210,10 +205,10 @@ function countIssues(count: number, config: ContentSettings): StandardSchemaV1.I
   const issues: StandardSchemaV1.Issue[] = [];
   const minimum = minimumSources(config);
   if (count < minimum) {
-    issues.push({ message: tooFewSources(minimum) });
+    issues.push(phrasedIssue(inputPhrase('tooFewSources', minimum)));
   }
   if (config.max !== undefined && count > config.max) {
-    issues.push({ message: tooManySources(config.max) });
+    issues.push(phrasedIssue(inputPhrase('tooManySources', config.max)));
   }
   return issues;
 }
@@ -232,7 +227,9 @@ async function readSources(
     const result = await sourceContent(token, config, scope);
     if (result.issues !== undefined) {
       issues.push(
-        ...result.issues.map((issue) => (scope.collected ? { ...issue, path: [index] } : issue)),
+        ...result.issues.map((issue) =>
+          scope.collected ? carriedIssue(issue, { ...issue, path: [index] }) : issue,
+        ),
       );
     } else {
       sources.push(result.value);

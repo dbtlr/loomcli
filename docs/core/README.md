@@ -41,6 +41,7 @@ Every `Invalid declaration: ` and `Internal error: ` line a page shows quotes th
 
 - [Failures](failures.md): open it when you throw a failure class, declare an exit code or failure code, translate an error, or write a message.
 - [Failure views and encoders](failure-views.md): open it when you change how a failure renders for a person or encode it for a machine.
+- [Localization](localization.md): open it when Loom's sentences should read in the operator's language: the locale, phrasebooks, phrases, and what stays English.
 
 ## Plugins
 

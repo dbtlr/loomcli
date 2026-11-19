@@ -238,6 +238,12 @@ export interface ProcessHandle {
   readonly uid: number | undefined;
   /** The operator's IANA time zone, such as `America/New_York`. */
   readonly timeZone: string;
+  /**
+   * The operator's locale, read as an `LC_ALL` value and normalized through `resolveLocale`. A
+   * handle that holds none, or the empty string, gives its run the locale its `env` names. A
+   * hand-built handle may omit it.
+   */
+  readonly locale?: string | undefined;
   /** The release facts of the running build, which tell a source run from a shipped binary. */
   readonly release: ReleaseFacts;
   /** Reads one source file for a defect report, or answers `undefined`. */
@@ -343,6 +349,13 @@ export interface Host {
    * run's first read, including a nested call's declared-value reuse comparison for an explicit zone.
    */
   readonly timeZone: string;
+  /**
+   * The operator's locale as a canonical BCP 47 tag, such as `de-AT`, resolved once at entry from
+   * the handle's `locale` or from `LC_ALL`, `LC_MESSAGES`, and `LANG` in its `env`, before
+   * environment preparation, so a variable a hook adds never changes it. Core always sets it on a
+   * run's host; it is optional, as `runtime` is, so a host a test states whole compiles without it.
+   */
+  readonly locale?: string | undefined;
   /** The run's environment variables, which environment preparation may add to. */
   env: Record<string, string | undefined>;
   /** The run's terminal facts. */

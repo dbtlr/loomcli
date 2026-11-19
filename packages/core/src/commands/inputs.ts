@@ -2,7 +2,7 @@ import type { Finding } from '../diagnostics/diagnostic-text.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import { siteFinding, declarerNote, callSite } from '../diagnostics/facts.js';
 import { DeclarationError } from '../failures/errors.js';
-import { commandSentence, quoted, commandSubject } from '../failures/messages.js';
+import { commandSentence, commandSubject, quoted } from '../failures/wording.js';
 import { claimsStdin, stdinClaimedTwice } from '../inputs/content-rules.js';
 import type { Content } from '../inputs/content.js';
 import type { InputDeclaration, OptionInput, ArgumentInput } from '../inputs/declarations.js';

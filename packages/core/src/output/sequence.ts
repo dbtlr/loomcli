@@ -1,7 +1,7 @@
 import { performance } from 'node:perf_hooks';
 import { setImmediate } from 'node:timers';
 
-import { routedSubject } from '../failures/messages.js';
+import { routedSubject } from '../failures/wording.js';
 import { handled } from '../support/thenable.js';
 import type { IncompleteResult } from './lanes.js';
 import type { ViewContext } from './types.js';

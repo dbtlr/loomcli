@@ -2,7 +2,7 @@ import type { Finding, DiagnosticRule } from '../diagnostics/diagnostic-text.js'
 import { declarerNote, siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import { DeclarationError, asSentence, reasonOf } from '../failures/errors.js';
-import { commandSubject, quoted } from '../failures/messages.js';
+import { commandSubject, quoted } from '../failures/wording.js';
 import type { InputDeclaration, OptionInput } from '../inputs/declarations.js';
 import { configUnread } from '../inputs/declarations.js';
 import type { OptionGroup } from '../inputs/option-groups.js';

@@ -60,8 +60,9 @@ The call that receives a bad value throws, and so does a call that the receiver'
   - Two distinct descriptors that share an identity within the receiver, the installed plugins' descriptors included for the Application: [`@loomcli/core/two-package-copies`](diagnostics.md#loomclicoretwo-package-copies).
 - **Plugins.** `plugin()` applies every rule on one definition. One key overridden twice resolves to the first override, and core admits the configuration source's binding descriptor itself, so a binding the plugin does not also list under `extensions` works the same.
   - The rules on each option declaration, under [Input declaration errors](options.md#input-declaration-errors).
-  - An extension, view, override, translation, or failure encoding another installed copy of core built: [`@loomcli/core/foreign-value`](diagnostics.md#loomclicoreforeign-value).
+  - An extension, view, override, translation, failure encoding, or phrasebook another installed copy of core built: [`@loomcli/core/foreign-value`](diagnostics.md#loomclicoreforeign-value).
   - Two distinct descriptors that share an identity: [`@loomcli/core/two-package-copies`](diagnostics.md#loomclicoretwo-package-copies).
+  - A [phrasebook](localization.md#phrasebooks) language key that is not a canonical language subtag: [`@loomcli/core/phrasebook-language`](diagnostics.md#loomclicorephrasebook-language).
   - Two [failure encoders](failure-views.md#failure-encoders) for one media type: [`@loomcli/core/failure-encoder-taken`](diagnostics.md#loomclicorefailure-encoder-taken).
   - Each `commands` entry also meets the [attach](#at-attach) checks at `plugin()`, against the root it will join and the entries before it: a Command that is not finished ([`@loomcli/core/command-without-action`](diagnostics.md#loomclicorecommand-without-action)), and two entries with one name or an alias that repeats a sibling's ([`@loomcli/core/sibling-name-taken`](diagnostics.md#loomclicoresibling-name-taken)). A sibling diagnostic names the root Command, the parent the entries attach to.
 - **Providers.** `provider()`, `new Command()`, and `new Application()` apply two rules to a `uses` list.

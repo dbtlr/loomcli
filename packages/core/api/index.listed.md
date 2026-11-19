@@ -304,6 +304,14 @@ interface Controlled {
     control?: boolean;
 }
 
+interface CoreMessageModules {
+    readonly failures: typeof failures;
+    readonly inputs: typeof inputs;
+    readonly invocation: typeof invocation;
+    readonly output: typeof output;
+    readonly plugins: typeof plugins;
+}
+
 type DeclaredNames<Commands> = Extract<keyof {
     [Name in keyof Commands as string extends Name ? never : Name]: unknown;
 }, string>;
@@ -407,6 +415,12 @@ export type ImpliedConstraint<Config> = Config extends {
 ] ? unknown : Implied extends SchemaInput<Config['validate']> ? unknown : {
     'An implied value must be in the validator input type': Config['validate'];
 } : unknown : unknown;
+
+interface InputSubject {
+    readonly kind: 'argument' | 'option';
+    readonly spelling: string;
+    readonly origin?: string | undefined;
+}
 
 type InstalledNamedOptionValues<Plugins extends readonly Plugin[]> = Plugins extends readonly [
     infer First extends Plugin,
@@ -900,7 +914,113 @@ declare const extensionTarget: unique symbol;
 
 declare const failureEncoding: unique symbol;
 
+declare function booleanValue(spelling: string): string;
+
+declare function countedValue(spelling: string): string;
+
+declare function declaredNoPassthrough(command: readonly string[]): string;
+
+declare const genericDefect = "Something went wrong.";
+
+declare function misplacedOption(spelling: string, commands: readonly (readonly string[])[]): string;
+
+declare function missingArityRefused(spelling: string, arity: number, refused: string): string;
+
+declare function missingArityValues(spelling: string, arity: number, received: number): string;
+
+declare function missingAttachedValue(spelling: string): string;
+
+declare function missingSubcommand(command: readonly string[], candidates: readonly string[], argument: string | undefined): string;
+
+declare function missingValue(spelling: string): string;
+
+declare function repeatedOption(spelling: string): string;
+
+declare function separateValues(spelling: string): string;
+
+declare function terminalUnavailable(application: string, command: readonly string[]): string;
+
+declare function undeclaredArgument(command: readonly string[], name: string): string;
+
+declare function unexpectedArguments(command: readonly string[], accepted: number): string;
+
+declare function unknownCommand(token: string, candidates: readonly string[]): string;
+
+declare function unknownOption(spelling: string): string;
+
+declare function unknownOptionBeforeArguments(spelling: string): string;
+
+declare function unknownOptionName(name: string): string;
+
+declare const workingDirectoryUnreadable = "The current working directory cannot be read. Change to a directory that exists and run the command again.";
+
 declare const firstReserved = 126;
+
+interface GroupMember {
+    readonly spelling: string;
+    readonly label: string | undefined;
+}
+
+type OptionFix = {
+    readonly kind: 'spellings';
+    readonly spellings: readonly string[];
+} | {
+    readonly kind: 'values';
+    readonly collected: boolean;
+    readonly arity: number | undefined;
+} | {
+    readonly kind: 'value';
+};
+
+declare const environmentBoolean = "Use true, false, yes, no, y, n, on, off, 1, or 0.";
+
+declare const environmentCount = "Use a whole number of 0 or more.";
+
+declare function environmentTuple(arity: number, delimiter: string): string;
+
+declare const filePathsOnly = "This input accepts file paths only. Use ./- for a file named -.";
+
+declare function groupSentence(kind: 'exclusive' | 'oneRequired' | 'requiredTogether', members: readonly GroupMember[]): string;
+
+declare const ignoredFill = "Ignored option \"{option}\" from {label}: {issue}";
+
+declare const ignoredFillAt = "Ignored option \"{option}\" at {position} from {label}: {issue}";
+
+declare function issueLine(subject: InputSubject, path: string | undefined, issueSentence: string): string;
+
+declare const pipedStdin = "Expected piped or redirected stdin.";
+
+declare function requiredArgument(name: string, collected: boolean, whenNotInteractive: boolean): string;
+
+declare function requiredOption(subject: InputSubject, whenNotInteractive: boolean, fix: OptionFix): string;
+
+declare function requirementSentence(option: GroupMember, lacking: readonly string[]): string;
+
+declare const silentRejection = "The validator rejected this value without an explanation. Supply a different value.";
+
+declare function stdinIssue(issueSentence: string): string;
+
+declare function tooFewSources(minimum: number): string;
+
+declare function tooManySources(maximum: number): string;
+
+declare const unreadableFile = "Expected a readable file that exists.";
+
+declare const invalidTimeZone = "invoke() timeZone is not an IANA time zone name this runtime knows. Use a name such as \"Asia/Tokyo\".";
+
+declare const takesBoolean = "Use true or false.";
+
+declare const takesCount = "Use a whole number of 0 or more.";
+
+declare const takesImplied = "Use a string, a number, or true.";
+
+declare const takesList = "Use a string, a number, or a list of them.";
+
+declare const takesListOrImplied = "Use a string, a number, true, or a list of strings and numbers.";
+
+declare const takesScalar = "Use a string or a number.";
+
+declare function takesTuple(arity: number, multiple: boolean): string;
 
 declare const modifiers: readonly [
     'bold',
@@ -913,11 +1033,15 @@ declare const modifiers: readonly [
     'overline'
 ];
 
+declare function incompleteOutput(path: readonly string[], yielded: number, written: number): string;
+
 declare const pastStatus = 256;
 
 declare const pluginOptions: unique symbol;
 
 declare const pluginTheme: unique symbol;
+
+declare const closeFailed = "A provider's close failed.";
 
 declare const providerTypes: unique symbol;
 

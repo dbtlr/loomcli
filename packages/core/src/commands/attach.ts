@@ -1,6 +1,6 @@
 import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { DeclarationError } from '../failures/errors.js';
-import { commandSentence, commandSubject } from '../failures/messages.js';
+import { commandSentence, commandSubject } from '../failures/wording.js';
 import type { DeclaredResult } from '../output/types.js';
 import type { DescriptorRegistry } from '../plugins/extension.js';
 import { registerDescriptor } from '../plugins/extension.js';

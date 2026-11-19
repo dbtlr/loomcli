@@ -1,7 +1,7 @@
 import { spelled, quoteString } from '../diagnostics/diagnostic-text.js';
 import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { DeclarationError } from '../failures/errors.js';
-import { commandSentence, quoted } from '../failures/messages.js';
+import { commandSentence, quoted } from '../failures/wording.js';
 import type { Content } from '../inputs/content.js';
 import type { StdinContext, Action, ActionContext } from '../invocation/types.js';
 import type { Out, OpenResult, ResultView } from '../output/types.js';

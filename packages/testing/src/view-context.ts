@@ -10,7 +10,8 @@ import type { OptionalMembers } from './unstated-members.js';
 import { unstatedStyle } from './unstated-style.js';
 
 /**
- * What a test states to build a view context: each member its view reads.
+ * What a test states to build a view context: each member its view reads. An unstated `localize`
+ * returns the phrase's English text, the answer a run with no phrasebook gives.
  *
  * @public
  */
@@ -44,6 +45,7 @@ function viewContext(view: View<never> | RowView<never>, values: ViewValues): Vi
       return 'columns' in values ? values.columns : unstated('viewContext', 'columns');
     },
     expandTabs: values.expandTabs ?? unstatedMeasure('expandTabs'),
+    localize: values.localize ?? ((phrase) => phrase.text),
     plain: values.plain ?? unstatedMeasure('plain'),
     style: values.style ?? unstatedStyle(),
     width: values.width ?? unstatedMeasure('width'),
