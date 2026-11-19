@@ -50,6 +50,10 @@ import { identifier, powershellQuoted } from '../shell-quoting.js';
  *   rather than falling back to every file name. A first answer word that starts with `-` is the
  *   lead of a value attached to its option, such as `--config=` or `-c`: the names after it are
  *   listed, each inserted behind it. No answer word names a folder to list in.
+ * - Under directive 0, a first answer word that starts with `-` is such a lead too, because no
+ *   Command name starts with `-`: every name in the folder the rest of the word names is listed
+ *   the same way, each inserted behind the lead, rather than leaving PowerShell its own file
+ *   completion.
  * - Directive numbers are written as literals, and values are kept in arrays.
  */
 export function powershellScript(name: string): string {
@@ -325,11 +329,19 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
             $Space = ""
         }
 
+        # No Command name starts with -, so where files are allowed a first
+        # word that starts with - is the lead of a value attached to its
+        # option, and every name after it is listed.
+        $AnyFile = (($Directive -band $ShellCompDirectiveNoFileComp) -eq 0) -and
+            (($Directive -band $ShellCompDirectiveFilterFileExt) -eq 0) -and
+            (($Directive -band $ShellCompDirectiveFilterDirs) -eq 0) -and
+            $Values.Count -gt 0 -and $Values[0].Name.StartsWith("-", [System.StringComparison]::Ordinal)
         if ((($Directive -band $ShellCompDirectiveFilterFileExt) -ne 0 ) -or
-           (($Directive -band $ShellCompDirectiveFilterDirs) -ne 0 ))  {
+           (($Directive -band $ShellCompDirectiveFilterDirs) -ne 0 ) -or $AnyFile)  {
             # List the folder the word under the cursor names, read literally:
-            # its directories, and under FilterFileExt its files that end in an
-            # offered extension, compared as strings.
+            # its directories, under FilterFileExt its files that end in an
+            # offered extension, compared as strings, and after the lead of a
+            # value under directive 0 every name.
             $DirectoriesOnly = ($Directive -band $ShellCompDirectiveFilterDirs) -ne 0
             # A first offered word that starts with - is the lead of a value
             # attached to its option, such as --config= or -c: the names after
@@ -357,7 +369,7 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
             $Entries = @(Get-ChildItem -LiteralPath ([System.IO.Path]::Combine($Base, $Folder)) -Force:($Leaf.StartsWith('.')) -ErrorAction Ignore | Where-Object {
                 $Entry = $_
                 $Entry.Name.StartsWith($Leaf, [System.StringComparison]::Ordinal) -and
-                    ($Entry.PSIsContainer -or @($Extensions | Where-Object { $Entry.Name.EndsWith($_, [System.StringComparison]::Ordinal) }).Count -gt 0)
+                    ($AnyFile -or $Entry.PSIsContainer -or @($Extensions | Where-Object { $Entry.Name.EndsWith($_, [System.StringComparison]::Ordinal) }).Count -gt 0)
             })
             if ($Entries.Count -eq 0) {
                 return ""

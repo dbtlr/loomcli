@@ -38,6 +38,10 @@ import { identifier, posixQuoted } from '../shell-quoting.js';
  * - Under directives 8 and 16, a first answer word that starts with `-` is the lead of a value
  *   attached to its option, such as `--config=` or `-c`: the names are listed for the rest of the
  *   word, and each is offered behind the lead. No answer word names a folder to list in.
+ * - Under directive 0, a first answer word that starts with `-` is such a lead too, because no
+ *   Command name starts with `-`: every file name is listed by `__<id>_offer_files` for the rest of
+ *   the word and offered behind the lead, with or without the bash-completion package, and the
+ *   compspec's default file completion is turned off.
  * - The current word is not trimmed after `=`; `__<id>_handle_special_char` trims the inserted
  *   words instead.
  * - An error, a failed call, or an unreadable answer turns default file completion off.
@@ -260,6 +264,10 @@ __${id}_process_completion_results() {
         __${id}_offer_filtered_files extensions
     elif (((directive & shellCompDirectiveFilterDirs) != 0)); then
         __${id}_offer_filtered_files dirs
+    elif (((directive & shellCompDirectiveNoFileComp) == 0)) && [[ \${completions[0]-} == -* ]]; then
+        # No Command name starts with -, so the first word is the lead of a
+        # value attached to its option, and every file name is listed.
+        __${id}_offer_filtered_files any
     else
         __${id}_handle_completion_types
         # Without compopt the compspec carries no default file completion, so
@@ -363,10 +371,11 @@ __${id}_offer_files() {
     return 0
 }
 
-# Under directive 8 or 16 the script lists the file names itself, so the
-# compspec's default file completion is turned off, and nothing else is listed
-# when no name qualifies. A first word that starts with - is the lead of a value
-# attached to its option, such as --config= or -c, and the rest are extensions.
+# Under directive 8 or 16, or under 0 after the lead of an attached value, the
+# script lists the file names itself, so the compspec's default file completion
+# is turned off, and nothing else is listed when no name qualifies. A first word
+# that starts with - is the lead of a value attached to its option, such as
+# --config= or -c, and the rest are extensions.
 __${id}_offer_filtered_files() {
     local lead=''
 

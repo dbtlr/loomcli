@@ -105,6 +105,12 @@ Changes made to the Cobra scripts:
   -c, lists the file names for the rest of the word, and inserts each behind
   the lead. No answer word names a folder to list in, so the handling of one
   under directive 16 is removed.
+- Under directive 0, the Bash, Zsh, Fish, and PowerShell scripts read a first
+  answer word that starts with - as such a lead too, because no Command name
+  starts with -, list every file name for the rest of the word with the same
+  listing, and insert each behind the lead, rather than listing file names
+  for the whole word, which starts with the lead and so matched none for a
+  short spelling's attached value.
 - Directive numbers are written as literals, and comments are adjusted.
 - PowerShell's Invoke-Expression is removed. The program is resolved with
   Get-Command, an application alone off Windows. On Windows it is called

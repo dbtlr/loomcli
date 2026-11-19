@@ -1,7 +1,7 @@
 /**
  * The two forms in which an application name enters a completion script, so the name reaches the
  * shell as data and never as source: a function identifier and a single-quoted string, in Bash and
- * Zsh, Fish, or PowerShell quoting. Each script takes the Application's name, which core's
+ * Zsh, Fish, PowerShell, or Nushell (double-quoted) quoting. Each script takes the Application's name, which core's
  * portable name rule already keeps to the POSIX portable filename set, starting with neither `-`
  * nor `.`, so no newline, quote, or leading `-` reaches a script.
  */

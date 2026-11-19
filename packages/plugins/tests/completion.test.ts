@@ -564,7 +564,12 @@ describe('a static value hint', () => {
         })
         .option('verbose', { short: 'v', type: 'boolean' })
         .option('name', { extensions: [completionInput({ none: true })], type: 'string' })
-        .option('any', { extensions: [completionInput({ files: true })], type: 'string' })
+        .option('any', {
+          extensions: [completionInput({ files: true })],
+          short: 'a',
+          type: 'string',
+        })
+        .option('plain', { short: 'p', type: 'string' })
         .option('pair', {
           arity: 2,
           extensions: [completionInput({ extensions: ['yaml'] })],
@@ -662,7 +667,27 @@ describe('a static value hint', () => {
   it('files offer no word and leave the shell its file names under directive 0', () => {
     expect(at('load', '--any', '')).toBe(framed([], 0));
     expect(at('load', '--any=')).toBe(framed([], 0));
+    expect(at('load', '-a', 'conf')).toBe(framed([], 0));
     expect(at('wide', '')).toBe(framed([], 0));
+  });
+
+  it('a value attached to an option that leaves the shell its file names writes the lead under 0', () => {
+    expect(at('load', '--any=conf')).toBe(framed(['--any='], 0));
+    expect(at('load', '-aconf')).toBe(framed(['-a'], 0));
+    expect(at('load', '-a=conf')).toBe(framed(['-a='], 0));
+    expect(at('load', '-vaconf')).toBe(framed(['-va'], 0));
+    expect(at('load', '--plain=conf')).toBe(framed(['--plain='], 0));
+    expect(at('load', '-pconf')).toBe(framed(['-p'], 0));
+    expect(at('load', '-vpconf')).toBe(framed(['-vp'], 0));
+  });
+
+  // A script from before the lead under 0 offers every word that starts with the typed word.
+  // It would insert a lead that is the whole word as a value, so no lead is written then.
+  it('a value attached to its option writes no lead under 0 while nothing follows the lead', () => {
+    expect(at('load', '--any=')).toBe(framed([], 0));
+    expect(at('load', '-a=')).toBe(framed([], 0));
+    expect(at('load', '--plain=')).toBe(framed([], 0));
+    expect(at('load', '-vp=')).toBe(framed([], 0));
   });
 
   it('an arity option offers its hint at each word it takes, and the next word is read afresh', () => {
@@ -1347,7 +1372,7 @@ describe('the Nushell script', () => {
   it('holds the application name only as a double-quoted string and in function identifiers', () => {
     const script = nuScript('my-app');
     expect(script).toContain(
-      'export extern "my-app" [ ...arguments: string@"__my_2d_app_complete" ]',
+      'export extern "my-app" [ ...arguments: glob@"__my_2d_app_complete" ]',
     );
     expect(script).toContain('let program = "my-app"');
     expect(script.replaceAll('my_2d_app', '').replaceAll('"my-app"', '')).not.toContain('my-app');

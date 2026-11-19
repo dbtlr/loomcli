@@ -801,7 +801,7 @@ The help plugin's opt-in plugin Command, `help`, attached by `help({ command: tr
 _Avoid_: Help subcommand, help topic, `helpCommand` (the extension that carries a Command's help values)
 
 **Completion**:
-The projection a shell reads while the operator types: a script, printed or installed, that calls back into the application on each Tab and inserts the offered words that fit the word under the cursor: the canonical Command names, option spellings, closed-set values, the Commands a `commands` value hint reaches, and the values a named completer returns, with a file listing a value hint filters left to the shell. It offers a visible alias only where its member's canonical name does not match, never any other alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
+The projection a shell reads while the operator types: a script, printed or installed, that calls back into the application on each Tab and inserts the offered words that fit the word under the cursor: the canonical Command names, option spellings, closed-set values, the Commands a `commands` value hint reaches, and the values a named completer returns. Where a value hint or the lead of an attached value calls for file names, the Bash, Zsh, Fish, and PowerShell scripts list them themselves, filtered by the hint, and the Nushell script leaves the listing, unfiltered, to Nushell. It offers a visible alias only where its member's canonical name does not match, never any other alias, a hidden member, or a deprecated member, and it never evaluates what was typed.
 _Avoid_: Autocomplete, suggestions, candidates (for the offered words), tab completion plugin
 
 **Value hint**:
