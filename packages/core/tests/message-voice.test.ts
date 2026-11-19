@@ -44,7 +44,7 @@ const exceptions: VoiceExceptions = {
     },
   },
   'outside-text': {
-    'application/application.ts': { 'lineFault.cause': { reason: carried, sites: 1 } },
+    'application/run.ts': { 'lineFault.cause': { reason: carried, sites: 1 } },
     'diagnostics/defect.ts': {
       'cause.cause': {
         reason:
