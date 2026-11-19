@@ -1003,6 +1003,7 @@ export interface InvokeOptions<Mapped = LoomError> {
     }) => Mapped;
     readonly onProgress?: (event: ProgressEvent_2) => void;
     readonly signal?: AbortSignal;
+    readonly timeZone?: string;
     readonly view?: string;
 }
 
@@ -1641,6 +1642,9 @@ interface Request_2 {
     readonly stdin?: Content | undefined;
 }
 export { Request_2 as Request }
+
+// @public
+export function resolveTimeZone(timeZone: string): string | undefined;
 
 // @public @sealed
 export class ResultError extends InternalError {

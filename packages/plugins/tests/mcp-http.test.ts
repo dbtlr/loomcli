@@ -30,7 +30,7 @@ import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterEach, describe, expect, it } from 'vite-plus/test';
+import { afterEach, describe, expect, it, test } from 'vite-plus/test';
 
 import { childEnvironment } from '../../../scripts/test-process.js';
 import {
@@ -47,6 +47,7 @@ import {
 } from '../../mcp/tests/http.js';
 import { addressOf } from '../src/mcp/address.js';
 import { endpointLine, networkWarning } from '../src/mcp/serve-http.js';
+import { invalidTimeZone, timeZoneCalls, timeZoneKey } from './mcp-time-zone-cases.js';
 
 const fixture = fileURLToPath(new URL('fixtures/mcp.mjs', import.meta.url));
 
@@ -86,12 +87,16 @@ async function until(condition: () => boolean, what: () => string) {
 }
 
 /**
- * Launches the fixture `served` with the words after its name, under the runtime the test run
- * names. A caller signal, SIGUSR2, aborts the run as an embedding caller would.
+ * Launches a fixture scenario, `served` by default, with the given words under the runtime the
+ * test run names. A caller signal, SIGUSR2, aborts the run as an embedding caller would.
  */
-function launch(words: readonly string[], env: Record<string, string> = {}): Launched {
+function launch(
+  words: readonly string[],
+  env: Record<string, string> = {},
+  scenario = 'served',
+): Launched {
   const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
-  const child = spawn(runtime, [fixture, 'served', ...words], {
+  const child = spawn(runtime, [fixture, scenario, ...words], {
     env: childEnvironment({ FIXTURE_CALLER_SIGNAL: '1', ...env }),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -508,3 +513,61 @@ describe('loading', () => {
     );
   });
 });
+
+test.each(['2026-07-28', '2025-11-25', '2025-06-18'])(
+  'HTTP serves supplied and default dates in each caller zone on %s and refuses invalid metadata',
+  async (revision) => {
+    const server = launch(['mcp', '--http', '0'], { TZ: 'UTC' }, 'timeZone');
+    const port = await server.port();
+    let session: string | undefined = undefined;
+    if (revision !== '2026-07-28') {
+      const opened = await send(port, initialize(revision));
+      const id = opened.headers['mcp-session-id'];
+      if (typeof id !== 'string') {
+        throw new Error('The server returned no session id.');
+      }
+      session = id;
+    }
+    let id = 0;
+    for (const call of timeZoneCalls) {
+      id += 1;
+      const requestMeta = {
+        ...(revision === '2026-07-28' ? meta : {}),
+        ...(Object.hasOwn(call, 'zone') ? { [timeZoneKey]: call.zone } : {}),
+      };
+      const stream = eventStream(
+        await open(port, {
+          body: {
+            id,
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+              _meta: requestMeta,
+              arguments: call.at === undefined ? {} : { at: call.at },
+              name: 'stamp',
+            },
+          },
+          headers:
+            session === undefined
+              ? mirrored('tools/call', 'stamp')
+              : {
+                  Accept: 'application/json, text/event-stream',
+                  'MCP-Protocol-Version': revision,
+                  'MCP-Session-Id': session,
+                },
+        }),
+      );
+      const message = await stream.next();
+      await stream.ended;
+      expect(message.id).toBe(id);
+      const result = Object(message.result);
+      expect(result).toMatchObject({
+        content: [{ text: call.output ?? invalidTimeZone, type: 'text' }],
+        isError: call.output === undefined,
+      });
+      expect(result).not.toHaveProperty('structuredContent');
+    }
+    await stop(server);
+    expect(server.stderr()).toBe('');
+  },
+);

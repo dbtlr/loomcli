@@ -550,7 +550,12 @@ class Connection {
   async #call(params: Record<string, unknown>, handling: Handling) {
     const name = typeof params.name === 'string' ? params.name : '';
     const { era, progress, signal } = handling;
-    const call: ToolCall = { name, arguments: params.arguments, signal };
+    const call: ToolCall = {
+      ...(isRecord(params._meta) ? { _meta: params._meta } : {}),
+      name,
+      arguments: params.arguments,
+      signal,
+    };
     const result = await this.#options.callTool(
       progress === undefined ? call : { ...call, progress },
     );

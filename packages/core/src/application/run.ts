@@ -9,6 +9,7 @@ import { translateThrow } from '../failures/translators.js';
 import { handleFacts, settleTerminal } from '../host/host.js';
 import type { ReportHost } from '../host/host.js';
 import { laneOf, processHandle } from '../host/process-handle.js';
+import { resolveTimeZone } from '../host/time-zone.js';
 import type { ProcessHandle } from '../host/types.js';
 import { prepareDeclaredValues } from '../inputs/declared-values.js';
 import type { OptionSpelling } from '../inputs/options.js';
@@ -392,10 +393,14 @@ async function execute(context: RunContext, door: RunDoor): Promise<RunEnd> {
         });
       }
       const { locals, places } = built.inputs();
-      // A nested run reuses its outer run's declared values, so only an outermost run collects inputs.
-      const declaredValues =
-        bound?.declaredValues ??
-        (await prepareDeclaredValues({ globals: graph.globals.inputs, locals }, host, places));
+      // An explicit zone reads the parent's zone even if its code never did, to judge reuse.
+      const reused =
+        bound !== undefined &&
+        (door.timeZone === undefined ||
+          host.timeZone === resolveTimeZone(bound.declaredTimeZone()));
+      const declaredValues = reused
+        ? bound.declaredValues
+        : await prepareDeclaredValues({ globals: graph.globals.inputs, locals }, host, places);
       graphBuilt = true;
       if (!controller.signal.aborted) {
         /**
@@ -405,7 +410,13 @@ async function execute(context: RunContext, door: RunDoor): Promise<RunEnd> {
         let persistent = door.persistent;
         // An action's own call reuses this run's graph, host fields, signal, and lane.
         const action: ActionCall = {
-          bound: { declaredValues, graph, inputs: built.inputs, inspected },
+          bound: {
+            declaredTimeZone: () => host.timeZone,
+            declaredValues,
+            graph,
+            inputs: built.inputs,
+            inspected,
+          },
           fields: fieldsOf(host),
           lane: door.lane,
           listens: door.listens,

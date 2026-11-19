@@ -23,6 +23,7 @@ import type { SharedLane } from '../signals/signal-lane.js';
 import { readSmallFile } from '../support/files.js';
 import { isPlainObject } from '../support/plain.js';
 import { unstartedChild } from './spawn.js';
+import { resolveTimeZone } from './time-zone.js';
 import type {
   Child,
   ChildExit,
@@ -104,11 +105,7 @@ function processTimeZone(): string {
   if (resolved === undefined) {
     return 'UTC';
   }
-  try {
-    return new Intl.DateTimeFormat('en-US', { timeZone: resolved }).resolvedOptions().timeZone;
-  } catch {
-    return 'UTC';
-  }
+  return resolveTimeZone(resolved) ?? 'UTC';
 }
 
 /**

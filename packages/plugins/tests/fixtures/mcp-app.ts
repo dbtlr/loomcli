@@ -17,6 +17,7 @@ import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
 import { verbose } from '@loomcli/plugins/verbose';
 import { progress as progressLine } from '@loomcli/prompts';
+import { dateTime } from '@loomcli/validators';
 import { z } from 'zod';
 
 import { runOnMock } from './in-process.ts';
@@ -468,6 +469,26 @@ function served(env: Record<string, string | undefined> = {}) {
     .command(top);
 }
 
+/** A zone-less supplied or declared date-time, served through the same invocation door. */
+function timeZone() {
+  const stamp = new Command('stamp', {
+    description: 'Resolve a local time.',
+    extensions: [mcpCommand({})],
+  })
+    .option('at', {
+      default: '2026-09-25T14:30:00',
+      description: 'The local time.',
+      type: 'string',
+      validate: dateTime(),
+    })
+    .action(async ({ host, options, out }) => {
+      await out.print(`${host.timeZone} ${options.at.toISOString()}`);
+    });
+  return new Application('clock', { description: 'Resolve times.', plugins: [mcp()] }).command(
+    stamp,
+  );
+}
+
 /** One application for each build fault the plugin's hook raises. */
 /** The options every fault's application shares: the build, a description, and the plugin. */
 const faulty = { description: 'A faulty fixture.', plugins: [mcp()] };
@@ -658,6 +679,7 @@ const scenarios = {
   multiline,
   progress,
   served,
+  timeZone,
   ...faults,
 };
 

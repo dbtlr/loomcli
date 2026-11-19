@@ -1,12 +1,15 @@
 import { Readable, Writable } from 'node:stream';
 
+import { InputError } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import { capturedHost, settlingTerminal } from '../host/host.js';
 import type { HandleFacts, HostCapture } from '../host/host.js';
+import { resolveTimeZone } from '../host/time-zone.js';
 import type { Host } from '../host/types.js';
 import type { ProgressEvent } from '../output/types.js';
 import type { StartingView } from './chain.js';
 import type { NamedCall } from './lower.js';
+import { invalidTimeZone } from './messages.js';
 import type { InvocationValues, InvokeOptions } from './types.js';
 
 /** The entries of one `args` or `options` record, a key whose value is `undefined` left out. */
@@ -26,6 +29,7 @@ interface InvokeCall<Mapped> {
   failure: InvokeOptions<Mapped>['failure'];
   signal: AbortSignal | undefined;
   onProgress: InvokeOptions<Mapped>['onProgress'];
+  timeZone: string | undefined;
 }
 
 /**
@@ -50,6 +54,7 @@ function readCall<Mapped>(call: {
     },
     onProgress: options?.onProgress,
     signal: options?.signal,
+    timeZone: options?.timeZone,
     view: options?.view === undefined ? undefined : { name: options.view },
   };
 }
@@ -145,14 +150,16 @@ const noTerminal = (): Host['terminal'] =>
 /**
  * The host an invocation by name runs on: the facts it reads, capture sinks for stdout and
  * stderr, an empty stdin, no argv, and no terminal. Nothing in it is the process's own stream.
- * Malformed release facts, or a working directory its capture could not read, is the failure in
- * its place.
+ * Malformed release facts, an unreadable working directory, or an invalid per-call zone returns
+ * a failure in its place.
  */
 function invocationHost(
   fields: HandleFacts,
   sinks: { stderr: Writable; stdout: Writable },
+  timeZone?: string,
 ): HostCapture {
-  return capturedHost(
+  const resolved = timeZone === undefined ? undefined : resolveTimeZone(timeZone);
+  const capture = capturedHost(
     {
       argv: [],
       // Its stdin is no terminal's, so a raw-mode reader raises nothing and cancels the call itself.
@@ -162,8 +169,16 @@ function invocationHost(
       stdout: sinks.stdout,
       terminal: noTerminal(),
     },
-    { ...fields, env: { ...fields.env } },
+    {
+      ...fields,
+      env: { ...fields.env },
+      timeZone: resolved === undefined ? fields.timeZone : () => resolved,
+    },
   );
+  if ('failure' in capture || timeZone === undefined || resolved !== undefined) {
+    return capture;
+  }
+  return { failure: new InputError(invalidTimeZone, []), report: capture.report };
 }
 
 /**

@@ -232,10 +232,12 @@ export type KeptGraph = Pick<BoundGraph, 'graph' | 'inputs' | 'inspected'>;
 
 /**
  * The graph an action's run built and validated, which a call the action makes reuses: no lifecycle
- * hook runs again, and each declared default and implied value is that run's validated output.
+ * hook runs again. Declared values are reused only in the zone they were validated under.
  */
 export interface BoundGraph {
   declaredValues: DeclaredValues;
+  /** The validation host's zone, read only when an explicit per-call zone needs comparison. */
+  declaredTimeZone: () => string;
   graph: BuiltGraph;
   inputs: () => GraphInputs;
   inspected: () => CommandGraph;

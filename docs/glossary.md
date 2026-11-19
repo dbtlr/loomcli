@@ -327,11 +327,11 @@ The `plain: true` fact on the one Boolean global option whose spellings turn the
 _Avoid_: Plain flag (for the mark), accessible option
 
 **Invocation**:
-One `run()` or `invoke()` call: host capture, graph build or the reuse of the graph its Application already built, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` captures no host and builds no graph: it takes its host fields and its graph from its own run.
+One `run()` or `invoke()` call: host capture, graph build or the reuse of the graph its Application already built, routing, parsing the routed Command's words, the input-source stage, validation, the middleware chain, the action, and the exit status. An action's `invoke()` captures no host and builds no graph: it takes its host fields and its graph from its own run, with an optional per-call time zone.
 _Avoid_: Execution, call, request
 
 **Invocation by name**:
-An invocation that names its Command by path and its inputs by declared name instead of by argv, captures what the run writes, and resolves a structured outcome: completed, failed, or cancelled. It reports inputs by name and makes no process effect, following argv behavior except that no stdin is available for content and the call may exclude options. An action starts one through `invoke` on its context, and an embedding host through `app.invoke`.
+An invocation that names its Command by path and its inputs by declared name instead of by argv, captures what the run writes, and resolves a structured outcome: completed, failed, or cancelled. It reports inputs by name and makes no process effect, following argv behavior except that no stdin is available for content and the call may exclude options or set its time zone. The effective time zone reaches nested invocations unless a nested invocation sets its own, and changes neither the parent nor the process handle. An action starts one through `invoke` on its context, and an embedding host through `app.invoke`.
 _Avoid_: Programmatic run, child run, sub-invocation, tool call (for the invocation)
 
 **Excluded option**:
@@ -367,7 +367,7 @@ A program a run starts through `host.spawn`, with no shell unless the call names
 _Avoid_: Child process (for what a run starts), subprocess
 
 **Host**:
-The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, the ceiling when the handle names one, environment, platform, architecture, C library, JavaScript runtime, user ID, the standard streams, terminal facts, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
+The facts of the process an invocation runs in, copied from the run's process handle: argument tokens, working directory, home folder, temporary folder, the ceiling when the handle names one, environment, platform, architecture, C library, JavaScript runtime, user ID, the standard streams, terminal facts, the time zone, and the release facts, with `spawn`, the run's one way to start a child program. Core copies the facts once per run, except that it reads terminal width and height live and settles the terminal's background rather than copying it, and retains the streams; installed environment hooks may then add variables before inputs are read. An invocation by name may set its time zone for itself and its nested invocations, while keeping its process handle unchanged. A working directory that cannot be read fails the run with a `WorkingDirectoryError`.
 _Avoid_: Environment (for the whole object), process, platform, context
 
 **Process handle**:

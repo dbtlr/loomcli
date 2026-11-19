@@ -66,6 +66,7 @@ export { logLine } from './output/log-line.js';
 export { override, view } from './output/view.js';
 export { plugin } from './plugins/plugin.js';
 export { processHandle } from './host/process-handle.js';
+export { resolveTimeZone } from './host/time-zone.js';
 export { provider } from './plugins/providers.js';
 export type {
   AnyProvider,
