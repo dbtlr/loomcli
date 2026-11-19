@@ -119,6 +119,13 @@ function logShownFrom(level: LogLineLevel): number {
 /** The opener a reservation holds until its own gate publishes the real one. */
 const unopened = (): void => undefined;
 
+/**
+ * The one callback every write handed to a stream in the call passes, so a long run of them holds
+ * no closure per write until the stream calls back. A failure reaches the destination's own error
+ * listener instead.
+ */
+const handedOver = (): void => undefined;
+
 /** The control sequence that shows the terminal's cursor, which a shutdown's end writes. */
 const showCursor = '\u001B[?25h';
 
@@ -251,6 +258,8 @@ class Destination {
   around: { before: () => void; after: () => void } | undefined = undefined;
   /** How many sequences hold a place in this destination's order and have not closed. */
   #sequences = 0;
+  /** How many streamed lines hold this destination's order and have not been released. */
+  #holds = 0;
   /** The writes queued and not yet begun, in the order they were queued, which an end writes at once. */
   readonly #queued = new Set<Queued>();
   /** The writes whose turn has begun and whose parts have not all reached a stream. */
@@ -329,6 +338,53 @@ class Destination {
   /** Whether a sequence holds a place in this destination's order. */
   get sequenced(): boolean {
     return this.#sequences > 0;
+  }
+
+  /**
+   * Whether a write issued now would wait for an earlier one: a write is queued, a write whose turn
+   * has begun still has parts to hand to a stream, or a sequence or a streamed line holds the order.
+   */
+  get waiting(): boolean {
+    return (
+      this.#queued.size > 0 ||
+      this.#sequences > 0 ||
+      this.#holds > 0 ||
+      [...this.#started].some((started) => started.parts.length > 0)
+    );
+  }
+
+  /**
+   * One text written in the call when nothing waits in this destination's order or in the orders of
+   * `alongside`, the destinations on the same screen, and queued as `write` queues it otherwise. A
+   * write in the call hands its stream the parts its turn would hand at once, at the place in the
+   * order its turn would take, only without waiting a turn of the microtask queue, so the bytes
+   * reach the stream before the call returns, as an abort that follows needs. It holds nothing once
+   * the call returns: no queued write and no listener, so a loop of such writes grows no memory per
+   * write. A stream that fails it records the failure through its error listener, which a later
+   * write and the run's settling read, as they read any failed write. It answers the queued write's
+   * promise, or nothing for a write already handed to the stream, so it makes no promise either.
+   */
+  writeFirst(text: string, alongside: readonly Destination[]): Promise<void> | undefined {
+    const closed = this.state.kind !== 'ok' || this.stream.destroyed || this.stream.writableEnded;
+    if (closed || [this, ...alongside].some(({ waiting }) => waiting)) {
+      return this.write(text);
+    }
+    for (const { destination, text: part } of this.parts(text)) {
+      destination.handOver(part);
+    }
+    return undefined;
+  }
+
+  /** Hands text to the stream in the call, recording a failure as the destination's own. */
+  private handOver(text: string): void {
+    if (text === '' || this.state.kind !== 'ok') {
+      return;
+    }
+    try {
+      this.stream.write(text, handedOver);
+    } catch (error) {
+      this.onError(error);
+    }
   }
 
   /**
@@ -539,9 +595,17 @@ class Destination {
     });
     for (const destination of all) {
       destination.tail = destination.tail.then(() => gate);
+      destination.#holds += 1;
     }
+    let released = false;
     return {
       release: () => {
+        if (!released) {
+          released = true;
+          for (const destination of all) {
+            destination.#holds -= 1;
+          }
+        }
         open(pieces);
       },
       write: (text, between) => {
@@ -763,6 +827,8 @@ export class Output {
   private span: LiveRegionSpan | undefined = undefined;
   // The streamed messages still open, which the run waits for and an end writes the rest of.
   private readonly streams = new Set<OpenStream>();
+  // Whether an end has written the run's queue, after which a log write goes straight to the stream.
+  private ended = false;
   // Ends every open streamed message, then closes every region, at once when the run's signal aborts.
   private readonly onCancel = (): void => {
     for (const open of this.streams) {
@@ -1117,18 +1183,11 @@ export class Output {
    * order the writes were queued and each as its turn would have written it, then, on a terminal
    * stderr, ends every lend and shows the cursor, synchronously, which the process's end does. A
    * write whose turn has begun goes first, with only the parts it has not yet sent. No hook is
-   * called while it writes, so a first frame among the writes opens no span.
+   * called while it writes, so a first frame among the writes opens no span. From then on the run
+   * has ended, and a log write goes straight to the stream.
    */
   flushQueue(): void {
-    const taken = [...this.destinations.values()].map((destination) => destination.takeQueued());
-    const started = taken.flatMap((writes) => writes.started);
-    started.sort(byOrder);
-    const queued = [...taken.flatMap((writes) => writes.queued), ...this.streamEnds()];
-    queued.sort(byOrder);
-    const parts = [
-      ...started.flatMap((write) => write.parts.splice(0)),
-      ...queued.flatMap((write) => write.start()),
-    ];
+    const parts = this.queuedParts();
     const screen = this.screenDestination();
     if (screen !== undefined) {
       // A screen on stdout alone shows the cursor nowhere, because only stderr's draws can hide it.
@@ -1136,8 +1195,44 @@ export class Output {
       parts.push({ destination: screen, quiet: true, text: this.screen.finishLends() + shown });
     }
     writeNow(parts);
+    this.ended = true;
     // The process is ending, so a span still open closes after those bytes.
     this.span?.finish();
+  }
+
+  /**
+   * Takes every write not yet handed to a stream, the rest of each open streamed message included,
+   * and answers their parts in the run's order, each as its turn would have written it. A write
+   * whose turn has begun comes first, with only the parts it has not yet sent.
+   */
+  private queuedParts(): Part[] {
+    const taken = [...this.destinations.values()].map((destination) => destination.takeQueued());
+    const started = taken.flatMap((writes) => writes.started);
+    started.sort(byOrder);
+    const queued = [...taken.flatMap((writes) => writes.queued), ...this.streamEnds()];
+    queued.sort(byOrder);
+    return [
+      ...started.flatMap((write) => write.parts.splice(0)),
+      ...queued.flatMap((write) => write.start()),
+    ];
+  }
+
+  /**
+   * Writes one text a log event makes on the run's stderr: its log line, or what an `onLog` hook
+   * writes there. It is written in the call when nothing waits ahead of it on stderr, or on stdout
+   * when both share a terminal, and queued behind what waits otherwise, so it keeps call order
+   * either way. Once an end has written the run's queue, nothing written later is waited for, so it
+   * writes whatever was queued since, then itself, straight to the stream, as a shutdown handler's
+   * log call at the process's exit needs. It answers the promise of a write it queued, and nothing
+   * for one it handed to the stream.
+   */
+  private writeLog(text: string): Promise<void> | undefined {
+    const errors = this.destination(this.host.stderr);
+    if (this.ended) {
+      writeNow([...this.queuedParts(), { destination: errors, quiet: false, text }]);
+      return undefined;
+    }
+    return errors.writeFirst(text, this.sharing(errors));
   }
 
   /**
@@ -1162,19 +1257,25 @@ export class Output {
 
   /**
    * The destination an `onLog` hook writes to, with its stderr carried through this run's stderr
-   * order when that stream is a terminal, so a hook's line lands above the open regions. Each
-   * chunk joins stderr's order when the hook writes it and is acknowledged at once, so records a
-   * hook writes together stay together, ahead of any write core queues after them.
+   * order whenever it is the run's stderr, a terminal or not, so a hook's record keeps call order
+   * with the run's log lines, warnings, and progress lines, and on a terminal lands above the open
+   * regions. Each chunk is written as `writeLog` writes it when the hook writes it, and is
+   * acknowledged at once, so records a hook writes together stay together, ahead of any write core
+   * queues after them. A chunk with nothing waiting ahead of it reaches the stream in the call, and
+   * one written after an end goes straight to the stream.
    */
   logDestination(destination: DestinationFacts): DestinationFacts {
     const { stderr } = destination;
-    if (stderr !== this.host.stderr || !this.host.terminal.stderr.isTTY) {
+    if (stderr !== this.host.stderr) {
       return destination;
     }
     const carried = new Writable({
       write: (chunk: unknown, _encoding, done) => {
-        // The stream's own failure is the run's, recorded where the write was queued.
-        void handled(this.write(stderr, String(chunk)));
+        // The stream's own failure is the run's, recorded where the write was made.
+        const queued = this.writeLog(String(chunk));
+        if (queued !== undefined) {
+          void handled(queued);
+        }
         done();
       },
     });
@@ -1187,10 +1288,10 @@ export class Output {
 
   /**
    * Shows one log event as a log line on stderr, through the log-line view, when the run's
-   * verbosity shows its level. A failure event never shows, because the run reports the failure
-   * itself. The write is an output call no code observes, so a log-line view that throws is
-   * reported once the chain settles, and a stream that refuses the write is a broken destination.
-   * A view that returns the empty string writes nothing.
+   * verbosity shows its level, written as `writeLog` writes it. A failure event never shows,
+   * because the run reports the failure itself. The write is an output call no code observes, so a
+   * log-line view that throws is reported once the chain settles, and a stream that refuses the
+   * write is a broken destination. A view that returns the empty string writes nothing.
    */
   showLog(event: LogEvent): void {
     const line = logLineOf(event);
@@ -1203,7 +1304,7 @@ export class Output {
         'stderr',
         async (text) => {
           if (text !== '') {
-            await this.write(this.host.stderr, endsWithLineBreak(text) ? text : `${text}\n`);
+            await this.writeLog(endsWithLineBreak(text) ? text : `${text}\n`);
           }
         },
       ),

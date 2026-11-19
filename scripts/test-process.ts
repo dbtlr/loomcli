@@ -46,6 +46,18 @@ const sharedState = join(tmpdir(), 'loom-test-state');
 const sharedHome = join(tmpdir(), 'loom-test-home');
 
 /**
+ * The shell script that runs its arguments as one command with no core dump, replacing the shell, so
+ * the status or signal the command ends with is the process's own. A core dump is what SIGQUIT asks
+ * for, and a Bun process's dump spans gigabytes of reserved address space. `ulimit -c 0` stops a
+ * dump to a file, but where the kernel pipes dumps to a collector, as systemd-coredump and apport
+ * are installed on Linux CI runners, it streams the whole dump whatever the limit, except a limit of
+ * exactly one byte, which only `prlimit` can set. Where there is no `prlimit`, as on macOS,
+ * `ulimit -c 0` is enough.
+ */
+const withoutCoreDump =
+  'if command -v prlimit >/dev/null 2>&1; then exec prlimit --core=1 "$@"; else ulimit -c 0; exec "$@"; fi';
+
+/**
  * The environment a fixture runs in, which the harness builds instead of inheriting. From the
  * parent it takes only `PATH`, so a fixture finds the runtimes and programs the machine has, and the
  * temporary directory, so a path a test builds under `tmpdir()` is the one the fixture sees. The
@@ -153,6 +165,28 @@ export function invokeFromRemovedDirectory(
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
+}
+
+/**
+ * Runs one file as `invoke` does, with no core dump, for a fixture that ends itself with SIGQUIT,
+ * so the process ends with the signal at once rather than streaming a dump.
+ */
+export function invokeWithoutCoreDump(
+  file: URL,
+  args: string[] = [],
+  options: { env?: Record<string, string | undefined>; runtime?: string } = {},
+) {
+  const { env, runtime } = options;
+  const executable = runtimeExecutable(runtime ?? process.env.LOOM_TEST_RUNTIME ?? 'node');
+  const result = spawnSync(
+    'sh',
+    ['-c', withoutCoreDump, 'sh', executable, fileURLToPath(file), ...args],
+    { encoding: 'utf8', env: childEnvironment(env), timeout: fixtureTimeout },
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  return { status: result.status, stderr: result.stderr, stdout: result.stdout };
 }
 
 /** How the fixture ended: the status it resolved, or the signal that ended it, and its output. */

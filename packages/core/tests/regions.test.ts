@@ -1,4 +1,4 @@
-import { Application } from '@loomcli/core';
+import { Application, plugin } from '@loomcli/core';
 /*
  * Acceptance plan for the live region (docs/core/output.md#live-region).
  *
@@ -15,7 +15,9 @@ import { Application } from '@loomcli/core';
  * - Stdout. With stdout a terminal too, a result written while a region is drawn lands above the
  *   stack. With stdout piped, stdout receives the result alone and stderr's stack is untouched.
  * - Out of core. A fixture `onLog` hook that writes to its destination's `stderr` while a region is
- *   drawn lands above the stack.
+ *   drawn lands above the stack. Off a terminal, its write keeps call order with the run's own
+ *   writes to stderr, and reaches stderr in the call when nothing waits ahead of it, so a loop of
+ *   such writes holds no queued write and no stream listener per record.
  * - Input regions. A region redrawn on a timer stops changing while an input region is open and
  *   shows its latest frame once when the input region closes, and a region that closed meanwhile is
  *   in scrollback above the input region's last frame. A second input region's first draw resolves
@@ -172,6 +174,143 @@ test('records an onLog hook writes at once land above a lane line written after 
     'ℹ lane',
     'frame',
   ]);
+});
+
+test("off a terminal, an onLog hook's write to its destination's stderr keeps call order with the run's writes", async () => {
+  const hook = plugin('@fixture/hook', {
+    onLog: (event, destination) => {
+      destination.stderr?.write(`hook ${event.message}\n`);
+    },
+  });
+  const app = new Application('regions', { plugins: [hook] }).action(async ({ log, out }) => {
+    const lane = out.info('lane');
+    log.info('one');
+    await lane;
+    log.info('two');
+  });
+  const mock = mockProcess();
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(mock.stderr.text).toBe('ℹ lane\nhook one\nhook two\n');
+});
+
+test("off a terminal, an onLog hook's write reaches stderr in the call when nothing waits ahead of it", async () => {
+  const hook = plugin('@fixture/hook', {
+    onLog: (event, destination) => {
+      destination.stderr?.write(`hook ${event.message}\n`);
+    },
+  });
+  const mock = mockProcess();
+  const seen: string[] = [];
+  const app = new Application('regions', { plugins: [hook] }).action(({ log, out }) => {
+    log.info('one');
+    seen.push(mock.stderr.text);
+    void out.info('lane');
+    log.info('two');
+    seen.push(mock.stderr.text);
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect({ seen, stderr: mock.stderr.text }).toEqual({
+    seen: ['hook one\n', 'hook one\n'],
+    stderr: 'hook one\nℹ lane\nhook two\n',
+  });
+});
+
+test('off a terminal, a loop of onLog hook writes with nothing waiting ahead holds no write and no listener per record', async () => {
+  const hook = plugin('@fixture/hook', {
+    onLog: (event, destination) => {
+      destination.stderr?.write(`${event.message}\n`);
+    },
+  });
+  const mock = mockProcess();
+  const before: number[] = [];
+  const after: number[] = [];
+  const app = new Application('regions', { plugins: [hook] }).action(({ log }) => {
+    const listeners = () => [
+      mock.stderr.listenerCount('error'),
+      mock.stderr.listenerCount('close'),
+    ];
+    // The first record opens the run's stderr destination, whose one error listener stays.
+    log.debug('record');
+    before.push(...listeners());
+    for (let record = 1; record < 1000; record += 1) {
+      log.debug('record');
+    }
+    after.push(...listeners(), mock.stderr.text.length);
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  // Every record reached the stream inside the loop, so none waited in the queue.
+  expect(after).toEqual([...before, 'record\n'.length * 1000]);
+});
+
+test("on a terminal, an onLog hook's record waits until a streamed print ends its held line", async () => {
+  const hook = plugin('@fixture/hook', {
+    onLog: (event, destination) => {
+      destination.stderr?.write(`[REC] ${event.message}\n`);
+    },
+  });
+  const mock = mockProcess({
+    env: { NO_COLOR: '1', TERM: 'xterm' },
+    terminal: { columns: 40, rows: 24, streams: ['stdout', 'stderr'] },
+  });
+  const app = new Application('regions', { plugins: [hook] }).action(async ({ log, out }) => {
+    async function* text(): AsyncGenerator<string> {
+      yield 'part-a';
+      expect(mock.stdout.text).toBe('part-a');
+      log.info('during held line');
+      yield ' part-b';
+    }
+    await out.print(text());
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(mock.transcript.map(({ text }) => text).join('')).toBe(
+    'part-a part-b\n[REC] during held line\n',
+  );
+});
+
+test("on a shared terminal, an onLog hook's record waits behind a queued stdout write", async () => {
+  const hook = plugin('@fixture/hook', {
+    onLog: (event, destination) => {
+      destination.stderr?.write(`[REC] ${event.message}\n`);
+    },
+  });
+  const mock = mockProcess({
+    env: { NO_COLOR: '1', TERM: 'xterm' },
+    terminal: { columns: 40, rows: 24, streams: ['stdout', 'stderr'] },
+  });
+  const app = new Application('regions', { plugins: [hook] }).action(async ({ log, out }) => {
+    const printed = out.print('before');
+    log.info('after stdout');
+    await printed;
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  expect(mock.transcript.map(({ text }) => text).join('')).toBe('before\n[REC] after stdout\n');
+});
+
+test("on a terminal with a region, an onLog hook's record waits behind a write partway through its turn", async () => {
+  const hook = plugin('@fixture/hook', {
+    onLog: (event, destination) => {
+      destination.stderr?.write(`[REC] ${event.message}\n`);
+    },
+  });
+  const mock = mockProcess({
+    env: { NO_COLOR: '1', TERM: 'xterm' },
+    terminal: { columns: 40, rows: 24, streams: ['stdout', 'stderr'] },
+  });
+  const app = new Application('regions', { plugins: [hook] }).action(async ({ log, out }) => {
+    const region = out.region();
+    await region.draw('FRAME', { render: (text: string) => text });
+    const printed = out.print('X');
+    // Three ticks put the print partway through its turn: the region erased, the line not yet written.
+    for (let tick = 0; tick < 3; tick += 1) {
+      await Promise.resolve();
+    }
+    log.info('mid');
+    await printed;
+  });
+  await expect(app.run({ process: mock })).resolves.toBe(0);
+  const text = mock.transcript.map((write) => write.text).join('');
+  // The print's line comes before the record, and the region is drawn again after each.
+  expect(text).toBe('FRAME\r\u001B[JX\nFRAME\r\u001B[J[REC] mid\nFRAME\n');
 });
 
 test('an input region holds the other regions still while it is open', async () => {
