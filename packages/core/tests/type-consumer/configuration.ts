@@ -1,6 +1,7 @@
 import { Application, Command } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { toml } from '@loomcli/plugins/config/toml';
 import { z } from 'zod';
 
 // Every object key is optional outside an array item and a record's values.
@@ -19,6 +20,7 @@ const { plugin: configPlugin, values: config } = configuration({
   directory: { name: 'project', short: 'p' },
   env: 'APP_CONFIG',
   file: '.app.{toml,json}',
+  formats: [toml],
   notice: true,
   schema: optional,
   short: 'c',
@@ -55,6 +57,8 @@ const text = configuration({ schema: z.string() });
 const looseRequired = configuration({ schema: z.looseObject({ name: z.string() }) });
 // @ts-expect-error TS2375: A union at an object key is judged by each member.
 const union = configuration({ schema: z.object({ mode: kinds.optional() }) });
+// @ts-expect-error TS2741: Only the pack makes a reader, so an object written by hand lacks its brand.
+const handReader = configuration({ formats: [{ format: 'TOML' }], schema: optional });
 
 // A directory option named config would claim the spelling --config.
 // @ts-expect-error TS2322: A directory option named config would claim --config.
@@ -74,6 +78,7 @@ export {
   claimed,
   config,
   configPlugin,
+  handReader,
   looseConfig,
   looseRequired,
   nested,

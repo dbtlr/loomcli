@@ -43,6 +43,14 @@
       "types": "./dist/src/config/extension.d.ts",
       "import": "./dist/src/config/extension.js"
     },
+    "./config/toml": {
+      "types": "./dist/src/config/toml.d.ts",
+      "import": "./dist/src/config/toml.js"
+    },
+    "./config/yaml": {
+      "types": "./dist/src/config/yaml.d.ts",
+      "import": "./dist/src/config/yaml.js"
+    },
     "./dotenv": {
       "types": "./dist/src/dotenv/plugin.d.ts",
       "import": "./dist/src/dotenv/plugin.js"

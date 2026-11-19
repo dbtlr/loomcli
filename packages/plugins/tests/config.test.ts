@@ -26,7 +26,8 @@
  *   that does not parse names the line and column where it breaks, in the warning and in the
  *   `--config` failure.
  * - Formats. The extension chooses the parser: TOML, YAML, JSON with comments and trailing commas,
- *   and an extensionless or unknown extension as JSON. With several candidates in one directory the
+ *   and an extensionless or unknown extension as JSON. The fixture passes both readers;
+ *   config-readers.test.ts proves an application that passes none. With several candidates in one directory the
  *   first answers and one warning prints. A JSON run loads neither the TOML nor the YAML parser,
  *   proven in config-formats.test.ts. A broken TOML or YAML file, an empty YAML file, and a YAML
  *   file with a second document or a `!!binary` tag each print their warning when discovered and
@@ -1362,7 +1363,8 @@ const globFault = {
 };
 
 const listFault = {
-  correction: 'List only json, jsonc, toml, yaml, or yml in the braces, or use * for any of them.',
+  correction:
+    'List only json, jsonc, toml, yaml, or yml in the braces, or use * for every format the application reads.',
   findings: [{ call: 'configuration', mark: '0.file' }],
   rule: '@loomcli/plugins/config/file-pattern',
   sentence: 'Plugin "@loomcli/plugins/config" file lists an extension the plugin cannot read.',

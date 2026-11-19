@@ -29,6 +29,12 @@ export interface Configuration<Schema extends StandardSchemaV1, Directory extend
 export function configuration<const Schema extends StandardSchemaV1, const Directory extends string = never>(settings: ConfigurationSettings<Schema, Directory>): Configuration<Schema, Directory>;
 
 // @public @sealed
+export interface ConfigurationReader {
+    readonly [configurationReader]: true;
+    readonly format: ReaderFormat;
+}
+
+// @public @sealed
 export interface ConfigurationSchemaMustAcceptAnEmptyFile {
     readonly 'Make every key optional outside an array item or a record value': never;
 }
@@ -40,6 +46,7 @@ export interface ConfigurationSettings<Schema extends StandardSchemaV1, Director
     });
     readonly env?: string;
     readonly file?: string;
+    readonly formats?: readonly ConfigurationReader[];
     readonly notice?: boolean;
     readonly schema: Schema & EmptyFileGuard<Schema>;
     readonly short?: Short;
@@ -55,6 +62,9 @@ export interface DirectorySetting<Name extends string> {
 
 // @public
 export type EmptyFileGuard<Schema extends StandardSchemaV1> = EveryKeyOptional<Schema> extends true ? unknown : ConfigurationSchemaMustAcceptAnEmptyFile;
+
+// @public
+export type ReaderFormat = 'TOML' | 'YAML';
 
 // @public
 export type Scope = 'project' | 'user';

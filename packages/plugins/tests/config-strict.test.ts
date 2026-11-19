@@ -7,6 +7,8 @@ import type { InvocationOutcome, StandardSchemaV1 } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import type { ConfigurationSettings } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { toml } from '@loomcli/plugins/config/toml';
+import { yaml } from '@loomcli/plugins/config/yaml';
 import { mockProcess } from '@loomcli/testing';
 import { url } from '@loomcli/validators';
 import { number, object, optional, string } from 'valibot';
@@ -763,6 +765,7 @@ async function ranBroken({
 }: BrokenCase): Promise<Ran> {
   const config = configuration({
     file,
+    formats: [toml],
     schema: closed,
     ...(env === undefined ? {} : { env }),
     ...(strict === undefined ? {} : { strict }),
@@ -956,7 +959,12 @@ test('the broken-file failure is an InputError with one problem on --config and 
 });
 
 test('a broken YAML file in the user folder fails the run under strict, with its own clause and fix', async () => {
-  const config = configuration({ file: '.app.yaml', schema: closed, strict: true });
+  const config = configuration({
+    file: '.app.yaml',
+    formats: [yaml],
+    schema: closed,
+    strict: true,
+  });
   const root = mkdtempSync(join(tmpdir(), 'loom-strict-'));
   try {
     const work = join(root, 'work');

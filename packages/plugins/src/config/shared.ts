@@ -13,6 +13,7 @@ import { findFile } from './lookup.js';
 import type { UsableFile } from './lookup.js';
 import { ignoredValue, unknownKeyIssue, unknownKeyLine, valueLine } from './messages.js';
 import { withoutPointer } from './pointer.js';
+import type { ConfigurationReader } from './reading.js';
 import type { Reach } from './scopes.js';
 import { covers, coversRemoval, isStrict } from './strict.js';
 import type { Strictness } from './strict.js';
@@ -35,6 +36,8 @@ interface Shared<Schema extends StandardSchemaV1> {
   readonly notice: boolean;
   /** The scopes the lookup reads and the markers that end its walk. */
   readonly reach: Reach;
+  /** The readers of the formats beyond JSON the application reads. */
+  readonly readers: readonly ConfigurationReader[];
   readonly schema: Schema;
   /** What `strict` covers. */
   readonly strict: Strictness;
@@ -149,6 +152,7 @@ async function load<Schema extends StandardSchemaV1>(
       named: stringOption(options, 'config'),
       notice: shared.notice,
       reach: shared.reach,
+      readers: shared.readers,
       strict: isStrict(shared.strict),
     },
     { log, out, style },

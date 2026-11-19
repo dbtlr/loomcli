@@ -1,13 +1,19 @@
 import { DeclarationError } from '@loomcli/core';
 import type { DiagnosticRule } from '@loomcli/core';
 
-import { configFilePath, configFilePattern, configVariableName } from '../rules.js';
+import {
+  configFileFormat,
+  configFilePath,
+  configFilePattern,
+  configVariableName,
+} from '../rules.js';
 import { isVariableName } from '../variable-name.js';
+import { knownExtensions, readerFormatOf, readerName, readExtensions } from './extensions.js';
 import { configIdentity as identity, splitExtension } from './names.js';
+import type { ConfigurationReader } from './reading.js';
 
-/** The extensions a pattern may name, in the order `*` tries them. */
-const readable = ['toml', 'yaml', 'yml', 'json', 'jsonc'];
-const readableSet = new Set(readable);
+/** The extensions a brace list may list, whether or not the application passes their reader. */
+const listable = new Set(knownExtensions());
 
 /** The characters of glob syntax, which `file` holds only as the whole extension of its name. */
 const globSyntax = /[*?[\]{}]/u;
@@ -39,10 +45,23 @@ const strayGlob: FileFault = {
 };
 
 const unreadableExtension: FileFault = {
-  correction: 'List only json, jsonc, toml, yaml, or yml in the braces, or use * for any of them.',
+  correction:
+    'List only json, jsonc, toml, yaml, or yml in the braces, or use * for every format the application reads.',
   rule: configFilePattern,
   sentence: `Plugin "${identity}" file lists an extension the plugin cannot read.`,
 };
+
+/**
+ * The fault of a file pattern that names an extension whose format's reader the application does
+ * not pass, which names the reader to pass.
+ */
+function readerMissing(extension: string, reader: string): FileFault {
+  return {
+    correction: `Pass ${reader}, from @loomcli/plugins/config/${reader}, in formats.`,
+    rule: configFileFormat,
+    sentence: `Plugin "${identity}" file names ${extension} files, and formats holds no reader for them.`,
+  };
+}
 
 /** The fault of one `configuration(settings)` call, which rebuilds the call and marks its `file`. */
 function fileFault(settings: unknown, { correction, rule, sentence }: FileFault): DeclarationError {
@@ -66,18 +85,23 @@ function isRelativePath(path: string): boolean {
 
 /**
  * The candidates a glob extension names after a stem, or the fault it raises: `*` names every
- * readable extension, and a brace list names the extensions it lists, each at its first position.
+ * extension the application reads, its readers' and JSON's, and a brace list names the extensions
+ * it lists, each at its first position.
  */
-function extensionCandidates(stem: string, extension: string): readonly string[] | FileFault {
+function extensionCandidates(
+  stem: string,
+  extension: string,
+  readers: readonly ConfigurationReader[],
+): readonly string[] | FileFault {
   if (extension === '*') {
-    return readable.map((name) => `${stem}.${name}`);
+    return readExtensions(readers).map((name) => `${stem}.${name}`);
   }
   const items = braceList.exec(extension)?.groups?.items;
   if (items === undefined) {
     return strayGlob;
   }
   const listed = items.split(',');
-  if (!listed.every((name) => readableSet.has(name))) {
+  if (!listed.every((name) => listable.has(name))) {
     return unreadableExtension;
   }
   return [...new Set(listed)].map((name) => `${stem}.${name}`);
@@ -89,7 +113,10 @@ function extensionCandidates(stem: string, extension: string): readonly string[]
  * glob syntax is the whole extension of the last segment, the text after its last `.` unless that
  * `.` starts the name.
  */
-function patternCandidates(path: string): readonly string[] | FileFault {
+function patternCandidates(
+  path: string,
+  readers: readonly ConfigurationReader[],
+): readonly string[] | FileFault {
   if (!globSyntax.test(path)) {
     return [path];
   }
@@ -97,16 +124,53 @@ function patternCandidates(path: string): readonly string[] | FileFault {
   if (split === undefined || globSyntax.test(split.stem)) {
     return strayGlob;
   }
-  return extensionCandidates(split.stem, split.extension);
+  return extensionCandidates(split.stem, split.extension, readers);
+}
+
+/**
+ * The fault of the first candidate whose extension names a format the application passes no
+ * reader for, or `undefined` when the readers cover every candidate. A literal name meets it as a
+ * brace list does, since its extension locks its format.
+ */
+function unreadCandidate(
+  candidates: readonly string[],
+  readers: readonly ConfigurationReader[],
+): FileFault | undefined {
+  for (const candidate of candidates) {
+    const extension = splitExtension(candidate)?.extension;
+    const format = extension === undefined ? undefined : readerFormatOf(extension);
+    if (
+      extension !== undefined &&
+      format !== undefined &&
+      !readers.some((reader) => reader.format === format)
+    ) {
+      return readerMissing(extension, readerName(format));
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The candidates a relative path names, or the fault of the pattern rule, or else of the first
+ * candidate whose format has no reader among the readers passed.
+ */
+function judgedCandidates(
+  path: string,
+  readers: readonly ConfigurationReader[],
+): readonly string[] | FileFault {
+  const candidates = patternCandidates(path, readers);
+  return 'rule' in candidates ? candidates : (unreadCandidate(candidates, readers) ?? candidates);
 }
 
 /**
  * The candidates the settings' `file` names, judged at the call, or `undefined` when the settings
- * name no file and the source derives the default. `file` is read once. The path rule comes first,
- * then the pattern rule, and each fault marks `file`.
+ * name no file and the source derives the default. `readers` are the ones `formats` passes. `file`
+ * is read once. The path rule comes first, then the pattern rule, then the rule that each format
+ * the candidates name has its reader in `formats`, and each fault marks `file`.
  */
 export function fileCandidates(
   settings: { readonly file?: string } | undefined,
+  readers: readonly ConfigurationReader[],
 ): readonly string[] | undefined {
   const file = settings?.file;
   if (file === undefined) {
@@ -115,7 +179,7 @@ export function fileCandidates(
   if (!isRelativePath(file)) {
     throw fileFault(settings, notRelative);
   }
-  const candidates = patternCandidates(file);
+  const candidates = judgedCandidates(file, readers);
   if ('rule' in candidates) {
     throw fileFault(settings, candidates);
   }

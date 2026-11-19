@@ -18,6 +18,8 @@
  * - The bin reads the file under `strict: true` (ADR-0158): a file that does not parse, and a value
  *   the schema rejects, fail the command with code 2 instead of running on conventions, and a
  *   takeover such as `--help` reads no file. An unknown key stays ignored.
+ * - The bin passes no TOML or YAML reader (ADR-0196): `--config` naming a `.toml`, `.yaml`, or
+ *   `.yml` file fails with code 2, naming its format, and a file of any other name reads as JSON.
  */
 import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -313,4 +315,30 @@ test('an unknown key stays ignored, because the schema publishes no JSON Schema'
     stderr: '',
     stdout: 'Checked 1 fragment.\n',
   });
+});
+
+test('--config naming a TOML or YAML file fails, because the bin reads JSON alone, and any other name reads as JSON', async () => {
+  const directory = configuredPackage(
+    {},
+    {
+      '.changes/fix.md': '- Fix output.\n',
+      'loom.toml': '[paths]\n',
+      'loom.yml': 'paths: {}\n',
+      'other.conf': '{ "paths": {} }\n',
+    },
+  );
+  const unread: readonly (readonly [string, string])[] = [
+    ['loom.toml', 'TOML'],
+    ['loom.yml', 'YAML'],
+  ];
+  for (const [file, format] of unread) {
+    await expect(runLoom(directory, ['changelog', 'check', '--config', file])).resolves.toEqual({
+      status: 2,
+      stderr: `loom: Option "--config": File "${file}" is ${format}, which this application does not read. Supply a JSON file.\nRun "loom changelog check --help" to see the usage.\n`,
+      stdout: '',
+    });
+  }
+  await expect(
+    runLoom(directory, ['changelog', 'check', '--config', 'other.conf']),
+  ).resolves.toEqual({ status: 0, stderr: '', stdout: 'Checked 1 fragment.\n' });
 });

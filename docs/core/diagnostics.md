@@ -228,13 +228,17 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Configuration schema rejects an empty file.** A command-line application runs before its operator has written any configuration, so the configuration schema accepts an empty file. The plugin drops every value the schema rejects and validates again, and a schema that still reports an issue once every key is gone, such as a refinement that fails for an empty object, leaves the plugin no file to give the application.
 
+### @loomcli/plugins/config/file-format
+
+**Configuration file format without its reader.** The configuration plugin reads JSON itself, and TOML and YAML only through the readers an application passes in formats, so an application bundles only the parsers it reads with. A file whose extension names toml, yaml, or yml reads only when formats holds the reader of its format.
+
 ### @loomcli/plugins/config/file-path
 
 **Invalid configuration file path.** The configuration plugin looks for its file in the start directory, each of its ancestors, and the home directory, so file is a relative path whose segments each name a directory or a file.
 
 ### @loomcli/plugins/config/file-pattern
 
-**Invalid configuration file pattern.** The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: \* for any format the plugin reads, or a brace list of json, jsonc, toml, yaml, and yml, tried in the order listed.
+**Invalid configuration file pattern.** The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: \* for every format the application reads, which is json, jsonc, and the extensions of the readers it passes in formats, or a brace list of json, jsonc, toml, yaml, and yml, tried in the order listed.
 
 ### @loomcli/plugins/config/link-path
 

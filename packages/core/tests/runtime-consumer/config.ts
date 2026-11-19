@@ -1,12 +1,15 @@
 import { Application, processHandle } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { toml } from '@loomcli/plugins/config/toml';
+import { yaml } from '@loomcli/plugins/config/yaml';
 import { z } from 'zod';
 
-// The packed configuration plugin fills a bound option from a TOML, YAML, or JSON file.
+// The packed configuration plugin fills a bound option from a TOML, YAML, or JSON file, through the readers their own subpaths export.
 // The file is the one `--config` names, or the first candidate found in the home directory.
 const { plugin: configPlugin } = configuration({
   file: '.packed-config.{yaml,json}',
+  formats: [toml, yaml],
   schema: z.object({ greeting: z.object({ word: z.string().optional() }).optional() }),
   short: 'c',
 });

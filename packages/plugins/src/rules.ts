@@ -25,8 +25,15 @@ const configFilePath = diagnosticRule(`${packageName}/config/file-path`, {
 /** A configuration plugin `file` setting whose glob syntax is not a whole extension it can read. */
 const configFilePattern = diagnosticRule(`${packageName}/config/file-pattern`, {
   explanation:
-    "The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: * for any format the plugin reads, or a brace list of json, jsonc, toml, yaml, and yml, tried in the order listed.",
+    "The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: * for every format the application reads, which is json, jsonc, and the extensions of the readers it passes in formats, or a brace list of json, jsonc, toml, yaml, and yml, tried in the order listed.",
   headline: 'Invalid configuration file pattern',
+});
+
+/** A configuration plugin `file` setting that names a format whose reader the application does not pass. */
+const configFileFormat = diagnosticRule(`${packageName}/config/file-format`, {
+  explanation:
+    'The configuration plugin reads JSON itself, and TOML and YAML only through the readers an application passes in formats, so an application bundles only the parsers it reads with. A file whose extension names toml, yaml, or yml reads only when formats holds the reader of its format.',
+  headline: 'Configuration file format without its reader',
 });
 
 /** A configuration plugin `env` setting that is not an environment variable name. */
@@ -222,6 +229,7 @@ export {
   completionUnknownCompleter,
   dotenvVariableName,
   configEmptyFile,
+  configFileFormat,
   configFilePath,
   configFilePattern,
   configLinkPath,

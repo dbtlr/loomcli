@@ -22,6 +22,8 @@ import { Application } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import type { ConfigurationSettings } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { toml } from '@loomcli/plugins/config/toml';
+import { yaml } from '@loomcli/plugins/config/yaml';
 import { verbose } from '@loomcli/plugins/verbose';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
@@ -140,7 +142,7 @@ test('-vv names each place the lookup looked, in order, before the -v line', asy
 test('-vv names the candidates before the file found in its directory, and none after it', async () => {
   await inTree(async (tree) => {
     writeFileSync(join(tree.project, '.app.json'), '{"title":"x"}');
-    const settings: Settings = { file: '.app.{toml,json,yaml}' };
+    const settings: Settings = { file: '.app.{toml,json,yaml}', formats: [toml, yaml] };
     await expect(stderrOf(tree, ['-vv'], { settings })).resolves.toBe(
       lookedFor('.app.toml') + read('.app.json'),
     );

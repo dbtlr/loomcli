@@ -6,6 +6,7 @@ import { Application, plugin } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { yaml } from '@loomcli/plugins/config/yaml';
 import { mockProcess } from '@loomcli/testing';
 import { object, optional, string } from 'valibot';
 import { expect, test } from 'vite-plus/test';
@@ -56,7 +57,7 @@ async function stderrOfText(
   try {
     writeFileSync(join(root, name), text);
     const mock = mockProcess({ argv, cwd: root, env: { HOME: root } });
-    const config = configuration({ file: name, schema });
+    const config = configuration({ file: name, formats: [yaml], schema });
     // The plugin reads the file only for a run that links an option or opts in to the provider.
     await new Application('app', { plugins: [config.plugin, loud] })
       .option('state', {

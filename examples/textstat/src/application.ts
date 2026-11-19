@@ -4,6 +4,7 @@ import { Application, FatalError, override } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { configuration } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { toml } from '@loomcli/plugins/config/toml';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { helpCommand, helpInput } from '@loomcli/plugins/help/extension';
@@ -40,6 +41,7 @@ const textstatFile = z.object({
 // Its walk runs to the directory below home, as a lookup with no marker does.
 const { plugin: configPlugin } = configuration({
   file: '.textstat.{toml,json}',
+  formats: [toml],
   root: false,
   schema: textstatFile,
   short: 'c',

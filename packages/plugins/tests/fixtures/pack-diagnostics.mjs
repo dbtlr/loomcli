@@ -16,6 +16,7 @@ const schema = z.object({});
  * message holds, or `returned` for a call that throws none.
  */
 const scenarios = {
+  'config-format': () => configuration({ file: '.textstat.{toml,json}', schema }),
   'config-glob': () => configuration({ file: '*.json', schema }),
   'config-list': () => configuration({ file: '.textstat.{toml,ini}', schema }),
   'config-path': () => configuration({ file: '/etc/textstat.json', schema }),
