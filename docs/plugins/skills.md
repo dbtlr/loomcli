@@ -6,7 +6,7 @@ description: "The skills plugin: installing an application's agent skills global
 
 This page documents the skills plugin, which installs an application's agent skills globally or into a project, keeps them current, reports whether each is current, and removes them, and generates a reference for each Command a skill selects. An author installs it so coding agents can read the skills the application ships.
 
-```ts
+```ts sketch
 // @loomcli/plugins/skills
 import type { CommandGraph, Host, Log, Plugin } from '@loomcli/core';
 
@@ -76,7 +76,7 @@ export declare function commandReferences(graph: CommandGraph, settings: Command
 export declare function skillFolders(graph: CommandGraph, options?: SkillFoldersOptions): Promise<readonly SkillFolder[] | undefined>;
 ```
 
-```ts
+```ts sketch
 // @loomcli/plugins/skills/extension, declarations alone
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
@@ -96,14 +96,13 @@ skills/
 
 ```ts
 import { Application } from '@loomcli/core';
+import type { Command } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
 import { help } from '@loomcli/plugins/help';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import { refreshSkills, skills } from '@loomcli/plugins/skills';
 
-import { note } from './note.js';
-
-export const notes = new Application('notes', {
+export const notes = (note: Command) => new Application('notes', {
   description: 'Keep short notes in one file.',
   plugins: [
     help(),
@@ -273,7 +272,7 @@ A Command's file holds these blocks, in this order, each left out, heading and a
 
 The `note` Command of the application at the top of this page, with its `add` and `list` children:
 
-```ts
+```ts sketch
 import { Command, EX_TEMPFAIL, FatalError } from '@loomcli/core';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 import { skillCommand } from '@loomcli/plugins/skills/extension';
@@ -414,11 +413,14 @@ The declarations module, `@loomcli/plugins/skills/extension`, holds `skillComman
 ```ts
 import { commandReferences, skillFolders } from '@loomcli/plugins/skills';
 
-import { notes } from './application.js';
+import type { Application } from '@loomcli/core';
 
-const graph = notes.inspect();
-const folders = await skillFolders(graph); // [{ name: 'notes', files: [{ path: 'SKILL.md', ... }, ...] }]
-const references = commandReferences(graph, { commands: [[]], guidance: false }); // index.md, notes.md, ...
+export async function readSkills(notes: Pick<Application, 'inspect'>) {
+  const graph = notes.inspect();
+  const folders = await skillFolders(graph); // [{ name: 'notes', files: [{ path: 'SKILL.md', ... }, ...] }]
+  const references = commandReferences(graph, { commands: [[]], guidance: false }); // index.md, notes.md, ...
+  return { folders, references };
+}
 ```
 
 Two functions give a tool outside an install what an install writes, read from an Application the tool has loaded, without running a skills Command. A tool that writes or checks a skill's files calls `skillFolders`, as [`loom skills export`](../toolchain/skills.md) does to write a copy into a repository and [`assertSkillsMatch`](../libs/testing.md#assertskillsmatch) does to fail a test on a stale committed copy; a tool that documents the application's Commands calls `commandReferences`, as [`loom docs`](../toolchain/docs.md) does.

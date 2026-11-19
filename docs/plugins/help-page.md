@@ -228,6 +228,9 @@ The deprecated child `fetch` carries its message as the last fact of its row, an
 ## Epilogs
 
 ```ts
+import { Application, Command } from '@loomcli/core';
+import { helpCommand } from '@loomcli/plugins/help/extension';
+
 // The Application ends every page with its support link, and the stats group adds its own.
 new Application('jsonkit', {
   extensions: [helpCommand({ epilog: 'Report a bug at https://github.com/acme/jsonkit/issues.' })],
@@ -274,14 +277,22 @@ The document is *JSON*; see [the format](https://www.json.org/json-en.html).
 ```
 
 ```ts
-// examples/jsonkit/src/commands/get.ts, the help value; get.md holds the text above
+// examples/jsonkit/src/commands/get.ts
+// get.md holds the text above.
 import details from './get.md' with { type: 'text' };
+import { helpCommand } from '@loomcli/plugins/help/extension';
 
 helpCommand({
   details,
   examples: [{ command: 'get name -f doc.json' }, { command: 'get nested.deep.value -f doc.json' }],
   section: ['Document commands', 'Read'],
 });
+
+// examples/jsonkit/src/text.d.ts
+declare module '*.md' {
+  const text: string;
+  export default text;
+}
 ```
 
 A Command's `details` is Markdown, so an author writes paragraphs, lists, code, and links as they would in a README, inline or in a file of its own. [ADR-0077](../decisions/0077-help-details-are-markdown-that-help-renders-with-its-own-subset-parser.md) records the decision. The extended page renders a stated subset of Markdown with a parser the pack carries, which loads with the page view and needs no dependency. Text outside the subset, other than a thematic break, reads under the paragraph and inline rules. With jsonkit's `get` details in `get.md` above, `jsonkit get --help` has this text with color and modifiers disabled:
@@ -381,7 +392,7 @@ The page escapes each authored fragment with `style.escape` before styling or me
 
 ## Help wraps to the destination's columns
 
-```ts
+```ts sketch
 // No export changes. The default helpPage view reads its context's columns and lays the page
 // out with the context's wrap and expandTabs and core's pad, splitLines, and nowrap.
 import type { DeclaredView, ViewContext } from '@loomcli/core';

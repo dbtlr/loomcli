@@ -6,7 +6,7 @@ description: "The self-update plugin: updating an installed application and upda
 
 This page documents the self-update plugin, which replaces an installed application's binary with a verified release, and the update notices it can print. An author installs it so an operator can update the application in place.
 
-```ts
+```ts sketch
 // @loomcli/plugins/self-update
 import type { Host, Log, Plugin } from '@loomcli/core';
 
@@ -37,7 +37,7 @@ import { Application } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 
-export const notes = new Application('notes', {
+export const notes = (restartService: (path: string) => Promise<void>) => new Application('notes', {
   plugins: [help(), selfUpdate({ afterReplace: ({ path }) => restartService(path) })],
 });
 ```
@@ -108,6 +108,8 @@ $ notes add "Buy milk"
 ```
 
 ```ts
+import { selfUpdate } from '@loomcli/plugins/self-update';
+
 // The author turns notices off, or names a variable of the application's own beside NO_UPDATE_NOTIFIER
 selfUpdate({ notices: false });
 selfUpdate({ notices: { env: 'NOTES_NO_UPDATE_NOTICE' } });

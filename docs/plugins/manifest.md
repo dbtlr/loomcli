@@ -6,7 +6,7 @@ description: "The manifest plugin: the --manifest option, the JSON document it p
 
 This page documents the manifest plugin: the `--manifest` option, the JSON document it prints for the routed Command, and the `manifestCommand` extension that supplies details, examples, and declared failures. An author installs it so an agent can read how to invoke a Command before it does.
 
-```ts
+```ts sketch
 // @loomcli/plugins/manifest
 import type { BooleanOption, OptionGroup, Plugin, PluginOptions, ResultNode } from '@loomcli/core';
 
@@ -299,7 +299,7 @@ The manifest plugin prints, for the routed Command, a self-contained JSON projec
 
 `manifestCommand`'s published schema is a [Standard Schema](https://standardschema.dev) whose input is `ManifestCommandInput` and whose output is `ManifestCommandFacts`, so an author's type check loads no validation library's declarations. The pack validates with valibot inside the module, under the pack's shared line and Markdown rules, which [help's text rules](help.md#help-extensions) state and help's schema also uses. A declared failure's input holds the class, and its output holds the class's failure code and declared exit code, read by the schema.
 
-```ts
+```ts sketch
 // @loomcli/plugins/manifest/extension
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
@@ -357,7 +357,7 @@ The declarations module, `@loomcli/plugins/manifest/extension`, holds the collec
 
 ## Manifest failures
 
-```ts
+```ts sketch
 import { Command, EX_DATAERR, FatalError } from '@loomcli/core';
 import { manifestCommand } from '@loomcli/plugins/manifest/extension';
 

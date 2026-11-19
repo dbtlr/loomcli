@@ -6,7 +6,7 @@ description: "The log events core publishes from the log member of each context,
 
 This page states the log events core publishes from the `log` member of each context, the fields a `log` binds and the paths an Application redacts, the message templates they carry, the log lines `-v` shows, and the `onLog` hook through which a plugin observes them. An author calls `log` from an action or a middleware, the operator reads the log at `-v`, and the [logging plugin](../plugins/logging.md) writes the records.
 
-```ts
+```ts sketch
 interface ActionContext<Args, Options = {}, Result = unknown, Provided = {}> {
   readonly log: Log;
   // ...
@@ -45,11 +45,12 @@ interface LogDefect {
 ```
 
 ```ts
-// src/commands/index.ts, a Command whose action records what it did
+// src/commands/index.ts
 import { Command } from '@loomcli/core';
 
 import { readTranscripts } from '../transcripts.js';
 
+// The action records what it did.
 export const index = new Command('index')
   .argument('harness', { description: 'Name the harness whose transcripts to index.', required: true })
   .action(async ({ args, log }) => {
@@ -59,6 +60,12 @@ export const index = new Command('index')
     }
     log.info('Indexed {count} sessions.', { count: sessions.length, harness: args.harness });
   });
+
+// src/transcripts.ts
+export async function readTranscripts(harness: string) {
+  // Sample data stands in for reading the harness's transcripts.
+  return { sessions: ['session-1'], skipped: [`${harness}/untitled.jsonl`] };
+}
 ```
 
 Core gives author and plugin code a `log`, shows each call as a log line when the run's [verbosity](verbosity.md) asks for it, under [At -v](#at--v), and delivers it as a frozen log event to every installed plugin's [`onLog`](lifecycle-hooks.md#observing-log-events) hook. Core writes no log record of its own: the [logging plugin](../plugins/logging.md) is the first-party plugin that writes records. `out` tells the operator and `log` records, one call for each job, and an operator who types `-v` reads the record as it is made. [ADR-0069](../decisions/0069-core-hands-log-events-to-onlog-hooks-and-writes-no-log-record.md) records the events, and [ADR-0174](../decisions/0174-v-shows-the-log-through-message-templates-and-out-keeps-what-the-operator-is-told.md) the log lines and message templates.
@@ -84,11 +91,12 @@ A message is a [Message Template](https://messagetemplates.org), as Serilog and 
 ## Bound fields
 
 ```ts
-// src/commands/serve.ts, an action that binds the request's id to every event it logs for it
+// src/commands/serve.ts
 import { Command } from '@loomcli/core';
 
 import { answer, requests } from '../server.js';
 
+// The action binds the request's id to every event it logs for that request.
 export const serve = new Command('serve').action(async ({ log }) => {
   for await (const request of requests()) {
     const requestLog = log.with({ requestId: request.id });
@@ -96,6 +104,15 @@ export const serve = new Command('serve').action(async ({ log }) => {
     requestLog.info('Answered with {status}.', { status: await answer(request) });
   }
 });
+
+// src/server.ts
+export async function* requests() {
+  yield { id: 'r1', method: 'GET', path: '/' };
+}
+
+export async function answer(request: { path: string }) {
+  return request.path === '/' ? 200 : 404;
+}
 ```
 
 `log.with(fields)` returns a `Log` whose every event carries `fields`, as a pino or winston child logger does. Every `log` has it: the action's, a middleware's, a source's, a provider's, an `onFailure` and an `onEnvironment` hook's, a log destination's, and the self-update plugin's `afterReplace` and refresh contexts', which are an action's.
@@ -131,7 +148,7 @@ An Application names the field paths whose values no reader of a log event may s
 
 ## At -v
 
-```ts
+```ts sketch
 type LogLineLevel = Exclude<LogLevel, 'fatal'>;
 interface LogLineField {
   readonly name: string; // marked text, escaped

@@ -8,7 +8,7 @@ A result is the typed value a Command produces for its consumer, as distinct fro
 
 The block restates `View` from [Rendered output](output.md#rendered-output) beside the shapes and calls this page adds. The `views()` lines describe one method whose record type and presence follow the carried result: the implementation adds the member to the picked surface where a result is carried, so a declaration with none has no `views` member at all, and it may expose one signature per call with internal dispatch where overloads would make a rejection read as a complaint about the last overload.
 
-```ts
+```ts sketch
 interface View<Data> {
   render: (data: Readonly<Data>, context: ViewContext) => string;
   row?: undefined;
@@ -62,12 +62,18 @@ A view renders one whole value in one call, as [Rendered output](output.md#rende
 `out.render` accepts a row view with an iterable: its one signature takes a whole view over the data or a row view over a sequence of that view's rows, a generic sequence included, and data that is not a sequence, such as one row or rows that may be `undefined`, takes no row view. A row view written in the call, or returned by a pack view factory, takes its row type from the data. Where the data carries no row type, the row view states it, as a factory's type argument, `records<Row>({…})`, or a typed row view: under data typed `any`, under data whose type is a type parameter, such as a helper's `Source extends readonly Row[]`, and under inline rows whose literals the row view types as a union, such as `[{ variant: 'compact' }]` under a row view over `'compact' | 'extended'`, which state that type on the array instead. `out.render(rows, records)` renders `head`, then each row as the iterable yields it, then `tail`, and writes each piece in order on the call's destination. A synchronous or an asynchronous iterable is accepted. Core calls `row` for each item as it arrives, with a fresh reading of the destination's `columns` for each call, not inside the `out.render` call, and does not request the next item until the previous piece's write has completed, so a slow destination applies back-pressure to the source; a source that never ends never completes, which is the author's to avoid. The returned promise resolves when `tail` is written. A sequence call, under `out.render` with a row view or under `out.results` with either view shape, holds its place in its destination's order from the moment it is issued until its last piece is written, so a later call to the same destination, awaited or not, writes after the sequence, and the call-order rule of [Output](output.md) reads at the granularity of calls. One consequence is a hazard the author owns: a source that itself writes to the sequence's destination waits behind the sequence, which waits on the source, so such a write is issued before or after the sequence or to the other destination. A pending sequence is open output: the invocation does not complete, under the rule that successful completion requires output completion, until every sequence it issued has ended. This is the first step of the lane: an action renders through a table or records view from the plugin pack with no declaration, no `--format`, and no change to its stdout.
 
 ```ts
+import { Command } from '@loomcli/core';
 import { records } from '@loomcli/plugins/records';
 import { table } from '@loomcli/plugins/table';
 
-.action(async ({ out }) => {
+function* walk() {
+  yield { path: 'user.name', kind: 'string' };
+}
+
+const show = new Command('show').action(async ({ out }) => {
+  const rows = [{ source: 'notes.txt', count: 20 }];
   await out.render(rows, table({ columns: ['source', { key: 'count', header: 'Bytes', align: 'right' }] }));
-  await out.render(walk(document), records({ identifier: 'path', fields: ['path', 'kind'] }));
+  await out.render(walk(), records({ identifier: 'path', fields: ['path', 'kind'] }));
 });
 ```
 
@@ -90,6 +96,22 @@ export const count = new Command('count')
   .argument('files', { required: true, variadic: true })
   .rows<Row>({ views: { table: table({ columns: ['source', 'count'] }), json: json() } })
   .action(countFiles);
+
+// src/row.ts
+export interface Row { count: number; source: string }
+
+// src/actions/count-files.ts
+import { readFile } from 'node:fs/promises';
+import type { ActionHandler } from '@loomcli/core';
+import type { count } from '../commands/count.js';
+
+export const countFiles: ActionHandler<typeof count> = async ({ args, out }) => {
+  const rows = await Promise.all(args.files.map(async (source) => ({
+    source,
+    count: (await readFile(source)).length,
+  })));
+  await out.results(rows);
+};
 ```
 
 `views` is a record keyed by view name, and its values are views in the sense [Views](views.md) gives the word, reached by a name rather than by a reference. The first key is the default view, the one core renders when nothing selects another, and every key the record holds when the [formatter](../plugins/format.md)'s hook runs is a name `--format` accepts, so the names are unique by construction. A key is a bare token under the rule Application names meet and is not an integer-like string, because such a key does not keep its authored position, and the record holds at least one entry. Under `result<Value>` every entry is a `View<Value>`. Under `rows<Row>` an entry is a `View<readonly Row[]>`, which core buffers the whole sequence for, or a `RowView<Row>`, which core feeds as rows arrive. Core knows no view name of its own, not even `text`: `json()` and `jsonl()` are whole views the [formatter](../plugins/format.md) ships, with an optional `map` that reshapes what the view receives before encoding, the value under `result` and the collected rows under `rows`, and `jsonlRows()` is its row view, whose `map` reshapes each row. They render as ordinary views with the plugin uninstalled. Installing the plugin adds `--format` to every Command that declares a result and the two views to every record that lacks them, through its `onCommandAttach` hook, with `jsonlRows()` as the `jsonl` view under `rows`, so core writes each line as the row arrives.
@@ -98,7 +120,7 @@ A view states how its text encodes through its [media type](#media-types), never
 
 The `views()` call reshapes the views after the fact. It is published in every state on a declaration that carries a result, and never on one that carries none, so an importing application can add a wide table or a mapped `json` to a Command it did not author without touching its action. Its record takes the shape the declaration carries, so a row view under a value result is the same compile error there as in the declaration. It merges by key: an existing key is replaced in place and keeps its position, and a new key is appended. `default` names the key that becomes the default view, one of the keys the same call supplies, so a typo is a compile error; a default once named persists through later calls that name none, and until one is named the first key is the default. A merged record with no views fails where the result renders. Like `extend()`, `views()` returns a new immutable value. A result's view is replaced by name alone: the Application's override list reaches failures, lanes, and declared views by reference, and never a result's views, which carry no identity.
 
-```ts
+```ts sketch
 import { json } from '@loomcli/plugins/format';
 import { table } from '@loomcli/plugins/table';
 
@@ -113,7 +135,7 @@ The declaration is a graph fact. `inspect()` publishes `result` on every node, a
 
 ## Media types
 
-```ts
+```ts sketch
 interface View<Data> {
   // ...render and row, as under Row views...
   mediaType?: string; // such as 'application/json'; omitted means none
@@ -131,13 +153,13 @@ interface ResultNode {
 ```
 
 ```ts
+import { readFile } from 'node:fs/promises';
 import { Command } from '@loomcli/core';
 import type { View } from '@loomcli/core';
 import { json } from '@loomcli/plugins/format';
 import { table } from '@loomcli/plugins/table';
 
-import { countFiles } from '../actions/count-files.js';
-import type { Row } from '../row.js';
+interface Row { count: number; source: string }
 
 const csv: View<readonly Row[]> = {
   mediaType: 'text/csv',
@@ -148,7 +170,13 @@ const csv: View<readonly Row[]> = {
 export const count = new Command('count')
   .argument('files', { required: true, variadic: true })
   .rows<Row>({ views: { table: table({ columns: ['source', 'count'] }), csv, json: json() } })
-  .action(countFiles);
+  .action(async ({ args, out }) => {
+    const rows = await Promise.all(args.files.map(async (source) => ({
+      source,
+      count: (await readFile(source)).length,
+    })));
+    await out.results(rows);
+  });
 ```
 
 A view declares the media type of the text it writes, and a result publishes it by view name, so a reader learns how to parse a view's output from the graph rather than from the view's name. [ADR-0061](../decisions/0061-a-view-declares-its-media-type-and-a-result-publishes-it-by-view-name.md) records the decision.
@@ -169,7 +197,7 @@ The returned promise resolves when the last byte of the result is written and re
 
 A declared result is a promise the Command makes, and core holds the action to it from the moment the action runs. An action that returns normally without calling `out.results` fails with `ResultError`, exit 1, naming the Command. A failure raised before the call is that failure, because a failure is the outcome, not a missing result. A run cancelled under [Signals, cancellation, and shutdown](signals.md) raises no missing-result fault, because an action that reads `signal` and returns is the sanctioned path. A middleware that never dispatches raises none either, because the action never ran. A second call rejects with `ResultError`. An action that lets the rejection propagate fails with it, and one that catches it decides the outcome, as a middleware does with a second `next()`, under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). A second call no code awaits or attaches to has no catcher, so core reports its `ResultError` after the chain settles and returns 1, as it reports any output call no code observed under the [ordinary failure path](failures.md#the-ordinary-failure-path). `ResultError` extends `InternalError`, so an override of `InternalError` brands it and its default text carries the `Internal error: ` prefix; its `cause` is `undefined`, because it wraps no thrown value, it carries the Command's `path` and a `kind`, and an override keyed by the class itself reaches it alone.
 
-```ts
+```ts sketch
 class ResultError extends InternalError {
   readonly path: readonly string[];
   readonly kind: 'missing' | 'repeated';

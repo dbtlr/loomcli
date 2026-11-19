@@ -6,7 +6,7 @@ description: "The patch-console plugin: console writes routed through out, above
 
 This page documents the patch-console plugin, which keeps a `console` write from tearing a [live region](../core/output.md#live-region). An author installs it when a dependency writes to the console while the application draws a progress line, a question, or a frame of its own.
 
-```ts
+```ts sketch
 // @loomcli/plugins/patch-console
 import type { Plugin } from '@loomcli/core';
 
@@ -18,9 +18,9 @@ import { Application } from '@loomcli/core';
 import { patchConsole } from '@loomcli/plugins/patch-console';
 import { progress } from '@loomcli/prompts';
 
-import { migrate } from './database.js'; // calls console.log('applied 0042_users') for each migration
+// migrate calls console.log('applied 0042_users') for each migration.
 
-export const ship = new Application('ship', { plugins: [patchConsole()] }).action(async (context) => {
+export const ship = (migrate: () => Promise<void>) => new Application('ship', { plugins: [patchConsole()] }).action(async (context) => {
   const line = progress(context, { label: 'Migrating' });
   await migrate();
   await line.end('Migrated');

@@ -8,6 +8,8 @@ description: "The dotenv plugin: which variables the .env files set for a run, i
 Its identity is `@loomcli/plugins/dotenv`. It declares no options, middleware, configuration source, or Command.
 
 ```ts
+import { Application } from '@loomcli/core';
+
 import { dotenv } from '@loomcli/plugins/dotenv';
 
 const app = new Application('app', {

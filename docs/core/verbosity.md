@@ -8,7 +8,7 @@ This page states the core rule for verbosity: how an operator's `-v` and `-q` se
 
 An operator asks a run for more detail with `-v` or `-vv`, and for less with `-q`, as cargo and clap-verbosity-flag read them. `out` tells the operator, and `log` records: `-q` hides `out.info` and `out.success`, and `-v` lets the operator read the log, as uv does, with core showing each [log event](logging.md) at `debug` and above as a log line on stderr, and `-vv` adding `trace`. Core settles the run's verbosity once, right after graph build, and every write and log line after that follows it. [ADR-0090](../decisions/0090-an-operators-v-or-q-settles-the-runs-verbosity-right-after-graph-build.md) records the verbosity, and [ADR-0174](../decisions/0174-v-shows-the-log-through-message-templates-and-out-keeps-what-the-operator-is-told.md) the log lines.
 
-```ts
+```ts sketch
 interface Unmarked {
   interaction?: never;
   color?: never;

@@ -6,7 +6,7 @@ description: The release facts core delivers to an application, and development 
 
 This page states the release facts core delivers to an application through `host.release`, and how a development build reports them. An author reads it to learn how the running application was built, released, and installed.
 
-```ts
+```ts sketch
 interface ReleaseFacts {
   readonly build: 'source' | 'development' | 'distributed';
   readonly release?: {

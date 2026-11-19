@@ -6,7 +6,7 @@ description: "The MCP plugin: serving an application's opted-in Commands as MCP 
 
 This page documents the MCP plugin, which serves an application's opted-in Commands as tools of a Model Context Protocol server over stdio or streamable HTTP and registers that server with coding agents, and the private protocol package behind it. An author installs it so an agent client can call those Commands as tools.
 
-```ts
+```ts sketch
 // @loomcli/plugins/mcp
 import type { Plugin } from '@loomcli/core';
 
@@ -26,7 +26,7 @@ export interface McpSettings {
 export declare function mcp(settings?: McpSettings): Plugin;
 ```
 
-```ts
+```ts sketch
 // @loomcli/plugins/mcp/extension, declarations alone
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
@@ -59,8 +59,6 @@ import { Application, Command } from '@loomcli/core';
 import { mcp } from '@loomcli/plugins/mcp';
 import { mcpArgument, mcpCommand } from '@loomcli/plugins/mcp/extension';
 
-import { getValue } from './actions/get-value.js';
-
 export const get = new Command('get', {
   description: 'Read one value at a path.',
   extensions: [mcpCommand({ annotations: { openWorld: false, readOnly: true } })],
@@ -77,7 +75,16 @@ export const get = new Command('get', {
     stdin: true,
     type: 'content',
   })
-  .action(getValue);
+  .action(async ({ args, options, out }) => {
+    let value: unknown = JSON.parse(await options.file.text());
+    for (const key of args.path.split('.')) {
+      value = value !== null && typeof value === 'object'
+        ? Object.entries(value).find(([name]) => name === key)?.[1]
+        : undefined;
+    }
+    if (value === undefined) out.fatal('The path names no value. Supply a path that exists.');
+    await out.print(JSON.stringify(value));
+  });
 
 export const jsonkit = new Application('jsonkit', {
   description: 'Read and reshape one JSON document.',

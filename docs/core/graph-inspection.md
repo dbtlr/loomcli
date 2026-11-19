@@ -7,19 +7,22 @@ description: "Reading the built command graph with inspect(), locating a word wi
 `inspect()` returns the declared graph as plain data. It answers in every authoring state, as `run()` and `name` do, and it is synchronous. It applies every build rule `run()` applies before it reads a token, in the same order, except one: it does not pass a declared default or an implied value through its validator, because that call can be asynchronous. A fault an authoring call, a constructor, or an attach can detect has already thrown from that call, under [Declaration faults](declaration-faults.md), so `inspect()` never meets it. A rejected build throws the exported `DeclarationError`, which a consumer catches by class. `run()` reports the same message as a diagnostic with exit code 1. A run reports a default or an implied value its validator rejects, which neither `inspect()` nor `check()` reports. In a development build a validator whose converter fails is a build fault from `inspect()` and `run()` alike under `@loomcli/core/schema-converter-failed`; a distributed build reads its schema as `null` under both, as [Input schema](validation.md#input-schema) states. `inspect()` captures no host and reads only the baked release facts. An Application keeps the graph its first successful build produced for each build, so a later `inspect()` returns the same frozen graph and calls no lifecycle hook again, under [Reusing the built graph](#reusing-the-built-graph). It learns its build from the facts the build baked in, as [Release facts](release-facts.md) states, so `inspect()` in a source run or a development build runs the converter check. Malformed baked facts make `inspect()` throw the `InternalError` of `@loomcli/core/invalid-release-facts`, as [Release facts](release-facts.md) states. [`check()`](#checking-the-declarations) returns every fault a development run reports before routing, except a declared default or implied value its validator rejects, instead of throwing the first.
 
 ```ts
+import type { Application } from '@loomcli/core';
 import { DeclarationError } from '@loomcli/core';
 
-try {
-  const graph = app.inspect();
-  process.stdout.write(`${graph.root.children.length} commands\n`);
-} catch (error) {
-  if (error instanceof DeclarationError) {
-    process.stderr.write(`${error.message}\n`);
+export function summarizeGraph(app: Pick<Application, 'inspect'>) {
+  try {
+    const graph = app.inspect();
+    process.stdout.write(`${graph.root.children.length} commands\n`);
+  } catch (error) {
+    if (error instanceof DeclarationError) {
+      process.stderr.write(`${error.message}\n`);
+    }
   }
 }
 ```
 
-```ts
+```ts sketch
 interface CommandGraph {
   readonly name: string;
   readonly version: string;
@@ -172,8 +175,12 @@ type OptionNode =
 - The result is frozen, except each `default`'s wrapped value, which is the value the author declared, and each `schema`, which is the object the validator's converter returned, `configuration.schema` included. Its types are read-only, so a consumer reads it without copying it.
 
 ```ts
-const graph = app.inspect();
-const names = graph.root.children.map((child) => child.path.join(' '));
+import type { Application } from '@loomcli/core';
+
+export function commandNames(app: Pick<Application, 'inspect'>) {
+  const graph = app.inspect();
+  return graph.root.children.map((child) => child.path.join(' '));
+}
 ```
 
 ## Reusing the built graph
@@ -190,7 +197,7 @@ An Application keeps the graph a successful graph build produced, one for a [dev
 
 ## Locating a word
 
-```ts
+```ts sketch
 declare function locate(graph: CommandGraph, words: readonly string[]): WordPosition;
 
 type WordPosition =
@@ -240,7 +247,16 @@ interface TypedInputs {
 ```
 
 ```ts
-import { locate } from '@loomcli/core';
+import { Application, Command, locate } from '@loomcli/core';
+import { format, json } from '@loomcli/plugins/format';
+
+const keys = new Command('keys').visibleAlias('ls').action(() => {});
+const paths = new Command('paths').rows<string>({ views: { json: json() } }).action(({ out }) => out.results(['user']));
+const get = new Command('get')
+  .argument('path', { required: true })
+  .option('indent', { type: 'string' })
+  .action(() => {});
+const jsonkit = new Application('jsonkit', { plugins: [format()] }).command(keys).command(paths).command(get);
 
 const graph = jsonkit.inspect();
 locate(graph, ['g']); // { kind: 'command', command: <root>, argument: null, prefix: 'g' }
@@ -268,7 +284,7 @@ if (at.kind !== 'none') at.typed; // { options: Map { 'indent' => ['4'] }, argum
 
 ## Checking the declarations
 
-```ts
+```ts sketch
 import type { DeclarationError } from '@loomcli/core';
 
 declare class Application {
@@ -278,7 +294,7 @@ declare class Application {
 ```
 
 ```ts
-// src/application.test.ts: the assembly check reads every fault and fails the test with their diagnostics.
+// src/application.test.ts
 /// <reference types="bun" />
 import { test } from 'bun:test';
 import { assertAssembles } from '@loomcli/testing';
@@ -288,6 +304,11 @@ import { store } from './application.js';
 test('the application assembles', () => {
   assertAssembles(store);
 });
+
+// src/application.ts
+import { Application } from '@loomcli/core';
+
+export const store = new Application('notes').action(({ out }) => out.print('Ready.'));
 ```
 
 `check()` builds the graph with nothing run and returns every declaration fault a development run would report before routing, except a declared default or implied value its validator rejects, as values. The assembly check of `@loomcli/testing`, `assertAssembles`, reads them all without running an action, as the [testing reference](../libs/testing.md) describes. [ADR-0066](../decisions/0066-the-toolchain-acts-on-one-package-directory.md) records the decision, and [ADR-0099](../decisions/0099-an-assembly-check-from-loomcli-testing-replaces-loom-check.md) carries it forward with the assembly check.

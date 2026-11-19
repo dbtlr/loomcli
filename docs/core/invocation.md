@@ -41,7 +41,7 @@ The application can run again. Each call captures host facts, and builds from it
 
 ## Invocation by name
 
-```ts
+```ts sketch
 import type { ExitCode, FailureExitCode, FailureForm, LoomError, ProcessHandle, ProgressEvent } from '@loomcli/core';
 
 interface InvocationValues {
@@ -117,14 +117,14 @@ declare class Application<Paths, Plugins extends readonly Plugin[]> {
 ```
 
 ```ts
-import { Command } from '@loomcli/core';
+import { Command, type Application } from '@loomcli/core';
 
-import { jsonkit } from './application.js';
-
-// An embedding host runs `jsonkit keys user -f doc.json` with named values in place of argv.
-const outcome = await jsonkit.invoke(['keys'], { args: { path: 'user' }, options: { file: 'doc.json' } });
-if (outcome.status === 'completed') {
-  process.stdout.write(outcome.output);
+export async function showKeys(jsonkit: Pick<Application, 'invoke'>) {
+  // An embedding host runs `jsonkit keys user -f doc.json` with named values in place of argv.
+  const outcome = await jsonkit.invoke(['keys'], { args: { path: 'user' }, options: { file: 'doc.json' } });
+  if (outcome.status === 'completed') {
+    process.stdout.write(outcome.output);
+  }
 }
 
 // An action runs another Command of its own graph by name and reads its JSON view.
@@ -215,8 +215,20 @@ declare module '@loomcli/core' {
   }
 }
 
-// src/commands/report.ts: `invoke(['get'], { args: { path: 'user' }, options: { file: 'doc.json' } })`
-// compiles, and `invoke(['get'], { options: { flie: 'doc.json' } })` is rejected.
+// src/commands/get.ts
+import { Command } from '@loomcli/core';
+
+export const get = new Command('get')
+  .argument('path', { required: true })
+  .action(({ args, out }) => out.print(args.path));
+
+// src/commands/report.ts
+import { Command } from '@loomcli/core';
+
+export const report = new Command('report').action(async ({ invoke, out }) => {
+  const result = await invoke(['get'], { args: { path: 'user' }, options: { file: 'doc.json' } });
+  if (result.status === 'completed') await out.print(result.output);
+});
 ```
 
 - **Two Applications, two types.** An Application's type carries its Command paths, so two Applications that declare different Commands have different types. A variable or a parameter that holds either takes the `Application` annotation, whose calls are dynamic.

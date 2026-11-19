@@ -12,7 +12,7 @@ The page is derived from the graph and the variant by the [page rules](help-page
 
 Three descriptors are exported from `@loomcli/plugins/help/extension`, with their facts types `HelpCommandFacts`, `HelpInputFacts`, and `HelpArgumentFacts` and the types they use, `HelpSectionPath` and `CommandExample`, and all are help's own facts; every other fact the page prints is a core fact, except an option's configuration key, which help reads from the [configuration plugin](config.md)'s `configInput`. Each field is optional, and the descriptor's schema carries every rule below, so the call that receives a value that breaks one rejects it the way it rejects any extension value its schema rejects. The declared view is exported from `@loomcli/plugins/help/views`, a second declarations module, because it imports the page module: the page code loads with the plugin's entry module, the descriptor module stays declarations alone, and the middleware module holds nothing but the call. A graph fact that carries a marker character prints literally. The restyle escapes raw fragments before it adds style markers, and a replacement owns that escaping obligation.
 
-```ts
+```ts sketch
 // @loomcli/plugins/help/views
 import type { CommandGraph, CommandNode, DeclaredView } from '@loomcli/core';
 
@@ -43,7 +43,7 @@ const app = new Application('example', {
 
 Each descriptor's published schema is a [Standard Schema](https://standardschema.dev) over an exported facts interface, so an author's type check loads no validation library's declarations. The pack validates with valibot inside the module, under the text rules the next paragraph states.
 
-```ts
+```ts sketch
 // @loomcli/plugins/help/extension
 import type { Extension, StandardSchemaV1 } from '@loomcli/core';
 
@@ -148,8 +148,8 @@ A projection that wants help's prose imports the descriptor module and reads the
 import { readExtension } from '@loomcli/core';
 import type { CommandAttachHook } from '@loomcli/core';
 
-import { manifestCommand } from '../manifest/extension.js';
-import { helpCommand } from './extension.js';
+import { manifestCommand } from '@loomcli/plugins/manifest/extension';
+import { helpCommand } from '@loomcli/plugins/help/extension';
 
 export const attachHelp: CommandAttachHook = (command) => {
   const value = readExtension(command, helpCommand);
@@ -175,7 +175,10 @@ Help decides that its prose belongs in the [manifest](manifest.md), and it suppl
 ## Ordered help sections
 
 ```ts
+import { pipe, regex, strictTuple, string, union } from 'valibot';
+
 // The shared schema in the help declarations module.
+const line = pipe(string(), regex(/^[^\r\n]+$/u));
 const sectionPath = union([strictTuple([line]), strictTuple([line, line])]);
 ```
 
@@ -243,7 +246,7 @@ With no section membership or order fields, existing help pages keep their bytes
 
 ## Help variants
 
-```ts
+```ts sketch
 // @loomcli/plugins/help/views
 export type HelpVariant = 'compact' | 'extended';
 ```
@@ -277,7 +280,7 @@ The [formatter](format.md)'s `--format` carries the enum of its view names, so i
 
 ## Help and version restyle
 
-```ts
+```ts sketch
 // The inputs of the default help and version views.
 import type { DeclaredView } from '@loomcli/core';
 import type { HelpPage } from '@loomcli/plugins/help/views';
@@ -334,7 +337,7 @@ The formatter hook sets its description to `Select the output format, <default> 
 
 ## Help paging
 
-```ts
+```ts sketch
 // @loomcli/plugins/help
 export interface HelpSettings {
 	readonly paging?: boolean; // new: page a long help page through the operator's pager
@@ -370,7 +373,7 @@ A help page longer than the screen scrolls its masthead and usage out of sight. 
 
 ## The help Command
 
-```ts
+```ts sketch
 // @loomcli/plugins/help
 export interface HelpSettings {
 	readonly paging?: boolean;

@@ -109,6 +109,8 @@ bun build src/main.ts src/application.ts --outdir dist --splitting --target node
 
 ```ts
 // src/application.ts
+import { skills } from '@loomcli/plugins/skills';
+
 skills({ folder: new URL('../../../skills/', import.meta.url) }) // a monorepo's root skills/
 ```
 

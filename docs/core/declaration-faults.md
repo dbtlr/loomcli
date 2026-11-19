@@ -6,7 +6,7 @@ description: When core reports a declaration fault (at the call, at attach, at b
 
 A declaration fault is a mistake in how an author declares an Application, a Command, an option, or a plugin. This page states when core reports one (at the call, at attach, or at build), how its Developer Diagnostic reads, and the defects core reports at run time when author code throws or breaks a contract.
 
-```ts
+```ts sketch
 class DeclarationError extends LoomError {} // exit 1; its Developer Diagnostic, see Developer Diagnostics
 ```
 
@@ -101,7 +101,7 @@ One attach operation serves `Command.command()`, `Application.command()`, and ea
 
 ## Developer Diagnostics
 
-```ts
+```ts sketch
 interface DiagnosticRule {
   readonly identity: string;
   readonly headline: string;
@@ -150,7 +150,7 @@ class InternalError extends LoomError {
 import { DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
 import type { Plugin } from '@loomcli/core';
 
-import { packageName } from './constants.js';
+const packageName = '@acme/cache';
 
 const retryLimit = diagnosticRule(`${packageName}/retry-limit`, {
   headline: 'Retry limit out of range',

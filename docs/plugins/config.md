@@ -6,7 +6,7 @@ description: "The configuration plugin: one configuration file per run described
 
 This page documents the configuration plugin, which reads the one configuration file a run uses, validates it with the author's schema, hands the result to application code as a provided value, and fills the options linked to its keys. An author installs it so an operator can configure the application in a file.
 
-```ts
+```ts sketch
 // @loomcli/plugins/config
 import type { Extension, Plugin, PluginOptionValues, Provider, StandardSchemaV1, StringOption } from '@loomcli/core';
 
@@ -122,9 +122,7 @@ export const { plugin: configPlugin, values: config } = configuration({
   root: '.git',
   schema: collectorConfig,
 });
-```
 
-```ts
 // src/main.ts
 import { Application, Command } from '@loomcli/core';
 import { configInput } from '@loomcli/plugins/config/extension';
@@ -184,7 +182,7 @@ dir = "../transcripts"
 
 ## The schema
 
-```ts
+```ts sketch
 type Input<Schema extends StandardSchemaV1> = StandardSchemaV1.InferInput<Schema>;
 
 /** The keys a type declares, without its index signatures. */
@@ -220,6 +218,9 @@ type EmptyFileGuard<Schema extends StandardSchemaV1> = EveryKeyOptional<Schema> 
 - **A section the schema keeps as `unknown`.** A key whose schema accepts any value, such as `z.unknown().optional()`, has nothing to reject, so no issue names it, and its value reaches `provided.config` exactly as the file wrote it, nested tables and arrays included, unless the drop rule removes a value that holds it, such as its array item. This is how an author keeps their own parser for one section: the schema describes the rest of the file, and the action parses the section itself. The section adds nothing to the published JSON Schema beyond the key's name: it lists the key with the empty schema `{}`, which accepts any value, and describes nothing below it, so an editor offers no completion or validation there. Write `.optional()` on the key: zod treats a bare `z.unknown()` key as required, so the schema's types reject it under **An empty file passes**, and its published JSON Schema would list it as required.
 
   ```ts
+  import { configuration } from '@loomcli/plugins/config';
+  import { z } from 'zod';
+
   const { plugin, values } = configuration({
     schema: z.object({
       name: z.string().optional(),
@@ -324,7 +325,8 @@ Ignored sessions.sources[0].nmae in .collector.toml: Unknown key. Check its spel
 Some applications run where no operator reads `-v`, such as a service that systemd or launchd supervises. For them, `strict` makes the drop rule fail the run for the part of the file the author chooses. A value the schema rejects, an unknown key, or a linked option's value that `strict` covers fails the run with code 2, and one failure names every such key with its file. A file the run cannot use fails it too, under **A broken file**. The plugin drops everything the setting does not cover, as **Dropping values** states.
 
 ```ts
-// src/configuration.ts, for a collector that a supervisor runs, where nobody reads -v.
+// src/configuration.ts
+// A supervisor runs the collector, so nobody reads -v.
 import { configuration } from '@loomcli/plugins/config';
 import { toml } from '@loomcli/plugins/config/toml';
 import { z } from 'zod';
@@ -342,16 +344,14 @@ export const { plugin: configPlugin, values: config } = configuration({
   schema: collectorConfig,
   strict: ['delivery'],
 });
-```
 
-```ts
 // src/main.ts
-import { Application } from '@loomcli/core';
+import { Application, Command } from '@loomcli/core';
 import { configInput } from '@loomcli/plugins/config/extension';
 import { bytes, url } from '@loomcli/validators';
 
 import { configPlugin } from './configuration.js';
-import { sources } from './sources.js';
+const sources = new Command('sources').action(({ out }) => out.print('transcripts'));
 
 const app = new Application('collector', { plugins: [configPlugin] })
   .globalOption('min-bytes', { extensions: [configInput({ path: 'minBytes' })], type: 'string', validate: bytes() })

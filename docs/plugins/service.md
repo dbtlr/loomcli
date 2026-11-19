@@ -6,7 +6,7 @@ description: "The service plugin: running an application as a user service."
 
 This page documents the service plugin, which runs one of an application's Commands as a user service the platform supervises, and starts, stops, restarts, reports on, and removes it. An author installs it so an operator can keep the application running in the background.
 
-```ts
+```ts sketch
 // @loomcli/plugins/service
 import type { ActionContext, Host, Log, Plugin } from '@loomcli/core';
 
@@ -49,10 +49,12 @@ export declare function service(settings: ServiceSettings): Plugin;
 
 ```ts
 import { Application } from '@loomcli/core';
+import type { InvocationOutcome } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { service } from '@loomcli/plugins/service';
+import type { ServiceDetail } from '@loomcli/plugins/service';
 
-export const notes = new Application('notes', {
+export const notes = (healthRows: (outcome: InvocationOutcome) => readonly ServiceDetail[]) => new Application('notes', {
   description: 'Keep notes in sync.',
   plugins: [
     help(),

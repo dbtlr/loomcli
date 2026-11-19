@@ -80,6 +80,8 @@ A value letter takes the rest of its word whatever it holds, so `-mt` gives `met
 A string option declares `multiple: true` to collect every occurrence instead of rejecting the second one, or [`lastWins: true`](#last-occurrence-wins) to keep the last one. Boolean options and counted options cannot declare `multiple`; a [counted option](#counted-options) already counts every occurrence.
 
 ```ts
+import { Application } from '@loomcli/core';
+
 const app = new Application('select')
   .option('field', { multiple: true, short: 'F', type: 'string' })
   .action(({ options, out }) => {
@@ -201,6 +203,8 @@ Boolean options consume no value token. Assignments such as `--total=false` and 
 ## Counted options
 
 ```ts
+import { Application } from '@loomcli/core';
+
 const app = new Application('fetchit')
   .option('verbose', { short: 'v', type: 'count' })
   .action(({ options, out }) => {
@@ -220,6 +224,8 @@ const app = new Application('fetchit')
 ## Implied values
 
 ```ts
+import { Application } from '@loomcli/core';
+
 import { oneOf } from '@loomcli/validators';
 
 const app = new Application('copyit')
@@ -253,6 +259,8 @@ const app = new Application('copyit')
 ## Option aliases
 
 ```ts
+import { Application } from '@loomcli/core';
+
 const app = new Application('textstat')
   .option('min-bytes', { aliases: ['minimum'], default: '0', type: 'string' })
   .action(({ options, out }) => out.print(options['min-bytes']));
@@ -270,6 +278,8 @@ const app = new Application('textstat')
 ### Visible option aliases
 
 ```ts
+import { Application } from '@loomcli/core';
+
 const app = new Application('textstat')
   .option('min-bytes', {
     default: '0',
@@ -311,6 +321,8 @@ Each rule below is a `DeclarationError` with code 1 that throws at the moment [D
 A Command or the unnamed root declares relationships over its already-declared local options:
 
 ```ts
+import { Command } from '@loomcli/core';
+
 const exportCommand = new Command('export', { description: 'Export a document.' })
   .option('json', { description: 'JSON output.', type: 'boolean' })
   .option('yaml', { description: 'YAML output.', type: 'boolean' })
@@ -369,6 +381,8 @@ An extension might bind a configuration source, so uncertain groups remain runti
 `requires(option, ...needed)` declares that supplying `option` requires each option `needed` names, while each of them alone, or all of them without `option`, is accepted:
 
 ```ts
+import { Command } from '@loomcli/core';
+
 const login = new Command('login', { description: 'Sign in to the server.' })
   .option('user', { description: 'The account name.', type: 'string' })
   .option('password', { description: 'The account password.', env: 'LOGIN_PASSWORD', type: 'string' })
@@ -415,10 +429,13 @@ export const documentInput = {
 } satisfies ContentOption;
 
 // src/commands/get.ts
+import { Command } from '@loomcli/core';
+import { documentInput } from '../document-input.js';
+
 export const get = new Command('get', { description: 'Read one value at a path.' })
   .option('file', documentInput)
   .argument('path', { description: 'Dot path to read.', required: true })
-  .action(getValue);
+  .action(async ({ options, out }) => out.print(await options.file.text()));
 ```
 
 The jsonkit example's document Commands each declare `--file` this way.
@@ -435,17 +452,23 @@ export const output = optionSet({
 }).exclusive('json', 'yaml');
 
 // src/commands/list.ts
+import { Command } from '@loomcli/core';
+import { output } from '../output-options.js';
+
 export const list = new Command('list', { description: 'List the entries.' })
   .options(output)
   .action(({ options, out }) => out.print(options.yaml ? 'yaml' : 'json'));
 
 // src/commands/show.ts
+import { Command } from '@loomcli/core';
+import { output } from '../output-options.js';
+
 export const show = new Command('show', { description: 'Show one entry.' })
   .argument('id', { description: 'The entry to show.', required: true })
   .options(output)
   .option('wide', { description: 'Print every column.', type: 'boolean' })
   .exclusive('json', 'wide')
-  .action(showEntry);
+  .action(({ args, out }) => out.print(args.id));
 ```
 
 `optionSet(configs)` takes a record of option name to option settings, the configuration `option()` takes, and returns an `OptionSet`. `options(set)` on a Command, or on the Application for the root, declares each of the set's options as a local option, then each of its groups. The action reads each option under `options` with the type one `option()` call gives it, so `options.json` above is a `boolean` in both actions.

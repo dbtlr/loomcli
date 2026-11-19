@@ -6,7 +6,7 @@ description: "The verbose plugin: the -v and -q counted options."
 
 This page documents the verbose plugin's options, `-v` and `-q`, which let the operator ask a run for more detail or less. [Verbosity](../core/verbosity.md) states the core rule for how core settles the run's verbosity.
 
-```ts
+```ts sketch
 // @loomcli/plugins/verbose
 import type { Plugin, PluginOptions } from '@loomcli/core';
 

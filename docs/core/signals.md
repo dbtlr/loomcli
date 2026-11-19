@@ -19,9 +19,9 @@ import { join } from 'node:path';
 
 import { Command } from '@loomcli/core';
 
-import { convertInto } from './convert.js';
-
-export const convert = new Command('convert', { description: 'Convert every file in a folder.' }).action(
+export const convert = (
+  convertInto: (scratch: string, options: { signal: AbortSignal }) => Promise<void>,
+) => new Command('convert', { description: 'Convert every file in a folder.' }).action(
   async ({ host, onShutdown, signal }) => {
     const scratch = mkdtempSync(join(host.tmpdir, 'convert-'));
     const remove = () => {
@@ -53,7 +53,7 @@ Work that must happen at the moment of cancellation, such as drawing a cancelled
 
 The signal decides the code whatever the action did afterward, because a script that sees 0 after an interrupt carries on as if the work finished. Core aborts the private signal with a reason it owns, the exported `CancellationReason`, where `cause` carries the caller's own `signal.reason` when the caller aborted and the failed write's error when the pipe closed, so a middleware reads `source` and never infers a signal name. An API that rejects with `signal.reason`, as `fetch` does, throws that reason itself; a thrown value that is the reason, or an error named `AbortError`, is silent. Any other failure after cancellation is rendered as usual, and the code stays the signal's. A first cause that arrives after the chain has settled, while core is rendering a failure or finishing output, still cancels the run and decides its code. One rule orders every code: a cancelled run, as defined above, resolves its cancellation code, and a broken failure view, `onFailure` hook, or destination in that run is reported as text without changing it; otherwise a broken failure view, `onFailure` hook, or destination forces 1 over the primary outcome, the accepted view rule; otherwise the outcome the chain and the action settle with decides, under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md).
 
-```ts
+```ts sketch
 interface CancellationReason {
   readonly source: 'SIGINT' | 'SIGTERM' | 'SIGHUP' | 'SIGQUIT' | 'caller' | 'action' | 'closed-pipe';
   readonly cause?: unknown;
@@ -62,7 +62,7 @@ interface CancellationReason {
 
 ## The shutdown
 
-```ts
+```ts sketch
 interface ApplicationOptions {
   // ...
   readonly shutdown?: {
@@ -95,7 +95,7 @@ The rules:
 
 ## onShutdown
 
-```ts
+```ts sketch
 interface ShutdownEvent {
   /** The signal that ended the process, or `'exit'` when it ended on its own. */
   readonly cause: 'SIGHUP' | 'SIGINT' | 'SIGQUIT' | 'SIGTERM' | 'exit';
@@ -146,7 +146,7 @@ export function hideCursor(stream: NodeJS.WriteStream): () => void {
 
 ## Suspend and resume
 
-```ts
+```ts sketch
 type OnSuspend = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 type OnResume = <Returned>(handler: () => Synchronous<Returned>) => () => void;
 
@@ -163,6 +163,7 @@ export declare const onResume: OnResume;
 ```
 
 ```ts
+// src/view.ts
 import { Command } from '@loomcli/core';
 
 import { openViewer } from './viewer.js';
@@ -176,6 +177,18 @@ export const view = new Command('view', { description: 'Page through a log.' }).
     await viewer.closed(signal);
   },
 );
+
+// src/viewer.ts
+import type { Host } from '@loomcli/core';
+
+// Stub for the application's terminal viewer.
+export function openViewer(_host: Host) {
+  return {
+    async closed(_signal: AbortSignal) {},
+    enterScreen() {},
+    leaveScreen() {},
+  };
+}
 ```
 
 `SIGTSTP`, which Ctrl-Z sends from a cooked terminal, suspends the process, and `SIGCONT`, which `fg` sends, resumes it.
@@ -190,7 +203,7 @@ export const view = new Command('view', { description: 'Page through a log.' }).
 
 ## Raw-mode readers
 
-```ts
+```ts sketch
 interface InterruptKeys {
   /**
    * What the raised signals do to the process: `'ending'` when Ctrl-C or Ctrl-\ raised its signal,
@@ -209,6 +222,7 @@ export declare function raiseInterruptKeys(
 ```
 
 ```ts
+// src/pick.ts
 import { Command, raiseInterruptKeys } from '@loomcli/core';
 
 import { openPicker } from './picker.js';
@@ -225,6 +239,20 @@ export const pick = new Command('pick', { description: 'Pick a branch.' }).actio
   }
   picker.close();
 });
+
+// src/picker.ts
+import type { Host } from '@loomcli/core';
+
+// Stub for the application's raw-mode picker.
+export function openPicker(_host: Host) {
+  return {
+    close() {},
+    async *keys() {
+      yield 'main';
+    },
+    type(_text: string) {},
+  };
+}
 ```
 
 In raw mode the terminal sends a key as a byte instead of a signal, so a reader that reads keys from its signal source's own terminal, `process.stdin` for the real process, raises the signal the key stands for on that signal source through [`host.raise`](host.md#host-facts): `SIGINT` for Ctrl-C (0x03), `SIGQUIT` for Ctrl-\ (0x1c), and `SIGTSTP` for Ctrl-Z (0x1a). A key then means at a question what it means at a cooked terminal: Ctrl-C starts the shutdown, and Ctrl-Z suspends. `raiseInterruptKeys(context, text)` applies this rule to what one read returned, and core's own readers call it: the [background query](background.md) and the [prompts library](../libs/prompts.md)'s questions. A reader an author writes calls it with its action's context.
@@ -261,7 +289,7 @@ A live `run()` asks from the moment it is called, before its first await, becaus
 
 An action, a middleware, or a loader that throws or rejects takes the [ordinary failure path](failures.md#the-ordinary-failure-path), and an author's catch is final under [ADR-0097](../decisions/0097-one-ordinary-failure-path-where-an-authors-catch-is-final.md). Cancellation is the exception, because it is the run's state and not a caught failure: a cancelled run resolves its cancellation code even when code catches the cancellation and returns, since the first cause to abort the run signal fixes the reason and the code. An author's catch decides a failure's outcome, not whether the run was cancelled, and a broken failure view, `onFailure` hook, or destination in a cancelled run is reported as text without changing the code. A handler's failure follows [A handler that fails](#onshutdown).
 
-```ts
+```ts sketch
 type ExitCode = 0 | 1 | 2 /* … every whole number through */ | 255; // 0 through 255
 ```
 

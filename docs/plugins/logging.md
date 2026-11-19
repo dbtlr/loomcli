@@ -6,7 +6,7 @@ description: "The logging plugin: Destinations with independent levels, file rot
 
 This page documents the logging plugin, which writes core's log events as JSONL records to rotating files and stderr, each with its own level. An author installs it to keep a record of what an application did.
 
-```ts
+```ts sketch
 // @loomcli/plugins/logging
 import type { LogLevel, Plugin } from '@loomcli/core';
 
@@ -52,7 +52,7 @@ export declare class LoggingError extends Error {
 export declare function logging(settings?: LoggingSettings): Plugin;
 ```
 
-```ts
+```ts sketch
 // @loomcli/plugins/logging/extension
 import type { Extension, Host, StandardSchemaV1 } from '@loomcli/core';
 

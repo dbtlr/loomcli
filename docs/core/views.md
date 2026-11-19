@@ -6,7 +6,7 @@ description: "The view registry: how a plugin declares a view, how an applicatio
 
 Every byte core or a plugin renders passes through one registry of views, except the line a [failure encoder](failure-views.md#failure-encoders) writes for a failed run in place of the failure's view. A failure diagnostic, a semantic lane message, a help page, and a version line each render through a declared view, and an application replaces the function behind any of them through the `views` option. The registry has one override surface and one resolution, so branding a plugin's page and branding a failure class are the same call.
 
-```ts
+```ts sketch
 interface DeclaredViewBrand {
   readonly [declaredView]: true; // declaredView is an unexported unique symbol, as on ExtensionValue
 }
@@ -44,12 +44,13 @@ A declared view is exported from a declarations module of the plugin that declar
 
 ```ts
 import { Application, InputError, override } from '@loomcli/core';
+import type { FailureView, View } from '@loomcli/core';
 import { help } from '@loomcli/plugins/help';
 import { helpPage } from '@loomcli/plugins/help/views';
 
-import { brandedPage, inputProblems } from './views.js';
+import type { HelpPage } from '@loomcli/plugins/help/views';
 
-export const jsonkit = new Application('jsonkit', {
+export const jsonkit = (brandedPage: View<HelpPage>, inputProblems: FailureView<InputError>) => new Application('jsonkit', {
   plugins: [help()],
   views: [override(InputError, inputProblems), override(helpPage, brandedPage)],
 });

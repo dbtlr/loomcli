@@ -13,6 +13,7 @@ const compiler = join(dirname(require.resolve('typescript/package.json')), types
 const { version } = typescript;
 const zod = require('zod/package.json');
 const { devDependencies } = require('../../../package.json');
+const pluginsManifest = require('../../plugins/package.json');
 const packageManager = process.env.npm_execpath;
 assert.ok(packageManager, 'Run this check through pnpm run check:types.');
 
@@ -43,8 +44,13 @@ async function compile(cwd, keep = false) {
   return result;
 }
 
-/** The authoring skill's Markdown, whose `ts` blocks each compile as a module of their own. */
-const skillFolder = join(root, 'packages/loom/skills/loom');
+const exampleFolders = [
+  'packages/loom/skills/loom',
+  'docs/core',
+  'docs/plugins',
+  'docs/libs',
+  'docs/toolchain',
+];
 
 /** Every Markdown file under a folder, as absolute paths in a stable order. */
 async function markdownUnder(folder) {
@@ -61,46 +67,177 @@ async function markdownUnder(folder) {
 }
 
 /**
- * The blocks fenced `ts` in a Markdown text, each with the 1-based line its first code line stands
- * on. A block ends at the next line that closes its fence: a fence of at least as many backticks,
- * indented up to three spaces, as CommonMark closes one.
+ * The lines of a page that open a TypeScript fence `tsBlocks` does not read: one inside a list item
+ * or a block quote, indented four spaces or more, fenced with tildes, or tagged `typescript`, `tsx`,
+ * `mts`, or `cts`. Such a block would be skipped without a word, so the check names it instead.
  */
+function strayFences(text) {
+  const stray = [];
+  let close = undefined;
+  for (const [index, line] of text.split(/\r?\n/u).entries()) {
+    // A fence inside another fenced block, such as a doc comment's example, is that block's text.
+    if (close === undefined) {
+      if (isUnreadTypeScriptFence(line)) {
+        stray.push(index + 1);
+      }
+      const margin = /^ {0,3}(?<marks>`{3,}|~{3,})/u.exec(line);
+      if (margin) {
+        const { marks } = margin.groups;
+        close = new RegExp(`^ {0,3}${marks}${marks[0]}*\\s*$`, 'u');
+      }
+    } else if (close.test(line)) {
+      close = undefined;
+    }
+  }
+  return stray;
+}
+
+/** Whether a line opens a TypeScript fence that `tsBlocks` does not read. */
+function isUnreadTypeScriptFence(line) {
+  const fence =
+    /^(?<lead>[\s>]*(?:(?:[-*+]|\d+[.)])\s+)?)(?<marks>`{3,}|~{3,})(?<gap>\s*)(?<tag>[A-Za-z]+)?(?<rest>.*)$/u.exec(
+      line,
+    );
+  if (!fence || !['cts', 'mts', 'ts', 'tsx', 'typescript'].includes(fence.groups.tag ?? '')) {
+    return false;
+  }
+  const { gap, lead, marks, rest, tag } = fence.groups;
+  const read =
+    /^ {0,3}$/u.test(lead) &&
+    marks.startsWith('`') &&
+    gap === '' &&
+    tag === 'ts' &&
+    /^(?: sketch)?\s*$/u.test(rest);
+  return !read;
+}
+
 function tsBlocks(text) {
   const blocks = [];
+  let number = 0;
   let open = undefined;
-  for (const [index, line] of text.split('\n').entries()) {
+  for (const [index, line] of text.split(/\r?\n/u).entries()) {
     if (open === undefined) {
-      const fence = /^(?<fence>`{3,})ts\s*$/u.exec(line)?.groups?.fence;
-      if (fence !== undefined) {
-        open = { code: [], fence, line: index + 2 };
+      const match = /^(?<indent> {0,3})(?<fence>`{3,}|~{3,})(?<info>.*)$/u.exec(line);
+      if (match) {
+        const { fence, indent, info } = match.groups;
+        const backticks = fence.startsWith('`');
+        if (!backticks || !info.includes('`')) {
+          const tag = info.trimEnd();
+          open = { block: undefined, close: new RegExp(`^ {0,3}${fence}${fence[0]}*\\s*$`, 'u') };
+          if (backticks && (tag === 'ts' || tag === 'ts sketch')) {
+            number += 1;
+            if (tag === 'ts') {
+              open.block = { code: [], indent: indent.length, line: index + 2, number };
+              blocks.push(open.block);
+            }
+          }
+        }
       }
-    } else if (new RegExp(`^ {0,3}${open.fence}\`*\\s*$`, 'u').test(line)) {
-      blocks.push({ code: `${open.code.join('\n')}\n`, line: open.line });
+    } else if (open.close.test(line)) {
       open = undefined;
-    } else {
-      open.code.push(line);
+    } else if (open.block !== undefined) {
+      const leading = /^ */u.exec(line)[0].length;
+      open.block.code.push(line.slice(Math.min(open.block.indent, leading)));
     }
   }
   return blocks;
 }
 
-/**
- * Writes each `ts` block of the authoring skill to a module of its own in a folder, and answers
- * where each came from, by the module's file name.
- */
-async function writeSkillExamples(folder) {
-  const origins = new Map();
-  for (const file of await markdownUnder(skillFolder)) {
-    const blocks = tsBlocks(await readFile(file, 'utf8'));
-    for (const [index, block] of blocks.entries()) {
-      const name = `example-${String(origins.size + 1).padStart(3, '0')}.ts`;
-      await writeFile(join(folder, name), block.code);
-      const markdown = relative(root, file);
-      origins.set(name, `${markdown}, block ${index + 1} (line ${block.line})`);
+function exampleFiles(lines, origin) {
+  const files = [];
+  const marker = /^\/\/ (?<path>(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.(?:[cm]?ts|json))\s*$/u;
+  if (!marker.test(lines[0] ?? '')) {
+    return [{ lines, offset: 0, path: 'example.ts' }];
+  }
+  for (const [index, line] of lines.entries()) {
+    const path = marker.exec(line)?.groups.path;
+    if (path === undefined) {
+      files.at(-1).lines.push(line);
+    } else {
+      assert.ok(!files.some((file) => file.path === path), `${origin} repeats the file ${path}.`);
+      files.push({ lines: [], offset: index + 1, path });
     }
   }
-  assert.ok(origins.size > 0, 'The authoring skill holds no ts blocks to compile.');
-  return origins;
+  return files;
+}
+
+const exampleCompilerOptions = {
+  module: 'NodeNext',
+  moduleDetection: 'force',
+  moduleResolution: 'NodeNext',
+  noEmit: true,
+  skipLibCheck: true,
+  strict: true,
+  target: 'ES2022',
+  // TypeScript 7 loads no @types package that a configuration does not list.
+  types: ['bun', 'node'],
+};
+
+async function compileExamples(folder, pages) {
+  const projects = new Map();
+  let count = 0;
+  for (const page of pages) {
+    const markdown = relative(root, page);
+    const text = await readFile(page, 'utf8');
+    const stray = strayFences(text);
+    if (stray.length > 0) {
+      throw new Error(
+        `${markdown}:${stray[0]}: check:types reads only a \`\`\`ts fence at the margin. Write the example as one, or mark it \`\`\`ts sketch.`,
+      );
+    }
+    const blocks = tsBlocks(text);
+    for (const block of blocks) {
+      const { number } = block;
+      const files = exampleFiles(block.code, `${markdown}, block ${number} (line ${block.line})`);
+      const name = `example-${++count}`;
+      // An augmentation or a declaration script can change the types seen by other examples.
+      const isolated = files.some(
+        ({ lines, path }) =>
+          /\.d\.[cm]?ts$/u.test(path) ||
+          /\bdeclare\s+(?:global\b|module\s+['"])/u.test(lines.join('\n')),
+      );
+      const project = isolated ? join(folder, name) : join(folder, 'shared');
+      const directory = join(project, isolated ? 'files' : name);
+      if (!projects.has(project)) {
+        projects.set(project, new Map());
+      }
+      const origins = projects.get(project);
+      for (const file of files) {
+        const path = join(directory, file.path);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, `${file.lines.join('\n')}\n`);
+        origins.set(relative(project, path), { block, file, markdown, number });
+      }
+    }
+  }
+
+  assert.ok(count > 0, 'No ts examples to compile.');
+  let output = '';
+  let status = 0;
+  for (const [project, origins] of projects) {
+    await writeFile(
+      join(project, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: exampleCompilerOptions,
+        include: ['**/*.ts', '**/*.mts', '**/*.cts'],
+      }),
+    );
+    const result = await compile(project);
+    status ||= result.status;
+    output += result.output.replaceAll(
+      /^(?<path>.+)\((?<line>\d+),(?<column>\d+)\):/gmu,
+      (site, path, line, column) => {
+        const origin = origins.get(path);
+        if (origin === undefined) {
+          return site;
+        }
+        const { block, file, markdown, number } = origin;
+        const markdownLine = block.line + file.offset + Number(line) - 1;
+        return `${markdown}:${markdownLine}:${column} (block ${number}, starts at line ${block.line}):`;
+      },
+    );
+  }
+  return { count, output, status };
 }
 
 const source = fileURLToPath(new URL('type-consumer', import.meta.url));
@@ -144,10 +281,12 @@ try {
         '@loomcli/prompts': 'file:./prompts.tgz',
         '@loomcli/testing': 'file:./testing.tgz',
         '@loomcli/validators': 'file:./validators.tgz',
+        '@opentelemetry/api-logs': pluginsManifest.devDependencies['@opentelemetry/api-logs'],
         // The authoring skill's examples import bun:test, whose types a consumer installs too.
         '@types/bun': devDependencies['@types/bun'],
         // A consumer installs its own Node types, which core's declarations type-check against.
         '@types/node': devDependencies['@types/node'],
+        valibot: pluginsManifest.dependencies.valibot,
         // The authoring skill's examples import a test runner, vitest or bun:test.
         vitest: devDependencies.vitest,
         zod: zod.version,
@@ -214,33 +353,41 @@ const read = new Command('read').action(handler).extend();
     assert.notEqual(rejected.status, 0, 'A circular registration or action anchor compiled.');
     assert.match(rejected.output, diagnostic);
   }
-  // The authoring skill's examples compile against the packed libraries, one module for each block.
-  const examples = join(temporary, 'skill-examples');
-  await mkdir(examples);
-  const origins = await writeSkillExamples(examples);
-  await writeFile(
-    join(examples, 'tsconfig.json'),
-    JSON.stringify({
-      compilerOptions: {
-        module: 'NodeNext',
-        moduleDetection: 'force',
-        moduleResolution: 'NodeNext',
-        noEmit: true,
-        skipLibCheck: true,
-        strict: true,
-        target: 'ES2022',
-        // TypeScript 7 loads no @types package that a configuration does not list.
-        types: ['bun', 'node'],
-      },
-      include: ['*.ts'],
-    }),
+  const fixturePage = join(root, 'packages/core/tests/fixtures/type-examples.md');
+  const rejectedExample = await compileExamples(join(temporary, 'example-fixture'), [fixturePage]);
+  assert.notEqual(rejectedExample.status, 0, 'A broken bare ts block compiled.');
+  assert.equal(rejectedExample.count, 2, 'The fixture should compile both bare ts blocks.');
+  const fixtureErrors = rejectedExample.output
+    .split('\n')
+    .filter((line) => line.includes(': error TS'));
+  assert.equal(fixtureErrors.length, 1, rejectedExample.output);
+  assert.match(
+    fixtureErrors[0],
+    /packages\/core\/tests\/fixtures\/type-examples\.md:27:\d+ \(block 3, starts at line 22\): error TS2322:/,
   );
-  const compiled = await compile(examples);
-  let report = compiled.output;
-  for (const [name, origin] of origins) {
-    report = report.replaceAll(name, origin);
+
+  // A TypeScript fence the scanner cannot read is named, not skipped.
+  for (const [stray, line] of [
+    ['1. Step\n\n    ```ts\n    const n: number = 1;\n    ```\n', 3],
+    ['- ```ts\n  const n: number = 1;\n  ```\n', 1],
+    ['> ```ts\n> const n: number = 1;\n> ```\n', 1],
+    ['~~~ts\nconst n: number = 1;\n~~~\n', 1],
+    ['```typescript\nconst n: number = 1;\n```\n', 1],
+    ['```tsx\nconst n = 1;\n```\n', 1],
+    ['``` ts\nconst n: number = 1;\n```\n', 1],
+  ]) {
+    assert.deepEqual(strayFences(stray), [line], stray);
   }
-  assert.equal(compiled.status, 0, `The authoring skill's examples do not compile:\n${report}`);
+  assert.deepEqual(
+    strayFences('```ts\nconst n = 1;\n```\n\n```ts sketch\nf();\n```\n   ```ts\nx;\n   ```\n'),
+    [],
+  );
+
+  const pages = await Promise.all(
+    exampleFolders.map((folder) => markdownUnder(join(root, folder))),
+  );
+  const compiled = await compileExamples(join(temporary, 'examples'), pages.flat());
+  assert.equal(compiled.status, 0, `The Markdown examples do not compile:\n${compiled.output}`);
   let rejectedCount = 0;
   for (const project of projects) {
     const directory = join(temporary, project);
@@ -282,7 +429,7 @@ const read = new Command('read').action(handler).extend();
     rejectedCount += expected.length;
   }
   process.stdout.write(
-    `TypeScript ${version}: workspace and packed declarations passed; ${rejectedCount} rejected SDK uses produced the expected diagnostics.\n`,
+    `TypeScript ${version}: workspace and packed declarations passed; ${compiled.count} Markdown examples compiled; ${rejectedCount} rejected SDK uses produced the expected diagnostics.\n`,
   );
 } finally {
   await rm(temporary, { force: true, recursive: true });

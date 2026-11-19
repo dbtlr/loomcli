@@ -28,7 +28,7 @@ A global option declares no presence rule. Its validation runs on every Command,
 
 `new Command(name, options?)` declares a named Command with `argument()`, `option()`, [`options()`](options.md#sharing-options), `alias()`, [`visibleAlias()`](#visible-aliases), `command()`, `action()`, and `extend()`. A Command name is a portable name, the rule [Application declarations](application.md) states, because an operator types it at the prompt the way the application name is typed. Names stay plain strings; no handler object is keyed by command name. `configured.command(child)` attaches one child to the root, and `command()` on a named Command attaches one child to it, so a graph nests to any depth, as [Nested Commands and groups](#nested-commands-and-groups) states. A Command takes one options object like the Application does: `description` is the core fact every projection reads under the rule [Extensions](extensions.md) states, `hidden` and `deprecated` are the two core facts [Hidden and deprecated members](#hidden-and-deprecated-members) describes, and `extensions` carries the [extension values](extensions.md) plugins define. Globals are declared on the Application, which registers its environment as shown below.
 
-```ts
+```ts sketch
 interface CommandOptions<Uses extends readonly AnyProvider[] = []> {
   description?: string;
   hidden?: boolean;
@@ -53,7 +53,12 @@ A Command with children and no action is a group. The unnamed root may be a grou
 ```ts
 import { Application, Command } from '@loomcli/core';
 
-import { clearCache, listCache, summarize } from './actions.js';
+import type { ActionContext } from '@loomcli/core';
+
+const entries = new Set(['notes.txt']);
+const clearCache = () => { entries.clear(); };
+const listCache = ({ out }: ActionContext<unknown>) => out.print([...entries].join('\n'));
+const summarize = ({ out }: ActionContext<unknown>) => out.print(`${entries.size} cached entries`);
 
 const clear = new Command('clear').option('force', { type: 'boolean' }).action(clearCache);
 const list = new Command('list').action(listCache);
@@ -76,7 +81,10 @@ An invocation that routes to a group fails with code 2 unless a middleware takes
 Aliases belong to the Command value, so a group carries them like any other named Command, and the unnamed root declares none. The call is variadic and repeatable: `.alias('ls', 'list')` and `.alias('ls').alias('list')` declare the same set, in that order. A call with no names does not compile. An alias is a portable name like a Command name, and every canonical name and alias under one parent shares one namespace. An alias that repeats another alias of its own Command or its own Command's canonical name adds no name, so `alias()` skips it, and attach rejects one that repeats a sibling's name or a sibling's alias. The types close `alias()` once `action()` is called.
 
 ```ts
-const list = new Command('list').alias('ls').action(listCache);
+import { Command } from '@loomcli/core';
+
+const clear = new Command('clear').action(({ out }) => out.print('Cache cleared.'));
+const list = new Command('list').alias('ls').action(({ out }) => out.print('notes.txt'));
 const cache = new Command('cache').command(clear).command(list);
 ```
 
@@ -91,9 +99,11 @@ const cache = new Command('cache').command(clear).command(list);
 - **No message.** An alias of either kind carries no migration message. A renamed Command keeps its old name with `alias()`, and a Command that is itself retired declares `deprecated`.
 
 ```ts
+import { Command } from '@loomcli/core';
+
 const list = new Command('list', { description: 'List the cache.' })
   .visibleAlias('ls')
-  .action(listCache);
+  .action(({ out }) => out.print('notes.txt'));
 ```
 
 `store cache ls` dispatches `list` as before, and the row in `store cache --help` reads `  list   List the cache.  (alias: ls)`: two spaces of indent, and `list` padded to `clear`, the longest name in the block, plus two spaces.
@@ -107,8 +117,10 @@ A named Command and an option carry two core facts beside `description`, declare
 Both facts apply to a local option and to a global option, whichever declarer declares it. Neither applies to an argument, because a positional cannot leave the grammar it sits in, and neither applies to the root, which is every page's entry point. The types place the facts, and core checks no placement at run time, as [Declaration faults](declaration-faults.md) states. `ApplicationOptions` names neither key, so an options literal that carries one fails to compile. Every `argument()` declarer rejects both keys at compile time, and rejects every other key `ArgumentConfig` does not declare, such as `multiple`, `env`, and `control`, because core reads no such key from an argument. On a Command and on the Application a constraint on the inferred config names each stray key in its message, such as `An argument declares no hidden key`, and on the attached Command a lifecycle hook receives, the `ArgumentConfig` parameter rejects the literal's extra keys. Core never reads either fact on an argument, and `ArgumentNode` carries neither. Routing selects and parsing binds without reading either fact. They are facts for the projections that read the graph, and `inspect()` reports both on every `CommandNode` and `OptionNode`.
 
 ```ts
-const fetch = new Command('fetch', { deprecated: 'Use get instead.', description: 'Read one value at a path.' }).action(readValue);
-const debug = new Command('debug', { description: 'Dump the parsed document.', hidden: true }).action(dump);
+import { Command } from '@loomcli/core';
+
+const fetch = new Command('fetch', { deprecated: 'Use get instead.', description: 'Read one value at a path.' }).action(({ out }) => out.print('cached value'));
+const debug = new Command('debug', { description: 'Dump the parsed document.', hidden: true }).action(({ out }) => out.print('cache entries: 1'));
 ```
 
 ## A Command that needs a terminal
@@ -135,7 +147,7 @@ export const app = new Application('monitor').command(top);
 
 ## Control options
 
-```ts
+```ts sketch
 interface StringOption {
   // ...the keys under Local options...
   control?: boolean; // the option controls the invocation; omitted reads false
@@ -149,6 +161,8 @@ type OptionNode =
 ```
 
 ```ts
+import type { PluginOptions } from '@loomcli/core';
+
 // The help plugin's own option: it asks for a page about the Command, not the Command's work.
 const options = {
   help: { control: true, description: 'Show this help.', short: 'h', type: 'boolean' },
@@ -182,6 +196,16 @@ declare module '@loomcli/core' {
 }
 
 export const jsonkit = configured.command(get);
+
+// src/commands/get.ts
+import { Command } from '@loomcli/core';
+
+export const get = new Command('get')
+  .argument('path', { required: true })
+  .action(({ args, options, out }) => {
+    const verbose: number = options.verbose;
+    return out.print(verbose > 0 ? `Path: ${args.path}` : args.path);
+  });
 ```
 
 Register the configured Application before attaching Commands or registering its action. Registering the completed Application creates a circular dependency through the Commands that consume its types. `EnvironmentOf` reads a type-only marker containing global outputs and the installed plugin tuple. It contains no Command graph or root-local inputs and exposes no runtime property.
@@ -213,6 +237,18 @@ export const getValue: ActionHandler<typeof get> = async ({ args, options, out }
   if (verbose > 0) await out.info(`Reading ${path}.`);
   return out.print(path);
 };
+
+// src/application.ts
+import { Application } from '@loomcli/core';
+import type { EnvironmentOf } from '@loomcli/core';
+
+const configured = new Application('jsonkit').globalOption('verbose', { type: 'count' });
+
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+  }
+}
 ```
 
 `ActionHandler<typeof declaration>` works for a Command and for the root alike. `ActionArgs<typeof declaration>` and `ActionOptions<typeof declaration>` derive the same two objects for a handler that names its parameters separately, as `textstat` does. A handler written inline in `action()` needs no helper, because it infers its context from the declaration it receives. An extracted handler is also what a unit test calls, with the context `@loomcli/testing`'s [`actionContext`](../libs/testing.md#actioncontext) builds for it; an inline handler has no public way to reach it.
@@ -231,6 +267,29 @@ export const get = new Command('get')
     const { getValue } = await import('../actions/get-value.js');
     return getValue(context);
   });
+
+// src/actions/get-value.ts
+import type { ActionHandler } from '@loomcli/core';
+import type { get } from '../commands/get.js';
+
+export const getValue: ActionHandler<typeof get> = async ({ args, options, out }) => {
+  const path: string = args.path;
+  const verbose: number = options.verbose;
+  if (verbose > 0) await out.info(`Reading ${path}.`);
+  return out.print(path);
+};
+
+// src/application.ts
+import { Application } from '@loomcli/core';
+import type { EnvironmentOf } from '@loomcli/core';
+
+const configured = new Application('jsonkit').globalOption('verbose', { type: 'count' });
+
+declare module '@loomcli/core' {
+  interface Register {
+    environment: EnvironmentOf<typeof configured>;
+  }
+}
 ```
 
 `getValue` is the extracted handler shown above, unchanged. It type-imports its declaration, and a type import is erased, so the two modules share no runtime import. The declaration reaches the handler only through `import()`, so the declaration's module never loads the handler's module at launch.
@@ -243,6 +302,9 @@ export const get = new Command('get')
 ## Global consumption and routing
 
 ```ts
+import { Application, Command } from '@loomcli/core';
+import { help } from '@loomcli/plugins/help';
+
 const jsonkit = new Application('jsonkit', { plugins: [help()] })
   .globalOption('verbose', { short: 'v', type: 'count' })
   .globalOption('quiet', { short: 'q', type: 'boolean' })
@@ -254,9 +316,9 @@ const jsonkit = new Application('jsonkit', { plugins: [help()] })
       .option('file', { short: 'f', type: 'content', stdin: true, required: true })
       .option('pretty', { short: 'p', type: 'boolean' })
       .option('raw', { short: 'r', type: 'boolean' })
-      .action(readValue),
+      .action(({ args, options, out }) => out.print(`${args.path}: ${options.file.path}`)),
   )
-  .action(summarize);
+  .action(({ options, out }) => out.print(options.file.path ?? 'stdin'));
 
 // jsonkit -f data.json get a.b -qp      routes to get; -q is global, -p is get's own
 // jsonkit get a.b -qph                  -h is help's global option, so help renders get's page

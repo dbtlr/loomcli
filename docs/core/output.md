@@ -33,7 +33,7 @@ A closed reader on stdout ends the run with 141, and any other failed write retu
 
 ## Rendered output
 
-```ts
+```ts sketch
 interface View<Data> {
   render: (data: Readonly<Data>, context: ViewContext) => string;
   row?: undefined; // a view has one shape; the row view of Results is the other
@@ -76,7 +76,7 @@ The type parameter is inferred from the value, so `out.render(rows, table)` chec
 
 ### A message's own view
 
-```ts
+```ts sketch
 interface Out<Result = unknown> {
   print(message: string, view?: View<string>): Promise<void>;
   info(message: string, view?: View<string>): Promise<void>;
@@ -125,7 +125,7 @@ A semantic method is a message's level: its destination and the [verbosity](verb
 
 ### A streamed message
 
-```ts
+```ts sketch
 type MessageArguments =
   | [message: string, view?: View<string> | undefined] // a message and an optional view over it
   | [message: AsyncIterable<string>]; // the message's text as it arrives, which takes no view
@@ -139,9 +139,9 @@ interface Out<Result = unknown> {
 ```ts
 import { Application } from '@loomcli/core';
 
-import { answer } from './model.js'; // yields the answer's text as the service sends it
-
-const app = new Application('ask')
+export const ask = (
+  answer: (question: string, options: { signal: AbortSignal }) => AsyncIterable<string>,
+) => new Application('ask')
   .argument('question', { required: true })
   .action(async ({ args, out, signal, style }) => {
     async function* text(): AsyncGenerator<string> {
@@ -199,7 +199,7 @@ On a terminal, `out.draw` is a region of one frame that core writes as it writes
 
 ### A view's text without a write
 
-```ts
+```ts sketch
 interface Out<Result = unknown> {
   text<Data>(data: Data, view: View<Data>): string; // new: the text out.render would write, unwritten
 }
@@ -237,7 +237,7 @@ const app = new Application('inventory')
 
 ## Live region
 
-```ts
+```ts sketch
 import type { View } from '@loomcli/core';
 
 interface RegionOptions {
@@ -267,8 +267,6 @@ interface Out<Result = unknown> {
 import { Application, glyph } from '@loomcli/core';
 import type { View } from '@loomcli/core';
 
-import { waitForBuild } from './build.js';
-
 const waiting: View<number> = {
   render: (tick, { style }) => `${style.highlight('.'.repeat((tick % 3) + 1).padEnd(3))} Waiting for the build`,
 };
@@ -276,7 +274,7 @@ const built: View<string> = {
   render: (id, { style }) => `${style.success(glyph.success)} Build ${style.escape(id)} is ready.`,
 };
 
-const app = new Application('ship').action(async ({ out }) => {
+export const ship = (waitForBuild: () => Promise<string>) => new Application('ship').action(async ({ out }) => {
   const region = out.region();
   let tick = 0;
   const timer = setInterval(() => {
@@ -346,7 +344,7 @@ The run's plain switch turns off every redraw, so the screen is only ever append
 
 ### Lending the terminal
 
-```ts
+```ts sketch
 interface Out {
   // ...
   lendTerminal<Value>(work: () => Value | PromiseLike<Value>): Promise<Value>;
@@ -384,7 +382,7 @@ A child program that draws on the terminal, such as `$EDITOR` or `git commit` wi
 
 ### Progress events
 
-```ts
+```ts sketch
 interface ProgressEvent {
   readonly id: number;
   readonly label: string;
@@ -407,9 +405,8 @@ A progress event is the typed value a region's report builds, so a program that 
 ```ts
 import { Application } from '@loomcli/core';
 
-import { loadSchema } from './schema.js'; // calls process.exit(1) when the schema file is missing
-
-export const ship = new Application('ship').action(({ out }) => {
+// loadSchema calls process.exit(1) when the schema file is missing.
+export const ship = (loadSchema: (file: string) => void) => new Application('ship').action(({ out }) => {
   void out.info('Reading schema.sql');
   loadSchema('schema.sql');
 });
