@@ -72,6 +72,8 @@ export interface ProgressUpdate {
  * answered, cancelled, or aborted.
  */
 export interface ToolCall {
+  /** The request's metadata, whose plugin-specific keys the handler interprets. */
+  readonly _meta?: Readonly<Record<string, unknown>>;
   readonly name: string;
   readonly arguments: unknown;
   readonly signal: AbortSignal;

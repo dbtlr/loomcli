@@ -2,7 +2,7 @@ import { realpathSync } from 'node:fs';
 import type { Readable, Writable } from 'node:stream';
 
 import { WorkingDirectoryError } from '../failures/errors.js';
-import type { InternalError } from '../failures/errors.js';
+import type { InputError, InternalError } from '../failures/errors.js';
 import type { CapturedRelease } from '../shipping/release.js';
 import type { ReleaseFacts } from '../shipping/types.js';
 import type { Background } from './background.js';
@@ -177,7 +177,10 @@ export type ReportHost = Omit<Host, 'cwd' | 'release'> & {
  */
 export type HostCapture =
   | { readonly host: Host; readonly report: Host }
-  | { readonly failure: InternalError | WorkingDirectoryError; readonly report: ReportHost };
+  | {
+      readonly failure: InputError | InternalError | WorkingDirectoryError;
+      readonly report: ReportHost;
+    };
 
 /**
  * The facts every run copies from its process handle, `run()` and an invocation by name alike, with

@@ -55,13 +55,14 @@
  *   fixture application under Node and Bun.
  */
 
-import { describe, expect, it } from 'vite-plus/test';
+import { describe, expect, it, test } from 'vite-plus/test';
 
 import { childEnvironment } from '../../../scripts/test-process.js';
 import { ruleParts } from '../../../scripts/test-rules.js';
 import { handshakeRequest, initialize, launch, meta, request } from '../../mcp/tests/session.js';
 import type { Message } from '../../mcp/tests/session.js';
 import { inspectScenario, run } from './fixtures/mcp-app.js';
+import { invalidTimeZone, timeZoneCalls, timeZoneKey } from './mcp-time-zone-cases.js';
 
 const fixture = new URL('fixtures/mcp.mjs', import.meta.url);
 
@@ -989,3 +990,46 @@ describe('excluded options', () => {
     expect(invocation1.stdout).toContain('thrown:1:@loomcli/core/invalid-extension-value:');
   });
 });
+
+test.each(['2026-07-28', '2025-11-25', '2025-06-18'])(
+  'stdio serves supplied and default dates in each caller zone on %s and refuses invalid metadata',
+  async (revision) => {
+    const session = launch(fixture, ['timeZone', 'mcp'], { env: childEnvironment({ TZ: 'UTC' }) });
+    try {
+      if (revision !== '2026-07-28') {
+        session.send(initialize(0, revision));
+        await session.next();
+      }
+      let id = 0;
+      for (const call of timeZoneCalls) {
+        id += 1;
+        const requestMeta = {
+          ...(revision === '2026-07-28' ? meta : {}),
+          ...(Object.hasOwn(call, 'zone') ? { [timeZoneKey]: call.zone } : {}),
+        };
+        session.send({
+          id,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            _meta: requestMeta,
+            arguments: call.at === undefined ? {} : { at: call.at },
+            name: 'stamp',
+          },
+        });
+        const message = await session.next();
+        expect(message.id).toBe(id);
+        const result = Object(message.result);
+        expect(result).toMatchObject({
+          content: [{ text: call.output ?? invalidTimeZone, type: 'text' }],
+          isError: call.output === undefined,
+        });
+        expect(result).not.toHaveProperty('structuredContent');
+      }
+    } finally {
+      const ending = await session.close();
+      expect(ending.status).toBe(0);
+      expect(ending.stderr).toBe('');
+    }
+  },
+);

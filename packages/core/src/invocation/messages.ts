@@ -3,6 +3,9 @@
  * spells. `tests/message-voice.test.ts` holds this module to the failure message voice.
  */
 
+const invalidTimeZone =
+  'invoke() timeZone is not an IANA time zone name this runtime knows. Use a name such as "Asia/Tokyo".';
+
 const takesBoolean = 'Use true or false.';
 
 const takesCount = 'Use a whole number of 0 or more.';
@@ -24,6 +27,7 @@ function takesTuple(arity: number, multiple: boolean): string {
 }
 
 export {
+  invalidTimeZone,
   takesBoolean,
   takesCount,
   takesImplied,

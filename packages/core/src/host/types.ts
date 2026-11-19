@@ -338,8 +338,9 @@ export interface Host {
   /**
    * The operator's IANA time zone, such as `America/New_York`, which a validator reads to place a
    * local time. The real process's handle reads the zone `Intl` resolves, which honours `TZ`; a
-   * supplied `timeZone` replaces it, and an action's `invoke` keeps its run's. Core copies it from
-   * the handle on the run's first read, because resolving the zone through `Intl` is costly.
+   * supplied `timeZone` replaces it. An invocation by name may set its own resolved zone, which
+   * nested invocations inherit unless they supply another. Core copies the handle's zone on the
+   * run's first read, including a nested call's declared-value reuse comparison for an explicit zone.
    */
   readonly timeZone: string;
   /** The run's environment variables, which environment preparation may add to. */

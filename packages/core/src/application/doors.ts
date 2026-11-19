@@ -27,7 +27,7 @@ import type { RenderingPolicy } from '../style/rendering.js';
 import type { ExitCode, RunOptions, BoundGraph } from './types.js';
 
 /**
- * What a call an action makes reads from its run: the graph, the five host fields, the signal, and
+ * What a call an action makes reads from its run: the graph, its host facts, the signal, and
  * the outlet its log events reach.
  */
 export interface ActionCall {
@@ -91,6 +91,8 @@ interface BackgroundRead {
  */
 export interface RunDoor {
   readonly invokedBy: InvokedBy;
+  /** An explicit per-call zone requires checking the reused declared values' validation zone. */
+  readonly timeZone: string | undefined;
   /** The lane of the run's signal source. */
   readonly lane: SharedLane;
   /** Whether the run keeps its lane listening: `run()`, or an action's call under it. */
@@ -198,12 +200,13 @@ export function argvDoor(application: string, options: RunOptions | undefined): 
       handle.exitCode = code;
     },
     stderr: handle.stderr,
+    timeZone: undefined,
   };
 }
 
 /**
  * The door an invocation by name enters by: the call read where it entered, a host of capture
- * sinks around five fields, a signal derived from the call's own and an action's run, and no
+ * sinks around its host facts, a signal derived from the call's own and an action's run, and no
  * process effect.
  */
 export function nameDoor<Mapped>(
@@ -220,7 +223,7 @@ export function nameDoor<Mapped>(
   },
 ): RunDoor {
   const { action, declared, lane, streams } = setup;
-  const host = () => invocationHost(setup.fields(), streams);
+  const host = () => invocationHost(setup.fields(), streams, call.timeZone);
   const listens = action?.listens ?? false;
   return {
     bound: action?.bound,
@@ -263,5 +266,6 @@ export function nameDoor<Mapped>(
     rendering: plainPolicy,
     settle: () => undefined,
     stderr: streams.stderr,
+    timeZone: call.timeZone,
   };
 }

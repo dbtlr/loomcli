@@ -198,6 +198,10 @@ const brokenAuthorizeHook =
 const brokenAuthorizeHookCorrection =
   'Return true or false from authorize for every request, and throw from it for none.';
 
+/** A tools/call metadata zone that is not a runtime-known IANA name. */
+const invalidTimeZone =
+  'Metadata key "io.github.dbtlr.loomcli/timeZone" requires an IANA time zone name this runtime knows. Use a name such as "Asia/Tokyo".';
+
 export type { Child, Names };
 export {
   addFailed,
@@ -213,6 +217,7 @@ export {
   hookThrewLine,
   serverErrorLine,
   httpAddressIssue,
+  invalidTimeZone,
   nameHeld,
   noAgent,
   noLongerRecorded,

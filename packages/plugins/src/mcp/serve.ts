@@ -6,6 +6,7 @@
  */
 import { errorCodes, McpServer, ProtocolError } from '@loom/mcp';
 import type { CallToolResult, JsonValue, ServerIdentity, TextContent, ToolCall } from '@loom/mcp';
+import { resolveTimeZone } from '@loomcli/core';
 import type {
   ActionContext,
   CommandGraph,
@@ -18,7 +19,7 @@ import { singleLine } from '../lines.js';
 import { isRecord } from '../plain-data.js';
 import type { HttpAddress } from './address.js';
 import { excludedNames } from './exposure.js';
-import { argumentsNotObject, unknownTool, unlistedArgument } from './messages.js';
+import { argumentsNotObject, invalidTimeZone, unknownTool, unlistedArgument } from './messages.js';
 import type { McpSettings } from './plugin.js';
 import { progressRelay } from './progress.js';
 import { listedTool, propertiesOf, toolEntries } from './tools.js';
@@ -155,6 +156,17 @@ function unlistedKey(
   };
 }
 
+/** The resolved metadata zone, or a tool error before any invocation starts. */
+function callTimeZone({ _meta: metadata }: ToolCall): string | CallToolResult | undefined {
+  const key = 'io.github.dbtlr.loomcli/timeZone';
+  if (metadata === undefined || !Object.hasOwn(metadata, key)) {
+    return undefined;
+  }
+  const zone = metadata[key];
+  const resolved = typeof zone === 'string' ? resolveTimeZone(zone) : undefined;
+  return resolved ?? { content: [text(invalidTimeZone)], isError: true };
+}
+
 /**
  * Runs one tool call through `invoke`, as the Command's own run, and answers its result. A key the
  * input schema does not list answers a tool execution error, and no run starts. A call that carries
@@ -167,9 +179,9 @@ async function callTool(
 ): Promise<CallToolResult> {
   const received = argumentsOf(entry, call);
   const properties = propertiesOf(context.graph, entry.command);
-  const refused = unlistedKey(entry, properties, received);
-  if (refused !== undefined) {
-    return refused;
+  const timeZone = unlistedKey(entry, properties, received) ?? callTimeZone(call);
+  if (typeof timeZone === 'object') {
+    return timeZone;
   }
   const view = jsonView(entry.command);
   const exclude = excludedNames(context.graph, entry.command);
@@ -178,6 +190,7 @@ async function callTool(
     ...(firstExcluded === undefined ? {} : { exclude }),
     failure: (_failure, { exitCode, form }): FailedCall => ({ exitCode, failure: { ...form } }),
     signal: call.signal,
+    ...(timeZone === undefined ? {} : { timeZone }),
     ...(view === undefined ? {} : { view }),
     ...(call.progress === undefined ? {} : { onProgress: progressRelay(call.progress) }),
   });

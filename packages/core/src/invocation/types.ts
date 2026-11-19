@@ -105,6 +105,8 @@ export interface InvocationValues {
  * @public
  */
 export interface InvokeOptions<Mapped = LoomError> {
+  /** The IANA time zone for this call and its nested calls, resolved to the runtime's spelling. */
+  readonly timeZone?: string;
   /** The starting view selection, as a middleware's `view` assignment. */
   readonly view?: string;
   /** Maps a failure into the value the failed outcome carries; the failure itself when omitted. */
