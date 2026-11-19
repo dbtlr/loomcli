@@ -4,12 +4,13 @@ import { InputError } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import { capturedHost, settlingTerminal } from '../host/host.js';
 import type { HandleFacts, HostCapture } from '../host/host.js';
+import { resolveLocale } from '../host/locale.js';
 import { resolveTimeZone } from '../host/time-zone.js';
 import type { Host } from '../host/types.js';
 import type { ProgressEvent } from '../output/types.js';
 import type { StartingView } from './chain.js';
 import type { NamedCall } from './lower.js';
-import { invalidTimeZone } from './messages.js';
+import { invocationPhrase } from './phrases.js';
 import type { InvocationValues, InvokeOptions } from './types.js';
 
 /** The entries of one `args` or `options` record, a key whose value is `undefined` left out. */
@@ -103,6 +104,7 @@ function guardedObserver(onProgress: InvokeOptions['onProgress']): GuardedObserv
 function fieldsOf(host: Host): HandleFacts {
   const { arch, ceiling, cwd, env, home, platform, program, readSource, runtime, tmpdir, uid } =
     host;
+  // The call keeps its run's locale, which core always sets on a run's host.
   const captured = {
     arch,
     directory: ceiling === undefined ? { cwd } : { ceiling, cwd },
@@ -110,6 +112,7 @@ function fieldsOf(host: Host): HandleFacts {
     home,
     // The call reads its run's C library only when its own code reads it.
     libc: () => host.libc,
+    locale: host.locale ?? resolveLocale(env),
     platform,
     program,
     release: { facts: host.release },
@@ -178,7 +181,10 @@ function invocationHost(
   if ('failure' in capture || timeZone === undefined || resolved !== undefined) {
     return capture;
   }
-  return { failure: new InputError(invalidTimeZone, []), report: capture.report };
+  return {
+    failure: new InputError(invocationPhrase('invalidTimeZone'), []),
+    report: capture.report,
+  };
 }
 
 /**

@@ -6,6 +6,7 @@ import type { InputError, InternalError } from '../failures/errors.js';
 import type { CapturedRelease } from '../shipping/release.js';
 import type { ReleaseFacts } from '../shipping/types.js';
 import type { Background } from './background.js';
+import { handleLocale } from './locale.js';
 import { handleRelease } from './process-handle.js';
 import { hostSpawn } from './spawn.js';
 import type { OwnStreams } from './spawn.js';
@@ -193,6 +194,8 @@ export interface HandleFacts {
   readonly env: Host['env'];
   /** The home folder, copied at entry, before environment preparation can add a `HOME`. */
   readonly home: string;
+  /** The locale, resolved at entry, before environment preparation can add a `LANG`. */
+  readonly locale: string;
   /** Reads the C library once, on the run's first read of `host.libc`, which can be costly. */
   readonly libc: () => Host['libc'];
   readonly platform: string;
@@ -225,6 +228,7 @@ export function handleFacts(application: string, handle: ProcessHandle): HandleF
     env,
     home,
     libc: once(() => handle.libc),
+    locale: handleLocale(handle.locale, env),
     platform,
     program,
     release: handleRelease(handle, { application, env, home, platform }, program[1]),

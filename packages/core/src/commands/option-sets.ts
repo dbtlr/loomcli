@@ -3,7 +3,7 @@ import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import { DeclarationError } from '../failures/errors.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import { claimsStdin, stdinClaimedTwice } from '../inputs/content-rules.js';
 import type { OptionInput } from '../inputs/declarations.js';
 import { declareSetGroup } from '../inputs/option-groups.js';

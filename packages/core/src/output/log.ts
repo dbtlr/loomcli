@@ -5,6 +5,7 @@ import type { LogDefect } from '../diagnostics/defect.js';
 import { isAuthorFault } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import type { FailureForm } from '../failures/form.js';
+import { Phrase } from '../localization/phrase.js';
 import type { LogLineLevel } from './log-line.js';
 import { redactedValue } from './redaction.js';
 import type { Redaction } from './redaction.js';
@@ -78,15 +79,15 @@ interface LogEvent {
  */
 interface Log {
   /** Logs a `trace` event with a message and optional fields. */
-  trace(message: string, fields?: LogFields): void;
+  trace(message: string | Phrase, fields?: LogFields): void;
   /** Logs a `debug` event with a message and optional fields. */
-  debug(message: string, fields?: LogFields): void;
+  debug(message: string | Phrase, fields?: LogFields): void;
   /** Logs an `info` event with a message and optional fields. */
-  info(message: string, fields?: LogFields): void;
+  info(message: string | Phrase, fields?: LogFields): void;
   /** Logs a `warn` event with a message and optional fields. */
-  warn(message: string, fields?: LogFields): void;
+  warn(message: string | Phrase, fields?: LogFields): void;
   /** Logs an `error` event with a message and optional fields. */
-  error(message: string, fields?: LogFields): void;
+  error(message: string | Phrase, fields?: LogFields): void;
   /**
    * A `log` whose every event also carries `fields`, copied now, beside its own: a call's own field
    * wins over a bound one of the same name, and a nested `with` wins over the one it is called on.
@@ -207,6 +208,11 @@ type Copied = JsonValue | typeof omitted;
 interface Place {
   readonly ancestors: Set<object>;
   readonly redaction: Redaction | undefined;
+  /**
+   * Where the copy of a call's top-level fields records each field whose value was a phrase, so
+   * the field is read once; absent below the top level and for a bound field.
+   */
+  readonly said?: Map<string, Phrase> | undefined;
 }
 
 /** The copy of one property of `holder`, at the place of `holder`'s own value. */
@@ -228,27 +234,45 @@ function copyArray(value: readonly unknown[], at: Place): JsonValue {
 }
 
 /**
+ * The copy of one property of an object, or `undefined` for one that copies to nothing: its copy,
+ * or `"[Redacted]"` where the redaction tree marks it. A top-level field whose value is a phrase,
+ * and is not redacted, is recorded in the place's `said`.
+ */
+function copyEntry(value: object, key: string, at: Place): [string, JsonValue] | undefined {
+  const below = placeBelow(at, key);
+  const raw: unknown = Reflect.get(value, key);
+  const item = copyValue(raw, key, below);
+  if (item === omitted) {
+    return undefined;
+  }
+  // An Error's stack repeats its message, so hiding the message also hides the stack.
+  const hidesStack =
+    value instanceof Error &&
+    key === 'stack' &&
+    at.redaction?.keys.get('message')?.redacted === true;
+  const redacted = below.redaction?.redacted === true || hidesStack;
+  if (at.said !== undefined && raw instanceof Phrase && !redacted) {
+    at.said.set(key, raw);
+  }
+  return [key, redacted ? redactedValue : item];
+}
+
+/** The place one property of an object copies at: its redaction node, and no record of phrases. */
+function placeBelow(at: Place, key: string): Place {
+  const redaction = at.redaction?.keys.get(key);
+  const nested = at.said === undefined ? at : { ...at, said: undefined };
+  return redaction === at.redaction ? nested : { ...nested, redaction };
+}
+
+/**
  * The copy of the named properties of an object, a property that copies to nothing left out, and
  * one the redaction tree marks reading `"[Redacted]"` in place of its copy.
  */
 function copyKeys(value: object, keys: readonly string[], at: Place): JsonValue {
-  const entries: [string, JsonValue][] = [];
-  for (const key of keys) {
-    const below = at.redaction?.keys.get(key);
-    const item = copyProperty(
-      value,
-      key,
-      below === at.redaction ? at : { ...at, redaction: below },
-    );
-    if (item !== omitted) {
-      // An Error's stack repeats its message, so hiding the message also hides the stack.
-      const hidesStack =
-        value instanceof Error &&
-        key === 'stack' &&
-        at.redaction?.keys.get('message')?.redacted === true;
-      entries.push([key, below?.redacted === true || hidesStack ? redactedValue : item]);
-    }
-  }
+  const entries = keys.flatMap((key) => {
+    const entry = copyEntry(value, key, at);
+    return entry === undefined ? [] : [entry];
+  });
   return Object.freeze(Object.fromEntries(entries));
 }
 
@@ -325,8 +349,9 @@ const noFields: Readonly<Record<string, JsonValue>> = Object.freeze({});
 function copyFields(
   fields: LogFields | undefined,
   redaction: Redaction | undefined,
+  said?: Map<string, Phrase>,
 ): Readonly<Record<string, JsonValue>> {
-  const copied = copyProperty({ fields }, 'fields', { ancestors: new Set(), redaction });
+  const copied = copyProperty({ fields }, 'fields', { ancestors: new Set(), redaction, said });
   return isJsonRecord(copied) ? copied : noFields;
 }
 
@@ -350,12 +375,12 @@ function newRunId(): string {
 
 /** A `Log` whose methods hand each call to `emit`, and whose `with` hands its fields to `bind`. */
 function logOf(
-  emit: (level: CallLevel, message: string, fields: LogFields | undefined) => void,
+  emit: (level: CallLevel, message: string | Phrase, fields: LogFields | undefined) => void,
   bind: (fields: LogFields) => Log,
 ): Log {
   const method =
     (level: CallLevel) =>
-    (message: string, fields?: LogFields): void => {
+    (message: string | Phrase, fields?: LogFields): void => {
       emit(level, message, fields);
     };
   return Object.freeze({
@@ -376,6 +401,34 @@ interface EventParts {
   readonly plugin: string | null;
   readonly failure?: FailureForm;
   readonly defect?: LogDefect;
+}
+
+/**
+ * The phrases one log call gave: its template, and each top-level field whose value was a phrase
+ * and whose copy still reads its English text, so a redacted field keeps its redaction. Core keeps
+ * them beside the frozen event, which holds the English text, and the `-v` line renders them in
+ * the run's language.
+ */
+interface LoggedPhrases {
+  readonly template: Phrase | undefined;
+  readonly fields: ReadonlyMap<string, Phrase>;
+}
+
+/** The phrases each event's call gave, by the frozen event. */
+const loggedPhrases = new WeakMap<LogEvent, LoggedPhrases>();
+
+/** The phrases one call gave, its template and the fields its copy recorded, or `undefined` for none. */
+function callPhrases(
+  message: string | Phrase,
+  said: ReadonlyMap<string, Phrase>,
+): LoggedPhrases | undefined {
+  const template = message instanceof Phrase ? message : undefined;
+  return template === undefined && said.size === 0 ? undefined : { fields: said, template };
+}
+
+/** The phrases one event's call gave, which the `-v` line renders, or `undefined` for none. */
+function eventPhrases(event: LogEvent): LoggedPhrases | undefined {
+  return loggedPhrases.get(event);
 }
 
 /**
@@ -466,8 +519,14 @@ class RunLog {
         if (!screen.shows(level) && receivers.every(({ hook }) => hook === except)) {
           return;
         }
-        const copied = withBound(bound, copyFields(fields, redaction));
-        this.#deliver({ fields: copied, level, message, plugin }, except);
+        const said = new Map<string, Phrase>();
+        const copied = withBound(bound, copyFields(fields, redaction, said));
+        const text = typeof message === 'string' ? message : message.text;
+        this.#deliver(
+          { fields: copied, level, message: text, plugin },
+          except,
+          callPhrases(message, said),
+        );
       },
       (fields) => this.#logFor(plugin, except, withBound(bound, copyFields(fields, redaction))),
     );
@@ -492,8 +551,11 @@ class RunLog {
    * Shows one event on the screen, then hands it to every hook but `except`, in installation
    * order, before returning. The screen and every hook read the same frozen event.
    */
-  #deliver(parts: EventParts, except: LogHook | undefined): void {
+  #deliver(parts: EventParts, except: LogHook | undefined, said?: LoggedPhrases): void {
     const event = this.#event(parts);
+    if (said !== undefined) {
+      loggedPhrases.set(event, said);
+    }
     this.#outlet.screen.show(event);
     for (const { destination, hook } of this.#outlet.receivers) {
       if (hook !== except) {
@@ -522,5 +584,5 @@ export type {
   LogScreen,
   PluginLogHook,
 };
-export { RunLog };
+export { eventPhrases, RunLog };
 export type { LogDefect } from '../diagnostics/defect.js';

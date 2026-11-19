@@ -1,7 +1,9 @@
+import type { Localize } from '../localization/phrase.js';
 import { glyph } from '../style/glyphs.generated.js';
 import { escapeText, nowrap } from '../style/style.js';
 import { escapeControlCharacters } from '../support/controls.js';
 import { underGutter } from './gutter.js';
+import { eventPhrases } from './log.js';
 import type { JsonValue, LogEvent, LogLevel } from './log.js';
 import type { ViewContext } from './types.js';
 import { view } from './view.js';
@@ -138,16 +140,26 @@ function filled(
 }
 
 /**
- * The log line of one event, or `undefined` for an event no log line shows: a failure event, which
- * core already reported, and a `fatal` event, which only a failure carries.
+ * The log line of one event that shows: its template and the fields its call gave as phrases
+ * rendered by `localize`, while the event keeps the English template and field values. Core calls
+ * it only for an event a log line shows, never a failure event or a `fatal` one.
  */
-function logLineOf(event: LogEvent): LogLine | undefined {
-  const { level } = event;
-  if (level === 'fatal' || event.failure !== undefined) {
-    return undefined;
-  }
-  const { placed, text } = filled(event.message, event.fields);
-  const fields = Object.entries(event.fields)
+function logLineOf(
+  event: LogEvent,
+  showing: { readonly level: LogLineLevel; readonly localize: Localize },
+): LogLine {
+  const { level, localize } = showing;
+  const said = eventPhrases(event);
+  const template = said?.template === undefined ? event.message : localize(said.template);
+  const localized =
+    said === undefined || said.fields.size === 0
+      ? event.fields
+      : {
+          ...event.fields,
+          ...Object.fromEntries([...said.fields].map(([name, phrase]) => [name, localize(phrase)])),
+        };
+  const { placed, text } = filled(template, localized);
+  const fields = Object.entries(localized)
     .filter(([name]) => !placed.has(name))
     .map(([name, value]) =>
       Object.freeze({ name: shown(name), value: shown(trailingText(value)) }),

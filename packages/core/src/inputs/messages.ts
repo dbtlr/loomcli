@@ -2,24 +2,10 @@
  * The operator sentences of validation, missing inputs, option groups, and content inputs, under
  * ADR-0164. `tests/message-voice.test.ts` holds this module to the failure message voice.
  */
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import { escapeControlCharacters } from '../support/controls.js';
-
-interface InputSubject {
-  readonly kind: 'argument' | 'option';
-  readonly spelling: string;
-  readonly origin?: string | undefined;
-}
-
-function inputSubject(subject: InputSubject): string {
-  return subject.kind === 'argument'
-    ? `Argument ${quoted(subject.spelling)}`
-    : `Option ${quoted(subject.spelling)}${origin(subject.origin)}`;
-}
-
-function origin(label: string | undefined): string {
-  return label === undefined ? '' : ` (from ${escapeControlCharacters(label)})`;
-}
+import { inputSubject, origin } from './wording.js';
+import type { InputSubject } from './wording.js';
 
 function position(path: string | undefined): string {
   return path === undefined ? '' : ` at ${escapeControlCharacters(path)}`;
@@ -33,29 +19,14 @@ function stdinIssue(issueSentence: string): string {
   return `Stdin: ${issueSentence}`;
 }
 
-/** One log line's message, a constant template, with the fields its placeholders and trail read. */
-interface LogLineText {
-  readonly template: string;
-  readonly fields: Readonly<Record<string, string>>;
-}
-
 /**
- * The `-v` log line for a configuration fill core dropped: the option's reported spelling, the
- * issue's path inside the value when it has one, the answer's label, and the first issue's message.
+ * The `-v` log template for a configuration fill core dropped, whose fields are the option's
+ * reported spelling, the answer's label, and the first issue's message.
  */
-function ignoredFill(
-  fill: { readonly spelling: string; readonly label: string },
-  path: string | undefined,
-  issueSentence: string,
-): LogLineText {
-  const fields = { issue: issueSentence, label: fill.label, option: fill.spelling };
-  return path === undefined
-    ? { fields, template: 'Ignored option "{option}" from {label}: {issue}' }
-    : {
-        fields: { ...fields, position: path },
-        template: 'Ignored option "{option}" at {position} from {label}: {issue}',
-      };
-}
+const ignoredFill = 'Ignored option "{option}" from {label}: {issue}';
+
+/** The `-v` log template for a dropped fill whose issue has a path inside the value, as `position`. */
+const ignoredFillAt = 'Ignored option "{option}" at {position} from {label}: {issue}';
 
 function values(count: number): string {
   return `${String(count)} values`;
@@ -129,8 +100,11 @@ function tooManySources(maximum: number): string {
   return `Expected at most ${String(maximum)} readable ${maximum === 1 ? 'source' : 'sources'}.`;
 }
 
+/** One option of a group a sentence names: its reported spelling and its value's source label. */
 interface GroupMember {
+  /** The spelling the sentence reports the option by. */
   readonly spelling: string;
+  /** The label of the source that supplied the value, or none for a token. */
   readonly label: string | undefined;
 }
 
@@ -178,7 +152,7 @@ function requirementSentence(option: GroupMember, lacking: readonly string[]): s
     : `${inputSubject(subject)} requires options ${quotedNames(lacking)}. Supply them as well, or remove ${quoted(option.spelling)}.`;
 }
 
-export type { LogLineText, GroupMember, InputSubject, OptionFix };
+export type { GroupMember, OptionFix };
 export {
   environmentBoolean,
   environmentCount,
@@ -186,9 +160,8 @@ export {
   filePathsOnly,
   groupSentence,
   ignoredFill,
-  inputSubject,
+  ignoredFillAt,
   issueLine,
-  missingValues,
   pipedStdin,
   requiredArgument,
   requiredOption,

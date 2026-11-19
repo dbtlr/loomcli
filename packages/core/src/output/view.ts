@@ -5,7 +5,7 @@ import type { FactSite } from '../diagnostics/facts.js';
 import { DeclarationError, defaultText, reasonOf } from '../failures/errors.js';
 import type { LoomError } from '../failures/errors.js';
 import { markedSentence } from '../failures/form.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import { foreignValue, foreignValueCorrection, twoPackageCopies } from '../plugins/rules.js';
 import type { RowView, View, ViewContext } from './types.js';
 
@@ -96,8 +96,20 @@ interface FailureViewContext extends ViewContext {
   readonly application: string;
   /** The canonical names routing walked, `[]` before routing. */
   readonly path: readonly string[];
-  /** The hints the installed plugins' `onFailure` hooks returned, `[]` when none contributed. */
+  /**
+   * The hints the installed plugins' `onFailure` hooks returned, each phrase rendered in the run's
+   * language, `[]` when none contributed.
+   */
   readonly hints: readonly string[];
+  /**
+   * The failure's sentence as core's default text renders it, without the application-name prefix:
+   * its lines in the run's language, or its `message` as written when it keeps no lines that still
+   * read it. For a declaration fault or a defect it is the generic defect message in the run's
+   * language, never the author's detail; a view receives one only in a distributed build, because a
+   * development build writes its Developer Diagnostic in place of every view. For every other
+   * failure, without a phrasebook for the run's language, it equals `failure.message`.
+   */
+  readonly message: string;
   /** `'name'` for a run `invoke()` started, where no command line exists, and `'argv'` otherwise. */
   readonly invokedBy: 'argv' | 'name';
   /** The view the result would render through when the run failed, or `undefined` for none. */
@@ -659,14 +671,18 @@ function coreText(failure: LoomError, text: string, hints: readonly string[]): s
 function describeFailure(
   registry: ViewRegistry,
   failure: LoomError,
-  context: FailureViewContext,
+  scene: { readonly application: string; readonly context: () => FailureViewContext },
 ): FailureReport {
-  const text = defaultText(failure, context.application);
+  // The plain fallback path writes core's default text in English, running no phrasebook.
+  const text = defaultText(failure, scene.application);
   const replacement = resolveFailure(registry, failure);
-  if (!replacement) {
-    return { core: true, kind: 'rendered', text: coreText(failure, text, context.hints) };
-  }
   try {
+    // A phrasebook entry that throws while the text renders breaks the view, as a view's throw does.
+    const context = scene.context();
+    if (!replacement) {
+      const localized = defaultText(failure, context.application, context.localize);
+      return { core: true, kind: 'rendered', text: coreText(failure, localized, context.hints) };
+    }
     const rendered = callView(replacement, failure.name)(failure, context);
     return { core: false, kind: 'rendered', text: String(rendered) };
   } catch (error) {

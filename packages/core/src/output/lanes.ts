@@ -1,7 +1,7 @@
 import { glyph } from '../style/glyphs.generated.js';
 import { underGutter } from './gutter.js';
 import { logLine } from './log-line.js';
-import { incompleteOutput } from './messages.js';
+import { outputPhrase } from './phrases.js';
 import type { ViewContext } from './types.js';
 import { view } from './view.js';
 import type { AnyDeclaredView, DeclaredView } from './view.js';
@@ -104,7 +104,8 @@ interface IncompleteResult {
 const incompleteResult: DeclaredView<IncompleteResult> = view<IncompleteResult>(
   `${core}/results/incomplete`,
   {
-    render: ({ path, written, yielded }) => `${incompleteOutput(path, yielded, written)}\n`,
+    render: ({ path, written, yielded }, context) =>
+      `${context.localize(outputPhrase('incompleteOutput', path, yielded, written))}\n`,
   },
 );
 

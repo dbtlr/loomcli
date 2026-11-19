@@ -615,6 +615,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
     cwd,
     env,
     home,
+    locale,
     platform,
     program,
     readSource,
@@ -655,6 +656,7 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
     get libc() {
       return libc === undefined ? processLibc() : libc.value;
     },
+    ...(locale === undefined ? {} : { locale }),
     get platform() {
       return platform ?? process.platform;
     },

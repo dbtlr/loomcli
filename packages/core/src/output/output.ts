@@ -5,6 +5,9 @@ import { FatalError, ResultError } from '../failures/errors.js';
 import type { ReportHost } from '../host/host.js';
 import { underCI } from '../host/host.js';
 import type { ActionChannel } from '../invocation/types.js';
+import { Phrase } from '../localization/phrase.js';
+import type { Phrasebook } from '../localization/phrasebook.js';
+import { runLocalizer } from '../localization/render.js';
 import type { LaneHandlers } from '../signals/signal-lane.js';
 import { capabilities, columns, plainPolicy } from '../style/rendering.js';
 import type { RenderingPolicy } from '../style/rendering.js';
@@ -808,6 +811,8 @@ export class Output {
    */
   readonly out: Out<OpenResult>;
 
+  // Renders the run's phrases in its language, through the phrasebooks its plugins install.
+  private readonly localizer = runLocalizer();
   private palette: Palette = new Map();
   private policy: RenderingPolicy = {};
   // The incomplete-result lines held until the run settles, which a failure an encoder wrote drops.
@@ -1163,6 +1168,11 @@ export class Output {
     this.registry = registry;
   }
 
+  /** The phrasebooks of the run's language, gathered on the first phrase the run renders. */
+  usePhrasebooks(gather: () => readonly Phrasebook[]): void {
+    this.localizer.use(gather);
+  }
+
   /** The run's verbosity, which decides which lanes write from here on. */
   useVerbosity(verbosity: number): void {
     this.verbosity = verbosity;
@@ -1294,13 +1304,18 @@ export class Output {
    * write is a broken destination. A view that returns the empty string writes nothing.
    */
   showLog(event: LogEvent): void {
-    const line = logLineOf(event);
-    if (line === undefined || !this.showsLog(line.level)) {
+    const { level } = event;
+    if (level === 'fatal' || event.failure !== undefined || !this.showsLog(level)) {
       return;
     }
+    // The line fills its template in the run's language inside the call, as a log-line view would.
     void this.hand(
       this.rendered(
-        () => resolveView<LogLine>(this.registry, logLine)(line, this.context('stderr')),
+        () =>
+          resolveView<LogLine>(this.registry, logLine)(
+            logLineOf(event, { level, localize: this.localizer.localize }),
+            this.context('stderr'),
+          ),
         'stderr',
         async (text) => {
           if (text !== '') {
@@ -1476,6 +1491,7 @@ export class Output {
       background: this.host.terminal.background,
       columns: columns(this.host, destination),
       expandTabs: (text: string) => expandTabsMarked(text, { caps, palette }),
+      localize: this.localizer.localize,
       plain: (text: string) =>
         resolveText(text, this.palette, {
           ...caps,
@@ -1501,15 +1517,20 @@ export class Output {
    */
   emit(kind: Purpose, call: MessageArguments, look: MessageLook): Promise<void> {
     const [message, view = lanes[kind]] = call;
-    if (typeof message !== 'string') {
+    if (typeof message !== 'string' && !(message instanceof Phrase)) {
       return this.streamed(kind, message, look);
     }
     const { destination } = look;
     if (this.verbosity < shownFrom[kind]) {
       return Promise.resolve();
     }
+    // A phrase renders in the run's language where the line is written, inside the view's call.
     return this.rendered(
-      () => resolveView<string>(this.registry, view)(message, this.context(destination)),
+      () =>
+        resolveView<string>(this.registry, view)(
+          typeof message === 'string' ? message : this.localizer.localize(message),
+          this.context(destination),
+        ),
       destination,
       (text) => this.write(this.host[destination], endsWithLineBreak(text) ? text : `${text}\n`),
     );

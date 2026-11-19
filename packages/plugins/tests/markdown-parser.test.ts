@@ -232,6 +232,7 @@ test('a plain paragraph line is one primary value in the marked string', () => {
       background: undefined,
       columns: undefined,
       expandTabs: (text) => text,
+      localize: (phrase) => phrase.text,
       plain: (text) => text,
       style,
       width: () => 0,

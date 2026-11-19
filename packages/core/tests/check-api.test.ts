@@ -389,6 +389,29 @@ test('a type that only a listed declaration uses is in the companion file, so ch
   expect(checkApi(root, [listed])).toEqual([expect.stringContaining('api-listed-changed: .:')]);
 });
 
+test('a namespace a listed declaration names lists each declaration its module exports, so changing one fails', () => {
+  const { config, root } = fixture(
+    `import type { Modules } from './hidden.js';\n${exampled('A function.', getFence)}export declare function get(): Modules;`,
+    {
+      'dist/hidden.d.ts':
+        "import type * as sentences from './sentences.js';\n/** The modules. @public */\nexport interface Modules {\n  /** The sentences. */\n  readonly sentences: typeof sentences;\n}",
+      'dist/sentences.d.ts':
+        'declare function saved(name: string): string;\ndeclare const empty = "Nothing.";\nexport { empty, saved };',
+    },
+  );
+  const listed = {
+    ...config,
+    entries: { '.': { forgottenExports: { Modules: 'The author names the function.' } } },
+  };
+  expect(checkApi(root, [listed], { update: true })).toEqual([]);
+  const text = readFileSync(listedFile(root), 'utf8');
+  expect(text).toContain('declare function saved(name: string): string;');
+  expect(text).toContain('declare const empty = "Nothing.";');
+  const sentences = join(root, 'dist/sentences.d.ts');
+  writeFileSync(sentences, readFileSync(sentences, 'utf8').replace('name: string', 'name: number'));
+  expect(checkApi(root, [listed])).toEqual([expect.stringContaining('api-listed-changed: .:')]);
+});
+
 test('listed declarations are printed in name order, whatever order the source holds them in', () => {
   const { config, root } = fixture(
     `import type { Zeta, Alpha } from './hidden.js';\n${exampled('A function.', getFence)}export declare function get(zeta: Zeta): Alpha;`,

@@ -14,6 +14,7 @@ import type { LoomError } from '../failures/errors.js';
 import type { InputDeclaration } from '../inputs/declarations.js';
 import { emptyValues, isSupplied } from '../inputs/options.js';
 import type { OptionValues, SpellingTable, TableSpelling } from '../inputs/options.js';
+import type { Phrase } from '../localization/phrase.js';
 import type { UnknownCommand } from './types.js';
 
 /**
@@ -1097,7 +1098,7 @@ interface ParsedInvocation {
    * Each input an invocation by name gave a value no token spells, with the one issue that says
    * what the input takes. Validation reports each as a rejected value; argv words leave it empty.
    */
-  unlowered: ReadonlyMap<InputDeclaration, string>;
+  unlowered: ReadonlyMap<InputDeclaration, Phrase>;
   values: { globals: OptionValues; locals: OptionValues };
 }
 

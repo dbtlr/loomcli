@@ -25,6 +25,10 @@ const carried =
 const ownFailure =
   "A failure's own message, worded in a message module, which core's default text and failure form print.";
 
+/** A read of an issue's English message, compared with the English text of the phrase it carries. */
+const phrased =
+  "An issue's English message, compared with its phrase's English text to tell whether the phrase still states it; no sentence quotes it.";
+
 /** A read of a validator's issue sentence, which core repeats after the input's name. */
 const issue =
   "An issue's sentence is its validator's, which core repeats after the input's name as the validator wrote it.";
@@ -67,7 +71,6 @@ const exceptions: VoiceExceptions = {
     'failures/encoders.ts': { 'answer.cause': { reason: carried, sites: 1 } },
     'failures/errors.ts': {
       '?.cause': { reason: carried, sites: 1 },
-      'failure.message': { reason: ownFailure, sites: 2 },
       'thrown.message': {
         reason:
           "reasonOf quotes a thrown value in a Developer Diagnostic's sentence, which addresses the author; a distributed build shows the operator the generic defect message.",
@@ -87,6 +90,17 @@ const exceptions: VoiceExceptions = {
       'issue.message': { reason: issue, sites: 3 },
     },
     'inspection/inspect.ts': { 'failed.cause': { reason: carried, sites: 1 } },
+    'localization/issues.ts': {
+      'copy.message': { reason: phrased, sites: 1 },
+      'issue.message': { reason: phrased, sites: 1 },
+    },
+    'localization/lines.ts': {
+      'failure.message': {
+        reason:
+          "A failure's own message, compared with its lines' English text, and printed as written once the author's code changed it.",
+        sites: 3,
+      },
+    },
     'output/log-line.ts': {
       'event.message': {
         reason:
@@ -116,5 +130,7 @@ const exceptions: VoiceExceptions = {
 };
 
 test('every sentence core says to an operator keeps the voice the voice test holds', async () => {
-  await expect(voiceReport(src, exceptions, sinks)).resolves.toEqual([]);
+  await expect(voiceReport(src, exceptions, sinks, 'localization/registry.ts')).resolves.toEqual(
+    [],
+  );
 });

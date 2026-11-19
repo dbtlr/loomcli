@@ -6,6 +6,9 @@ import { validatorFailed } from '../diagnostics/rules.js';
 import { asSentence, DeclarationError, InputError, reasonOf } from '../failures/errors.js';
 import type { InputProblem } from '../failures/errors.js';
 import type { Host } from '../host/types.js';
+import { carriedIssue, issuePhrase, phrasedIssue } from '../localization/issues.js';
+import type { FailureLine } from '../localization/lines.js';
+import type { Phrase } from '../localization/phrase.js';
 import type { Content } from './content.js';
 import { prepareContent } from './content.js';
 import { schemaOptions } from './context.js';
@@ -20,19 +23,10 @@ import type {
 } from './declarations.js';
 import { ValidatedInputs } from './ledger.js';
 import type { Report } from './ledger.js';
-import {
-  environmentBoolean,
-  environmentCount,
-  environmentTuple,
-  ignoredFill,
-  issueLine,
-  silentRejection,
-  stdinIssue,
-} from './messages.js';
-import type { InputSubject, LogLineText } from './messages.js';
 import { absentBooleans, groupReports } from './option-groups.js';
 import { arityOf, booleanValue, copyValues, withdrawFill } from './options.js';
 import type { OptionValues } from './options.js';
+import { inputPhrase } from './phrases.js';
 import { rememberReceived } from './received.js';
 import {
   collects,
@@ -47,6 +41,7 @@ import {
   wordsOf,
 } from './supplied.js';
 import type { SuppliedInputs, ValidationContext } from './types.js';
+import type { InputSubject } from './wording.js';
 
 /**
  * One issue a validator returned, checked where it enters. Core keeps every own enumerable field
@@ -63,7 +58,7 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
   }
   const suppliedPath = 'path' in issue ? issue.path : undefined;
   if (suppliedPath === undefined) {
-    return { ...issue, message };
+    return carriedIssue(issue, { ...issue, message });
   }
   if (!Array.isArray(suppliedPath)) {
     throw new Error('The validator returned an invalid Standard Schema issue path.');
@@ -76,7 +71,7 @@ function readIssue(issue: unknown): StandardSchemaV1.Issue {
     }
     return key;
   });
-  return { ...issue, message, path };
+  return carriedIssue(issue, { ...issue, message, path });
 }
 
 /**
@@ -184,7 +179,9 @@ async function validateEach(
     } else {
       // The issue keeps its own fields, and only its path gains the value's position.
       for (const issue of reported(result.issues)) {
-        issues.push({ ...issue, path: [...prefix, position, ...(issue.path ?? [])] });
+        issues.push(
+          carriedIssue(issue, { ...issue, path: [...prefix, position, ...(issue.path ?? [])] }),
+        );
       }
     }
   }
@@ -315,15 +312,43 @@ export function issuePath(issue: StandardSchemaV1.Issue): string | undefined {
 export function reported(
   issues: readonly StandardSchemaV1.Issue[],
 ): readonly StandardSchemaV1.Issue[] {
-  return issues.length === 0 ? [{ message: silentRejection }] : issues;
+  return issues.length === 0 ? [phrasedIssue(inputPhrase('silentRejection'))] : issues;
 }
 
 /**
- * One line per issue under the input's subject. A path segment can hold text the operator typed,
- * such as a key of a record, so the line escapes the path; `issuePath` keeps it raw for a view.
+ * One line per issue under the input's subject, each repeating the issue's phrase when it carries
+ * one. A path segment can hold text the operator typed, such as a key of a record, so the line
+ * escapes the path; `issuePath` keeps it raw for a view.
  */
-export function messages(subject: InputSubject, issues: readonly StandardSchemaV1.Issue[]) {
-  return issues.map((issue) => issueLine(subject, issuePath(issue), issue.message));
+export function messages(
+  subject: InputSubject,
+  issues: readonly StandardSchemaV1.Issue[],
+): Phrase[] {
+  return issues.map((issue) =>
+    inputPhrase('issueLine', subject, issuePath(issue), issuePhrase(issue) ?? issue.message),
+  );
+}
+
+/**
+ * The `-v` log line of a configuration fill core dropped: its template, and its fields, the option's
+ * reported spelling, the answer's label, the first issue's message, as a phrase when it carries
+ * one, and its path inside the value when it has one.
+ */
+interface DroppedFill {
+  readonly template: Phrase;
+  readonly fields: Readonly<Record<string, string | Phrase>>;
+}
+
+function droppedFill(
+  named: { readonly origin: string; readonly spelling: string },
+  first: StandardSchemaV1.Issue | undefined,
+): DroppedFill {
+  const path = first === undefined ? undefined : issuePath(first);
+  const issue = (first && issuePhrase(first)) ?? String(first?.message);
+  const fields = { issue, label: named.origin, option: named.spelling };
+  return path === undefined
+    ? { fields, template: inputPhrase('ignoredFill') }
+    : { fields: { ...fields, position: path }, template: inputPhrase('ignoredFillAt') };
 }
 
 /**
@@ -335,11 +360,11 @@ function grammarIssues(input: OptionInput): readonly StandardSchemaV1.Issue[] {
   const arity = arityOf(config);
   if (arity !== undefined) {
     const delimiter = config.type === 'string' ? (config.envDelimiter ?? '') : '';
-    return [{ message: environmentTuple(arity, delimiter) }];
+    return [phrasedIssue(inputPhrase('environmentTuple', arity, delimiter))];
   }
   return config.type === 'count'
-    ? [{ message: environmentCount }]
-    : [{ message: environmentBoolean }];
+    ? [phrasedIssue(inputPhrase('environmentCount'))]
+    : [phrasedIssue(inputPhrase('environmentBoolean'))];
 }
 
 /** A stdin declaration is not a token slot, but its problems retain its authoring position. */
@@ -376,7 +401,7 @@ export interface Validation {
    * The configuration fills the option's validator rejected. Each reads as unfilled in this pass,
    * and the caller withdraws it and names it.
    */
-  readonly dropped: ReadonlyMap<InputDeclaration, LogLineText>;
+  readonly dropped: ReadonlyMap<InputDeclaration, DroppedFill>;
   readonly stdin: Content | undefined;
   readonly failure: InputError | undefined;
   readonly reports: ReadonlyMap<InputDeclaration, Report>;
@@ -451,19 +476,19 @@ export async function validateValues(invocation: Invocation): Promise<Validation
   };
   const values = new Map<InputDeclaration, unknown>();
   /** Each dropped configuration fill with the `-v` log line that names it. */
-  const dropped = new Map<InputDeclaration, LogLineText>();
+  const dropped = new Map<InputDeclaration, DroppedFill>();
   // Each input reports at most once, so insertion order is the order this phase reaches them.
   const reports = new Map<InputDeclaration, Report>();
   /**
    * One missing input, in the order this phase reaches it, unless a skipped configuration source
    * would have been asked to fill it.
    */
-  const omit = (entry: ScopedInput, spelling: string, line: string) => {
+  const omit = (entry: ScopedInput, spelling: string, lines: readonly FailureLine[]) => {
     if (sources.unanswered?.has(entry.input) === true) {
       return;
     }
     reports.set(entry.input, {
-      lines: [line],
+      lines,
       problem: { input: identityOf(entry), reason: 'missing', spelling },
     });
   };
@@ -526,10 +551,9 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       return false;
     }
     const [first] = issues;
-    const path = first === undefined ? undefined : issuePath(first);
     dropped.set(
       entry.input,
-      ignoredFill({ label: named.origin, spelling: named.spelling }, path, String(first?.message)),
+      droppedFill({ origin: named.origin, spelling: named.spelling }, first),
     );
     return true;
   };
@@ -544,7 +568,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     if (requires(input)) {
       // An omitted required argument arrives here too, so omission has one class.
       // One aggregated diagnostic covers an omitted argument and an omitted option alike.
-      omit(entry, spelling, missingMessage(input, spelling, { collected }));
+      omit(entry, spelling, [missingMessage(input, spelling, { collected })]);
     } else if (collected && !defaults.has(input)) {
       // No occurrence has no value to validate, so the action receives an empty array.
       values.set(input, []);
@@ -573,7 +597,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
       // Its validator threw in an earlier pass, so it settles nothing and is never called again.
     } else if (unlowered !== undefined) {
       // A value no token spells supplied nothing, and the caller's value is the input's problem.
-      reject(entry, [{ message: unlowered }], suppliedName(input, input.name));
+      reject(entry, [phrasedIssue(unlowered)], suppliedName(input, input.name));
     } else if (input.kind === 'option' && variable !== undefined) {
       // A variable outside its option's grammar filled nothing, so it is the option's problem.
       reject(
@@ -619,7 +643,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         if (result.issues === undefined) {
           values.set(input, result.value);
         } else if (result.missing) {
-          omit(entry, spelling, messages(suppliedName(input, spelling), result.issues).join('\n'));
+          omit(entry, spelling, messages(suppliedName(input, spelling), result.issues));
         } else {
           const origin = dropped.has(input) ? undefined : originOf(input);
           reject(entry, result.issues, { ...suppliedName(input, spelling, origin), raw: words });
@@ -628,11 +652,9 @@ export async function validateValues(invocation: Invocation): Promise<Validation
         await absent(entry, spelling, false);
       } else if (requires(input) && Array.isArray(raw) && raw.length === 0) {
         // A filled list satisfies the at-least-one rule by its length, so an empty one is missing.
-        omit(
-          entry,
-          spelling,
+        omit(entry, spelling, [
           missingMessage(input, spelling, { collected, origin: originOf(input) }),
-        );
+        ]);
       } else {
         await accept(entry, raw, { origin: originOf(input), spelling });
       }
@@ -674,7 +696,9 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     );
     if (result.issues !== undefined) {
       stdinReport = {
-        lines: result.issues.map((issue) => stdinIssue(issue.message)),
+        lines: result.issues.map((issue) =>
+          inputPhrase('stdinIssue', issuePhrase(issue) ?? issue.message),
+        ),
         problem: {
           input: { global: false, kind: 'stdin', name: 'stdin' },
           reason: 'missing',
@@ -712,7 +736,7 @@ export async function validateValues(invocation: Invocation): Promise<Validation
     failure:
       found.length > 0
         ? new InputError(
-            found.flatMap((report) => report.lines).join('\n'),
+            found.flatMap((report) => report.lines),
             found.map((report) => report.problem),
           )
         : undefined,

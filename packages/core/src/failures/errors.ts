@@ -10,32 +10,13 @@ import {
   resultContract,
 } from '../diagnostics/rules.js';
 import type { InputIdentity } from '../inputs/types.js';
+import { englishLines, failureText, keepLines, linesOf } from '../localization/lines.js';
+import { english } from '../localization/phrase.js';
+import type { Localize, Phrase } from '../localization/phrase.js';
 import { escapeControlCharacters } from '../support/controls.js';
 import type { FailureExitCode } from './exit-codes.js';
-import {
-  booleanValue,
-  countedValue,
-  declaredNoPassthrough as declaredNoPassthroughSentence,
-  genericDefect,
-  misplacedOption,
-  missingArityRefused,
-  missingArityValues,
-  missingAttachedValue,
-  missingSubcommand,
-  missingValue,
-  quoted,
-  repeatedOption,
-  routedSentence,
-  separateValues,
-  terminalUnavailable,
-  undeclaredArgument as undeclaredArgumentSentence,
-  unexpectedArguments,
-  unknownCommand,
-  unknownOption,
-  unknownOptionBeforeArguments as unknownOptionBeforeArgumentsSentence,
-  unknownOptionName as unknownOptionNameSentence,
-  workingDirectoryUnreadable,
-} from './messages.js';
+import { failurePhrase } from './phrases.js';
+import { quoted, routedSentence } from './wording.js';
 
 /** The sentence one results-lane fault reports, which names the Command that holds it. */
 function resultMessage(kind: ResultFault, command: readonly string[]): string {
@@ -53,8 +34,8 @@ export function midSentence(text: string): string {
  * The one message a distributed build shows an operator for a defect or a declaration fault: the
  * application name and a fixed phrase, with no reason, class name, code, or path.
  */
-export function genericDefectText(application: string): string {
-  return `${application}: ${genericDefect}\n`;
+export function genericDefectText(application: string, localize: Localize = english): string {
+  return `${application}: ${localize(failurePhrase('genericDefect'))}\n`;
 }
 
 /**
@@ -66,27 +47,43 @@ export function isAuthorFault(failure: LoomError): failure is DeclarationError |
 }
 
 /**
+ * One failure's sentence as core's default text renders it, without the application-name prefix or
+ * the trailing newline: the generic defect message for a fault only the author can fix, because its
+ * detail is the author's, and the failure's lines otherwise. A failure view reads it as
+ * `context.message`.
+ */
+export function defaultSentence(failure: LoomError, localize: Localize = english): string {
+  return isAuthorFault(failure)
+    ? localize(failurePhrase('genericDefect'))
+    : failureText(failure, localize);
+}
+
+/**
  * Core's own text for one failure, with the trailing newline every view's text carries. The
  * application name opens every line of a usage failure's message, one line for each problem it
  * reports, so the operator reads who is speaking on each, and it opens a working directory
  * failure's line the same way. A declaration fault and a defect read the generic defect message,
  * because only the author can act on their detail, and a development build shows that detail
  * ahead of every view. Every other class writes its message alone, even
- * one that declares a usage error's exit code. It is the default view of every failure class and
- * the text the plain fallback path writes, so it runs no application code and nothing downstream
- * composes its newline.
+ * one that declares a usage error's exit code. It is the default view of every failure class, which
+ * renders the failure's lines through the run's `localize`, and in English the text the plain
+ * fallback path writes, which runs no application code; nothing downstream composes its newline.
  */
-export function defaultText(failure: LoomError, application: string): string {
+export function defaultText(
+  failure: LoomError,
+  application: string,
+  localize: Localize = english,
+): string {
   if (failure instanceof UsageError || failure instanceof WorkingDirectoryError) {
-    return failure.message
+    return failureText(failure, localize)
       .split('\n')
       .map((line) => `${application}: ${line}\n`)
       .join('');
   }
   if (isAuthorFault(failure)) {
-    return genericDefectText(application);
+    return genericDefectText(application, localize);
   }
-  return `${failure.message}\n`;
+  return `${failureText(failure, localize)}\n`;
 }
 
 /**
@@ -179,11 +176,13 @@ export abstract class LoomError extends Error {
 
   /**
    * Reads the constructed class's failure code, and a code outside its grammar throws a
-   * `DeclarationError` in place of the failure, because core never replaces a code. `options` is
-   * the platform's own, so a failure that replaces another error keeps it as `cause` only when its
-   * author passes one.
+   * `DeclarationError` in place of the failure, because core never replaces a code. `message` is
+   * one line, a string or a phrase, or a list of lines, and the failure's `message` is their
+   * English text joined by line breaks. `options` is the platform's own, so a failure that replaces
+   * another error keeps it as `cause` only when its author passes one.
    */
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string | Phrase | readonly (string | Phrase)[], options?: ErrorOptions) {
+    const lines = linesOf(message);
     const declared: unknown = new.target.code;
     if (!isFailureCode(declared)) {
       throw new DeclarationError(failureCode, {
@@ -192,7 +191,8 @@ export abstract class LoomError extends Error {
         sentence: invalidCodeSentence(new.target.name, declared),
       });
     }
-    super(message, options);
+    super(englishLines(lines), options);
+    keepLines(this, lines);
     this.name = 'LoomError';
   }
 
@@ -233,7 +233,7 @@ export abstract class UsageError extends LoomError {
   /** The exit code of a usage failure, 2. */
   static override readonly exitCode: FailureExitCode = 2;
 
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string | Phrase | readonly (string | Phrase)[], options?: ErrorOptions) {
     super(message, options);
     this.name = 'UsageError';
   }
@@ -294,7 +294,11 @@ export class InputError extends UsageError {
    */
   readonly problems: readonly InputProblem[];
 
-  constructor(message: string, problems: readonly InputProblem[], options?: ErrorOptions) {
+  constructor(
+    message: string | Phrase | readonly (string | Phrase)[],
+    problems: readonly InputProblem[],
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = 'InputError';
     this.problems = problems;
@@ -333,7 +337,7 @@ export class UnknownCommandError extends UsageError {
   readonly candidates: readonly string[];
 
   constructor(token: string, candidates: readonly string[]) {
-    super(unknownCommand(token, candidates));
+    super(failurePhrase('unknownCommand', token, candidates));
     this.candidates = candidates;
     this.name = 'UnknownCommandError';
     this.token = token;
@@ -379,7 +383,7 @@ export class NonCallableCommandError extends UsageError {
   readonly argument: string | undefined;
 
   constructor(command: readonly string[], candidates: readonly string[], argument?: string) {
-    super(missingSubcommand(command, candidates, argument));
+    super(failurePhrase('missingSubcommand', command, candidates, argument));
     this.argument = argument;
     this.candidates = candidates;
     this.command = command;
@@ -429,7 +433,7 @@ export class UnexpectedArgumentError extends UsageError {
   readonly extra: readonly string[];
 
   constructor(command: readonly string[], accepted: number, extra: readonly string[]) {
-    super(unexpectedArguments(command, accepted));
+    super(failurePhrase('unexpectedArguments', command, accepted));
     this.accepted = accepted;
     this.command = command;
     this.extra = extra;
@@ -464,7 +468,7 @@ export class UnknownOptionError extends UsageError {
   readonly spelling: string;
 
   constructor(spelling: string) {
-    super(unknownOption(spelling));
+    super(failurePhrase('unknownOption', spelling));
     this.name = 'UnknownOptionError';
     this.spelling = spelling;
   }
@@ -475,8 +479,16 @@ export class UnknownOptionError extends UsageError {
  * sentence asks for a declared name, because the caller typed no spelling.
  */
 export function unknownOptionName(name: string): UnknownOptionError {
-  const failure = new UnknownOptionError(name);
-  failure.message = unknownOptionNameSentence(name);
+  return restated(new UnknownOptionError(name), failurePhrase('unknownOptionName', name));
+}
+
+/**
+ * One failure core raised, its sentence replaced by another: its lines and its `message` together,
+ * so it keeps a phrase for the sentence it states. Core never assigns a failure's `message` alone.
+ */
+function restated<Failure extends LoomError>(failure: Failure, line: Phrase): Failure {
+  keepLines(failure, [line]);
+  failure.message = line.text;
   return failure;
 }
 
@@ -489,9 +501,10 @@ export function undeclaredArgument(
   accepted: number,
   name: string,
 ): UnexpectedArgumentError {
-  const failure = new UnexpectedArgumentError(command, accepted, [name]);
-  failure.message = undeclaredArgumentSentence(command, name);
-  return failure;
+  return restated(
+    new UnexpectedArgumentError(command, accepted, [name]),
+    failurePhrase('undeclaredArgument', command, name),
+  );
 }
 
 /**
@@ -503,9 +516,10 @@ export function declaredNoPassthrough(
   accepted: number,
   words: readonly string[],
 ): UnexpectedArgumentError {
-  const failure = new UnexpectedArgumentError(command, accepted, words);
-  failure.message = declaredNoPassthroughSentence(command);
-  return failure;
+  return restated(
+    new UnexpectedArgumentError(command, accepted, words),
+    failurePhrase('declaredNoPassthrough', command),
+  );
 }
 
 /**
@@ -513,9 +527,10 @@ export function declaredNoPassthrough(
  * delimiter as the way to pass the word as an argument.
  */
 export function unknownOptionBeforeArguments(spelling: string): UnknownOptionError {
-  const failure = new UnknownOptionError(spelling);
-  failure.message = unknownOptionBeforeArgumentsSentence(spelling);
-  return failure;
+  return restated(
+    new UnknownOptionError(spelling),
+    failurePhrase('unknownOptionBeforeArguments', spelling),
+  );
 }
 
 /**
@@ -547,13 +562,15 @@ function missingValueMessage(
   spelling: string,
   form: MissingValueForm,
   shortfall: MissingArity | undefined,
-): string {
+): Phrase {
   if (shortfall !== undefined) {
     return shortfall.refused === undefined
-      ? missingArityValues(spelling, shortfall.arity, shortfall.received)
-      : missingArityRefused(spelling, shortfall.arity, shortfall.refused);
+      ? failurePhrase('missingArityValues', spelling, shortfall.arity, shortfall.received)
+      : failurePhrase('missingArityRefused', spelling, shortfall.arity, shortfall.refused);
   }
-  return form === 'attached' ? missingAttachedValue(spelling) : missingValue(spelling);
+  return form === 'attached'
+    ? failurePhrase('missingAttachedValue', spelling)
+    : failurePhrase('missingValue', spelling);
 }
 
 /**
@@ -641,16 +658,16 @@ export class UnexpectedValueError extends UsageError {
 }
 
 /** The sentence of a value attached to a spelling that takes none in its own word. */
-function unexpectedValueMessage(spelling: string, kind: 'arity' | 'boolean' | 'count'): string {
+function unexpectedValueMessage(spelling: string, kind: 'arity' | 'boolean' | 'count'): Phrase {
   switch (kind) {
     case 'arity': {
-      return separateValues(spelling);
+      return failurePhrase('separateValues', spelling);
     }
     case 'count': {
-      return countedValue(spelling);
+      return failurePhrase('countedValue', spelling);
     }
     case 'boolean': {
-      return booleanValue(spelling);
+      return failurePhrase('booleanValue', spelling);
     }
     default: {
       const exhaustive: never = kind;
@@ -685,7 +702,7 @@ export class RepeatedOptionError extends UsageError {
   readonly spelling: string;
 
   constructor(spelling: string) {
-    super(repeatedOption(spelling));
+    super(failurePhrase('repeatedOption', spelling));
     this.name = 'RepeatedOptionError';
     this.spelling = spelling;
   }
@@ -730,7 +747,7 @@ export class MisplacedOptionError extends UsageError {
   readonly commands: readonly (readonly string[])[];
 
   constructor(spelling: string, commands: readonly (readonly string[])[]) {
-    super(misplacedOption(spelling, commands));
+    super(failurePhrase('misplacedOption', spelling, commands));
     this.commands = commands;
     this.name = 'MisplacedOptionError';
     this.spelling = spelling;
@@ -903,7 +920,7 @@ export class FatalError extends LoomError {
   /** The failure code of a fatal failure, `fatal`, which a subclass that declares none reads. */
   static override readonly code: string = 'fatal';
 
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string | Phrase | readonly (string | Phrase)[], options?: ErrorOptions) {
     super(message, options);
     this.name = 'FatalError';
   }
@@ -941,7 +958,7 @@ export class TerminalUnavailableError extends FatalError {
   readonly command: readonly string[];
 
   constructor(application: string, command: readonly string[]) {
-    super(terminalUnavailable(application, command));
+    super(failurePhrase('terminalUnavailable', application, command));
     this.command = command;
     this.name = 'TerminalUnavailableError';
   }
@@ -975,7 +992,7 @@ export class WorkingDirectoryError extends LoomError {
   static override readonly code: string = 'working-directory-unreadable';
 
   constructor(options?: ErrorOptions) {
-    super(workingDirectoryUnreadable, options);
+    super(failurePhrase('workingDirectoryUnreadable'), options);
     this.name = 'WorkingDirectoryError';
   }
 }

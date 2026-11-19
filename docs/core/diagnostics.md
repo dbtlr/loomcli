@@ -84,7 +84,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/core/foreign-value
 
-**Value from another copy of core.** Core reads a plugin, an extension value, a declared view, a view override, a translation, a failure encoding, a provider, and an option set through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.
+**Value from another copy of core.** Core reads a plugin, an extension value, a declared view, a view override, a translation, a failure encoding, a phrasebook, a provider, and an option set through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.
 
 ### @loomcli/core/interaction-mark
 
@@ -141,6 +141,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 ### @loomcli/core/optional-argument-last
 
 **Required argument after optional.** Bare words fill the arguments in order, and an operator leaves out optional arguments from the end of the line. A required argument after an optional one would leave the parser unable to tell which of the two a lone bare word fills, and one after an argument required only when input is not interactive would keep that argument's question from ever being asked at a terminal. A content argument whose min is positive counts as required here, because it must receive a source.
+
+### @loomcli/core/phrasebook-language
+
+**Phrasebook language not canonical.** A run renders a phrase through the phrasebooks installed for its language: the first subtag of the operator's canonical locale, two or three lowercase letters. A key in any other form, such as a region tag, an uppercase spelling, or a deprecated code Intl replaces, never equals a run's language, so its phrasebooks would never render.
 
 ### @loomcli/core/plain-mark
 

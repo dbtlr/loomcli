@@ -4,7 +4,7 @@
  */
 import { registerRule } from '../diagnostics/diagnostic-text.js';
 import { factFault, slotSite } from '../diagnostics/facts.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import { processLane } from '../host/process-handle.js';
 import type { OnResume, OnShutdown, OnSuspend } from './signal-lane.js';
 

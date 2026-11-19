@@ -244,6 +244,18 @@ export default defineConfig({
         },
       },
       {
+        /*
+         * Core's registry names each message module by the module's own type, and each concept
+         * module's phrase maker binds its message module whole, because every export of a message
+         * module is a sentence a phrasebook holds (ADR-0200).
+         */
+        files: ['packages/core/src/localization/registry.ts', 'packages/core/src/*/phrases.ts'],
+        rules: {
+          'import/no-namespace': 'off',
+          'typescript/consistent-type-imports': 'off',
+        },
+      },
+      {
         files: ['packages/core/src/failures/errors.ts'],
         rules: {
           // Core captures its own failure classes' codes once every class is declared.

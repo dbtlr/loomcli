@@ -4,7 +4,7 @@ import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { partOf } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { asSentence, DeclarationError, reasonOf } from '../failures/errors.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import type { ArgumentNode, CommandNode, OptionNode } from '../inspection/inspect.js';
 import { escapeControlCharacters } from '../support/controls.js';
 import { isPlainObject } from '../support/plain.js';

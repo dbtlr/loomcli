@@ -112,6 +112,21 @@ const cases: Record<string, RuleParts> = {
       'Plugin "@acme/format" declares option "shape" with spelling "-f" on Command "count", which "--file" already uses.',
   },
   // A plugin another installed copy of core built misses this copy's registry as this value does.
+  // A phrasebook another installed copy of core built misses this copy's class as this value does.
+  'phrasebook-entry': {
+    correction:
+      'Install one copy of @loomcli/core, so the Application and every plugin package share it.',
+    rule: 'foreign-value',
+    sentence:
+      'Plugin "@acme/german" installs a phrasebook another installed copy of @loomcli/core built.',
+  },
+  'phrasebook-language': {
+    correction:
+      'Key each list by a language subtag of two or three lowercase letters, such as "de" or "fil".',
+    rule: 'phrasebook-language',
+    sentence:
+      'Plugin "@acme/german" installs phrasebooks under "de-AT", which is not a canonical language subtag. Write "de".',
+  },
   'plugin-entry': {
     correction:
       'Install one copy of @loomcli/core, so the Application and every plugin package share it.',

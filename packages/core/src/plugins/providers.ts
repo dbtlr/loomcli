@@ -1,13 +1,14 @@
 import { partFinding } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { DeclarationError } from '../failures/errors.js';
-import { quoted } from '../failures/messages.js';
+import { quoted } from '../failures/wording.js';
 import type { Host } from '../host/types.js';
 import type { CommandGraph } from '../inspection/inspect.js';
 import type { Log } from '../output/log.js';
 import type { Out } from '../output/types.js';
 import type { OnShutdown } from '../signals/signal-lane.js';
 import type { ContextualStyle } from '../style/style.js';
+import { pluginPhrase } from './phrases.js';
 import { foreignValue, foreignValueCorrection, providerNameTaken } from './rules.js';
 
 /** Phantom key. It carries a provider's value and globals types and holds no runtime value. */
@@ -448,9 +449,6 @@ function latestFirst(built: readonly BuiltValue[]): readonly BuiltValue[] {
   return order;
 }
 
-/** The sentence a close that throws logs when it cannot fail the run. */
-const closeFailed = "A provider's close failed.";
-
 /**
  * Closes values in reverse build order, each awaited before the next starts, and every one whatever
  * an earlier one did. The first throw is the answer when `fails` holds, so the run fails with it;
@@ -467,7 +465,10 @@ async function closeValues(
     if (caught !== undefined && fails && first === undefined) {
       first = caught;
     } else if (caught !== undefined) {
-      log.error(closeFailed, { error: caught.thrown, provider: entry.provider.name });
+      log.error(pluginPhrase('closeFailed'), {
+        error: caught.thrown,
+        provider: entry.provider.name,
+      });
     }
   }
   return first;

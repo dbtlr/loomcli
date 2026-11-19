@@ -1,8 +1,9 @@
+import type { FailureLine } from '../localization/lines.js';
 import { escapeText } from '../style/style.js';
 import { exitCodeOf, failureCodeOf, FatalError, isAuthorFault } from './errors.js';
 import type { LoomError } from './errors.js';
 import type { FailureExitCode } from './exit-codes.js';
-import { genericDefect } from './messages.js';
+import { failurePhrase } from './phrases.js';
 
 /**
  * One failure as plain data, for a reader that cannot parse prose: `invoke()`'s outcome and its
@@ -35,8 +36,8 @@ interface FailureForm {
 interface FormScene {
   /** Whether the run is a development build, whose defect reads its sentence. */
   readonly development: boolean;
-  /** The hints the failure view receives, as marked text. */
-  readonly hints: readonly string[];
+  /** The hints the hooks returned, as marked text or phrases, which the form reads in English. */
+  readonly hints: readonly FailureLine[];
   /** Resolves marked text as plain text, with no color, modifier, or hyperlink. */
   readonly plain: (marked: string) => string;
 }
@@ -59,7 +60,7 @@ function markedSentence(failure: LoomError, text: string): string {
 function failureForm(failure: LoomError, scene: FormScene): FailureForm {
   const { development, hints, plain } = scene;
   const author = isAuthorFault(failure);
-  let message = genericDefect;
+  let message = failurePhrase('genericDefect').text;
   if (!author) {
     message = plain(markedSentence(failure, failure.message));
   } else if (development) {
@@ -69,7 +70,7 @@ function failureForm(failure: LoomError, scene: FormScene): FailureForm {
     code: author ? 'internal' : failureCodeOf(failure),
     exitCode: exitCodeOf(failure),
     message,
-    hints: Object.freeze(hints.map(plain)),
+    hints: Object.freeze(hints.map((hint) => plain(typeof hint === 'string' ? hint : hint.text))),
   });
 }
 

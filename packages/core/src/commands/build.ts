@@ -1,5 +1,5 @@
 import { DeclarationError } from '../failures/errors.js';
-import { commandSubject } from '../failures/messages.js';
+import { commandSubject } from '../failures/wording.js';
 import type { InputDeclaration } from '../inputs/declarations.js';
 import type { SpellingTable } from '../inputs/options.js';
 import { tableEntries } from '../inputs/options.js';

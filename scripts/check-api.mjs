@@ -206,6 +206,29 @@ function listedDeclarations(program, entryFile, projectFolder, names) {
   const exported = (moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : []).map(aliasTarget);
   const found = new Map();
   const pending = [];
+  /** Records one listed statement, which the walk then follows in turn. */
+  const record = (statement, name) => {
+    if (
+      statement &&
+      !found.has(statement) &&
+      !outsidePackage(projectFolder, statement.getSourceFile().fileName)
+    ) {
+      found.set(statement, name);
+      pending.push(statement);
+    }
+  };
+  /**
+   * A namespace a listed declaration names, such as a message module `typeof` reads whole, lists
+   * each declaration the module exports, under the namespace's local name, so the shape of every
+   * export it names is recorded.
+   */
+  const recordModule = (namespace, local) => {
+    for (const member of checker.getExportsOfModule(namespace).map(aliasTarget)) {
+      for (const declaration of member.declarations ?? []) {
+        record(topLevelStatement(declaration), `${local}.${member.name}`);
+      }
+    }
+  };
   const visitFrom = (root, accepts, followsClassState) => {
     const visit = (node) => {
       // A public type picks members from an unexported class, as `Command` does from `CommandBuilder`.
@@ -219,14 +242,10 @@ function listedDeclarations(program, entryFile, projectFolder, names) {
         const target = symbol && aliasTarget(symbol);
         if (target && accepts(target.name) && !exported.includes(target)) {
           for (const declaration of target.declarations ?? []) {
-            const statement = topLevelStatement(declaration);
-            if (
-              statement &&
-              !found.has(statement) &&
-              !outsidePackage(projectFolder, statement.getSourceFile().fileName)
-            ) {
-              found.set(statement, target.name);
-              pending.push(statement);
+            if (ts.isSourceFile(declaration)) {
+              recordModule(target, node.text);
+            } else {
+              record(topLevelStatement(declaration), target.name);
             }
           }
         }

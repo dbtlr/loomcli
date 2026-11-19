@@ -69,6 +69,22 @@ export { override, view } from './output/view.js';
 export { plugin } from './plugins/plugin.js';
 export { processHandle } from './host/process-handle.js';
 export { resolveTimeZone } from './host/time-zone.js';
+export { resolveLocale } from './host/locale.js';
+export { issuePhrase, phrasedIssue } from './localization/issues.js';
+export { failureLines } from './localization/lines.js';
+export { Phrase, phrases, replaceValue } from './localization/phrase.js';
+export type {
+  PhraseMaker,
+  PhraseSource,
+  PhraseTuple,
+  PhraseValues,
+  SentenceEntry,
+  SentenceNames,
+  SentenceValues,
+} from './localization/phrase.js';
+export { Phrasebook, phrasebook } from './localization/phrasebook.js';
+export type { PhrasebookSentences } from './localization/phrasebook.js';
+export type { MessagePackage, MessagePackages } from './localization/registry.js';
 export { provider } from './plugins/providers.js';
 export type {
   AnyProvider,

@@ -1,21 +1,32 @@
 /*
  * The reader every package's voice test shares, under ADR-0164. It reads a package's message
- * modules, the files named `messages.ts` under its `src`, with a small scanner of its own, and
- * scans the package's other source files for the gathering and outside-text checks. It builds no
+ * modules, the files named `messages.ts` under its `src`, and its wording modules, the files named
+ * `wording.ts`, with a small scanner of its own, and scans the package's other source files for the
+ * gathering and outside-text checks. A package that joins localization under ADR-0200 also has its
+ * message modules' exports held to the shape of a sentence and checked against its registry. It builds no
  * type-checked program: a message module holds functions, constants, imports, and types, and the
  * scanner reads its comments, string literals, and template literals exactly.
  */
 import { readdir, readFile } from 'node:fs/promises';
+import { posix } from 'node:path';
 
 /**
- * One of the four checks a voice test holds over a package's sources.
+ * One of the checks a voice test holds over a package's sources: the four every package's test
+ * holds, and the two a package that joins localization adds, the shape of each export of a message
+ * module and its registry member.
  *
  * @example
  * ```ts
  * const check: VoiceCheck = 'escaping';
  * ```
  */
-type VoiceCheck = 'banned-words' | 'escaping' | 'gathering' | 'outside-text';
+type VoiceCheck =
+  | 'banned-words'
+  | 'escaping'
+  | 'export-shape'
+  | 'gathering'
+  | 'outside-text'
+  | 'registry';
 
 /**
  * One known exception: the reason it holds, and how many sites in the file have its source text.
@@ -101,6 +112,13 @@ interface VoiceSinks {
 interface VoiceOptions {
   readonly banned: readonly string[];
   readonly sinks?: VoiceSinks;
+  /**
+   * The path under `src` of the file that declares the package's member of `MessagePackages`, for
+   * a package that joins localization. With it, every export of a message module must be a string
+   * constant or a function that returns `string`, with no overload, and the registry must name
+   * every message module under its concept module's key.
+   */
+  readonly registry?: string;
 }
 
 /** One token of TypeScript source, comments dropped. A template holds its parts. */
@@ -559,7 +577,7 @@ function messageImports(tokens: readonly Token[]): Set<string> {
       open === -1 ||
       from < open ||
       path?.kind !== 'string' ||
-      !path.value.endsWith('messages.js')
+      !(path.value.endsWith('messages.js') || path.value.endsWith('wording.js'))
     ) {
       return;
     }
@@ -1049,9 +1067,169 @@ function gatheringSites(tokens: readonly Token[], sinks: VoiceSinks): string[] {
   return sites;
 }
 
-/** Whether one path under `src` names a message module. */
-function isMessageModule(path: string): boolean {
+/** Whether one path under `src` names a message module, whose exports are sentences. */
+function isSentenceModule(path: string): boolean {
   return path === 'messages.ts' || path.endsWith('/messages.ts');
+}
+
+/**
+ * Whether one path under `src` names a module the voice checks read as a message module: a message
+ * module, or a wording module, which holds phrasing the sentences compose.
+ */
+function isMessageModule(path: string): boolean {
+  return isSentenceModule(path) || path === 'wording.ts' || path.endsWith('/wording.ts');
+}
+
+/** Every name one module exports as a value, with the local name that declares it. */
+function exportedValues(tokens: readonly Token[]): { local: string; exported: string }[] {
+  const names: { local: string; exported: string }[] = [];
+  let depth = 0;
+  tokens.forEach((token, index) => {
+    const next = tokens[index + 1];
+    if (depth === 0 && named(token, 'export')) {
+      if (is(next, '{')) {
+        const close = closing(tokens, index + 1);
+        for (const specifier of splitTopLevel(tokens.slice(index + 2, close), [','])) {
+          const [local, second] = specifier;
+          // An inline type specifier, as in `export { type Member }`, exports a type.
+          const inlineType =
+            named(local, 'type') && second?.kind === 'identifier' && !named(second, 'as');
+          const exported = specifier.at(-1);
+          if (!inlineType && local?.kind === 'identifier' && exported?.kind === 'identifier') {
+            names.push({ exported: exported.text, local: local.text });
+          }
+        }
+      } else if (named(next, 'function') || named(next, 'const')) {
+        const name = tokens[index + 2]?.text ?? '';
+        names.push({ exported: name, local: name });
+      }
+    }
+    depth += depthChange(token);
+  });
+  return names;
+}
+
+/** Whether a parameter list's close is followed by the return type `string` and then `follows`. */
+function returnsString(tokens: readonly Token[], close: number, follows: string): boolean {
+  return (
+    is(tokens[close + 1], ':') &&
+    named(tokens[close + 2], 'string') &&
+    is(tokens[close + 3], follows)
+  );
+}
+
+/**
+ * Whether one declaration has the shape of a sentence: a function that declares the return type
+ * `string`, or a constant whose value is one string or template literal, or an arrow function that
+ * declares the return type `string`.
+ */
+function sentenceShape(tokens: readonly Token[], start: number): boolean {
+  const keyword = tokens[start];
+  if (named(keyword, 'function')) {
+    const open = tokens.findIndex((token, at) => at > start && is(token, '('));
+    return open !== -1 && returnsString(tokens, closing(tokens, open), '{');
+  }
+  if (!named(keyword, 'const')) {
+    return false;
+  }
+  let at = start + 2;
+  if (is(tokens[at], ':')) {
+    if (!named(tokens[at + 1], 'string')) {
+      return false;
+    }
+    at += 2;
+  }
+  if (!is(tokens[at], '=')) {
+    return false;
+  }
+  const value = valueAfter(tokens, at + 1);
+  const [first] = value;
+  if (value.length === 1) {
+    return first?.kind === 'string' || first?.kind === 'template';
+  }
+  return is(first, '(') && returnsString(value, closing(value, 0), '=>');
+}
+
+/**
+ * The export-shape sites of one message module: each export that is not one declaration of a
+ * sentence's shape, read by its exported name, with `(overloaded)` after a function declared more
+ * than once and `(not declared here)` after a name the module does not declare.
+ */
+function exportShapeSites(tokens: readonly Token[]): string[] {
+  const starts = declarationStarts(tokens);
+  const sites: string[] = [];
+  for (const { exported, local } of exportedValues(tokens)) {
+    const declared = starts.filter((start) => tokens[start + 1]?.text === local);
+    const [only] = declared;
+    if (only === undefined) {
+      sites.push(`${exported} (not declared here)`);
+    } else if (declared.length > 1) {
+      sites.push(`${exported} (overloaded)`);
+    } else if (!sentenceShape(tokens, only)) {
+      sites.push(exported);
+    }
+  }
+  return sites;
+}
+
+/** The key a message module takes in its package's registry: its folder's name, or `common`. */
+function moduleKey(path: string): string {
+  const folder = posix.dirname(path);
+  return folder === '.' ? 'common' : posix.basename(folder);
+}
+
+/**
+ * The modules one registry names outside its comments, each with its key: a member typed
+ * `typeof import('<path>')`, or `typeof <name>` over a namespace import of `<path>`, the path
+ * relative to the registry's file.
+ */
+function registryEntries(text: string, registry: string): { key: string; module: string }[] {
+  // A comment, such as a doc comment's example, names no module of the registry.
+  const source = text.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/\/\/.*$/gmu, '');
+  const resolved = (path: string) =>
+    posix.normalize(posix.join(posix.dirname(registry), path)).replace(/\.js$/u, '.ts');
+  const namespaces = new Map(
+    [
+      ...source.matchAll(/import\s+type\s+\*\s+as\s+(?<name>[\w$]+)\s+from\s+'(?<path>[^']+)'/gu),
+    ].map((match) => [match.groups?.name ?? '', match.groups?.path ?? '']),
+  );
+  return [
+    ...source.matchAll(
+      /(?<key>[\w$]+|'[^']+')\s*:\s*typeof\s+(?:import\('(?<path>[^']+)'\)|(?<name>[\w$]+))/gu,
+    ),
+  ].flatMap((match) => {
+    const path = match.groups?.path ?? namespaces.get(match.groups?.name ?? '');
+    const key = (match.groups?.key ?? '').replaceAll("'", '');
+    return path === undefined ? [] : [{ key, module: resolved(path) }];
+  });
+}
+
+/**
+ * The registry sites of one package: each message module its registry names under no key or under
+ * a key other than its concept module's, and each key that names no message module.
+ */
+function registrySites(files: ReadonlyMap<string, string>, registry: string): string[] {
+  const source = files.get(registry);
+  if (source === undefined) {
+    return [`${registry} (missing)`];
+  }
+  const declared = registryEntries(source, registry);
+  const sites: string[] = [];
+  const modules = [...files.keys()].filter((path) => isSentenceModule(path)).toSorted();
+  for (const module of modules) {
+    const entry = declared.find((candidate) => candidate.module === module);
+    if (entry === undefined) {
+      sites.push(`${module} (not registered)`);
+    } else if (entry.key !== moduleKey(module)) {
+      sites.push(`${module} (under ${entry.key}, not ${moduleKey(module)})`);
+    }
+  }
+  for (const { key, module } of declared) {
+    if (!modules.includes(module)) {
+      sites.push(`${key} (names no message module)`);
+    }
+  }
+  return sites;
 }
 
 /**
@@ -1078,11 +1256,17 @@ function voiceSites(files: ReadonlyMap<string, string>, options: VoiceOptions): 
       add('banned-words', file, bannedSites(tokens, options.banned));
       add('escaping', file, escapingSites(tokens));
       add('outside-text', file, outsideSites(tokens));
+      if (options.registry !== undefined && isSentenceModule(file)) {
+        add('export-shape', file, exportShapeSites(tokens));
+      }
     } else {
       const tokens = new Scanner(source, 'source', file).tokens(false);
       add('gathering', file, gatheringSites(tokens, options.sinks ?? {}));
       add('outside-text', file, outsideSites(tokens));
     }
+  }
+  if (options.registry !== undefined) {
+    add('registry', options.registry, registrySites(files, options.registry));
   }
   return sites;
 }
@@ -1129,7 +1313,14 @@ function plural(count: number): string {
   return count === 1 ? '1 site' : `${String(count)} sites`;
 }
 
-const checks: readonly VoiceCheck[] = ['banned-words', 'escaping', 'gathering', 'outside-text'];
+const checks: readonly VoiceCheck[] = [
+  'banned-words',
+  'escaping',
+  'export-shape',
+  'gathering',
+  'outside-text',
+  'registry',
+];
 
 /** The check one key of the exceptions names, read through the list of checks. */
 function checkOf(name: string): VoiceCheck {
@@ -1206,8 +1397,9 @@ async function packageSources(src: URL): Promise<Map<string, string>> {
 }
 
 /**
- * What one package's voice test asserts is empty: every unpinned site and stale pin of the four
- * checks over the package's `src`, with the banned words read from the voice page.
+ * What one package's voice test asserts is empty: every unpinned site and stale pin of the checks
+ * over the package's `src`, with the banned words read from the voice page. A package that joins
+ * localization names its registry file, which adds the export-shape and registry checks.
  *
  * @example
  * ```ts
@@ -1220,8 +1412,13 @@ async function voiceReport(
   src: URL,
   exceptions: VoiceExceptions,
   sinks?: VoiceSinks,
+  registry?: string,
 ): Promise<string[]> {
-  const options = { banned: await readBannedWords(), ...(sinks ? { sinks } : {}) };
+  const options = {
+    banned: await readBannedWords(),
+    ...(sinks ? { sinks } : {}),
+    ...(registry === undefined ? {} : { registry }),
+  };
   return unpinnedSites(voiceSites(await packageSources(src), options), exceptions);
 }
 

@@ -191,6 +191,7 @@ describe('the builders infer from the function alone', () => {
       readonly background?: ViewContext['background'];
       readonly columns?: ViewContext['columns'];
       readonly expandTabs?: ViewContext['expandTabs'];
+      readonly localize?: ViewContext['localize'];
       readonly plain?: ViewContext['plain'];
       readonly style?: ViewContext['style'];
       readonly width?: ViewContext['width'];
