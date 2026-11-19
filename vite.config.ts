@@ -207,6 +207,8 @@ export default defineConfig({
       {
         files: [
           'packages/core/src/application/application.ts',
+          'packages/core/src/application/run.ts',
+          'packages/core/src/application/doors.ts',
           'packages/core/src/output/output.ts',
           'packages/core/src/output/progress-events.ts',
           'packages/core/src/output/region.ts',

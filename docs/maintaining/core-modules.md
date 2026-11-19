@@ -36,8 +36,13 @@ description: The map of @loomcli/core's source modules. Which folder under packa
 - `host/types.ts` carries core's `/// <reference types="node" preserve="true" />` directive. The `preserve` attribute keeps the directive in the emitted declarations, so a consumer's type check of the published package finds the Node globals.
 - A new file goes in the module of the concept it serves. It goes in `support/` only when it serves no single concept.
 
-## Command declarations, inputs, and invocation preparation
+## Application runs, command declarations, and inputs
 
+- `application/application.ts` holds the Application builder, declaration calls, `inspect()`, and `check()`.
+- `application/types.ts` holds application options, public types, and shared build shapes.
+- `application/run.ts` runs argv and named invocations through declaration-owned context.
+- `application/doors.ts` supplies the argv and named invocation doors.
+- `application/facts.ts` holds application facts and mark-binding checks.
 - `commands/command.ts` holds the Command builder and its type-level surface.
 - `commands/types.ts` holds built shapes and node-handle types.
 - `commands/state.ts` holds declaration state and the handle registry.

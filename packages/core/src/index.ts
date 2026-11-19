@@ -96,7 +96,7 @@ export { width } from './style/resolve.js';
 export { reportedSpelling } from './inspection/inspect.js';
 export { issuePath } from './inputs/validation.js';
 export type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
-export type { ApplicationMethod, ApplicationOptions } from './application/application.js';
+export type { ApplicationMethod, ApplicationOptions } from './application/types.js';
 export type { ChainOutcome, MiddlewareContext } from './invocation/chain.js';
 export type { InputProblem, InvokedBy, MissingArity, ResultFault } from './failures/errors.js';
 export type {
