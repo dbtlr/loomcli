@@ -3,3 +3,6 @@
  * and fails when the package's license field does not name exactly the licenses the bundle needs.
  */
 export function writeNotices(repositoryRoot: string): void;
+
+/** Matches the comments that identify third-party material in an emitted module. */
+export function hasMaterialMarker(source: string): boolean;

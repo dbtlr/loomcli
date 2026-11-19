@@ -2,8 +2,7 @@ import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 
 /**
- * Runs the installed-files module of the built pack in its own process, as a plugin's Command
- * would. The one argument is a JSON request:
+ * Runs the installed-files module in its own process. The one argument is a JSON request:
  *
  * - `record` and `files`, each file `{ path, content }` or `{ path, fill, size }` for `size` copies
  *   of the character `fill`, installed by the plugin `plugin`, `skill` when it names none;
@@ -103,7 +102,7 @@ if (request.appendAfterCreate !== undefined) {
   syncBuiltinESMExports();
 }
 
-const { install } = await import('../../dist/src/installation/files.js');
+const { install } = await import('../../src/installation/files.ts');
 
 const files = request.files.map(({ content, fill, path, size }) => ({
   content: content ?? fill.repeat(size),

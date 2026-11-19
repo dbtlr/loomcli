@@ -85,9 +85,10 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { setTimeout as after } from 'node:timers/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import type { Log } from '@loomcli/core';
-import { afterEach, expect, test } from 'vite-plus/test';
+import { afterAll, afterEach, beforeAll, expect, test } from 'vite-plus/test';
 
 import { invoke, start } from '../../../scripts/test-process.js';
 import { replaceFile } from '../src/installation/disk.js';
@@ -122,12 +123,32 @@ const digests = {
   test: 'sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
 };
 
+const fixtureDirectory = mkdtempSync(join(tmpdir(), 'loom-installation-fixture-'));
+const fixture = pathToFileURL(join(fixtureDirectory, 'installation-run.mjs'));
+
+beforeAll(() => {
+  const source = fileURLToPath(new URL('fixtures/installation-run.mjs', import.meta.url));
+  const entry = fileURLToPath(fixture);
+  // Bundle the fault-injection fixture from source so the published pack needs no private entry.
+  const built = spawnSync('bun', ['build', source, '--target', 'node', '--outfile', entry], {
+    encoding: 'utf8',
+    timeout: 10_000,
+  });
+  if (built.status !== 0) {
+    throw built.error ?? new Error(built.stderr);
+  }
+});
+
 const roots: string[] = [];
 
 afterEach(() => {
   for (const root of roots.splice(0)) {
     rmSync(root, { force: true, recursive: true });
   }
+});
+
+afterAll(() => {
+  rmSync(fixtureDirectory, { force: true, recursive: true });
 });
 
 /**
@@ -653,8 +674,6 @@ test('recovery runs before an uninstall too', () => {
 });
 
 // Recovery from a process that stopped
-
-const fixture = new URL('fixtures/installation-run.mjs', import.meta.url);
 
 /** One run of the module in its own process under Node, whose fs traps need Node's ESM builtins. */
 function inProcess(request: Record<string, unknown>) {

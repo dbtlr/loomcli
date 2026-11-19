@@ -14,15 +14,19 @@ import { invoke } from '../../../scripts/test-process.js';
 /** The built bundle, started behind the hook that records each file of it the run loads. */
 const launch = new URL('fixtures/launch.mjs', import.meta.url);
 
-/** The plugin modules Bun writes above each module's code, by path under the plugins' `src`. */
-const pluginModule = /^\/\/ (?:\.\.\/)*packages\/plugins\/dist\/src\/(?<path>\S+\.js)$/gmu;
+/** The plugin entry points and chunks Bun names in the application bundle. */
+const pluginArtifact = /^\/\/ (?:\.\.\/)*packages\/plugins\/(?<path>dist\/\S+\.js)$/gmu;
+const { outputs }: { outputs: Record<string, string[]> } = JSON.parse(
+  readFileSync(new URL('../../../packages/plugins/dist/provenance.json', import.meta.url), 'utf8'),
+);
 
 /** The folders whose modules hold the completion, manpage, and MCP plugins and the files they install. */
 const watched = ['completion/', 'manpage/', 'mcp/', 'installation/'];
 
 /**
  * One run of the bundle: its exit status and output, the set of watched plugin modules it loaded,
- * and whether it loaded `node:crypto`.
+ * and whether it loaded `node:crypto`. Provenance lists each library artifact's inputs, including
+ * a re-export the application bundle can tree shake.
  */
 function launched(args: string[]) {
   const directory = mkdtempSync(join(tmpdir(), 'loom-jsonkit-launch-'));
@@ -36,10 +40,12 @@ function launched(args: string[]) {
     const modules = lines
       .filter((line) => line !== 'node:crypto')
       .flatMap((file) =>
-        [...readFileSync(file, 'utf8').matchAll(pluginModule)].flatMap(
-          (found) => found.groups?.path ?? [],
+        [...readFileSync(file, 'utf8').matchAll(pluginArtifact)].flatMap(
+          (found) => outputs[found.groups?.path ?? ''] ?? [],
         ),
       )
+      .filter((path) => path.startsWith('dist/src/'))
+      .map((path) => path.slice('dist/src/'.length))
       .filter((path) => watched.some((folder) => path.startsWith(folder)));
     return {
       ...result,
@@ -61,12 +67,14 @@ test('--version loads each plugin Command declaration, no Command implementation
       // The judge holds its fault's sentence, so the plugin's message module stays unloaded.
       'completion/judge.js',
       'completion/plugin.js',
+      'completion/refresh.js',
       'completion/shell-names.js',
       // Bun shares these helpers with the change-event templates in the common message module.
       'installation/disk.js',
       'installation/record.js',
       'manpage/pages.js',
       'manpage/plugin.js',
+      'manpage/refresh.js',
       // The mcp Command's --http option validates its value at declaration, with its issue sentence.
       'mcp/address.js',
       'mcp/agents.js',

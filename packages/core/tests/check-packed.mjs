@@ -416,8 +416,7 @@ try {
       );
     }
   }
-  // No built file names the private package either, so no module or declaration imports it.
-  // The manifest keeps it as a development dependency, which no consumer installs.
+  // No JavaScript or declaration imports the private packages. Source maps can quote the original imports.
   const pluginsFiles = join(temporary, 'plugins-files');
   await mkdir(pluginsFiles);
   const unpacked = run('tar', ['-xzf', 'plugins.tgz', '-C', pluginsFiles], temporary);
@@ -425,7 +424,9 @@ try {
   const pluginsBuild = join(pluginsFiles, 'package/dist');
   const builtFiles = await readdir(pluginsBuild, { recursive: true, withFileTypes: true });
   const naming = [];
-  for (const entry of builtFiles.filter((file) => file.isFile())) {
+  for (const entry of builtFiles.filter(
+    (file) => file.isFile() && /\.(?:[cm]?js|d\.[cm]?ts)$/u.test(file.name),
+  )) {
     const path = join(entry.parentPath, entry.name);
     const text = await readFile(path, 'utf8');
     if (privatePackages.some((name) => text.includes(name))) {
@@ -435,7 +436,7 @@ try {
   assert.deepEqual(
     naming,
     [],
-    `No built file of the packed @loomcli/plugins may name ${privatePackages.join(' or ')}.`,
+    `No JavaScript or declaration of the packed @loomcli/plugins may name ${privatePackages.join(' or ')}.`,
   );
   await cp(source, temporary, { recursive: true });
   await writeFile(

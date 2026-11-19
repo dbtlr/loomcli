@@ -9,6 +9,7 @@
   },
   "files": [
     "dist",
+    "!dist/provenance.json",
     "LICENSE"
   ],
   "type": "module",

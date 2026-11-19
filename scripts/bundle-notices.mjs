@@ -12,8 +12,9 @@ import { join, relative } from 'node:path';
 /*
  * The loom bin's bundle carries other packages' code, so their license notices must travel with it.
  * Bun writes the source path of each module it bundles in a comment above the module. These
- * functions read those comments to find the packages the bundle holds, copy each package's license
- * and notice files into dist/licenses, and list them in dist/NOTICE.
+ * functions read those comments and expand library chunks through their recorded inputs to find the
+ * packages and materials the bundle holds. They copy each package's license and notice files into
+ * dist/licenses and list them in dist/NOTICE.
  *
  * A third-party package counts with its whole declared license. A workspace package counts with the
  * repository's own license plus the license of each piece of third-party material whose files the
@@ -62,7 +63,9 @@ const noticeFilePattern = /^notice(?:\.(?:md|txt))?$/i;
  * Marks a compiled file that carries third-party material: a copyright line in any common form,
  * SPDX's included, or a statement that the file is ported or adapted from another source.
  */
-const materialMarkerPattern = /copyright|\(c\) \d|\b(?:ported|adapted) from\b/i;
+function hasMaterialMarker(source) {
+  return /copyright|\(c\) \d|\b(?:ported|adapted) from\b/i.test(source);
+}
 
 /** The module comments Bun writes: a source path, as many `../` as the file's depth needs. */
 const moduleCommentPattern = /^\/\/ (?:\.\.\/)+(?<path>\S+)$/gm;
@@ -130,10 +133,20 @@ function bundledPackages(repositoryRoot, distribution) {
       if (origin.kind !== 'loom') {
         const found = packages.get(origin.directory) ?? {
           files: new Set(),
+          provenance: origin.kind === 'workspace' ? readProvenance(origin.directory) : undefined,
           workspace: origin.kind === 'workspace',
         };
         if (origin.file !== undefined) {
-          found.files.add(origin.file);
+          const { provenance } = found;
+          const files = provenance?.outputs[origin.file];
+          if (provenance && origin.file.startsWith('dist/') && files === undefined) {
+            throw new Error(
+              `The library provenance does not list ${origin.file} in ${origin.directory}.`,
+            );
+          }
+          for (const input of files ?? [origin.file]) {
+            found.files.add(input);
+          }
         }
         packages.set(origin.directory, found);
       }
@@ -142,14 +155,19 @@ function bundledPackages(repositoryRoot, distribution) {
   return packages;
 }
 
+/** The bundle's inputs and their license markers, from before its modules were bundled. */
+function readProvenance(directory) {
+  const file = join(directory, 'dist/provenance.json');
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+}
+
 /**
  * Fails the build unless the material table describes a workspace package as it is: the package's
  * license field names exactly its own license and each entry's, every file an entry names exists,
  * every license text in its licenses/ folder belongs to an entry, and a package with a NOTICE has an
- * entry, and every compiled file that states a copyright or a port belongs to an entry. A port added
- * to a package without a table entry then fails the build instead of shipping without its notice.
+ * entry. Each material module carries a license marker, and each marked module belongs to an entry.
  */
-function assertMaterialTable(manifest, packageDirectory, material, ownLicense) {
+function assertMaterialTable(manifest, packageDirectory, material, ownLicense, provenance) {
   const table = 'the material table in scripts/bundle-notices.mjs';
   const covered = new Set([ownLicense, ...material.map((entry) => entry.license)]);
   const declared = new Set(licenseIdentifiers(manifest.license));
@@ -161,8 +179,13 @@ function assertMaterialTable(manifest, packageDirectory, material, ownLicense) {
       `${manifest.name} is licensed ${manifest.license}, but ${table} gives it ${[...covered].join(' AND ')}. Update the table.`,
     );
   }
-  const named = material.flatMap((entry) => [...entry.files, ...entry.texts]);
-  const missing = named.find((file) => !existsSync(join(packageDirectory, file)));
+  const materialFiles = material.flatMap((entry) => entry.files);
+  const named = [...materialFiles, ...material.flatMap((entry) => entry.texts)];
+  const missing = named.find((file) =>
+    file.startsWith('dist/') && provenance
+      ? !Object.hasOwn(provenance.sources, file)
+      : !existsSync(join(packageDirectory, file)),
+  );
   if (missing !== undefined) {
     throw new Error(
       `${table} names ${manifest.name}'s ${missing}, which does not exist. Update the table.`,
@@ -175,12 +198,20 @@ function assertMaterialTable(manifest, packageDirectory, material, ownLicense) {
       `${manifest.name} ships ${unnamed}, which no entry of ${table} names. Add the material it covers to the table.`,
     );
   }
-  const marked = filesUnder(packageDirectory, 'dist').find(
-    (file) =>
-      file.endsWith('.js') &&
-      !named.includes(file) &&
-      materialMarkerPattern.test(readFileSync(join(packageDirectory, file), 'utf8')),
-  );
+  const markedSources = provenance
+    ? Object.keys(provenance.sources).filter((file) => provenance.sources[file])
+    : filesUnder(packageDirectory, 'dist').filter(
+        (file) =>
+          file.endsWith('.js') &&
+          hasMaterialMarker(readFileSync(join(packageDirectory, file), 'utf8')),
+      );
+  const unmarked = materialFiles.find((file) => !markedSources.includes(file));
+  if (unmarked !== undefined) {
+    throw new Error(
+      `${manifest.name} module ${unmarked} is missing a license marker. Restore the copyright or port attribution in the source module's license header.`,
+    );
+  }
+  const marked = markedSources.find((file) => !named.includes(file));
   if (marked !== undefined) {
     throw new Error(
       `${manifest.name}'s ${marked} states a copyright or a port, but no entry of ${table} names it. Add the material it carries to the table.`,
@@ -198,9 +229,9 @@ function assertMaterialTable(manifest, packageDirectory, material, ownLicense) {
  * own LICENSE that go with them: its own license, and each material entry whose files the bundle
  * holds.
  */
-function workspaceLicense(manifest, packageDirectory, files, ownLicense) {
+function workspaceLicense(manifest, packageDirectory, files, ownLicense, provenance) {
   const material = workspaceMaterial[manifest.name] ?? [];
-  assertMaterialTable(manifest, packageDirectory, material, ownLicense);
+  assertMaterialTable(manifest, packageDirectory, material, ownLicense, provenance);
   const bundled = material.filter((entry) => entry.files.some((file) => files.has(file)));
   return {
     identifiers: [...new Set([ownLicense, ...bundled.map((entry) => entry.license)])],
@@ -309,10 +340,10 @@ function writeNotices(repositoryRoot) {
   const ownLicense = readManifestLicense(repositoryRoot);
   const declared = readManifestLicense(directory);
   const bundled = [...bundledPackages(repositoryRoot, distribution)].map(
-    ([packageDirectory, { files, workspace }]) => {
+    ([packageDirectory, { files, provenance, workspace }]) => {
       const manifest = readManifest(packageDirectory);
       const { identifiers, texts } = workspace
-        ? workspaceLicense(manifest, packageDirectory, files, ownLicense)
+        ? workspaceLicense(manifest, packageDirectory, files, ownLicense, provenance)
         : { identifiers: licenseIdentifiers(manifest.license), texts: undefined };
       const license = workspace ? identifiers.join(' AND ') : manifest.license;
       return { identifiers, license, manifest, packageDirectory, texts };
@@ -342,4 +373,4 @@ function writeNotices(repositoryRoot) {
   writeFileSync(join(distribution, 'NOTICE'), renderNotice(entries));
 }
 
-export { writeNotices };
+export { hasMaterialMarker, writeNotices };

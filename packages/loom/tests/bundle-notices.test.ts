@@ -1,18 +1,23 @@
+import { spawnSync } from 'node:child_process';
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { writeNotices } from '../../../scripts/bundle-notices.mjs';
+import { childEnvironment } from '../../../scripts/test-process.js';
 
 /** The temporary repositories this file built, removed after each test. */
 const repositories: string[] = [];
@@ -196,6 +201,29 @@ test('a workspace package with a NOTICE and no material entry fails the build', 
   expect(() => writeNotices(root)).toThrow(/@loomcli\/validators ships a NOTICE/);
 });
 
+test('a bundled material module with a missing license marker fails the notices check', () => {
+  const root = repository({
+    bundled: ['plugins/dist/src/completion/plugin.js'],
+    files: {
+      'packages/plugins/dist/provenance.json': JSON.stringify({
+        outputs: { 'dist/src/completion/plugin.js': ['dist/src/completion/bash.js'] },
+        sources: Object.fromEntries(
+          completionScripts.map((file) => [
+            file.replace('packages/plugins/', ''),
+            file !== `packages/${bashCompletion}`,
+          ]),
+        ),
+      }),
+    },
+    license: 'MIT AND Apache-2.0',
+    omit: completionScripts,
+  });
+
+  expect(() => writeNotices(root)).toThrow(
+    /@loomcli\/plugins.*dist\/src\/completion\/bash\.js.*missing a license marker/,
+  );
+});
+
 test('modules of the loom package itself need no notice', () => {
   const root = repository({
     bundled: ['src/helpers/release.ts', 'package.json', 'loom/src/main.ts'],
@@ -245,10 +273,10 @@ test('material entries that share a license text list it once', () => {
       version: '1.0.0',
     }),
   };
+  for (const file of ['glyphs.generated.js', 'width.js', 'unicode.generated.js']) {
+    core[`packages/core/dist/style/${file}`] = '// Copyright 2025 Upstream Authors';
+  }
   for (const file of [
-    'dist/style/glyphs.generated.js',
-    'dist/style/width.js',
-    'dist/style/unicode.generated.js',
     'licenses/figures-LICENSE.txt',
     'licenses/inquirer-figures-LICENSE.txt',
     'licenses/unicode-LICENSE.txt',
@@ -282,4 +310,129 @@ test('two license texts of one package with the same file name fail the build', 
   });
 
   expect(() => writeNotices(root)).toThrow(/kit ships LICENSE and licenses\/LICENSE/);
+});
+
+test('bundled library chunks ship the same notices as the source modules they contain', () => {
+  const license = 'MIT AND Apache-2.0';
+  const original = repository({ bundled: [helpPage, bashCompletion], license });
+  const bundled = repository({
+    bundled: ['plugins/dist/src/help/plugin.js', 'plugins/dist/library-cmplt.js'],
+    files: {
+      'packages/plugins/dist/library-cmplt.js': '// Copyright 2013-2023 The Cobra Authors',
+      'packages/plugins/dist/provenance.json': JSON.stringify({
+        outputs: {
+          'dist/library-cmplt.js': [bashCompletion.slice('plugins/'.length)],
+          'dist/src/help/plugin.js': [helpPage.slice('plugins/'.length)],
+        },
+        sources: {
+          ...Object.fromEntries(
+            completionScripts.map((file) => [file.replace('packages/plugins/', ''), true]),
+          ),
+          'dist/src/help/page.js': false,
+        },
+      }),
+      'packages/plugins/dist/src/help/plugin.js': '',
+    },
+    license,
+    omit: [...completionScripts, 'packages/plugins/dist/src/help/page.js'],
+  });
+
+  writeNotices(original);
+  writeNotices(bundled);
+
+  const expected = join(original, 'packages/loom/dist');
+  const actual = join(bundled, 'packages/loom/dist');
+  expect(readFileSync(join(actual, 'NOTICE'), 'utf8')).toEqual(
+    readFileSync(join(expected, 'NOTICE'), 'utf8'),
+  );
+  expect(readdirSync(join(actual, 'licenses')).toSorted()).toEqual([
+    '@loomcli__plugins-LICENSE',
+    '@loomcli__plugins-NOTICE',
+    '@loomcli__plugins-cobra-LICENSE.txt',
+  ]);
+});
+
+const builtPackages = new URL('../../', import.meta.url);
+const coreLicenseFiles = [
+  'licenses/unicode-LICENSE.txt',
+  'licenses/uucode-LICENSE.md',
+  'licenses/inquirer-figures-LICENSE.txt',
+  'licenses/figures-LICENSE.txt',
+];
+
+function expectNoticedFiles(distribution: string, name: string, files: readonly string[]) {
+  const notice = readFileSync(join(distribution, 'NOTICE'), 'utf8');
+  for (const file of files) {
+    const target = `licenses/@loomcli__${name}-${basename(file)}`;
+    expect(notice).toContain(`  ${target}\n`);
+    expect(readFileSync(join(distribution, target), 'utf8')).toEqual(
+      readFileSync(new URL(`${name}/${file}`, builtPackages), 'utf8'),
+    );
+  }
+}
+
+test('an application with completion selects Cobra and core notices from built library provenance', () => {
+  const root = repository({
+    bundled: [],
+    files: {
+      'packages/loom/src/main.js': `
+import { Application } from '@loomcli/core';
+import { completion } from '@loomcli/plugins/completion';
+await new Application('notices', { plugins: [completion()] }).run();
+`,
+    },
+    license: 'MIT AND Apache-2.0 AND Unicode-3.0',
+    omit: [...completionScripts, `packages/${helpPage}`],
+  });
+  const modules = join(root, 'node_modules/@loomcli');
+  mkdirSync(modules, { recursive: true });
+  for (const name of ['core', 'plugins', 'validators']) {
+    const directory = join(root, 'packages', name);
+    mkdirSync(directory, { recursive: true });
+    for (const file of [
+      'package.json',
+      'dist',
+      'LICENSE',
+      ...(name === 'validators' ? [] : ['NOTICE', 'licenses']),
+    ]) {
+      cpSync(new URL(`${name}/${file}`, builtPackages), join(directory, file), { recursive: true });
+    }
+    symlinkSync(directory, join(modules, name), 'dir');
+  }
+
+  const application = join(root, 'packages/loom');
+  const build = spawnSync(
+    'bun',
+    [
+      'build',
+      'src/main.js',
+      '--target',
+      'node',
+      '--splitting',
+      '--external',
+      'valibot',
+      '--outdir',
+      'dist',
+    ],
+    {
+      cwd: application,
+      encoding: 'utf8',
+      env: childEnvironment({ GIT_CEILING_DIRECTORIES: root }),
+      timeout: 10_000,
+    },
+  );
+  expect(build).toMatchObject({ status: 0 });
+  writeNotices(root);
+
+  const distribution = join(application, 'dist');
+  expectNoticedFiles(distribution, 'plugins', ['NOTICE', 'licenses/cobra-LICENSE.txt']);
+  expectNoticedFiles(distribution, 'core', ['NOTICE', ...coreLicenseFiles]);
+});
+
+test('the built loom bin carries each license text for the core material it bundles', () => {
+  const distribution = fileURLToPath(new URL('../dist/', import.meta.url));
+  expect(readFileSync(join(distribution, 'NOTICE'), 'utf8')).toMatch(
+    /@loomcli\/core [^\n]+\nLicense: MIT AND Unicode-3\.0\n/,
+  );
+  expectNoticedFiles(distribution, 'core', coreLicenseFiles);
 });
