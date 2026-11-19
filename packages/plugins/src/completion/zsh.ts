@@ -81,6 +81,16 @@ __loom_${id}_offer_files()
     compadd -Q -f "\${expl[@]}" "\${where[@]}" -d shown -- "\${names[@]}"
 }
 
+# Whether a word is the lead of a value attached to its option and nothing
+# after it: -- and a name that starts with an ASCII letter or digit and holds
+# ASCII letters, digits, _, ., and -, or - and ASCII letters, and then =. The
+# word is matched as text, so nothing in it runs.
+__loom_${id}_bare_lead()
+{
+    emulate -L zsh -o extendedglob
+    [[ $1 == (--[A-Za-z0-9][-A-Za-z0-9_.]#|-[A-Za-z]##)= ]]
+}
+
 _loom_${id}()
 {
     local shellCompDirectiveError=1
@@ -155,6 +165,13 @@ _loom_${id}()
             completions+=("$comp")
         fi
     done <<< "$out"
+
+    # Under directive 0 the answer writes no lead for a word that ends at it,
+    # such as --path= or -p=, so such a typed word is read as the lead itself.
+    if [ $((directive & (shellCompDirectiveNoFileComp | shellCompDirectiveFilterFileExt | shellCompDirectiveFilterDirs))) -eq 0 ] &&
+        (( \${#lines} == 0 )) && __loom_${id}_bare_lead "$PREFIX"; then
+        lines=("$PREFIX")
+    fi
 
     if [ $((directive & shellCompDirectiveFilterFileExt)) -ne 0 ] || [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ] ||
         { [ $((directive & shellCompDirectiveNoFileComp)) -eq 0 ] && [[ \${lines[1]-} == -* ]]; }; then
@@ -274,6 +291,12 @@ fi
  * - Under directive 0, a first answer word that starts with `-` is such a lead too, because no
  *   Command name starts with `-`: it moves to `$IPREFIX` the same way, and every name after it is
  *   listed, rather than offering the lead through `_describe`.
+ * - Under directive 0 with no answer word, a word under the cursor that is `--` and a name of ASCII
+ *   letters, digits, `_`, `.`, and `-` that starts with a letter or digit, or `-` and ASCII letters,
+ *   followed by `=` and nothing else,
+ *   such as `--path=` or `-p=`, is read as such a lead, matched by `__loom_<id>_bare_lead` as
+ *   text, so every name is listed behind it. A word that holds any other character, such as
+ *   `$(…)` or a backtick, is no lead.
  */
 export function zshScript(name: string): string {
   return zshText(name, { guard: '', loadedAs: `_${name}` });

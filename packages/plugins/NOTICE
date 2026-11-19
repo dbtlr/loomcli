@@ -114,6 +114,12 @@ Changes made to the Cobra scripts:
   listing, and insert each behind the lead, rather than listing file names
   for the whole word, which starts with the lead and so matched none for a
   short spelling's attached value.
+- Under directive 0 with no answer word, the Zsh and PowerShell scripts read a
+  word under the cursor that is -- and a name of ASCII letters, digits, _, .,
+  and - that starts with a letter or digit, or - and ASCII letters, followed by
+  = and nothing else, such as --path= or -p=, as such a lead, compared as text,
+  and list every file name behind it, rather than listing file names for the
+  whole word, which matched none.
 - Directive numbers are written as literals, and comments are adjusted.
 - PowerShell's Invoke-Expression is removed. The program is resolved with
   Get-Command, an application alone off Windows. On Windows it is called
