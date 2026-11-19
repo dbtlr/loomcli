@@ -29,6 +29,9 @@ import { fishQuoted, identifier } from '../shell-quoting.js';
  *   offered extension, compared as strings. A first answer word that starts with `-` is the lead
  *   of a value attached to its option, such as `--config=` or `-c`: the names after it are
  *   listed, each written behind the lead.
+ * - Under directive 0, a first answer word that starts with `-` is such a lead too, because no
+ *   Command name starts with `-`: every name after it is listed the same way, each written behind
+ *   the lead, rather than falling back to Fish's own file completion.
  */
 export function fishScript(name: string): string {
   const id = identifier(name);
@@ -142,13 +145,14 @@ function __${id}_requires_order_preservation
 end
 
 
-# Replaces the offered extensions in __${id}_comp_results with the names that start with the word
-# under the cursor: its directories, and unless dirsOnly is 1 the files that end in an offered
-# extension. A first offered word that starts with - is the lead of a value attached to its
-# option, such as --config= or -c: the names are listed for the rest of the word, each written
-# behind the lead, and a word without the lead lists nothing. Fish expands a variable's value
-# before a trailing *, so a wildcard, a command, or a tilde in the typed word is read as text.
-function __${id}_filtered_files --argument-names dirsOnly
+# Replaces the offered words in __${id}_comp_results with the names that start with the word under
+# the cursor: every name (any), its directories (dirs), or its directories and the files that end
+# in an offered extension (extensions). A first offered word that starts with - is the lead of a
+# value attached to its option, such as --config= or -c: the names are listed for the rest of the
+# word, each written behind the lead, and a word without the lead lists nothing. Fish expands a
+# variable's value before a trailing *, so a wildcard, a command, or a tilde in the typed word is
+# read as text.
+function __${id}_filtered_files --argument-names kind
     set -l typed (commandline -ct | string unescape --style=script | string collect)
     set -l extensions
     for comp in $__${id}_comp_results
@@ -175,7 +179,9 @@ function __${id}_filtered_files --argument-names dirsOnly
         end
         if test -d "$file"
             set -a found "$lead$file/"
-        else if test $dirsOnly -eq 0
+        else if test $kind = any
+            set -a found "$lead$file"
+        else if test $kind = extensions
             for extension in $extensions
                 if string match -q -- "*.$extension" "$file"
                     set -a found "$lead$file"
@@ -232,14 +238,28 @@ function __${id}_prepare_completions
 
     set -l filefilter (math (math --scale 0 $directive / $shellCompDirectiveFilterFileExt) % 2)
     set -l dirfilter (math (math --scale 0 $directive / $shellCompDirectiveFilterDirs) % 2)
-    if test $filefilter -eq 1; or test $dirfilter -eq 1
+    if test $dirfilter -eq 1
+        __${id}_debug "Listing the directories the word names"
+        __${id}_filtered_files dirs
+        return 0
+    end
+    if test $filefilter -eq 1
         __${id}_debug "Listing the files and directories the word names"
-        __${id}_filtered_files $dirfilter
+        __${id}_filtered_files extensions
         return 0
     end
 
     set -l nospace (math (math --scale 0 $directive / $shellCompDirectiveNoSpace) % 2)
     set -l nofiles (math (math --scale 0 $directive / $shellCompDirectiveNoFileComp) % 2)
+
+    # No Command name starts with -, so where files are allowed a first word that starts with - is
+    # the lead of a value attached to its option, and every name after it is listed.
+    set -l first (string split --max 1 \\t -- "$__${id}_comp_results[1]")[1]
+    if test $nofiles -eq 0; and string match -q -- '-*' "$first"
+        __${id}_debug "Listing every name after the lead"
+        __${id}_filtered_files any
+        return 0
+    end
 
     __${id}_debug "nospace: $nospace, nofiles: $nofiles"
 

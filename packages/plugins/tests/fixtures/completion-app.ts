@@ -81,6 +81,11 @@ function completionApplication() {
         })
         .action(() => {}),
     )
+    .command(
+      new Command('words')
+        .argument('value', { validate: shaped({ enum: ['true', 'false', 'null', 'tree'] }) })
+        .action(() => {}),
+    )
     .command(new Command('colon', { description: String.raw`One: two \ three.` }).action(() => {}));
 
   /**
@@ -113,8 +118,10 @@ function completionApplication() {
 
   /**
    * One input of each file hint: an option that lists the `.json` files, one that lists directories
-   * only, and an argument that lists the `.csv` files. Each option has a short spelling, so a test
-   * completes a value attached to it. The Command is hidden, so no root listing shows it.
+   * only, and an argument that lists the `.csv` files. Two options leave the shell its file names:
+   * `path` with no hint and `data` with `files: true`. Each option has a short spelling, and a
+   * counted `verbose` letter clusters before them, so a test completes a value attached to it. The
+   * Command is hidden, so no root listing shows it.
    */
   const scan = new Command('scan', { hidden: true })
     .option('config', {
@@ -127,6 +134,9 @@ function completionApplication() {
       short: 'i',
       type: 'string',
     })
+    .option('path', { short: 'p', type: 'string' })
+    .option('data', { extensions: [completionInput({ files: true })], short: 'd', type: 'string' })
+    .option('verbose', { short: 'v', type: 'count' })
     .argument('table', { extensions: [completionArgument({ extensions: ['csv'] })] })
     .action(() => {});
 

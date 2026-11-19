@@ -24,6 +24,7 @@ import {
   useSession,
 } from '../../../scripts/test-shell.js';
 import type { SessionOptions, Shell } from '../../../scripts/test-shell.js';
+import { nuScript } from '../src/completion/nu.js';
 import { zshInstalledScript } from '../src/completion/zsh.js';
 
 const fixture = new URL('fixtures/completion.mjs', import.meta.url);
@@ -297,6 +298,27 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     const sentinel = () => existsSync(join(cwd(), 'sentinel'));
 
     // Nushell reads a typed $, backtick, or ; as its own syntax, so its values are checked below.
+    // Nushell reads a bare true, false, or null as a keyword, so as an argument to the extern it is a
+    // Parse error. The script quotes exactly those three, and the inserted text is read as a string.
+    it.runIf(shell === 'nu').each(['true', 'false', 'null'])(
+      'kit odd words %s<Tab> inserts a quoted word that parses as the string',
+      async (value) => {
+        const { line } = await complete(`kit odd words ${value.slice(0, 3)}`);
+        const inserted = line.slice('kit odd words '.length).trimEnd();
+        expect(inserted).toBe(`\`${value}\``);
+        const probe = spawnSync(
+          'nu',
+          [
+            '--no-config-file',
+            '-c',
+            `def probe [...a: string] { $a | to json -r }; probe ${inserted}`,
+          ],
+          { encoding: 'utf8' },
+        );
+        expect(probe.stdout.trim()).toBe(`["${value}"]`);
+      },
+    );
+
     it.skipIf(shell === 'nu').each([
       ['$', '$(touch sentinel)'],
       ['`', '`touch sentinel`'],
@@ -387,7 +409,7 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
 
     it('a description holding a colon and a backslash is shown as text and splits no word', async () => {
       const { listed, listing } = await complete('kit odd ');
-      expect(listed.toSorted()).toEqual(['colon', 'values']);
+      expect(listed.toSorted()).toEqual(['colon', 'values', 'words']);
       expect(listing).toContain(String.raw`One: two \ three.`);
       const { line } = await complete('kit odd c');
       expect(line.trimEnd()).toBe('kit odd colon');
@@ -467,6 +489,92 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
       expect(sentinel()).toBe(false);
     });
+
+    // The call is the words after the last unquoted | or ; or newline, or an open ( or {.
+    // Whatever comes before the call never reaches the program.
+    it.runIf(shell === 'nu').each([
+      ['echo x | kit ke', 'echo x | kit keys'],
+      ['echo x; kit ke', 'echo x; kit keys'],
+      ['do { kit ke', 'do { kit keys'],
+      ['let a = (kit ke', 'let a = (kit keys'],
+      ['echo x | kit paths --fo', 'echo x | kit paths --format'],
+      ['echo "a|b; (c" | kit ke', 'echo "a|b; (c" | kit keys'],
+    ])('%s<Tab> completes the call that follows the boundary', async (typed, expected) => {
+      const { line } = await complete(typed);
+      expect(line.trimEnd()).toBe(expected);
+      expect(sentinel()).toBe(false);
+    });
+
+    /**
+     * A closed ( … ) or { … } before the cursor is one word of the call, such as a subexpression
+     * passed as an option's value, so the words before it still reach the program.
+     */
+    it
+      .runIf(shell === 'nu')
+      .each([
+        'kit paths --field (whoami) --fo',
+        'kit paths --field {a: 1} --fo',
+        'kit paths --field (echo (whoami)) --fo',
+        'kit paths --field report(1).json --fo',
+      ])('%s<Tab> completes the option after a closed group', async (typed) => {
+      const { line } = await complete(typed);
+      expect(line.trimEnd()).toBe(`${typed}rmat`);
+      expect(sentinel()).toBe(false);
+    });
+
+    /**
+     * The words the script reads from a line, asked of its word reader directly, because a line
+     * with a newline in it is not typed at a pty prompt.
+     */
+    it.runIf(shell === 'nu').each([
+      ['echo x\nkit ke', ['ke']],
+      ['echo x\r\nkit ke', ['ke']],
+      ['kit paths --field (whoami) --fo', ['paths', '--field', '(whoami)', '--fo']],
+      ['kit paths --field report(1).json --fo', ['paths', '--field', 'report(1).json', '--fo']],
+      ['kit a (echo x | kit b', ['b']],
+    ])('the words of %j are %j', (line, words) => {
+      const folder = sandbox().cwd;
+      const file = join(folder, 'kit.nu');
+      writeFileSync(file, nuScript('kit'));
+      const result = spawnSync(
+        'nu',
+        ['--no-config-file', '-c', `source ${file}; __kit_words $env.LINE | get word | to json -r`],
+        { encoding: 'utf8', env: { ...process.env, LINE: line } },
+      );
+      expect(result.stdout.trim()).toBe(JSON.stringify(words));
+    });
+
+    /**
+     * The extern changes how Nushell runs the program, not only how it completes, so with the script
+     * loaded a bare glob and a ~ still reach the program expanded, and a quoted one as typed, as
+     * they do with no script. The application here is the system printf.
+     */
+    it.runIf(shell === 'nu')(
+      'the script leaves how Nushell passes arguments to the program',
+      () => {
+        const folder = sandbox().cwd;
+        writeFileSync(join(folder, 'a.txt'), '');
+        writeFileSync(join(folder, 'b.txt'), '');
+        writeFileSync(join(folder, 'printf.nu'), nuScript('printf'));
+        const run = (source: string) =>
+          spawnSync(
+            'nu',
+            ['--no-config-file', '-c', `${source}printf '<%s>' *.txt '*.txt' ~ 1 --x=y (echo z)`],
+            { cwd: folder, encoding: 'utf8', env: { ...process.env, HOME: folder } },
+          ).stdout;
+        expect(run('source ./printf.nu; ')).toBe(run(''));
+        expect(run('')).toBe(`<a.txt><b.txt><*.txt><${folder}><1><--x=y><z>`);
+      },
+    );
+
+    it.runIf(shell === 'nu')(
+      'a | or ; inside a quoted value before the cursor is no call boundary',
+      async () => {
+        const typed = 'kit paths --field "a|b;c" --fo';
+        const { line } = await complete(typed);
+        expect(line.trimEnd()).toBe(`${typed}rmat`);
+      },
+    );
 
     it('a typed $(...) value is read as the option value it is, and completion continues past it', async () => {
       const { line } = await complete('kit paths --field "$(touch sentinel)" --fo');
@@ -801,6 +909,48 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     });
   });
 
+  // The option path takes any string and data takes file names, so each completes every file name.
+  // Zsh binds Tab to complete-word, which runs completion alone, so only the script can evaluate.
+  // PowerShell inserts a word that starts with one - and holds a . single-quoted.
+  describe.skipIf(!installed || shell === 'nu')(
+    'a value attached to an option that leaves the shell its file names',
+    () => {
+      const { complete, cwd } = useSession({
+        before: shell === 'zsh' ? ["bindkey '^I' complete-word"] : [],
+        files: ['alpha.json', 'notes.txt', 'docs/'],
+        main: fixture,
+        name: 'kit',
+        shell,
+        sources,
+      });
+      const quoted = (word: string) => (shell === 'pwsh' ? `'${word}'` : word);
+
+      it.each([
+        ['kit scan -pa', `kit scan ${quoted('-palpha.json')}`],
+        ['kit scan -vpa', `kit scan ${quoted('-vpalpha.json')}`],
+        ['kit scan -pn', `kit scan ${quoted('-pnotes.txt')}`],
+        ['kit scan -pdo', 'kit scan -pdocs/'],
+        ['kit scan -da', `kit scan ${quoted('-dalpha.json')}`],
+        ['kit scan -vda', `kit scan ${quoted('-vdalpha.json')}`],
+        ['kit scan -p=a', `kit scan ${quoted('-p=alpha.json')}`],
+        ['kit scan --path=a', 'kit scan --path=alpha.json'],
+        ['kit scan --data=n', 'kit scan --data=notes.txt'],
+      ])('%s<Tab> inserts the file name behind the lead as %s', async (typed, done) => {
+        const { line } = await complete(typed);
+        expect(line.trimEnd()).toBe(done);
+      });
+
+      it.each(['kit scan -p$(touch PWNED)/', 'kit scan -vd$(touch PWNED)/'])(
+        '%s<Tab> runs nothing the typed word holds',
+        async (typed) => {
+          const { line } = await complete(typed);
+          expect(line.startsWith(typed)).toBe(true);
+          expect(existsSync(join(cwd(), 'PWNED'))).toBe(false);
+        },
+      );
+    },
+  );
+
   // Tab is bound to complete-word, which runs completion alone, so only the script can evaluate.
   // HOME is the home folder in the working directory, so a typed ~/ lists files the test wrote.
   // A dynamic named directory hook touches the sentinel, so a typed ~[x] that reaches it shows.
@@ -1105,6 +1255,13 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
 
       it.each(['kit scan --config=', 'kit scan --into=', 'kit scan --config=a'])(
         '%s<Tab> lists and inserts nothing, because Nushell completes no file name after an =',
+        async (typed) => {
+          await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
+        },
+      );
+
+      it.each(['kit scan -pa', 'kit scan -vpa', 'kit scan -da', 'kit scan --path=a'])(
+        '%s<Tab> lists and inserts nothing, because the lead of an attached value is no value',
         async (typed) => {
           await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
         },

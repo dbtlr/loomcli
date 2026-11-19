@@ -38,10 +38,14 @@ interface Offer {
   readonly description?: string | undefined;
 }
 
-/** The offered words of one position and the directive the answer ends with. */
+/**
+ * The offered words of one position and the directive the answer ends with, and the lead of a value
+ * attached to its option when the answer writes it as its first word.
+ */
 interface Offers {
   readonly offers: readonly Offer[];
   readonly directive: Directive;
+  readonly lead?: string;
 }
 
 /** Every control character and line separator: U+0000-U+001F, U+007F-U+009F, U+2028, U+2029. */
@@ -262,8 +266,8 @@ function valueOffers(
           }),
     named: () => namedOffers(lead, reading.named),
   });
-  return filtersFiles(hinted.directive) && lead !== ''
-    ? { directive: hinted.directive, offers: [{ word: lead }, ...hinted.offers] }
+  return leadsFiles(hinted.directive, { lead, prefix: position.prefix })
+    ? { ...hinted, lead }
     : hinted;
 }
 
@@ -274,6 +278,24 @@ function valueOffers(
  */
 function filtersFiles(directive: Directive): boolean {
   return directive === filterExtensions || directive === directoriesOnly;
+}
+
+/**
+ * Whether the answer writes the lead of a value attached to its option as its first word, so the
+ * script lists the file names for the rest of the word and inserts each behind the lead: under `8`
+ * and `16` whenever there is a lead, and under `0` only when some of the value follows it. Under
+ * `0` no other word starts with `-`, because a Command name never does. A script from before the
+ * lead under `0` offers every word that starts with the typed word, so a lead that is the whole
+ * word would be inserted as a value; one shorter than the word is never offered.
+ */
+function leadsFiles(
+  directive: Directive,
+  { lead, prefix }: { readonly lead: string; readonly prefix: string },
+): boolean {
+  if (lead === '') {
+    return false;
+  }
+  return filtersFiles(directive) || (directive === shellDefault && prefix !== '');
 }
 
 /**
@@ -376,14 +398,15 @@ function line(offer: Offer): string {
 }
 
 /**
- * The answer `__complete` writes for one located word, in Cobra's line protocol: one line per
- * offered word in graph order with repeats removed, then `:` and the directive. Only exact words
- * that start with the typed prefix are offered, except under directives `8` and `16`, whose words
- * are the lead of an attached value and the extensions the shell filters file names by. `named` is
- * what the completer the position's input names offered, which the run called before it answered.
+ * The answer `__complete` writes for one located word, in Cobra's line protocol: the lead of an
+ * attached value when the answer writes one, then one line per offered word in graph order with
+ * repeats removed, then `:` and the directive. Only exact words that start with the typed prefix
+ * are offered, except under directives `8` and `16`, whose words are the extensions the shell
+ * filters file names by. `named` is what the completer the position's input names offered, which
+ * the run called before it answered.
  */
 function answerWith(graph: CommandGraph, position: WordPosition, reading: Reading): string {
-  const { directive, offers } = offersAt(graph, position, reading);
+  const { directive, lead = '', offers } = offersAt(graph, position, reading);
   const prefix = filtersFiles(directive) ? '' : typedPrefix(position);
   const seen = new Set<string>();
   const lines = offers.flatMap((offer) => {
@@ -393,7 +416,8 @@ function answerWith(graph: CommandGraph, position: WordPosition, reading: Readin
     seen.add(offer.word);
     return [line(offer)];
   });
-  return `${lines.join('')}:${directive}\n`;
+  const first = lead === '' ? '' : line({ word: lead });
+  return `${first}${lines.join('')}:${directive}\n`;
 }
 
 /** The answer for a position whose input names no completer. */

@@ -156,11 +156,14 @@ _loom_${id}()
         fi
     done <<< "$out"
 
-    if [ $((directive & shellCompDirectiveFilterFileExt)) -ne 0 ] || [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ]; then
+    if [ $((directive & shellCompDirectiveFilterFileExt)) -ne 0 ] || [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ] ||
+        { [ $((directive & shellCompDirectiveNoFileComp)) -eq 0 ] && [[ \${lines[1]-} == -* ]]; }; then
         # The script lists the file names itself. A first word that starts
         # with - is the lead of a value attached to its option, such as
         # --config= or -c: it moves from PREFIX to IPREFIX as a literal, so the
-        # names after it are listed, and a word without it lists nothing.
+        # names after it are listed, and a word without it lists nothing. No
+        # Command name starts with -, so under directive 0 such a word is a
+        # lead too, and every name is listed.
         if [[ \${lines[1]-} == -* ]]; then
             compset -P "\${(b)lines[1]}" || return 1
             shift lines
@@ -168,8 +171,10 @@ _loom_${id}()
         if [ $((directive & shellCompDirectiveFilterFileExt)) -ne 0 ]; then
             __loom_${id}_debug "File extensions: \${lines[*]}"
             __loom_${id}_offer_files extensions
-        else
+        elif [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ]; then
             __loom_${id}_offer_files dirs
+        else
+            __loom_${id}_offer_files any
         fi
         return
     else
@@ -266,6 +271,9 @@ fi
  * - Under directives 8 and 16, a first answer word that starts with `-` is the lead of a value
  *   attached to its option, such as `--config=` or `-c`, moved from `$PREFIX` to `$IPREFIX` as a
  *   literal, so the names after it are listed. No answer word names a folder to list in.
+ * - Under directive 0, a first answer word that starts with `-` is such a lead too, because no
+ *   Command name starts with `-`: it moves to `$IPREFIX` the same way, and every name after it is
+ *   listed, rather than offering the lead through `_describe`.
  */
 export function zshScript(name: string): string {
   return zshText(name, { guard: '', loadedAs: `_${name}` });

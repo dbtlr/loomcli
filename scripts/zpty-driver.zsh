@@ -26,12 +26,22 @@ typeset -F stamp
 typeset -a words
 # Nushell asks where the cursor is, and waits two seconds for an answer a terminal gives.
 # The report puts the cursor in the first row, which leaves the menu room below it.
+# A read may end inside a request, so the start of one at the end of a read waits for the next.
+typeset cursor_pending=''
 reply_cursor_reports() {
   [[ -n $LOOM_PTY_REPORTS_CURSOR ]] || return 0
-  local rest=$chunk
+  local rest=$cursor_pending$chunk
+  integer cut
   while [[ $rest == *$'\e[6n'* ]]; do
     zpty -w -n shell $'\e[1;1R'
     rest=${rest#*$'\e[6n'}
+  done
+  cursor_pending=''
+  for cut in 3 2 1; do
+    if (( ${#rest} >= cut )) && [[ $'\e[6n' == "${rest[-cut,-1]}"* ]]; then
+      cursor_pending=${rest[-cut,-1]}
+      break
+    fi
   done
 }
 while IFS= read -r line; do
