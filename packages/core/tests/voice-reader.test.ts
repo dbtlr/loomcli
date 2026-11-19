@@ -7,7 +7,8 @@
  * - escaping, an interpolation that is not an escaping helper, a message function, or a number;
  * - outside text, a read of an error's `message`, `stack`, or `cause` in any source file, a message
  *   module or the code that calls one;
- * - gathering, a literal sentence handed to a failure constructor or an out call outside one.
+ * - gathering, a literal sentence handed to a failure constructor, an out call, or a log call's
+ *   message template outside one.
  *
  * A known exception is pinned per check and per file by its source text and its count of sites, and
  * both an unpinned site and a stale pin are reported.
@@ -333,7 +334,7 @@ test("a failure class's super call and a failure's message assignment are failur
   ]);
 });
 
-test('an out call is a sink on any receiver but a style and the log', () => {
+test('an out call is a sink on any receiver but a style and the log, whose own check follows', () => {
   const source = [
     'export async function run(out: Out, style: Style, log: Log, headingStyle: Style) {',
     "  await out.warn('The cache is stale. Run refresh.');",
@@ -341,13 +342,84 @@ test('an out call is a sink on any receiver but a style and the log', () => {
     "  out.fatal('The registry is down. Try again later.');",
     "  style.error('A style, not a line.');",
     "  headingStyle.info('A style, not a line.');",
-    "  log.error('A log event, not a line.');",
+    '  log.error(readFailed(1));',
     '}',
   ].join('\n');
   expect(gathered(source)).toEqual([
     "'The cache is stale. Run refresh.'",
     '`Read ${String(1)} file.`',
     "'The registry is down. Try again later.'",
+  ]);
+});
+
+test('a log call whose template is a literal sentence is reported, on any receiver', () => {
+  const source = [
+    'export function run(log: Log, context: Context) {',
+    "  log.debug('Read the file {path}.', { path });",
+    "  context.log.info('Wrote the cache {path}.');",
+    "  log.with({ run: 1 }).warn('Retry the call {attempt}.', { attempt });",
+    '  context.log.with({ a: 1 }).with({ b: 2 }).trace(`Read ${String(1)} file.`);',
+    "  log.debug('single');",
+    '}',
+  ].join('\n');
+  expect(gathered(source)).toEqual([
+    "'Read the file {path}.'",
+    "'Wrote the cache {path}.'",
+    "'Retry the call {attempt}.'",
+    '`Read ${String(1)} file.`',
+  ]);
+});
+
+test('a log call whose template comes from a message module passes', () => {
+  const source = [
+    "import { fileRead, retrying } from './messages.js';",
+    'export function run(log: Log) {',
+    '  log.debug(fileRead(path), { path });',
+    '  log.with({ run: 1 }).warn(retrying, { attempt: 1 });',
+    '}',
+  ].join('\n');
+  expect(gathered(source)).toEqual([]);
+});
+
+test('a log call whose template is a same-file const holding a literal sentence is reported', () => {
+  const source = [
+    "const closeFailed = 'A close failed.';",
+    'export function run(log: Log) {',
+    '  log.error(closeFailed, { provider });',
+    '}',
+  ].join('\n');
+  expect(gathered(source)).toEqual(["'A close failed.'"]);
+  const files = new Map([['plugins/providers.ts', source]]);
+  expect(unpinnedSites(voiceSites(files, { banned: ['presentation'] }), {})).toEqual([
+    "gathering plugins/providers.ts: 'A close failed.' has 1 site and no pin.",
+  ]);
+});
+
+test('a log call whose template is imported, or a const that is not a literal sentence, passes', () => {
+  const source = [
+    "import { imported } from './messages.js';",
+    "const word = 'single';",
+    "const built = phrase('closeFailed');",
+    'export function run(log: Log) {',
+    '  log.error(imported);',
+    '  log.error(word);',
+    '  log.error(built);',
+    '}',
+  ].join('\n');
+  expect(gathered(source)).toEqual([]);
+});
+
+test('pinning an inline log template makes it pass, and an unused pin is reported', () => {
+  const files = new Map([['inputs/validation.ts', "log.debug('Read the file {path}.');"]]);
+  const sites = voiceSites(files, { banned: ['presentation'] });
+  const pin = { reason: 'It is right as written.', sites: 1 };
+  expect(
+    unpinnedSites(sites, {
+      gathering: { 'inputs/validation.ts': { "'Read the file {path}.'": pin } },
+    }),
+  ).toEqual([]);
+  expect(unpinnedSites(sites, {})).toEqual([
+    "gathering inputs/validation.ts: 'Read the file {path}.' has 1 site and no pin.",
   ]);
 });
 

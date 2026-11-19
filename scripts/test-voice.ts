@@ -186,6 +186,9 @@ const outsideMembers = new Set(['cause', 'message', 'stack']);
 /** The out calls the gathering check reads. */
 const outCalls = new Set(['debug', 'error', 'fatal', 'info', 'print', 'success', 'trace', 'warn']);
 
+/** The methods of `log` that take a message template as their first argument. */
+const logLevels = new Set(['debug', 'error', 'fatal', 'info', 'trace', 'warn']);
+
 /** JavaScript's own error classes, which are no failure constructor unless a package names one. */
 const platformErrors = new Set([
   'AggregateError',
@@ -648,6 +651,33 @@ function isStyle(token: Token | undefined): boolean {
   return token?.kind === 'identifier' && (token.text === 'style' || token.text.endsWith('Style'));
 }
 
+/**
+ * Whether the receiver that ends at `end` is a `log`: the name `log` itself, which a member such as
+ * `context.log` also ends in, or a `.with(...)` call on one, which can chain.
+ */
+function isLogReceiver(tokens: readonly Token[], end: number): boolean {
+  const token = tokens[end];
+  if (named(token, 'log')) {
+    return true;
+  }
+  if (!is(token, ')')) {
+    return false;
+  }
+  let depth = 0;
+  for (let index = end; index >= 0; index -= 1) {
+    const candidate = tokens[index];
+    depth -= candidate === undefined ? 0 : depthChange(candidate);
+    if (depth === 0) {
+      return (
+        named(tokens[index - 1], 'with') &&
+        (is(tokens[index - 2], '.') || is(tokens[index - 2], '?.')) &&
+        isLogReceiver(tokens, index - 3)
+      );
+    }
+  }
+  return false;
+}
+
 /** Whether an interpolation repeats a value only as rule 5 allows. */
 function escapes(
   expression: readonly Token[],
@@ -931,6 +961,15 @@ function failureClassBodies(tokens: readonly Token[]): [number, number][] {
   return bodies;
 }
 
+/** The literal sentence a same-file `const` named `name` holds, which a log call can pass by name. */
+function constSentences(tokens: readonly Token[], name: string): string[] {
+  const at = tokens.findIndex(
+    (token, index) =>
+      named(token, name) && named(tokens[index - 1], 'const') && is(tokens[index + 1], '='),
+  );
+  return at === -1 ? [] : sentences(valueAfter(tokens, at + 2));
+}
+
 /** The gathering sites of one source file that is not a message module. */
 function gatheringSites(tokens: readonly Token[], sinks: VoiceSinks): string[] {
   const classes = new Set<string>(sinks.classes);
@@ -959,8 +998,24 @@ function gatheringSites(tokens: readonly Token[], sinks: VoiceSinks): string[] {
       }
     } else if (token.kind === 'identifier' && is(next, '(') && !named(previous, 'function')) {
       const receiver = tokens[index - 2];
+      const logCall = member && logLevels.has(token.text) && isLogReceiver(tokens, index - 2);
       const outCall =
-        member && outCalls.has(token.text) && !isStyle(receiver) && !named(receiver, 'log');
+        member &&
+        outCalls.has(token.text) &&
+        !isStyle(receiver) &&
+        !isLogReceiver(tokens, index - 2);
+      if (logCall) {
+        // A log site is a log level method's message template, which -v shows the operator.
+        // A literal sentence there belongs in a message module.
+        const first = splitTopLevel(tokens.slice(index + 2, closing(tokens, index + 1)), [','])[0];
+        // A bare identifier bound in this file to a literal sentence is the same site.
+        const [only] = first ?? [];
+        const bare =
+          first?.length === 1 && only?.kind === 'identifier'
+            ? constSentences(tokens, only.text)
+            : [];
+        sites.push(...sentences(first ?? []), ...bare);
+      }
       const memberCall =
         member && receiver?.kind === 'identifier' && calls.has(`${receiver.text}.${token.text}`);
       if (outCall || memberCall || (!member && calls.has(token.text))) {
