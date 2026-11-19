@@ -22,6 +22,15 @@ import { identifier, powershellQuoted } from '../shell-quoting.js';
  * - The word under the cursor is its text cut at the cursor, read by PowerShell's parser, which
  *   runs nothing. A cut word that does not parse, such as one holding an unclosed quote, offers
  *   nothing without a call.
+ * - PowerShell's parser splits a bare word that starts with one `-` at its first `.`, so `-pnotes.`
+ *   reaches the completer as the parameter `-pnotes` and a touching `.`. A word under the cursor
+ *   that starts with `.` and touches the parameter before it, judged by their offsets, is read
+ *   with that parameter as one word: the parameter as typed, and the touching part read as any
+ *   word under the cursor is, so ``-pnotes.` j`` reads as `-pnotes. j`. PowerShell replaces only
+ *   the part after the parameter, which stays on the line, so each offered word or name is
+ *   inserted without the parameter and with the rest single-quoted, as in `-pnotes'.txt'`, which a
+ *   program receives as the one word `-pnotes.txt`. A word typed before the cursor is not joined,
+ *   because PowerShell passes it to a program split.
  * - The request carries every word, the last cut at the cursor, so no empty word is appended.
  * - The program is resolved with `Get-Command`, an application alone off Windows, and called as
  *   resolved. One that resolves to a `.bat` or `.cmd` file offers nothing without a call, because
@@ -42,8 +51,10 @@ import { identifier, powershellQuoted } from '../shell-quoting.js';
  * - The PSReadLine mode switch is removed. Each word is one `CompletionResult` whose text is the
  *   word, bare when it holds only ASCII letters, digits, and `-`, `_`, `.`, `/`, `:`, and `=` and
  *   does not start with one `-` and hold a `.`, which PowerShell would split at that `.`, and
- *   otherwise in single quotes with each `'` and each of U+2018 through U+201B written twice; its
- *   list text is the word and its tooltip the description. The space Cobra's Complete mode adds
+ *   otherwise in single quotes with each `'` and each of U+2018 through U+201B written twice.
+ *   After a parameter PowerShell split from the word under the cursor, the text is the rest of the
+ *   word alone, always in those single quotes, such as `'.txt'`. Its list text is the word and its
+ *   tooltip the description. The space Cobra's Complete mode adds
  *   after a sole word is kept, unless directive 2 is set; the descriptions it wrote into the text
  *   of several words, and the spaces of its MenuComplete mode, are removed.
  * - Directives 8 and 16 list the folder that the word under the cursor names, read literally,
@@ -85,6 +96,12 @@ filter __${id}_quote {
     if ($_ -cmatch '\\A[A-Za-z0-9_./:=-]+\\z' -and $_ -cnotmatch '\\A-[^-].*\\.') {
         return $_
     }
+    $_ | __${id}_single
+}
+
+# A word in single quotes, where each ' and each of U+2018 through U+201B is
+# written twice.
+filter __${id}_single {
     $Quoted = "'"
     foreach ($Character in $_.ToCharArray()) {
         $Code = [int]$Character
@@ -115,6 +132,17 @@ function __${id}_word($Element) {
         return $Element.Value
     }
     $Element.Extent.Text
+}
+
+# The text an offered word or file name is inserted as. PowerShell replaces
+# only the part of a split word after its parameter, which stays on the line
+# as typed, so after such a kept parameter the rest of the word is inserted
+# single-quoted, which joins it to the parameter as one word.
+function __${id}_insert($Word, $Kept) {
+    if ($Kept -eq '') {
+        return $Word | __${id}_quote
+    }
+    $Word.Substring($Kept.Length) | __${id}_single
 }
 
 # One offered word or file name as a CompletionResult, or as its text alone
@@ -156,6 +184,7 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
         $Program = __${id}_word $Elements[0]
         $Words = @()
         $Current = ''
+        $Kept = ''
         for ($Index = 1; $Index -lt $Elements.Count; $Index++) {
             $Extent = $Elements[$Index].Extent
             if ($Extent.EndOffset -lt $CursorPosition) {
@@ -167,6 +196,18 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
                 # word that does not parse, such as an unclosed quote, offers
                 # nothing.
                 $Typed = $Extent.Text.Substring(0, $CursorPosition - $Extent.StartOffset)
+                # PowerShell's parser splits a bare word that starts with one -
+                # at its first ., so a cut word that starts with . and touches
+                # the parameter before it, as in -pnotes., is read with it as
+                # one word: the parameter as typed, and the cut word read as
+                # any other cut word is.
+                $Before = $Elements[$Index - 1]
+                if ($Index -gt 1 -and $Typed.StartsWith('.', [System.StringComparison]::Ordinal) -and
+                    $Before -is [System.Management.Automation.Language.CommandParameterAst] -and
+                    $Before.Extent.EndOffset -eq $Extent.StartOffset) {
+                    $Kept = $Before.Extent.Text
+                    $Words = @($Words | Select-Object -SkipLast 1)
+                }
                 $Errors = $null
                 $Parsed = [System.Management.Automation.Language.Parser]::ParseInput("x $Typed", [ref]$null, [ref]$Errors)
                 if ($Errors.Count -gt 0) {
@@ -174,9 +215,9 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
                     return ""
                 }
                 $Cut = $Parsed.Find({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $false).CommandElements
-                $Current = $Typed
+                $Current = $Kept + $Typed
                 if ($Cut.Count -eq 2) {
-                    $Current = __${id}_word $Cut[1]
+                    $Current = $Kept + (__${id}_word $Cut[1])
                 }
             }
             break
@@ -405,7 +446,7 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
                 } elseif ($Entries.Count -eq 1) {
                     $After = $Space
                 }
-                __${id}_result (($Text | __${id}_quote) + $After) $_.Name $Type $_.Name
+                __${id}_result ((__${id}_insert $Text $Kept) + $After) $_.Name $Type $_.Name
             }
             return
         }
@@ -438,7 +479,7 @@ function __${id}_result($Text, $Label, $Type, $Tip) {
             $After = $Space
         }
         $Values | ForEach-Object {
-            __${id}_result (($_.Name | __${id}_quote) + $After) $_.Name 'ParameterValue' $_.Description
+            __${id}_result ((__${id}_insert $_.Name $Kept) + $After) $_.Name 'ParameterValue' $_.Description
         }
     } catch {
         __${id}_debug "Completion failed: $_"

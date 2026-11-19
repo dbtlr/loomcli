@@ -1280,7 +1280,7 @@ describe('the scripts', () => {
     );
     expect(text).toMatch(/if \(\$Values\.Count -eq 1\) \{\n\s+\$After = \$Space\n/u);
     expect(text).toContain(
-      "__kit_result (($_.Name | __kit_quote) + $After) $_.Name 'ParameterValue'",
+      "__kit_result ((__kit_insert $_.Name $Kept) + $After) $_.Name 'ParameterValue'",
     );
   });
 

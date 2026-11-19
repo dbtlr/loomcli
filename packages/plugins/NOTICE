@@ -118,8 +118,8 @@ Changes made to the Cobra scripts:
   word under the cursor that is -- and a name of ASCII letters, digits, _, .,
   and - that starts with a letter or digit, or - and ASCII letters, followed by
   = and nothing else, such as --path= or -p=, as such a lead, compared as text,
-  and list every file name behind it, rather than listing file names for the
-  whole word, which matched none.
+  and list every name that does not start with . behind it, rather than listing
+  file names for the whole word, which matched none.
 - Directive numbers are written as literals, and comments are adjusted.
 - PowerShell's Invoke-Expression is removed. The program is resolved with
   Get-Command, an application alone off Windows. On Windows it is called
@@ -136,6 +136,15 @@ Changes made to the Cobra scripts:
   is its text cut at the cursor and read again by the parser, which runs
   nothing. A word that does not parse, such as one holding an unclosed quote,
   offers nothing.
+- PowerShell's parser splits a bare word that starts with one - at its first
+  ., so -pnotes. reaches the completer as the parameter -pnotes and a touching
+  ".". The PowerShell script reads a word under the cursor that starts with .
+  and touches the parameter before it, judged by their offsets, as one word
+  with that parameter: the parameter as typed, and the touching part read as
+  any word under the cursor is, so -pnotes.` j reads as "-pnotes. j".
+  PowerShell replaces only the part after the parameter, so each word is
+  inserted without the parameter and with the rest single-quoted, as in
+  -pnotes'.txt', which a program receives as one word.
 - On Windows, under Legacy argument passing, which Cobra detected to pass an
   empty last word, the PowerShell script escapes every word: an empty word as "", and
   each " with a backslash, the backslashes before it doubled. The Windows
@@ -151,7 +160,9 @@ Changes made to the Cobra scripts:
   one CompletionResult whose text is the word, bare when it holds only ASCII
   letters, digits, and - _ . / : = and does not start with one - and hold a .,
   which PowerShell would split at that ., and otherwise single-quoted with each '
-  and each of U+2018 through U+201B written twice. Its list text is the word
+  and each of U+2018 through U+201B written twice. After a parameter
+  PowerShell split from the word under the cursor, the text is the rest of the
+  word alone, always single-quoted, such as '.txt'. Its list text is the word
   and its tooltip the description. A sole word takes a space after it, as in
   Cobra's Complete mode, unless directive 2 is set; no description is written
   into the text, and no other word takes a space.

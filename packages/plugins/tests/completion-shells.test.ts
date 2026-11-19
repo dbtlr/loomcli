@@ -1004,6 +1004,95 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     },
   );
 
+  /**
+   * PowerShell's parser splits a bare word that starts with one `-` and a letter at its first `.`,
+   * so `-pnotes.` reaches the completer as `-pnotes` and a touching `.`, and `-px.tar.` as `-px` and
+   * `.tar.`. The script reads a word under the cursor that starts with `.` and touches the
+   * parameter before it as one word. PowerShell replaces only the part after the parameter, so
+   * the script inserts the rest of the word single-quoted, as in `-pnotes'.txt'`, which a program
+   * receives as the one word `-pnotes.txt`. The option `path` answers directive 0, `config`
+   * directive 8, and `into` directive 16. A dot-name the spaced word names shows that `-c .j` stays
+   * two words.
+   */
+  describe.runIf(installed && shell === 'pwsh')(
+    'PowerShell reads a value attached to its short option across the dot it splits at',
+    () => {
+      const { complete, cwd } = useSession({
+        files: ['.journal.json', 'alpha.json', 'notes.txt', 'x.tar.gz', 'v1.d/'],
+        main: fixture,
+        name: 'kit',
+        shell,
+        sources,
+      });
+
+      it.each([
+        ['kit scan -pnotes.', "kit scan -pnotes'.txt'"],
+        ['kit scan -palpha.j', "kit scan -palpha'.json'"],
+        ['kit scan -px.tar.', "kit scan -px'.tar.gz'"],
+        ['kit scan -p./no', "kit scan -p'./notes.txt'"],
+        ['kit scan -calpha.', "kit scan -calpha'.json'"],
+        ['kit scan -calpha.j', "kit scan -calpha'.json'"],
+        ['kit scan -iv1.', "kit scan -iv1'.d/'"],
+      ])('%s<Tab> inserts the name behind the lead as %s', async (typed, done) => {
+        const { line } = await complete(typed);
+        expect(line.trimEnd()).toBe(done);
+      });
+
+      it('kit scan -c .j<Tab> reads two words and inserts the dot-name as the value', async () => {
+        const { line } = await complete('kit scan -c .j');
+        expect(line.trimEnd()).toBe('kit scan -c .journal.json');
+      });
+
+      it.each(['kit scan -p$(touch PWNED).', 'kit scan -pnotes.$(touch PWNED).'])(
+        '%s<Tab> runs nothing the typed word holds',
+        async (typed) => {
+          const { line } = await complete(typed);
+          expect(line.startsWith(typed)).toBe(true);
+          expect(existsSync(join(cwd(), 'PWNED'))).toBe(false);
+        },
+      );
+    },
+  );
+
+  /**
+   * A backtick escapes a space in the part after the split, so ``-pnotes.` j`` reaches the
+   * completer as `-pnotes` and a touching ``.` j``, whose value is `. j`. The script joins the
+   * parameter with that value, as it reads a word that is not split, so the word matches the name
+   * `notes. january.txt`. A suffix that holds an unescaped `$(…)` is an expandable string, which
+   * the script passes as typed and never evaluates.
+   */
+  describe.runIf(installed && shell === 'pwsh')(
+    'PowerShell reads an escape in the part of a split word after its dot',
+    () => {
+      const { complete, cwd } = useSession({
+        files: ['notes. january.txt', 'beta. one.json', 'v2. d/'],
+        main: fixture,
+        name: 'kit',
+        shell,
+        sources,
+      });
+
+      it.each([
+        ['kit scan -pnotes.` j', "kit scan -pnotes'. january.txt'"],
+        ['kit scan -cbeta.` o', "kit scan -cbeta'. one.json'"],
+        ['kit scan -iv2.` d', "kit scan -iv2'. d/'"],
+      ])('%s<Tab> inserts the name behind the lead as %s', async (typed, done) => {
+        const { line } = await complete(typed);
+        expect(line.trimEnd()).toBe(done);
+      });
+
+      it.each([
+        // Each form reaches the joined word: PowerShell calls the script for it.
+        'kit scan -pnotes.` $(touch PWNED)x',
+        'kit scan -pnotes.` j$(touch PWNED)/',
+      ])('%s<Tab> runs nothing the typed word holds', async (typed) => {
+        const { line } = await complete(typed);
+        expect(line.startsWith(typed)).toBe(true);
+        expect(existsSync(join(cwd(), 'PWNED'))).toBe(false);
+      });
+    },
+  );
+
   // Tab is bound to complete-word, which runs completion alone, so only the script can evaluate.
   // HOME is the home folder in the working directory, so a typed ~/ lists files the test wrote.
   // A dynamic named directory hook touches the sentinel, so a typed ~[x] that reaches it shows.
