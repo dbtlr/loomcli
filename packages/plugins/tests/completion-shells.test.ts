@@ -485,10 +485,20 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       ['an unclosed span inside a word', "kit paths --field='a b --fo"],
       ['an unclosed raw string', "kit paths --field r#'a b --fo"],
       ['a raw string closed by too few #', "kit paths --field r##'a b'# --fo"],
+      ['an unclosed quote in an interpolation', 'kit paths --field $"x(echo " b --fo'],
     ])('%s offers nothing', async (_title, typed) => {
       await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
       expect(sentinel()).toBe(false);
     });
+
+    it
+      .runIf(shell === 'nu')
+      .each(['kit "pa', 'kit paths "--fo', "kit paths '--fo", 'kit paths `--fo'])(
+      '%s<Tab> offers nothing with an unclosed quote under the cursor',
+      async (typed) => {
+        await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
+      },
+    );
 
     // The call is the words after the last unquoted | or ; or newline, or an open ( or {.
     // Whatever comes before the call never reaches the program.
@@ -499,6 +509,9 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       ['let a = (kit ke', 'let a = (kit keys'],
       ['echo x | kit paths --fo', 'echo x | kit paths --format'],
       ['echo "a|b; (c" | kit ke', 'echo "a|b; (c" | kit keys'],
+      ['let a = [(kit ke', 'let a = [(kit keys'],
+      ['echo [x (kit paths --fo', 'echo [x (kit paths --format'],
+      ['let a = {k: (kit ke', 'let a = {k: (kit keys'],
     ])('%s<Tab> completes the call that follows the boundary', async (typed, expected) => {
       const { line } = await complete(typed);
       expect(line.trimEnd()).toBe(expected);
@@ -522,6 +535,18 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       expect(sentinel()).toBe(false);
     });
 
+    it
+      .runIf(shell === 'nu')
+      .each([
+        'kit paths --field $"x(echo " b ")" --fo',
+        'kit paths --field [b c] --fo',
+        'kit paths --field $"x(^touch "sentinel")" --fo',
+      ])('%s<Tab> completes the option without evaluating the value', async (typed) => {
+      const { line } = await complete(typed);
+      expect(line.trimEnd()).toBe(`${typed}rmat`);
+      expect(sentinel()).toBe(false);
+    });
+
     /**
      * The words the script reads from a line, asked of its word reader directly, because a line
      * with a newline in it is not typed at a pty prompt.
@@ -532,6 +557,22 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       ['kit paths --field (whoami) --fo', ['paths', '--field', '(whoami)', '--fo']],
       ['kit paths --field report(1).json --fo', ['paths', '--field', 'report(1).json', '--fo']],
       ['kit a (echo x | kit b', ['b']],
+      ['kit a $"x(echo " b ")" --fo', ['a', 'x(echo " b ")', '--fo']],
+      ['kit a $"x(echo "b")" --fo', ['a', 'x(echo "b")', '--fo']],
+      ['kit a $"abc" --fo', ['a', 'abc', '--fo']],
+      ["kit a $'a(b)c' --fo", ['a', 'a(b)c', '--fo']],
+      [String.raw`kit a $"x\(b" --fo`, ['a', String.raw`x\(b`, '--fo']],
+      ['kit a $"x(echo (echo " b "))" --fo', ['a', 'x(echo (echo " b "))', '--fo']],
+      ['kit a $"x(echo (echo a) " b ")" --fo', ['a', 'x(echo (echo a) " b ")', '--fo']],
+      ['kit a $"x(echo `a " b`)" --fo', ['a', 'x(echo `a " b`)', '--fo']],
+      ['kit a $"x(echo $"y(echo " b ")")" --fo', ['a', 'x(echo $"y(echo " b ")")', '--fo']],
+      ["kit a $'x(echo ' b ')' --fo", ['a', "x(echo ' b ')", '--fo']],
+      [String.raw`kit a $'x\(echo ' b ')' --fo`, ['a', String.raw`x\(echo ' b ')`, '--fo']],
+      [String.raw`kit a $'x\' --fo`, ['a', 'x\\', '--fo']],
+      ['kit a [b c] --fo', ['a', '[b c]', '--fo']],
+      ['kit a [b " c "] --fo', ['a', '[b " c "]', '--fo']],
+      ['kit a report[b c].json --fo', ['a', 'report[b c].json', '--fo']],
+      ['kit a b] --fo', ['a', 'b]', '--fo']],
     ])('the words of %j are %j', (line, words) => {
       const folder = sandbox().cwd;
       const file = join(folder, 'kit.nu');
@@ -675,6 +716,16 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
       shell,
       sources,
     });
+
+    it.runIf(shell === 'nu').each(['kit paths [b c', 'kit paths [b --fo'])(
+      '%s<Tab> in an open list offers nothing without a call',
+      async (typed) => {
+        const received = join(cwd(), 'received');
+        rmSync(received, { force: true });
+        await expect(complete(typed)).resolves.toMatchObject({ line: typed, listed: [] });
+        expect(existsSync(received)).toBe(false);
+      },
+    );
 
     /** The words the program received on its last call, one per line in the file it wrote. */
     const received = () => readFileSync(join(cwd(), 'received'), 'utf8').split('\n').slice(0, -1);
