@@ -1,0 +1,1 @@
+- Add `loom release formula` to render a Homebrew formula for a published binary release from its `SHA256SUMS`.

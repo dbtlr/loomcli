@@ -1,10 +1,10 @@
 ---
-description: "The installer script: install.sh and the release shape it reads."
+description: "The installer script, the Homebrew formula, and the release shape both read."
 ---
 
 # The installer script
 
-This page documents `install.sh`, the installer script that installs an application's binary from a GitHub Release, and the release shape it reads. An author reads it to publish releases the script can install.
+This page documents `install.sh`, the release shape it reads, and how to generate a Homebrew formula for that release.
 
 ```text
 install.sh [--dir <directory>] [--unmanaged] [<version>]
@@ -127,8 +127,32 @@ done
 gh release create v1.4.0 dist/notes-* dist/SHA256SUMS   # add --prerelease for 1.5.0-next.2, --latest=false for an older line
 ```
 
-The installer script and self-update read a release in one shape, which each repository's own release workflow publishes:
+The installer script, self-update, and the Homebrew formula use the same release shape. Each repository's release workflow publishes it.
 
 - **The tag.** A release is the GitHub Release of the tag `v<version>`, where `<version>` is the package's `version`. The latest release is the one GitHub's `releases/latest` resolves, which is never a draft or a prerelease. GitHub reads neither from the tag: a version with a prerelease part, such as `1.5.0-next.2`, is published as a GitHub prerelease, and a release that is not the highest stable version, such as a `1.3.1` after `1.4.0`, is published with `--latest=false`, so `releases/latest` stays the highest stable version.
 - **The assets.** One binary per platform, named `<name>-<os>-<arch>`, with `-musl` for a musl Linux build: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `linux-x64-musl`, and `linux-arm64-musl`. A release carries the ones it supports. Each is the binary `loom build --release --target bun-<os>-<arch>` compiles, whose release facts name the same asset. An `x64` build with the `-baseline` or `-modern` variant is not an asset the script fetches.
 - **`SHA256SUMS`.** One line per asset: 64 lowercase hexadecimal digits, two spaces or a space and `*`, and the asset's file name, then a newline. This is what `sha256sum` and `shasum -a 256` print in the directory that holds the assets. A reader matches the file name exactly and ignores every other line.
+
+## Publish a Homebrew formula
+
+Build and publish all four assets for macOS and glibc Linux on arm64 and x64, with their `SHA256SUMS`. The formula uses these four assets and skips musl builds.
+
+Run `loom release formula` from the application checkout at the published tag. The command reads the nearest `package.json` for the application's name, GitHub repository, version, description, homepage, and license. If `homepage` is absent, it uses the GitHub repository URL. A single SPDX license identifier, such as `MIT`, becomes `license "MIT"`. Identifiers joined only by `OR` become Homebrew's `any_of` list, so `MIT OR Apache-2.0` becomes `license any_of: ["MIT", "Apache-2.0"]`, and identifiers joined only by `AND` become its `all_of` list. Any other expression, one with parentheses, `WITH`, or both operators, stops the command before it writes the formula, with a sentence that names the license: simplify the license, or render the formula with a simpler one and edit its `license` line by hand. The formula's `desc` comes from the package's description, and `brew audit --strict` rejects a description that starts with an article or ends with a full stop. If the build used `loom build --name`, pass the same `--name` to the formula command.
+
+Run this step after publishing the GitHub Release. The example uses the published sums from the build, a checked-out tap repository in `TAP_DIR`, and a pinned Loom CLI that provides `release formula`.
+
+```sh
+loom release formula --checksums dist/SHA256SUMS --output "$TAP_DIR/Formula/notes.rb"
+git -C "$TAP_DIR" add Formula/notes.rb
+if ! git -C "$TAP_DIR" diff --cached --quiet -- Formula/notes.rb; then
+  git -C "$TAP_DIR" -c user.name="release bot" -c user.email="release-bot@users.noreply.github.com" \
+    commit -m "Update notes formula"
+fi
+git -C "$TAP_DIR" push
+```
+
+The command creates the output file's parent folder when it is missing. The commit step runs only when the formula changed, so a rerun for the same release succeeds, and it sets the commit identity because a fresh runner has none. The push runs every time, so a rerun after a push that failed publishes the commit that is already there. The output file's base name sets the formula name, and Homebrew installs the binary under the application's name. A missing checksum stops the command before it writes the formula and names the asset to publish. The release workflow owns the tap checkout, credentials, commit, and push.
+
+The formula's `test do` block runs the installed binary with `--version`, and `brew test` passes when it exits 0. That option comes from the [version plugin](../plugins/version.md), so the test passes only for an application that installs it. The application `loom init` scaffolds installs no version plugin, and for such an application `brew test` fails. Add the version plugin to the application, or edit the `test do` block to run something the application accepts. `loom release formula` writes the whole file again on each release, so an edited test must be made again after each run.
+
+For a tap repository named `me/homebrew-tools`, operators can install the formula with `brew install me/tools/notes`.

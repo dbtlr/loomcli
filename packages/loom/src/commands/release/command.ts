@@ -158,10 +158,33 @@ export const releaseRecord = new Command('record', {
     await recordPlannedRelease(context);
   });
 
+export const releaseFormula = new Command('formula', {
+  description: 'Write a Homebrew formula for a published release.',
+})
+  .option('checksums', {
+    description: "Read the release's SHA256SUMS from this file.",
+    required: true,
+    type: 'string',
+  })
+  .option('output', {
+    description: 'Write the formula to this .rb file.',
+    required: true,
+    type: 'string',
+  })
+  .option('name', {
+    description: 'Use the application name passed to loom build --name.',
+    type: 'string',
+  })
+  .action(async (context) => {
+    const { writeReleaseFormula } = await import('./formula.js');
+    await writeReleaseFormula(context);
+  });
+
 export const release = new Command('release', {
-  description: 'Cut, plan, and record a release.',
+  description: 'Cut, plan, and record a release or write its Homebrew formula.',
   hidden: true,
 })
   .command(releaseCut)
+  .command(releaseFormula)
   .command(releasePlan)
   .command(releaseRecord);

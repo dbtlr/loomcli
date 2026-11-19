@@ -8,7 +8,7 @@ description: Trigger, jobs, commands, recovery modes, and repository settings fo
 
 This reference documents this repository's own release, and the [toolchain reference](../toolchain/README.md) documents the public commands that act on one package directory.
 
-The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds `plan`, `record`, and the synchronized `cut`, and `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share. The workflow runs a published, pinned copy of the CLI, the [release tool](#release-tool), not the one in the checkout.
+The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds `plan`, `record`, and the synchronized `cut`. It also holds `formula`, an author command in the same hidden `release` group that `loom release --help` lists. `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share. The workflow runs a published, pinned copy of the CLI, the [release tool](#release-tool), not the one in the checkout.
 
 ## Trigger
 
