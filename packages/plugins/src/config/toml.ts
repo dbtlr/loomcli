@@ -1,4 +1,5 @@
-import type { Reading } from './reading.js';
+import { defineReader } from './reading.js';
+import type { ConfigurationReader, Reading } from './reading.js';
 import { countedFrom, positionAt, textStart } from './text.js';
 import type { Position } from './text.js';
 
@@ -76,7 +77,7 @@ function positionOf(text: string, line: number, column: number): Position {
  * is not on every runtime the pack supports. A TOML document is always a table. A document that
  * does not parse names the position the parser's error names.
  */
-export async function readToml(text: string): Promise<Reading> {
+async function readToml(text: string): Promise<Reading> {
   const { parse, TomlError } = await import('smol-toml');
   const read = (source: string) => parse(source, { integersAsBigInt: 'asNeeded' });
   try {
@@ -91,3 +92,29 @@ export async function readToml(text: string): Promise<Reading> {
     };
   }
 }
+
+/**
+ * The TOML reader. Passed to `configuration()` in `formats`, it reads `.toml` files as TOML 1.0
+ * through `smol-toml` (BSD-3-Clause), which loads only when a run reads a TOML file. An
+ * application that does not import it reads no TOML file and bundles no TOML parser.
+ *
+ * @example
+ * ```ts
+ * import { configuration } from '@loomcli/plugins/config';
+ * import { toml } from '@loomcli/plugins/config/toml';
+ * import { z } from 'zod';
+ *
+ * export const config = configuration({
+ *   file: '.notes.{toml,json}',
+ *   formats: [toml],
+ *   schema: z.object({ minBytes: z.number().optional() }),
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/plugins/config.md
+ *
+ * @public
+ */
+export const toml: ConfigurationReader = defineReader('TOML', readToml);
+
+export type { ConfigurationReader, ReaderFormat } from './reading.js';

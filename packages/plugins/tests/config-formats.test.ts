@@ -1,6 +1,18 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test';
 
-import { parseFile } from '../src/config/formats.js';
+import { chooseParser } from '../src/config/formats.js';
+import type { Reading } from '../src/config/reading.js';
+import { toml as tomlReader } from '../src/config/toml.js';
+import { yaml as yamlReader } from '../src/config/yaml.js';
+
+/** What a file's text reads as under its extension, with both readers passed. */
+async function parseFile(path: string, text: string): Promise<Reading> {
+  const parser = chooseParser(path, [tomlReader, yamlReader]);
+  if (parser.kind === 'unread') {
+    throw new Error(`Both readers are passed, so ${path} has a parser.`);
+  }
+  return parser.parse(text);
+}
 
 afterEach(() => {
   vi.doUnmock('smol-toml');
@@ -154,7 +166,14 @@ async function freshReader() {
     loaded.push('yaml');
     return await original();
   });
-  const { parseFile: parse } = await import('../src/config/formats.js');
+  const formats = await import('../src/config/formats.js');
+  const { toml } = await import('../src/config/toml.js');
+  const { yaml } = await import('../src/config/yaml.js');
+  const readers = [toml, yaml];
+  const parse = async (path: string, text: string) => {
+    const parser = formats.chooseParser(path, readers);
+    return parser.kind === 'parser' ? parser.parse(text) : parser;
+  };
   return { loaded, parse };
 }
 

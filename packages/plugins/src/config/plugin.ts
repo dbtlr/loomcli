@@ -14,6 +14,7 @@ import { judgeLinks } from './links.js';
 import { configIdentity as identity } from './names.js';
 import { envVariable, fileCandidates } from './pattern.js';
 import { pointerListingSchema } from './pointer.js';
+import type { ConfigurationReader } from './reading.js';
 import type { EmptyFileGuard } from './schema-types.js';
 import { judgeReach } from './scopes.js';
 import type { ScopeSettings } from './scopes.js';
@@ -74,6 +75,27 @@ interface ConfigurationSettings<
   readonly schema: Schema & EmptyFileGuard<Schema>;
   /** The configuration file's name or relative path, a file pattern. Defaults to `.<app>.json`. */
   readonly file?: string;
+  /**
+   * The readers of the formats beyond JSON the application reads: `toml` from
+   * `@loomcli/plugins/config/toml` reads `.toml` files, and `yaml` from
+   * `@loomcli/plugins/config/yaml` reads `.yaml` and `.yml` files. None by default, so the
+   * application reads JSON alone and bundles neither parser. `file` names a TOML or YAML file only
+   * with its reader here, and `*` in `file` tries each reader's extensions before JSON's.
+   *
+   * @example
+   * ```ts
+   * import { configuration } from '@loomcli/plugins/config';
+   * import { toml } from '@loomcli/plugins/config/toml';
+   * import { z } from 'zod';
+   *
+   * export const config = configuration({
+   *   file: '.notes.{toml,json}',
+   *   formats: [toml],
+   *   schema: z.object({ minBytes: z.number().optional() }),
+   * });
+   * ```
+   */
+  readonly formats?: readonly ConfigurationReader[];
   /** The short spelling of `--config`, none by default. */
   readonly short?: Short;
   /** A variable that names the configuration file, none by default. */
@@ -163,15 +185,16 @@ interface Configuration<Schema extends StandardSchemaV1, Directory extends strin
 
 /**
  * The configuration plugin and the provider that reads it, built from one settings object. The
- * plugin answers the configuration tier from one JSON, TOML, or YAML file per run, and from none
- * under `--no-config`: the file `--config` names, or else the file the settings' `env` variable
- * names, or else the first found of the settings' `file` in the walk from the start directory up to
- * the directory below home, or to the root marker, in the home directory, and in the user folder,
- * each step read only under the scope the settings choose. The provider hands application code the
- * schema's output for that file, after the plugin has dropped every value the schema rejects. The
- * call judges the settings' `file`, `env`, `root`, and `scopes`, which it reads once. The resolver
- * and the opener load only when core calls them, and they share one read per run, keyed by the
- * run's host.
+ * plugin answers the configuration tier from one file per run, JSON or a format whose reader the
+ * settings' `formats` pass, and from none under `--no-config`: the file `--config` names, or else
+ * the file the settings' `env` variable names, or else the first found of the settings' `file` in
+ * the walk from the start directory up to the directory below home, or to the root marker, in the
+ * home directory, and in the user folder, each step read only under the scope the settings choose.
+ * The provider hands application code the schema's output for that file, after the plugin has
+ * dropped every value the schema rejects. The call judges the settings' `file` against the readers
+ * `formats` passes, and judges `env`, `root`, and `scopes`, which it reads once.
+ * The resolver and the opener load only when core calls them, and they share one read per run,
+ * keyed by the run's host.
  *
  * @example
  * ```ts
@@ -194,12 +217,14 @@ function configuration<
   const Schema extends StandardSchemaV1,
   const Directory extends string = never,
 >(settings: ConfigurationSettings<Schema, Directory>): Configuration<Schema, Directory> {
+  const readers = [...(settings.formats ?? [])];
   const shared = {
-    candidates: fileCandidates(settings),
+    candidates: fileCandidates(settings, readers),
     directory: settings.directory?.name,
     env: envVariable(settings),
     notice: settings.notice === true,
     reach: judgeReach(settings),
+    readers,
     reads: new WeakMap<Host, Promise<Loaded<Schema>>>(),
     schema: settings.schema,
     strict: judgeStrict(settings),
@@ -237,5 +262,6 @@ export type {
   ConfigurationSettings,
   DirectorySetting,
 };
+export type { ConfigurationReader, ReaderFormat } from './reading.js';
 export type { ConfigurationSchemaMustAcceptAnEmptyFile, EmptyFileGuard } from './schema-types.js';
 export type { Scope, ScopeSettings } from './scopes.js';

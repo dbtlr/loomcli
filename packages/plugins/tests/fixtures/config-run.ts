@@ -10,6 +10,8 @@ import type { InvocationValues } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import type { ConfigurationSettings } from '@loomcli/plugins/config';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { toml } from '@loomcli/plugins/config/toml';
+import { yaml } from '@loomcli/plugins/config/yaml';
 import { help } from '@loomcli/plugins/help';
 import { mockProcess } from '@loomcli/testing';
 import { path } from '@loomcli/validators';
@@ -136,7 +138,12 @@ function application({
   settings,
   view = 'none',
 }: Declared = {}) {
-  const { plugin: configPlugin, values } = configuration({ ...settings, schema: schemas[schema] });
+  // The fixture reads every format, so a case may name any file; a case that sets formats replaces them.
+  const { plugin: configPlugin, values } = configuration({
+    formats: [toml, yaml],
+    ...settings,
+    schema: schemas[schema],
+  });
   return (
     new Application('app', {
       plugins: [configPlugin, help(), ...(marked ? [loud] : [])],

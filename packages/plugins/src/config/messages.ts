@@ -1,12 +1,13 @@
 /*
  * The operator sentences of the configuration plugin, under ADR-0164. A clause that says why a file
- * cannot be used is one of the fixed `Clause` strings the readers return. `tests/message-
+ * cannot be used is one of the fixed `Clause` strings the readers return, or names the format of a
+ * file the application passes no reader for. `tests/message-
  * voice.test.ts` holds this module to the failure message voice.
  */
 import { escapeControlCharacters, nowrap } from '@loomcli/core';
 import type { ContextualStyle } from '@loomcli/core';
 
-import type { Clause } from './reading.js';
+import type { Clause, Unread } from './reading.js';
 import type { Position } from './text.js';
 
 const shown = escapeControlCharacters;
@@ -47,18 +48,39 @@ const fixes: Readonly<Record<Clause, Fix>> = {
   },
 };
 
-/** Whether a discovered file the clause describes warns, or the lookup passes over it in silence. */
-function isSilent(clause: Clause): boolean {
-  return fixes[clause].discovered === undefined;
+interface Unusable {
+  readonly clause: Clause;
+  readonly at?: Position | undefined;
 }
 
-function discoveredStep(clause: Clause): string {
-  return fixes[clause].discovered ?? '';
+/** Why a file cannot be used: a reader's clause, or a format the application does not read. */
+type Problem = Unusable | Unread;
+
+/**
+ * The formats the application reads as a step lists them, `JSON` or `JSON or YAML`. A file meets
+ * this only when its own format is not read, so the list never holds all three.
+ */
+function formatChoices(formats: readonly string[]): string {
+  return formats.map((format) => shown(format)).join(' or ');
+}
+
+/** The step for a file whose format the application does not read. */
+function unreadStep({ formats }: Unread): string {
+  return `Supply a ${formatChoices(formats)} file.`;
+}
+
+/** Whether a discovered file the problem describes warns, or the lookup passes over it in silence. */
+function isSilent(problem: Problem): boolean {
+  return 'clause' in problem && fixes[problem.clause].discovered === undefined;
+}
+
+function discoveredStep(problem: Problem): string {
+  return 'clause' in problem ? (fixes[problem.clause].discovered ?? '') : unreadStep(problem);
 }
 
 /** The step the file `--config` named asks for. */
-function namedStep(clause: Clause): string {
-  return fixes[clause].named;
+function namedStep(problem: Problem): string {
+  return 'clause' in problem ? fixes[problem.clause].named : unreadStep(problem);
 }
 
 const clauseStart = 0;
@@ -77,9 +99,12 @@ function where(at: Position | undefined): string {
   return at === undefined ? '' : place(at.line, at.column);
 }
 
-interface Unusable {
-  readonly clause: Clause;
-  readonly at?: Position | undefined;
+/** Why the file cannot be used, after its name and without a closing full stop. */
+function reason(problem: Problem): string {
+  if ('clause' in problem) {
+    return `${withoutStop(problem.clause)}${where(problem.at)}`;
+  }
+  return `is ${shown(problem.format)}, which this application does not read`;
 }
 
 function warned(file: string, style: ContextualStyle): string {
@@ -90,12 +115,12 @@ function warnedFiles(files: readonly string[], style: ContextualStyle): string {
   return files.map((file) => warned(file, style)).join(', ');
 }
 
-function namedFileIssue(file: string, { at, clause }: Unusable): string {
-  return `File "${shown(file)}" ${withoutStop(clause)}${where(at)}. ${namedStep(clause)}`;
+function namedFileIssue(file: string, problem: Problem): string {
+  return `File "${shown(file)}" ${reason(problem)}. ${namedStep(problem)}`;
 }
 
-function namedFileFailure(spelling: string, file: string, unusable: Unusable): string {
-  return `Option "${shown(spelling)}": ${namedFileIssue(file, unusable)}`;
+function namedFileFailure(spelling: string, file: string, problem: Problem): string {
+  return `Option "${shown(spelling)}": ${namedFileIssue(file, problem)}`;
 }
 
 function quotedSpellings(spellings: readonly string[]): string {
@@ -114,12 +139,12 @@ function skippedCandidates(
   return `Skipped ${warnedFiles(skipped, style)}: ${warned(found, style)} matches the same pattern first. Keep one of the files, and remove the others.`;
 }
 
-function skippedUnusable(file: string, { at, clause }: Unusable, style: ContextualStyle): string {
-  return `Skipped ${warned(file, style)}: the file ${withoutStop(clause)}${where(at)}, so this run reads no configuration. ${discoveredStep(clause)}`;
+function skippedUnusable(file: string, problem: Problem, style: ContextualStyle): string {
+  return `Skipped ${warned(file, style)}: the file ${reason(problem)}, so this run reads no configuration. ${discoveredStep(problem)}`;
 }
 
-function brokenFileLine(file: string, { at, clause }: Unusable): string {
-  return `Configuration file ${shown(file)} ${withoutStop(clause)}${where(at)}. ${discoveredStep(clause)}`;
+function brokenFileLine(file: string, problem: Problem): string {
+  return `Configuration file ${shown(file)} ${reason(problem)}. ${discoveredStep(problem)}`;
 }
 
 /** The `-v` line of a lookup that found no file, which the notice opens with too. */
@@ -231,7 +256,7 @@ const booleanIssue = 'Use true or false.';
 
 const countIssue = 'Use a whole number of 0 or more.';
 
-export type { FileFill, LogText, Unusable };
+export type { FileFill, LogText, Problem };
 export {
   booleanIssue,
   brokenFileLine,

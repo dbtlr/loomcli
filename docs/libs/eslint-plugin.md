@@ -203,12 +203,14 @@ Reports a zod strict object in the schema an application gives the [configuratio
 
 ```ts
 import { configuration } from '@loomcli/plugins/config';
+import { toml } from '@loomcli/plugins/config/toml';
 import { z } from 'zod';
 
 const updates = z.strictObject({ channel: z.string().optional() });
 
 export const { plugin: configPlugin, values: config } = configuration({
   file: '.collector.toml',
+  formats: [toml],
   // Reported: z.strictObject drops the whole updates table for one unknown key. Use z.object.
   schema: z.object({ updates: updates.optional() }),
 });

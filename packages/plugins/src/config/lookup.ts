@@ -5,7 +5,7 @@ import { escapeControlCharacters, InputError } from '@loomcli/core';
 import type { ContextualStyle, Host, Log, Out } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
-import { parseFile } from './formats.js';
+import { chooseParser } from './formats.js';
 import {
   brokenFileLine,
   exclusiveFileOptions,
@@ -19,8 +19,9 @@ import {
   skippedCandidates,
   skippedUnusable,
 } from './messages.js';
+import type { Problem } from './messages.js';
 import { splitExtension } from './names.js';
-import type { Clause, Reading } from './reading.js';
+import type { Clause, ConfigurationReader, Reading, Unread } from './reading.js';
 import type { Reach } from './scopes.js';
 import { strictFailure } from './strict.js';
 
@@ -60,6 +61,8 @@ interface Lookup {
   readonly notice: boolean;
   /** The scopes the lookup reads and the markers that end its walk. */
   readonly reach: Reach;
+  /** The readers of the formats beyond JSON the application reads. */
+  readonly readers: readonly ConfigurationReader[];
   /** The file `--config` named, which is the run's only file. */
   readonly named: string | undefined;
   /** Whether `--no-config` asked the run to read no file. */
@@ -79,9 +82,6 @@ interface Channels {
   readonly log: Log;
   readonly style: ContextualStyle;
 }
-
-/** A reading that cannot be used: the clause that says why, and where the file breaks when known. */
-type Unusable = Extract<Reading, { kind: 'unusable' }>;
 
 /** Whether a failure means nothing is at the path, a missing directory or a file in its place included. */
 function isAbsent(error: unknown): boolean {
@@ -210,12 +210,20 @@ async function readText(path: string): Promise<{ text: string } | { clause: Clau
   }
 }
 
-/** Reads one file once and answers with its object or the clause that says why it is skipped. */
-async function read(file: ConfigFile): Promise<Reading> {
+/**
+ * Reads one file once and answers with its object, the clause that says why it is skipped, or the
+ * format its extension names that no reader passed reads, which is known before any read.
+ */
+async function read(
+  file: ConfigFile,
+  readers: readonly ConfigurationReader[],
+): Promise<Reading | Unread> {
+  const parser = chooseParser(file.path, readers);
+  if (parser.kind === 'unread') {
+    return parser;
+  }
   const text = await readText(file.path);
-  return 'clause' in text
-    ? { clause: text.clause, kind: 'unusable' }
-    : parseFile(file.path, text.text);
+  return 'clause' in text ? { clause: text.clause, kind: 'unusable' } : parser.parse(text.text);
 }
 
 /**
@@ -224,14 +232,14 @@ async function read(file: ConfigFile): Promise<Reading> {
  */
 function namedFailure(
   file: ConfigFile,
-  unusable: Unusable,
+  problem: Problem,
   invokedBy: Lookup['invokedBy'],
 ): InputError {
   const spelling = invokedBy === 'name' ? 'config' : '--config';
-  return new InputError(namedFileFailure(spelling, file.shown, unusable), [
+  return new InputError(namedFileFailure(spelling, file.shown, problem), [
     {
       input: { global: true, kind: 'option', name: 'config' },
-      issues: [{ message: namedFileIssue(file.shown, unusable) }],
+      issues: [{ message: namedFileIssue(file.shown, problem) }],
       reason: 'invalid',
       spelling,
     },
@@ -266,8 +274,8 @@ function ignoredFile(lookup: Lookup): undefined {
 /** The file `--config` named, which answers alone, resolved against the host's working directory. */
 async function namedFile(named: string, lookup: Lookup): Promise<UsableFile> {
   const file = configFile(resolve(lookup.host.cwd, named), named);
-  const reading = await read(file);
-  if (reading.kind === 'unusable') {
+  const reading = await read(file, lookup.readers);
+  if (reading.kind !== 'usable') {
     throw namedFailure(file, reading, lookup.invokedBy);
   }
   return { file, object: reading.object };
@@ -339,11 +347,11 @@ async function discoveredFile(
   lookup: Lookup,
   channels: Channels,
 ): Promise<Outcome | undefined> {
-  const reading = await read(file);
+  const reading = await read(file, lookup.readers);
   if (reading.kind === 'usable') {
     return { kind: 'file', usable: { file, object: reading.object } };
   }
-  if (isSilent(reading.clause)) {
+  if (isSilent(reading)) {
     traceAbsent(file, channels);
     return undefined;
   }

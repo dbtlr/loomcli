@@ -66,6 +66,12 @@ function dotenvFault(key: 'except' | 'only'): Expected {
 
 /** Each settings fault a pack factory throws at its call, by scenario. */
 const settingsCases: Record<string, Expected> = {
+  'config-format': {
+    correction: 'Pass toml, from @loomcli/plugins/config/toml, in formats.',
+    rule: 'config/file-format',
+    sentence:
+      'Plugin "@loomcli/plugins/config" file names toml files, and formats holds no reader for them.',
+  },
   'config-glob': {
     correction:
       'Write the name literally, and use * or a brace list only as the whole text after its last dot.',
@@ -75,7 +81,7 @@ const settingsCases: Record<string, Expected> = {
   },
   'config-list': {
     correction:
-      'List only json, jsonc, toml, yaml, or yml in the braces, or use * for any of them.',
+      'List only json, jsonc, toml, yaml, or yml in the braces, or use * for every format the application reads.',
     rule: 'config/file-pattern',
     sentence: 'Plugin "@loomcli/plugins/config" file lists an extension the plugin cannot read.',
   },
