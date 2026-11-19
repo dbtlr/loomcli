@@ -1189,7 +1189,7 @@ The skill `loom init` writes as managed files at `.agents/skills/loom/`, which t
 _Avoid_: Loom skill, author guide
 
 **Installer script**:
-The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary, and, when `loom.config.json` declares them, runs its post-install command and prints its post-install message.
+The managed `install.sh` that `loom init` renders for an application with a GitHub repository. Under POSIX `sh` on Linux and macOS it installs the platform's release asset, verified against the release's `SHA256SUMS`, and writes `install.json` in the installation record with the method `script`, so self-update may later replace the binary. When `loom.config.json` declares them, it runs its post-install command and prints its post-install message. Under `--unmanaged` it installs a side copy instead, writes no record, and runs no post-install command.
 _Avoid_: Installer (alone), bootstrap script, setup script
 
 **Post-install command**:

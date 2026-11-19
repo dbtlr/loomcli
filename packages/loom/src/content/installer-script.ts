@@ -8,8 +8,8 @@ function shellWord(value: string) {
 /** The usage line, which names `--skip-post-install` only where the script declares a command. */
 function usageLine(skips: boolean) {
   return skips
-    ? 'Usage: install.sh [--dir <directory>] [--skip-post-install] [<version>]'
-    : 'Usage: install.sh [--dir <directory>] [<version>]';
+    ? 'Usage: install.sh [--dir <directory>] [--skip-post-install] [--unmanaged] [<version>]'
+    : 'Usage: install.sh [--dir <directory>] [--unmanaged] [<version>]';
 }
 
 /**
@@ -34,6 +34,10 @@ function helpWords(skips: boolean) {
     ...(skips
       ? [row('--skip-post-install', 'Install without running the post-install command.')]
       : []),
+    row(
+      '--unmanaged',
+      'Install a side copy: no installation record, PATH advice, or post-install command.',
+    ),
     row('-h, --help', 'Print this help.'),
   ];
   return lines.map(shellWord).join(' \\\n    ');
@@ -83,6 +87,11 @@ print_command_line() {
 }
 
 run_post_install() {
+  if [ -n "$unmanaged" ]; then
+    say "Skipped the post-install command, which would point shared setup at this copy. Run it only to make this copy the one that is set up:"
+    with_post_install_words print_command_line
+    return 0
+  fi
   if [ -n "$skip_post_install" ]; then
     say "Skipped the post-install command. Run it to finish setting up $app:"
     with_post_install_words print_command_line
@@ -107,12 +116,23 @@ run_post_install() {
 `;
 }
 
-/** The function that prints the post-install message, each of its lines opening with the name. */
+/**
+ * The function that prints the post-install message, each of its lines opening with the name. An
+ * unmanaged install prints none.
+ */
 const printMessage = `print_message() {
+  [ -z "$unmanaged" ] || return 0
   printf '%s' "$message" | while IFS= read -r line || [ -n "$line" ]; do say "$line"; done
 }
 
 `;
+
+/**
+ * The case of the recipe's path check that refuses a quote, a backslash, or a control character in
+ * `$target`. An unmanaged install runs it alone, because a digest tool escapes such a file name in
+ * its output, and then the authentic download would not match.
+ */
+const pathCharacters = `*[\\"\\\\]* | *[[:cntrl:]]*) echo "$app: The install path holds a quote, a backslash, or a control character. Choose another install directory." >&2; exit 1 ;;`;
 
 /**
  * The first part of the installation record's shell recipe in docs/core/installation-record.md, byte for byte: it
@@ -121,7 +141,7 @@ const printMessage = `print_message() {
  */
 const recipePrepare = `# $app is the application's name; $target is the installed binary's absolute path.
 case $target in
-  *[\\"\\\\]* | *[[:cntrl:]]*) echo "$app: The install path holds a quote, a backslash, or a control character. Choose another install directory." >&2; exit 1 ;;
+  ${pathCharacters}
   /*) ;;
   *) echo "$app: The install path is not absolute. Choose an absolute install directory." >&2; exit 1 ;;
 esac
@@ -209,6 +229,7 @@ argument_error() {
 parse_arguments() {
   dir=
   dir_given=
+  unmanaged=
   version=
   version_given=${step.unset}
   while [ $# -gt 0 ]; do
@@ -217,6 +238,9 @@ parse_arguments() {
         print_help
         exit 0
         ;;${step.option}
+      --unmanaged)
+        unmanaged=1
+        ;;
       --dir)
         [ $# -ge 2 ] || argument_error '--dir needs a directory.'
         case $2 in
@@ -243,6 +267,7 @@ parse_arguments() {
     esac
     shift
   done
+  [ -z "$unmanaged" ] || [ -n "$dir_given" ] || argument_error '--unmanaged needs --dir <directory>, the directory for the side copy.'
   while :; do
     case $dir in
       / | '') break ;;
@@ -336,6 +361,12 @@ check_install_directory() {
 
 prepare_record() {
 ${recipePrepare}}
+
+check_install_path() {
+  case $target in
+    ${pathCharacters}
+  esac
+}
 
 fetch() {
   if [ "$downloader" = curl ]; then
@@ -444,11 +475,19 @@ main() {
   find_downloader
   find_digest_tool
   check_install_directory
-  prepare_record
+  if [ -z "$unmanaged" ]; then
+    prepare_record
+  else
+    check_install_path
+  fi
   install_binary
-  write_record
+  if [ -z "$unmanaged" ]; then
+    write_record
+  fi
   say "Installed $target."
-  advise_path${step.runs}
+  if [ -z "$unmanaged" ]; then
+    advise_path
+  fi${step.runs}
 }
 
 { main "$@"; }
