@@ -1,3 +1,6 @@
+import { performance } from 'node:perf_hooks';
+import { setImmediate } from 'node:timers';
+
 import { routedSubject } from '../failures/messages.js';
 import { handled } from '../support/thenable.js';
 import type { IncompleteResult } from './lanes.js';
@@ -21,6 +24,63 @@ class SourceFault {
  * invocation that stopped it has a primary failure of its own, so this value reports nothing.
  */
 const stopRequested = Symbol('stopped');
+
+/**
+ * How many rows the source yields between two reads of the clock. A read costs about 80 ns, and the
+ * cheapest row costs about 4 µs under a row view and 0.4 µs while a whole view collects, so a read
+ * every 64 rows adds at most 0.3% to a source's run. A source whose rows each take up to about
+ * 0.8 ms of their own work still reaches a check point within `turnInterval`.
+ */
+const rowsPerCheck = 64;
+
+/**
+ * The most time, in milliseconds, a source that never yields keeps the event loop from a turn. At a
+ * check point this long after the last turn, or after the sequence started, core takes a turn, so a
+ * SIGINT is seen within about this long of the source's own work, and turns stay under about 20 a second.
+ */
+const turnInterval = 50;
+
+/** A monotonic clock in milliseconds. */
+type Clock = () => number;
+
+/** When the event loop last had a turn, read off the clock that decides the next one. */
+interface Pacing {
+  clock: Clock;
+  last: number;
+}
+
+/** The pacing of one sequence, counted from its start. */
+function startPacing(clock: Clock = () => performance.now()): Pacing {
+  return { clock, last: clock() };
+}
+
+/**
+ * Whether the row just counted ends a stretch that needs a turn: it is a check point and at least
+ * `turnInterval` has passed since the last turn. The clock is read at check points alone, and a due
+ * turn starts the next stretch from that reading.
+ */
+function turnDue(pacing: Pacing, yielded: number): boolean {
+  if (yielded % rowsPerCheck !== 0) {
+    return false;
+  }
+  const now = pacing.clock();
+  if (now - pacing.last < turnInterval) {
+    return false;
+  }
+  pacing.last = now;
+  return true;
+}
+
+/**
+ * Gives the event loop a turn that holds a poll, so a signal raised before it reaches core. One
+ * immediate resumed from an I/O callback runs in the same loop iteration, before the next poll;
+ * two hold at least one poll that starts after this call.
+ */
+function pollTurn(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(() => setImmediate(resolve));
+  });
+}
 
 /** Whether the invocation still wants rows, read where the writer would otherwise go on. */
 interface Live {
@@ -132,6 +192,7 @@ async function pull<Row>(steps: Steps<Row>): Promise<Pulled<Row>> {
 interface Reading<Row> {
   counts: Counts;
   live: Live;
+  pacing: Pacing;
   signal: AbortSignal;
   steps: Steps<Row>;
 }
@@ -147,12 +208,19 @@ function halt(reading: { live: Live; signal: AbortSignal }): void {
   }
 }
 
-/** One step, counted where the source produced a row. A stopped writer requests none. */
+/**
+ * One step, counted where the source produced a row, with a turn of the event loop once a check
+ * point finds `turnInterval` passed, so a cancellation a source that never yields would starve
+ * still arrives. A stopped writer requests none.
+ */
 async function step<Row>(reading: Reading<Row>): Promise<Pulled<Row>> {
   halt(reading);
   const result = await pull(reading.steps);
   if (!result.done) {
     reading.counts.yielded += 1;
+    if (turnDue(reading.pacing, reading.counts.yielded)) {
+      await pollTurn();
+    }
   }
   // A row an in-flight request delivered after the stop is counted, and nothing is written for it.
   halt(reading);
@@ -275,7 +343,13 @@ async function writeRows<Row>(
   live: Live,
   counts: Counts,
 ): Promise<boolean> {
-  const reading: Reading<Row> = { counts, live, signal: writer.signal, steps: stepsOf(writer) };
+  const reading: Reading<Row> = {
+    counts,
+    live,
+    pacing: startPacing(),
+    signal: writer.signal,
+    steps: stepsOf(writer),
+  };
   const close = await closingPiece(writer, reading);
   if (live.stopped || writer.signal.aborted) {
     return false;
@@ -338,4 +412,4 @@ function writeSequence<Row>(writer: SequenceWriter<Row>): LiveSequence {
 }
 
 export type { LiveSequence, SequenceView, SequenceWriter };
-export { writeSequence };
+export { rowsPerCheck, startPacing, turnDue, turnInterval, writeSequence };

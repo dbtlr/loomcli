@@ -196,6 +196,8 @@ Output is incomplete: Command "count" stopped after 4 rows, 3 written.
 
 What follows the line is the fault's own report, when there is one. A write failure follows the destination row of the [ordinary failure path](failures.md#the-ordinary-failure-path), whose diagnostic is the report. Under cancellation the code stays the signal's: from the moment the run is cancelled core requests no further rows and writes no further pieces, calls the source's `return`, and treats the sequence as stopped early, so a truncated result never reads as a complete one. A row an in-flight request delivers after the cancellation counts as yielded and is not written, a cancellation echo the source throws is silent, and when nothing else failed the line stands alone.
 
+Core reads the cancellation between rows. Under a row view and while it collects for a whole view, it also reads a monotonic clock every 64 rows, and once 50 ms have passed since the sequence started or since its last turn, it gives the event loop a turn that holds a poll. A source whose pulls resolve through microtasks alone, such as a generator over data already in memory, therefore stops after a Ctrl-C once about 50 ms of its own work have passed and it reaches the next check point, even after it read a file or ran a query before its first row. A row's own work is not interrupted: a source whose rows each take more than about 0.8 ms reaches a check point every 64 rows, and stops at the first one after the signal. This bounds how long core takes to see the operator's signal; it is not a time limit on a source's own work.
+
 ```ts
 import { Application, incompleteResult, override } from '@loomcli/core';
 
