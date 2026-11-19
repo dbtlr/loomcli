@@ -19,6 +19,15 @@ const [scenarioPath, ...argv] = process.argv.slice(2);
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 const controller = new AbortController();
 
+if (scenario.executable !== undefined) {
+  process.execPath = scenario.executable;
+  Reflect.set(globalThis, '__LOOM_RELEASE__', {
+    build: 'distributed',
+    compiled: true,
+    release: scenario.release.release,
+  });
+}
+
 /** Whether this process is the refresh child a run started, which runs in the cache directory. */
 const child = argv.includes('--refresh-notice');
 
@@ -98,11 +107,12 @@ process.exitCode = await app.run({
   // The platform is pinned so the record directory reads the same row on every machine.
   process: processHandle({
     argv,
+    ...(scenario.executable === undefined ? {} : { ceiling: process.cwd() }),
     env: { ...process.env, ...scenario.env },
     // The handle's home is the test's HOME as given, never the user database's.
     home: fixtureHome({ ...process.env, ...scenario.env }),
     platform: 'linux',
-    release: scenario.release,
+    release: scenario.executable === undefined ? scenario.release : undefined,
     stderr,
     ...(scenario.program === undefined ? {} : { program: program() }),
     ...(scenario.tty === undefined ? {} : { terminal: terminal() }),

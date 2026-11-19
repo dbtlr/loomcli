@@ -216,15 +216,18 @@ export interface HandleFacts {
 export function handleFacts(application: string, handle: ProcessHandle): HandleFacts {
   const env = { ...handle.env };
   const { home, platform, readSource } = handle;
+  const arch = handle.arch;
+  const directory = captureWorkingDirectory(handle);
+  const program = Object.freeze([...handle.program]);
   const facts = {
-    arch: handle.arch,
-    directory: captureWorkingDirectory(handle),
+    arch,
+    directory,
     env,
     home,
     libc: once(() => handle.libc),
     platform,
-    program: Object.freeze([...handle.program]),
-    release: handleRelease(handle, { application, env, home, platform }),
+    program,
+    release: handleRelease(handle, { application, env, home, platform }, program[1]),
     runtime: frozenRuntime(handle.runtime),
     spawn: handle.spawn.bind(handle),
     timeZone: once(() => handle.timeZone),

@@ -30,7 +30,15 @@ import { Command } from '@loomcli/core';
 // src/commands/about.ts: the binary at that path reads it
 export const about = new Command('about').action(({ host, out }) => {
   const { installation } = host.release;
-  return out.print(installation === undefined ? 'Installed some other way.' : `Installed by ${installation.method} at ${installation.path}.`);
+  if (installation === undefined) {
+    return out.print('Installed some other way.');
+  }
+  // Homebrew and npm runs carry an installation too, with no digest, so check the method.
+  return out.print(
+    installation.method === 'script'
+      ? `Installed by install.sh at ${installation.path}.`
+      : `Installed by ${installation.method} at ${installation.path}, which updates it.`,
+  );
 });
 ```
 
@@ -75,15 +83,21 @@ The installation record is one directory per application and per user that says 
 
 ## Reading the installation
 
-Core fills `host.release.installation` during host capture for `run()` and `app.invoke`, once per run:
+Core fills `host.release.installation` during host capture for `run()` and `app.invoke`, once per run. It does so when there is a baked release group and the process handle supplies no `release` override.
 
-- **When it reads.** Only when the run has no `release` override and the baked facts hold a release with an `asset`, which a compiled binary built with `loom build --release` alone carries. Every other run reads no file and has no installation.
-- **What it reads.** `install.json` in the directory `applicationDirectory('installation', name, host)` gives for the run's `env`, `home`, and `platform`, read synchronously when it is a regular file no larger than 1 MiB. Its content must be a JSON object whose `format` is `1`, whose `method` is a nonempty string, whose `path` is an absolute path, and whose `digest` is `sha256:` and 64 lowercase hexadecimal digits. Core ignores every other member, in any order.
-- **Whom it trusts.** Core sets `installation` to `{ method, path, digest }` as recorded only when `path` and `process.execPath`, each resolved through symbolic links, are the same path. A copy of the application run from another path, through Node or Bun, or from source has no installation.
-- **What never fails.** A variable the directory needs, a missing file, a read that fails, content that is not that object, a `format` core does not know, and a path that is not the running executable each leave `installation` absent. Core reports none of them, and the run continues.
-- **No hashing.** Core never computes the running binary's digest. A plugin that replaces the binary compares it with `digest` first.
+1. **Resolve the application path.** Core resolves symbolic links in the executable's path when the build is compiled or its release group carries an asset. Otherwise it resolves the bundle's entry script path. For a bundle, the script is the second word of [`host.program`](host.md), after the runtime. An absent path or failed realpath leaves the installation absent.
+2. **Check for a matching record.** For a release binary with an `asset`, core reads `install.json` in the directory `applicationDirectory('installation', name, host)` gives, synchronously, when it is a regular file no larger than 1 MiB. Its content must be a JSON object with `format` equal to `1`, a nonempty string `method`, an absolute `path`, and a `digest` of `sha256:` and 64 lowercase hexadecimal digits. Core ignores every other member, in any order. If the recorded path resolves to the executable's realpath, core keeps the recorded `method`, `path`, and `digest`, and nothing else, whatever the method.
+3. **Derive the installation when no record matches.** Core matches complete directory components of the application realpath, excluding the root and the file name, with case-sensitive names and the running process's path rules. A missing directory, unreadable or malformed record, or record for a different path all reach the same fallback.
 
-An application with no `installation` was installed some other way, such as by a package manager, from npm, or by copying the file, and that installer owns its updates.
+   | First matching layout | Installation |
+   | --- | --- |
+   | `.../Cellar/<formula>/<version>/...` with the application file beneath the version directory | `{ method: 'brew', path, formula }`. The nearest qualifying `Cellar` ancestor wins. Its next component is the formula name. The version directory can have any name. |
+   | `.../lib/node_modules/...`, where this `node_modules` is the outermost one in the path | `{ method: 'npm', path }`. This is npm's global root, `<prefix>/lib/node_modules`, such as `/usr/local/lib/node_modules/@acme/notes/`. It covers a bundle in a global package and the binary a launcher package starts from its platform package, such as `.../lib/node_modules/@acme/notes/node_modules/@acme/notes-linux-x64/bin/notes`. |
+   | Any other path | The installation is absent. |
+
+   A Homebrew formula that wraps an npm package, such as `/opt/homebrew/Cellar/notes-cli/1.5.0/libexec/lib/node_modules/@acme/notes/`, matches both rows, and the Cellar row wins. Every other `node_modules` layout reads as absent, because `npm install -g` is not the command that updates it: a project's dependency, such as `~/code/app/node_modules/@acme/notes/`, a package `npx` runs from `~/.npm/_npx/<hash>/node_modules/`, and the global roots of pnpm, Bun, and Yarn. On Windows, npm's global root is `<prefix>\node_modules`, which no component tells apart from a project's, so a Windows path derives nothing. A project or workspace directory named `lib` that contains `node_modules`, such as `~/code/lib/node_modules/@acme/notes/`, matches the npm rule. The notice then names `npm install -g`, which installs a second copy globally. The path alone cannot distinguish this layout from an npm global root, and there is no cheap check to distinguish them.
+
+The derived `path` is the realpath. `packageManagerInstallation(path, platform)` from `@loomcli/core` applies the layout rules to an absolute realpath without reading a record. Core reports no lookup failures, writes no record, and computes no digest. Only a matching record carries a digest. Before replacing a script-installed binary, the self-update plugin checks the recorded path's package-manager ownership and verifies the digest. Homebrew and npm own their own updates. [ADR-0211](../decisions/0211-update-notices-name-the-package-managers-upgrade-command.md) records the derivation.
 
 ## Installed files
 

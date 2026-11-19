@@ -1,7 +1,4 @@
-/**
- * The running binary as its release facts describe it: the one reading that `self-update`, its
- * `--refresh-notice` lookup, and the update notices share of whether a run is a release binary.
- */
+/** The running binary as its release facts describe it. */
 import type { Host } from '@loomcli/core';
 
 import { parseVersion } from './version.js';

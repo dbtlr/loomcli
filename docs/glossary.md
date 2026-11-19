@@ -391,12 +391,16 @@ The part of a process handle that delivers process signals and the process's own
 _Avoid_: Process lane (for the source), signal bus
 
 **Release facts**:
-The facts that say how the running application was built, released, and installed: its build, which is `source`, `development`, or `distributed`, an optional release group with its version, release channel, repository, and asset, and an optional installation group. The build bakes the build and release group into the artifact, core reads the installation group from the installation record, and core holds them on the host as `release`. An artifact built with none reads `source`.
+The facts the host holds as `release` to describe how the running application was built, released, and installed. They carry the build, which is `source`, `development`, or `distributed`, an optional release group with the version, release channel, repository, and, when available, the asset and npm package name, and an optional installation group from a matching record or the application path.
 _Avoid_: Packet, build info, environment, mode, `NODE_ENV`
 
 **Release channel**:
 The release line a version belongs to, which core derives from the version: its first prerelease identifier, such as `next` for `1.1.0-next.3`, or `stable` when it has none. It is an open set of names, the release facts name the field `channel`, and self-update follows the running binary's channel unless the operator names another.
 _Avoid_: Lane (a lane is an output area), channel (alone, which names `out`), track, dist-tag
+
+**Installation method**:
+The release fact that says how the running application was installed: `script` from a matching installation record, or `brew` or `npm`, which core infers from the install layout, a Homebrew Cellar path or npm's global root. The installer owns updates.
+_Avoid_: Installer, install source, distribution channel
 
 **Installation record**:
 The directory, one per application and per user in the platform's state directory, that says how the application was installed and which files its installers wrote. Its `install.json` holds the installation, which an installer script and self-update write and core reads into the release facts when its path is the running executable; each first-party plugin that installs files keeps what it installed, files with their digests, whole folders with the digest of each file inside, or startup lines, in files of its own there. A file the application writes there under a name no first-party writer uses is the application's own.

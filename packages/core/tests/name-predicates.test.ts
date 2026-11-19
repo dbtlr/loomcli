@@ -3,6 +3,7 @@ import {
   Command,
   DeclarationError,
   isDeclaredName,
+  isNpmPackageName,
   isPortableName,
 } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
@@ -72,4 +73,32 @@ test('core rejects exactly the names isDeclaredName rejects, for an option, an a
       rejected,
     ]);
   }
+});
+
+test('isNpmPackageName accepts a lowercase name or scoped name of at most 214 characters, and never a dot segment', () => {
+  expect(['notes', '@acme/notes', 'a.b_c-d', '0', 'a'.repeat(214)].map(isNpmPackageName)).toEqual([
+    true,
+    true,
+    true,
+    true,
+    true,
+  ]);
+  expect(
+    ['', '.', '..', '@acme/..', '@acme/.', 'Notes', '@Acme/x', 'a b', 'a/b', 'a'.repeat(215)].map(
+      isNpmPackageName,
+    ),
+  ).toEqual([false, false, false, false, false, false, false, false, false, false]);
+});
+
+test('isNpmPackageName rejects a tilde, which npm refuses in a new package name', () => {
+  expect(['a~b', '@acme/a~b', '@a~b/notes'].map(isNpmPackageName)).toEqual([false, false, false]);
+});
+
+test('isNpmPackageName rejects the unscoped names npm reserves, and keeps them inside a scope or a longer name', () => {
+  expect(['node_modules', 'favicon.ico'].map(isNpmPackageName)).toEqual([false, false]);
+  expect(
+    ['@acme/node_modules', '@acme/favicon.ico', 'node_modules2', 'favicon.ico-cli'].map(
+      isNpmPackageName,
+    ),
+  ).toEqual([true, true, true, true]);
 });

@@ -20,9 +20,24 @@
  *   copied to another path, when `install.json` is missing, empty, not JSON, an array, `format`
  *   `2`, an empty `method`, a relative `path`, or an uppercase `digest`, or a directory, and when
  *   the directory's variable is unset; each run exits with its own code and writes nothing to
- *   stderr. A bundle built for Node with `--release`, and the source run, print none and read no
- *   file. `install.json` with an extra member and its members reordered reads the same
- *   installation. `run({ process: processHandle({ release }) })` reads the override and no file.
+ *   stderr. A bundle built for Node with `--release` at an ordinary path and a source run both
+ *   print none and skip the record. `install.json` with an extra member and its members reordered
+ *   reads the same installation. `run({ process: processHandle({ release }) })` reads the override.
+ *   It skips the installation lookup.
+ * - Derived installations. Run release fixtures from temporary paths under
+ *   `Cellar/notes-cli/1.5.0/bin/` and `lib/node_modules/`. Core reports `brew` and `npm`
+ *   respectively with the resolved path and no digest. The Homebrew fact names `notes-cli`.
+ *   A project dependency under `code/lib/node_modules/` matches the npm layout by design. Use a
+ *   Node bundle with its runtime outside the package tree and a compiled launcher payload in a
+ *   platform package for npm. A symlink to either fixture reports the target's facts. A Cellar
+ *   ancestor wins when both layouts match, as for `Cellar/notes-cli/1.5.0/libexec/lib/node_modules/`.
+ *   A matching script record wins over either layout, keeps its original path and digest, and
+ *   carries no formula, whatever its method. A Node bundle ignores a matching record and
+ *   derives its installation. A stale or malformed record falls through. A project
+ *   dependency under `app/node_modules/`, an npx cache under `.npm/_npx/<hash>/node_modules/`, the
+ *   pnpm, Bun, and Yarn global roots, an inner `lib/node_modules/` below an outer `node_modules`,
+ *   an ordinary path, a partial directory marker, and a failed realpath each leave the
+ *   installation absent.
  * - Installing. Installing two files into a temporary directory writes both and a `committed` file
  *   with their digests and the created directory. A second install with new content replaces both,
  *   and one that lists only the first removes the second. An install over an unrecorded file, a
@@ -173,6 +188,138 @@ function sandbox() {
 }
 
 type Box = ReturnType<typeof sandbox>;
+
+const installationFacts = new URL('fixtures/installation-facts.mjs', import.meta.url);
+
+/** An application file under the sandbox, with no executable runtime needed at that path. */
+function applicationFile(box: Box, relative: string): string {
+  const path = join(box.root, relative);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, 'notes');
+  return path;
+}
+
+function capturedInstallation(box: Box, path: string, kind = 'binary', platform?: string): unknown {
+  const result = invoke(
+    installationFacts,
+    [path, kind, ...(platform === undefined ? [] : [platform])],
+    {
+      cwd: box.root,
+      env: {
+        GIT_CEILING_DIRECTORIES: realpathSync(box.root),
+        HOME: box.root,
+        XDG_STATE_HOME: box.root,
+      },
+      runtime: 'node',
+    },
+  );
+  expect(result).toMatchObject({ status: 0, stderr: '' });
+  return JSON.parse(result.stdout);
+}
+
+test.each([
+  ['Cellar/notes-cli/1.5.0/bin/notes', 'binary', { formula: 'notes-cli', method: 'brew' }],
+  [
+    'Cellar/outer/1/Cellar/notes@2/non-semver/libexec/lib/node_modules/notes/index.js',
+    'bundle',
+    { formula: 'notes@2', method: 'brew' },
+  ],
+  ['prefix/lib/node_modules/@acme/notes/index.js', 'bundle', { method: 'npm' }],
+  ['prefix/lib/node_modules/@acme/notes/index.js', 'program', { method: 'npm' }],
+  [
+    'prefix/lib/node_modules/@acme/notes/node_modules/@acme/notes-linux-x64/bin/notes',
+    'binary',
+    { method: 'npm' },
+  ],
+  ['prefix/lib/node_modules/@acme/notes/bin/notes', 'compiled', { method: 'npm' }],
+  ['code/lib/node_modules/@acme/notes/index.js', 'bundle', { method: 'npm' }],
+])('the real path %s gives its installation for a %s', (layout, kind, installation) => {
+  const box = sandbox();
+  const path = applicationFile(box, layout);
+  const link = join(box.root, 'notes-link');
+  symlinkSync(path, link);
+  expect(capturedInstallation(box, link, kind)).toEqual({
+    ...installation,
+    path: realpathSync(path),
+  });
+});
+
+test.each([
+  'app/node_modules/@acme/notes/bin/notes',
+  '.npm/_npx/hash/node_modules/@acme/notes/bin/notes',
+  '.local/share/pnpm/global/5/node_modules/@acme/notes/bin/notes',
+  '.bun/install/global/node_modules/@acme/notes/bin/notes',
+  '.config/yarn/global/node_modules/@acme/notes/bin/notes',
+  'app/node_modules/outer/lib/node_modules/notes/bin/notes',
+  'notCellar/notes/1/bin/notes',
+  'prefix/library/node_modules/notes/bin/notes',
+  'prefix/lib/node_modules-old/notes/bin/notes',
+  'Cellar/notes/notes',
+  'bin/notes',
+])('%s gives no installation', (layout) => {
+  const box = sandbox();
+  expect(capturedInstallation(box, applicationFile(box, layout))).toBeNull();
+});
+
+test('a Windows host derives no installation', () => {
+  const box = sandbox();
+  const path = applicationFile(box, 'prefix/lib/node_modules/@acme/notes/bin/notes');
+  expect(capturedInstallation(box, path, 'binary', 'win32')).toBeNull();
+});
+
+test('an application path that cannot be resolved gives no installation', () => {
+  const box = sandbox();
+  expect(capturedInstallation(box, join(box.root, 'missing'))).toBeNull();
+});
+
+function installationRecord(box: Box): string {
+  const directory =
+    process.platform === 'darwin'
+      ? join(box.root, 'Library', 'Application Support', 'notes', 'installation')
+      : join(box.root, 'notes', 'installation');
+  mkdirSync(directory, { recursive: true });
+  return join(directory, 'install.json');
+}
+
+test('a Node bundle ignores an installation record for its entry script', () => {
+  const box = sandbox();
+  const path = applicationFile(box, 'prefix/lib/node_modules/@acme/notes/index.js');
+  writeFileSync(path, 'test');
+  writeFileSync(
+    installationRecord(box),
+    JSON.stringify({ digest: digests.test, format: 1, method: 'script', path }),
+  );
+  expect(capturedInstallation(box, path, 'bundle')).toEqual({
+    method: 'npm',
+    path: realpathSync(path),
+  });
+});
+
+test.each([
+  ['Cellar/notes-cli/1.5.0/bin/notes', { formula: 'notes-cli', method: 'brew' }],
+  ['prefix/lib/node_modules/@acme/notes/bin/notes', { method: 'npm' }],
+])('a matching record wins over %s, and a bad record falls through', (layout, derived) => {
+  const box = sandbox();
+  const path = applicationFile(box, layout);
+  const recordedPath = join(box.root, 'recorded-notes');
+  symlinkSync(path, recordedPath);
+  const record = installationRecord(box);
+  const installation = { digest: digests.test, method: 'script', path: recordedPath };
+  writeFileSync(record, JSON.stringify({ ...installation, format: 1 }));
+  expect(capturedInstallation(box, path)).toEqual(installation);
+  writeFileSync(
+    record,
+    JSON.stringify({ ...installation, format: 1, formula: 'ignored', method: 'brew' }),
+  );
+  expect(capturedInstallation(box, path)).toEqual({ ...installation, method: 'brew' });
+  writeFileSync(
+    record,
+    JSON.stringify({ ...installation, format: 1, path: applicationFile(box, 'other') }),
+  );
+  expect(capturedInstallation(box, path)).toEqual({ ...derived, path: realpathSync(path) });
+  writeFileSync(record, '{');
+  expect(capturedInstallation(box, path)).toEqual({ ...derived, path: realpathSync(path) });
+});
 
 /** One install of `files` by the skill plugin, with a signal no one aborts. */
 function installed(

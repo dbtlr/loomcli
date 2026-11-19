@@ -16,6 +16,18 @@
  *   `null`, or another channel or repository prints no notice. A fresh cache with an extra member
  *   and its members reordered reads the same. A cache whose `format` is `2`, whose `checked` is not
  *   a time, or that is a directory is stale.
+ * - Package managers. An eligible terminal run with a newer GitHub release in the cache shows
+ *   the pinned `brew upgrade notes-cli` line for a Homebrew installation and the pinned
+ *   `npm install -g @acme/notes@1.5.1` line for npm, naming the cached version, including for an
+ *   assetless release bundle; a cached `1.6.0-next.2` on `next` names `@acme/notes@1.6.0-next.2`.
+ *   A matching script installation still shows the script command. A matching script record whose
+ *   path resolves into a Cellar or npm's global root reads as the refusal of `self-update` reads
+ *   it: it shows `brew upgrade notes-cli`, or the npm line when the package name is baked, and
+ *   with no baked package name it shows no notice. An npm installation with no
+ *   baked package name, a package name or formula outside its grammar, such as `-rf`, `@Acme/x`,
+ *   or `a b`, shows no notice, starts no refresh, and names the third skip reason at `-vv`. A
+ *   run with no release group and one with no installation each name their own pinned reason. A
+ *   repository with no GitHub releases yields no notice.
  * - The refresh. A missing cache, one whose `checked` is 25 hours old, one dated an hour ahead, one
  *   for another channel, and one holding `{` each start one child, which finds the run's `checked`
  *   already in `update.json` when it starts; the run returns before the child's first request, and
@@ -29,14 +41,14 @@
  *   `next` binary through the feed, passing over a tag whose `SHA256SUMS` answers `404`, requests
  *   no asset, writes the pinned line, prints nothing, and exits 0; a channel with no release writes
  *   `null`. Beside a version, `--channel`, or `--check` it exits 2 with the pinned sentence. With
- *   no asset it exits 1 with the first refusal, and under a relative `HOME` with no
- *   `XDG_CACHE_HOME` with the pinned cache-directory sentence. A cache directory it cannot write
- *   exits 1 with the pinned write sentence. It is listed by no help page and offered by no
- *   completion.
+ *   no asset it can still refresh from GitHub. With no release group it exits 1 with the
+ *   release-facts refusal. A relative `HOME` without `XDG_CACHE_HOME` gives the pinned
+ *   cache-directory sentence. A cache directory it cannot write exits 1 with the pinned write
+ *   sentence. It is listed by no help page and offered by no completion.
  * - Left out. A run whose action fails, a run cancelled during its action, `--help` under the help
  *   plugin, `self-update` itself, stderr that is not a terminal, stdout that is not a terminal
  *   while stderr is one, `CI=1`, `NO_UPDATE_NOTIFIER=1`, the author's `env` set to `1`, a source
- *   build, a release with no asset, an installation with the method `npm`, no installation, and a
+ *   build, a script installation with no release asset, no installation, and a
  *   relative `HOME` with no `XDG_CACHE_HOME` each print no notice, write no cache, and start no
  *   child, with the cache naming `1.5.1` on the running channel. `NO_UPDATE_NOTIFIER` set to the
  *   empty string does not turn notices off, and neither does `CI=false`. `selfUpdate({ notices: false })` declares no
@@ -60,12 +72,15 @@ import {
   realpathSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { stripVTControlCharacters } from 'node:util';
 
 import type { ReleaseFacts } from '@loomcli/core';
 import { Application, locate } from '@loomcli/core';
@@ -244,6 +259,7 @@ interface Scenario {
   /** Where the help plugin sits beside `selfUpdate()`, when the application installs it. */
   readonly help?: 'before' | 'after';
   readonly restyle?: boolean;
+  readonly verbose?: boolean;
   /** Each run and refresh child records its process group and session. */
   readonly session?: boolean;
   /**
@@ -259,6 +275,34 @@ function scriptFacts(box: Sandbox, version: string, channel: string): ReleaseFac
     build: 'distributed',
     installation: { digest: `sha256:${digestOf(binaryBytes)}`, method: 'script', path: box.binary },
     release: { asset, channel, repository: 'acme/notes', version },
+  };
+}
+
+/**
+ * Moves the sandbox's binary into `managed`, a package manager's layout under the sandbox root, and
+ * leaves a link at the recorded path, answering the binary's new real path.
+ */
+function moveIntoManaged(box: Sandbox, managed: string): string {
+  const directory = join(box.root, managed);
+  const executable = join(directory, 'notes');
+  mkdirSync(directory, { recursive: true });
+  renameSync(box.binary, executable);
+  symlinkSync(executable, box.binary);
+  return executable;
+}
+
+/** The script release facts of the sandbox's record, with `npmPackage` baked when given. */
+function managedScriptFacts(box: Sandbox, npmPackage: string | undefined): ReleaseFacts {
+  const facts = scriptFacts(box, '1.5.0', 'stable');
+  return {
+    ...facts,
+    release: {
+      asset,
+      channel: 'stable',
+      ...(npmPackage === undefined ? {} : { npmPackage }),
+      repository: 'acme/notes',
+      version: '1.5.0',
+    },
   };
 }
 
@@ -352,6 +396,7 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
     requests: box.requests,
     restyle: scenario.restyle,
     rules: scenario.rules,
+    verbose: scenario.verbose,
   };
   const runReturned = Promise.withResolvers<void>();
   const refresh: Program = (call) => {
@@ -525,6 +570,162 @@ test('a fresh cache naming a newer release prints the notice after the Command l
   await sleep(quiet);
   expect(childEvents(box)).toEqual([]);
   expect(readFileSync(box.file, 'utf8')).toBe(line);
+});
+
+test.each([
+  {
+    channel: 'stable',
+    command: 'brew upgrade notes-cli',
+    formula: 'notes-cli',
+    latest: '1.5.1',
+    method: 'brew',
+    version: '1.5.0',
+  },
+  {
+    channel: 'stable',
+    command: 'npm install -g @acme/notes@1.5.1',
+    latest: '1.5.1',
+    method: 'npm',
+    version: '1.5.0',
+  },
+  {
+    channel: 'next',
+    command: 'npm install -g @acme/notes@1.6.0-next.2',
+    latest: '1.6.0-next.2',
+    method: 'npm',
+    version: '1.6.0-next.1',
+  },
+])(
+  'a $method install on $channel names $command in the notice',
+  async ({ channel, command, formula, latest, method, version }) => {
+    const box = sandbox();
+    const line = cacheLine({ channel, latest });
+    writeCache(box, line);
+    const result = await run(box, ['add'], {
+      releaseFacts: {
+        build: 'distributed',
+        installation: { ...(formula === undefined ? {} : { formula }), method, path: box.binary },
+        release: { channel, npmPackage: '@acme/notes', repository: 'acme/notes', version },
+      },
+      restyle: true,
+    });
+    expect(result).toMatchObject({
+      status: 0,
+      stderr: `✔ Added note 12.\n[info] notes ${latest} is available on the ${channel} channel. Run ${command} to update from ${version}.\n`,
+    });
+    expect(childEvents(box)).toEqual([]);
+    expect(readFileSync(box.file, 'utf8')).toBe(line);
+  },
+);
+
+test.each([
+  { label: 'a missing package name', method: 'npm' },
+  { label: 'a package scope with a capital letter', method: 'npm', npmPackage: '@Acme/x' },
+  { label: 'a package name with a space', method: 'npm', npmPackage: 'a b' },
+  {
+    label: 'a package name longer than 214 characters',
+    method: 'npm',
+    npmPackage: 'a'.repeat(215),
+  },
+  { formula: '-rf', label: 'a formula starting with a dash', method: 'brew' },
+  { formula: 'notes\n', label: 'a formula with a newline', method: 'brew' },
+])('$label skips a stale update check', async ({ npmPackage, formula, method }) => {
+  const box = sandbox();
+  const line = cacheLine({ checked: hoursAgo(25) });
+  writeCache(box, line);
+  const result = await run(box, ['-vv', 'add'], {
+    releaseFacts: {
+      build: 'distributed',
+      installation: { ...(formula === undefined ? {} : { formula }), method, path: box.binary },
+      release: {
+        channel: 'stable',
+        ...(npmPackage === undefined ? {} : { npmPackage }),
+        repository: 'acme/notes',
+        version: '1.5.0',
+      },
+    },
+    verbose: true,
+  });
+  expect(result.status).toBe(0);
+  expect(stripVTControlCharacters(result.stderr)).toBe(
+    `✔ Added note 12.\n  ┆ Skipped the update check: notes was installed by ${method}, and its facts give no\n    upgrade command.\n`,
+  );
+  expect(childEvents(box)).toEqual([]);
+  expect(readFileSync(box.file, 'utf8')).toBe(line);
+});
+
+test.each([
+  {
+    command: 'brew upgrade notes-cli',
+    managed: 'Cellar/notes-cli/1.5.0/bin',
+    npmPackage: undefined,
+  },
+  {
+    command: 'npm install -g @acme/notes@1.5.1',
+    managed: 'prefix/lib/node_modules/@acme/notes/bin',
+    npmPackage: '@acme/notes',
+  },
+])(
+  'a matching script record whose path resolves into $managed names $command, as the refusal reads it',
+  async ({ command, managed, npmPackage }) => {
+    const box = sandbox();
+    const executable = moveIntoManaged(box, managed);
+    const line = cacheLine();
+    writeCache(box, line);
+    const result = await run(box, ['add'], {
+      releaseFacts: managedScriptFacts(box, npmPackage),
+      restyle: true,
+    });
+    expect(realpathSync(box.binary)).toBe(executable);
+    expect(result).toMatchObject({
+      status: 0,
+      stderr: `✔ Added note 12.\n[info] notes 1.5.1 is available on the stable channel. Run ${command} to update from 1.5.0.\n`,
+    });
+    expect(childEvents(box)).toEqual([]);
+  },
+);
+
+test("a matching script record that resolves into npm's global root with no baked package name skips the check", async () => {
+  const box = sandbox();
+  moveIntoManaged(box, 'prefix/lib/node_modules/@acme/notes/bin');
+  const line = cacheLine({ checked: hoursAgo(25) });
+  writeCache(box, line);
+  const result = await run(box, ['-vv', 'add'], {
+    releaseFacts: managedScriptFacts(box, undefined),
+    verbose: true,
+  });
+  expect(result.status).toBe(0);
+  expect(stripVTControlCharacters(result.stderr)).toBe(
+    `✔ Added note 12.\n  ┆ Skipped the update check: notes was installed by npm, and its facts give no\n    upgrade command.\n`,
+  );
+  expect(childEvents(box)).toEqual([]);
+  expect(readFileSync(box.file, 'utf8')).toBe(line);
+});
+
+test('an npm bundle refreshes an empty GitHub release source without announcing an update', async () => {
+  const box = sandbox();
+  const scenario: Scenario = {
+    github: { latest: null },
+    releaseFacts: {
+      build: 'distributed',
+      installation: { method: 'npm', path: box.binary },
+      release: {
+        channel: 'stable',
+        npmPackage: '@acme/notes',
+        repository: 'acme/notes',
+        version: '1.5.0',
+      },
+    },
+  };
+  const first = await run(box, ['add'], scenario);
+  expect(first).toMatchObject({ status: 0, stderr: '✔ Added note 12.\n' });
+  await expect(childrenDone(box)).resolves.toContainEqual(
+    expect.objectContaining({ code: 0, event: 'exit' }),
+  );
+  expect(JSON.parse(cacheIn(box.cache) ?? 'null')).toMatchObject({ latest: null });
+  const second = await run(box, ['add'], scenario);
+  expect(second).toMatchObject({ status: 0, stderr: '✔ Added note 12.\n' });
+  expect(childEvents(box).filter(({ event }) => event === 'start')).toHaveLength(1);
 });
 
 test('a cache naming 1.10.0 prints the notice to a run of 1.9.0, by SemVer precedence', async () => {
@@ -760,17 +961,27 @@ test.each([[['1.4.0']], [['--channel', 'next']], [['--check']]])(
   },
 );
 
-test('self-update --refresh-notice refuses a run with no asset and a run whose cache directory does not resolve', async () => {
+test('self-update --refresh-notice can refresh an assetless release', async () => {
   const box = sandbox();
-  const unbuilt = await run(box, ['self-update', '--refresh-notice'], {
+  const from = Date.now();
+  const result = await run(box, ['self-update', '--refresh-notice'], {
     releaseFacts: {
       build: 'distributed',
       release: { channel: 'stable', repository: 'acme/notes', version: '1.5.0' },
     },
   });
+  expect(result).toMatchObject({ status: 0, stderr: '', stdout: '' });
+  expectRefreshed(cacheIn(box.cache), from, '1.5.1');
+});
+
+test('self-update --refresh-notice refuses a run with no release group or no cache directory', async () => {
+  const box = sandbox();
+  const unbuilt = await run(box, ['self-update', '--refresh-notice'], {
+    releaseFacts: { build: 'distributed' },
+  });
   expect(unbuilt.status).toBe(1);
   expect(unbuilt.stderr).toBe(
-    'notes was not built as a release binary, so it cannot update itself. Update it the way you installed it.\n',
+    'notes has no release facts, so it cannot check for updates. Install a release build of notes, then try again.\n',
   );
   const homeless = await run(box, ['self-update', '--refresh-notice'], {
     env: { HOME: 'home', XDG_CACHE_HOME: '' },

@@ -16,7 +16,7 @@ This reference covers how to build, release, install, and update a Loom applicat
 
 ## Bake the release facts
 
-- **Build release binaries with `--release`.** It bakes `version` from `package.json`, `repository` as `owner/name` from the `repository` field or `--repository`, and, for a compile target alone, `asset`, which is `<name>-<platform>`, such as `notes-linux-x64-musl`. Core reads the installation record only for a binary whose facts carry an `asset`, so without `--release` self-update refuses and update notices stay silent.
+- **Build releases with `--release`.** The build bakes `version` from `package.json`, `repository` as `owner/name` from the `repository` field or `--repository`, and `npmPackage` from the manifest's `name` when present, scope included, which `--target npm` also bakes into each platform binary. A compile target also bakes `asset` as `<name>-<platform>`, such as `notes-linux-x64-musl`. Update notices need a release build. Replacement through self-update also needs a release asset and a matching script installation record.
 - **The release channel comes from the version.** Core reads the channel as the first prerelease identifier, so `1.5.0-next.2` is on `next`, and a version without one is on `stable`. Choose prerelease identifiers as the channel names operators follow with `self-update --channel <channel>`.
 - **Read the facts from the host.** An action reads `host.release`, and a test supplies facts through its process handle, under [release facts](../../../../../docs/core/release-facts.md). Never import or pass them yourself.
 - **Make `--version` agree.** The version plugin prints the Application's declared `version`, which is `0.0.0` unless the Application sets one, while self-update and update notices compare `host.release.version`, the `package.json` version. Set the Application's `version` from `package.json`, such as through a JSON import, so the two agree.
@@ -78,7 +78,7 @@ gh release create v1.4.0 dist/notes-* dist/SHA256SUMS --notes "$(npx loom change
 
 `selfUpdate()` from `@loomcli/plugins/self-update` adds the `self-update` Command and, unless `notices: false`, update notices, under [the self-update plugin](../../../../../docs/plugins/self-update.md).
 
-- **It replaces only what `install.sh` placed.** The binary must be a compile target built with `--release`, installed by the script, and unchanged since. A binary built or installed any other way draws `Update it the way you installed it.`, and a changed one says to install it again with `install.sh`.
+- **It replaces only what `install.sh` placed.** The binary must be a compile target built with `--release`, installed by the script, and unchanged since. For a Homebrew install or a global npm install, the notice and the refusal name the package manager’s command when its name is valid. A changed script installation says to install it again with `install.sh`.
 - **A root that declares arguments can install it.** The `self-update` Command is a child like any other, so a word that names it routes there, and `--` passes that word as an argument.
 - **`afterReplace` runs the old code.** The hook runs in the replaced process, so anything that needs the new version runs the binary at `path`. The completion, man page, and skills plugins each export a refresh that does this. Compose them in one hook:
 

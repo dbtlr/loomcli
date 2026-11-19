@@ -1,5 +1,5 @@
 import { realpathSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, parse, sep } from 'node:path';
 
 import type { Host } from '../host/types.js';
 import { readSmallFile } from '../support/files.js';
@@ -7,17 +7,13 @@ import { isPlainObject } from '../support/plain.js';
 import { applicationDirectory } from './directory.js';
 import type { ReleaseFacts } from './types.js';
 
-/** How the running application was installed, as its installation record holds it. */
+/** How the running application was installed. */
 type Installation = NonNullable<ReleaseFacts['installation']>;
 
-/**
- * What finds a run's installation record: the application's name and the run's env, home, and
- * platform, and the path of the running executable the record must name.
- */
+/** The application and host facts that find its installation record. */
 interface InstallationLookup {
   readonly application: string;
   readonly env: Host['env'];
-  readonly executable: string;
   readonly home: string;
   readonly platform: string;
 }
@@ -42,13 +38,8 @@ function installationOf(value: unknown): Installation | undefined {
   return known ? Object.freeze({ digest, method, path }) : undefined;
 }
 
-/**
- * The installation the record's `install.json` holds, trusted only when its path and the running
- * executable resolve through symbolic links to the same path. A variable the directory needs, a
- * missing or unreadable file, malformed content, and another path each answer `undefined`, and
- * nothing is reported. It never hashes the binary.
- */
-function readInstallation(lookup: InstallationLookup): Installation | undefined {
+/** The record's installation when its path resolves to the running executable. */
+function recordedInstallation(lookup: InstallationLookup, path: string): Installation | undefined {
   const directory = applicationDirectory('installation', lookup.application, lookup);
   if (!('path' in directory)) {
     return undefined;
@@ -56,10 +47,7 @@ function readInstallation(lookup: InstallationLookup): Installation | undefined 
   try {
     const text = readSmallFile(join(directory.path, 'install.json'));
     const installation = text === undefined ? undefined : installationOf(JSON.parse(text));
-    if (installation === undefined) {
-      return undefined;
-    }
-    return realpathSync(installation.path) === realpathSync(lookup.executable)
+    return installation !== undefined && realpathSync(installation.path) === path
       ? installation
       : undefined;
   } catch {
@@ -67,5 +55,54 @@ function readInstallation(lookup: InstallationLookup): Installation | undefined 
   }
 }
 
+/**
+ * Derives the Homebrew or global npm installation for an application's absolute realpath.
+ * Returns `undefined` for other layouts or on Windows. Reads no installation record.
+ *
+ * @example
+ * ```ts
+ * import { realpathSync } from 'node:fs';
+ * import { packageManagerInstallation } from '@loomcli/core';
+ *
+ * const installation = packageManagerInstallation(realpathSync(process.execPath), process.platform);
+ * ```
+ *
+ * @public
+ */
+function packageManagerInstallation(path: string, platform: string): ReleaseFacts['installation'] {
+  if (platform === 'win32') {
+    return undefined;
+  }
+  const directories = path.slice(parse(path).root.length).split(sep).slice(0, -1);
+  const kegDirectories = 2;
+  const cellar = directories.slice(0, -kegDirectories).lastIndexOf('Cellar');
+  const formula = cellar === -1 ? undefined : directories[cellar + 1];
+  if (formula !== undefined) {
+    return Object.freeze({ formula, method: 'brew', path });
+  }
+  const modules = directories.indexOf('node_modules');
+  return modules > 0 && directories[modules - 1] === 'lib'
+    ? Object.freeze({ method: 'npm', path })
+    : undefined;
+}
+
+/** Resolves the application path and prefers a matching record over its directory layout. */
+function readInstallation(
+  lookup: InstallationLookup,
+  applicationPath: string | undefined,
+  hasAsset: boolean,
+): Installation | undefined {
+  if (applicationPath === undefined || applicationPath === '') {
+    return undefined;
+  }
+  try {
+    const path = realpathSync(applicationPath);
+    const recorded = hasAsset ? recordedInstallation(lookup, path) : undefined;
+    return recorded ?? packageManagerInstallation(path, lookup.platform);
+  } catch {
+    return undefined;
+  }
+}
+
 export type { InstallationLookup };
-export { readInstallation };
+export { packageManagerInstallation, readInstallation };

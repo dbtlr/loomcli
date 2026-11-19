@@ -701,15 +701,16 @@ function processHandle(fields: ProcessFields = {}): ProcessHandle {
 
 /**
  * One run's release facts from its handle: for a handle that reads them from the build, the baked
- * facts with the installation the record holds for the running executable, or the defect a
+ * facts with the installation core reads or derives for the running application, or the defect a
  * malformed baked value is; for any other handle, its `release`, taken as given.
  */
 function handleRelease(
   handle: ProcessHandle,
-  lookup: Omit<InstallationLookup, 'executable'>,
+  lookup: InstallationLookup,
+  script: string | undefined,
 ): CapturedRelease {
   return readsBuild.has(handle)
-    ? captureRelease({ ...lookup, executable: process.execPath })
+    ? captureRelease(lookup, { executable: process.execPath, script })
     : { facts: handle.release };
 }
 

@@ -126,11 +126,17 @@ function releaseGroup(
   const { manifest, target } = request;
   const version = releaseVersion(manifest);
   const repository = releaseRepository(manifest, release.repository);
+  const { name } = manifest;
+  const group = {
+    ...(typeof name === 'string' && name !== '' ? { npmPackage: name } : {}),
+    repository,
+    version,
+  };
   if (target.kind === 'bundle') {
-    return { repository, version };
+    return group;
   }
   const asset = `${applicationName(manifest, request.name)}-${target.platform}`;
-  return { asset, repository, version };
+  return { asset, ...group };
 }
 
 /** The build an artifact reads: a development artifact or a distributed one. */
@@ -146,6 +152,7 @@ export interface BuildFacts {
   readonly compiled?: true;
   readonly release?: {
     readonly asset?: string;
+    readonly npmPackage?: string;
     readonly repository: string;
     readonly version: string;
   };
