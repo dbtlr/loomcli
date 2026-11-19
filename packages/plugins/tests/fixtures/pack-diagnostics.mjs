@@ -3,6 +3,7 @@ import { DeclarationError } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import { dotenv } from '@loomcli/plugins/dotenv';
 import { selfUpdate } from '@loomcli/plugins/self-update';
+import { attestation } from '@loomcli/plugins/self-update/attestation';
 import { service } from '@loomcli/plugins/service';
 import { skills } from '@loomcli/plugins/skills';
 import { version } from '@loomcli/plugins/version';
@@ -26,6 +27,17 @@ const scenarios = {
   'config-variable': () => configuration({ env: 'TEXTSTAT-CONFIG', schema }),
   'dotenv-except': () => dotenv({ except: ['1X'] }),
   'dotenv-only': () => dotenv({ only: ['API_TOKEN', 'API-TOKEN'] }),
+  'self-update-attestation-copy': () =>
+    selfUpdate({ attestation: { ...attestation({ workflow: '.github/workflows/release.yml' }) } }),
+  'self-update-attestation-literal': () =>
+    selfUpdate({ attestation: { workflow: '.github/workflows/release.yml' } }),
+  'self-update-attestation-made': () =>
+    selfUpdate({ attestation: attestation({ workflow: '.github/workflows/release.yaml' }) }),
+  'self-update-attestation-nested': () =>
+    attestation({ workflow: '.github/workflows/ci/release.yml' }),
+  'self-update-attestation-outside': () => attestation({ workflow: 'release.yml' }),
+  'self-update-attestation-suffix': () =>
+    attestation({ workflow: '.github/workflows/release.json' }),
   'self-update-notices-env': () => selfUpdate({ notices: { env: '1X' } }),
   'self-update-notices-hyphen': () => selfUpdate({ notices: { env: 'A-B' } }),
   'service-label': () => service({ label: 'notes', run: ['serve'] }),

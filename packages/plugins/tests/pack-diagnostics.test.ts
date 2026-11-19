@@ -46,6 +46,24 @@ const folderCorrection =
 const nameCorrection =
   'Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.';
 
+/** The fault `selfUpdate()` throws for an `attestation` value `attestation()` did not make. */
+const attestationSettingFault: Expected = {
+  correction:
+    'Pass the value attestation() from @loomcli/plugins/self-update/attestation returns, or leave attestation out.',
+  rule: 'self-update/attestation-setting',
+  sentence:
+    'Plugin "@loomcli/plugins/self-update" setting "attestation" is not a value attestation() made.',
+};
+
+/** The fault `attestation()` throws for a workflow that is not a workflow file's path. */
+const attestationWorkflowFault: Expected = {
+  correction:
+    'Name the workflow file that runs the attestation job, such as .github/workflows/release.yml.',
+  rule: 'self-update/attestation-workflow',
+  sentence:
+    'Plugin "@loomcli/plugins/self-update" setting "attestation.workflow" is not a workflow file in .github/workflows.',
+};
+
 /** The self-update `notices.env` fault. */
 const noticesFault: Expected = {
   correction: 'Name it with letters, digits, and underscores, not starting with a digit.',
@@ -114,6 +132,11 @@ const settingsCases: Record<string, Expected> = {
   },
   'dotenv-except': dotenvFault('except'),
   'dotenv-only': dotenvFault('only'),
+  'self-update-attestation-copy': attestationSettingFault,
+  'self-update-attestation-literal': attestationSettingFault,
+  'self-update-attestation-nested': attestationWorkflowFault,
+  'self-update-attestation-outside': attestationWorkflowFault,
+  'self-update-attestation-suffix': attestationWorkflowFault,
   'self-update-notices-env': noticesFault,
   'self-update-notices-hyphen': noticesFault,
   'service-label': labelFault,
@@ -138,6 +161,10 @@ const settingsCases: Record<string, Expected> = {
   'version-lines': postfixFault,
   'version-number': postfixFault,
 };
+
+test('a setting attestation() made passes selfUpdate()', () => {
+  expect(diagnostic('self-update-attestation-made')).toBe('returned\n');
+});
 
 // 0.16.0 accepted an empty list, so it stays a declaration of no skill rather than a fault.
 test('skills settings that hold an empty list and no folder are accepted', () => {

@@ -137,6 +137,13 @@ const exceptions: VoiceExceptions = {
         sites: 1,
       },
     },
+    'self-update/attestation/trust-root.ts': {
+      'error.cause': {
+        reason:
+          "A TUFError's cause is read to test what it is, by its class and its statusCode, code, and path, which tell the trust-root faults apart under ADR-0212; no sentence quotes it.",
+        sites: 1,
+      },
+    },
     'self-update/plugin.ts': {
       'blocked.cause': { reason: carried, sites: 1 },
       'error.cause': { reason: carried, sites: 1 },

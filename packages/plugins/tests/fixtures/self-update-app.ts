@@ -9,6 +9,7 @@ import { help } from '@loomcli/plugins/help';
 import { refreshManpages } from '@loomcli/plugins/manpage';
 import { selfUpdate } from '@loomcli/plugins/self-update';
 import type { NoticeSettings, SelfUpdateSettings } from '@loomcli/plugins/self-update';
+import { attestation } from '@loomcli/plugins/self-update/attestation';
 import { refreshSkills } from '@loomcli/plugins/skills';
 import { verbose } from '@loomcli/plugins/verbose';
 
@@ -33,6 +34,8 @@ interface UpdateScenario {
   abortAfterRename?: boolean | undefined;
   /** Installs the verbose plugin, so `-v` and `-vv` settle the run's verbosity. */
   verbose?: boolean | undefined;
+  /** The workflow `attestation()` pins, which sets `attestation` when it is named. */
+  attestation?: string | undefined;
 }
 function redirect(status: number, location: string) {
   return new Response(null, { headers: { location }, status });
@@ -67,6 +70,11 @@ function selfUpdateApplication(
     writeStderr: (chunk: string | Uint8Array) => void;
     /** Receives each log event the run raises, through an `onLog` observer. */
     observe?: ((event: LogEvent) => void) | undefined;
+    /**
+     * Answers a request off github.com before the fake GitHub does, such as the attestations API,
+     * a bundle's host, or Sigstore's TUF repository, or returns `undefined` to pass it on.
+     */
+    answer?: ((url: URL, init: RequestInit) => Response | undefined) | undefined;
   },
 ) {
   const { requested } = effects;
@@ -215,6 +223,10 @@ function selfUpdateApplication(
     const text = input instanceof Request ? input.url : String(input);
     appendFileSync(scenario.requests, `${text}\n`);
     requested(text);
+    const answered = effects.answer?.(new URL(text), init);
+    if (answered !== undefined) {
+      return answered;
+    }
     if (init.redirect !== 'manual') {
       throw new TypeError(`The fake GitHub only answers manual redirects, not ${init.redirect}.`);
     }
@@ -277,10 +289,13 @@ function selfUpdateApplication(
     },
   });
 
-  /** The settings the scenario names: the hook, and `notices` when it names one. */
-  function settings() {
+  /** The settings the scenario names: the hook, `notices` when it names one, and an attestation. */
+  function settings(): SelfUpdateSettings {
     const hook = hookSettings();
-    return scenario.notices === undefined ? hook : { ...hook, notices: scenario.notices };
+    const noticed = scenario.notices === undefined ? hook : { ...hook, notices: scenario.notices };
+    return scenario.attestation === undefined
+      ? noticed
+      : { ...noticed, attestation: attestation({ workflow: scenario.attestation }) };
   }
 
   /** The verbose plugin and the observer, when the scenario and the effects ask for them. */

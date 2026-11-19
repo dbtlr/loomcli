@@ -253,6 +253,122 @@ function verifiedAsset(asset: string): LogText {
   return { fields: { asset }, template: 'Verified {asset} against SHA256SUMS.' };
 }
 
+/*
+ * The attestation's sentences, under ADR-0212. The subpath `@loomcli/plugins/self-update/attestation`
+ * and the Command's refusal before any request say them.
+ */
+
+/** What every attestation sentence names: the asset, the version being installed, and the repository. */
+interface AttestedRelease {
+  readonly asset: string;
+  readonly version: string;
+  readonly repository: string;
+}
+
+/** The release an attestation sentence names, as `<asset> from v<version> of <repository>`. */
+function attestedRelease({ asset, repository, version }: AttestedRelease): string {
+  return `${shown(asset)} from v${shown(version)} of ${shown(repository)}`;
+}
+
+function attestationCacheNotAbsolute(name: string, variable: string): string {
+  return `${shown(name)} cannot find its cache directory, where it keeps Sigstore's trust root, because ${shown(variable)} is not an absolute path. Set ${shown(variable)} to an absolute path, then run self-update again.`;
+}
+
+/** The one count of minutes a rate-limit step names in the singular. */
+const oneMinute = 1;
+
+/** The step after a rate limit that names when it resets, in whole minutes rounded up. */
+function againIn(minutes: number): string {
+  return minutes === oneMinute
+    ? 'Run self-update again in 1 minute.'
+    : `Run self-update again in ${String(minutes)} minutes.`;
+}
+
+function attestationsRateLimited(release: AttestedRelease, minutes: number | undefined): string {
+  return `GitHub refused to list the attestations of ${attestedRelease(release)}, because this address reached its hourly limit of requests. ${minutes === undefined ? 'Run self-update again later.' : againIn(minutes)}`;
+}
+
+function attestationsNotListed(release: AttestedRelease, status: number): string {
+  return `GitHub could not list the attestations of ${attestedRelease(release)} (${statusCode(status)}). Run self-update again later. If it fails again, install the newest release with install.sh.`;
+}
+
+function attestationsUnreadable(release: AttestedRelease, name: string, running: string): string {
+  return `GitHub's list of the attestations of ${attestedRelease(release)} is not in a form ${shown(name)} ${shown(running)} reads. Install the newest release with install.sh.`;
+}
+
+function noAttestation({ asset, repository, version }: AttestedRelease): string {
+  return `Release v${shown(version)} of ${shown(repository)} has no attestation for ${shown(asset)}. Install a release that has one by naming its version, or ask its maintainers to attest their release assets.`;
+}
+
+function trustRootUnreachable(name: string, status: number | undefined): string {
+  return `${shown(name)} could not reach tuf-repo-cdn.sigstore.dev to bring Sigstore's trust root current (${answered(status)}). Run self-update again later.`;
+}
+
+function trustRootFolderUnusable(name: string, folder: string): string {
+  return `${shown(name)} could not use ${shownPlace(folder)}, where it keeps Sigstore's trust root. Free space there, check its permissions, or remove it, then run self-update again.`;
+}
+
+function trustRootStagingUnusable(name: string, temporary: string): string {
+  return `${shown(name)} could not use the temporary folder ${shownPlace(temporary)} to download Sigstore's trust root. Free space there or check its permissions, then run self-update again.`;
+}
+
+function trustRootNotCurrent(name: string, folder: string, temporary: string): string {
+  return `${shown(name)} could not bring Sigstore's trust root current from tuf-repo-cdn.sigstore.dev. Check that this computer's clock is right and that ${shownPlace(folder)} and the temporary folder ${shownPlace(temporary)} have free space and can be written, then run self-update again later.`;
+}
+
+function attestationUnreadable(release: AttestedRelease, name: string): string {
+  return `${shown(name)} cannot read the attestation of ${attestedRelease(release)}. Run self-update again later. If it fails again, install the newest release with install.sh.`;
+}
+
+function attestationNotVerified(release: AttestedRelease): string {
+  return `The attestation of ${attestedRelease(release)} does not verify against Sigstore's trust root. Tell its maintainers, and name another version to install a release that verifies.`;
+}
+
+function attestationOtherSigner(release: AttestedRelease, workflow: string): string {
+  return `The attestation of ${attestedRelease(release)} was not made by ${shown(workflow)} in ${shown(release.repository)}. Tell its maintainers, and name another version to install a release that verifies.`;
+}
+
+function attestationOtherRef(release: AttestedRelease): string {
+  return `The attestation of ${attestedRelease(release)} comes from a run that was not on tag v${shown(release.version)}. Tell its maintainers to attest from the tag, and name another version to install a release that verifies.`;
+}
+
+function attestationOtherSubject(release: AttestedRelease): string {
+  return `The attestation of ${attestedRelease(release)} does not name ${shown(release.asset)} with the digest its SHA256SUMS lists. Tell its maintainers, and name another version to install a release that verifies.`;
+}
+
+/** The `debug` log line once Sigstore's trust root is current. */
+function checkedTrustRoot(path: string): LogText {
+  return { fields: { path }, template: "Checked Sigstore's trust root in {path}." };
+}
+
+/** The `debug` log line once an attestation of the asset passes. */
+function verifiedAttestation(asset: string, workflow: string): LogText {
+  return {
+    fields: { asset, workflow },
+    template: 'Verified {asset} against its attestation from {workflow}.',
+  };
+}
+
+export type { AttestedRelease };
+export {
+  attestationCacheNotAbsolute,
+  attestationNotVerified,
+  attestationOtherRef,
+  attestationOtherSigner,
+  attestationOtherSubject,
+  attestationsNotListed,
+  attestationsRateLimited,
+  attestationsUnreadable,
+  attestationUnreadable,
+  checkedTrustRoot,
+  noAttestation,
+  trustRootFolderUnusable,
+  trustRootNotCurrent,
+  trustRootStagingUnusable,
+  trustRootUnreachable,
+  verifiedAttestation,
+};
+
 export type { FailedRequest, FoundRelease, LogText, UpdateCheckSkip };
 export {
   ignoredUpdateCache,

@@ -144,6 +144,10 @@
       "types": "./dist/src/self-update/plugin.d.ts",
       "import": "./dist/src/self-update/plugin.js"
     },
+    "./self-update/attestation": {
+      "types": "./dist/src/self-update/attestation.d.ts",
+      "import": "./dist/src/self-update/attestation.js"
+    },
     "./service": {
       "types": "./dist/src/service/plugin.d.ts",
       "import": "./dist/src/service/plugin.js"
@@ -198,10 +202,28 @@
   "devDependencies": {
     "@loom/json": "workspace:*",
     "@loom/mcp": "workspace:*",
-    "@opentelemetry/api-logs": "0.223.0"
+    "@opentelemetry/api-logs": "0.223.0",
+    "@sigstore/bundle": "5.0.1",
+    "@sigstore/tuf": "5.0.1",
+    "@sigstore/verify": "4.1.3",
+    "@types/make-fetch-happen": "10.0.4"
   },
   "peerDependencies": {
-    "@loomcli/core": "workspace:*"
+    "@loomcli/core": "workspace:*",
+    "@sigstore/bundle": "^5.0.1",
+    "@sigstore/tuf": "^5.0.1",
+    "@sigstore/verify": "^4.1.3"
+  },
+  "peerDependenciesMeta": {
+    "@sigstore/bundle": {
+      "optional": true
+    },
+    "@sigstore/tuf": {
+      "optional": true
+    },
+    "@sigstore/verify": {
+      "optional": true
+    }
   },
   "engines": {
     "bun": ">=1.4.4",

@@ -173,6 +173,12 @@ export const surfacePackages = [
           options: 'Constant behind the exported `PlainOptions`; the author names `PlainOptions`.',
         },
       },
+      './self-update/attestation': {
+        forgottenExports: {
+          AttestationSetting:
+            'Exported from `@loomcli/plugins/self-update`, whose `attestation` setting takes it; the author passes the value `attestation()` returns.',
+        },
+      },
       './theme': {
         forgottenExports: {
           defaults:
