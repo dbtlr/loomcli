@@ -1,6 +1,7 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from '@standard-schema/spec';
 
-import type { ArgumentSlot, BuiltCommand, BuiltGraph } from '../commands/command.js';
+import type { BuiltGraph } from '../commands/build.js';
+import type { ArgumentSlot, BuiltCommand } from '../commands/types.js';
 import { partOf, siteFinding } from '../diagnostics/facts.js';
 import type { InputSite } from '../diagnostics/facts.js';
 import { foreignGraph, foreignGraphCorrection } from '../diagnostics/rules.js';

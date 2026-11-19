@@ -1,4 +1,4 @@
-import type { BuiltGraph } from '../commands/command.js';
+import type { BuiltGraph } from '../commands/build.js';
 import { registerRule } from '../diagnostics/diagnostic-text.js';
 import { factFault } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';

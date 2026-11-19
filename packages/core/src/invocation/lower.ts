@@ -1,4 +1,5 @@
-import type { ArgumentSlot, BuiltCommand, BuiltGraph } from '../commands/command.js';
+import type { BuiltGraph } from '../commands/build.js';
+import type { ArgumentSlot, BuiltCommand } from '../commands/types.js';
 import {
   undeclaredArgument,
   UnknownCommandError,

@@ -1,42 +1,28 @@
 import type { Writable } from 'node:stream';
 
-import {
-  declareStdin,
-  stdinMember,
-  attachToRoot,
-  childNode,
-  buildGraph,
-  checkDeclaredOptions,
-  collectInputs,
-  commandPlacement,
-  inputPlaces,
-  declareAction,
-  declareExtensions,
-  declareArgument,
-  declareOption,
-  declareOptionGroup,
-  declareOptionSet,
-  declareResult,
-  declareResultViews,
-  freshState,
-  isPortableName,
-  layerOf,
-  portableNameCorrection,
-} from '../commands/command.js';
+import { attachToRoot, childNode, checkDeclaredOptions } from '../commands/attach.js';
+import type { ChildOwner } from '../commands/attach.js';
+import { buildGraph } from '../commands/build.js';
+import type { BuiltGraph } from '../commands/build.js';
 import type {
   AfterAction,
   AttachmentConstraint,
   AfterArgument,
   AfterCommand,
   AfterResult,
-  BuiltGraph,
-  ChildOwner,
   Command,
   CommandMethod,
-  CommandNodeHandle,
-  CommandState,
   ResultMethod,
 } from '../commands/command.js';
+import {
+  commandPlacement,
+  declareAction,
+  declareExtensions,
+  declareResult,
+  declareResultViews,
+  isPortableName,
+  portableNameCorrection,
+} from '../commands/declaration.js';
 import {
   declareGlobalOption,
   emptyGlobals,
@@ -46,9 +32,19 @@ import {
   pluginSites,
 } from '../commands/globals.js';
 import type { GlobalsState, GlobalTable } from '../commands/globals.js';
+import {
+  declareStdin,
+  stdinMember,
+  declareArgument,
+  declareOption,
+  declareOptionGroup,
+  declareOptionSet,
+} from '../commands/inputs.js';
 import type { OptionSet, OptionSetNameConstraint } from '../commands/option-sets.js';
 import { portableName } from '../commands/rules.js';
-import type { GlobalNameConstraint, NameConstraint } from '../commands/types.js';
+import { freshState, layerOf } from '../commands/state.js';
+import type { CommandState } from '../commands/state.js';
+import type { CommandNodeHandle, GlobalNameConstraint, NameConstraint } from '../commands/types.js';
 import { slotSite } from '../diagnostics/facts.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { encoderRegistry } from '../failures/encoders.js';
@@ -77,6 +73,7 @@ import type {
 } from '../inputs/declarations.js';
 import { prepareDeclaredValues } from '../inputs/declared-values.js';
 import type { OptionSpelling } from '../inputs/options.js';
+import { collectInputs, inputPlaces } from '../inputs/places.js';
 import { installedSource } from '../inputs/sources.js';
 import type {
   StdinConfig,
