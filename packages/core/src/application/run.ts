@@ -154,7 +154,10 @@ export async function invoke<Mapped>(
   const output = sinks.stdout.text();
   const messages = sinks.stderr.text();
   if (end.kind === 'completed') {
-    return { messages, output, status: 'completed' };
+    // A completed outcome names its code only when a takeover stated one other than 0.
+    return end.exitCode === 0
+      ? { messages, output, status: 'completed' }
+      : { exitCode: end.exitCode, messages, output, status: 'completed' };
   }
   const { exitCode, form, path } = end;
   const failure = mappedFailure(end.failure, read.failure, {
@@ -180,6 +183,8 @@ async function execute(context: RunContext, door: RunDoor): Promise<RunEnd> {
   const { stderr } = door;
   let output: Output | undefined = undefined;
   let code: 0 | FailureExitCode = 0;
+  // The code a middleware stated for a run whose action never dispatched, which a run with no failure left ends with.
+  let stated: ExitCode | undefined = undefined;
   let reportingFailed = false;
   // A registry that could not be built reports through core's defaults, not through itself.
   let registry: ViewRegistry | undefined = undefined;
@@ -439,7 +444,7 @@ async function execute(context: RunContext, door: RunDoor): Promise<RunEnd> {
             suspend: failed('A suspend handler failed.'),
           });
         };
-        await runInvocation({
+        stated = await runInvocation({
           cancel: bracket.cancel,
           channel: (binding) => invocationOutput.channel(binding),
           declaredValues,
@@ -627,7 +632,7 @@ async function execute(context: RunContext, door: RunDoor): Promise<RunEnd> {
      * reading comes last.
      */
     const cancelled = cancellation();
-    const exitCode: ExitCode = cancelled ?? code;
+    const exitCode: ExitCode = cancelled ?? (code === 0 ? (stated ?? 0) : code);
     // The run's reasons for core to listen end before its status is set.
     signals?.finish();
     door.settle(exitCode);
@@ -635,7 +640,7 @@ async function execute(context: RunContext, door: RunDoor): Promise<RunEnd> {
       return { exitCode: cancelled, kind: 'cancelled' };
     }
     if (code === 0) {
-      return { exitCode: code, kind: 'completed' };
+      return { exitCode, kind: 'completed' };
     }
     // A run whose destination alone failed reports that defect, which is its failure.
     const failure = decisive ?? destinationFault ?? destinationDefect(reportingCause);
@@ -648,7 +653,7 @@ async function execute(context: RunContext, door: RunDoor): Promise<RunEnd> {
 /** How one run ended, which `run()` reads the code of and `invoke()` builds its outcome from. */
 type RunEnd =
   | { kind: 'cancelled'; exitCode: CancellationCode }
-  | { kind: 'completed'; exitCode: 0 }
+  | { kind: 'completed'; exitCode: ExitCode }
   | {
       kind: 'failed';
       exitCode: FailureExitCode;

@@ -913,6 +913,8 @@ declare const modifiers: readonly [
     'overline'
 ];
 
+declare const pastStatus = 256;
+
 declare const pluginOptions: unique symbol;
 
 declare const pluginTheme: unique symbol;

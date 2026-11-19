@@ -4,7 +4,7 @@ title: ADR-0095 - The type bounds a declared exit code
 description: A failure class still declares its exit code as a static field from 1 through 125, read from the nearest ancestor that declares one, and core still exports the sysexits names. FailureExitCode alone bounds the code. The run-time range check, the reserved-code DeclarationError, the capture-once rule, the instance-tampering outcomes, and the unconstructed-failure rule go. It supersedes ADR-0045.
 status: accepted
 created: 2026-10-20
-modified: 2026-10-22
+modified: 2026-11-19
 ---
 
 # ADR-0095 - The type bounds a declared exit code
@@ -39,3 +39,4 @@ Accepted in 0.15.0.
 - 2026-10-20: Proposed with the 0.15.0 rescope.
 - 2026-10-21: Corrected the `ExitCode` bullet in place to add 141, which a run resolves when the reader of its stdout closed the pipe, under [ADR-0104](0104-a-closed-reader-on-stdout-ends-the-run-with-141.md), proposed. 141 is a reserved code, so no failure class declares it.
 - 2026-10-23: [ADR-0106](0106-a-signal-ends-the-process-within-one-bounded-shutdown.md), proposed, widens the `ExitCode` bullet to add 129, for `SIGHUP`, and 131, for `SIGQUIT`, which a cancelled run resolves beside 130, 141, and 143. Both are reserved codes, so no failure class declares them. It binds when that record is accepted.
+- 2026-11-19: [ADR-0192](0192-core-holds-an-unknown-command-for-the-chain-and-a-plugin-runs-an-external-command-from-path.md), proposed, widens the `ExitCode` bullet to every whole number from 0 through 255, because a middleware's takeover may state a child program's exit code through the middleware context's `exitCode`, which takes `ExitCode`. The type bounds that code as this record bounds a declared one, with no run-time check. `FailureExitCode` and the rule that the type bounds a failure class's code stand. It binds when that record is accepted.

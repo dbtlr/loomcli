@@ -14,6 +14,7 @@ import type { LoomError } from '../failures/errors.js';
 import type { InputDeclaration } from '../inputs/declarations.js';
 import { emptyValues, isSupplied } from '../inputs/options.js';
 import type { OptionValues, SpellingTable, TableSpelling } from '../inputs/options.js';
+import type { UnknownCommand } from './types.js';
 
 /**
  * Whether a word is an option word: `--` and at least one more character, or `-` and an ASCII
@@ -820,6 +821,8 @@ function readsOwnOptions(command: BuiltCommand): boolean {
 /** One reading of one word list: the graph it reads against, and who hears each routed name. */
 interface Routing {
   graph: BuiltGraph;
+  /** Hears the index of the word that names no child, just before the unknown command is thrown. */
+  stopped: ((index: number) => void) | undefined;
   walked: ((path: readonly string[]) => void) | undefined;
   words: readonly string[];
 }
@@ -851,11 +854,12 @@ function routeOption(routing: Routing, state: ReadState, index: number): number 
  * children. `walked` hears the path as each name routes, so an unknown Command leaves its caller
  * holding the partial path.
  */
-function descend(routing: Routing, state: ReadState, word: string): number {
+function descend(routing: Routing, state: ReadState, index: number): number {
   const { command } = state;
+  const word = routing.words[index] ?? '';
   const child = command.routes.get(word);
   if (!child) {
-    return endAtWord(command, word);
+    return endAtWord(routing, command, index);
   }
   // An alias routes like the canonical name, and the path it walks reports that name alone.
   state.escapable =
@@ -868,13 +872,15 @@ function descend(routing: Routing, state: ReadState, word: string): number {
 
 /**
  * Where a plain word names no child, routing ends at it, unless the Command has children and
- * declares no argument for the word to fill: that is the unknown-command error.
+ * declares no argument for the word to fill: that is the unknown-command error, whose word's index
+ * routing's listener hears first.
  */
-function endAtWord(command: BuiltCommand, word: string): number {
+function endAtWord(routing: Routing, command: BuiltCommand, index: number): number {
   if (command.children.size === 0 || command.arguments.length > 0) {
     return 0;
   }
-  throw new UnknownCommandError(word, candidatesOf(command));
+  routing.stopped?.(index);
+  throw new UnknownCommandError(routing.words[index] ?? '', candidatesOf(command));
 }
 
 /** One word routing reads: how many words it took, or `0` where routing ends. */
@@ -883,7 +889,7 @@ function routeWord(routing: Routing, state: ReadState, index: number): number {
   if (word === undefined || word === '--') {
     return 0;
   }
-  return isOptionWord(word) ? routeOption(routing, state, index) : descend(routing, state, word);
+  return isOptionWord(word) ? routeOption(routing, state, index) : descend(routing, state, index);
 }
 
 /**
@@ -985,6 +991,7 @@ interface WordsRead {
  */
 interface ReadOptions {
   partial?: boolean;
+  stopped?: (index: number) => void;
   walked?: (path: readonly string[]) => void;
 }
 
@@ -1019,8 +1026,8 @@ function readWords(
   words: readonly string[],
   options: ReadOptions = {},
 ): WordsRead {
-  const { partial, walked } = options;
-  const routing: Routing = { graph, walked, words };
+  const { partial, stopped, walked } = options;
+  const routing: Routing = { graph, stopped, walked, words };
   const state: ReadState = {
     at: 0,
     awaiting: undefined,
@@ -1286,15 +1293,70 @@ function awaitedFailure(awaiting: AwaitingValue): MissingValueError {
 }
 
 /**
+ * An invocation routing stopped at a word that names no child: the unknown command core holds, the
+ * partial path routing walked, and the word with the words after it, unread, which a middleware
+ * reads under `unknownCommand`.
+ */
+interface UnknownRouting {
+  readonly fault: UnknownCommandError;
+  readonly path: readonly string[];
+  readonly unknown: UnknownCommand;
+}
+
+/** What reading one invocation's inputs produces: a routed invocation, or an unknown command. */
+type Routed = ParsedInvocation | UnknownRouting;
+
+/** Whether reading stopped at an unknown command. */
+function isUnknown(routed: Routed): routed is UnknownRouting {
+  return 'unknown' in routed;
+}
+
+/** The frozen word no child holds and the words after it. */
+function unknownCommand(word: string, rest: readonly string[]): UnknownCommand {
+  return Object.freeze({ rest: Object.freeze([...rest]), word });
+}
+
+/**
  * Parses a complete invocation, where a string option still waiting for its value at the end of
- * the words is a missing value.
+ * the words is a missing value. A word that names no child stops it: the unknown command is held,
+ * with the word and every word after it, as typed.
  */
 function parseInvocation(
   graph: BuiltGraph,
   argv: readonly string[],
   walked: (path: readonly string[]) => void,
+): Routed {
+  let path: readonly string[] = [];
+  let stoppedAt: number | undefined = undefined;
+  try {
+    return parseRouted(graph, argv, {
+      stopped: (index) => {
+        stoppedAt = index;
+      },
+      walked: (routed) => {
+        path = routed;
+        walked(routed);
+      },
+    });
+  } catch (error) {
+    if (stoppedAt === undefined || !(error instanceof UnknownCommandError)) {
+      throw error;
+    }
+    return {
+      fault: error,
+      path,
+      unknown: unknownCommand(argv[stoppedAt] ?? '', argv.slice(stoppedAt + 1)),
+    };
+  }
+}
+
+/** Parses a complete invocation that routing reaches a Command for. */
+function parseRouted(
+  graph: BuiltGraph,
+  argv: readonly string[],
+  options: ReadOptions,
 ): ParsedInvocation {
-  const read = readWords(graph, argv, { walked });
+  const read = readWords(graph, argv, options);
   const { awaiting, command, passthrough, path, positionals, values } = read;
   const missing = awaiting && { at: read.read, error: awaitedFailure(awaiting) };
   const fault = read.fault ?? missing;
@@ -1313,10 +1375,21 @@ function parseInvocation(
   };
 }
 
-export type { AwaitingValue, BoundArguments, Occurrence, ParsedInvocation, TypedWords, WordsRead };
+export type {
+  AwaitingValue,
+  BoundArguments,
+  Occurrence,
+  ParsedInvocation,
+  Routed,
+  TypedWords,
+  UnknownRouting,
+  WordsRead,
+};
 export {
   argumentSlot,
   candidatesOf,
+  isUnknown,
+  unknownCommand,
   isOptionWord,
   noWords,
   parseInvocation,

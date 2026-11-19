@@ -3,7 +3,6 @@ import type { BuiltGraph } from '../commands/build.js';
 import type { CommandMethod } from '../commands/command.js';
 import type { CommandNodeHandle } from '../commands/types.js';
 import type { DeclarationError } from '../failures/errors.js';
-import type { FailureExitCode } from '../failures/exit-codes.js';
 import type { Translation, TranslatorRegistry } from '../failures/translators.js';
 import type { ProcessHandle } from '../host/types.js';
 import type { DeclaredValues, InputPlaces } from '../inputs/declarations.js';
@@ -71,13 +70,7 @@ interface ApplicationConstructor {
   [Symbol.hasInstance](value: unknown): value is Application;
 }
 
-/**
- * The status `run()` resolves: success, a failure class's code, or a cancellation code.
- *
- * @public
- * @sealed
- */
-export type ExitCode = 0 | FailureExitCode | 129 | 130 | 131 | 141 | 143;
+export type { ExitCode } from '../failures/exit-codes.js';
 
 /**
  * What a caller states for one `run()`: a rendering policy, the process handle, and a cancellation

@@ -9,10 +9,11 @@ import {
 } from '../diagnostics/rules.js';
 import { InternalError } from '../failures/errors.js';
 import type { InvokedBy, LoomError } from '../failures/errors.js';
+import type { ExitCode } from '../failures/exit-codes.js';
 import { routedSubject } from '../failures/messages.js';
 import type { Host } from '../host/types.js';
 import type { InputPlaces, DeclaredValues } from '../inputs/declarations.js';
-import { isSupplied } from '../inputs/options.js';
+import { emptyValues, isSupplied } from '../inputs/options.js';
 import type { OptionValues } from '../inputs/options.js';
 import { nodeAt } from '../inspection/inspect.js';
 import type { CommandGraph, CommandNode } from '../inspection/inspect.js';
@@ -36,10 +37,11 @@ import type { LaneHandlers, OnResume, OnShutdown, OnSuspend } from '../signals/s
 import type { ContextualStyle } from '../style/style.js';
 import { Handed } from '../support/handed.js';
 import { handled } from '../support/thenable.js';
-import type { ParsedInvocation } from './parse.js';
+import { isUnknown } from './parse.js';
+import type { Routed, UnknownRouting } from './parse.js';
 import type { Prepared } from './prepare.js';
 import { prepareDispatch } from './prepare.js';
-import type { ActionChannel, Request } from './types.js';
+import type { ActionChannel, Request, UnknownCommand } from './types.js';
 
 /**
  * What the rest of one chain did: the action ran, a later middleware took over by returning without
@@ -74,6 +76,11 @@ type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
  * encoding and a failure encoder answers. `transform` is the run's result transform, which reshapes
  * a value result once, and each row of a rows result as it arrives, before the selected view renders
  * it; the last assignment before the dispatch boundary wins, and none leaves the result as it is.
+ * `unknownCommand` is the unknown command core holds, the word and every word after it, on a run
+ * whose routing met a word that names no child, where only the `'always'` middleware run, and
+ * `null` otherwise. `invokedBy` says whether the run read argv or an invocation by name. `exitCode`
+ * is the code the run ends with when its action never dispatched and no failure is left: a
+ * takeover's, by returning without calling `next()` or by catching the fault the boundary raised.
  *
  * @public
  * @sealed
@@ -103,6 +110,13 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
    * a group.
    */
   readonly request: Request | null;
+  /**
+   * The unknown command core holds, the word no child holds and every word after it, or `null` on
+   * a run whose routing reached a Command.
+   */
+  readonly unknownCommand: UnknownCommand | null;
+  /** How the run received its inputs: `'argv'` for `run()`, `'name'` for an invocation by name. */
+  readonly invokedBy: InvokedBy;
   /** The name of the view the result renders through, or `null` on a Command that declares none. */
   get view(): string | null;
   set view(name: string);
@@ -121,6 +135,13 @@ interface MiddlewareContext<Options extends PluginOptions = PluginOptions> {
    */
   get transform(): ResultTransform | undefined;
   set transform(transform: ResultTransform);
+  /**
+   * The code the run ends with when its action never dispatched, no failure is left, and the run
+   * was not cancelled, or `undefined` until a middleware assigns one, when such a run exits 0. The
+   * last assignment wins, and a run whose action dispatched ignores it.
+   */
+  get exitCode(): ExitCode | undefined;
+  set exitCode(code: ExitCode);
   /** The run's host facts. */
   readonly host: Host;
   /** The channel the middleware writes the run's output through. */
@@ -428,12 +449,12 @@ interface Invocation {
    * Reads the run's inputs against the built graph: argv words through the parser, or an
    * invocation by name's values through lowering, which produces the result the parser would.
    */
-  read: (graph: BuiltGraph, walked: (path: readonly string[]) => void) => ParsedInvocation;
+  read: (graph: BuiltGraph, walked: (path: readonly string[]) => void) => Routed;
   /** The view an invocation by name starts from, or none. */
   start: StartingView | undefined;
   /**
    * Publishes the run's selection once the chain is about to run, which every failure reported
-   * after it reads. A failure raised before it, such as an unknown Command, reads none.
+   * after it reads. A failure raised before it reads none.
    */
   select: (read: () => FailureSelection) => void;
   /** Runs another Command of this run's graph by name, which the action receives. */
@@ -594,11 +615,14 @@ async function runEntry(entry: ChainEntry, index: number, chain: Chain): Promise
  */
 async function runChain(
   invocation: Invocation,
-  routed: ParsedInvocation,
+  routed: { path: readonly string[]; unknown: UnknownCommand | null },
   prepared: Prepared,
-): Promise<void> {
+): Promise<ExitCode | undefined> {
   const entries = activatedEntries(invocation.plugins, prepared.globals);
-  const run = { invoked: false };
+  const run: { invoked: boolean; stated: ExitCode | undefined } = {
+    invoked: false,
+    stated: undefined,
+  };
   const selection = new ViewSelection(prepared.result, invocation.start);
   invocation.select(() => selection.atFailure());
   /**
@@ -612,15 +636,16 @@ async function runChain(
       throw prepared.fault;
     }
     const view = selection.resolve(routed.path);
-    run.invoked = true;
-    return prepared.dispatch(view, selection.readTransform());
+    return prepared.dispatch(view, selection.readTransform(), () => {
+      run.invoked = true;
+    });
   };
   const cancelled = () => invocation.signal.aborted;
   if (entries.length === 0) {
     if (!cancelled()) {
       await terminal();
     }
-    return;
+    return undefined;
   }
   // The graph a middleware reads is the one `inspect()` returns, built once for the run.
   const graph = invocation.inspected();
@@ -629,8 +654,15 @@ async function runChain(
     cancelled,
     context: (entry, next) => ({
       command,
+      get exitCode(): ExitCode | undefined {
+        return run.stated;
+      },
+      set exitCode(code: ExitCode) {
+        run.stated = code;
+      },
       graph,
       host: invocation.host,
+      invokedBy: invocation.invokedBy,
       log: invocation.logFor(entry.identity),
       get mediaType(): string | undefined {
         return selection.readMediaType();
@@ -652,6 +684,7 @@ async function runChain(
       set transform(transform: ResultTransform) {
         selection.assignTransform(transform);
       },
+      unknownCommand: routed.unknown,
       get view(): string | null {
         return selection.read();
       },
@@ -674,21 +707,52 @@ async function runChain(
     },
   };
   await chain.step(0);
+  // A stated code ends only a run whose action never dispatched.
+  return run.invoked ? undefined : run.stated;
+}
+
+/** The empty frozen record a middleware reads for its options when no option was read. */
+const noValues: Readonly<Record<string, unknown>> = Object.freeze({});
+
+/**
+ * The preparation of a run that holds an unknown command: nothing after its word was read, so no
+ * option was supplied, which leaves only the `'always'` middleware activated, no global option was
+ * validated, no request exists, and no Command's result is reached.
+ */
+function heldUnknown(routed: UnknownRouting): Prepared {
+  return {
+    fault: routed.fault,
+    globals: emptyValues(),
+    kind: 'held',
+    options: null,
+    own: () => noValues,
+    request: null,
+    result: undefined,
+  };
 }
 
 /**
  * Runs one invocation: routing on the global options and a parent's own options, the routed
  * Command's words read against its table, the dispatch this invocation prepares, and the
- * middleware chain it then runs. Only an unknown Command is raised before the chain. Parsing and validation run ahead of the chain so
- * that a middleware reads the request, and every other fault they find is held until the dispatch
- * boundary. A middleware that returns without calling `next()` has taken over, so the held fault is
- * never raised and nothing later in the chain runs.
+ * middleware chain it then runs. Parsing and validation run ahead of the chain so that a
+ * middleware reads the request, and every fault they find is held until the dispatch boundary. An
+ * unknown Command is held too, with nothing after its word read, so only the `'always'` middleware
+ * run. A middleware that returns without calling `next()` has taken over, so the held fault is
+ * never raised and nothing later in the chain runs. Answers the code a middleware stated for a run
+ * whose action never dispatched, or `undefined`.
  */
-async function runInvocation(invocation: Invocation): Promise<void> {
+async function runInvocation(invocation: Invocation): Promise<ExitCode | undefined> {
   const routed = invocation.read(invocation.graph, invocation.route);
-  const prepared = await prepareDispatch(invocation.graph, routed, invocation);
+  const unknown = isUnknown(routed);
+  const prepared = unknown
+    ? heldUnknown(routed)
+    : await prepareDispatch(invocation.graph, routed, invocation);
   try {
-    await runChain(invocation, routed, prepared);
+    return await runChain(
+      invocation,
+      { path: routed.path, unknown: unknown ? routed.unknown : null },
+      prepared,
+    );
   } catch (error) {
     // A throw leaves the chain here, so a middleware that awaited next() saw it raw.
     throw invocation.offer(error) ?? error;

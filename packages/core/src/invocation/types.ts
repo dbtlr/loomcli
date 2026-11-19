@@ -1,6 +1,6 @@
 import type { RegisteredPaths } from '../application/environment.js';
 import type { LoomError } from '../failures/errors.js';
-import type { FailureExitCode } from '../failures/exit-codes.js';
+import type { ExitCode, FailureExitCode } from '../failures/exit-codes.js';
 import type { FailureForm } from '../failures/form.js';
 import type { Host } from '../host/types.js';
 import type { Content } from '../inputs/content.js';
@@ -24,6 +24,21 @@ type ActionArgument<Declaration> =
 interface StdinContext {
   /** The stdin of the Command, present when it declares stdin. */
   readonly stdin?: Content | undefined;
+}
+
+/**
+ * The unknown command a run holds: the word no child holds, as the operator typed it, and every
+ * word after it, unread and in order. In an invocation by name, the path element no child holds and
+ * the path elements after it.
+ *
+ * @public
+ * @sealed
+ */
+export interface UnknownCommand {
+  /** The word no child holds, as typed. */
+  readonly word: string;
+  /** Every word after it, unread, in order. */
+  readonly rest: readonly string[];
 }
 
 /**
@@ -138,14 +153,24 @@ export interface InvokeOptions<Mapped = LoomError> {
 }
 
 /**
- * What one invocation by name resolved: a run that would resolve 0, one that would resolve a failure
- * code, with what the run wrote, or a cancelled one, whose captured text is discarded.
+ * What one invocation by name resolved: a run that ended with no failure, with the code `run()`
+ * would resolve, one that would resolve a failure code, with what the run wrote, or a cancelled
+ * one, whose captured text is discarded.
  *
  * @public
  * @sealed
  */
 export type InvocationOutcome<Mapped = LoomError> =
-  | { readonly status: 'completed'; readonly output: string; readonly messages: string }
+  | {
+      readonly status: 'completed';
+      /**
+       * The code `run()` would resolve when a middleware's takeover stated one other than 0. It is
+       * absent for a run that would resolve 0, so an absent code reads as 0.
+       */
+      readonly exitCode?: ExitCode;
+      readonly output: string;
+      readonly messages: string;
+    }
   | {
       readonly status: 'failed';
       readonly failure: Mapped;
