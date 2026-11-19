@@ -51,12 +51,19 @@ function bunProgram(missing: Error[]) {
 }
 
 /**
+ * A stand-in for one Bun call, which answers in place of the real Bun or hands the call to it, so
+ * a test can stub a compile it does not need to run.
+ */
+export type BunStandIn = (call: ProgramCall, real: Program) => ReturnType<Program>;
+
+/**
  * One toolchain run, with process facts and effects confined to the fixture. `pnpm`, when given,
- * answers in place of the installed pnpm.
+ * answers in place of the installed pnpm, and `bun` stands in for each Bun call.
  */
 export async function run(
   args: string[] = [],
   options: {
+    bun?: BunStandIn;
     ceiling?: string;
     cwd?: string;
     env?: Record<string, string | undefined>;
@@ -70,6 +77,8 @@ export async function run(
   const pnpm = join(dirname(manifestPath), manifest.bin.pnpm);
   const home = temporaryRoot('loom-run-home-');
   const missing: Error[] = [];
+  const bun = bunProgram(missing);
+  const { bun: standIn } = options;
   const mock = mockProcess({
     arch: process.arch,
     argv: args,
@@ -78,7 +87,11 @@ export async function run(
     env: childEnvironment(options.env),
     home,
     platform: process.platform,
-    programs: { bun: bunProgram(missing), git: program, [pnpm]: options.pnpm ?? program },
+    programs: {
+      bun: standIn === undefined ? bun : (call) => standIn(call, bun),
+      git: program,
+      [pnpm]: options.pnpm ?? program,
+    },
     tmpdir: home,
   });
   await loom.run({ process: mock });

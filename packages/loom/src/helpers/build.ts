@@ -337,24 +337,59 @@ function removeCreatedDirectories(directory: string, created: string | undefined
 }
 
 /**
- * Builds the plan's artifact into a temporary directory beside the output, on the same file
- * system, and moves each file it wrote into place only once the whole build succeeded, replacing
- * the file of the same name. Bun runs in that temporary directory, so the temporary file a binary's
- * compile writes into Bun's working directory lands there too, and builds that run at once in one
- * package never share one. Bun writes its output into `out/` there, and only that moves; a
- * distributed binary's copy of the skills folder is staged in Bun's working directory beside it and
- * embedded with `--asset`, and a bundle's beside its chunks. A build that read no declaration, or
- * one in which `skills()` did not run, asks Bun for its metafile there, to learn whether the bundle
- * holds the skills plugin. A node bundle's entry then turns on Node's compile cache. A failed build
- * removes the temporary directory and each output directory it created that nothing else has
- * filled, so earlier output, every file the build does not write, and the work of a build running
- * beside it stay as they were. A cancelled run stops Bun and undoes the build as a failure does,
- * and a shutdown that ends before that undoes it synchronously. The moves are synchronous, so a
- * signal that arrives during them is handled once they complete, and output is never partly
- * replaced.
+ * Runs Bun for the plan in `staging`, its working directory, writing the artifact to `out`, and
+ * answers whether the artifact holds the skills plugin while the build carried no folder for it, or
+ * `undefined` once the run is cancelled. A distributed binary's copy of the skills folder is staged
+ * in Bun's working directory and embedded with `--asset`, and a bundle's beside its chunks. A build
+ * that read no declaration, or one in which `skills()` did not run, asks Bun for its metafile there,
+ * to learn whether the artifact holds the skills plugin. A Bun that fails fails the build with its
+ * report.
  */
-async function build(plan: BuildPlan, run: RunHost): Promise<BuildOutcome> {
-  const outDirectory = outputDirectory(plan);
+async function bunWrite(
+  plan: BuildPlan,
+  staging: string,
+  out: string,
+  run: RunHost,
+): Promise<BuildOutcome | undefined> {
+  const compiles = plan.target.kind === 'compile';
+  const extra: string[] = [];
+  if (carriesCopy(plan)) {
+    stageSkills(plan, compiles ? staging : out);
+    // Bun embeds the folder at its path relative to its working directory, beside the program.
+    extra.push(...(compiles ? ['--asset', carriedFolder] : []));
+  }
+  const listed = join(staging, 'metafile.json');
+  const unnamed = plan.skills.kind === 'unread' || plan.skills.kind === 'uncalled';
+  extra.push(...(unnamed ? [`--metafile=${listed}`] : []));
+  const result = await superviseBun(
+    bunArguments(plan, out, extra),
+    staging,
+    'collect',
+    run,
+    bunEnvironment(plan, run.host.env),
+  );
+  if (run.signal.aborted) {
+    return undefined;
+  }
+  if (result.code !== 0) {
+    throw new Error(bunBuildFailed(result.output.trim()));
+  }
+  return { uncarriedSkillsPlugin: existsSync(listed) && holdsSkillsPlugin(listed, staging) };
+}
+
+/**
+ * Runs `work` in a temporary directory inside `outDirectory`, which it creates when it is missing,
+ * and answers what `work` answers. Work that fails, or answers `undefined` because the run was
+ * cancelled, is undone: the temporary directory is removed, and so is each output directory it
+ * created that nothing else has filled, so earlier output and the work of a build running beside it
+ * stay as they were. A shutdown that ends before the work does undoes it synchronously. The
+ * temporary directory is removed whatever happens.
+ */
+async function staged<Result>(
+  outDirectory: string,
+  run: RunHost,
+  work: (staging: string) => Promise<Result | undefined>,
+): Promise<Result | undefined> {
   const created = mkdirSync(outDirectory, { recursive: true });
   const staging = mkdtempSync(join(outDirectory, '.loom-build-'));
   const undo = () => {
@@ -363,38 +398,11 @@ async function build(plan: BuildPlan, run: RunHost): Promise<BuildOutcome> {
   };
   const removeUndo = run.onShutdown(undo);
   try {
-    const written = join(staging, 'out');
-    const compiles = plan.target.kind === 'compile';
-    const out = compiles ? join(written, basename(plan.out)) : written;
-    const extra: string[] = [];
-    if (carriesCopy(plan)) {
-      stageSkills(plan, compiles ? staging : written);
-      // Bun embeds the folder at its path relative to its working directory, beside the program.
-      extra.push(...(compiles ? ['--asset', carriedFolder] : []));
-    }
-    const listed = join(staging, 'metafile.json');
-    const unnamed = plan.skills.kind === 'unread' || plan.skills.kind === 'uncalled';
-    extra.push(...(unnamed ? [`--metafile=${listed}`] : []));
-    const result = await superviseBun(
-      bunArguments(plan, out, extra),
-      staging,
-      'collect',
-      run,
-      bunEnvironment(plan, run.host.env),
-    );
-    if (run.signal.aborted) {
+    const result = await work(staging);
+    if (result === undefined) {
       undo();
-      return { uncarriedSkillsPlugin: false };
     }
-    if (result.code !== 0) {
-      throw new Error(bunBuildFailed(result.output.trim()));
-    }
-    const uncarriedSkillsPlugin = existsSync(listed) && holdsSkillsPlugin(listed, staging);
-    if (plan.target.kind === 'bundle' && plan.target.name === 'node') {
-      cacheEntry(plan, written);
-    }
-    moveIntoPlace(plan, written);
-    return { uncarriedSkillsPlugin };
+    return result;
   } catch (error) {
     undo();
     throw error;
@@ -402,6 +410,34 @@ async function build(plan: BuildPlan, run: RunHost): Promise<BuildOutcome> {
     removeUndo();
     rmSync(staging, { force: true, recursive: true });
   }
+}
+
+/**
+ * Builds the plan's artifact into a temporary directory beside the output, on the same file
+ * system, and moves each file it wrote into place only once the whole build succeeded, replacing
+ * the file of the same name. Bun runs in that temporary directory, so the temporary file a binary's
+ * compile writes into Bun's working directory lands there too, and builds that run at once in one
+ * package never share one. Bun writes its output into `out/` there, and only that moves. A node
+ * bundle's entry then turns on Node's compile cache. A failed or cancelled build is undone as
+ * `staged` undoes it, so earlier output and every file the build does not write stay as they were.
+ * The moves are synchronous, so a signal that arrives during them is handled once they complete,
+ * and output is never partly replaced.
+ */
+async function build(plan: BuildPlan, run: RunHost): Promise<BuildOutcome> {
+  const outcome = await staged(outputDirectory(plan), run, async (staging) => {
+    const written = join(staging, 'out');
+    const out = plan.target.kind === 'compile' ? join(written, basename(plan.out)) : written;
+    const wrote = await bunWrite(plan, staging, out, run);
+    if (wrote === undefined) {
+      return undefined;
+    }
+    if (plan.target.kind === 'bundle' && plan.target.name === 'node') {
+      cacheEntry(plan, written);
+    }
+    moveIntoPlace(plan, written);
+    return wrote;
+  });
+  return outcome ?? { uncarriedSkillsPlugin: false };
 }
 
 /**
@@ -445,4 +481,4 @@ async function watch(plan: BuildPlan, run: RunHost): Promise<void> {
 }
 
 export type { BuildOutcome, BuildPlan };
-export { build, carriedFolder, removeCreatedDirectories, watch };
+export { build, bunWrite, carriedFolder, removeCreatedDirectories, staged, watch };

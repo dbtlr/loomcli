@@ -1,0 +1,23 @@
+{
+  "name": "@acme/probe-darwin-arm64",
+  "version": "1.2.3",
+  "description": "The darwin-arm64 binary of @acme/probe.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acme/probe.git"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin"
+  ],
+  "preferUnplugged": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,3 +1,4 @@
+import { UsageError } from '@loomcli/core';
 import type { Out } from '@loomcli/core';
 
 import { cannotUseFile, systemFailure, systemVerb } from './messages.js';
@@ -28,7 +29,8 @@ function failureSentence(error: unknown): string {
 
 /**
  * Runs a command's work and renders the text it returns verbatim. A failure becomes Loom's fatal
- * exit 1 with its sentence. Once the run is cancelled, a failure is the cancellation's: the work
+ * exit 1 with its sentence, except a usage error, which the work finds only once it has read the
+ * package, and which core prints with its exit code 2 and the usage hint. Once the run is cancelled, a failure is the cancellation's: the work
  * ends with the signal's reason, which core keeps silent, so the command prints nothing and
  * resolves the signal's code.
  */
@@ -40,6 +42,9 @@ export async function report({ out, signal }: Reporting, work: () => Promise<str
     await out.render(text, { render: (value) => value });
   } catch (error) {
     signal.throwIfAborted();
+    if (error instanceof UsageError) {
+      throw error;
+    }
     out.fatal(failureSentence(error));
   }
 }

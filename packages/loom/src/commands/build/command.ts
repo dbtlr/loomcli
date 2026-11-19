@@ -32,13 +32,13 @@ export const buildCommand = new Command('build', {
 })
   .option('target', {
     description:
-      'Build for node, bun, or a Bun compile target, by default the host compile target on Linux and macOS.',
+      'Build for node, bun, a Bun compile target, or npm, the launcher and platform packages, by default the host compile target on Linux and macOS.',
     type: 'string',
     validate: targetOption,
   })
   .option('out', {
     description:
-      "Write to this path: a bundle's directory, by default paths.out, dist/ by convention, or a binary's file, by default <paths.out>/<name>.",
+      "Write to this path: a bundle's directory, by default paths.out, dist/ by convention, a binary's file, by default <paths.out>/<name>, or the npm packages' directory, by default <paths.out>/npm.",
     type: 'string',
   })
   .option('entry', {

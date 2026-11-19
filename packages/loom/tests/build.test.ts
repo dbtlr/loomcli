@@ -633,7 +633,7 @@ test.each([
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toMatch(named);
-    expect(result.stderr).toContain('node, bun, or a Bun compile target');
+    expect(result.stderr).toContain('node, bun, npm, or a Bun compile target');
     expect(result.stderr).toContain('for linux or darwin on x64 or arm64');
   }
   expect(existsSync(join(root, 'dist'))).toBe(false);

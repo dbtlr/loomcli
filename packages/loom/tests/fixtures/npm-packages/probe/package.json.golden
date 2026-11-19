@@ -1,0 +1,35 @@
+{
+  "name": "@acme/probe",
+  "version": "1.2.3",
+  "description": "Probe the npm launcher.",
+  "keywords": [
+    "probe",
+    "npm"
+  ],
+  "homepage": "https://example.com/probe",
+  "bugs": {
+    "url": "https://github.com/acme/probe/issues"
+  },
+  "license": "MIT",
+  "author": "Acme <dev@example.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acme/probe.git"
+  },
+  "bin": {
+    "probe": "bin/probe"
+  },
+  "files": [
+    "bin"
+  ],
+  "optionalDependencies": {
+    "@acme/probe-darwin-arm64": "1.2.3",
+    "@acme/probe-darwin-x64": "1.2.3",
+    "@acme/probe-linux-arm64": "1.2.3",
+    "@acme/probe-linux-x64": "1.2.3",
+    "@acme/probe-linux-x64-musl": "1.2.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

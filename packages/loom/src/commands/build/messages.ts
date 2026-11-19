@@ -79,6 +79,69 @@ function skillsNotLoaded(name: string): string {
   return `${escaped(name)} carries the skills plugin, but loom build could not load the application module, so it carried no skills folder. Export the Application from the module paths.application names, src/application.ts by convention, if skills() names a folder.`;
 }
 
+// The npm launcher packages.
+
+const npmModeOff =
+  '--target npm builds the launcher and platform packages, which loom.config.json does not turn on. Set "npm": { "launcher": true } in loom.config.json, or build a bundle with --target node.';
+
+const npmIsDistributed =
+  '--target npm builds distributed release binaries, so pass --build distributed or no --build with it.';
+
+const npmDoesNotWatch =
+  '--watch rebuilds one development artifact, and --target npm builds release packages, so build them without --watch.';
+
+function npmFactsPerPlatform(option: string): string {
+  return `--target npm compiles one binary per platform, each with facts of its own, so read one platform's with --target bun-<platform> --release --${escaped(option)}.`;
+}
+
+function npmOutOverlap(out: string, relation: string, directory: string): string {
+  return `${escaped(out)}, where loom build writes the npm packages, ${escaped(relation)} the package directory ${escaped(directory)}, and the build replaces each package's directory whole, so name a directory with --out that neither is nor holds the package directory.`;
+}
+
+const noNameField =
+  'package.json has no name field, and the npm packages are named for it, so set name to build them.';
+
+function npmPackageNameInvalid(name: string): string {
+  return `package.json names the package "${escaped(name)}", which npm does not accept, and the npm packages and their folders are named for it, so set name to lowercase letters, digits, "-", ".", "_", and "~", starting with a letter or a digit, with an optional "@scope/" before it.`;
+}
+
+function npmApplicationNameInvalid(name: string): string {
+  return `The application's name is "${escaped(name)}", which is not a portable name, and the npm packages hold the binary and the launcher's bin entry under it, so set --name or the package.json bin key to letters, digits, ".", "_", and "-", not starting with "-" or ".".`;
+}
+
+function npmFolderNotOwned(folder: string, pkg: string): string {
+  return `${escaped(folder)} is not a folder whose package.json names ${escaped(pkg)}, and loom build replaces only the npm packages it wrote, so move or remove it, or name another directory with --out.`;
+}
+
+function platformPackageDescription(platform: string, pkg: string): string {
+  return `The ${escaped(platform)} binary of ${escaped(pkg)}.`;
+}
+
+// Platforms in a list that reads as a sentence: a, b, and c.
+function series(items: readonly string[]): string {
+  return items.length > 2
+    ? [items.slice(0, -1).join(', '), items.slice(-1).join('')].join(', and ')
+    : items.join(' and ');
+}
+
+/*
+ * The launcher's sentences, which the build renders into it under ADR-0213. Each starts with the
+ * application's name, and `{platform}`, `{path}`, and `{cause}` are what only the launcher's run
+ * knows: it fills them with the host's platform, the binary's path, each escaped, and the cause.
+ */
+
+function launcherNoPlatform(name: string, pkg: string, platforms: readonly string[]): string {
+  return `${escaped(name)}: ${escaped(pkg)} has no binary for {platform}. It runs on ${escaped(series(platforms))}.`;
+}
+
+function launcherMissingPackage(name: string, pkg: string, version: string): string {
+  return `${escaped(name)}: The package ${escaped(pkg)}-{platform}@${escaped(version)}, which holds the binary for {platform}, is not installed. Install ${escaped(pkg)} again without --omit=optional, or install ${escaped(pkg)}-{platform}@${escaped(version)} beside it.`;
+}
+
+function launcherCannotStart(name: string, pkg: string, version: string): string {
+  return `${escaped(name)}: Cannot start {path} from ${escaped(pkg)}-{platform}{cause}. Install ${escaped(pkg)}-{platform}@${escaped(version)} again so its binary is an executable file on disk.`;
+}
+
 function built(output: string, target: string): string {
   return `Built ${escaped(output)} for ${escaped(target)}.`;
 }
@@ -90,10 +153,23 @@ export {
   bunCouldNotRead,
   carriedFolderOverlap,
   factsWithDefine,
+  launcherCannotStart,
+  launcherMissingPackage,
+  launcherNoPlatform,
   missingBun,
   missingModule,
+  noNameField,
+  npmApplicationNameInvalid,
+  npmDoesNotWatch,
+  npmFactsPerPlatform,
+  npmFolderNotOwned,
+  npmIsDistributed,
+  npmModeOff,
+  npmOutOverlap,
+  npmPackageNameInvalid,
   optionLine,
   outputIsDirectory,
+  platformPackageDescription,
   repositoryNeedsRelease,
   sameEntryFile,
   skillsFolderJudged,
