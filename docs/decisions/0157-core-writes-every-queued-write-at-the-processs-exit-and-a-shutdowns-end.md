@@ -4,7 +4,7 @@ title: ADR-0157 - Core writes every queued write at the process's exit and a shu
 description: At the process's exit event and at a shutdown's end, SIGQUIT's included, core writes each live run's queued writes to the run's stdout and stderr synchronously, once per run, in the order they were queued, where it wrote only region frames before, so a message queued just before process.exit prints, with the patch-console plugin or without it. The flush uses the lane's existing flush seam and adds no host surface. A run that ends normally is unchanged, and a run with nothing queued at an end writes what it wrote there before.
 status: accepted
 created: 2026-11-15
-modified: 2026-11-17
+modified: 2026-11-19
 ---
 
 # ADR-0157 - Core writes every queued write at the process's exit and a shutdown's end
@@ -50,3 +50,4 @@ Accepted in 0.19.0.
 
 - 2026-11-15: Proposed with the patch-console plugin's contract (LM-390), whose routed console writes join core's write queue. It widens ADR-0106's terminal users clause, which carries a dated entry.
 - 2026-11-16: [ADR-0163](0163-a-semantic-method-takes-a-stream-of-text-and-shows-each-chunk-as-it-arrives.md), proposed, lets each semantic method take an async iterable of its message's text and adds to what is queued: the text an open streamed message has received and core has not yet written, which an end writes in its step, at the place the message's last write took, as the iterable's end would write it, with the one closing line break. Text the iterable has not yielded is not queued. It binds when that record is accepted.
+- 2026-11-19: [ADR-0190](0190-a-log-events-writes-to-the-runs-stderr-keep-call-order-and-reach-the-stream-at-once-when-nothing-waits-ahead.md), proposed, supersedes the **What is queued** clause's rule that core carries an `onLog` hook's stderr through the run's queue only when it is the run's terminal stderr: a hook's write to the run's stderr joins the run's stderr order on a terminal and off one, as core's log line at `-v` does. Each reaches the stream in the call when nothing waits ahead of it, and waits behind the earlier writes otherwise. Once an end has written the run's queue, each goes straight to the stream after whatever was queued since, so a shutdown handler's record prints. A hook's write to any other stderr still goes straight to that stream. It binds when that record is accepted.

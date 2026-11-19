@@ -4,7 +4,7 @@ title: ADR-0070 - The logging plugin writes one JSON record per event to a size-
 description: The first-party logging plugin, @loomcli/plugins/logging, is an onLog hook that writes each log event as one JSON line, appended synchronously to a per-application file in the platform's state or log directory that rotates by size with numbered copies and no timer, or written to stderr for a system that captures logs. A failure to write the file goes to the author's onError, and is ignored without one.
 status: accepted
 created: 2026-10-10
-modified: 2026-11-18
+modified: 2026-11-19
 ---
 
 # ADR-0070 - The logging plugin writes one JSON record per event to a size-rotated file or stderr
@@ -55,3 +55,4 @@ Accepted in 0.11.0.
 - 2026-11-18: [ADR-0177](0177-one-logging-installation-writes-to-several-destinations.md), proposed, narrows the choice of one file or console per installation: one hook accepts an ordered list of destinations, each with its own level and each file with its own path, rotation, and `onError`. The existing single-destination settings remain a shorthand. Every eligible destination writes the same record bytes, and the hook's own log events reach none of them. It binds when accepted.
 - 2026-11-18: [ADR-0178](0178-operators-control-log-files-and-levels-and-failures-name-the-runs-log.md), proposed, adds two variables named after the application that set the files' level and redirect the first file, a configurable failure hint that names the file and the run, and the plugin's own extension fact on the root Command with a resolver beside its descriptor. It binds when that record is accepted.
 - 2026-11-18: [ADR-0179](0179-the-logging-plugin-emits-opentelemetry-records-through-the-authors-logger.md), proposed, narrows the rule that a failed write goes to `onError` to file destinations: an OpenTelemetry logging destination's `emit` that throws takes the ordinary failure path. The JSONL bytes are unchanged. It binds when that record is accepted.
+- 2026-11-19: [ADR-0190](0190-a-log-events-writes-to-the-runs-stderr-keep-call-order-and-reach-the-stream-at-once-when-nothing-waits-ahead.md), proposed, narrows **Synchronous appends** for the console destination. Core carries the record through the run's stderr order, so it keeps call order with the run's log lines, warnings, and progress lines, and writes it in the hook's call only when nothing waits ahead of it on the run's stderr. Such a record still survives a crash that follows it. A record that waits behind earlier writes is lost with them to an abort, `SIGKILL`, or an out-of-memory crash, because those emit no `exit` event. The file destination is unchanged. It binds when that record is accepted.
