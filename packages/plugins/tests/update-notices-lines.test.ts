@@ -213,16 +213,25 @@ test('-vv names the first reason the middleware did nothing, in the contract ord
     [{ env: { CI: '1' }, streams: ['stderr'] }, 'stdout is not a terminal.'],
     [{ env: { CI: '1' }, streams: ['stdout'] }, 'stderr is not a terminal.'],
     [{ env: { CI: '1' } }, 'CI is set.'],
-    [{ release: { build: 'source' } }, 'notes is not a release binary.'],
+    [{ release: { build: 'source' } }, 'notes is not a release build.'],
     [
       {
         release: {
           build: 'distributed',
-          installation: { digest: `sha256:${digestOf(binaryBytes)}`, method: 'npm', path: '/x' },
           release: { asset, channel: 'stable', repository: 'acme/notes', version: '1.5.0' },
         },
       },
-      'notes was not installed by install.sh.',
+      'notes was not installed by install.sh, Homebrew, or npm.',
+    ],
+    [
+      {
+        release: {
+          build: 'distributed',
+          installation: { method: 'npm', path: '/x' },
+          release: { asset, channel: 'stable', repository: 'acme/notes', version: '1.5.0' },
+        },
+      },
+      'notes was installed by npm, and its facts give no upgrade command.',
     ],
     [{ env: { HOME: 'relative', XDG_CACHE_HOME: '' } }, 'HOME is not an absolute path.'],
   ];

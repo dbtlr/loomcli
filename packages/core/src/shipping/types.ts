@@ -1,7 +1,7 @@
 /**
  * How the running application was built, released, and installed. The build bakes the build and
- * release facts into the artifact, core reads the installation from the installation record, and
- * core fills `host.release` from them for every run; a run of the source, with nothing baked in,
+ * release facts into the artifact, core reads the installation from the matching record or the application's path,
+ * and core fills `host.release` from them for every run; a run of the source, with nothing baked in,
  * reads `{ build: 'source' }`.
  *
  * @public
@@ -18,14 +18,20 @@ export interface ReleaseFacts {
     readonly repository: string;
     /** The release asset's name, present for a compiled binary alone. */
     readonly asset?: string;
+    /** The full package name from the release manifest, including its scope. */
+    readonly npmPackage?: string;
   };
   /**
-   * How the application was installed, read from the installation record's `install.json` for a
-   * compiled binary built as a release, and present only when its path is the running executable.
+   * How the release was installed, from a matching installation record or the running
+   * application's resolved path.
    */
   readonly installation?: {
+    /** The recorded method, or `brew` or `npm` from the resolved path. The script records `script`. */
     readonly method: string;
     readonly path: string;
-    readonly digest: string;
+    /** The digest from a matching installation record. */
+    readonly digest?: string;
+    /** The formula name when the resolved path identifies a Homebrew installation. */
+    readonly formula?: string;
   };
 }

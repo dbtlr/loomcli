@@ -5,6 +5,8 @@
  */
 import { escapeControlCharacters, nowrap } from '@loomcli/core';
 
+import type { UpgradeCommand } from './upgrade.js';
+
 const shown = escapeControlCharacters;
 
 const shownPlace = (place: string): string => nowrap(shown(place));
@@ -156,19 +158,58 @@ function updated(name: string, running: string, version: string): string {
   return `Updated ${shown(name)} from ${shown(running)} to ${shown(version)}.`;
 }
 
-function updateNotice({ channel, found, name, running }: FoundRelease): string {
-  return `${shown(name)} ${shown(found)} is available on the ${shown(channel)} channel. Run ${shown(name)} self-update to update from ${shown(running)}.`;
+/** The command shared by a notice and a refusal, with the version or dist-tag they name. */
+function showUpgradeCommand(command: UpgradeCommand, version: string): string {
+  switch (command.method) {
+    case 'brew': {
+      return `brew upgrade ${shown(command.formula)}`;
+    }
+    case 'npm': {
+      return `npm install -g ${shown(command.pkg)}@${shown(version)}`;
+    }
+    default: {
+      return `${shown(command.name)} self-update`;
+    }
+  }
 }
 
-/**
- * The first condition of the update notices' middleware that fails: an opt-out variable is set, an
- * output stream is not a terminal, CI is set, `self-update` itself is running, the run is not a
- * release binary or not one install.sh placed, or the cache directory's variable is not absolute.
- */
+function packageManagerRefusal({
+  command,
+  method,
+  name,
+  version,
+}: {
+  readonly command: UpgradeCommand | undefined;
+  readonly method: 'brew' | 'npm';
+  readonly name: string;
+  readonly version: string;
+}): string {
+  const manager = method === 'brew' ? 'Homebrew' : 'npm';
+  const correction =
+    command === undefined
+      ? `Update it with ${shown(manager)}.`
+      : `Run ${showUpgradeCommand(command, version)}.`;
+  const refusal = `${shown(name)} was installed with ${shown(manager)}, so self-update cannot replace it. `;
+  return refusal + correction;
+}
+
+function noReleaseFacts(name: string): string {
+  return `${shown(name)} has no release facts, so it cannot check for updates. Install a release build of ${shown(name)}, then try again.`;
+}
+
+function updateNotice(
+  { channel, found, name, running }: FoundRelease,
+  command: UpgradeCommand,
+): string {
+  return `${shown(name)} ${shown(found)} is available on the ${shown(channel)} channel. Run ${showUpgradeCommand(command, found)} to update from ${shown(running)}.`;
+}
+
+/** The first condition of the update notices' middleware that fails. */
 type UpdateCheckSkip =
   | { readonly kind: 'opted-out'; readonly variable: string }
   | { readonly kind: 'stdout' | 'stderr' | 'ci' | 'self-update' }
-  | { readonly kind: 'not-release' | 'not-script'; readonly name: string }
+  | { readonly kind: 'not-release' | 'not-installed'; readonly name: string }
+  | { readonly kind: 'no-command'; readonly name: string; readonly method: string }
   | { readonly kind: 'not-absolute'; readonly variable: string };
 
 /** One log line: its message, a constant Message Template, and the fields it reads. */
@@ -201,13 +242,21 @@ function skippedUpdateCheck(skip: UpdateCheckSkip): LogText {
     case 'not-release': {
       return {
         fields: { name: skip.name },
-        template: 'Skipped the update check: {name} is not a release binary.',
+        template: 'Skipped the update check: {name} is not a release build.',
       };
     }
-    case 'not-script': {
+    case 'not-installed': {
       return {
         fields: { name: skip.name },
-        template: 'Skipped the update check: {name} was not installed by install.sh.',
+        template:
+          'Skipped the update check: {name} was not installed by install.sh, Homebrew, or npm.',
+      };
+    }
+    case 'no-command': {
+      return {
+        fields: { method: skip.method, name: skip.name },
+        template:
+          'Skipped the update check: {name} was installed by {method}, and its facts give no upgrade command.',
       };
     }
     default: {
@@ -370,6 +419,7 @@ export {
 };
 
 export type { FailedRequest, FoundRelease, LogText, UpdateCheckSkip };
+export { noReleaseFacts, packageManagerRefusal };
 export {
   ignoredUpdateCache,
   readUpdateCheck,

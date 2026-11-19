@@ -30,7 +30,16 @@
  *   calls no hook. `--check` prints the pinned lines for a channel, for a named version, and for
  *   the running version named, requests `SHA256SUMS` and no binary, writes nothing, and calls no
  *   hook.
- * - Refusals. A run with no release group, no asset, no installation, the method `npm`, an
+ * - Package managers. For a Homebrew or npm installation, ordinary `self-update` and
+ *   `--check` exit 1 with the pinned sentence. Homebrew names `brew upgrade notes-cli` with or
+ *   without a version. npm names `@acme/notes@1.4.2` for `1.4.2` and `v1.4.2`, `@next` for
+ *   `--channel next` or a plain run on `next`, and `@latest` for a plain run on stable or
+ *   for `--channel stable`. They refuse
+ *   before checking the release asset or record directory, with no request or write. An older
+ *   npm artifact with no usable package name or dist-tag is told to update with npm. A matching
+ *   script record whose path resolves into a Cellar or npm's global root gives the same refusal
+ *   as a derived installation and leaves the record and the binary in place.
+ * - Refusals. A run with no release group, no asset, no installation, an unknown method, an
  *   unresolvable record directory, a missing file, a symbolic link at the recorded path, a file
  *   whose digest changed, and a read-only directory each exit 1 with the pinned sentence, make no
  *   request, and leave the binary and `install.json` byte for byte. A digest mismatch, no
@@ -58,6 +67,8 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -500,9 +511,9 @@ const refusals: [string, (box: Sandbox) => Scenario, string][] = [
     'notes was installed some other way, so self-update cannot replace it. Update it the way you installed it.',
   ],
   [
-    'the method npm',
+    'an unknown installation method',
     (box) => ({
-      installation: { digest: `sha256:${digestOf(oldBytes)}`, method: 'npm', path: box.binary },
+      installation: { digest: `sha256:${digestOf(oldBytes)}`, method: 'other', path: box.binary },
     }),
     'notes was installed some other way, so self-update cannot replace it. Update it the way you installed it.',
   ],
@@ -516,6 +527,141 @@ test.each(refusals)(
     expect(result.status).toBe(1);
     expect(result.stderr).toBe(`${sentence}\n`);
     expect(requests(box)).toEqual([]);
+    untouched(box);
+  },
+);
+
+test.each([
+  { argv: [], channel: 'stable', suffix: 'latest', version: '1.4.2' },
+  { argv: ['1.4.2'], channel: 'stable', suffix: '1.4.2', version: '1.4.2' },
+  { argv: ['v1.4.2'], channel: 'stable', suffix: '1.4.2', version: '1.4.2' },
+  { argv: ['--channel', 'next'], channel: 'stable', suffix: 'next', version: '1.4.2' },
+  { argv: ['--check'], channel: 'next', suffix: 'next', version: '1.6.0-next.1' },
+  { argv: [], channel: 'next', suffix: 'next', version: '1.6.0-next.1' },
+  { argv: ['--channel', 'stable'], channel: 'next', suffix: 'latest', version: '1.6.0-next.1' },
+  { argv: [], channel: '0', version: '1.1.0-0' },
+  { argv: [], channel: '1', version: '1.1.0-1' },
+  { argv: ['--channel', 'x'], channel: 'stable', version: '1.4.2' },
+  { argv: [], channel: 'X', version: '1.1.0-X' },
+  { argv: [], channel: '*', version: '1.4.2' },
+  { argv: [], channel: 'v1', version: '1.1.0-v1' },
+  { argv: [], channel: 'v01', version: '1.1.0-v01' },
+  { argv: [], channel: 'vx', version: '1.1.0-vx' },
+  { argv: [], channel: 'v1-preview', suffix: 'v1-preview', version: '1.1.0-v1-preview' },
+  { argv: ['1.1.0-0'], channel: '0', suffix: '1.1.0-0', version: '1.1.0-0' },
+])(
+  'npm refuses $argv on $channel with suffix $suffix',
+  async ({ argv, channel, version, suffix }) => {
+    const box = sandbox();
+    const result = await run(box, argv, {
+      env: { HOME: 'home', XDG_STATE_HOME: '' },
+      installation: { method: 'npm', path: box.binary },
+      release: { channel, npmPackage: '@acme/notes', repository: 'acme/notes', version },
+    });
+    const correction =
+      suffix === undefined ? 'Update it with npm.' : `Run npm install -g @acme/notes@${suffix}.`;
+    expect(result).toMatchObject({
+      status: 1,
+      stderr: `notes was installed with npm, so self-update cannot replace it. ${correction}\n`,
+    });
+    expect(requests(box)).toEqual([]);
+    untouched(box);
+  },
+);
+
+test.each([{ argv: [] }, { argv: ['1.4.2'] }, { argv: ['--check'] }])(
+  'Homebrew refuses $argv and names the formula upgrade',
+  async ({ argv }) => {
+    const box = sandbox();
+    const result = await run(box, argv, {
+      installation: { formula: 'notes-cli', method: 'brew', path: box.binary },
+      release: undefined,
+    });
+    expect(result).toMatchObject({
+      status: 1,
+      stderr:
+        'notes was installed with Homebrew, so self-update cannot replace it. Run brew upgrade notes-cli.\n',
+    });
+    expect(requests(box)).toEqual([]);
+    untouched(box);
+  },
+);
+
+test.each([undefined, '@Acme/notes', 'a b', 'a\nb'])(
+  'npm falls back to naming the manager for package %s',
+  async (npmPackage) => {
+    const box = sandbox();
+    const result = await run(box, [], {
+      installation: { method: 'npm', path: box.binary },
+      release: {
+        channel: 'stable',
+        ...(npmPackage === undefined ? {} : { npmPackage }),
+        repository: 'acme/notes',
+        version: '1.4.2',
+      },
+    });
+    expect(result).toMatchObject({
+      status: 1,
+      stderr:
+        'notes was installed with npm, so self-update cannot replace it. Update it with npm.\n',
+    });
+    expect(requests(box)).toEqual([]);
+    untouched(box);
+  },
+);
+
+test.each([
+  ['a binary link', 'Cellar/notes-cli/1.4.2/bin', 'Homebrew', 'brew upgrade notes-cli'],
+  ['a parent link', 'Cellar/notes-cli/1.4.2/bin', 'Homebrew', 'brew upgrade notes-cli'],
+  [
+    'a parent link',
+    'prefix/lib/node_modules/@acme/notes/bin',
+    'npm',
+    'npm install -g @acme/notes@latest',
+  ],
+])(
+  'a matching script record through %s into %s refuses replacement',
+  (link, path, manager, command) => {
+    const box = sandbox();
+    const managed = join(box.root, path);
+    const executable = join(managed, 'notes');
+    mkdirSync(managed, { recursive: true });
+    writeFileSync(executable, oldBytes, { mode: 0o755 });
+    if (link === 'a binary link') {
+      renameSync(box.binary, join(box.bin, 'retired-notes'));
+      symlinkSync(executable, box.binary);
+    } else {
+      renameSync(box.bin, join(box.root, 'retired-bin'));
+      symlinkSync(managed, box.bin);
+    }
+    const scenario = join(box.root, 'scenario.json');
+    writeFileSync(
+      scenario,
+      JSON.stringify({
+        executable,
+        github: defaultGitHub,
+        release: {
+          release: { asset, npmPackage: '@acme/notes', repository: 'acme/notes', version: '1.4.2' },
+        },
+        requests: box.requests,
+      }),
+    );
+    const result = invoke(fixture, [scenario, 'self-update'], {
+      cwd: box.root,
+      env: {
+        GIT_CEILING_DIRECTORIES: realpathSync(box.root),
+        HOME: box.home,
+        XDG_STATE_HOME: box.state,
+      },
+      runtime: 'node',
+    });
+    expect(result).toMatchObject({
+      status: 1,
+      stderr: `notes was installed with ${manager}, so self-update cannot replace it. Run ${command}.\n`,
+    });
+    expect(requests(box)).toEqual([]);
+    expect(lstatSync(link === 'a binary link' ? box.binary : box.bin).isSymbolicLink()).toBe(true);
+    expect(readFileSync(executable, 'utf8')).toBe(oldBytes);
     untouched(box);
   },
 );
@@ -782,7 +928,7 @@ test('the refusals keep their order', async () => {
     env: { HOME: 'home', XDG_STATE_HOME: '' },
     installation: {
       digest: `sha256:${digestOf(oldBytes)}`,
-      method: 'npm',
+      method: 'other',
       path: unresolved.binary,
     },
   });

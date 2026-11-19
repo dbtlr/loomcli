@@ -20,6 +20,10 @@
  *   only for a compile target. `--repository` overrides the field. A package with no `repository`
  *   and no `--repository` exits 1 and names `--repository`. A compile target with no `bin` and no
  *   `--name` exits 1 and names `--name`.
+ * - The npm package name. A scoped public manifest name distinct from the Application name
+ *   appears as `release.npmPackage` in both bundled and compiled releases, including a binary
+ *   destined for an npm platform package. `--facts` and `--define` report the same name.
+ *   Without `--release`, or with no manifest name, the field is absent.
  * - A compiled binary. `--facts` for a compile target prints `"compiled":true` with and without
  *   `--release`, and for `node` and `bun` prints no `compiled` member. A compiled fixture binary
  *   reads `host.program` as its own path alone, and a Node bundle reads `process.execPath` and the
@@ -565,6 +569,7 @@ test(
       release: {
         asset: `probe-${hostTarget().slice('bun-'.length)}`,
         channel: 'stable',
+        npmPackage: '@acme/probe',
         repository: 'acme/probe',
         version: '1.0.0',
       },
@@ -790,7 +795,7 @@ test.each([
     const runtime = process.env.LOOM_TEST_RUNTIME ?? 'node';
     expect(factsOf(join(root, 'dist/main.js'), runtime)).toEqual({
       build: 'distributed',
-      release: { channel, repository: 'acme/probe', version },
+      release: { channel, npmPackage: '@acme/probe', repository: 'acme/probe', version },
     });
     expect(execute(join(root, 'dist/main.js'), ['throw'], { runtime })).toEqual(generic);
   },
@@ -809,7 +814,12 @@ test('--repository overrides the repository field', async () => {
   expect(runResult.status).toBe(0);
   expect(factsOf(join(root, 'dist/main.js'), 'node')).toEqual({
     build: 'distributed',
-    release: { channel: 'stable', repository: 'other/fork', version: '1.0.0' },
+    release: {
+      channel: 'stable',
+      npmPackage: '@acme/probe',
+      repository: 'other/fork',
+      version: '1.0.0',
+    },
   });
 });
 
@@ -826,7 +836,7 @@ test.each([
   const root = probePackage({ repository });
   expect(JSON.parse(await printed(root, ['--target', 'node', '--release', '--facts']))).toEqual({
     build: 'distributed',
-    release: { repository: 'acme/probe', version: '1.0.0' },
+    release: { npmPackage: '@acme/probe', repository: 'acme/probe', version: '1.0.0' },
   });
 });
 
@@ -903,7 +913,12 @@ test.each([
   expect(JSON.parse(facts)).toEqual({
     build: 'distributed',
     compiled: true,
-    release: { asset: `${name}-linux-x64-musl`, repository: 'acme/probe', version: '1.0.0' },
+    release: {
+      asset: `${name}-linux-x64-musl`,
+      npmPackage: '@acme/probe',
+      repository: 'acme/probe',
+      version: '1.0.0',
+    },
   });
 });
 
@@ -915,7 +930,7 @@ test('--facts for a compile target prints compiled true with and without --relea
   await expect(
     printed(root, ['--target', 'bun-darwin-arm64', '--release', '--facts']),
   ).resolves.toBe(
-    '{"build":"distributed","compiled":true,"release":{"asset":"probe-darwin-arm64","repository":"acme/probe","version":"1.0.0"}}\n',
+    '{"build":"distributed","compiled":true,"release":{"asset":"probe-darwin-arm64","npmPackage":"@acme/probe","repository":"acme/probe","version":"1.0.0"}}\n',
   );
   await expect(printed(root, ['--target', 'bun-linux-x64', '--define'])).resolves.toBe(
     '__LOOM_RELEASE__={"build":"distributed","compiled":true}\n',
@@ -940,6 +955,18 @@ test('an object bin with several keys and no --name names --name', async () => {
   expect(result.stderr).toContain('--name');
 });
 
+test.each([undefined, '', 42])(
+  '--release omits the npm package name for a manifest name of %s',
+  async (name) => {
+    const root = probePackage({ name, repository: 'acme/probe' });
+    const facts = await printed(root, ['--target', 'node', '--release', '--facts']);
+    expect(JSON.parse(facts)).toEqual({
+      build: 'distributed',
+      release: { repository: 'acme/probe', version: '1.0.0' },
+    });
+  },
+);
+
 test('--facts and --define each print one line, write no file, and compose a build that reads the same facts', async () => {
   const root = probePackage({ repository: 'acme/probe', version: '1.1.0-next.3' });
   const args = ['--target', 'node', '--release', '--build', 'development'];
@@ -949,12 +976,17 @@ test('--facts and --define each print one line, write no file, and compose a bui
   expect(facts.split('\n')).toHaveLength(2);
   expect(JSON.parse(facts)).toEqual({
     build: 'development',
-    release: { repository: 'acme/probe', version: '1.1.0-next.3' },
+    release: { npmPackage: '@acme/probe', repository: 'acme/probe', version: '1.1.0-next.3' },
   });
   expect(define).toBe(`__LOOM_RELEASE__=${facts}`);
   const expected = {
     build: 'development',
-    release: { channel: 'next', repository: 'acme/probe', version: '1.1.0-next.3' },
+    release: {
+      channel: 'next',
+      npmPackage: '@acme/probe',
+      repository: 'acme/probe',
+      version: '1.1.0-next.3',
+    },
   };
   const runResult = await loom(root, ['build', ...args]);
   expect(runResult.status).toBe(0);

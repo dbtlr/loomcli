@@ -1026,6 +1026,9 @@ export function isDeclaredName(name: string): boolean;
 export function isFailureCode(value: unknown): value is string;
 
 // @public
+export function isNpmPackageName(name: string): boolean;
+
+// @public
 export function isPortableName(name: string): boolean;
 
 // @public
@@ -1391,6 +1394,9 @@ export interface OutputTerminal extends InputTerminal {
 export function override<Key extends AnyOverrideKey>(key: Key, replacement: NoInfer<ReplacementView<Key>>): ViewOverride;
 
 // @public
+export function packageManagerInstallation(path: string, platform: string): ReleaseFacts['installation'];
+
+// @public
 export function pad(text: string, minimumWidth: number, options?: {
     align?: Alignment;
 }): string;
@@ -1620,13 +1626,15 @@ export interface ReleaseFacts {
     readonly installation?: {
         readonly method: string;
         readonly path: string;
-        readonly digest: string;
+        readonly digest?: string;
+        readonly formula?: string;
     };
     readonly release?: {
         readonly version: string;
         readonly channel: string;
         readonly repository: string;
         readonly asset?: string;
+        readonly npmPackage?: string;
     };
 }
 

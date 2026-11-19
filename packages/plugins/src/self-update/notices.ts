@@ -1,16 +1,15 @@
 /**
  * The update notices' middleware: after the action of a run at a terminal, it prints one line when
- * the cache names a newer release on the running binary's channel, and refreshes a stale cache
+ * the cache names a newer release on the running application's channel, and refreshes a stale cache
  * through a detached copy of the application, which the run never waits for. At `-v` it names the
  * cache it read and the refresh it started, and at `-vv` why it did nothing and a cache it ignored.
  */
 import { applicationDirectory } from '@loomcli/core';
-import type { Host, Log, Middleware, Out } from '@loomcli/core';
+import type { Host, Log, Middleware, Out, ReleaseFacts } from '@loomcli/core';
 
 import { fileWritten } from '../change-events.js';
 import { underCI } from '../ci.js';
 import { passOver, say } from '../lane-writes.js';
-import { releaseBinary } from './binary.js';
 import { cachePath, findCache, stale, writeCache } from './cache.js';
 import type { CacheEntry, CacheReading, Lookup } from './cache.js';
 import {
@@ -22,6 +21,8 @@ import {
 } from './messages.js';
 import type { UpdateCheckSkip } from './messages.js';
 import type { selfUpdate } from './plugin.js';
+import { effectiveInstallation, upgradeCommand } from './upgrade.js';
+import type { UpgradeCommand } from './upgrade.js';
 import { compareVersions, equalPrecedence, parseVersion } from './version.js';
 import type { Version } from './version.js';
 
@@ -85,51 +86,61 @@ function notTerminal(terminal: Host['terminal']): UpdateCheckSkip | undefined {
   return terminal.stderr.isTTY ? undefined : { kind: 'stderr' };
 }
 
-/**
- * The running binary's version and lookup, when a release binary the installer script placed, or
- * the reason it is not one.
- */
-function scriptRelease(
-  host: Host,
-  name: string,
-): (Lookup & { readonly running: Version }) | { readonly skipped: UpdateCheckSkip } {
-  const binary = releaseBinary(host);
-  if (binary === undefined) {
-    return { skipped: { kind: 'not-release', name } };
-  }
-  if (host.release.installation?.method !== 'script') {
-    return { skipped: { kind: 'not-script', name } };
-  }
-  const { channel, repository, running } = binary;
-  return { channel, repository, running };
+/** The release and command a notice needs. */
+interface NoticeRelease extends Lookup {
+  readonly command: UpgradeCommand;
+  readonly running: Version;
 }
 
-/**
- * A run that may show a notice: the graph's name, the host, the running binary's version and
- * lookup, and the cache directory.
- */
-interface Qualified extends Lookup {
+/** A run that can check the cache and show an upgrade command. */
+interface Qualified extends NoticeRelease {
   readonly name: string;
   readonly host: Host;
-  readonly running: Version;
   readonly directory: string;
 }
 
-/**
- * The run's binary and cache directory when conditions 2 to 7 of the contract hold, in its order;
- * the last two are a script-installed release binary and a cache directory that resolves. A run
- * that fails one answers the reason the first that fails names.
- */
+/** The release facts that give a notice its upgrade command, or the reason they cannot. */
+function noticeRelease({
+  host,
+  name,
+}: Candidate): NoticeRelease | { readonly skipped: UpdateCheckSkip } {
+  const { release } = host.release;
+  if (release === undefined) {
+    return { skipped: { kind: 'not-release', name } };
+  }
+  // The refusal of `self-update` reads this installation too, so a notice never names a command it refuses.
+  const installation = effectiveInstallation(host.release, host.platform);
+  if (installation === undefined) {
+    return { skipped: { kind: 'not-installed', name } };
+  }
+  return releaseCommand(name, { ...host.release, installation, release });
+}
+
+/** The command and running version of an installed release, or the reason they cannot be read. */
+function releaseCommand(
+  name: string,
+  facts: ReleaseFacts & Required<Pick<ReleaseFacts, 'installation' | 'release'>>,
+): NoticeRelease | { readonly skipped: UpdateCheckSkip } {
+  const { installation, release } = facts;
+  const command = upgradeCommand(name, facts);
+  const running = parseVersion(release.version);
+  if (command === undefined || running === undefined) {
+    return { skipped: { kind: 'no-command', method: installation.method, name } };
+  }
+  return { channel: release.channel, command, repository: release.repository, running };
+}
+
+/** Qualifies a run in the contract's order before reading the cache. */
 function qualified(candidate: Candidate): Qualified | { readonly skipped: UpdateCheckSkip } {
   const reason = ineligibility(candidate);
   if (reason !== undefined) {
     return { skipped: reason };
   }
-  const { host, name } = candidate;
-  const release = scriptRelease(host, name);
+  const release = noticeRelease(candidate);
   if ('skipped' in release) {
     return release;
   }
+  const { host, name } = candidate;
   const directory = applicationDirectory('cache', name, host);
   return 'variable' in directory
     ? { skipped: { kind: 'not-absolute', variable: directory.variable } }
@@ -145,8 +156,8 @@ function newerVersion(reading: CacheReading, running: Version): Version | undefi
 }
 
 /** The notice line, which names the newer version and the running one. */
-function noticeLine({ channel, name, running }: Qualified, newer: Version): string {
-  return updateNotice({ channel, found: newer.text, name, running: running.text });
+function noticeLine({ channel, command, name, running }: Qualified, newer: Version): string {
+  return updateNotice({ channel, found: newer.text, name, running: running.text }, command);
 }
 
 /**

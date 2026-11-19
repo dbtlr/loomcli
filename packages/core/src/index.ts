@@ -7,6 +7,8 @@ export { optionSet } from './commands/option-sets.js';
 export type { OptionSet } from './commands/option-sets.js';
 export { escapeControlCharacters } from './support/controls.js';
 export { applicationDirectory } from './shipping/directory.js';
+export { packageManagerInstallation } from './shipping/installation.js';
+export { isNpmPackageName } from './shipping/package-name.js';
 export type { ApplicationDirectory, DirectoryLookup } from './shipping/directory.js';
 export {
   questionValidationOptions,

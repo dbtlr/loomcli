@@ -46,21 +46,28 @@ function heldMember(name: string, value: unknown): string {
     : `hold release ${name} ${quoted(value)}`;
 }
 
-/** The repository and the asset of a release group, or the defect the first malformed one is. */
+/** The repository, asset, and npm package name, or the defect the first malformed one is. */
 function releaseSource(
   repository: unknown,
   asset: unknown,
+  npmPackage: unknown,
 ): { source: Omit<ReleaseGroup, 'channel' | 'version'> } | { failure: InternalError } {
   if (typeof repository !== 'string' || !ownerName.test(repository)) {
     return malformed(heldMember('repository', repository));
   }
-  if (asset === undefined) {
-    return { source: { repository } };
-  }
-  if (typeof asset !== 'string' || asset === '') {
+  if (asset !== undefined && (typeof asset !== 'string' || asset === '')) {
     return malformed(heldMember('asset', asset));
   }
-  return { source: { asset, repository } };
+  if (npmPackage !== undefined && (typeof npmPackage !== 'string' || npmPackage === '')) {
+    return malformed(heldMember('npmPackage', npmPackage));
+  }
+  return {
+    source: {
+      ...(asset === undefined ? {} : { asset }),
+      ...(npmPackage === undefined ? {} : { npmPackage }),
+      repository,
+    },
+  };
 }
 
 /**
@@ -77,12 +84,12 @@ function releaseGroup(value: unknown): { group: ReleaseGroup } | { failure: Inte
   if (!isPlainObject(value)) {
     return malformed('hold a release that is not an object');
   }
-  const { asset, repository, version } = value;
+  const { asset, npmPackage, repository, version } = value;
   const channel = channelOf(version);
   if (typeof version !== 'string' || channel === undefined) {
     return malformed(heldMember('version', version));
   }
-  const read = releaseSource(repository, asset);
+  const read = releaseSource(repository, asset, npmPackage);
   return 'failure' in read ? read : { group: Object.freeze({ ...read.source, channel, version }) };
 }
 
@@ -146,25 +153,31 @@ function bakedFacts(): ReleaseFacts {
   return read.facts;
 }
 
-/**
- * The baked facts with the installation the record holds, which core reads only for a release
- * that carries an asset, as a compiled binary's alone does.
- */
-function withInstallation(facts: ReleaseFacts, lookup: InstallationLookup): ReleaseFacts {
-  if (facts.release?.asset === undefined) {
+/** The runtime paths a release can use to find its installation. */
+interface ApplicationPaths {
+  readonly executable: string;
+  readonly script: string | undefined;
+}
+
+/** The baked facts with the installation of the running artifact, when core can identify it. */
+function withInstallation(
+  facts: ReleaseFacts,
+  lookup: InstallationLookup,
+  paths: ApplicationPaths,
+): ReleaseFacts {
+  if (facts.release === undefined) {
     return facts;
   }
-  const installation = readInstallation(lookup);
+  const hasAsset = facts.release.asset !== undefined;
+  const path = hasAsset || isCompiled() ? paths.executable : paths.script;
+  const installation = readInstallation(lookup, path, hasAsset);
   return installation === undefined ? facts : Object.freeze({ ...facts, installation });
 }
 
-/**
- * The release facts of a handle that reads them from the build, once per run, beside the working
- * directory: the baked facts and, for a compiled binary, the installation `lookup` finds.
- */
-function captureRelease(lookup: InstallationLookup): CapturedRelease {
+/** The baked release facts and installation a handle reads once per run. */
+function captureRelease(lookup: InstallationLookup, paths: ApplicationPaths): CapturedRelease {
   const read = readBaked();
-  return 'failure' in read ? read : { facts: withInstallation(read.facts, lookup) };
+  return 'failure' in read ? read : { facts: withInstallation(read.facts, lookup, paths) };
 }
 
 /**

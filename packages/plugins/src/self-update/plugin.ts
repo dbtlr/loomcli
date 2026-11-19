@@ -42,6 +42,7 @@ import {
   noRelease,
   notReleaseBinary,
   otherInstaller,
+  packageManagerRefusal,
   recordNotAbsolute,
   recordUnwritable,
   refreshNoticeConflict,
@@ -60,6 +61,7 @@ import type { Requesting } from './request.js';
 import { downloadUrl, fetchSums, latestRelease } from './resolve.js';
 import type { Release } from './resolve.js';
 import { listingOf } from './sums.js';
+import { effectiveInstallation, isNpmDistTag, upgradeCommand } from './upgrade.js';
 import { compareVersions, equalPrecedence, isChannelName, versionOfArgument } from './version.js';
 import type { Version } from './version.js';
 
@@ -573,8 +575,30 @@ async function install(request: Request, checked: Checked, resolved: Resolved): 
   await out.success(updated(name, checked.running.text, release.version.text));
 }
 
+/** Refuses package-manager installs before the checks for replacing a script installation. */
+function refusePackageManager(request: Request): void {
+  const { host, name, named } = request;
+  const { release } = host.release;
+  const installation = effectiveInstallation(host.release, host.platform);
+  if (
+    installation === undefined ||
+    (installation.method !== 'brew' && installation.method !== 'npm')
+  ) {
+    return;
+  }
+  const { method } = installation;
+  const followed = request.channel ?? release?.channel ?? 'stable';
+  const version = named?.text ?? (followed === 'stable' ? 'latest' : followed);
+  const command =
+    method === 'npm' && named === undefined && !isNpmDistTag(version)
+      ? undefined
+      : upgradeCommand(name, { ...host.release, installation });
+  throw fatal(packageManagerRefusal({ command, method, name, version }));
+}
+
 /** The refusals, then the cache directory an attestation needs, both before any request. */
 function prepare(request: Request, attest: Attest | undefined) {
+  refusePackageManager(request);
   const checked = check(request.name, request.host);
   return { attesting: attestingFor(request, attest), checked };
 }

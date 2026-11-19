@@ -291,6 +291,14 @@ test.each([
     'hold release asset ""',
   ],
   [
+    '{"build":"distributed","release":{"version":"1.0.0","repository":"acme/probe","npmPackage":""}}',
+    'hold release npmPackage ""',
+  ],
+  [
+    '{"build":"distributed","release":{"version":"1.0.0","repository":"acme/probe","npmPackage":null}}',
+    'hold release npmPackage null',
+  ],
+  [
     '{"build":"distributed","release":{"version":"1.0.0","repository":"a/b/c"}}',
     'hold release repository "a/b/c"',
   ],

@@ -118,7 +118,7 @@ platform             linux-x64
   | `channel` | `channel` | `host.release.release.channel`, the [release channel](../core/release-facts.md) core derives from the release version | the run has no release group |
   | `build` | `build` | `host.release.build`: `source`, `development`, or `distributed` | never |
   | `asset` | `asset` | `host.release.release.asset`, the release asset's name | the run has no release group, or its release group has no asset, as a JavaScript bundle's has none |
-  | `installation method` | `installationMethod` | `host.release.installation.method`, as the [installation record](../core/installation-record.md) holds it, such as `script` | the run has no installation |
+  | `installation method` | `installationMethod` | `host.release.installation.method`, such as `script`, `brew`, or `npm`, from the [matching record or application path](../core/installation-record.md#reading-the-installation) | the run has no installation |
   | `runtime` | `runtime` | `host.runtime`'s `name`, one space, and its `version`, such as `bun 1.3.2` or `node 24.11.0` | the run's process handle holds no runtime: a hand-built handle that omits it, or `processHandle` or `mockProcess` given `runtime: undefined` |
   | `platform` | `platform` | `host.platform`, a hyphen, and `host.arch`, such as `linux-x64` or `darwin-arm64` | never |
 
