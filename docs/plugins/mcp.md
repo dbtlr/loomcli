@@ -129,7 +129,7 @@ An MCP client launches `jsonkit mcp` and speaks one JSON-RPC message per line ov
 
 ## MCP build faults
 
-The plugin's `onGraphBuilt` hook judges the opted-in Commands on every build, a run that never serves a tool included, and throws a `DeclarationError` under a rule of its own, which reports as itself under [Judging the built graph](../core/lifecycle-hooks.md#judging-the-built-graph).
+The plugin's `onGraphBuilt` hook judges the opted-in Commands on every graph build, a run that never serves a tool included, and throws a `DeclarationError` under a rule of its own, which reports as itself under [Judging the built graph](../core/lifecycle-hooks.md#judging-the-built-graph).
 
 - **Tool name taken.** Two opted-in Commands never give one tool name, such as the Command `scratch create` and a Command named `scratch_create`: [`@loomcli/plugins/mcp/tool-name-taken`](../core/diagnostics.md#loomclipluginsmcptool-name-taken).
 - **Tool without action.** `mcpCommand` is never on a Command with no action, such as a group: [`@loomcli/plugins/mcp/tool-without-action`](../core/diagnostics.md#loomclipluginsmcptool-without-action).

@@ -222,7 +222,7 @@ The hint names each file the failure's own [failure event](../core/logging.md) w
 
 ## The file fact
 
-The plugin adds `loggingFiles` to the root Command on every build, so `inspect()` reports it and another plugin reads it with `readExtension(graph.root, loggingFiles)`:
+The plugin adds `loggingFiles` to the root Command on every graph build, so `inspect()` reports it and another plugin reads it with `readExtension(graph.root, loggingFiles)`:
 
 ```json
 { "@loomcli/plugins/logging/files": { "files": [{ "file": "collector.jsonl", "level": "debug" }] } }
