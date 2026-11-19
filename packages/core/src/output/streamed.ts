@@ -1,6 +1,9 @@
+import { command, hyperlinkOpens } from '../style/ansi.js';
 import { splitLines } from '../style/lines.js';
 import type { Palette } from '../style/state.js';
 import { close, escapeText } from '../style/style.js';
+import { parseText } from '../style/wire.js';
+import type { WireTrace } from '../style/wire.js';
 import { handled } from '../support/thenable.js';
 import { carried, carryText, emptyCarry } from './carry.js';
 import type { Carry } from './carry.js';
@@ -84,15 +87,110 @@ const trailingHeld = new RegExp(
   'u',
 );
 
-/** The text so far as the message lays it out before its end: without what its end holds back. */
-function heldBack(text: string): string {
-  return text.replace(trailingHeld, '');
+/**
+ * The decoded offset of the escape sequence that ends decoded text without being finished: a lone
+ * ESC, or a CSI, an OSC, or another control string still waiting for its final byte or
+ * terminator. Undefined when the text finishes every sequence it starts.
+ */
+function unfinishedSequenceStart(decoded: string): number | undefined {
+  for (let cursor = 0; cursor < decoded.length;) {
+    const found = command(decoded, cursor);
+    if (found?.kind === 'incomplete' && found.end === decoded.length) {
+      return cursor;
+    }
+    cursor = found?.end ?? cursor + 1;
+  }
+  return undefined;
+}
+
+/**
+ * The text without the escape sequence it ends with when the text has not finished it, and without
+ * everything after the sequence's start, so the frames open there end with the text, as frames
+ * still open at the end of any text do. Part of a sequence written alone is counted as written
+ * text, and a terminal reads the text after it as the sequence's own, so that text never shows.
+ * The sequence shows once the chunk that finishes it arrives, and at the message's end the message
+ * lays out the joined text.
+ *
+ * The scan reads `laid`, the text the lane view lays out for the text from `from` on, as
+ * resolution reads it: decoded from its frames, so frame markup between a sequence's bytes, as two
+ * chunks that each wrap part of it in a style call leave it, does not part them. `from` is an
+ * offset no sequence runs across, so the scan reads only the text after the last line the message
+ * has finished, behind the row that sets up what that line leaves open.
+ */
+function withoutUnfinishedSequence(text: string, from: number, laid: string): string {
+  const trace: Required<WireTrace> = { frames: [], origins: [], whole: [] };
+  const decoded = parseText(laid, new Map(), { anyToken: true, mainGlyphs: true, trace }).text;
+  const start = unfinishedSequenceStart(decoded);
+  const origin = start === undefined ? undefined : trace.origins[start];
+  // Where the text from `from` on starts inside `laid`, after the row that sets up the split.
+  const offset = laid.length - (text.length - from);
+  if (start === undefined || origin === undefined || origin < offset) {
+    return text;
+  }
+  return text.slice(0, from + origin - offset);
+}
+
+/**
+ * The text so far as the message lays it out before its end: without what its end holds back.
+ * `laid` is the text the lane view lays out for the text from `from` on, scanned for an
+ * unfinished escape sequence.
+ */
+function heldBack(text: string, from: number, laid: string): string {
+  return withoutUnfinishedSequence(text, from, laid).replace(trailingHeld, '');
 }
 
 /** Every completed line of resolved text, each with its line break, and the text after the last one. */
 function completeLines(text: string): { lines: string[]; tail: string } {
   const lines = text.match(/[^\n]*\n/gu) ?? [];
   return { lines, tail: text.slice(lines.join('').length) };
+}
+
+/**
+ * The terminal controls resolved text holds after its last line break when no visible text
+ * follows them there, which `splitLines` lays out as no row, less the SGR and OSC 8 commands that
+ * each row opens and closes for itself, and the line break the method appends after them when it
+ * writes the joined text. A line break counts only outside every escape sequence, as `splitLines`
+ * counts it, so a title that holds one stays whole. A title or another control there reaches the
+ * terminal at the message's end, as it does in the joined text's write.
+ */
+function controlsAfterLastRow(resolved: string): string {
+  const start = lastRowStart(resolved);
+  const kept = start === 0 ? undefined : controlsOnly(resolved.slice(start));
+  if (kept === undefined || kept === '') {
+    return '';
+  }
+  return endsWithLineBreak(resolved) ? kept : `${kept}\n`;
+}
+
+/** The offset after resolved text's last line break outside every escape sequence, or 0 without one. */
+function lastRowStart(resolved: string): number {
+  let start = 0;
+  for (let cursor = 0; cursor < resolved.length;) {
+    const found = command(resolved, cursor);
+    cursor = found?.end ?? cursor + 1;
+    if (found === undefined && resolved[cursor - 1] === '\n') {
+      start = cursor;
+    }
+  }
+  return start;
+}
+
+/**
+ * The controls of resolved text that holds nothing else, less the SGR and OSC 8 commands, or
+ * undefined when it holds a character a terminal shows or moves the cursor for.
+ */
+function controlsOnly(run: string): string | undefined {
+  let kept = '';
+  for (let cursor = 0; cursor < run.length;) {
+    const found = command(run, cursor);
+    if (found === undefined) {
+      return undefined;
+    }
+    const own = found.kind === 'sgr' || hyperlinkOpens(found) !== undefined;
+    kept += own ? '' : run.slice(cursor, found.end);
+    cursor = found.end;
+  }
+  return kept;
 }
 
 /** Every terminal control sequence, captured, so a split keeps each one between the text around it. */
@@ -372,7 +470,10 @@ class StreamedMessage {
    * from the split on, and the split then moves past every line the text has finished.
    */
   #advance(end: boolean): Piece[] {
-    const text = end ? this.#joined : heldBack(this.#joined);
+    const joined = this.#joined;
+    const text = end
+      ? joined
+      : heldBack(joined, this.#split, this.#fromSplit(joined, joined.length));
     if (this.#sink.hidden || (!end && text === '')) {
       return [];
     }
@@ -457,10 +558,18 @@ class StreamedMessage {
     return fresh.map((line) => ({ text: line }));
   }
 
-  /** The text's rows, each resolved on its own, and whether its last row is finished too. */
-  #layout(marked: string, end: boolean): { rows: string[]; closed: boolean } {
+  /**
+   * The text's rows, each resolved on its own, whether its last row is finished too, and at the
+   * message's end the controls after its last row that no row holds.
+   */
+  #layout(marked: string, end: boolean): { rows: string[]; closed: boolean; after: string } {
     const rows = splitLines(marked).map((row) => this.#sink.resolve(row));
-    return { closed: end || endsWithLineBreak(this.#sink.resolve(marked)), rows };
+    const resolved = this.#sink.resolve(marked);
+    return {
+      after: end ? controlsAfterLastRow(resolved) : '',
+      closed: end || endsWithLineBreak(resolved),
+      rows,
+    };
   }
 
   /**
@@ -471,11 +580,11 @@ class StreamedMessage {
    * finished, as off a terminal.
    */
   #rows(marked: string, end: boolean, fits: (frame: Frame) => boolean): Piece[] {
-    const { closed, rows } = this.#layout(marked, end);
+    const { after, closed, rows } = this.#layout(marked, end);
     const finished = this.#finish(closed ? rows : rows.slice(0, -1));
     if (end) {
       this.#pending = '';
-      return [{ row: dropped, text: finished }];
+      return [{ row: dropped, text: `${finished}${after}` }];
     }
     const rest = closed ? '' : (rows.at(-1) ?? '');
     this.#pending = rest;
@@ -506,8 +615,8 @@ class StreamedMessage {
    * again, so the terminal wraps a long line as it wraps a whole message.
    */
   #appended(marked: string, end: boolean, appends: () => boolean): Piece[] {
-    const { closed, rows } = this.#layout(marked, end);
-    const finished = this.#finish(closed ? rows : rows.slice(0, -1));
+    const { after, closed, rows } = this.#layout(marked, end);
+    const finished = `${this.#finish(closed ? rows : rows.slice(0, -1))}${after}`;
     const pieces: Piece[] = finished === '' ? [] : [{ open: false, text: finished }];
     const row = closed ? '' : (rows.at(-1) ?? '');
     this.#pending = visibleFrom(row, this.#head, false).text;
