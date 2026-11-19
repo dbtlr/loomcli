@@ -6,6 +6,9 @@ the Apache License, Version 2.0, and every other file is under the MIT License
 in LICENSE. Neither license asks anything of an application that installs this
 package beyond keeping these notices with the files they cover.
 
+The source modules named below are compiled into the package's bundled files
+under dist, and each keeps its license header comment there.
+
 Cobra
 Copyright 2013-2023 The Cobra Authors
 Licensed under the Apache License, Version 2.0.
@@ -14,7 +17,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 Source: https://github.com/spf13/cobra at commit adbc8813901bba65827259daa8e22ff94ec1f30e
 
 The Bash, Zsh, Fish, and PowerShell completion scripts the completion plugin
-prints, in dist/src/completion/bash.js, zsh.js, fish.js, and powershell.js, are
+prints, from src/completion/bash.ts, zsh.ts, fish.ts, and powershell.ts, are
 ported from these Cobra files:
 
 - bash_completionsV2.go

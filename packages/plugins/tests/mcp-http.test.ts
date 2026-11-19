@@ -27,7 +27,7 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it, test } from 'vite-plus/test';
@@ -475,11 +475,23 @@ function staticImports(file: string): string[] {
 }
 
 describe('loading', () => {
-  const built = fileURLToPath(new URL('../dist/src/mcp/', import.meta.url));
-
   it('without --http, no module the plugin loads statically imports node:http', () => {
+    const entry = new URL(import.meta.resolve('@loomcli/plugins/mcp'));
+    const pack = fileURLToPath(new URL('../../../', entry));
+    const { outputs }: { outputs: Record<string, string[]> } = JSON.parse(
+      readFileSync(join(pack, 'dist/provenance.json'), 'utf8'),
+    );
+    const outputsFor = (input: string) =>
+      Object.keys(outputs)
+        .filter((file) => outputs[file]?.includes(input))
+        .map((file) => join(pack, file));
+    const serving = outputsFor('dist/src/mcp/serve.js');
+    const http = outputsFor('dist/src/mcp/serve-http.js');
+    expect(serving).toHaveLength(1);
+    expect(http).toHaveLength(1);
+
     const seen = new Set<string>();
-    const pending = [join(built, 'plugin.js'), join(built, 'serve.js')];
+    const pending = [fileURLToPath(entry), ...serving];
     const external: string[] = [];
     for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
       if (!seen.has(file)) {
@@ -494,8 +506,17 @@ describe('loading', () => {
       }
     }
     expect(external).not.toContain('node:http');
-    expect([...seen].map((file) => file.slice(built.length))).not.toContain('serve-http.js');
-    expect(readFileSync(join(built, 'serve.js'), 'utf8')).toContain('import("./serve-http.js")');
+    for (const target of http) {
+      expect(seen.has(target)).toBe(false);
+      expect(
+        [...seen].some((file) => {
+          const specifier = relative(dirname(file), target);
+          return readFileSync(file, 'utf8').includes(
+            `import("${specifier.startsWith('.') ? specifier : `./${specifier}`}")`,
+          );
+        }),
+      ).toBe(true);
+    }
   });
 
   it('Node loads node:http for --http alone', async () => {

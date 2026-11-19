@@ -159,7 +159,7 @@ describe('the answered path', () => {
 });
 
 describe('the foreground check', () => {
-  it('runs for any terminal stream, whatever the handle, and is skipped for a stream that is none', async () => {
+  it('a detached process skips the query for a terminal stream and still tries a scripted stream', async () => {
     // A session of its own has no controlling terminal, so a check that runs reads background.
     const child = spawn(
       process.env.LOOM_TEST_RUNTIME ?? 'node',
@@ -171,7 +171,7 @@ describe('the foreground check', () => {
       output += String(chunk);
     });
     await new Promise((resolve) => child.once('close', resolve));
-    expect(JSON.parse(output)).toEqual({ scripted: false, terminal: true });
+    expect(JSON.parse(output)).toEqual({ scripted: true, terminal: false });
   });
 });
 

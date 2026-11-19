@@ -1,4 +1,5 @@
 import { appendFileSync, readFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -18,6 +19,10 @@ const middleware = /[/\\]dist[/\\]src[/\\](?<plugin>[^/\\]+)[/\\]middleware\.js$
 const chunk = /[/\\]dist[/\\]chunk-[^/\\]+\.js$/u;
 const bundledMiddleware = /^\/\/ .*dist\/src\/(?<plugin>[^/]+)\/middleware\.js$/gmu;
 
+/** A library chunk names its input modules in the provenance manifest. */
+const libraryChunk = /[/\\]dist[/\\]library-[a-z0-9]+\.js$/u;
+const libraryMiddleware = /^dist\/src\/(?<plugin>[^/]+)\/middleware\.js$/u;
+
 /** A loaded module's file path, from the path Bun passes or the URL Node passes. */
 function pathOf(location) {
   return location.startsWith('file:') ? fileURLToPath(location) : location;
@@ -29,6 +34,18 @@ function record(location) {
     appendFileSync(marks, `loaded:${found.groups.plugin}\n`);
     return;
   }
+  if (libraryChunk.test(location)) {
+    const file = pathOf(location);
+    const provenance = join(dirname(file), 'provenance.json');
+    const { outputs } = JSON.parse(readFileSync(provenance, 'utf8'));
+    for (const source of outputs[`dist/${basename(file)}`]) {
+      const bundled = libraryMiddleware.exec(source);
+      if (bundled?.groups) {
+        appendFileSync(marks, `loaded:${bundled.groups.plugin}\n`);
+      }
+    }
+    return;
+  }
   if (chunk.test(location)) {
     for (const bundled of readFileSync(pathOf(location), 'utf8').matchAll(bundledMiddleware)) {
       appendFileSync(marks, `loaded:${bundled.groups.plugin}\n`);
@@ -38,7 +55,7 @@ function record(location) {
 
 /** Bun answers a module load with the module's own text, so the hook reads the file it records. */
 function registerBun(bun) {
-  for (const filter of [middleware, chunk]) {
+  for (const filter of [middleware, chunk, libraryChunk]) {
     bun.plugin({
       name: 'loom-record-loads',
       setup(build) {
