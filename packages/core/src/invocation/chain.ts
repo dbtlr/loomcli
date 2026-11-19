@@ -1,5 +1,5 @@
-import type { BuiltGraph, DispatchInput, Prepared } from '../commands/command.js';
-import { prepareDispatch } from '../commands/command.js';
+import type { BuiltGraph } from '../commands/build.js';
+import type { DispatchInput } from '../commands/types.js';
 import {
   invokeViewCorrection,
   mediaTypeCorrection,
@@ -37,6 +37,8 @@ import type { ContextualStyle } from '../style/style.js';
 import { Handed } from '../support/handed.js';
 import { handled } from '../support/thenable.js';
 import type { ParsedInvocation } from './parse.js';
+import type { Prepared } from './prepare.js';
+import { prepareDispatch } from './prepare.js';
 import type { ActionChannel, Request } from './types.js';
 
 /**

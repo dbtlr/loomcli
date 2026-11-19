@@ -1,4 +1,4 @@
-import type { BuiltGraph } from '../commands/command.js';
+import type { BuiltGraph } from '../commands/build.js';
 import { UsageError } from '../failures/errors.js';
 import {
   argumentSlot,

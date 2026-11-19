@@ -1,7 +1,8 @@
 export { missingInputError } from './inputs/missing-input.js';
 export type { Content } from './inputs/content.js';
 export { Application } from './application/application.js';
-export { Command, isPortableName } from './commands/command.js';
+export { Command } from './commands/command.js';
+export { isPortableName } from './commands/declaration.js';
 export { optionSet } from './commands/option-sets.js';
 export type { OptionSet } from './commands/option-sets.js';
 export { escapeControlCharacters } from './support/controls.js';

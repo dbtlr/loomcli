@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test';
 
-import { requiredStdin } from '../src/commands/command.js';
+import { requiredStdin } from '../src/commands/inputs.js';
 import type { Content } from '../src/inputs/content.js';
 
 test('required stdin that arrives unprepared throws at the accessor', () => {

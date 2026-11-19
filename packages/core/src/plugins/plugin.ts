@@ -1,9 +1,12 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-import { attach, childNode, commandCode, commandNode } from '../commands/command.js';
-import type { AttachedChild, Command } from '../commands/command.js';
+import { attach, childNode } from '../commands/attach.js';
+import type { Command } from '../commands/command.js';
+import { commandCode } from '../commands/declaration.js';
 import { boundOptions, pluginSites } from '../commands/globals.js';
 import type { InputRecords } from '../commands/globals.js';
+import { commandNode } from '../commands/state.js';
+import type { AttachedChild } from '../commands/types.js';
 import { elided, quoteString, spelled } from '../diagnostics/diagnostic-text.js';
 import type { Finding } from '../diagnostics/diagnostic-text.js';
 import { partFinding, pluginOptionSite, slotSite } from '../diagnostics/facts.js';

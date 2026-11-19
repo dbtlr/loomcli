@@ -35,3 +35,21 @@ description: The map of @loomcli/core's source modules. Which folder under packa
 - `host/process-handle.ts` is the one file that reads the global `process`, asks `node:os` for the user's folders, and starts real children. Lint allows those calls only there.
 - `host/types.ts` carries core's `/// <reference types="node" preserve="true" />` directive. The `preserve` attribute keeps the directive in the emitted declarations, so a consumer's type check of the published package finds the Node globals.
 - A new file goes in the module of the concept it serves. It goes in `support/` only when it serves no single concept.
+
+## Command declarations, inputs, and invocation preparation
+
+- `commands/command.ts` holds the Command builder and its type-level surface.
+- `commands/types.ts` holds built shapes and node-handle types.
+- `commands/state.ts` holds declaration state and the handle registry.
+- `commands/declaration.ts` holds declaration findings and the alias, extension, action, and result calls.
+- `commands/inputs.ts` holds input calls.
+- `commands/attach.ts` checks attachments and siblings.
+- `commands/attach-hooks.ts` runs plugin attachment hooks.
+- `commands/build.ts` builds the command graph.
+- `inputs/places.ts` collects declarations and their places.
+- `inputs/declarations.ts` holds input and invocation declaration types, declaration places, and sites.
+- `inputs/ledger.ts` holds `ValidatedInputs` and its ledger of reports.
+- `inputs/supplied.ts` reads supplied values.
+- `inputs/declared-values.ts` prepares declared defaults and implied values.
+- `inputs/validation.ts` holds Standard Schema validation, reports, and `validateValues`.
+- `invocation/prepare.ts` prepares dispatch from a parsed invocation.

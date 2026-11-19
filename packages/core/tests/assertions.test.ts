@@ -8,6 +8,7 @@ const packages = new URL('../../', import.meta.url);
 /**
  * The seams where validated `unknown` values meet declaration-inferred types, by path under
  * `packages`, across every package's sources. Nothing else.
+ * `build.ts` binds validated globals to the action's declared global type.
  * `option-sets.ts` types the one runtime set class as the set of the record `optionSet()` received.
  * `ledger.ts` reads one input's value as its config's output, and an option set's values as the
  * record its configs name.
@@ -26,7 +27,7 @@ const packages = new URL('../../', import.meta.url);
  * values leave it optional.
  */
 const allowed = {
-  'core/src/commands/command.ts': 1,
+  'core/src/commands/build.ts': 1,
   'core/src/commands/option-sets.ts': 1,
   'core/src/inputs/ledger.ts': 2,
   'core/src/invocation/invoke.ts': 1,
