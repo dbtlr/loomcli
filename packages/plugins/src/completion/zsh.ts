@@ -23,6 +23,51 @@ __loom_${id}_debug()
     fi
 }
 
+# Offers the file names in the folder the word under the cursor names: all of
+# them (any), only the folders (dirs), or the folders and the names that end in
+# one of the extensions in the caller's lines array, compared as strings
+# (extensions). The folder part of the word, through its last /, moves to
+# IPREFIX and is inserted as typed. Its quoting is removed with (Q), which
+# expands nothing, and only a leading ~/ is read as the home folder. The folder
+# is listed by a glob in which only the trailing * is live, so no substitution,
+# parameter, glob qualifier, or tilde in the typed text is evaluated. A dot-name
+# is listed only when the typed name starts with a dot. compadd -f tests each
+# name in that folder, so a folder is shown and inserted with a / after it.
+__loom_${id}_offer_files()
+{
+    emulate -L zsh
+    local kind=$1 typed=$PREFIX lead=$IPREFIX folder name filter keep
+    local -a found names where
+
+    compset -P '*/'
+    folder=\${(Q)typed[1,$#typed-$#PREFIX]}
+    # A ~/ after the lead of an attached value reaches the program as typed.
+    if [[ -z $lead && \${typed[1,2]} == '~/' && -n $HOME ]]; then
+        folder=\${HOME%/}/\${folder[3,-1]}
+    fi
+    if [[ \${(Q)PREFIX} == .* ]]; then
+        found=("$folder"*(ND))
+    else
+        found=("$folder"*(N))
+    fi
+    for name in "\${found[@]}"; do
+        name=\${name:t}
+        keep=1
+        if [[ $kind != any && ! -d $folder$name ]]; then
+            keep=0
+            if [[ $kind == extensions ]]; then
+                for filter in "\${lines[@]}"; do
+                    [[ $name == *."$filter" ]] && keep=1
+                done
+            fi
+        fi
+        (( keep )) && names+=("$name")
+    done
+    [[ -n $folder ]] && where=(-W "$folder")
+    __loom_${id}_debug "Offering \${#names[@]} file names in '\${folder}'"
+    compadd -f "\${where[@]}" -- "\${names[@]}"
+}
+
 _loom_${id}()
 {
     local shellCompDirectiveError=1
@@ -32,8 +77,8 @@ _loom_${id}()
     local shellCompDirectiveFilterDirs=16
     local shellCompDirectiveKeepOrder=32
 
-    local out directive comp lastLine filter
-    local -a completions request describe globs
+    local out directive comp lastLine
+    local -a completions request describe
 
     __loom_${id}_debug "\\n========= starting completion logic =========="
     __loom_${id}_debug "CURRENT: \${CURRENT}, words[*]: \${words[*]}"
@@ -108,16 +153,11 @@ _loom_${id}()
             shift lines
         fi
         if [ $((directive & shellCompDirectiveFilterFileExt)) -ne 0 ]; then
-            # Each extension is quoted as a pattern, so no glob qualifier in it
-            # runs.
-            for filter in "\${lines[@]}"; do
-                globs+=(-g "*.\${(b)filter}")
-            done
+            __loom_${id}_debug "File extensions: \${lines[*]}"
+            __loom_${id}_offer_files extensions
+        else
+            __loom_${id}_offer_files dirs
         fi
-        __loom_${id}_debug "File filtering patterns: \${globs[*]}"
-        # _path_files offers the directories and the names the patterns
-        # match, and unlike _files never falls back to every file name.
-        _path_files -/ "\${globs[@]}"
         return
     else
         if [ $((directive & shellCompDirectiveKeepOrder)) -ne 0 ]; then
@@ -153,7 +193,7 @@ _loom_${id}()
 
                 # We must return the result of this command, so it must be the
                 # last command, or else we must store its result to return it.
-                _files
+                __loom_${id}_offer_files any
             fi
         fi
     fi
@@ -185,9 +225,7 @@ fi
  * - Quoting is removed with the `(Q)` flag, which expands nothing; when `compstate[quote]` is set,
  *   the cursor is inside an unclosed quote and the script offers nothing without a call.
  * - Words are no longer split with `${=...}`, which broke a quoted word holding a space.
- * - `_describe` receives its arguments as an array; `_files` is called directly rather than through
- *   an `_arguments` action string, and each file extension is quoted as a pattern with the `(b)`
- *   flag, so no glob qualifier in it runs.
+ * - `_describe` receives its arguments as an array.
  * - `\` and then `:` are escaped in each word and description passed to `_describe`, which reads a
  *   backslash as an escape.
  * - The last word of the request is `$PREFIX`, the word under the cursor cut at the cursor, rather
@@ -197,9 +235,16 @@ fi
  *   `_arguments`. The file still runs the function when compinit autoloads it as `_<name>`.
  * - The `#compdef` line and the autoload check carry the name as it is, because the Application's
  *   name is a portable name.
- * - Directives 8 and 16 call `_path_files -/` with the extension patterns rather than `_files`,
- *   so the directories and the names an extension matches are offered, and no other file name is,
- *   where `_files` falls back to every file.
+ * - No `_files` or `_path_files` is called, because both expand the folder part of the typed word,
+ *   running a `$(…)` in it. `__loom_<id>_offer_files` lists file names itself: the folder part of
+ *   the word moves to `$IPREFIX` and is inserted as typed, its quoting is removed with `(Q)`, and
+ *   it is listed by a glob of the quoted folder with only a trailing `*` live, so nothing typed is
+ *   expanded or run. Only a leading `~/`, with no lead before it, is read as `$HOME`. The names go
+ *   to `compadd -f` with the folder as `-W`, which reads it as a literal path, so a folder is shown
+ *   and inserted with a `/`. A dot-name is listed only when the typed name starts with a dot.
+ * - Directive 0 falls back to that listing of every name, rather than to `_files`. Directive 16
+ *   lists the folders, and directive 8 the folders and the names that end in an offered
+ *   extension, compared as strings, so no other file name is offered.
  * - Under directives 8 and 16, a first answer word that starts with `-` is the lead of a value
  *   attached to its option, such as `--config=` or `-c`, moved from `$PREFIX` to `$IPREFIX` as a
  *   literal, so the names after it are listed. No answer word names a folder to list in.

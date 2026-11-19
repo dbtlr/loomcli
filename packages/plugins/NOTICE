@@ -74,9 +74,8 @@ Changes made to the Cobra scripts:
   completes file names itself with that file listing, only when the directive
   allows files and no word was offered. Bash with compopt keeps Cobra's
   registration.
-- Zsh no longer splits words with ${=...}, passes _describe its arguments as an
-  array, calls _files directly rather than through an _arguments action
-  string, and quotes each file extension as a pattern with the (b) flag.
+- Zsh no longer splits words with ${=...} and passes _describe its arguments as
+  an array.
 - Zsh escapes "\" and then ":" in each word and description it passes to
   _describe, which reads a backslash as an escape.
 - Zsh sends $PREFIX, the word under the cursor cut at the cursor, rather than
@@ -85,8 +84,14 @@ Changes made to the Cobra scripts:
   __loom_<identifier>_debug, so no application name shadows a completion system
   function such as _describe, _files, or _arguments. The file still runs the
   function when compinit autoloads it as _<name>.
-- Zsh honors directives 8 and 16 with _path_files -/ and one -g pattern per
-  extension, rather than _files, which falls back to every file name.
+- Zsh calls no _files or _path_files, because both expand the folder part of
+  the typed word. It lists file names itself: the folder part moves to IPREFIX
+  and is inserted as typed, its quoting is removed with (Q), and it is listed
+  by a glob of the quoted folder with only a trailing "*" live, so nothing
+  typed is expanded or run. Only a leading "~/" is read as the home folder.
+  The names are offered with compadd -f. Directive 0 offers every name,
+  directive 16 the folders, and directive 8 the folders and the names that end
+  in an offered extension, compared as strings.
 - Fish filters by prefix with a string comparison, keeps trailing empty lines
   in the answer, and offers nothing rather than file names after an error. Fish
   honors directives 8 and 16 by listing the names that start with the typed
