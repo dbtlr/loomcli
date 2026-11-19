@@ -1,9 +1,9 @@
-import { command } from '../style/ansi.js';
 import { splitLines } from '../style/lines.js';
-import { close, escapeText, headerEnd, open } from '../style/style.js';
-import { parseText } from '../style/wire.js';
-import type { FrameMark, WireTrace } from '../style/wire.js';
+import type { Palette } from '../style/state.js';
+import { close, escapeText } from '../style/style.js';
 import { handled } from '../support/thenable.js';
+import { carried, carryText, emptyCarry } from './carry.js';
+import type { Carry } from './carry.js';
 import { controlSequences, endsWithLineBreak, visible } from './region.js';
 import type { Frame } from './region.js';
 
@@ -56,6 +56,8 @@ interface MessageSink {
    * a function of the whole message, which is laid out whole at every chunk.
    */
   partial: boolean;
+  /** The application's palette, whose tokens a style in the message may name. */
+  palette: () => Palette;
   /** The lane view's marked text for the text so far, under one context the message keeps. */
   render: (text: string) => string;
   /** Marked text resolved for the message's destination. */
@@ -141,50 +143,6 @@ function visibleFrom(row: string, from: number, growing: boolean): { text: strin
   return { shown: Math.max(pieces.at(-1)?.end ?? 0, from), text };
 }
 
-/** The frame markers, which decoded text holds only from a header the parser rejected or a stray close. */
-const markers: ReadonlySet<string> = new Set([open, headerEnd, close]);
-
-/**
- * Whether decoded lines leave the lines after them more than the style frames open at their end:
- * they hold a terminal control the scanner reads as a command, a carriage return without its line
- * feed among them, or a frame marker.
- */
-function unsplittable(text: string): boolean {
-  for (let index = 0; index < text.length; index += 1) {
-    if (markers.has(text.charAt(index)) || command(text, index) !== undefined) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * The style frames open at the end of `lines`, finished lines of a message's text that start under
- * the frames `outer` holds, each as its header, outermost first. Undefined when the lines leave the
- * lines after them anything else: a terminal control, a frame other than a style, or a header the
- * parser rejects without the application's palette, whose tokens a header may name.
- */
-function carried(outer: readonly string[], lines: string): string[] | undefined {
-  const trace: Required<WireTrace> = { frames: [], origins: [], whole: [] };
-  const parsed = parseText(`${outer.join('')}${lines}`, new Map(), { mainGlyphs: true, trace });
-  return unsplittable(parsed.text) ? undefined : openStyles(trace.frames);
-}
-
-/** The headers of the frames still open after `frames`, or undefined when one is not a style. */
-function openStyles(frames: readonly FrameMark[]): string[] | undefined {
-  const headers: string[] = [];
-  for (const mark of frames) {
-    if (mark.kind === 'close') {
-      headers.pop();
-    } else if (mark.scoped) {
-      headers.push(mark.header);
-    } else {
-      return undefined;
-    }
-  }
-  return headers;
-}
-
 /** An unfinished row as the screen keeps it: rows counted from its visible text alone. */
 function frameOf(text: string): Frame | undefined {
   return text === '' ? undefined : { marked: escapeText(visible(text)), text };
@@ -235,7 +193,7 @@ class StreamedMessage {
   #joined = '';
   /**
    * The lines, or on a terminal the rows, written for good, counted in the text the lane view
-   * lays out: from the split on, after the one row that carries its open frames.
+   * lays out: from the split on, after the one row that sets up what the lines before it leave open.
    */
   #written = 0;
   /**
@@ -243,9 +201,12 @@ class StreamedMessage {
    * written, and never laid out again. It stays at the start for a lane view an author overrode.
    */
   #split = 0;
-  /** The style frames the text holds open at the split, each as its header. */
-  #carry: readonly string[] = [];
-  /** Whether the split may move on: the lane view is core's, and no line before it stopped it. */
+  /** What the lines before the split leave the lines after it. */
+  #carry: Carry = emptyCarry;
+  /**
+   * Whether the split may move on: the lane view is core's, and no line before it names a token
+   * the palette lacks.
+   */
   #splits: boolean;
   /** The visible characters of a `print`'s unfinished line already written at the cursor. */
   #head = 0;
@@ -435,34 +396,39 @@ class StreamedMessage {
 
   /**
    * The text the lane view lays out, through offset `to`: from the start before the split has
-   * moved, and after it the frames open at the split, a line break that ends their row, and the
-   * text from the split on. A lane view core ships lays the lines after that row out as it lays
+   * moved, and after it the row that sets up what the lines before the split leave open, a line
+   * break that ends it, and the text from the split on. A lane view core ships lays the lines after that row out as it lays
    * them out in the whole text, so they are the same rows.
    */
   #fromSplit(text: string, to: number): string {
     return this.#split === 0
       ? text.slice(0, to)
-      : `${this.#carry.join('')}\n${text.slice(this.#split, to)}`;
+      : `${carryText(this.#carry)}\n${text.slice(this.#split, to)}`;
   }
 
   /**
    * Moves the split past the lines the text so far has finished, which the advance just wrote, so
    * no later chunk lays them out again. The rows they took leave the count of rows written, and the
-   * row that carries the frames open at the new split joins it.
+   * row that sets up what they leave open joins it. A line break inside a frame header or a control
+   * string is no place to split, so the split waits for a later one, and a token the palette lacks
+   * stops it for the rest of the message.
    */
   #moveSplit(text: string): void {
     const next = text.lastIndexOf('\n') + 1;
     if (!this.#splits || next <= this.#split) {
       return;
     }
-    const carry = carried(this.#carry, text.slice(this.#split, next));
-    if (carry === undefined) {
-      this.#splits = false;
+    const found = carried(this.#carry, text.slice(this.#split, next), {
+      palette: this.#sink.palette(),
+      resolve: this.#sink.resolve,
+    });
+    if (found.kind !== 'carry') {
+      this.#splits = found.kind === 'wait';
       return;
     }
     this.#written += 1 - this.#rowsOf(this.#fromSplit(text, next));
     this.#split = next;
-    this.#carry = carry;
+    this.#carry = found.carry;
   }
 
   /** How many rows, or off a terminal lines, the lane view lays a text that ends a line out in. */

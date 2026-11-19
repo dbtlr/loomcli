@@ -1538,6 +1538,7 @@ export class Output {
     const line = this.lineWriter(target, slot);
     const sink: MessageSink = {
       hidden,
+      palette: () => this.palette,
       partial: !overridden<string>(this.registry, lanes[kind]),
       raise: (cause) => {
         this.raised.add(cause);

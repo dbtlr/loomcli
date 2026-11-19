@@ -46,7 +46,7 @@
  * - At the process's end, the text an open stream received is written with its line break, at the
  *   place its last write took among the queued writes.
  */
-import { Application, lanes, override, plugin, style } from '@loomcli/core';
+import { Application, lanes, override, pad, plugin, style } from '@loomcli/core';
 import type { Lane, Out } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import type { MockProcess } from '@loomcli/testing';
@@ -383,6 +383,7 @@ const layouts = [
   'word    wordxx   word  w\n\nlast   ',
   'a verylongwordthatoverflows b c\r\nnext',
   'sixteen columns. and more',
+  'a \u001B[31mred word\nccc ddd eee fff\nlast',
 ];
 
 test.each(['info', 'print', 'warn'] as const)(
@@ -653,6 +654,8 @@ const endingTexts: readonly (readonly Segment[])[] = [
   [{ styled: style.bold('Answer ready.\n') }],
   ['Then ', { styled: style.bold('bold\nend\n') }],
   [{ styled: style.bold('a\n') }, 'b\n'],
+  ['\u001B[31mred\nstill red\n'],
+  [{ styled: pad('ab\ncd', 4) }, '\nnext\n'],
 ];
 
 /** The text a segment holds. */
