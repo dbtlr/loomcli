@@ -169,6 +169,8 @@ export const surfacePackages = [
           format:
             "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
           help: "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          installation:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
           logging:
             "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
           manpage:

@@ -46,6 +46,7 @@ import {
   unlistedActions,
 } from './lines.js';
 import type { InstalledLine, LineAction, LineListing, StartupLinesOutcome } from './lines.js';
+import { reachable } from './reach.js';
 import { nothingRecorded, pluginFilePath, readPluginFile, writePluginFile } from './record.js';
 import type {
   Committed,
@@ -555,10 +556,14 @@ function prepareInstall(
  */
 function writeTargets(plan: InstallPlan, { listed, log }: Carrying): void {
   for (const directory of plan.created) {
-    createDirectory(directory, listed.directoryMode);
+    reachable(directory, () => {
+      createDirectory(directory, listed.directoryMode);
+    });
   }
   for (const file of listed.files.filter(({ path }) => !plan.unchanged.has(path))) {
-    replaceFile(file.path, file.content, file.mode === undefined ? {} : { mode: file.mode });
+    reachable(file.path, () => {
+      replaceFile(file.path, file.content, file.mode === undefined ? {} : { mode: file.mode });
+    });
     fileWritten(log, { path: file.path });
   }
   for (const folder of listed.folders) {

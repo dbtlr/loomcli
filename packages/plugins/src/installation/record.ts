@@ -10,6 +10,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 
 import { isRecord } from '../plain-data.js';
 import { errorCode, replaceFile } from './disk.js';
+import { reachable } from './reach.js';
 
 /** A recorded file and the digest the module wrote to it. */
 interface CommittedFile {
@@ -359,12 +360,12 @@ function pendingEntriesOf(
     : { ...rest, files, lines, registrations, state: 'pending' };
 }
 
-/** The plugin's file's text, or `undefined` when there is none. A failed read throws. */
+/** The plugin's file's text, or `undefined` when there is none, or a file sits where its folder should be. A failed read throws. */
 function readText(path: string): string | undefined {
   try {
     return readFileSync(path, 'utf8');
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') {
+    if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') {
       return undefined;
     }
     throw error;
@@ -463,8 +464,10 @@ function serialize(file: PluginFile): string {
 
 /** Replaces the plugin's file whole, creating the record directory when it is missing. */
 function writePluginFile(path: string, file: PluginFile): void {
-  mkdirSync(dirname(path), { recursive: true });
-  replaceFile(path, serialize(file));
+  reachable(path, () => {
+    mkdirSync(dirname(path), { recursive: true });
+    replaceFile(path, serialize(file));
+  });
 }
 
 export type {

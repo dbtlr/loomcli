@@ -287,6 +287,10 @@ declare function usageHint(command: readonly string[]): string;
 
 declare function valuesNoun(arity: number): string;
 
+declare function writeBlocked(path: string): string;
+
+declare function writeUnwritable(path: string, readOnly: boolean): string;
+
 declare function badFile(name: string, value: string): string;
 
 declare function badLevel(name: string, value: string): string;

@@ -19,6 +19,7 @@ import {
   rmSync,
   writeSync,
 } from 'node:fs';
+import type { Stats } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
 import type { Log } from '@loomcli/core';
@@ -50,9 +51,24 @@ function digestOf(content: string | Uint8Array): string {
   return `sha256:${nodeCrypto().createHash('sha256').update(content).digest('hex')}`;
 }
 
+/**
+ * What `lstat` finds at `path` without following a link, or `undefined` when nothing is there or a
+ * file sits where a folder of its path should be, which holds nothing at `path` either.
+ */
+function lstatIfPresent(path: string): Stats | undefined {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 /** What `path` holds, read without following a symbolic link. */
 function observe(path: string): Observed {
-  const stats = lstatSync(path, { throwIfNoEntry: false });
+  const stats = lstatIfPresent(path);
   if (stats === undefined) {
     return { kind: 'absent' };
   }
@@ -69,7 +85,7 @@ function observe(path: string): Observed {
 
 /** Whether anything is at `path`, a symbolic link included, without reading it. */
 function exists(path: string): boolean {
-  return lstatSync(path, { throwIfNoEntry: false }) !== undefined;
+  return lstatIfPresent(path) !== undefined;
 }
 
 /** The suffix that marks a staging file, which recovery removes when a run leaves one behind. */
@@ -181,12 +197,12 @@ function removeStaging(staging: string): void {
   }
 }
 
-/** The names in a directory, or none when the directory is gone. */
+/** The names in a directory, or none when the directory is gone or a file sits in its place. */
 function entriesOf(directory: string): string[] {
   try {
     return readdirSync(directory);
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') {
+    if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') {
       return [];
     }
     throw error;

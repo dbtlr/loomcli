@@ -12,6 +12,7 @@ import type * as dotenv from './dotenv/messages.js';
 import type * as externalCommands from './external-commands/messages.js';
 import type * as format from './format/messages.js';
 import type * as help from './help/messages.js';
+import type * as installation from './installation/messages.js';
 import type * as logging from './logging/messages.js';
 import type * as manpage from './manpage/messages.js';
 import type * as mcp from './mcp/messages.js';
@@ -44,6 +45,8 @@ interface PluginMessageModules {
   readonly format: typeof format;
   /** The help plugin's hint and the labels of its help page. */
   readonly help: typeof help;
+  /** The sentences of the installed-files module that the install plugins share. */
+  readonly installation: typeof installation;
   /** The sentences of the logging plugin. */
   readonly logging: typeof logging;
   /** The sentences of the man page plugin's installs and refreshes. */
