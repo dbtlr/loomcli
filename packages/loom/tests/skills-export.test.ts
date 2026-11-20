@@ -307,3 +307,22 @@ test('all destination checks finish before any skill is written', async () => {
   expect(existsSync(join(root, 'committed/notes'))).toBe(false);
   expect(snapshot(join(root, 'committed'))).toEqual(before);
 });
+
+test("a skill's files loader that throws fails with the loader diagnostic and writes nothing", async () => {
+  const root = fixture();
+  put(
+    root,
+    'src/application.ts',
+    `import { Application } from '@loomcli/core';
+import { skills } from '@loomcli/plugins/skills';
+export const app = new Application('notes', { description: 'Notes.', plugins: [skills({ skills: [{ name: 'notes', files: () => { throw new Error('The notes skill broke.'); } }] })] });`,
+  );
+  const result = await loom(root, ['skills', 'export', 'committed']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('@loomcli/loom/skill-loader-failed');
+  expect(result.stderr).toContain(
+    "A skill's files loader in src/application.ts threw: Error: The notes skill broke.\n",
+  );
+  expect(result.stderr).toContain('Fix the skill files loader and run loom skills export again.');
+  expect(existsSync(join(root, 'committed'))).toBe(false);
+});

@@ -311,7 +311,7 @@ test('renaming an application preserves the earlier reference and writes the new
   }
 });
 
-test('a renderer throwing a plain Error uses the module diagnostic', async () => {
+test('a renderer throwing a plain Error fails with the renderer diagnostic, not the module one', async () => {
   const root = fixturePackage({
     'node_modules/@loomcli/plugins/package.json':
       '{"type":"module","exports":{"./skills":"./skills.js"}}',
@@ -323,12 +323,14 @@ test('a renderer throwing a plain Error uses the module diagnostic', async () =>
   });
   const result = await loom(root, ['docs', 'reference']);
   expect(result.status).toBe(1);
+  expect(result.stderr).toContain('@loomcli/loom/command-references-failed');
   expect(result.stderr).toContain(
-    'src/application.ts threw while it loaded: Error: broken renderer\n',
+    '@loomcli/plugins threw while it rendered the command references of src/application.ts: Error: broken renderer\n',
   );
   expect(result.stderr).toContain(
-    'Fix the code that throws, or move the work into an action, which runs only when its Command runs.',
+    'Install @loomcli/plugins and @loomcli/core at one version, then run loom docs again.',
   );
+  expect(result.stderr).not.toContain('threw while it loaded');
   expect(result.stderr).not.toContain('Skill files loader');
   expect(result.stderr).not.toContain('loom skills export again');
   expect(existsSync(join(root, 'reference'))).toBe(false);

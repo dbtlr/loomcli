@@ -414,6 +414,10 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 **Application failed to load.** loom imports the application module to learn what it declares, loom init how the entry imports its Application, loom build the skills folder skills() names, loom skills export its skill files, and loom docs the Commands it documents. The module threw while it loaded, so the command could not finish.
 
+### @loomcli/loom/command-references-failed
+
+**Command references failed to render.** loom docs loaded the application, then asked the @loomcli/plugins the package resolves to render the command reference files of its Commands. The renderer threw, so nothing was written.
+
 ### @loomcli/loom/skill-loader-failed
 
 **Skill files loader failed.** loom skills export loaded the application, but the author code that supplies the files of a skill threw, so nothing was written.
