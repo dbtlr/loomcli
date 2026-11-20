@@ -72,6 +72,11 @@ test('--version loads each plugin Command declaration, no Command implementation
       'completion/shell-names.js',
       // Bun shares these helpers with the change-event templates in the common message module.
       'installation/disk.js',
+      // The record's write names a folder it cannot reach in the installation module's own words.
+      // Its sentences and phrase maker load with the record for that reason.
+      'installation/messages.js',
+      'installation/phrases.js',
+      'installation/reach.js',
       'installation/record.js',
       'manpage/pages.js',
       'manpage/plugin.js',
