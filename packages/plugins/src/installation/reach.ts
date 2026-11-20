@@ -26,15 +26,23 @@ function reading<Result>(path: string, read: () => Result): Result {
   try {
     return read();
   } catch (error) {
-    const code = errorCode(error);
-    if (code === 'ENOTDIR') {
-      throw blocked(path);
-    }
-    if (code === 'EACCES' || code === 'EPERM') {
-      throw new FatalError(installationPhrase('readUnreadable', path));
-    }
-    throw error;
+    throw readFailure(path, error);
   }
+}
+
+/**
+ * The failure a read at `path` raises in place of `error`: the blocked or unreadable sentence for
+ * the codes `reading` maps, and `error` itself for any other.
+ */
+function readFailure(path: string, error: unknown): unknown {
+  const code = errorCode(error);
+  if (code === 'ENOTDIR') {
+    return blocked(path);
+  }
+  if (code === 'EACCES' || code === 'EPERM') {
+    return new FatalError(installationPhrase('readUnreadable', path));
+  }
+  return error;
 }
 
 /**
@@ -57,4 +65,4 @@ function writing<Result>(path: string, write: () => Result): Result {
   }
 }
 
-export { errorCode, reading, writing };
+export { errorCode, readFailure, reading, writing };

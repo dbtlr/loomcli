@@ -26,7 +26,7 @@ import type { Log } from '@loomcli/core';
 
 import { nodeCrypto } from '../built-ins.js';
 import { fileRemoved } from '../change-events.js';
-import { errorCode, reading } from './reach.js';
+import { errorCode, readFailure, reading } from './reach.js';
 
 /** The permission bits of a file mode, without its file type. */
 const permissionBits = 0o7777;
@@ -69,7 +69,11 @@ function observe(path: string): Observed {
     return { kind: 'directory' };
   }
   return stats.isFile()
-    ? { digest: digestOf(readFileSync(path)), kind: 'file', mode: stats.mode & permissionBits }
+    ? {
+        digest: digestOf(reading(path, () => readFileSync(path))),
+        kind: 'file',
+        mode: stats.mode & permissionBits,
+      }
     : { kind: 'special' };
 }
 
@@ -297,7 +301,7 @@ function realPath(path: string, below: readonly string[] = []): string {
   } catch (error) {
     const parent = dirname(path);
     if (!isMissing(error) || parent === path) {
-      throw error;
+      throw readFailure(path, error);
     }
     return realPath(parent, [basename(path), ...below]);
   }

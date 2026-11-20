@@ -291,6 +291,24 @@ describe('completion', () => {
     expect(existsSync(bashScript(box))).toBe(true);
   });
 
+  it.skipIf(isRoot)(
+    'install over an installed script it cannot read names the script',
+    async () => {
+      const box = sandbox();
+      await expect(runShells(box, ['install', 'bash'])).resolves.toMatchObject({ status: 0 });
+      const before = { home: contents(box.home), state: contents(box.state) };
+      chmodSync(bashScript(box), 0o000);
+      try {
+        await expect(runShells(box, ['install', 'bash'])).resolves.toEqual(
+          failure(unreadable(bashScript(box))),
+        );
+      } finally {
+        chmodSync(bashScript(box), 0o644);
+      }
+      expect({ home: contents(box.home), state: contents(box.state) }).toEqual(before);
+    },
+  );
+
   it('uninstall of every shell checks each before it removes any', async () => {
     const box = sandbox();
     await expect(runShells(box, ['install', 'bash'])).resolves.toMatchObject({ status: 0 });
@@ -385,6 +403,28 @@ describe('skills', () => {
     expect(result).toEqual(failure(unwritable(join(claudeSkills(box), 'notes'))));
     expect(readdirSync(claudeSkills(box))).toEqual([]);
   });
+
+  it.skipIf(isRoot)(
+    'install, status, and uninstall name a skills home they cannot search',
+    async () => {
+      const box = sandbox();
+      mkdirSync(claudeSkills(box), { recursive: true });
+      const home = join(box.home, '.claude');
+
+      const results = await unsearchable(home, async () => [
+        await runSkillsIn(box, ['install']),
+        await runSkillsIn(box, ['status']),
+        await runSkillsIn(box, ['uninstall']),
+      ]);
+
+      expect(results).toEqual([
+        failure(unreadable(claudeSkills(box))),
+        failure(unreadable(claudeSkills(box))),
+        failure(unreadable(claudeSkills(box))),
+      ]);
+      expect(existsSync(join(box.state, 'notes'))).toBe(false);
+    },
+  );
 
   it('uninstall, status, and install over a blocked skills folder fail and keep the records', async () => {
     const box = sandbox();
