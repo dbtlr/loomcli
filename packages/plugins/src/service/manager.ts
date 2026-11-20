@@ -45,6 +45,9 @@ interface Manager {
 /** The code of a call that succeeded. */
 const succeeded = 0;
 
+/** The failure status for a call that stopped being waited on without reporting a code. */
+const failed = 1;
+
 /** How many seconds one read that status makes may run before the plugin ends it. */
 const readLimitSeconds = 5;
 
@@ -55,9 +58,14 @@ const readLimit = readLimitSeconds * millisecondsPerSecond;
 
 /** What a call that ended answered. */
 function answerOf(exit: ChildExit): Answer {
-  return exit.kind === 'exited'
-    ? { code: exit.code, kind: 'exited', stdout: exit.stdout.text }
-    : { error: exit.error, kind: 'missing' };
+  if (exit.kind === 'unstarted') {
+    return { error: exit.error, kind: 'missing' };
+  }
+  return {
+    code: exit.kind === 'exited' ? exit.code : failed,
+    kind: 'exited',
+    stdout: exit.stdout.text,
+  };
 }
 
 /** Logs a call that started once it ends, whatever its code; one that could not start logs none. */

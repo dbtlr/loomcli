@@ -77,7 +77,10 @@ export async function runBun(
   if (exit.kind === 'unstarted') {
     throw unstartedError(exit.error);
   }
-  return { code: exit.code, output: `${exit.stdout.text}${exit.stderr.text}` };
+  return {
+    code: exit.kind === 'exited' ? exit.code : 1,
+    output: `${exit.stdout.text}${exit.stderr.text}`,
+  };
 }
 
 /**
@@ -121,7 +124,7 @@ export async function superviseBun(
     if (exit.kind === 'unstarted') {
       throw unstartedError(exit.error);
     }
-    return { code: exit.code, output: collected?.text() ?? '' };
+    return { code: exit.kind === 'exited' ? exit.code : 1, output: collected?.text() ?? '' };
   } finally {
     removeKill();
     signal.removeEventListener('abort', stop);

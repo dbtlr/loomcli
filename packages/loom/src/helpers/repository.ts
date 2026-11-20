@@ -71,7 +71,7 @@ async function gitOutput(checkout: Checkout, args: string[]) {
   if (exit.kind === 'unstarted') {
     throw unstartedGit(exit.error);
   }
-  if (exit.code !== 0) {
+  if (exit.kind !== 'exited' || exit.code !== 0) {
     throw new Error(gitFailed(args[0] ?? '', exit.stderr.text.trim()));
   }
   return exit.stdout;
@@ -168,7 +168,7 @@ export async function isRepository(checkout: Checkout) {
   if (exit.kind === 'unstarted') {
     throw unstartedGit(exit.error);
   }
-  return exit.code === 0;
+  return exit.kind === 'exited' && exit.code === 0;
 }
 
 export async function isShallow(checkout: Checkout) {

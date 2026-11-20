@@ -46,7 +46,7 @@ const revision = new Application("revision").action(async (context) => {
   const { host, out, signal } = context;
   const git = host.spawn("git", ["rev-parse", "HEAD"], { signal });
   const exit = await git.exited;
-  if (exit.kind === "unstarted" || exit.code !== 0) {
+  if (exit.kind !== "exited" || exit.code !== 0) {
     throw new NotARepositoryError();
   }
   await out.print(exit.stdout.text.trim());

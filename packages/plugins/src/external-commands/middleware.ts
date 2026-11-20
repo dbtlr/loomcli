@@ -49,7 +49,7 @@ async function start(
   context: MiddlewareContext,
   program: string,
   rest: readonly string[],
-): Promise<Ended> {
+): Promise<Ended | undefined> {
   const { host, out, signal } = context;
   return out.lendTerminal(async () => {
     try {
@@ -59,9 +59,10 @@ async function start(
         stdin: 'inherit',
         stdout: 'inherit',
       }).exited;
-      return exit.kind === 'exited'
-        ? { code: exit.code, kind: 'exited' }
-        : { code: startCode(exit.error), kind: 'unstarted' };
+      if (exit.kind === 'unstarted') {
+        return { code: startCode(exit.error), kind: 'unstarted' };
+      }
+      return exit.kind === 'exited' ? { code: exit.code, kind: 'exited' } : undefined;
     } catch (error) {
       // A handle whose spawn throws, such as a mock with no script, reports a program that did not start.
       return { code: startCode(error), kind: 'unstarted' };
@@ -88,10 +89,10 @@ async function runProgram(
   const line = running(program);
   context.log.debug(line.template, line.fields);
   const ended = await start(context, program, rest);
-  if (ended.kind === 'unstarted') {
+  if (ended?.kind === 'unstarted') {
     throw new FatalError(cannotRun(context.graph.name, program, ended.code));
   }
-  context.exitCode = isExitCode(ended.code) ? ended.code : outOfRange;
+  context.exitCode = ended !== undefined && isExitCode(ended.code) ? ended.code : outOfRange;
 }
 
 /**

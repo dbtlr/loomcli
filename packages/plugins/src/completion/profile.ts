@@ -110,6 +110,11 @@ async function answerOf(request: ProfileRequest, program: string): Promise<strin
   if (answer.kind === 'unstarted') {
     throw new FatalError(profileNotFound(name, shell, { kind: 'not-started' }));
   }
+  if (answer.kind === 'abandoned') {
+    throw new FatalError(
+      profileNotFound(name, shell, { answer: answer.stdout.text, kind: 'reported' }),
+    );
+  }
   if (answer.code !== succeeded) {
     throw new FatalError(profileNotFound(name, shell, { code: answer.code, kind: 'exited' }));
   }

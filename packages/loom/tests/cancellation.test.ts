@@ -155,7 +155,7 @@ function recordingKills(mock: MockProcess) {
     spawn(command, args, options) {
       const child = mock.spawn(command, args, options);
       return {
-        exited: child.exited,
+        ...child,
         kill(signal) {
           kills.push(signal ?? 'SIGTERM');
           child.kill(signal);

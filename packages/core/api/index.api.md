@@ -221,6 +221,7 @@ export type ChainOutcome = 'cancelled' | 'dispatched' | 'taken-over';
 
 // @public
 export interface Child {
+    abandon(): void;
     readonly exited: Promise<ChildExit>;
     kill(signal?: ProcessSignal | 'SIGKILL'): void;
 }
@@ -234,6 +235,10 @@ export type ChildExit = {
 } | {
     readonly kind: 'unstarted';
     readonly error: Error;
+} | {
+    readonly kind: 'abandoned';
+    readonly stdout: ChildOutput;
+    readonly stderr: ChildOutput;
 };
 
 // @public

@@ -148,17 +148,30 @@ export type SpawnOptions = {
  * @public
  */
 export interface ChildOutput {
-  /** The bytes the child wrote to the stream. */
+  /** The bytes collected from the stream before `exited` settled. */
   readonly bytes: Uint8Array;
   /** The bytes decoded as UTF-8. */
   readonly text: string;
 }
 
 /**
- * How a child ended: its exit code, 128 plus the signal's number for a child a signal ended, and
- * its captured output; or that it never started, because no program answered to the command or
- * the runtime refused it, with the runtime's error.
+ * The answer from a child's `exited` promise. `exited` carries the exit code (128 plus the
+ * signal's number for a child a signal ended) and captured output. `unstarted` carries the
+ * runtime's error. `abandoned` carries output captured before the caller stopped waiting.
  *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ *
+ * export const revision = new Command('revision').action(async ({ host, out }) => {
+ *   const answer = await host.spawn('git', ['rev-parse', 'HEAD']).exited;
+ *   if (answer.kind === 'exited' && answer.code === 0) {
+ *     await out.print(answer.stdout.text.trim());
+ *   }
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/host.md#child-programs
  * @public
  */
 export type ChildExit =
@@ -168,16 +181,63 @@ export type ChildExit =
       readonly stdout: ChildOutput;
       readonly stderr: ChildOutput;
     }
-  | { readonly kind: 'unstarted'; readonly error: Error };
+  | { readonly kind: 'unstarted'; readonly error: Error }
+  | {
+      readonly kind: 'abandoned';
+      readonly stdout: ChildOutput;
+      readonly stderr: ChildOutput;
+    };
 
 /**
  * A child program a run started.
  *
+ * @example
+ * ```ts
+ * import { Command } from '@loomcli/core';
+ *
+ * export const status = new Command('status').action(async ({ host, out }) => {
+ *   const child = host.spawn('git', ['status', '--short']);
+ *   const answer = await child.exited;
+ *   if (answer.kind === 'exited') {
+ *     await out.print(answer.stdout.text);
+ *   }
+ * });
+ * ```
+ *
+ * @see https://github.com/dbtlr/loomcli/blob/main/docs/core/host.md#child-programs
  * @public
  */
 export interface Child {
-  /** Resolves once the child has ended and its streams have closed; it never rejects. */
+  /**
+   * Resolves after the child exits and its streams close, when the runtime reports a failed
+   * start, or when the caller abandons it. It never rejects.
+   */
   readonly exited: Promise<ChildExit>;
+  /**
+   * Stops waiting and releases the host's connections to the child without sending a signal.
+   * Settles `exited` with the output captured so far and the exit code if the runtime already
+   * reported one. Does nothing if `exited` has already settled.
+   *
+   * @example
+   * ```ts
+   * import { Command } from '@loomcli/core';
+   *
+   * export const check = new Command('check').action(async ({ host, out }) => {
+   *   const child = host.spawn('fsck-remote', ['--quick']);
+   *   const deadline = setTimeout(() => {
+   *     child.kill('SIGKILL');
+   *     child.abandon();
+   *   }, 30_000);
+   *   const answer = await child.exited;
+   *   clearTimeout(deadline);
+   *   if (answer.kind === 'abandoned') {
+   *     await out.warn('fsck-remote did not end; its output so far follows.');
+   *     await out.print(answer.stdout.text);
+   *   }
+   * });
+   * ```
+   */
+  abandon(): void;
   /**
    * Delivers a signal to the child, `SIGTERM` when omitted, or `SIGKILL`, which the child cannot
    * handle; does nothing once it has exited.

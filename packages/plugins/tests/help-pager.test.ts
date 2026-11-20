@@ -26,6 +26,7 @@ test('while the pager is open, help holds one shutdown handler that sends it SIG
   const host = {
     env: {},
     spawn: () => ({
+      abandon: () => exit({ kind: 'abandoned', stderr: empty, stdout: empty }),
       exited,
       kill: (signal = 'SIGTERM') => {
         kills.push(signal);

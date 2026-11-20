@@ -176,11 +176,11 @@ function starting(
 ) {
   return new Application('app').action(async ({ host, out }) => {
     const exit = await host.spawn(command, words, options).exited;
-    await out.print(
-      exit.kind === 'exited'
-        ? `${exit.code} [${exit.stdout.text}] [${exit.stderr.text}]`
-        : `unstarted: ${exit.error.message}`,
-    );
+    if (exit.kind === 'unstarted') {
+      await out.print(`unstarted: ${exit.error.message}`);
+    } else if (exit.kind === 'exited') {
+      await out.print(`${exit.code} [${exit.stdout.text}] [${exit.stderr.text}]`);
+    }
   });
 }
 
@@ -328,6 +328,77 @@ describe('child programs', () => {
     controller.abort();
     await expect(child.exited).resolves.toMatchObject({ code: 143, kind: 'exited' });
     expect(seen.call?.signal.aborted).toBe(true);
+  });
+
+  it('abandon settles empty, leaves the script running, and discards its later output', async () => {
+    const started = Promise.withResolvers<ProgramCall>();
+    const answer = Promise.withResolvers<ProgramAnswer>();
+    const received: string[] = [];
+    const writable = new Writable({
+      write(chunk, _encoding, done) {
+        received.push(String(chunk));
+        done();
+      },
+    });
+    const mock = mockProcess({
+      programs: {
+        git: (call) => {
+          started.resolve(call);
+          return answer.promise;
+        },
+      },
+    });
+    const child = mock.spawn('git', [], { cwd: '/', env: {}, stderr: writable, stdout: 'inherit' });
+    const call = await started.promise;
+    child.abandon();
+    const exit = await child.exited;
+    const empty = { bytes: new Uint8Array(), text: '' };
+    expect(exit).toEqual({ kind: 'abandoned', stderr: empty, stdout: empty });
+    expect(call.signal.aborted).toBe(false);
+    child.abandon();
+    answer.resolve({ code: 7, stderr: 'late err', stdout: 'late out' });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    child.kill();
+    expect(call.signal.aborted).toBe(false);
+    expect(mock.transcript).toEqual([]);
+    expect(received).toEqual([]);
+    await expect(child.exited).resolves.toBe(exit);
+  });
+
+  it.each(['kill', 'abort'])('%s still aborts a pending script after abandon', async (ending) => {
+    const started = Promise.withResolvers<ProgramCall>();
+    const answered = Promise.withResolvers<ProgramAnswer>();
+    const controller = new AbortController();
+    const mock = mockProcess({
+      programs: {
+        git: (call) => {
+          call.signal.addEventListener('abort', () => answered.resolve({ stdout: 'late' }), {
+            once: true,
+          });
+          started.resolve(call);
+          return answered.promise;
+        },
+      },
+    });
+    const child = mock.spawn('git', [], {
+      cwd: '/',
+      env: {},
+      signal: controller.signal,
+      stdout: 'inherit',
+    });
+    const call = await started.promise;
+    child.abandon();
+    child.kill('SIGCONT');
+    expect(call.signal.aborted).toBe(false);
+    if (ending === 'kill') {
+      child.kill('SIGKILL');
+    } else {
+      controller.abort();
+    }
+    expect(call.signal.aborted).toBe(true);
+    await answered.promise;
+    await expect(child.exited).resolves.toMatchObject({ kind: 'abandoned' });
+    expect(mock.transcript).toEqual([]);
   });
 
   it('a kill of an ending signal ends the child with 128 plus its number, whatever the script answers later', async () => {

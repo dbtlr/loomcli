@@ -429,41 +429,89 @@ function inputStdio(options: HandleSpawnOptions, own: Readable): 'ignore' | 'inh
   return options.input === undefined ? 'ignore' : 'pipe';
 }
 
-/** Connects one piped output stream: collected when captured, else piped into its stream, never ended. */
+/** A child output pipe and its captured output, if any. */
+interface OutputPipe {
+  readonly read: () => ChildOutput;
+  readonly release: () => void;
+}
+
+/** Drains an abandoned pipe while the host runs without keeping the host alive. */
+function drainUnreferenced(piped: Readable): void {
+  piped.on('data', () => undefined);
+  piped.resume();
+  if ('unref' in piped && typeof piped.unref === 'function') {
+    piped.unref();
+  }
+}
+
+/** Collects the output of one captured stream until settlement. */
+function captureOutput(piped: Readable): OutputPipe {
+  const chunks: Buffer[] = [];
+  const collect = (chunk: Buffer) => chunks.push(chunk);
+  piped.on('data', collect);
+  return {
+    read() {
+      const output = outputOf(chunks);
+      chunks.length = 0;
+      return output;
+    },
+    release() {
+      piped.off('data', collect);
+      drainUnreferenced(piped);
+    },
+  };
+}
+
+/** Connects one piped output stream for capture or forwarding. */
 function connectOutput(
   piped: Readable | null,
   choice: OutputChoice,
   own: Writable,
-): () => ChildOutput {
+): OutputPipe | undefined {
   if (piped === null || choice === 'ignore') {
-    return noOutput;
+    return undefined;
   }
   // A read error on the child's pipe ends its output early, which exited still reports.
-  // It is no failure of the run, as a closed stdin pipe is not.
   piped.on('error', () => undefined);
   if (choice === 'capture') {
-    const chunks: Buffer[] = [];
-    piped.on('data', (chunk: Buffer) => chunks.push(chunk));
-    return () => outputOf(chunks);
+    return captureOutput(piped);
   }
-  piped.pipe(choice === 'inherit' ? own : choice, { end: false });
-  return noOutput;
+  const target = choice === 'inherit' ? own : choice;
+  piped.pipe(target, { end: false });
+  return {
+    read: noOutput,
+    release() {
+      piped.unpipe(target);
+      drainUnreferenced(piped);
+    },
+  };
 }
 
-/** Feeds the child's piped stdin: the input and then its end, or the handle's own stdin. */
-function connectInput(child: ChildProcess, options: HandleSpawnOptions, own: Readable): void {
+/** Feeds the child's piped stdin and returns how to disconnect and close it. */
+function connectInput(
+  child: ChildProcess,
+  options: HandleSpawnOptions,
+  own: Readable,
+): (() => void) | undefined {
   const { stdin } = child;
   if (stdin === null || options.detached === true) {
-    return;
+    return undefined;
   }
   // A child that exits before it reads its input closes the pipe, which is no failure of the run.
   stdin.on('error', () => undefined);
   if (options.stdin === 'inherit') {
     own.pipe(stdin);
     child.once('close', () => own.unpipe(stdin));
-    return;
+  } else {
+    stdin.end(options.input);
   }
-  stdin.end(options.input);
+  return () => {
+    if (options.stdin === 'inherit') {
+      own.unpipe(stdin);
+    }
+    // Destroy drops queued input on Node.js. Bun may still finish writes its runtime queued.
+    stdin.destroy();
+  };
 }
 
 /** Delivers a signal to a child the runtime still holds; a child that is already gone takes none. */
@@ -475,54 +523,105 @@ function signalChild(child: ChildProcess, signal: NodeJS.Signals): void {
   }
 }
 
-/** The outputs a started child's exit reports. */
-interface Outputs {
-  readonly stdout: () => ChildOutput;
-  readonly stderr: () => ChildOutput;
+/** The pipes a started child's host holds, if any. */
+interface ChildPipes {
+  readonly stdin: (() => void) | undefined;
+  readonly stdout: OutputPipe | undefined;
+  readonly stderr: OutputPipe | undefined;
 }
 
-/**
- * When a started process ends: once it has ended and its streams have closed, or once the runtime
- * reports it could not start. An error once the child has a process id is a failed signal
- * delivery, not a failed start. It never rejects.
- */
-function exitOf(child: ChildProcess, outputs: Outputs): Promise<ChildExit> {
-  return new Promise<ChildExit>((resolve) => {
-    child.on('error', (error) => {
-      if (child.pid === undefined) {
-        resolve({ error, kind: 'unstarted' });
-      }
-    });
-    child.on('close', (code, signal) => {
-      const { stderr, stdout } = outputs;
-      resolve({ code: codeOf(code, signal), kind: 'exited', stderr: stderr(), stdout: stdout() });
-    });
-  });
+/** The runtime events that end signalling, even if the child still holds pipes open. */
+interface ChildEnd {
+  readonly exited: (code: number) => void;
+  readonly unstarted: (error: Error) => void;
 }
 
-/** The child a started process is; an abort of the signal ends it with SIGTERM. */
-function trackedChild(
+/** Delivers signals until the runtime reports the child exited or failed to start. */
+function trackSignals(
   child: ChildProcess,
-  outputs: Outputs,
   signal: AbortSignal | undefined,
-): Child {
-  const state = { ended: false };
+  end: ChildEnd,
+): Child['kill'] {
+  let ended = false;
   const kill = (sent: NodeJS.Signals = 'SIGTERM') => {
-    if (!state.ended) {
+    if (!ended) {
       signalChild(child, sent);
     }
   };
-  const end = () => kill('SIGTERM');
-  const exited = exitOf(child, outputs).then((exit) => {
-    state.ended = true;
-    signal?.removeEventListener('abort', end);
-    return exit;
+  const abort = () => kill('SIGTERM');
+  const stop = () => {
+    ended = true;
+    signal?.removeEventListener('abort', abort);
+  };
+
+  child.once('exit', (code, sent) => {
+    stop();
+    end.exited(codeOf(code, sent));
   });
-  signal?.addEventListener('abort', end, { once: true });
+  child.on('error', (error) => {
+    // An error after the runtime assigns a PID can come from failed signal delivery.
+    if (child.pid === undefined) {
+      stop();
+      end.unstarted(error);
+    }
+  });
+  signal?.addEventListener('abort', abort, { once: true });
   if (signal?.aborted === true) {
-    end();
+    abort();
   }
-  return { exited, kill };
+  return kill;
+}
+
+/** Waits for closed pipes unless the caller abandons the child first. */
+function trackedChild(
+  child: ChildProcess,
+  pipes: ChildPipes,
+  signal: AbortSignal | undefined,
+): Child {
+  let resolveExit: ((exit: ChildExit) => void) | undefined = undefined;
+  let reportedCode: number | undefined = undefined;
+  const exited = new Promise<ChildExit>((resolve) => {
+    resolveExit = resolve;
+  });
+  const settle = (exit: ChildExit) => {
+    const resolve = resolveExit;
+    resolveExit = undefined;
+    resolve?.(exit);
+  };
+  const output = () => ({
+    stderr: pipes.stderr?.read() ?? noOutput(),
+    stdout: pipes.stdout?.read() ?? noOutput(),
+  });
+  const kill = trackSignals(child, signal, {
+    exited: (code) => {
+      reportedCode = code;
+    },
+    unstarted: (error) => settle({ error, kind: 'unstarted' }),
+  });
+  child.once('close', (code, sent) => {
+    if (resolveExit !== undefined) {
+      settle({ code: codeOf(code, sent), kind: 'exited', ...output() });
+    }
+  });
+
+  return {
+    abandon() {
+      if (resolveExit === undefined) {
+        return;
+      }
+      settle(
+        reportedCode === undefined
+          ? { kind: 'abandoned', ...output() }
+          : { code: reportedCode, kind: 'exited', ...output() },
+      );
+      child.unref();
+      pipes.stdout?.release();
+      pipes.stderr?.release();
+      pipes.stdin?.();
+    },
+    exited,
+    kill,
+  };
 }
 
 /** Starts the process with no shell, or answers the runtime's synchronous refusal. */
@@ -561,16 +660,16 @@ function startChild(start: ChildStart): Child {
   if (child instanceof Error) {
     return unstartedChild(child);
   }
-  connectInput(child, options, own.stdin);
-  const outputs = {
+  const pipes = {
     stderr: connectOutput(child.stderr, choices.stderr, own.stderr),
+    stdin: connectInput(child, options, own.stdin),
     stdout: connectOutput(child.stdout, choices.stdout, own.stdout),
   };
   if (options.detached === true) {
     child.unref();
   }
   // Nothing in the run ends a detached child, so it takes no signal.
-  return trackedChild(child, outputs, 'signal' in options ? options.signal : undefined);
+  return trackedChild(child, pipes, 'signal' in options ? options.signal : undefined);
 }
 
 /** The handles `processHandle` built that read their release facts from the build. */
