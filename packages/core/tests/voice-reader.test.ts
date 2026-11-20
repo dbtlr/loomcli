@@ -1,7 +1,8 @@
 // @module-tag docs
 /*
  * The reader every package's voice test shares. It reads a package's message modules and scans its
- * other source files, and each of its four checks reports a bad sentence written for it:
+ * other source files. Each of the four checks shared by all packages reports a bad sentence
+ * written for it:
  *
  * - banned words, a word the voice page's table bars, in any literal of a message module;
  * - escaping, an interpolation that is not an escaping helper, a message function, or a number;
@@ -9,6 +10,9 @@
  *   module or the code that calls one;
  * - gathering, a literal sentence handed to a failure constructor, an out call, or a log call's
  *   message template outside one.
+ *
+ * The localization checks also read sentence exports, registry entries, and value imports from
+ * message modules outside phrase makers.
  *
  * A known exception is pinned per check and per file by its source text and its count of sites, and
  * both an unpinned site and a stale pin are reported.
@@ -668,16 +672,78 @@ test('a sentence a message module imports from a wording module is a message fun
   expect(sites).toEqual([]);
 });
 
-/** The sites of the localization checks over one package's files, with `registry.ts` as its registry. */
+/** The sites of the localization checks over one package's files. */
 function localizationSites(files: Record<string, string>) {
   return voiceSites(new Map(Object.entries(files)), {
     banned: ['presentation'],
     registry: 'localization/registry.ts',
-  }).filter((site) => site.check === 'export-shape' || site.check === 'registry');
+  }).filter(
+    (site) =>
+      site.check === 'export-shape' || site.check === 'message-import' || site.check === 'registry',
+  );
 }
 
 /** A registry that names `inputs/messages.ts` under its key. */
 const registry = "interface Modules { readonly inputs: typeof import('../inputs/messages.js'); }";
+
+test.each([
+  ["import { fixed } from './messages.js';", "import { fixed } from './messages.js';"],
+  ["import * as sentences from './messages.js';", "import * as sentences from './messages.js';"],
+  ["import fixed from './messages.js';", "import fixed from './messages.js';"],
+  [
+    "import { type Member, fixed } from './messages.js';",
+    "import { type Member, fixed } from './messages.js';",
+  ],
+  ["import './messages.js';", "import './messages.js';"],
+  ["export { fixed } from './messages.js';", "export { fixed } from './messages.js';"],
+  ["export * from './messages.js';", "export * from './messages.js';"],
+  ["const load = () => import('./messages.js');", "import('./messages.js')"],
+  ['const load = () => import(`./messages.js`);', 'import(`./messages.js`)'],
+])('a direct message import is reported in %s', (source, text) => {
+  expect(
+    localizationSites({
+      'inputs/messages.ts': "export const fixed = 'Use a value.';",
+      'inputs/reader.ts': source,
+      'localization/registry.ts': registry,
+    }),
+  ).toEqual([{ check: 'message-import', file: 'inputs/reader.ts', text }]);
+});
+
+test('a joined package can reference message types and load message values in phrases.ts', () => {
+  expect(
+    localizationSites({
+      'inputs/messages.ts': "export const fixed = 'Use a value.';",
+      'inputs/phrases.ts': "import * as sentences from './messages.js';",
+      'inputs/types.ts': [
+        "import type * as sentences from './messages.js';",
+        "import { type Member, type Other as Renamed } from './messages.js';",
+        "export type * from './messages.js';",
+        "export { type Member } from './messages.js';",
+        "type Module = typeof import('./messages.js');",
+      ].join('\n'),
+      'localization/registry.ts': registry,
+    }),
+  ).toEqual([]);
+});
+
+test('a package without a registry can import message values directly', () => {
+  expect(sitesOf({ 'inputs/reader.ts': "import { fixed } from './messages.js';" })).toEqual([]);
+});
+
+test('a message import is pinned by its source text, file, and site count', () => {
+  const source = "import('./messages.js')";
+  const file = 'inputs/reader.ts';
+  const sites = localizationSites({
+    'inputs/messages.ts': "export const fixed = 'Use a value.';",
+    'inputs/reader.ts': `${source};\n${source};`,
+    'localization/registry.ts': registry,
+  });
+  expect(
+    unpinnedSites(sites, {
+      'message-import': { [file]: { [source]: { reason: 'Fixture for pinning.', sites: 2 } } },
+    }),
+  ).toEqual([]);
+});
 
 test('with a registry, every export of a message module is a string constant or a string function', () => {
   const module = [
