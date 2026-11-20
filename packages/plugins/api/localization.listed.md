@@ -201,15 +201,15 @@ type FieldlessKind = 'array' | 'boolean' | 'null' | 'number' | 'other' | 'string
 
 declare const fieldsIssue = "Supply field names separated by commas, such as name,size.";
 
-declare function fieldsNeedEncoding(views: readonly string[]): string;
+declare function fieldsNeedEncoding(spelling: string, format: string, views: readonly string[]): string;
 
-declare function fieldsNeedObjects(kind: FieldlessKind): string;
+declare function fieldsNeedObjects(spelling: string, kind: FieldlessKind): string;
 
 declare function formatIssue(names: readonly string[]): string;
 
-declare function noFieldsHeld(unknown: readonly string[]): string;
+declare function noFieldsHeld(spelling: string, unknown: readonly string[]): string;
 
-declare function unknownFields(unknown: readonly string[], available: readonly string[]): string;
+declare function unknownFields(spelling: string, unknown: readonly string[], available: readonly string[]): string;
 
 declare function acceptedValues(values: string): string;
 
