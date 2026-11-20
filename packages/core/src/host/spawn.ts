@@ -43,7 +43,7 @@ function outputFor(choice: OutputChoice, run: Writable, own: Writable | undefine
 /** A child that never started: the runtime refused it, or the run's cwd could not be read. */
 function unstartedChild(reason: Error): Child {
   const exit: ChildExit = { error: reason, kind: 'unstarted' };
-  return { exited: Promise.resolve(exit), kill: () => undefined };
+  return { abandon: () => undefined, exited: Promise.resolve(exit), kill: () => undefined };
 }
 
 /** The working directory a child runs in: the run's, or the option resolved against it. */

@@ -1120,7 +1120,7 @@ export const install = new Command('install').action(async (context) => {
   stdout.end();
   stderr.end();
   await logged;
-  if (exit.kind === 'unstarted' || exit.code !== 0) {
+  if (exit.kind !== 'exited' || exit.code !== 0) {
     await installing.fail();
     throw new FatalError('npm could not install the dependencies. Fix what its lines above name, then run the command again.');
   }

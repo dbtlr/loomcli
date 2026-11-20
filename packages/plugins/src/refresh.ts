@@ -112,17 +112,19 @@ type Answer = Awaited<ReturnType<Host['spawn']>['exited']>;
  */
 async function settle(context: RefreshContext, refresh: Refresh, answer: Answer): Promise<void> {
   const { host, log, path } = context;
-  if (answer.kind === 'exited' && answer.code === succeeded) {
-    refreshed(context, refresh);
-    return;
-  }
   if (answer.kind === 'exited') {
-    log.warn(refresh.warning, { code: answer.code, path });
-    return;
+    if (answer.code === succeeded) {
+      refreshed(context, refresh);
+    } else {
+      log.warn(refresh.warning, { code: answer.code, path });
+    }
+  } else if (answer.kind === 'unstarted') {
+    const name = escapeControlCharacters(basename(path));
+    host.stderr.write(refresh.notStarted(escapeControlCharacters(path), name));
+    log.warn(refresh.warning, { error: errorText(answer.error), path });
+  } else {
+    log.warn(refresh.warning, { path });
   }
-  const name = escapeControlCharacters(basename(path));
-  host.stderr.write(refresh.notStarted(escapeControlCharacters(path), name));
-  log.warn(refresh.warning, { error: errorText(answer.error), path });
 }
 
 /** Records the child that exited 0 as a program run. */

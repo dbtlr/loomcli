@@ -14,14 +14,15 @@
  *   child a signal ended is 128 plus its number. A command no program answers to is `unstarted`,
  *   and `spawn` never throws. A detached child runs in a process group of its own.
  */
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Readable, Writable } from 'node:stream';
+import { PassThrough, Readable, Writable } from 'node:stream';
 
 import { afterEach, expect, test, vi } from 'vite-plus/test';
 
+import { childEnvironment } from '../../../scripts/test-process.js';
 import { Application, Command, plugin, processHandle } from '../src/index.js';
 import type { Child, ChildExit, Host, ProcessHandle, SpawnOptions } from '../src/index.js';
 
@@ -69,8 +70,11 @@ function startReal(args: readonly string[], options: Unplaced<SpawnOptions> = {}
 /** The exit of a child that exited, failing the test for one that never started. */
 async function exitOf(child: Child): Promise<Extract<ChildExit, { kind: 'exited' }>> {
   const exit = await child.exited;
-  if (exit.kind !== 'exited') {
+  if (exit.kind === 'unstarted') {
     throw exit.error;
+  }
+  if (exit.kind === 'abandoned') {
+    throw new Error('The child was abandoned.');
   }
   return exit;
 }
@@ -106,6 +110,7 @@ function recordingHandle(fields: Partial<ProcessHandle> = {}) {
     spawn: (command, args, options) => {
       calls.push({ args, command, options });
       return {
+        abandon: () => undefined,
         exited: Promise.resolve({ code: 0, kind: 'exited', stderr: empty, stdout: empty }),
         kill: () => undefined,
       };
@@ -376,3 +381,312 @@ test('host.spawn starts a real child through the real handle', async () => {
   expect(exit).toMatchObject({ code: 0, kind: 'exited' });
   expect(exit?.kind === 'exited' ? exit.stdout.text : '').toMatch(/ given$/u);
 });
+
+/** A private working directory for child fixtures and their markers. */
+function sandbox(): string {
+  const root = mkdtempSync(join(tmpdir(), 'loom-spawn-'));
+  roots.push(root);
+  return root;
+}
+
+/** Gives another runtime time to start and publish a marker under a loaded test runner. */
+function waitForFixture<Value>(check: () => Value): Promise<Value> {
+  return vi.waitFor(check, { timeout: 5000 });
+}
+
+/** Ends only the process whose PID the fixture recorded for cleanup. */
+function killRecorded(file: string): void {
+  if (!existsSync(file)) {
+    return;
+  }
+  const pid = Number(readFileSync(file, 'utf8'));
+  if (!Number.isSafeInteger(pid) || pid <= 1) {
+    return;
+  }
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch (error) {
+    if (!(error instanceof Error) || Reflect.get(error, 'code') !== 'ESRCH') {
+      throw error;
+    }
+  }
+}
+
+test('abandon lets the host exit while its child is still alive and keeps captured output', () => {
+  const root = sandbox();
+  const pidFile = join(root, 'pid');
+  const fixture = join(root, 'host.mjs');
+  const core = new URL('../dist/index.js', import.meta.url).href;
+  writeFileSync(
+    fixture,
+    `
+      import { readFileSync } from 'node:fs';
+      import { Writable } from 'node:stream';
+      import { setTimeout as delay } from 'node:timers/promises';
+      import { processHandle } from ${JSON.stringify(core)};
+
+      const ready = Promise.withResolvers();
+      const stderr = new Writable({
+        write(chunk, encoding, done) {
+          ready.resolve();
+          done();
+        },
+      });
+      const child = processHandle().spawn('sh', ['-c',
+        'trap "" TERM; echo "$$" > pid; echo started; echo ready >&2; exec sleep 30',
+      ], { cwd: process.cwd(), env: process.env, stderr });
+      await ready.promise;
+      // Give the separate stdout pipe a turn to deliver the line before taking the snapshot.
+      await delay(50);
+      child.abandon();
+      const exit = await child.exited;
+      console.log(JSON.stringify({
+        kind: exit.kind, stdout: exit.stdout.text, pid: Number(readFileSync('pid', 'utf8')),
+      }));
+    `,
+  );
+  try {
+    const host = spawnSync(runtime, [fixture], {
+      cwd: root,
+      encoding: 'utf8',
+      env: childEnvironment({ HOME: root }),
+      killSignal: 'SIGKILL',
+      timeout: 5000,
+    });
+    expect(host.error).toBeUndefined();
+    expect(host).toMatchObject({ status: 0, stderr: '' });
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    expect(JSON.parse(host.stdout)).toEqual({ kind: 'abandoned', pid, stdout: 'started\n' });
+    expect(() => process.kill(pid, 0)).not.toThrow();
+  } finally {
+    killRecorded(pidFile);
+  }
+});
+
+test('abandon preserves a settled exit or failed start', async () => {
+  const exited = startReal(script('process.exit(7);'));
+  const unstarted = processHandle().spawn('loom-test-no-such-program', [], {
+    cwd: process.cwd(),
+    env: { PATH: '/nonexistent' },
+  });
+  const completed = await exited.exited;
+  const refused = await unstarted.exited;
+  expect(completed).toMatchObject({ code: 7, kind: 'exited' });
+  expect(refused.kind).toBe('unstarted');
+  exited.abandon();
+  unstarted.abandon();
+  await expect(exited.exited).resolves.toBe(completed);
+  await expect(unstarted.exited).resolves.toBe(refused);
+});
+
+test('abandon wins over a failed start the runtime has yet to report', async () => {
+  const handle = processHandle();
+  const child = handle.spawn('loom-test-no-such-program', [], {
+    cwd: process.cwd(),
+    env: { PATH: '/nonexistent' },
+  });
+  child.abandon();
+  await expect(child.exited).resolves.toMatchObject({ kind: 'abandoned' });
+});
+
+test.each(['kill', 'abort'])(
+  '%s still delivers SIGTERM after the child is abandoned',
+  async (ending) => {
+    const root = sandbox();
+    const controller = new AbortController();
+    const child = processHandle().spawn(
+      runtime,
+      script(`
+      const { writeFileSync } = require('node:fs');
+      process.on('SIGTERM', () => {
+        writeFileSync('ended', 'SIGTERM');
+        process.exit(0);
+      });
+      writeFileSync('ready', '');
+      setTimeout(() => undefined, 30_000);
+    `),
+      { cwd: root, env: childEnvironment({ HOME: root }), signal: controller.signal },
+    );
+    try {
+      await waitForFixture(() => expect(existsSync(join(root, 'ready'))).toBe(true));
+      child.abandon();
+      const exit = await child.exited;
+      expect(exit.kind).toBe('abandoned');
+      child.abandon();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(existsSync(join(root, 'ended'))).toBe(false);
+      if (ending === 'kill') {
+        child.kill();
+      } else {
+        controller.abort();
+      }
+      await waitForFixture(() => expect(readFileSync(join(root, 'ended'), 'utf8')).toBe('SIGTERM'));
+      await expect(child.exited).resolves.toBe(exit);
+    } finally {
+      child.kill('SIGKILL');
+    }
+  },
+);
+
+test('abandon settles a detached child with empty output', async () => {
+  const child = startReal(script('setTimeout(() => undefined, 30_000);'), { detached: true });
+  try {
+    child.abandon();
+    const empty = { bytes: new Uint8Array(), text: '' };
+    await expect(child.exited).resolves.toEqual({
+      kind: 'abandoned',
+      stderr: empty,
+      stdout: empty,
+    });
+  } finally {
+    child.kill('SIGKILL');
+  }
+});
+
+test('abandon preserves the reported exit code while a descendant holds the pipes open', async () => {
+  const root = sandbox();
+  const descendant = join(root, 'descendant');
+  const child = processHandle().spawn(
+    'sh',
+    ['-c', 'echo "$$" > parent; sleep 30 & echo "$!" > descendant; echo started; exit 7'],
+    { cwd: root, env: childEnvironment({ HOME: root }) },
+  );
+  try {
+    const pid = await waitForFixture(() => {
+      const value = readFileSync(join(root, 'parent'), 'utf8').trim();
+      expect(value).toMatch(/^\d+$/u);
+      return value;
+    });
+    await waitForFixture(() => {
+      expect(spawnSync('ps', ['-p', pid], { stdio: 'ignore' }).status).toBe(1);
+    });
+    // The runtime reaped the child. Let its exit event run before abandoning the open pipes.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const pending = Symbol('open pipes');
+    await expect(Promise.race([child.exited, Promise.resolve(pending)])).resolves.toBe(pending);
+    child.abandon();
+    await expect(child.exited).resolves.toMatchObject({
+      code: 7,
+      kind: 'exited',
+      stdout: { text: 'started\n' },
+    });
+  } finally {
+    killRecorded(descendant);
+    child.kill('SIGKILL');
+  }
+});
+
+test('abandon unpipes and drains outputs even when a Writable applies backpressure', async () => {
+  const root = sandbox();
+  const first = Promise.withResolvers<undefined>();
+  const stdout = sink();
+  const received: string[] = [];
+  const backpressure: { done?: () => void } = {};
+  const stderr = new Writable({
+    highWaterMark: 1,
+    write(chunk: Buffer, _encoding, done) {
+      received.push(chunk.toString());
+      backpressure.done = done;
+      first.resolve(undefined);
+    },
+  });
+  const child = processHandle({ stdout: stdout.stream }).spawn(
+    runtime,
+    script(`
+      const { existsSync, writeFileSync } = require('node:fs');
+      process.stdout.write('before');
+      process.stderr.write('before');
+      const ready = setInterval(() => {
+        if (!existsSync('continue')) return;
+        clearInterval(ready);
+        const large = Buffer.alloc(2 * 1024 * 1024, 'x');
+        process.stdout.write(large, () => {
+          process.stderr.write(large, () => writeFileSync('drained', ''));
+        });
+      }, 10);
+    `),
+    { cwd: root, env: childEnvironment({ HOME: root }), stderr, stdout: 'inherit' },
+  );
+  try {
+    await first.promise;
+    await waitForFixture(() => expect(stdout.text()).toBe('before'));
+    child.abandon();
+    await expect(child.exited).resolves.toMatchObject({
+      kind: 'abandoned',
+      stderr: { text: '' },
+      stdout: { text: '' },
+    });
+    writeFileSync(join(root, 'continue'), '');
+    await waitForFixture(() => expect(existsSync(join(root, 'drained'))).toBe(true));
+    expect(stdout.text()).toBe('before');
+    expect(received).toEqual(['before']);
+  } finally {
+    backpressure.done?.();
+    child.kill('SIGKILL');
+  }
+});
+
+test('abandon closes inherited piped stdin and leaves its source open', async () => {
+  const root = sandbox();
+  const input = new PassThrough();
+  const child = processHandle({ stdin: input }).spawn(
+    runtime,
+    script(`
+      const { writeFileSync } = require('node:fs');
+      let text = '';
+      process.stdin.on('data', (chunk) => {
+        text += chunk;
+        writeFileSync('read', '');
+      });
+      process.stdin.on('end', () => writeFileSync('input', text));
+    `),
+    { cwd: root, env: childEnvironment({ HOME: root }), stdin: 'inherit' },
+  );
+  try {
+    input.write('before');
+    await waitForFixture(() => expect(existsSync(join(root, 'read'))).toBe(true));
+    child.abandon();
+    input.write('after');
+    await waitForFixture(() => expect(readFileSync(join(root, 'input'), 'utf8')).toBe('before'));
+    expect(input.destroyed).toBe(false);
+    expect(input.writableEnded).toBe(false);
+  } finally {
+    input.destroy();
+    child.kill('SIGKILL');
+  }
+});
+
+// Bun cannot drop work its runtime already queued to the child's stdin.
+test.skipIf(process.versions.bun !== undefined)(
+  'abandon drops queued input on Node.js',
+  async () => {
+    const root = sandbox();
+    const length = 8 * 1024 * 1024;
+    const child = processHandle().spawn(
+      runtime,
+      script(`
+      const { existsSync, writeFileSync } = require('node:fs');
+      const ready = setInterval(() => {
+        if (!existsSync('continue')) return;
+        clearInterval(ready);
+        let count = 0;
+        process.stdin.on('data', (chunk) => { count += chunk.length; });
+        process.stdin.on('end', () => writeFileSync('count', String(count)));
+      }, 10);
+    `),
+      { cwd: root, env: childEnvironment({ HOME: root }), input: new Uint8Array(length) },
+    );
+    try {
+      child.abandon();
+      writeFileSync(join(root, 'continue'), '');
+      const count = await waitForFixture(() => {
+        const value = readFileSync(join(root, 'count'), 'utf8');
+        expect(value).toMatch(/^\d+$/u);
+        return Number(value);
+      });
+      expect(count).toBeLessThan(length);
+    } finally {
+      child.kill('SIGKILL');
+    }
+  },
+);

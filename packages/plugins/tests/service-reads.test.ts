@@ -59,6 +59,7 @@ function fakeManager(options: {
       spawnSignal?.addEventListener('abort', () => settle(exitOf(143)), { once: true });
     }
     const child: Child = {
+      abandon: () => settle({ kind: 'abandoned', stderr: noOutput, stdout: noOutput }),
       exited,
       kill: (signal = 'SIGTERM') => {
         kills.push(signal);

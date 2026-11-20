@@ -600,13 +600,14 @@ interface SpawnRequest {
 }
 
 /**
- * One scripted child's end, settled once: by its script's answer, by a script that throws, or by an
- * ending signal, which aborts the call's signal and ends it with 128 plus the signal's number.
+ * One scripted child's answer. Abandoning settles the answer while the script can still run
+ * and receive an ending signal.
  */
 class ChildEnd {
   readonly exited: Promise<ChildExit>;
   readonly #ending = new AbortController();
   #settled = false;
+  #answered = false;
   #resolve: (exit: ChildExit) => void = () => undefined;
 
   constructor() {
@@ -624,6 +625,16 @@ class ChildEnd {
     return this.#settled;
   }
 
+  answered(): void {
+    this.#answered = true;
+  }
+
+  abandon(): void {
+    if (!this.#settled && !this.#answered) {
+      this.settle({ kind: 'abandoned', stderr: noOutput(), stdout: noOutput() });
+    }
+  }
+
   settle(exit: ChildExit): void {
     if (!this.#settled) {
       this.#settled = true;
@@ -634,11 +645,11 @@ class ChildEnd {
   /** Ends the child for an ending signal; `SIGTSTP` and `SIGCONT` end nothing. */
   end(signal: KillSignal): void {
     const code = endedCodes[signal];
-    if (this.#settled || code === undefined) {
+    if (this.#answered || code === undefined) {
       return;
     }
-    this.#ending.abort();
     this.settle({ code, kind: 'exited', stderr: noOutput(), stdout: noOutput() });
+    this.#ending.abort();
   }
 }
 
@@ -684,12 +695,13 @@ async function runScript(request: SpawnRequest, scripted: Scripted, end: ChildEn
     end.end('SIGTERM');
   }
   const answer = await answerOf(scripted.program, callOf(request, scripted.stdin, end.signal));
-  if (answer instanceof Error) {
-    end.settle({ error: answer, kind: 'unstarted' });
-    return;
-  }
+  end.answered();
   if (!end.settled) {
-    end.settle(exitFrom(answer, options, scripted));
+    end.settle(
+      answer instanceof Error
+        ? { error: answer, kind: 'unstarted' }
+        : exitFrom(answer, options, scripted),
+    );
   }
 }
 
@@ -701,11 +713,15 @@ async function runScript(request: SpawnRequest, scripted: Scripted, end: ChildEn
 function scriptedChild(request: SpawnRequest, scripted: Scripted): Child {
   const end = new ChildEnd();
   const { options } = request;
-  if (options.detached !== true) {
-    options.signal?.addEventListener('abort', () => end.end('SIGTERM'), { once: true });
-  }
-  void runScript(request, scripted, end);
-  return { exited: end.exited, kill: (sent = 'SIGTERM') => end.end(sent) };
+  const signal = options.detached === true ? undefined : options.signal;
+  const abort = () => end.end('SIGTERM');
+  signal?.addEventListener('abort', abort, { once: true });
+  void runScript(request, scripted, end).finally(() => signal?.removeEventListener('abort', abort));
+  return {
+    abandon: () => end.abandon(),
+    exited: end.exited,
+    kill: (sent = 'SIGTERM') => end.end(sent),
+  };
 }
 
 /** The sentence a spawn of a command with no script throws. */

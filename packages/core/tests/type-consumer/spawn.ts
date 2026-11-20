@@ -29,14 +29,25 @@ host.spawn('cat', [], { stdin: 'capture' });
 
 async function read(child: Child): Promise<string> {
   const exit: ChildExit = await child.exited;
-  if (exit.kind === 'unstarted') {
-    const error: Error = exit.error;
-    return error.message;
+  switch (exit.kind) {
+    case 'unstarted': {
+      const error: Error = exit.error;
+      return error.message;
+    }
+    case 'exited': {
+      const code: number = exit.code;
+      const output: ChildOutput = exit.stdout;
+      const bytes: Uint8Array = output.bytes;
+      return `${code} ${output.text} ${bytes.length}`;
+    }
+    case 'abandoned': {
+      return `${exit.stdout.text} ${exit.stderr.text}`;
+    }
+    default: {
+      const exhaustive: never = exit;
+      return exhaustive;
+    }
   }
-  const code: number = exit.code;
-  const output: ChildOutput = exit.stdout;
-  const bytes: Uint8Array = output.bytes;
-  return `${code} ${output.text} ${bytes.length}`;
 }
 
 void read(waited);
@@ -46,6 +57,7 @@ void read(released);
 bare.kill();
 bare.kill('SIGINT');
 bare.kill('SIGKILL');
+bare.abandon();
 
 // The host's folders are strings.
 const home: string = host.home;

@@ -84,7 +84,7 @@ async function updateLockfile(run: RunHost, root: string) {
   if (limit.aborted) {
     throw new Error(lockfileTimedOut(lockfileLimit / 1000));
   }
-  if (exit.code !== 0) {
+  if (exit.kind !== 'exited' || exit.code !== 0) {
     throw new Error(lockfilePreparationFailed(exit.stdout.text + exit.stderr.text));
   }
   return readWorkingFile(root, 'pnpm-lock.yaml');

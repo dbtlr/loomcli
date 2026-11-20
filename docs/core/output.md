@@ -361,7 +361,7 @@ export const commit = new Command('commit').action(async (context) => {
   const exit = await context.out.lendTerminal(
     () => context.host.spawn('git', ['commit'], { signal: context.signal, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' }).exited,
   );
-  if (exit.kind === 'unstarted' || exit.code !== 0) {
+  if (exit.kind !== 'exited' || exit.code !== 0) {
     throw new FatalError('git could not commit. Run "git commit" to see why.');
   }
   await staging.end('Committed');
