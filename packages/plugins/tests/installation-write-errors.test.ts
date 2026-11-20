@@ -282,6 +282,32 @@ describe('completion', () => {
       state: contents(box.state),
     }).toEqual(before);
   });
+
+  it('uninstall of one shell reads every other shell before it hands any folder over', async () => {
+    const box = sandbox();
+    for (const shell of ['bash', 'zsh', 'fish']) {
+      await expect(runShells(box, ['install', shell])).resolves.toMatchObject({ status: 0 });
+    }
+    const before = {
+      config: contents(box.config),
+      data: contents(box.data),
+      home: contents(box.home),
+      state: contents(box.state),
+    };
+    block(join(box.config, 'fish'));
+
+    await expect(runShells(box, ['uninstall', 'bash'])).resolves.toEqual(
+      failure(blocked(fishScript(box))),
+    );
+
+    unblock(join(box.config, 'fish'));
+    expect({
+      config: contents(box.config),
+      data: contents(box.data),
+      home: contents(box.home),
+      state: contents(box.state),
+    }).toEqual(before);
+  });
 });
 
 describe('man pages', () => {

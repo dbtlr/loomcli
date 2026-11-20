@@ -130,12 +130,15 @@ function sitsUnder(script: string, folder: string): boolean {
  * Hands each folder a shell's plugin's file records it created to the plugin's file of another
  * installed shell whose script sits under it, before the shell's file is deleted. That folder
  * still holds the other shell's script, or its folders, after this uninstall, and the other
- * shell's uninstall removes it once it is empty.
+ * shell's uninstall removes it once it is empty. Every other shell's plugin's file is read before
+ * any is written, so a path one of them cannot reach fails the run with no plugin's file changed.
  */
 function handOverFolders(log: Log, record: string, shell: Shell): void {
   const remaining = new Set(recordedDirectories({ plugin: recordName(shell), record }));
-  for (const heir of shells.filter((other) => other !== shell)) {
-    const scripts = scriptsOf(record, heir);
+  const heirs = shells
+    .filter((other) => other !== shell)
+    .map((heir) => ({ heir, scripts: scriptsOf(record, heir) }));
+  for (const { heir, scripts } of heirs) {
     const held = [...remaining].filter((folder) =>
       scripts.some((script) => sitsUnder(script, folder)),
     );
