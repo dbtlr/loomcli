@@ -372,6 +372,16 @@ interface Described {
 
 type DynamicPath<Path extends readonly string[]> = number extends Path['length'] ? true : string extends Path[number] ? true : IsUnion<Path>;
 
+interface EntryValues<Paths, Entry extends CommandPaths> {
+    readonly args?: NamedValues<Entry['args'], ArgumentValue, {
+        readonly 'The Command declares no arguments'?: never;
+    }>;
+    readonly options?: NamedValues<Entry['options'] & (Paths extends CommandPaths ? Paths['globals'] : {}), OptionValue, {
+        readonly 'The Command and the Application declare no options'?: never;
+    }>;
+    readonly passthrough?: readonly string[];
+}
+
 type EnvironmentStyle<Environment extends ApplicationEnvironment<unknown, readonly Plugin[]>> = Style<CoreToken | ThemeNames<Environment['plugins'][number]>>;
 
 declare class ExtensionCarrier<Target extends ExtensionTarget> {
@@ -446,6 +456,8 @@ type IsUnion<Member, Whole = Member> = Member extends unknown ? [
     Member
 ] ? false : true : never;
 
+type KeyOfAny<Values> = Values extends unknown ? keyof Values : never;
+
 type KeysOf<Type> = Type extends unknown ? keyof Type : never;
 
 interface LastWins {
@@ -507,11 +519,15 @@ type NamedOptionValue<Config extends OptionConfig> = Config extends {
     implied: unknown;
 } ? true : never);
 
-type NamedValues<Values, Accepted, Empty> = Values extends unknown ? [
+type NamedValues<Values, Accepted, Empty> = [
+    KeyOfAny<Values>
+] extends [
+    never
+] ? Empty : Values extends unknown ? [
     keyof Values
 ] extends [
     never
-] ? Empty : {
+] ? never : {
     readonly [Name in keyof Values]?: Extract<Values[Name], Accepted> | undefined;
 } : never;
 
@@ -596,16 +612,8 @@ type PathParameter<Paths, Path extends readonly string[]> = DynamicPath<Path> ex
 } ? NoInfer<Fault> : Path;
 
 type PathValues<Paths, Path extends readonly string[]> = DynamicPath<Path> extends true ? InvocationValues : Walk<Paths, Path> extends {
-    entry: infer Entry extends CommandPaths;
-} ? {
-    readonly args?: NamedValues<Entry['args'], ArgumentValue, {
-        readonly 'The Command declares no arguments'?: never;
-    }>;
-    readonly options?: NamedValues<Entry['options'] & (Paths extends CommandPaths ? Paths['globals'] : {}), OptionValue, {
-        readonly 'The Command and the Application declare no options'?: never;
-    }>;
-    readonly passthrough?: readonly string[];
-} : InvocationValues;
+    entry: CommandPaths;
+} ? EntryValues<Paths, WalkedEntry<Walk<Paths, Path>>> : InvocationValues;
 
 type PerValue<Config, Value> = Config extends {
     arity: infer Count extends number;
@@ -859,6 +867,10 @@ type Walk<Node, Path extends readonly string[], Walked extends readonly string[]
 } : 'dynamic' : Node extends CommandPaths ? {
     entry: Node;
 } : 'dynamic';
+
+type WalkedEntry<Walked> = Walked extends {
+    entry: infer Entry extends CommandPaths;
+} ? Entry : never;
 
 type WholeNumbersBelow<Bound extends number, Counted extends number[] = [
 ]> = Counted['length'] extends Bound ? Counted[number] : WholeNumbersBelow<Bound, [

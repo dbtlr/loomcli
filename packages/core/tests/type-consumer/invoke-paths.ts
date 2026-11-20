@@ -142,6 +142,12 @@ const eitherPull = sync.invoke(['remote', dry ? 'pull' : 'push'], { options: { r
 const eitherPush = sync.invoke(['remote', dry ? 'pull' : 'push'], { options: { tags: true } });
 // @ts-expect-error TS2353: An option neither Command declares is rejected.
 const eitherNeither = sync.invoke(['remote', dry ? 'pull' : 'push'], { options: { force: true } });
+// A Command with no options adds nothing to the union, so the other Command's option compiles.
+const bare = new Command('prune').action(() => undefined);
+const pruning = new Application('prune').command(new Command('remote').command(pull).command(bare));
+const eitherBare = pruning.invoke(['remote', dry ? 'pull' : 'prune'], {
+  options: { rebase: true },
+});
 
 // An explicit `Mapped` leaves the path at its default, so the call is dynamic.
 const explicitMapped = app.invoke<string>(['gte'], { options: { anything: 1 } });
@@ -163,6 +169,7 @@ const formatDynamic = formatted.invoke(listPath, { options: { fields: 'name', fo
 
 export {
   either,
+  eitherBare,
   eitherNeither,
   eitherPull,
   eitherPush,

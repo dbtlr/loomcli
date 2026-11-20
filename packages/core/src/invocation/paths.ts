@@ -227,14 +227,20 @@ type PathParameter<Paths, Path extends readonly string[]> =
  * The values of one set of inputs, each optional, and `Empty` where the set is empty: a record whose
  * one key says so, so an object literal's undeclared key is an excess property the error names. Each
  * value is read within what `InvocationValues` accepts there, so a typed call is one of its values.
- * It distributes over a union, so a path element that names either of two Commands takes either
- * Command's values, even when the two declare no name in common.
+ * Over a union, as a path element that names either of two Commands gives, it takes either
+ * Command's values, even when the two declare no name in common, and a Command with no inputs adds
+ * nothing to the union, so its empty record cannot absorb the other's.
  */
-type NamedValues<Values, Accepted, Empty> = Values extends unknown
-  ? [keyof Values] extends [never]
-    ? Empty
-    : { readonly [Name in keyof Values]?: Extract<Values[Name], Accepted> | undefined }
-  : never;
+type NamedValues<Values, Accepted, Empty> = [KeyOfAny<Values>] extends [never]
+  ? Empty
+  : Values extends unknown
+    ? [keyof Values] extends [never]
+      ? never
+      : { readonly [Name in keyof Values]?: Extract<Values[Name], Accepted> | undefined }
+    : never;
+
+/** Every key any member of a union holds. */
+type KeyOfAny<Values> = Values extends unknown ? keyof Values : never;
 
 /** What `InvocationValues` accepts for one argument. */
 type ArgumentValue = NonNullable<InvocationValues['args']>[string];
@@ -249,21 +255,32 @@ type OptionValue = NonNullable<InvocationValues['options']>[string];
 type PathValues<Paths, Path extends readonly string[]> =
   DynamicPath<Path> extends true
     ? InvocationValues
-    : Walk<Paths, Path> extends { entry: infer Entry extends CommandPaths }
-      ? {
-          readonly args?: NamedValues<
-            Entry['args'],
-            ArgumentValue,
-            { readonly 'The Command declares no arguments'?: never }
-          >;
-          readonly options?: NamedValues<
-            Entry['options'] & (Paths extends CommandPaths ? Paths['globals'] : {}),
-            OptionValue,
-            { readonly 'The Command and the Application declare no options'?: never }
-          >;
-          readonly passthrough?: readonly string[];
-        }
+    : Walk<Paths, Path> extends { entry: CommandPaths }
+      ? EntryValues<Paths, WalkedEntry<Walk<Paths, Path>>>
       : InvocationValues;
+
+/**
+ * The entry or entries a walk reached, read one member at a time, so a path element that names
+ * either of two Commands keeps both entries rather than the one an inference from the union keeps.
+ */
+type WalkedEntry<Walked> = Walked extends { entry: infer Entry extends CommandPaths }
+  ? Entry
+  : never;
+
+/** The values an entry, or either of several, takes, with every global option. */
+interface EntryValues<Paths, Entry extends CommandPaths> {
+  readonly args?: NamedValues<
+    Entry['args'],
+    ArgumentValue,
+    { readonly 'The Command declares no arguments'?: never }
+  >;
+  readonly options?: NamedValues<
+    Entry['options'] & (Paths extends CommandPaths ? Paths['globals'] : {}),
+    OptionValue,
+    { readonly 'The Command and the Application declare no options'?: never }
+  >;
+  readonly passthrough?: readonly string[];
+}
 
 /**
  * `invoke`'s signature over one Application's Command paths. A literal path the paths declare types
