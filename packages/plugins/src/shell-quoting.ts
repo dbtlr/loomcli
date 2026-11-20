@@ -41,8 +41,10 @@ function posixQuoted(name: string): string {
  * A path as one word a shell reads back as the path, for a step an operator pastes: as written
  * when it holds only ASCII letters, digits, `_`, `.`, `/`, `:`, and `-`, which no shell reads
  * specially inside an absolute path, and otherwise as a Bash or Zsh single-quoted string, as
- * `shlex.quote` gives it. Bash, Zsh, PowerShell, and Nushell read a single-quoted string that holds
- * no `'` as written, and so does Fish unless it also holds two backslashes in a row.
+ * `shlex.quote` gives it. Bash, Zsh, and Nushell read a single-quoted string that holds no `'` as
+ * written, and so does Fish unless it also holds two backslashes in a row. PowerShell also ends a
+ * single-quoted string at U+2018 through U+201B, so a path that holds one of them, or a `'`, is a
+ * POSIX word only: the step is for a POSIX shell, and PowerShell reads such a path otherwise.
  */
 function shellWord(path: string): string {
   return /^[\w./:-]+$/u.test(path) ? path : posixQuoted(path);

@@ -432,7 +432,8 @@ test.each(insideRuns)(
       const control = await streamedTime(letters, terminal, write);
       const measured = await streamedTime(spaces, terminal, write);
       // A hold that backtracks across the run pays about 0.65 s for each chunk after it.
-      expect(measured).toBeLessThan(control * 3 + 150);
+      // The five chunks then cost about 2.6 s, and the 500 ms margin leaves room for a loaded runner.
+      expect(measured).toBeLessThan(control * 3 + 500);
     }
   },
 );

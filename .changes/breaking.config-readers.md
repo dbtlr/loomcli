@@ -40,10 +40,10 @@ export const config = configuration({
 
 **Steps.**
 
-1. Find each `configuration()` call whose `file` names `toml`, `yaml`, or `yml`, or whose extension is `*`.
+1. Find each `configuration()` call: one whose `file` names `toml`, `yaml`, or `yml`, one whose extension is `*`, one whose `file` names only JSON files, and one with no `file`.
 2. For `toml`, import `toml` from `@loomcli/plugins/config/toml` and add it to `formats`.
 3. For `yaml` or `yml`, import `yaml` from `@loomcli/plugins/config/yaml` and add it to `formats`.
 4. For `*`, add the reader of every format the application's operators may write, or neither to read JSON alone.
 5. For a call whose `file` names only JSON files, or that passes no `file` and so looks for `.<app>.json`, add the reader of each format operators may name through `--config` or the `env` variable, or neither to read JSON alone.
 
-**Validation.** Start the application, for example with `--help`, and check that it prints no `@loomcli/plugins/config/file-format` diagnostic. Run it with `--config` naming a TOML or YAML file and check that it reads the file's values.
+**Validation.** Start the application, for example with `--help`, and check that it prints no `@loomcli/plugins/config/file-format` diagnostic. For each reader you added, run it with `--config` naming a file of that format and check that it reads the file's values. For an application that reads JSON alone, run it with `--config` naming a JSON file, and check that a TOML or YAML file fails with code 2.

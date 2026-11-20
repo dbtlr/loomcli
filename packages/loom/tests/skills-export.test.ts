@@ -327,21 +327,24 @@ export const app = new Application('notes', { description: 'Notes.', plugins: [s
   expect(existsSync(join(root, 'committed'))).toBe(false);
 });
 
-test('an output folder the user cannot write names write access to that folder', async () => {
-  const root = fixture();
-  const output = join(root, 'committed');
-  mkdirSync(output);
-  chmodSync(output, 0o555);
-  try {
-    const result = await loom(root, ['skills', 'export', 'committed']);
-    expect(result).toMatchObject({
-      status: 1,
-      stderr: `Cannot create ${join(output, 'notes')}, because permission was denied. Check that your user can write to the folder that holds it and has execute access to each folder above that, then run the command again.\n`,
-    });
-  } finally {
-    chmodSync(output, 0o755);
-  }
-});
+test.skipIf(process.getuid?.() === 0)(
+  'an output folder the user cannot write names write access to that folder',
+  async () => {
+    const root = fixture();
+    const output = join(root, 'committed');
+    mkdirSync(output);
+    chmodSync(output, 0o555);
+    try {
+      const result = await loom(root, ['skills', 'export', 'committed']);
+      expect(result).toMatchObject({
+        status: 1,
+        stderr: `Cannot create ${join(output, 'notes')}, because permission was denied. Check that your user can write to the folder that holds it and has execute access to each folder above that, then run the command again.\n`,
+      });
+    } finally {
+      chmodSync(output, 0o755);
+    }
+  },
+);
 
 test('an output that is a link to nothing names the link, not a missing path', async () => {
   const root = fixture();
