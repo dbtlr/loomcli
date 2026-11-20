@@ -1,10 +1,9 @@
-import { DeclarationError } from '../failures/errors.js';
 import { commandSubject } from '../failures/wording.js';
 import type { InputDeclaration } from '../inputs/declarations.js';
 import type { SpellingTable } from '../inputs/options.js';
 import { tableEntries } from '../inputs/options.js';
 import type { Action, StdinContext } from '../invocation/types.js';
-import type { ResultView, DeclaredResult, OpenResult } from '../output/types.js';
+import type { OpenResult } from '../output/types.js';
 import { buildExtensions, publishStore } from '../plugins/extension.js';
 import type { ExtensionRecords } from '../plugins/extension.js';
 import type { BuiltPlugin } from '../plugins/plugin.js';
@@ -15,17 +14,16 @@ import { checkFinished, rootedPlacement } from './attach.js';
 import type { BuiltGlobals, GlobalsState } from './globals.js';
 import { buildGlobals } from './globals.js';
 import {
-  inputFinding,
   checkArgumentName,
   slotOf,
+  checkSlotOrder,
   inputSite,
   checkStdinClaims,
   checkCompiledOptions,
   localScope,
 } from './inputs.js';
-import { argumentAfterVariadic, optionalArgumentLast } from './rules.js';
-import type { Declared, ViewEntry, ResultCall, CommandState } from './state.js';
-import { layerOf } from './state.js';
+import type { Declared, CommandState } from './state.js';
+import { layerOf } from './subjects.js';
 import type {
   ArgumentSlot,
   DispatchInput,
@@ -33,76 +31,6 @@ import type {
   BuiltCommand,
   RoutedChild,
 } from './types.js';
-/** Why an argument cannot reserve exactly one word after a variadic. */
-function invalidTrailingArgument(config: InputDeclaration['config']): string | undefined {
-  if ('variadic' in config && config.variadic) {
-    return 'is variadic';
-  }
-  if (config.type === 'content') {
-    return 'is a content argument';
-  }
-  if (config.required === 'non-interactive') {
-    return 'is required only when input is not interactive';
-  }
-  return config.required === true ? undefined : 'is optional';
-}
-
-/**
- * Orders the slots up to and including a variadic one in three tiers: required, then required only
- * when input is not interactive, then optional. A slot never follows one of a later tier, so a
- * required slot never follows a conditional or optional one, and a conditional slot never follows
- * an optional one. Slots of one tier may follow each other, and bare words fill them left to right.
- * Only required scalar arguments that are not content arguments may follow a variadic slot, and
- * they take their words from the end of the line, so this order does not apply to them.
- */
-export function checkSlotOrder(
-  slot: ArgumentSlot,
-  next: ArgumentSlot,
-  command: { path: readonly string[]; subject: string },
-) {
-  const { path, subject } = command;
-  const after = inputFinding(path, next.input, 'the argument after it');
-  if (slot.variadic) {
-    const reason = invalidTrailingArgument(next.input.config);
-    if (reason) {
-      throw new DeclarationError(argumentAfterVariadic, {
-        correction: 'Declare only required scalar arguments after a variadic argument.',
-        findings: [inputFinding(path, slot.input, 'the variadic argument'), after],
-        sentence: `Argument "${next.input.name}" ${reason} and follows variadic argument "${slot.input.name}" on ${subject}.`,
-      });
-    }
-    return;
-  }
-  if (slot.input.config.required === 'non-interactive' && needsValue(next)) {
-    throw new DeclarationError(optionalArgumentLast, {
-      correction:
-        'Declare arguments required only when input is not interactive after required ones.',
-      findings: [inputFinding(path, slot.input, 'the conditionally required argument'), after],
-      sentence: `Argument "${slot.input.name}" is required only when input is not interactive and precedes required argument "${next.input.name}" on ${subject}.`,
-    });
-  }
-  if (
-    !slot.required &&
-    slot.input.config.required !== 'non-interactive' &&
-    (needsValue(next) || next.input.config.required === 'non-interactive')
-  ) {
-    throw new DeclarationError(optionalArgumentLast, {
-      correction: 'Declare optional arguments after required ones.',
-      findings: [inputFinding(path, slot.input, 'the optional argument'), after],
-      sentence: `Argument "${slot.input.name}" is optional and precedes required argument "${next.input.name}" on ${subject}.`,
-    });
-  }
-}
-
-/**
- * Whether a slot must receive a value at a terminal: a required argument, or a content argument
- * whose minimum asks for at least one source.
- */
-function needsValue(slot: ArgumentSlot): boolean {
-  const { config } = slot.input;
-  return slot.required || (config.type === 'content' && (config.min ?? 0) > 0);
-}
-
 /**
  * The positional slots one declaration holds. Every authored argument answered these rules at its
  * own call, so they throw here only for an argument a lifecycle hook declared.
@@ -124,44 +52,6 @@ function collectArguments(state: Declared, command: CommandPlace): ArgumentSlot[
     }
   }
   return slots;
-}
-
-/** The entries one `views` record holds, in record order, each with the media type it declares. */
-export function viewEntries(record: Readonly<Record<string, ResultView>>): readonly ViewEntry[] {
-  return Object.entries(record).map(([key, view]) => ({
-    key,
-    mediaType: view.mediaType ?? null,
-    view,
-  }));
-}
-
-/**
- * The finished result: the results lane's calls read as one declaration. A later `views()` call
- * replaces a key in place and appends a new one, so each name keeps the position the call that
- * first named it gave it. A `default` once named persists through later calls that name none, and
- * the first key answers until one is named. A default no view answers fails where the result
- * renders, as a views record that names no view does.
- */
-export function buildResult(results: readonly ResultCall[]): DeclaredResult | undefined {
-  const declaration = results.find((call) => call.kind !== 'views');
-  if (!declaration) {
-    return undefined;
-  }
-  const views = new Map<string, ResultView>();
-  const mediaTypes = new Map<string, string | null>();
-  let selected: string | undefined = undefined;
-  for (const call of results) {
-    for (const { key, mediaType, view } of call.entries) {
-      views.set(key, view);
-      mediaTypes.set(key, mediaType);
-    }
-    if (call.kind === 'views' && call.default !== undefined) {
-      selected = call.default;
-    }
-  }
-  const first = views.keys().next();
-  const fallback = first.done === true ? '' : first.value;
-  return { default: selected ?? fallback, kind: declaration.kind, mediaTypes, views };
 }
 
 /** Binds one Command's declarations to its action, so an action reads only validated values. */

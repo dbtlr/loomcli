@@ -219,6 +219,7 @@ export default defineConfig({
           'packages/core/src/commands/attach-hooks.ts',
           'packages/core/src/commands/attach.ts',
           'packages/core/src/commands/build.ts',
+          'packages/core/src/commands/results.ts',
           'packages/core/src/commands/inputs.ts',
           'packages/core/src/invocation/prepare.ts',
           'packages/core/src/plugins/extension.ts',

@@ -24,10 +24,10 @@ import { publishStore, validateLayer, extendStore } from '../plugins/extension.j
 import type { BuiltPlugin } from '../plugins/plugin.js';
 import { brokenAttachHook } from '../plugins/rules.js';
 import type { AttachedCommand, attachedCommand, CommandAttachHook } from '../plugins/types.js';
-import { buildResult } from './build.js';
 import { viewsCall } from './declaration.js';
 import type { BuiltGlobals, TableEntry } from './globals.js';
 import { checkArgumentName, inputSite, inputFinding, localScope } from './inputs.js';
+import { buildResult } from './results.js';
 import { argumentDeclaredTwice } from './rules.js';
 import type { ResultCall, Declared, CommandState } from './state.js';
 /** One call a hook made, in the order it made it, which the declaration reads back afterwards. */

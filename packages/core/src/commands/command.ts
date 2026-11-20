@@ -50,9 +50,10 @@ import {
   declareOptionSet,
   declareOptionGroup,
 } from './inputs.js';
+import { nodes } from './nodes.js';
 import type { OptionSet, OptionSetNameConstraint } from './option-sets.js';
 import type { CommandState } from './state.js';
-import { namedState, nodes, nodeHandle } from './state.js';
+import { namedState, nodeHandle } from './state.js';
 import type { NameConstraint, GlobalNameConstraint } from './types.js';
 /** Phantom key. It marks a Command value, so only a Command can be attached as a child. */
 export declare const commandValue: unique symbol;
