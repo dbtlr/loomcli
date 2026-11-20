@@ -5,11 +5,14 @@ import type { ReleaseFacts } from '@loomcli/core';
 
 import { isChannelName } from './version.js';
 
+type RegistryInstallationMethod = 'npm' | 'pnpm' | 'bun' | 'yarn';
+type PackageManagerMethod = 'brew' | RegistryInstallationMethod;
+
 /** The facts that give a command once the message supplies a version or dist-tag. */
 type UpgradeCommand =
   | { readonly method: 'script'; readonly name: string }
   | { readonly method: 'brew'; readonly formula: string }
-  | { readonly method: 'npm'; readonly pkg: string };
+  | { readonly method: RegistryInstallationMethod; readonly pkg: string };
 
 const formulaName = /^[a-z0-9][a-z0-9+.@_-]*$/u;
 
@@ -21,11 +24,17 @@ function isNpmDistTag(channel: string): boolean {
   return isChannelName(channel) && !npmChannelRange.test(channel);
 }
 
+function isRegistryInstallationMethod(
+  method: string | undefined,
+): method is RegistryInstallationMethod {
+  return method === 'npm' || method === 'pnpm' || method === 'bun' || method === 'yarn';
+}
+
 /**
  * The installation that owns the running binary, which the refusal and the notice both read. A
- * matching script record whose path resolves into a Cellar or npm's global root reads as that
- * package manager's installation, and any other installation, or a path that no longer resolves,
- * reads as recorded.
+ * matching script record whose path resolves into a Cellar or a package manager's global root
+ * reads as that manager's installation. Other installations and paths that no longer resolve read
+ * as recorded.
  */
 function effectiveInstallation(
   { installation }: ReleaseFacts,
@@ -58,15 +67,15 @@ function upgradeCommand(
         ? { formula, method: 'brew' }
         : undefined;
     }
-    case 'npm': {
-      const pkg = release?.npmPackage;
-      return pkg !== undefined && isNpmPackageName(pkg) ? { method: 'npm', pkg } : undefined;
-    }
     default: {
-      return undefined;
+      const method = installation?.method;
+      const pkg = release?.npmPackage;
+      return isRegistryInstallationMethod(method) && pkg !== undefined && isNpmPackageName(pkg)
+        ? { method, pkg }
+        : undefined;
     }
   }
 }
 
-export type { UpgradeCommand };
-export { effectiveInstallation, isNpmDistTag, upgradeCommand };
+export type { PackageManagerMethod, UpgradeCommand };
+export { effectiveInstallation, isNpmDistTag, isRegistryInstallationMethod, upgradeCommand };

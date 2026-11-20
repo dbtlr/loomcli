@@ -1,0 +1,2 @@
+- Change the `-vv` reason when the installation is absent from `Skipped the update check: notes was not installed by install.sh.` to `Skipped the update check: notes has no installation record and does not run from a Homebrew Cellar or a package manager's global root.`, where `notes` is the application name.
+- Change the `-vv` reason for a run without release facts from `Skipped the update check: notes is not a release binary.` to `Skipped the update check: notes is not a release build.`, because a release bundle now passes it.

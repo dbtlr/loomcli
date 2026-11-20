@@ -55,8 +55,37 @@ function recordedInstallation(lookup: InstallationLookup, path: string): Install
   }
 }
 
+/** Reads the global layout from the components immediately before the outermost node_modules. */
+function globalInstallation(
+  directories: readonly string[],
+  path: string,
+): Installation | undefined {
+  const modules = directories.indexOf('node_modules');
+  const maxRootComponents = 6;
+  const [last, secondLast, thirdLast, fourthLast, fifthLast, sixthLast] = Array.from(
+    { length: maxRootComponents },
+    (_unused, offset) => directories[modules - offset - 1],
+  );
+  if (last === 'lib') {
+    return Object.freeze({ method: 'npm', path });
+  }
+  // The legacy layout has one package folder. The global virtual store has four folders after links.
+  if (
+    (fourthLast === 'global' && /^\d+$/u.test(thirdLast ?? '') && secondLast === '.pnpm') ||
+    (/^v\d+$/u.test(sixthLast ?? '') && fifthLast === 'links')
+  ) {
+    return Object.freeze({ method: 'pnpm', path });
+  }
+  if (last === 'global' && secondLast === 'install') {
+    return Object.freeze({ method: 'bun', path });
+  }
+  return last === 'global' && secondLast === 'yarn'
+    ? Object.freeze({ method: 'yarn', path })
+    : undefined;
+}
+
 /**
- * Derives the Homebrew or global npm installation for an application's absolute realpath.
+ * Derives the Homebrew, npm, pnpm, Bun, or Yarn installation for an application's absolute realpath.
  * Returns `undefined` for other layouts or on Windows. Reads no installation record.
  *
  * @example
@@ -80,10 +109,7 @@ function packageManagerInstallation(path: string, platform: string): ReleaseFact
   if (formula !== undefined) {
     return Object.freeze({ formula, method: 'brew', path });
   }
-  const modules = directories.indexOf('node_modules');
-  return modules > 0 && directories[modules - 1] === 'lib'
-    ? Object.freeze({ method: 'npm', path })
-    : undefined;
+  return globalInstallation(directories, path);
 }
 
 /** Resolves the application path and prefers a matching record over its directory layout. */
