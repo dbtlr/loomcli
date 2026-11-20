@@ -2,18 +2,19 @@
  * The reader every package's voice test shares, under ADR-0164. It reads a package's message
  * modules, the files named `messages.ts` under its `src`, and its wording modules, the files named
  * `wording.ts`, with a small scanner of its own, and scans the package's other source files for the
- * gathering and outside-text checks. A package that joins localization under ADR-0200 also has its
- * message modules' exports held to the shape of a sentence and checked against its registry. It builds no
- * type-checked program: a message module holds functions, constants, imports, and types, and the
- * scanner reads its comments, string literals, and template literals exactly.
+ * gathering and outside-text checks. For a package that joins localization under ADR-0200, the
+ * reader also checks the shape and registry entries of message modules and uses Rolldown's syntax
+ * parser to find value imports outside phrase makers. It builds no type-checked program.
  */
 import { readdir, readFile } from 'node:fs/promises';
 import { posix } from 'node:path';
 
+import { parseSync, Visitor } from 'rolldown/utils';
+
 /**
  * One of the checks a voice test holds over a package's sources: the four every package's test
- * holds, and the two a package that joins localization adds, the shape of each export of a message
- * module and its registry member.
+ * holds, and the three a package that joins localization adds for export shape, imports, and
+ * registry membership.
  *
  * @example
  * ```ts
@@ -25,6 +26,7 @@ type VoiceCheck =
   | 'escaping'
   | 'export-shape'
   | 'gathering'
+  | 'message-import'
   | 'outside-text'
   | 'registry';
 
@@ -63,7 +65,8 @@ type VoiceExceptions = Readonly<
 /**
  * One site a check reports: the check, the file by path under `src`, and the site's source text.
  * The text is the literal for the banned words and gathering, the whole `${...}` for escaping, and
- * the member read, such as `error.message`, for outside text.
+ * the member read, such as `error.message`, for outside text. A message import uses the whole
+ * import or re-export statement, or the dynamic import expression.
  *
  * @example
  * ```ts
@@ -116,7 +119,8 @@ interface VoiceOptions {
    * The path under `src` of the file that declares the package's member of `MessagePackages`, for
    * a package that joins localization. With it, every export of a message module must be a string
    * constant or a function that returns `string`, with no overload, and the registry must name
-   * every message module under its concept module's key.
+   * every message module under its concept module's key. Only `phrases.ts` files import values
+   * from message modules.
    */
   readonly registry?: string;
 }
@@ -1080,6 +1084,53 @@ function isMessageModule(path: string): boolean {
   return isSentenceModule(path) || path === 'wording.ts' || path.endsWith('/wording.ts');
 }
 
+/** The value imports and re-exports of a message module in one source file. */
+function messageImportSites(file: string, source: string): string[] {
+  const sites: string[] = [];
+  const add = (node: { start: number; end: number }, path: string | undefined) => {
+    if (path !== undefined && posix.basename(path) === 'messages.js') {
+      sites.push(source.slice(node.start, node.end));
+    }
+  };
+  const visitor = new Visitor({
+    ExportAllDeclaration(node) {
+      if (node.exportKind !== 'type') {
+        add(node, node.source.value);
+      }
+    },
+    ExportNamedDeclaration(node) {
+      if (
+        node.exportKind !== 'type' &&
+        (node.specifiers.length === 0 ||
+          node.specifiers.some((specifier) => specifier.exportKind !== 'type'))
+      ) {
+        add(node, node.source?.value);
+      }
+    },
+    ImportDeclaration(node) {
+      if (
+        node.importKind !== 'type' &&
+        (node.specifiers.length === 0 ||
+          node.specifiers.some(
+            (specifier) => specifier.type !== 'ImportSpecifier' || specifier.importKind !== 'type',
+          ))
+      ) {
+        add(node, node.source.value);
+      }
+    },
+    ImportExpression(node) {
+      const path = node.source;
+      if (path.type === 'Literal' && typeof path.value === 'string') {
+        add(node, path.value);
+      } else if (path.type === 'TemplateLiteral' && path.expressions.length === 0) {
+        add(node, path.quasis[0]?.value.cooked ?? undefined);
+      }
+    },
+  });
+  visitor.visit(parseSync(file, source).program);
+  return sites;
+}
+
 /** Every name one module exports as a value, with the local name that declares it. */
 function exportedValues(tokens: readonly Token[]): { local: string; exported: string }[] {
   const names: { local: string; exported: string }[] = [];
@@ -1233,10 +1284,10 @@ function registrySites(files: ReadonlyMap<string, string>, registry: string): st
 }
 
 /**
- * Every site the four checks report over one package's sources, by path under its `src`: the
- * banned words and escaping over its message modules, gathering over every other file, and outside
- * text over both, so it reaches the code that calls a message function as well as the function. A
- * message module that holds a `/` outside a comment or a literal throws.
+ * Every site the checks report over one package's sources, by path under its `src`. Banned words
+ * and escaping read its message modules, gathering reads every other file, and outside text reads
+ * both. A registry enables the localization checks. A message module that holds a `/` outside a
+ * comment or a literal throws.
  *
  * @example
  * ```ts
@@ -1263,6 +1314,9 @@ function voiceSites(files: ReadonlyMap<string, string>, options: VoiceOptions): 
       const tokens = new Scanner(source, 'source', file).tokens(false);
       add('gathering', file, gatheringSites(tokens, options.sinks ?? {}));
       add('outside-text', file, outsideSites(tokens));
+    }
+    if (options.registry !== undefined && posix.basename(file) !== 'phrases.ts') {
+      add('message-import', file, messageImportSites(file, source));
     }
   }
   if (options.registry !== undefined) {
@@ -1318,6 +1372,7 @@ const checks: readonly VoiceCheck[] = [
   'escaping',
   'export-shape',
   'gathering',
+  'message-import',
   'outside-text',
   'registry',
 ];
@@ -1399,7 +1454,8 @@ async function packageSources(src: URL): Promise<Map<string, string>> {
 /**
  * What one package's voice test asserts is empty: every unpinned site and stale pin of the checks
  * over the package's `src`, with the banned words read from the voice page. A package that joins
- * localization names its registry file, which adds the export-shape and registry checks.
+ * localization names its registry file, which adds the export-shape, message-import, and registry
+ * checks.
  *
  * @example
  * ```ts
