@@ -39,3 +39,4 @@ Proposed until the release that includes the check.
 ## Changelog
 
 - 2026-11-19: Proposed with the check (LM-556).
+- 2026-11-20: The refused fences also include one tagged `mts` or `cts`, one with a space before the tag, and one tagged in any letter case, such as `TS` or `TypeScript` (LM-543).

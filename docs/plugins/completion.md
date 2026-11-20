@@ -213,34 +213,42 @@ A schema that names a closed set wins over a hint: the input offers the set unde
 An author supplies an input's values at Tab time from the author's own code, as a task tracker offers its task ids, with a named completer. The functions live in the plugin's settings, and the graph names them, because core stores an extension value as plain data and forbids a function in one, under [Extensions](../core/extensions.md).
 
 ```ts
+// src/main.ts
 import { Application, Command } from '@loomcli/core';
 import { completion } from '@loomcli/plugins/completion';
 import { completionArgument } from '@loomcli/plugins/completion/extension';
+
+import { listTasks } from './tasks.js';
 
 const show = new Command('show')
   .option('project', { short: 'p', type: 'string' })
   .argument('id', { extensions: [completionArgument({ values: 'task' })] })
   .action(() => {});
 
-export function taskApp(
-  listTasks: (query: { project: string | undefined; signal: AbortSignal }) =>
-    Promise<readonly { id: string; title: string }[]>,
-) {
-  return new Application('mimir', {
-    plugins: [
-      completion({
-        values: {
-          task: async ({ typed, signal }) => {
-            const project = typed.options.get('project')?.[0];
-            return (await listTasks({ project, signal })).map(({ id, title }) => ({
-              description: title,
-              value: id,
-            }));
-          },
+export const taskApp = new Application('mimir', {
+  plugins: [
+    completion({
+      values: {
+        task: async ({ typed, signal }) => {
+          const project = typed.options.get('project')?.[0];
+          return (await listTasks({ project, signal })).map(({ id, title }) => ({
+            description: title,
+            value: id,
+          }));
         },
-      }),
-    ],
-  }).command(show);
+      },
+    }),
+  ],
+}).command(show);
+
+// src/tasks.ts
+interface TaskQuery {
+  readonly project: string | undefined;
+  readonly signal: AbortSignal;
+}
+
+export async function listTasks(query: TaskQuery) {
+  return [{ id: 'T-1', title: `A task of ${query.project ?? 'any project'}` }];
 }
 ```
 

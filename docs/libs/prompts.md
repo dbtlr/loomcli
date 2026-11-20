@@ -905,13 +905,13 @@ declare function progressStyle(settings?: ProgressStyleSettings): Plugin;
 ```
 
 ```ts
+// src/main.ts
 import { Application } from '@loomcli/core';
 import { progress } from '@loomcli/prompts';
 
-export const fetchit = (
-  fetchRecord: (url: string) => Promise<void>,
-  buildIndex: () => Promise<number>,
-) => new Application('fetchit')
+import { buildIndex, fetchRecord } from './records.js';
+
+export const fetchit = new Application('fetchit')
   .argument('urls', { required: true, variadic: true })
   .action(async (context) => {
     const { urls } = context.args;
@@ -925,6 +925,15 @@ export const fetchit = (
       done: (count) => `Indexed ${String(count)} records`,
     });
   });
+
+// src/records.ts
+export async function fetchRecord(url: string): Promise<void> {
+  await fetch(url);
+}
+
+export async function buildIndex(): Promise<number> {
+  return 812;
+}
 ```
 
 At a terminal, the first line reads, partway through:
@@ -1037,13 +1046,13 @@ A progress line shows an operator that work is under way: a spinner while the wo
 ### Rate and time left
 
 ```ts
+// src/copy.ts
 import { Command } from '@loomcli/core';
 import { progress } from '@loomcli/prompts';
 
-export const copy = (
-  listFiles: () => Promise<readonly string[]>,
-  copyFile: (file: string) => Promise<void>,
-) => new Command('copy').action(async (context) => {
+import { copyFile, listFiles } from './files.js';
+
+export const copy = new Command('copy').action(async (context) => {
   const files = await listFiles();
   const copying = progress(context, {
     estimate: true,
@@ -1057,6 +1066,15 @@ export const copy = (
   }
   await copying.end(`Copied ${String(files.length)} files`);
 });
+
+// src/files.ts
+export async function listFiles(): Promise<readonly string[]> {
+  return ['a.txt', 'b.txt'];
+}
+
+export async function copyFile(file: string): Promise<void> {
+  await Promise.resolve(file);
+}
 ```
 
 At a terminal, the line reads, partway through:
@@ -1206,17 +1224,13 @@ Where the line does not draw, it shows nothing while it runs, and the same failu
 ### Task groups
 
 ```ts
+// src/deploy.ts
 import { Command } from '@loomcli/core';
 import { progress } from '@loomcli/prompts';
 
-export const deploy = ({
-  buildImage, layersOf, pushLayer, runMigrations,
-}: {
-  buildImage: () => Promise<void>;
-  layersOf: () => Promise<readonly string[]>;
-  pushLayer: (layer: string) => Promise<void>;
-  runMigrations: () => Promise<void>;
-}) => new Command('deploy').action(async (context) => {
+import { buildImage, layersOf, pushLayer, runMigrations } from './release.js';
+
+export const deploy = new Command('deploy').action(async (context) => {
   const { style } = context;
   const deploying = progress(context, { label: 'Deploying' });
   await deploying.task({ label: 'Building the image' }).track(buildImage(), { done: 'Built the image' });
@@ -1231,6 +1245,19 @@ export const deploy = ({
   await deploying.task({ label: 'Running migrations' }).track(runMigrations(), { done: 'Ran migrations' });
   await deploying.end('Deployed');
 });
+
+// src/release.ts
+export async function buildImage(): Promise<void> {}
+
+export async function layersOf(): Promise<readonly string[]> {
+  return ['sha256:4f1c'];
+}
+
+export async function pushLayer(layer: string): Promise<void> {
+  await Promise.resolve(layer);
+}
+
+export async function runMigrations(): Promise<void> {}
 ```
 
 At a terminal, the group reads, partway through:
