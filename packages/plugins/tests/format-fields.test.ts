@@ -1,9 +1,10 @@
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, InputError } from '@loomcli/core';
 import { format, json, jsonl } from '@loomcli/plugins/format';
+import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 import { inspect as buildInspect } from './fixtures/format-build.js';
-import { inspect, run } from './fixtures/format-fields.js';
+import { application, inspect, run } from './fixtures/format-fields.js';
 import { runOnMock } from './fixtures/in-process.ts';
 
 /*
@@ -96,7 +97,7 @@ test('an output that holds no fields says so', async () => {
   const { status, stderr } = await run(['empty', '--format', 'json', '--fields', 'name']);
   expect(status).toBe(2);
   expect(stderr).toContain(
-    String.raw`Option \"--fields\" names \"name\", but the output holds no fields. Remove --fields.`,
+    String.raw`Option \"--fields\" names \"name\", but the output holds no fields. Remove the option.`,
   );
 });
 
@@ -105,7 +106,7 @@ test('a value that is not an object fails and names what it is', async () => {
     status: 2,
     stderr: failureLine(
       'scalar',
-      'Option "--fields" selects fields of objects, but the output holds a string. Remove --fields.',
+      'Option "--fields" selects fields of objects, but the output holds a string. Remove the option.',
     ),
     stdout: '',
   });
@@ -116,7 +117,7 @@ test('a row that is not an object fails mid-stream, and the lines already stream
     status: 2,
     stderr: failureLine(
       'mixed',
-      'Option "--fields" selects fields of objects, but the output holds a number. Remove --fields.',
+      'Option "--fields" selects fields of objects, but the output holds a number. Remove the option.',
     ),
     stdout: '{"name":"a"}\n',
   });
@@ -126,12 +127,43 @@ test('--fields under a view that is neither json nor jsonl fails and says where 
   await expect(run(['get', '--fields', 'name'])).resolves.toEqual({
     status: 2,
     stderr:
-      'app: Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format json or --format jsonl.\nRun "app get --help" to see the usage.\n',
+      'app: Option "--fields" applies only to the json and jsonl output the formatter provides. Remove the option, or select json or jsonl with "--format".\nRun "app get --help" to see the usage.\n',
     stdout: '',
   });
   const rows = await run(['list', '--fields', 'name']);
   expect(rows.status).toBe(2);
   expect(rows.stdout).toBe('');
+});
+
+test('in an invocation by name, a --fields failure names the options by their declared names', async () => {
+  const app = application();
+  // The formatter's hook declares both options, so the types know neither, and the path is dynamic.
+  const get: readonly string[] = ['get'];
+  const refused = await app.invoke(
+    get,
+    { options: { fields: ['name'] } },
+    { process: mockProcess() },
+  );
+  expect(refused).toMatchObject({
+    exitCode: 2,
+    messages:
+      'app: Option "fields" applies only to the json and jsonl output the formatter provides. Remove the option, or select json or jsonl with "format".\n',
+    status: 'failed',
+  });
+  const unknown = await app.invoke(
+    get,
+    { options: { fields: ['color'], format: 'json' } },
+    { process: mockProcess() },
+  );
+  expect(unknown).toMatchObject({
+    messages:
+      'app: Option "fields" names "color", which the output does not hold. Supply fields from name, owner, size.\n',
+    status: 'failed',
+  });
+  const failure = unknown.status === 'failed' ? unknown.failure : undefined;
+  expect(failure instanceof InputError ? failure.problems : failure).toMatchObject([
+    { input: { kind: 'option', name: 'fields' }, reason: 'invalid', spelling: 'fields' },
+  ]);
 });
 
 test('an empty field name fails at validation', async () => {
@@ -217,8 +249,8 @@ test.each(['mapped', 'unmapped', 'jsonl'])(
     });
     const refusal =
       kind === 'jsonl'
-        ? 'Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format json.'
-        : 'Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format jsonl.';
+        ? 'Option "--fields" applies only to the json output the formatter provides. Remove the option, or select json with "--format".'
+        : 'Option "--fields" applies only to the jsonl output the formatter provides. Remove the option, or select jsonl with "--format".';
     expect(result).toEqual({
       status: 2,
       stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify(refusal)},"hints":[]}}\n`,
@@ -234,7 +266,7 @@ test.each(['mapped', 'unmapped', 'jsonl'])(
   },
 );
 
-test('--fields with no formatter-appended view says only to remove --fields', async () => {
+test('--fields with no formatter-appended view says only to remove the option', async () => {
   const app = new Application('app', { plugins: [format()] }).command(
     new Command('get')
       .result<{ id: number }>({ views: { json: json(), jsonl: jsonl() } })
@@ -248,7 +280,7 @@ test('--fields with no formatter-appended view says only to remove --fields', as
       }),
     ).resolves.toEqual({
       status: 2,
-      stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify('Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields.')},"hints":[]}}\n`,
+      stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify('Option "--fields" applies only to output the formatter provides, and the formatter provides none here. Remove the option.')},"hints":[]}}\n`,
       stdout: '',
     });
   }

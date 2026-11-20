@@ -95,7 +95,7 @@ test('status refuses --fields under its own json view and names only the appende
   const result = await box.run(['status', '--format', 'json', '--fields', 'skill,state']);
   expect(result).toEqual({
     status: 2,
-    stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify('Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with --format jsonl.')},"hints":[]}}\n`,
+    stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify('Option "--fields" applies only to the jsonl output the formatter provides. Remove the option, or select jsonl with "--format".')},"hints":[]}}\n`,
     stdout: '',
   });
 });

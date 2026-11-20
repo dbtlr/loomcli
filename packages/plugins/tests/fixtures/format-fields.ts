@@ -79,4 +79,4 @@ function inspect() {
   return application().inspect();
 }
 
-export { inspect, run };
+export { application, inspect, run };
