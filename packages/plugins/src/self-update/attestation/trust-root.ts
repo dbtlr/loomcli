@@ -127,10 +127,5 @@ function trustRootFailure(error: unknown, places: TrustRootPlaces): FatalError {
   return fatal(trustRootPhrase(error, places), error);
 }
 
-/** The English text of a trust-root fault's sentence, for a caller that reads text. */
-function trustRootSentence(error: unknown, places: TrustRootPlaces): string {
-  return trustRootPhrase(error, places).text;
-}
-
 export type { TrustRootPlaces };
-export { trustRootFailure, trustRootSentence, untilAborted };
+export { trustRootFailure, trustRootPhrase, untilAborted };

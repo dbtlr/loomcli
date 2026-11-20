@@ -33,7 +33,7 @@ import {
 } from '../src/self-update/attestation/checks.js';
 import type { SignerIdentity } from '../src/self-update/attestation/checks.js';
 import { decodeSnappyBlock } from '../src/self-update/attestation/snappy.js';
-import { trustRootSentence } from '../src/self-update/attestation/trust-root.js';
+import { trustRootPhrase } from '../src/self-update/attestation/trust-root.js';
 
 const bytes = (...values: number[]) => new Uint8Array(values);
 const text = (value: Uint8Array) => new TextDecoder().decode(value);
@@ -398,5 +398,5 @@ test.each([
     otherSentence,
   ],
 ])('%s names its sentence by its facts', (_case, error, sentence) => {
-  expect(trustRootSentence(error, places)).toBe(sentence);
+  expect(trustRootPhrase(error, places).text).toBe(sentence);
 });

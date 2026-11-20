@@ -33,6 +33,7 @@ const pluginsDe = phrasebook('@loomcli/plugins', {
     formatIssue: (names) => `Gib eines von ${names.map(escapeControlCharacters).join(', ')} an.`,
   },
   help: {
+    aliasFactLabel: 'Kurzform: ',
     childHint: (command) => `Befehlsdetails zeigt ${command}.`,
     commandsHeading: 'BEFEHLE',
     repeatableFact: 'wiederholbar',
@@ -50,6 +51,7 @@ const german = () => localization({ locales: { de: [pluginsDe] } });
 function notes(localized: boolean) {
   const table: View<unknown> = { render: () => 'notes\n' };
   const list = new Command('list', { description: 'List notes.' })
+    .visibleAlias('ls')
     .option('tag', { description: 'Filter by tag.', multiple: true, type: 'string' })
     .result({ views: { table } })
     .action(({ out }) => out.results({ title: 'Groceries' }));
@@ -73,6 +75,13 @@ test("help prints a heading the phrasebook holds in the run's language", async (
   expect(stdout).toContain('VERWENDUNG');
   expect(stdout).not.toContain('USAGE');
   expect(stdout).toContain('(wiederholbar)');
+});
+
+test("help says a fact's label in the run's language and repeats the names after it", async () => {
+  const localized = await ran(notes(true), ['--help']);
+  expect(localized.stdout).toMatch(/List notes\.\s+\(Kurzform: ls\)\n/u);
+  const english = await ran(notes(false), ['--help']);
+  expect(english.stdout).toMatch(/List notes\.\s+\(alias: ls\)\n/u);
 });
 
 test('help closes with a hint the phrasebook words as a whole sentence around the command', async () => {
