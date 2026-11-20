@@ -346,6 +346,10 @@ test('a renderer throwing a plain Error fails with the renderer diagnostic, not 
 
 test('a package without the renderer gets the docs dependency correction', async () => {
   const root = fixturePackage({
+    // A local package without the renderer keeps Bun from resolving it in an ancestor checkout.
+    'node_modules/@loomcli/plugins/package.json':
+      '{"type":"module","exports":{"./skills":"./skills.js"}}',
+    'node_modules/@loomcli/plugins/skills.js': 'export {};\n',
     'package.json': '{"type":"module"}',
     'src/application.ts':
       "import { Application } from '@loomcli/core'; export const app = new Application('notes').action(() => {});",

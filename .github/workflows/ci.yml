@@ -443,6 +443,7 @@ jobs:
           LINUX: ${{ needs.node_linux.result }}
           MACOS: ${{ needs.node_macos.result }}
         run: |
+          printf 'changes=%s code=%s docs=%s node_linux=%s node_macos=%s\n' "$CHANGES" "$CODE" "$DOCS" "$LINUX" "$MACOS"
           test "$CHANGES" = success
           test "$MACOS" = success
           if [ "$CODE" = false ]; then
@@ -466,6 +467,7 @@ jobs:
           LINUX: ${{ needs.bun_linux.result }}
           MACOS: ${{ needs.bun_macos.result }}
         run: |
+          printf 'changes=%s code=%s docs=%s bun_linux=%s bun_macos=%s\n' "$CHANGES" "$CODE" "$DOCS" "$LINUX" "$MACOS"
           test "$CHANGES" = success
           test "$MACOS" = success
           if [ "$CODE" = false ]; then

@@ -569,10 +569,43 @@ test.skipIf(zsh === undefined || !hostListed).each([
   slow,
 );
 
+/** Signals a process group that may have already exited. */
+function signalGroup(group: number, signal: NodeJS.Signals) {
+  try {
+    process.kill(-group, signal);
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) {
+      throw error;
+    }
+  }
+}
+
+/** Stops Bash from starting another iteration and kills its foreground job and shell group. */
+function stopLoop(shell: number) {
+  signalGroup(shell, 'SIGSTOP');
+  try {
+    const terminal = spawnSync('ps', ['-o', 'tpgid', '-p', String(shell)], {
+      encoding: 'utf8',
+      timeout: runTimeout,
+    });
+    const foreground = Number(terminal.stdout?.trim().split('\n').at(-1));
+    if (Number.isSafeInteger(foreground) && foreground > 1 && foreground !== shell) {
+      signalGroup(foreground, 'SIGKILL');
+    }
+  } finally {
+    signalGroup(shell, 'SIGKILL');
+  }
+}
+
 /** The status a shell loop of `command` reads at the first Ctrl-C, which also proves it stopped. */
 async function loopStatus(command: string, env: Record<string, string>): Promise<string> {
   const terminal = drive(['bash', '--norc', '--noprofile', '-i'], { PS1: '$ ', ...env });
+  let shell = 0;
   try {
+    terminal.send(String.raw`printf 'shell:%s:ready\\n' "$$"\n`);
+    const ready = await terminal.expect('shell:[0-9]*:ready');
+    shell = Number(/shell:(?<pid>\d+):ready/u.exec(ready)?.groups?.pid);
+    expect(shell).toBeGreaterThan(1);
     terminal.send(String.raw`while true; do ${command}; done\n`);
     await terminal.expect('waiting:*;');
     terminal.send(String.raw`\x03`);
@@ -582,7 +615,13 @@ async function loopStatus(command: string, env: Record<string, string>): Promise
     expect(ended).not.toContain('waiting:');
     return /status:(?<status>\d+):done/u.exec(ended)?.groups?.status ?? '';
   } finally {
-    await terminal.close();
+    try {
+      if (shell > 1) {
+        stopLoop(shell);
+      }
+    } finally {
+      await terminal.close();
+    }
   }
 }
 
