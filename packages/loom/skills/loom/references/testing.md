@@ -1,6 +1,6 @@
 # Testing
 
-This reference covers how to test a Loom application: the assembly check, a whole run in the test's own process, one function with a built context, and the few cases that need a child process.
+This reference covers how to test a Loom application: the assembly check, a committed copy of its skills, a whole run in the test's own process, one function with a built context, and the few cases that need a child process.
 
 The examples import from `bun:test`, the runner a default `loom init` sets up. A package made with `--test-runner vitest` imports `expect` and `test` from `vitest` instead, and uses `vi.fn` where an example uses `mock`.
 
@@ -10,6 +10,15 @@ The examples import from `bun:test`, the runner a default `loom init` sets up. A
 
 - Import the Application from the application module. Never import the entry, `src/main.ts`, because importing it runs the application.
 - The check does not run a declared default or an implied value through its validator, under [What it covers](../../../../../docs/libs/testing.md#what-it-covers). A whole run of each Command does, so write at least one.
+
+## Check a committed copy of the skills
+
+A package that commits the files `loom skills export` writes keeps a test that calls `assertSkillsMatch` from `@loomcli/testing`, under [assertSkillsMatch](../../../../../docs/libs/testing.md#assertskillsmatch): `await assertSkillsMatch(application, 'committed-skills', { moduleDirectory: import.meta.dirname })`. It reads the skills the application declares, generated command references included, as an install does, and throws for the first file whose bytes or executable bit differ from the copy, or that the copy lacks or holds in excess.
+
+- **Refresh, then commit.** When it fails, run `loom skills export` with the same directory and commit the result. Never edit the copy by hand.
+- **Paths.** The copy's directory resolves against the test's working directory. Pass `moduleDirectory` as the application module's directory when the skills plugin's `folder` setting is relative.
+- **Install `@loomcli/plugins`.** The assertion loads it, at the same version as `@loomcli/testing`, only when it runs.
+- **Some skills.** `skills: ['notes']` checks only the skills it names, as `loom skills export --skill` exports them.
 
 ## Run the whole application in the test's process
 

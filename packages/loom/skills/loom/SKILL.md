@@ -31,8 +31,8 @@ Read the reference for the work at hand.
 - [Middleware and actions](references/middleware-and-actions.md): read it when you decide where work goes, write an action's messages, progress lines, or questions, or write a middleware.
 - [Results and failures](references/results-and-failures.md): read it when you declare what a Command produces, throw or translate a failure, or write a failure message.
 - [Testing](references/testing.md): read it when you write or change a test.
-- [Toolchain](references/toolchain.md): read it when you run `loom init`, `loom build`, or `loom changelog`, or change `loom.config.json`.
-- [Shipping](references/shipping.md): read it when you choose a build target, publish a release, or set up installation and self-update.
+- [Toolchain](references/toolchain.md): read it when you run `loom init`, `loom build`, `loom changelog`, `loom docs`, or `loom skills export`, or change `loom.config.json`.
+- [Shipping](references/shipping.md): read it when you choose a build target, publish a release, ship through npm or Homebrew, or set up installation and self-update.
 
 The `loom-changelog` skill beside this one teaches the change fragments and version cuts.
 
