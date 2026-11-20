@@ -17,11 +17,16 @@
  *   that changes on every line and is never reset, modifiers toggled on and off so that more than
  *   one command is needed, and attributes Loom does not track, such as blink, double underline,
  *   underline color, and a font, which the terminal's default rendering strips.
+ * - Off a terminal, the split of a message's text into finished lines reads the text once per
+ *   chunk, so one long unbroken line costs each chunk work linear in the text so far, as it does on
+ *   a terminal, and not the square.
  *
  * The cases run an Application from source on a mock process in the test's own process. They read
  * each live set the channel hands a semantic method through a spy on the output's `emit`, and the
  * characters the `info` lane view lays out on a terminal through a spy on the view context it
- * receives, whose `expandTabs` the view calls with the whole text it lays out.
+ * receives, whose `expandTabs` the view calls with the whole text it lays out. The split's cases
+ * count the characters each `String.prototype.indexOf('\n')` search reads, through a pass-through
+ * spy, so they measure the split alone and no other step on the line.
  */
 import { mockProcess } from '@loomcli/testing';
 import { expect, test, vi } from 'vite-plus/test';
@@ -329,4 +334,61 @@ test('nested style frames open across chunks write the bytes of the whole text',
 test('a raw SGR sequence left open across line breaks writes the bytes of the whole text', async () => {
   const { streamed, whole } = await streamedAndWhole('a\u001B[31mred\nstill\nmore\nlast');
   expect(streamed).toBe(whole);
+});
+
+/**
+ * Runs `run` while counting what the line split searches: the characters from where each search for
+ * a line break starts to the end of the text it searches, over texts longer than a screen row. A
+ * split that finds line breaks with a pattern searches by no call this spy sees, so it counts none.
+ */
+async function searchedForLineBreaks(run: () => unknown): Promise<number> {
+  const spy = vi.spyOn(String.prototype, 'indexOf');
+  try {
+    await run();
+    return spy.mock.calls.reduce((searched, [needle, from], call) => {
+      const text = String(spy.mock.contexts[call]);
+      return needle === '\n' && text.length > 1000
+        ? searched + text.length - (from ?? 0)
+        : searched;
+    }, 0);
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+test('the line split reads a text with no line break once, so its work grows with the text', async () => {
+  const { completeLines } = await import('../src/output/complete-lines.js');
+  const small = 'a'.repeat(8000);
+  const large = 'a'.repeat(16_000);
+  const one = await searchedForLineBreaks(() => completeLines(small));
+  const two = await searchedForLineBreaks(() => completeLines(large));
+  expect(one).toBeGreaterThanOrEqual(small.length);
+  expect(one).toBeLessThanOrEqual(small.length * 2);
+  expect(two).toBeLessThanOrEqual(one * 2.2);
+  expect(completeLines('one\ntwo\n\nrest')).toEqual({
+    lines: ['one\n', 'two\n', '\n'],
+    tail: 'rest',
+  });
+  expect(completeLines('')).toEqual({ lines: [], tail: '' });
+});
+
+/** Streams 16 KB of text with no line break into a pipe in `count` chunks and answers the search work. */
+async function pipedUnbroken(count: number) {
+  const size = 16_000 / count;
+  const parts = Array.from({ length: count }, () => 'x'.repeat(size));
+  const mock = mockProcess({ env: {} });
+  const searched = await searchedForLineBreaks(async () => {
+    await new Application('piped')
+      .action(async ({ out }) => out.print(chunks(...parts)))
+      .run({ process: mock });
+  });
+  return { searched, stdout: mock.stdout.text };
+}
+
+test('the line split of a long unbroken line off a terminal reads the text so far once per chunk', async () => {
+  const few = await pipedUnbroken(100);
+  const many = await pipedUnbroken(200);
+  expect(few.stdout).toBe(`${'x'.repeat(16_000)}\n`);
+  expect(few.searched).toBeGreaterThan(0);
+  expect(many.searched).toBeLessThanOrEqual(few.searched * 2.2);
 });

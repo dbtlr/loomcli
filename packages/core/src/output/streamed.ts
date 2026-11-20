@@ -7,6 +7,7 @@ import type { WireTrace } from '../style/wire.js';
 import { handled } from '../support/thenable.js';
 import { carried, carryText, emptyCarry } from './carry.js';
 import type { Carry } from './carry.js';
+import { completeLines } from './complete-lines.js';
 import { controlSequences, endsWithLineBreak, visible } from './region.js';
 import type { Frame } from './region.js';
 
@@ -137,12 +138,6 @@ function withoutUnfinishedSequence(text: string, from: number, laid: string): st
  */
 function heldBack(text: string, from: number, laid: string): string {
   return withoutUnfinishedSequence(text, from, laid).replace(trailingHeld, '');
-}
-
-/** Every completed line of resolved text, each with its line break, and the text after the last one. */
-function completeLines(text: string): { lines: string[]; tail: string } {
-  const lines = text.match(/[^\n]*\n/gu) ?? [];
-  return { lines, tail: text.slice(lines.join('').length) };
 }
 
 /**
