@@ -6,14 +6,16 @@
  * mapping fabricated errors that carry each code. installation-write-errors.test.ts runs the
  * plugins over real folders.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { FatalError } from '@loomcli/core';
+import type { Log } from '@loomcli/core';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { entriesOf, removeEmptyDirectory } from '../src/installation/disk.js';
+import { install } from '../src/installation/files.js';
 import { staleFiles } from '../src/installation/folders.js';
 import { installationPhrase } from '../src/installation/phrases.js';
 import { reading, writing } from '../src/installation/reach.js';
@@ -119,5 +121,53 @@ describe('the reads below a file', () => {
 
     expect(() => staleFiles(join(file, 'notes'), files)).toThrow(blocked(join(file, 'notes')));
     expect(staleFiles(join(root, 'folder'), files)).toEqual(['SKILL.md']);
+  });
+});
+
+const log: Log = { debug() {}, error() {}, info() {}, trace() {}, warn() {}, with: () => log };
+
+/**
+ * A record that names the given folders or directories, which the tests place below a file in a
+ * separate sandbox, and an install of one file in a folder of its own, so only the read of the
+ * record's own paths reaches the blocked path.
+ */
+function recordUnderFile(entries: { directories?: string[]; folders?: { path: string }[] }) {
+  const { root } = sandbox();
+  const record = join(root, 'record');
+  mkdirSync(record);
+  const recordPath = join(record, 'skill.json');
+  const bytes = `${JSON.stringify({ directories: [], files: [], folders: [], format: 2, state: 'committed', ...entries })}\n`;
+  writeFileSync(recordPath, bytes);
+  const target = join(root, 'target', 'notes.md');
+  const run = () =>
+    install({
+      files: [{ content: '# Notes\n', path: target }],
+      log,
+      plugin: 'skill',
+      record,
+      signal: new AbortController().signal,
+    });
+  return { bytes, recordPath, run, target };
+}
+
+describe('the paths a record names', () => {
+  it('fails on a recorded folder below a file before it changes anything', () => {
+    const { file } = sandbox();
+    const folder = join(file, 'notes');
+    const box = recordUnderFile({ folders: [{ path: folder }] });
+
+    expect(box.run).toThrow(blocked(folder));
+    expect(readFileSync(box.recordPath, 'utf8')).toBe(box.bytes);
+    expect(existsSync(box.target)).toBe(false);
+  });
+
+  it('fails on a recorded directory below a file before it changes anything', () => {
+    const { file } = sandbox();
+    const directory = join(file, 'created');
+    const box = recordUnderFile({ directories: [directory] });
+
+    expect(box.run).toThrow(blocked(directory));
+    expect(readFileSync(box.recordPath, 'utf8')).toBe(box.bytes);
+    expect(existsSync(box.target)).toBe(false);
   });
 });
