@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterAll, expect, test } from 'vite-plus/test';
 
-import { invoke, start } from '../../../scripts/test-process.js';
+import { invoke, start, withoutCoreDump } from '../../../scripts/test-process.js';
 import { zsh } from '../../../scripts/test-pty.js';
 import { sealedShellEnvironment } from '../../../scripts/test-shell.js';
 import { drive } from '../../../scripts/test-terminal.js';
@@ -71,14 +71,13 @@ function onTerminal(scenario: string) {
       '-c',
       [
         `before=$(${ttyModes})`,
-        // A scenario that ends by SIGQUIT dumps no core, as under noCoreDump below.
-        'if command -v prlimit >/dev/null 2>&1; then prlimit --core=1 "$0" "$1" "$2"',
-        'else ulimit -c 0; "$0" "$1" "$2"; fi',
+        'sh -c "$0" sh "$@"',
         'echo "status=$?"',
         `echo "modes-before=$before"`,
         `echo "modes-after=$(${ttyModes})"`,
         'echo @@DONE@@',
       ].join('; '),
+      withoutCoreDump,
       runtime,
       fixture,
       scenario,
@@ -178,31 +177,27 @@ test.skipIf(zsh === undefined)(
 );
 
 /**
- * The shell script that runs the scenario with no core dump and prints the status it ended with.
- * A core dump is what SIGQUIT asks for, and a Bun process's dump spans gigabytes of reserved
- * address space. `ulimit -c 0` stops a dump to a file, but where the kernel pipes dumps to a
- * collector, as systemd-coredump and apport are installed on Linux CI runners, it streams the whole
- * dump whatever the limit, except a limit of exactly one byte, which only `prlimit` can set. Where
- * there is no `prlimit`, as on macOS, `ulimit -c 0` is enough.
- */
-const noCoreDump = [
-  // The shell's `ulimit` sets the hard limit too, which no later call may raise, so it comes second.
-  'if command -v prlimit >/dev/null 2>&1; then prlimit --core=1 "$0" "$1" "$2"',
-  'else ulimit -c 0; "$0" "$1" "$2"; fi',
-  'echo "status=$?"',
-].join('; ');
-
-/**
  * Runs the cooperative scenario under `sh`, which prints the status it ended with, sends the
  * scenario `signal` once it announced its process id, and resolves everything `sh` printed. The
  * shell starts under a sealed home of the test's own, so nothing it runs reaches the real home.
  */
 function underShell(signal: NodeJS.Signals): Promise<string> {
-  const child = spawn('sh', ['-c', noCoreDump, runtime, fixture, 'cooperative'], {
-    env: sealedShellEnvironment(join(copies, 'home')),
-    stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: 10_000,
-  });
+  const child = spawn(
+    'sh',
+    [
+      '-c',
+      'sh -c "$0" sh "$@"; echo "status=$?"',
+      withoutCoreDump,
+      runtime,
+      fixture,
+      'cooperative',
+    ],
+    {
+      env: sealedShellEnvironment(join(copies, 'home')),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 10_000,
+    },
+  );
   let output = '';
   let sent = false;
   child.stdout.setEncoding('utf8');
