@@ -1,5 +1,5 @@
-import { isRuleIdentity, phrasedIssue } from '@loomcli/core';
-import type { Phrase, StandardSchemaV1 } from '@loomcli/core';
+import { Phrase, isRuleIdentity, phrasedIssue } from '@loomcli/core';
+import type { StandardSchemaV1 } from '@loomcli/core';
 
 import { fault } from './faults.js';
 import { issueCodeName, issueParameters } from './rules.js';
@@ -30,8 +30,12 @@ interface IssueCode<Params> {
 interface IssueCodeConfig<Params> {
   /** The schema the parameters pass, which `issue` checks before it builds an issue and `read` checks before it returns them. */
   schema: StandardSchemaV1<Params>;
-  /** Writes the issue's one sentence from its parameters. */
-  message: (params: Params) => string;
+  /**
+   * Writes the issue's one sentence from its parameters, as a string or as a `Phrase` a package
+   * makes with `phrases('<package>')`. A phrase lets a phrasebook translate the sentence under
+   * ADR-0200: the issue's `message` stays the phrase's English text.
+   */
+  message: (params: Params) => string | Phrase;
 }
 
 /** Whether a value is an object or a function, which alone can carry fields. */
@@ -68,6 +72,25 @@ function accepted<Params>(
  * });
  * ```
  *
+ * A package that localizes its sentences returns a phrase, which core renders in the run's language:
+ *
+ * @example
+ * ```ts
+ * import { phrases } from '@loomcli/core';
+ * import { issueCode } from '@loomcli/validators';
+ * import { z } from 'zod';
+ *
+ * // The package's message module, registered in MessagePackages as '@acme/validators'.
+ * import * as common from './messages.js';
+ *
+ * const say = phrases('@acme/validators').module('common', common);
+ *
+ * const portRange = issueCode('@acme/validators/port-range', {
+ *   message: ({ max, min }) => say('expectedPortRange', min, max),
+ *   schema: z.object({ max: z.number(), min: z.number() }),
+ * });
+ * ```
+ *
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  *
  * @public
@@ -75,32 +98,13 @@ function accepted<Params>(
 function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): IssueCode<Params> {
   const { message } = config;
   // The issue carries its code and parameters beside the message, which views read by code.
-  return describeIssueCode(code, config, (params) => ({ code, message: message(params), params }));
-}
-
-/**
- * What `catalogIssueCode` declares beside the code: the parameter schema and the phrase of the one
- * sentence, which the catalog's message module holds.
- */
-interface CatalogIssueCodeConfig<Params> {
-  /** The schema the parameters pass. */
-  schema: StandardSchemaV1<Params>;
-  /** Says the issue's one sentence from its parameters, so a phrasebook may translate it. */
-  phrase: (params: Params) => Phrase;
-}
-
-/**
- * Declares one of the catalog's issue codes. It is `issueCode` for a sentence the package's message
- * module holds: the issue carries its phrase, so core renders it in the run's language, and its
- * `message` stays the English sentence.
- */
-function catalogIssueCode<Params>(
-  code: string,
-  config: CatalogIssueCodeConfig<Params>,
-): IssueCode<Params> {
-  return describeIssueCode(code, config, (params) =>
-    phrasedIssue(config.phrase(params), { code, params }),
-  );
+  // A phrase registers with the issue, so core renders it in the run's language.
+  return describeIssueCode(code, config, (params) => {
+    const sentence = message(params);
+    return sentence instanceof Phrase
+      ? phrasedIssue(sentence, { code, params })
+      : { code, message: sentence, params };
+  });
 }
 
 /**
@@ -157,5 +161,5 @@ function describeIssueCode<Params>(
   };
 }
 
-export { catalogIssueCode, issueCode };
+export { issueCode };
 export type { IssueCode, IssueCodeConfig };
