@@ -1,14 +1,23 @@
 /*
- * Acceptance plan for the verifier self-update's attestation builds (ADR-0212): it takes the trust
- * material alone. Any option would change a threshold from sigstore-js's default of one, which
- * lets a bundle with no transparency-log entry, certificate timestamp, or verified timestamp pass.
+ * Acceptance plan for the verifier self-update's attestation builds (ADR-0212). Passing the trust
+ * material alone keeps sigstore-js's default of one transparency-log entry, one certificate
+ * timestamp, and one verified timestamp.
  */
 
-import type { TrustMaterial } from '@sigstore/verify';
-import { Verifier } from '@sigstore/verify';
+import { readFileSync } from 'node:fs';
+
+import type { Verifier } from '@sigstore/verify';
 import { expect, test, vi } from 'vite-plus/test';
 
-import { verifierOf } from '../src/self-update/attestation/verifier.js';
+import {
+  cargoDist,
+  cargoDistAsset,
+  run,
+  sandbox,
+  useRecordedAttestationFixtures,
+} from './fixtures/self-update-attestation-run.ts';
+
+useRecordedAttestationFixtures();
 
 /** The argument counts of every construction of a `Verifier`. */
 const constructions = vi.hoisted((): number[] => []);
@@ -24,18 +33,14 @@ vi.mock('@sigstore/verify', async (importOriginal) => {
   return { ...actual, Verifier: Recording };
 });
 
-const material: TrustMaterial = {
-  certificateAuthorities: [],
-  ctlogs: [],
-  publicKey: () => {
-    throw new Error('No key.');
-  },
-  timestampAuthorities: [],
-  tlogs: [],
-};
+test('an attested update builds the verifier from the trust material alone', async () => {
+  const box = sandbox();
+  const result = await run(box, ['self-update'], {
+    release: cargoDist,
+    workflow: cargoDist.workflow,
+  });
 
-test('the verifier is built from the trust material alone, with sigstore-js’s default thresholds', () => {
-  const verifier = verifierOf(Verifier, material);
-  expect(verifier).toBeInstanceOf(Verifier);
+  expect(result.status).toBe(0);
+  expect(readFileSync(box.binary, 'utf8')).toBe(cargoDistAsset);
   expect(constructions).toEqual([1]);
 });

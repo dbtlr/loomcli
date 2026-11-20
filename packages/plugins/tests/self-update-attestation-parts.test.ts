@@ -188,7 +188,8 @@ test.each([
   ],
   [
     'a Source Repository URI on another host',
-    signer({ uri: der('https://example.com/acme/notes') }),
+    // GitLab's URL prefix has the same length as GitHub's.
+    signer({ uri: der('https://gitlab.com/acme/notes') }),
   ],
   [
     'a Source Repository URI that is not a UTF8String',
@@ -198,7 +199,7 @@ test.each([
     'a workflow of another host with the repository and the pinned path',
     signer({
       subjectAlternativeName:
-        'https://evil.example/acme/notes/.github/workflows/release.yml@refs/tags/v1.5.1',
+        'https://gitlab.com/acme/notes/.github/workflows/release.yml@refs/tags/v1.5.1',
     }),
   ],
   ['no Source Repository URI', { ...signer(), extensions: [] }],
