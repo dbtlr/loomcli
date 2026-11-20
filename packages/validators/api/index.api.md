@@ -4,6 +4,7 @@
 
 ```ts
 
+import { Phrase } from '@loomcli/core';
 import type { StandardJSONSchemaV1 } from '@loomcli/core';
 import type { StandardSchemaV1 } from '@loomcli/core';
 import type { ValidationContext } from '@loomcli/core';
@@ -209,7 +210,7 @@ export function issueCode<Params>(code: string, config: IssueCodeConfig<Params>)
 
 // @public
 export interface IssueCodeConfig<Params> {
-    message: (params: Params) => string;
+    message: (params: Params) => string | Phrase;
     schema: StandardSchemaV1<Params>;
 }
 

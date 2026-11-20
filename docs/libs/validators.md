@@ -418,13 +418,13 @@ const lanes = pipe(
 ## Issue codes
 
 ```ts sketch
-import type { StandardSchemaV1 } from '@loomcli/core';
+import type { Phrase, StandardSchemaV1 } from '@loomcli/core';
 
 issueCode<Params>(
   code: string,
   config: {
     schema: StandardSchemaV1<Params>;
-    message: (params: Params) => string;
+    message: (params: Params) => string | Phrase;
   },
 ): IssueCode<Params>
 
@@ -434,6 +434,32 @@ interface IssueCode<Params> {
   issue(this: void, params: Params): StandardSchemaV1.Issue;
   read(this: void, issue: StandardSchemaV1.Issue): Params | undefined;
 }
+```
+
+`message` returns a string, or a `Phrase` made with core's `phrases('<package>')`. A string builds the literal issue `{ code, message, params }`. A phrase builds the same issue through `phrasedIssue`: its `message` is the phrase's English text, and core renders the phrase in the run's language, so a phrasebook for the package's name translates it under [localization](../core/localization.md). Run outside Loom, a phrase issue is an ordinary issue with an English `message`.
+
+```ts
+import { phrases } from '@loomcli/core';
+import { issueCode } from '@loomcli/validators';
+import { z } from 'zod';
+
+const common = {
+  expectedPortRange: (min: number, max: number) =>
+    `Expected a port from ${String(min)} through ${String(max)}.`,
+};
+
+declare module '@loomcli/core' {
+  interface MessagePackages {
+    readonly '@acme/validators': { readonly common: typeof common };
+  }
+}
+
+const say = phrases('@acme/validators').module('common', common);
+
+export const portRange = issueCode('@acme/validators/port-range', {
+  message: ({ max, min }) => say('expectedPortRange', min, max),
+  schema: z.object({ max: z.number(), min: z.number() }),
+});
 ```
 
 The schema's input and output are one type, so `read` validates what `issue` stored. `issue` and `read` declare `this: void`: neither reads its descriptor through `this`, so either can be passed or destructured on its own.
