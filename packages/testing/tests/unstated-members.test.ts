@@ -1,5 +1,13 @@
-import { Command, FatalError, plugin, provider } from '@loomcli/core';
-import type { ActionHandler, FailureHook, Middleware, Opener, Provider, View } from '@loomcli/core';
+import { Command, FatalError, phrases, plugin, provider } from '@loomcli/core';
+import type {
+  ActionHandler,
+  FailureHook,
+  Middleware,
+  Opener,
+  Phrase,
+  Provider,
+  View,
+} from '@loomcli/core';
 import { describe, expect, it, test, vi } from 'vite-plus/test';
 
 import {
@@ -9,6 +17,17 @@ import {
   providerContext,
   viewContext,
 } from '../src/index.js';
+
+/** A message module of the test's own, registered so its sentence is a phrase. */
+const notes = { saved: (name: string): string => `Saved ${name}.` };
+
+declare module '@loomcli/core' {
+  interface MessagePackages {
+    'testing-log-test': { readonly notes: typeof notes };
+  }
+}
+
+const say = phrases('testing-log-test').module('notes', notes);
 
 /** Renders a value as its own text. */
 const plainView: View<string> = { render: (text) => text };
@@ -285,6 +304,26 @@ describe('an unstated member', () => {
       ['nested', { requestId: 'r2', stage: 'inner' }],
     ]);
   });
+});
+
+test('a phrase through a bound log reaches the stated level as the same phrase', () => {
+  const warn = vi.fn(
+    (_message: string | Phrase, _fields?: Readonly<Record<string, unknown>>) => {},
+  );
+  const context = actionContext(getValue, {
+    args: { path: 'name' },
+    log: { warn },
+    options: {},
+    provided: {},
+  });
+  const phrase = say('saved', 'a');
+  context.log.with({ requestId: 'r1' }).with({ stage: 'inner' }).warn(phrase, { extra: 1 });
+  expect(warn).toHaveBeenCalledExactlyOnceWith(phrase, {
+    extra: 1,
+    requestId: 'r1',
+    stage: 'inner',
+  });
+  expect(warn.mock.calls[0]?.[0]).toBe(phrase);
 });
 
 test('the inert out lends the terminal by calling work and returning its answer', async () => {
