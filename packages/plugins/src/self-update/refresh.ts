@@ -9,7 +9,7 @@ import { fileWritten } from '../change-events.js';
 import { writeCache } from './cache.js';
 import type { CacheEntry } from './cache.js';
 import { fatal } from './fatal.js';
-import { cacheNotAbsolute, cacheUnwritable, noReleaseFacts } from './messages.js';
+import { selfUpdatePhrase } from './phrases.js';
 import type { Requesting } from './request.js';
 import { latestRelease } from './resolve.js';
 
@@ -36,7 +36,7 @@ function writeOrFail(
   try {
     fileWritten(log, { path: writeCache(directory, entry) });
   } catch (error) {
-    throw fatal(cacheUnwritable(name, directory), error);
+    throw fatal(selfUpdatePhrase('cacheUnwritable', name, directory), error);
   }
 }
 
@@ -49,11 +49,11 @@ function writeOrFail(
 async function refreshNotice({ name, host, log, requesting }: RefreshRun): Promise<void> {
   const { release } = host.release;
   if (release === undefined) {
-    throw fatal(noReleaseFacts(name));
+    throw fatal(selfUpdatePhrase('noReleaseFacts', name));
   }
   const directory = applicationDirectory('cache', name, host);
   if ('variable' in directory) {
-    throw fatal(cacheNotAbsolute(name, directory.variable));
+    throw fatal(selfUpdatePhrase('cacheNotAbsolute', name, directory.variable));
   }
   const { channel, repository } = release;
   const found = await latestRelease(repository, channel, requesting);

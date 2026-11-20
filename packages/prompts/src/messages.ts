@@ -74,23 +74,105 @@ function logLinesDropped(dropped: number): string {
     : `${String(dropped)} earlier lines were dropped.`;
 }
 
+const cancelled = 'cancelled';
+const disabled = 'disabled';
+const editorOpen = 'Press Enter to open your editor';
+const editorWaiting = 'Waiting for your editor to close the file';
+const empty = 'empty';
+const enterNumber = 'Enter a number';
+const enterNumbers = 'Enter numbers separated by commas';
+const hoursUnit = 'h';
+const minutesUnit = 'm';
+const multiselectKeys = '↑↓ move · Space toggle · Enter submit';
+const multiselectSearchKeys = '↑↓ move · Tab toggle · Enter submit';
+const multiselectSearchShortKeys = '↑↓ Tab Enter';
+const multiselectShortKeys = '↑↓ Space Enter';
+const noAnswer = 'no';
+const noChoiceAvailable = 'No choice can be selected';
+const noMatches = 'No matches';
+const none = 'none';
+const perHour = '/h';
+const perMinute = '/min';
+const perSecond = '/s';
+const refineSearch = 'Enter a number, or text to search again';
+const search = 'Search';
+const searching = 'Searching';
+const secondsUnit = 's';
+const selectKeys = '↑↓ move · Enter select';
+const selectSearchKeys = '↑↓ move · type to search · Enter select';
+const selectShortKeys = '↑↓ Enter';
+const yesAnswer = 'yes';
+
+function editorAdditionalLines(count: number): string {
+  return `(+${String(count)} ${count === 1 ? 'line' : 'lines'})`;
+}
+
+function moreChoices(count: number): string {
+  return `${String(count)} more`;
+}
+
+function limitSuffix(max: number): string {
+  return `/${String(max)}`;
+}
+
+/** The count of a multiselect's chosen values, and the most it takes when it has a limit. */
+function selectedCount(count: number, max: number | undefined): string {
+  return `${String(count)}${max === undefined ? '' : limitSuffix(max)} selected`;
+}
+
+function timeRemaining(span: string): string {
+  return `about ${escapeControlCharacters(span)} left`;
+}
+
 export {
   answerFileRemoved,
   answerFileUnreadable,
   answerNotUtf8,
+  cancelled,
   choiceIssue,
   chooseAtLeast,
   chooseAtMost,
+  disabled,
+  editorAdditionalLines,
   editorExited,
   editorFileUnwritable,
   editorNotStarted,
+  editorOpen,
+  editorWaiting,
+  empty,
+  enterNumber,
+  enterNumbers,
+  hoursUnit,
   interactionUnavailable,
   invalidAnswer,
   logLinesDropped,
+  minutesUnit,
+  moreChoices,
+  multiselectKeys,
+  multiselectSearchKeys,
+  multiselectSearchShortKeys,
+  multiselectShortKeys,
+  noAnswer,
+  noChoiceAvailable,
+  noMatches,
   noSelectableChoice,
+  none,
   overLimit,
+  perHour,
+  perMinute,
+  perSecond,
+  refineSearch,
+  search,
+  searching,
+  secondsUnit,
+  selectKeys,
+  selectSearchKeys,
+  selectShortKeys,
+  selectedCount,
+  timeRemaining,
   typeNumbers,
   typeOneNumber,
   unselectable,
+  yesAnswer,
   yesOrNo,
 };

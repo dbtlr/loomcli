@@ -1,12 +1,7 @@
 import type { AttestationCheck } from '../attestation-setting.js';
 import { fatal } from '../fatal.js';
-import {
-  attestationsNotListed,
-  attestationsRateLimited,
-  attestationsUnreadable,
-  noAttestation,
-} from '../messages.js';
 import type { AttestedRelease } from '../messages.js';
+import { selfUpdatePhrase } from '../phrases.js';
 import { follow, ok, readBody, RequestError } from '../request.js';
 
 /** The API version the Command asks for, and the media type GitHub's REST API answers in. */
@@ -121,8 +116,12 @@ async function listResponse(check: AttestationCheck, url: URL, now: number): Pro
   await response.body?.cancel();
   throw fatal(
     isRateLimited(response)
-      ? attestationsRateLimited(releaseOf(check), minutesUntilReset(response.headers, now))
-      : attestationsNotListed(releaseOf(check), response.status),
+      ? selfUpdatePhrase(
+          'attestationsRateLimited',
+          releaseOf(check),
+          minutesUntilReset(response.headers, now),
+        )
+      : selfUpdatePhrase('attestationsNotListed', releaseOf(check), response.status),
   );
 }
 
@@ -136,10 +135,12 @@ async function listAttestations(check: AttestationCheck, now: number): Promise<L
   const response = await listResponse(check, url, now);
   const listed = listedOf(await readBody(url, check.requesting.signal, () => response.text()));
   if (listed === undefined) {
-    throw fatal(attestationsUnreadable(releaseOf(check), check.name, check.running));
+    throw fatal(
+      selfUpdatePhrase('attestationsUnreadable', releaseOf(check), check.name, check.running),
+    );
   }
   if (listed.length === noAttestations) {
-    throw fatal(noAttestation(releaseOf(check)));
+    throw fatal(selfUpdatePhrase('noAttestation', releaseOf(check)));
   }
   return listed;
 }

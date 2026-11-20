@@ -4,7 +4,7 @@
  * and the `Program run.` event of an agent call that changed a registration.
  */
 import { escapeControlCharacters, FatalError } from '@loomcli/core';
-import type { Host, Log } from '@loomcli/core';
+import type { Host, Log, Phrase } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
 import { programRun } from '../change-events.js';
@@ -13,8 +13,8 @@ import { pluginFilePath } from '../installation/record.js';
 import type { RecordedRegistration } from '../installation/record.js';
 import { recordName } from './agents.js';
 import type { Agent } from './agents.js';
-import { checkedRecord, recordUnreadable, registersNotOnWindows } from './messages.js';
 import type { Child, Names } from './messages.js';
+import { mcpPhrase } from './phrases.js';
 import { callAgent, registrationName } from './registration.js';
 import type { Answer } from './registration.js';
 
@@ -25,9 +25,9 @@ interface ChildRun {
   readonly signal: AbortSignal;
   /** The action's log, which records each file the child writes or removes. */
   readonly log: Log;
-  readonly info: (message: string) => Promise<void>;
-  readonly success: (message: string) => Promise<void>;
-  readonly warn: (message: string) => Promise<void>;
+  readonly info: (message: string | Phrase) => Promise<void>;
+  readonly success: (message: string | Phrase) => Promise<void>;
+  readonly warn: (message: string | Phrase) => Promise<void>;
 }
 
 /** One agent a child acts on: the run, the agent, its record's directory, and what its file records. */
@@ -65,7 +65,7 @@ function namesOf(run: ChildRun): Names {
 /** Refuses a child on `win32`, before it reads anything. */
 function refuseWindows(run: ChildRun, child: Child): void {
   if (run.host.platform === 'win32') {
-    throw new FatalError(registersNotOnWindows(run.name, child));
+    throw new FatalError(mcpPhrase('registersNotOnWindows', run.name, child));
   }
 }
 
@@ -78,10 +78,9 @@ async function readRecord(
   const plugin = recordName(agent);
   const read = readRegistration({ plugin, record });
   if (read.status === 'refused') {
-    throw new FatalError(recordUnreadable(run.name, read.refused.path, child));
+    throw new FatalError(mcpPhrase('recordUnreadable', run.name, read.refused.path, child));
   }
-  const checked = checkedRecord(pluginFilePath(record, plugin));
-  run.log.trace(checked.template, checked.fields);
+  run.log.trace(mcpPhrase('checkedRecordFile'), { path: pluginFilePath(record, plugin) });
   return read.registration;
 }
 

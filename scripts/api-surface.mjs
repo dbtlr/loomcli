@@ -152,6 +152,40 @@ export const surfacePackages = [
             'Constant behind the exported `InteractionOptions`; the author names `InteractionOptions`.',
         },
       },
+      './localization': {
+        forgottenExports: {
+          background:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          common:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          completion:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          config:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          dotenv:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          externalCommands:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          format:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          help: "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          logging:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          manpage:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          mcp: "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          selfUpdate:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          service:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          skills:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          suggestions:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+          version:
+            "One message module of the pack's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/plugins'>`.",
+        },
+      },
       './logging': {
         forgottenExports: {
           LoggingErrorDetail:
@@ -218,6 +252,8 @@ export const surfacePackages = [
           StageOutput:
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
           StepFunction: 'One variant of `Step`; the author names `Step`.',
+          common:
+            "One message module of the package's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/validators'>`.",
         },
       },
     },
@@ -237,6 +273,8 @@ export const surfacePackages = [
             'Fragment of an exported settings or choice type; the author names the whole type.',
           StringValue:
             'Type machinery that computes a signature from type arguments; the author names the computed export.',
+          common:
+            "One message module of the package's member of `MessagePackages`, read whole so the listed file shows every sentence's name and parameters; the author names `PhrasebookSentences<'@loomcli/prompts'>`.",
         },
       },
       './views': {},

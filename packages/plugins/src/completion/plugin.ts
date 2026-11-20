@@ -166,3 +166,6 @@ export type {
 } from './completer.js';
 export type { RefreshContext } from '../refresh.js';
 export { refreshCompletion } from './refresh.js';
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

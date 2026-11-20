@@ -11,7 +11,9 @@ const shownPath = (path: string): string => nowrap(shown(path));
 const shownCommand = (command: readonly string[]): string => command.map(shown).join(' ');
 
 interface Names {
+  /** The application's name. */
   readonly app: string;
+  /** The name the server registers under with an agent. */
   readonly registration: string;
 }
 
@@ -71,13 +73,8 @@ function registersNotOnWindows(name: string, child: Child): string {
   return `${shown(name)} mcp ${shown(child)} registers with claude and codex on Linux and macOS. Print a client configuration with ${shown(name)} mcp config and add it to your agent yourself.`;
 }
 
-/** The `trace` log line for one agent's record file the run read. */
-function checkedRecord(path: string): {
-  readonly template: string;
-  readonly fields: { readonly path: string };
-} {
-  return { fields: { path }, template: 'Checked {path}.' };
-}
+/** The `trace` log template for one agent's record file the run read. */
+const checkedRecordFile = 'Checked {path}.';
 
 function recordUnreadable(name: string, record: string, child: Child): string {
   return `${shownPath(record)} cannot be read, so ${shown(name)} will not change the registration it lists. Remove it, then run ${shown(name)} mcp ${shown(child)} again.`;
@@ -170,17 +167,9 @@ function cleartextWarning(written: string): string {
   return `Serving at ${shown(written)} over plain HTTP, so requests and their credentials cross the network unencrypted, where anyone on the path can read and replay them. Put TLS in front of the server, such as a reverse proxy that terminates it.`;
 }
 
-/** The `debug` log line for a request refused for its `Origin`. */
-function originRefusedLine(origin: string): {
-  readonly template: string;
-  readonly fields: { readonly origin: string };
-} {
-  return {
-    fields: { origin },
-    template:
-      'Refused a request from origin {origin}, because this server answers no browser request.',
-  };
-}
+/** The `debug` log template for a request refused for its `Origin`. */
+const originRefused =
+  'Refused a request from origin {origin}, because this server answers no browser request.';
 
 /** The `debug` log line for a request the authorize hook refused. */
 const unauthorizedLine = 'Refused a request the authorize hook did not allow.';
@@ -192,12 +181,6 @@ const serverErrorLine =
 /** The `error` log event for a throw of the authorize hook, whose `error` field carries the throw. */
 const hookThrewLine = 'The authorize hook threw, so the request was answered 500.';
 
-const brokenAuthorizeHook =
-  'The authorize hook given to mcp() threw while it judged a request, so the server answered that request with 500.';
-
-const brokenAuthorizeHookCorrection =
-  'Return true or false from authorize for every request, and throw from it for none.';
-
 /** A tools/call metadata zone that is not a runtime-known IANA name. */
 const invalidTimeZone =
   'Metadata key "io.github.dbtlr.loomcli/timeZone" requires an IANA time zone name this runtime knows. Use a name such as "Asia/Tokyo".';
@@ -208,11 +191,9 @@ export {
   agentMissing,
   argumentsNotObject,
   bindFailed,
-  brokenAuthorizeHook,
-  brokenAuthorizeHookCorrection,
   buildNote,
   cannotTell,
-  checkedRecord,
+  checkedRecordFile,
   cleartextWarning,
   hookThrewLine,
   serverErrorLine,
@@ -223,7 +204,7 @@ export {
   noLongerRecorded,
   nothingToRemove,
   openNetworkWarning,
-  originRefusedLine,
+  originRefused,
   pathHoldsControl,
   recordUnreadable,
   registered,

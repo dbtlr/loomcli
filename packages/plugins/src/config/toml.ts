@@ -87,7 +87,7 @@ async function readToml(text: string): Promise<Reading> {
   } catch (error) {
     return {
       ...(error instanceof TomlError ? { at: positionOf(text, error.line, error.column) } : {}),
-      clause: 'is not valid TOML.',
+      clause: 'invalid-toml',
       kind: 'unusable',
     };
   }
@@ -118,3 +118,6 @@ async function readToml(text: string): Promise<Reading> {
 export const toml: ConfigurationReader = defineReader('TOML', readToml);
 
 export type { ConfigurationReader, ReaderFormat } from './reading.js';
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

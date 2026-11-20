@@ -1,4 +1,4 @@
-import { requestErrorText } from './messages.js';
+import { escapeControlCharacters } from '@loomcli/core';
 
 /** The most redirects one request follows; one more fails it. */
 const maxRedirects = 20;
@@ -41,7 +41,13 @@ class RequestError extends Error {
     url: string,
     options: { readonly status?: number | undefined; readonly cause?: unknown } = {},
   ) {
-    super(requestErrorText(url, kind), { cause: options.cause });
+    // The text is the internal error's own, which the operator never reads: `requestFailed` is the sentence they get.
+    super(
+      `The request for ${escapeControlCharacters(url)} failed: ${escapeControlCharacters(kind)}.`,
+      {
+        cause: options.cause,
+      },
+    );
     this.name = 'RequestError';
     this.kind = kind;
     this.url = url;

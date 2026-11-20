@@ -4,13 +4,13 @@
  * that holds no fields. The value form reads a whole value, an object or an array of objects; the
  * row form reads one row at a time and judges the named fields against the first row alone.
  */
-import { InputError } from '@loomcli/core';
-import type { ResultTransform } from '@loomcli/core';
+import { InputError, phrasedIssue } from '@loomcli/core';
+import type { Phrase, ResultTransform } from '@loomcli/core';
 
 import { isRecord } from '../plain-data.js';
-import { fieldsNeedObjects, noFieldsHeld, unknownFields } from './messages.js';
 import type { FieldlessKind } from './messages.js';
 import { splitFields } from './names.js';
+import { formatPhrase } from './phrases.js';
 
 /** The length of a list that holds nothing. */
 const EMPTY = 0;
@@ -28,11 +28,11 @@ function requestedFields(value: unknown): string[] {
 }
 
 /** The usage failure `--fields` raises, with the sentence as the option's one issue. */
-function fieldsFailure(sentence: string): InputError {
+function fieldsFailure(sentence: Phrase): InputError {
   return new InputError(sentence, [
     {
       input: { global: false, kind: 'option', name: 'fields' },
-      issues: [{ message: sentence }],
+      issues: [phrasedIssue(sentence)],
       reason: 'invalid',
       spelling: '--fields',
     },
@@ -66,7 +66,7 @@ function kindOf(value: unknown): FieldlessKind {
 /** The object one value is, or the failure that says what it is instead. */
 function objectOf(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) {
-    throw fieldsFailure(fieldsNeedObjects(kindOf(value)));
+    throw fieldsFailure(formatPhrase('fieldsNeedObjects', kindOf(value)));
   }
   return value;
 }
@@ -78,7 +78,9 @@ function judge(fields: readonly string[], held: ReadonlySet<string>): void {
     return;
   }
   throw fieldsFailure(
-    held.size === EMPTY ? noFieldsHeld(unknown) : unknownFields(unknown, [...held]),
+    held.size === EMPTY
+      ? formatPhrase('noFieldsHeld', unknown)
+      : formatPhrase('unknownFields', unknown, [...held]),
   );
 }
 

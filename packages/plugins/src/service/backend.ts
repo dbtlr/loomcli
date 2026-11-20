@@ -1,3 +1,5 @@
+import type { Phrase } from '@loomcli/core';
+
 import type { Manager } from './manager.js';
 import type { UnitValues } from './unit.js';
 
@@ -18,7 +20,8 @@ interface Reading {
   readonly state: string;
   readonly running: boolean;
   readonly pid?: number;
-  readonly notes: readonly string[];
+  /** The manager's notes, as phrases; status keeps their English text and renders each for a person. */
+  readonly notes: readonly Phrase[];
 }
 
 /** What one platform's manager does for each child. The plugin exports no such seam. */
@@ -39,7 +42,7 @@ interface Backend {
 }
 
 /** The reading of a state the manager could not report: unknown and not running, its note first. */
-function unknownReading(note: string, session: readonly string[]): Reading {
+function unknownReading(note: Phrase, session: readonly Phrase[]): Reading {
   return { notes: [note, ...session], running: false, state: 'unknown' };
 }
 

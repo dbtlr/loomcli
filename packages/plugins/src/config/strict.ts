@@ -1,5 +1,5 @@
-import { DeclarationError, escapeControlCharacters, InputError } from '@loomcli/core';
-import type { GraphBuiltHook, InputProblem } from '@loomcli/core';
+import { DeclarationError, escapeControlCharacters, InputError, phrasedIssue } from '@loomcli/core';
+import type { GraphBuiltHook, InputProblem, Phrase } from '@loomcli/core';
 
 import { isRecord } from '../plain-data.js';
 import { configStrictPath, configStrictSchemaPath } from '../rules.js';
@@ -127,7 +127,7 @@ function coversRemoval(
 interface LinkedProblem {
   readonly problem: Extract<InputProblem, { reason: 'invalid' }>;
   /** One line for each issue, in core's form for a filled value. */
-  readonly lines: readonly string[];
+  readonly lines: readonly Phrase[];
 }
 
 /**
@@ -136,7 +136,7 @@ interface LinkedProblem {
  * and carries one issue for each line, and each covered linked option follows as its own problem.
  */
 function strictFailure(
-  fileLines: readonly string[],
+  fileLines: readonly Phrase[],
   linked: readonly LinkedProblem[],
   invokedBy: 'argv' | 'name',
 ): InputError {
@@ -147,13 +147,13 @@ function strictFailure(
       : [
           {
             input: { global: true, kind: 'option', name: 'config' },
-            issues: fileLines.map((message) => ({ message })),
+            issues: fileLines.map((line) => phrasedIssue(line)),
             reason: 'invalid',
             spelling,
           },
         ];
   const lines = [...fileLines, ...linked.flatMap((entry) => entry.lines)];
-  return new InputError(lines.join('\n'), [...file, ...linked.map((entry) => entry.problem)]);
+  return new InputError(lines, [...file, ...linked.map((entry) => entry.problem)]);
 }
 
 /**

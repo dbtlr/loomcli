@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { FatalError } from '@loomcli/core';
+import type { Phrase } from '@loomcli/core';
 
 import { exists, observe } from '../installation/disk.js';
 import { readRecorded } from '../installation/files.js';
@@ -9,7 +10,7 @@ import type { RecordedFolder } from '../installation/record.js';
 import { actingPlaces, loadForRun, prepare } from './global.js';
 import type { ChildRun } from './global.js';
 import type { LoadedSkill } from './load.js';
-import { obsoleteSkill, statusNote, statusRecordUnreadable, statusSameFolder } from './messages.js';
+import { skillsPhrase } from './phrases.js';
 import {
   directoryNeedsProject,
   guardGlobal,
@@ -18,6 +19,8 @@ import {
   startOf,
 } from './project.js';
 import type { Declared } from './settings.js';
+import { statusNote } from './status-notes.js';
+import { rememberNotes } from './status-text.js';
 import { recordName, selectedTargets } from './targets.js';
 import type { Place, Target } from './targets.js';
 import type { SkillState, SkillStatus } from './types.js';
@@ -37,7 +40,7 @@ interface Subject {
 }
 interface Report {
   readonly rows: SkillStatus[];
-  readonly notices: string[];
+  readonly notices: Phrase[];
 }
 
 /** Sorts a caller-owned list with the pack's ES2022 library. */
@@ -72,15 +75,17 @@ function rowFor(run: ChildRun, skill: LoadedSkill, subject: Subject): SkillStatu
   };
   const state = stateFor(subject, differences);
   const files = state === 'modified' || state === 'stale' ? differences[state] : [];
-  return {
+  const notes = statusNote(run.name, state, { target, project, root });
+  const row: SkillStatus = {
     skill: skill.name,
     target,
     scope: project ? 'project' : 'global',
     state,
     folder,
     files,
-    notes: statusNote(run.name, state, { target, project, root }),
+    notes: notes.map((note) => note.text),
   };
+  return rememberNotes(row, notes);
 }
 /** Finds the project and loads exactly what an install would write, without writing it. */
 async function projectRows(
@@ -121,7 +126,7 @@ function targetReport(
   const { place, record } = where;
   const read = readRecorded({ plugin: recordName(place.target), record });
   if (read.status === 'refused') {
-    throw new FatalError(statusRecordUnreadable(run.name, read.refused.path));
+    throw new FatalError(skillsPhrase('statusRecordUnreadable', run.name, read.refused.path));
   }
   const rows = loaded.map((skill) => {
     const folder = join(place.directory, skill.name);
@@ -138,7 +143,9 @@ function targetReport(
         !loaded.some((skill) => join(place.directory, skill.name) === folder.path) &&
         exists(folder.path),
     )
-    .map((folder) => obsoleteSkill(run.name, folder.path, changedReferences(folder).length > none));
+    .map((folder) =>
+      skillsPhrase('obsoleteSkill', run.name, folder.path, changedReferences(folder).length > none),
+    );
   return { notices, rows };
 }
 /** Checks the global locations before loading, then reads every selected target. */
@@ -148,7 +155,7 @@ async function globalRows(
   options: StatusOptions,
 ): Promise<Report> {
   const prepared = prepare(run, options.agent);
-  const places = await actingPlaces(run, prepared.places, statusSameFolder);
+  const places = await actingPlaces(run, prepared.places, 'statusSameFolder');
   const loaded = await loadForRun(run, declared);
   const reports = places.map((place) =>
     targetReport(run, loaded, { place, record: prepared.record }),

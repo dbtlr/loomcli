@@ -204,3 +204,6 @@ export const helpArgument: Extension<
 
 export type { HelpArgumentFacts, HelpCommandFacts, HelpInputFacts, HelpSectionPath };
 export type { CommandExample } from '../command-example.js';
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

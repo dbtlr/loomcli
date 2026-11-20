@@ -92,3 +92,6 @@ export type { PathKind } from './probe.js';
 export type { TextOptions } from './text.js';
 export type { TimeOptions } from './time.js';
 export type { UrlOptions } from './url.js';
+
+// The package's member of MessagePackages, which this entry's declarations load.
+export type { ValidatorMessageModules } from './registry.js';

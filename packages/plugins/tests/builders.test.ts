@@ -2,7 +2,7 @@
  * A first-party function called alone through the @loomcli/testing builders (ADR-0110): the format
  * plugin's middleware, the help plugin's `onFailure` hook, and a pack view. No Application runs.
  */
-import { FatalError, UnknownCommandError, glyph } from '@loomcli/core';
+import { FatalError, Phrase, UnknownCommandError, glyph } from '@loomcli/core';
 import { failureHookContext, middlewareContext, viewContext } from '@loomcli/testing';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
@@ -53,7 +53,10 @@ describe('the help plugin hint through failureHookContext', () => {
 
   it('points a usage error at the routed Command help page', () => {
     const context = failureHookContext(helpHint, { ...facts, invokedBy: 'argv', path: ['db'] });
-    expect(helpHint(failure, context)).toBe('Run "notes db --help" to see the usage.');
+    const hint = helpHint(failure, context);
+    expect(hint instanceof Phrase ? hint.text : hint).toBe(
+      'Run "notes db --help" to see the usage.',
+    );
   });
 
   it('gives no hint to an invocation by name', () => {

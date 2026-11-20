@@ -14,47 +14,31 @@ function lineMalformed(name: string, line: number, file: string): string {
   return `Skipped ${shown(name)} on line ${String(line)} of ${shown(file)}: the line is not a valid assignment. Correct the line, or remove it.`;
 }
 
-const single = 1;
+/** The `debug` log template for a file that imported one name, which names none. */
+const importedVariable = 'Imported {count} variable from {file}.';
 
-/** One log line: its message, a constant Message Template, and the fields it reads. */
-interface LogText {
-  readonly template: string;
-  readonly fields: Readonly<Record<string, number | string>>;
-}
+/** The `debug` log template for a file that imported several names, which names none. */
+const importedVariables = 'Imported {count} variables from {file}.';
 
-/** The `debug` log line for a file that imported names, which counts them and names none. */
-function imported(count: number, file: string): LogText {
-  return count === single
-    ? { fields: { count, file }, template: 'Imported {count} variable from {file}.' }
-    : { fields: { count, file }, template: 'Imported {count} variables from {file}.' };
-}
+/** The `trace` log template for a name on the except list. */
+const skippedExcepted = 'Skipped {name} from {file}: on the except list.';
 
-/** Why the plugin passed over a name a file assigns, in the order the reasons are tried. */
-type SkipReason =
-  | { readonly kind: 'except' }
-  | { readonly kind: 'only' }
-  | { readonly kind: 'set' }
-  | { readonly kind: 'supplied'; readonly from: string };
+/** The `trace` log template for a name not on the only list. */
+const skippedNotOnly = 'Skipped {name} from {file}: not on the only list.';
 
-/** The message of each reason that names no other file. */
-const fixedReasons: Readonly<Record<Exclude<SkipReason['kind'], 'supplied'>, string>> = {
-  except: 'Skipped {name} from {file}: on the except list.',
-  only: 'Skipped {name} from {file}: not on the only list.',
-  set: 'Skipped {name} from {file}: already set.',
+/** The `trace` log template for a name the environment already sets. */
+const skippedAlreadySet = 'Skipped {name} from {file}: already set.';
+
+/** The `trace` log template for a name an earlier file already set. */
+const skippedSetFrom = 'Skipped {name} from {file}: already set from {specific}.';
+
+export {
+  fileUnreadable,
+  importedVariable,
+  importedVariables,
+  lineMalformed,
+  skippedAlreadySet,
+  skippedExcepted,
+  skippedNotOnly,
+  skippedSetFrom,
 };
-
-/**
- * The `trace` log line for one name a file assigns that the plugin passed over, which never holds
- * a value.
- */
-function skippedName(name: string, file: string, reason: SkipReason): LogText {
-  return reason.kind === 'supplied'
-    ? {
-        fields: { file, name, specific: reason.from },
-        template: 'Skipped {name} from {file}: already set from {specific}.',
-      }
-    : { fields: { file, name }, template: fixedReasons[reason.kind] };
-}
-
-export type { LogText, SkipReason };
-export { fileUnreadable, imported, lineMalformed, skippedName };

@@ -1,4 +1,4 @@
-import type { ViewContext } from '@loomcli/core';
+import type { Phrase, ViewContext } from '@loomcli/core';
 
 import { column } from './help-cells.js';
 import type { Row } from './help-cells.js';
@@ -11,6 +11,8 @@ interface SectionMember<Shown> {
 }
 
 interface Section<Shown> {
+  /** Whether any member named the heading itself, rather than falling back to help's own. */
+  authored: boolean;
   rows: Shown[];
   subsections: Map<string, Shown[]>;
 }
@@ -18,6 +20,8 @@ interface Section<Shown> {
 /** One outer section in page order: its heading, its direct rows, and its ordered subsections. */
 interface OrderedSection<Shown> {
   readonly heading: string;
+  /** Whether an author named the heading, so no phrasebook translates it. */
+  readonly authored: boolean;
   readonly rows: readonly Shown[];
   readonly subsections: readonly { readonly heading: string; readonly rows: readonly Shown[] }[];
 }
@@ -49,8 +53,13 @@ function collect<Shown>(rows: readonly SectionMember<Shown>[]): Map<string, Sect
   for (const member of rows) {
     const { inner, outer } = headings(member.path);
     const heading = outer ?? member.fallback;
-    const section = sections.get(heading) ?? { rows: [], subsections: new Map<string, Shown[]>() };
+    const section = sections.get(heading) ?? {
+      authored: false,
+      rows: [],
+      subsections: new Map<string, Shown[]>(),
+    };
     sections.set(heading, section);
+    section.authored ||= outer !== undefined;
     append(section, inner, member.row);
   }
   return sections;
@@ -127,6 +136,7 @@ function orderedSections<Shown>(
       ? []
       : [
           {
+            authored: section.authored,
             heading,
             rows: section.rows,
             subsections: subsections(section, priorities.inner.get(heading)),
@@ -142,9 +152,16 @@ const innerIndent = '    ';
  * Direct members and each subsection measure their own columns within one outer block, and each is
  * a row set of its own, which wraps or stacks on its own.
  */
-function block(section: OrderedSection<Row>, context: ViewContext): string[] {
+function block(
+  section: OrderedSection<Row>,
+  labels: ReadonlyMap<string, Phrase>,
+  context: ViewContext,
+): string[] {
+  const label = section.authored ? undefined : labels.get(section.heading);
   const lines = [
-    context.style.dim(context.style.escape(section.heading)),
+    context.style.dim(
+      context.style.escape(label === undefined ? section.heading : context.localize(label)),
+    ),
     ...column(section.rows, context),
   ];
   for (const { heading, rows } of section.subsections) {
@@ -156,15 +173,24 @@ function block(section: OrderedSection<Row>, context: ViewContext): string[] {
   return lines;
 }
 
-/** Each outer section is one block, with listed headings before the remaining visible headings. */
+/**
+ * Each outer section is one block, with listed headings before the remaining visible headings. A
+ * heading `labels` names, a fallback heading of help's own, prints its phrase in the run's
+ * language; an authored heading prints as written.
+ */
 function sectionBlocks(
   {
+    labels,
     order,
     rows,
-  }: { order: readonly (readonly string[])[] | undefined; rows: readonly SectionMember<Row>[] },
+  }: {
+    labels: ReadonlyMap<string, Phrase>;
+    order: readonly (readonly string[])[] | undefined;
+    rows: readonly SectionMember<Row>[];
+  },
   context: ViewContext,
 ): string[][] {
-  return orderedSections(order, rows).map((section) => block(section, context));
+  return orderedSections(order, rows).map((section) => block(section, labels, context));
 }
 
 export type { OrderedSection, SectionMember };

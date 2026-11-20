@@ -88,3 +88,6 @@ function list<Item>(config: ListConfig<Item> = {}): View<readonly Item[]> {
 
 export { list };
 export type { ListConfig };
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from './registry.js';

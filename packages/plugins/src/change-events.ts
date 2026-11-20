@@ -6,12 +6,7 @@
  */
 import type { Log } from '@loomcli/core';
 
-import {
-  binaryReplacedMessage,
-  fileRemovedMessage,
-  fileWrittenMessage,
-  programRunMessage,
-} from './messages.js';
+import { commonPhrase } from './phrases.js';
 
 /** The fields of a file a plugin wrote or removed: its absolute path. */
 interface FileChange {
@@ -45,7 +40,7 @@ interface BinaryChange {
  * ```
  */
 function fileWritten(log: Log, { path }: FileChange): void {
-  log.info(fileWrittenMessage, { path });
+  log.info(commonPhrase('fileWrittenMessage'), { path });
 }
 
 /**
@@ -57,7 +52,7 @@ function fileWritten(log: Log, { path }: FileChange): void {
  * ```
  */
 function fileRemoved(log: Log, { path }: FileChange): void {
-  log.info(fileRemovedMessage, { path });
+  log.info(commonPhrase('fileRemovedMessage'), { path });
 }
 
 /**
@@ -69,7 +64,7 @@ function fileRemoved(log: Log, { path }: FileChange): void {
  * ```
  */
 function programRun(log: Log, { arguments: words, code, program }: ProgramChange): void {
-  log.info(programRunMessage, { arguments: [...words], code, program });
+  log.info(commonPhrase('programRunMessage'), { arguments: [...words], code, program });
 }
 
 /**
@@ -81,7 +76,7 @@ function programRun(log: Log, { arguments: words, code, program }: ProgramChange
  * ```
  */
 function binaryReplaced(log: Log, { from, path, to }: BinaryChange): void {
-  log.info(binaryReplacedMessage, { from, path, to });
+  log.info(commonPhrase('binaryReplacedMessage'), { from, path, to });
 }
 
 export type { BinaryChange, FileChange, ProgramChange };

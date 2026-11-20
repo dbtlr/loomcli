@@ -69,3 +69,6 @@ export function help(settings?: HelpSettings): Plugin<HelpOptions> {
     views: [helpPage],
   });
 }
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

@@ -24,4 +24,104 @@ type StageAnswer<Output> = ParseReturn<Output>;
 type StageOutput<Stage> = Stage extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<Stage> : Stage extends (...parameters: never[]) => infer Answer ? AcceptedOutput<Awaited<Answer>> : never;
 
 type StepFunction<Previous> = (value: Previous, context: ValidationContext) => StageAnswer<unknown>;
+
+declare const expectedCidr = "Expected a CIDR block, such as 192.0.2.0/24 or 2001:db8::/32.";
+
+declare const expectedCidrV4 = "Expected an IPv4 CIDR block, such as 192.0.2.0/24.";
+
+declare const expectedCidrV6 = "Expected an IPv6 CIDR block, such as 2001:db8::/32.";
+
+declare const expectedDate = "Expected a date as YYYY-MM-DD, such as 2026-09-25.";
+
+declare function expectedDateLayouts(forms: readonly string[]): string;
+
+declare const expectedDateTime = "Expected a date and time, such as 2026-09-25T14:30:00Z or 2026-09-25 14:30.";
+
+declare function expectedDateTimeLayouts(forms: readonly string[]): string;
+
+declare const expectedDuration = "Expected a duration, such as 90s, 2h30m, or 1.5h.";
+
+declare function expectedDurationMax(max: number): string;
+
+declare function expectedDurationMin(min: number): string;
+
+declare const expectedDurationMinutes = "Expected a duration; write minutes as m or min, because M is ambiguous.";
+
+declare function expectedDurationRange(min: number, max: number): string;
+
+declare const expectedEmail = "Expected an email address, such as name@example.com.";
+
+declare function expectedExactLength(length: number): string;
+
+declare const expectedHost = "Expected a host name, such as example.com.";
+
+declare const expectedHostOrIp = "Expected a host name or an IP address, such as example.com, 192.0.2.1, or [2001:db8::1].";
+
+declare const expectedInteger = "Expected a whole number.";
+
+declare function expectedIntegerMax(max: number): string;
+
+declare function expectedIntegerMin(min: number): string;
+
+declare function expectedIntegerRange(min: number, max: number): string;
+
+declare const expectedIp = "Expected an IP address, such as 192.0.2.1 or 2001:db8::1.";
+
+declare const expectedIpV4 = "Expected an IPv4 address, such as 192.0.2.1.";
+
+declare const expectedIpV6 = "Expected an IPv6 address, such as 2001:db8::1.";
+
+declare function expectedKeyValue(separator: string): string;
+
+declare function expectedLengthRange(min: number, max: number): string;
+
+declare function expectedMaxLength(max: number): string;
+
+declare function expectedMinLength(min: number): string;
+
+declare const expectedNetworkAddress = "Expected a network address with no bits set below the prefix.";
+
+declare const expectedNonempty = "Expected a nonempty value.";
+
+declare const expectedNumber = "Expected a number.";
+
+declare function expectedNumberMax(max: number): string;
+
+declare function expectedNumberMin(min: number): string;
+
+declare function expectedNumberRange(min: number, max: number): string;
+
+declare function expectedOneOf(values: readonly string[]): string;
+
+declare const expectedPath = "Expected a nonempty path with no NUL character.";
+
+declare const expectedPort = "Expected a port number from 1 through 65535.";
+
+declare function expectedReadablePath(kind: PathKind): string;
+
+declare const expectedSize = "Expected a size, such as 512KiB, 10MB, or 1.5GB.";
+
+declare function expectedSizeMax(max: number): string;
+
+declare function expectedSizeMin(min: number): string;
+
+declare function expectedSizeRange(min: number, max: number): string;
+
+declare const expectedTime = "Expected a time of day, such as 09:30 or 17:45:30.";
+
+declare function expectedTimeLayouts(forms: readonly string[]): string;
+
+declare function expectedTimeMax(max: number): string;
+
+declare function expectedTimeMin(min: number): string;
+
+declare function expectedTimeRange(min: number, max: number): string;
+
+declare const expectedUrl = "Expected an absolute URL, such as https://example.com.";
+
+declare function expectedUrlScheme(protocols: readonly string[]): string;
+
+declare const expectedUuid = "Expected a UUID, such as 123e4567-e89b-12d3-a456-426614174000.";
+
+declare function expectedWritablePath(kind: PathKind): string;
 ```

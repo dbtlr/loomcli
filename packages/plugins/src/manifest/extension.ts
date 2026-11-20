@@ -146,3 +146,6 @@ export const manifestCommand: Extension<
 
 export type { DeclaredFailure, DeclaredFailureInput, ManifestCommandFacts, ManifestCommandInput };
 export type { CommandExample } from '../command-example.js';
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

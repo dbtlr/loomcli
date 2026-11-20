@@ -40,6 +40,10 @@ const carried = 'The cause is carried on to the failure that wraps it, and no se
 /** A read of a text rule's own sentence, which is no error's text. */
 const ruleSentence = `A text rule's own sentence, not an error's text. ${textRule}`;
 
+/** A help fact's value, which help-cells already put on one line and the view escapes for its style. */
+const oneLined =
+  "The value is the help page's own one-line form of declared text, which the view escapes for its style; escaping its control characters here would change the bytes help prints.";
+
 /**
  * The pack's known exceptions. An issue's sentence is its validator's, which the configuration
  * plugin repeats after the option's name as the validator wrote it, as core does, under
@@ -58,15 +62,48 @@ const exceptions: VoiceExceptions = {
         sites: 1,
       },
     },
-    'skills/messages.ts': {
-      '${directory}': {
-        reason: 'A fixed option spelling followed by the root passed through shown.',
+    'help/messages.ts': {
+      '${command}': {
+        reason:
+          'The command a closing hint names, which help-page styles, escapes, and keeps on one line before it reaches the sentence.',
+        sites: 2,
+      },
+      '${message}': { reason: oneLined, sites: 1 },
+      '${noun}': {
+        reason:
+          "The noun of a binding fact, a phrase of this module or the man page's English for it.",
         sites: 1,
       },
+      '${path}': {
+        reason:
+          'The routed path of declared names, written as a literal that the view escapes for its style.',
+        sites: 1,
+      },
+      '${values}': {
+        reason:
+          'The accepted values, each already listed as written or as its escaped JSON string by help-accepted.',
+        sites: 1,
+      },
+      '${value}': { reason: oneLined, sites: 2 },
+    },
+    'self-update/messages.ts': {
+      '${command}': {
+        reason:
+          "The command is rendered and escaped by `upgradeCommandLine` in the plugin's wording module before it reaches the sentence.",
+        sites: 2,
+      },
+    },
+    'skills/messages.ts': {
       '${install}': {
         reason:
           'The install step is built from fixed spellings and escaped application, target, and root values.',
         sites: 6,
+      },
+    },
+    'skills/wording.ts': {
+      '${directory}': {
+        reason: 'A fixed option spelling followed by the root passed through shown.',
+        sites: 1,
       },
     },
   },
@@ -85,6 +122,14 @@ const exceptions: VoiceExceptions = {
         sites: 1,
       },
     },
+    'self-update/request.ts': {
+      '`The request for ${escapeControlCharacters(url)} failed: ${escapeControlCharacters(kind)}.`':
+        {
+          reason:
+            "The text is the message of the internal `RequestError`, which the operator never reads: the action catches it and says `requestFailed`. It is an error's own text, which ADR-0200 keeps English.",
+          sites: 1,
+        },
+    },
   },
   'outside-text': {
     'config/drop.ts': {
@@ -95,7 +140,6 @@ const exceptions: VoiceExceptions = {
       },
       'issue.message': { reason: issue, sites: 1 },
     },
-    'config/shared.ts': { 'removal.message': { reason: issue, sites: 2 } },
     'config/source.ts': { 'issue.message': { reason: issue, sites: 2 } },
     'help/extension.ts': {
       'lineRule.message': { reason: ruleSentence, sites: 1 },
@@ -151,20 +195,15 @@ const exceptions: VoiceExceptions = {
     'self-update/request.ts': { 'options.cause': { reason: carried, sites: 1 } },
     'skills/extension.ts': { 'markdownRule.message': { reason: ruleSentence, sites: 1 } },
     'suggestions/plugin.ts': {
-      'failure.message': {
-        reason:
-          "A failure's own message, which the suggestions view prints as core's default text does when it recorded no sentence, and whose individual issue sentences it replaces when it recorded a value suggestion.",
-        sites: 2,
-      },
       'issue.message': {
         reason:
-          "The validator issue sentence, which the suggestions hook reads to locate and replace its line in core's failure text.",
-        sites: 1,
+          "The validator issue sentence, read for whether it spans several lines and repeated as `issuePhrase(issue) ?? issue.message`, which the suggestions hook replaces inside its line of core's failure.",
+        sites: 2,
       },
     },
   },
 };
 
 test('every sentence the plugin pack says to an operator keeps the voice the voice test holds', async () => {
-  await expect(voiceReport(src, exceptions, sinks)).resolves.toEqual([]);
+  await expect(voiceReport(src, exceptions, sinks, 'registry.ts')).resolves.toEqual([]);
 });

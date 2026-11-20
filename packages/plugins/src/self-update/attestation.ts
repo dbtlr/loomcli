@@ -68,3 +68,6 @@ function attestation(settings: AttestationSettings): AttestationSetting {
 
 export type { AttestationSettings };
 export { attestation };
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

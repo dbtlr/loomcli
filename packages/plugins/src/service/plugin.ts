@@ -59,7 +59,9 @@ async function detailsOf(
 function statusCommand(settings: ServiceSettings) {
   return new Command('status', { description: 'Report whether the service is running.' })
     .result<ServiceStatus>({
-      views: { text: { render: (status, { style }) => statusText(status, style) } },
+      views: {
+        text: { render: (status, { localize, style }) => statusText(status, style, localize) },
+      },
     })
     .views({ json: json<ServiceStatus>() })
     .action(async (context) => {
@@ -126,3 +128,6 @@ export type {
   ServiceStatus,
 } from './types.js';
 export { service };
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

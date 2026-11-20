@@ -8,7 +8,7 @@ import type { Stats } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import { FatalError } from '@loomcli/core';
-import type { CommandGraph, Host, Log } from '@loomcli/core';
+import type { CommandGraph, Host, Log, Phrase } from '@loomcli/core';
 
 import { recordDirectory, requiredHome } from '../application-folders.js';
 import { fileWritten } from '../change-events.js';
@@ -24,29 +24,11 @@ import {
 import { hasPendingRecord, install, readRecorded, uninstall } from '../installation/files.js';
 import type { InstalledFile, InstallOutcome, Refusal } from '../installation/files.js';
 import { advice } from './advice.js';
-import {
-  installedPages,
-  manpathAdvice,
-  noPagesToRemove,
-  noPagesToUpdate,
-  notAFolder,
-  pageChanged,
-  pageKept,
-  pageNotInstalled,
-  pagesInManyFolders,
-  pagesInTheWay,
-  pagesUnchanged,
-  readWithMan,
-  recordUnreadable,
-  removedPage,
-  removedPages,
-  updatedPages,
-  wrotePages,
-} from './messages.js';
 import type { WritingVerb } from './messages.js';
 import { manPages } from './page.js';
 import type { ManPage } from './page.js';
 import { recordName as plugin } from './pages.js';
+import { manpagePhrase } from './phrases.js';
 
 /** What a child reads from its action: the application, the run, and the lanes it writes. */
 interface ChildRun {
@@ -55,10 +37,10 @@ interface ChildRun {
   readonly signal: AbortSignal;
   /** The action's log, which records each file the child writes or removes. */
   readonly log: Log;
-  readonly info: (message: string) => Promise<void>;
+  readonly info: (message: string | Phrase) => Promise<void>;
   readonly print: (message: string) => Promise<void>;
-  readonly success: (message: string) => Promise<void>;
-  readonly warn: (message: string) => Promise<void>;
+  readonly success: (message: string | Phrase) => Promise<void>;
+  readonly warn: (message: string | Phrase) => Promise<void>;
 }
 
 /** The permission bits of a folder the plugin creates and of a page it writes, whatever the umask. */
@@ -110,7 +92,7 @@ function isNotFolder(path: string): boolean {
 function outFolder(run: ChildRun, out: string): string {
   const folder = resolve(run.host.cwd, out);
   if (isNotFolder(folder)) {
-    throw new FatalError(notAFolder(run.graph.name, folder));
+    throw new FatalError(manpagePhrase('notAFolder', run.graph.name, folder));
   }
   return folder;
 }
@@ -129,7 +111,7 @@ async function generatePages(run: ChildRun, out: string): Promise<void> {
     replaceFile(page.path, page.content, { mode: pageMode });
     fileWritten(run.log, { path: page.path });
   }
-  await run.success(wrotePages(pages.length, folder));
+  await run.success(manpagePhrase('wrotePages', pages.length, folder));
 }
 
 /** What a writing child reads: the record's directory and what the plugin's file records. */
@@ -144,7 +126,7 @@ function readRecord(run: ChildRun, verb: 'install' | 'uninstall'): Recorded {
   const record = recordDirectory(name, run.host);
   const read = readRecorded({ plugin, record });
   if (read.status === 'refused') {
-    throw new FatalError(recordUnreadable(name, read.refused.path, verb));
+    throw new FatalError(manpagePhrase('recordUnreadable', name, read.refused.path, verb));
   }
   return { files: read.files, record };
 }
@@ -177,11 +159,15 @@ async function refuse(
   const name = run.graph.name;
   for (const { path, reason } of refused) {
     if (reason === 'damaged' || reason === 'unknown-format') {
-      throw new FatalError(recordUnreadable(name, path, 'install'));
+      throw new FatalError(manpagePhrase('recordUnreadable', name, path, 'install'));
     }
-    await run.warn(reason === 'changed' ? pageChanged(name, path) : pageNotInstalled(name, path));
+    await run.warn(
+      reason === 'changed'
+        ? manpagePhrase('pageChanged', name, path)
+        : manpagePhrase('pageNotInstalled', name, path),
+    );
   }
-  throw new FatalError(pagesInTheWay(name, verb));
+  throw new FatalError(manpagePhrase('pagesInTheWay', name, verb));
 }
 
 /** States each recorded page the set no longer holds: removed when unchanged, left in place when changed. */
@@ -190,10 +176,10 @@ async function reportRemovals(
   { kept, removed }: { readonly kept: readonly string[]; readonly removed: readonly string[] },
 ): Promise<void> {
   for (const path of removed) {
-    await run.info(removedPage(path));
+    await run.info(manpagePhrase('removedPage', path));
   }
   for (const path of kept) {
-    await run.warn(pageKept(run.graph.name, path));
+    await run.warn(manpagePhrase('pageKept', run.graph.name, path));
   }
 }
 
@@ -226,12 +212,12 @@ async function writeSet(run: ChildRun, writing: Writing): Promise<void> {
   const { folder, recorded, verb } = writing;
   const wanted = filesIn(folder, manPages(run.graph));
   if (isUnchanged(recorded, wanted)) {
-    await run.info(pagesUnchanged(wanted.length, folder));
+    await run.info(manpagePhrase('pagesUnchanged', wanted.length, folder));
     return;
   }
   const outcome = await installed(run, writing, wanted);
-  const written = verb === 'update' ? updatedPages : installedPages;
-  await run.success(written(wanted.length, folder));
+  const written = verb === 'update' ? 'updatedPages' : 'installedPages';
+  await run.success(manpagePhrase(written, wanted.length, folder));
   await reportRemovals(run, outcome);
 }
 
@@ -239,10 +225,10 @@ async function writeSet(run: ChildRun, writing: Writing): Promise<void> {
 async function adviseOn(run: ChildRun, home: string): Promise<void> {
   const advised = advice(home, run.host.env);
   if (advised === undefined) {
-    await run.info(readWithMan(run.graph.name));
+    await run.info(manpagePhrase('readWithMan', run.graph.name));
     return;
   }
-  await run.warn(manpathAdvice(advised.folder));
+  await run.warn(manpagePhrase('manpathAdvice', advised.folder));
   await run.print(advised.line);
 }
 
@@ -265,11 +251,13 @@ async function updatePages(run: ChildRun): Promise<void> {
   const recorded = readRecord(run, 'install');
   const [folder, ...others] = recorded === undefined ? [] : foldersOf(recorded.files);
   if (recorded === undefined || folder === undefined) {
-    await run.success(noPagesToUpdate(name));
+    await run.success(manpagePhrase('noPagesToUpdate', name));
     return;
   }
   if (!isEmpty(others)) {
-    throw new FatalError(pagesInManyFolders(name, join(recorded.record, `${plugin}.json`)));
+    throw new FatalError(
+      manpagePhrase('pagesInManyFolders', name, join(recorded.record, `${plugin}.json`)),
+    );
   }
   await writeSet(run, { folder, recorded, verb: 'update' });
 }
@@ -292,7 +280,9 @@ function uninstalled(run: ChildRun): {
   const outcome = uninstall({ log: run.log, plugin, record, signal: run.signal });
   if (outcome.status === 'refused') {
     const [refused] = outcome.refused;
-    throw new FatalError(recordUnreadable(run.graph.name, refused?.path ?? record, 'uninstall'));
+    throw new FatalError(
+      manpagePhrase('recordUnreadable', run.graph.name, refused?.path ?? record, 'uninstall'),
+    );
   }
   return outcome;
 }
@@ -301,11 +291,11 @@ function uninstalled(run: ChildRun): {
 async function uninstallPages(run: ChildRun): Promise<void> {
   const outcome = uninstalled(run);
   if (isEmpty(outcome.removed) && isEmpty(outcome.kept)) {
-    await run.success(noPagesToRemove(run.graph.name));
+    await run.success(manpagePhrase('noPagesToRemove', run.graph.name));
     return;
   }
   for (const [folder, count] of countsByFolder(outcome.removed)) {
-    await run.success(removedPages(count, folder));
+    await run.success(manpagePhrase('removedPages', count, folder));
   }
   await reportRemovals(run, { kept: outcome.kept, removed: [] });
 }

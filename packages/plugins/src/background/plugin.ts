@@ -1,9 +1,9 @@
-import { plugin } from '@loomcli/core';
+import { phrasedIssue, plugin } from '@loomcli/core';
 import type { Plugin, PluginOptions } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
 import { packageName } from '../constants.js';
-import { backgroundIssue } from './messages.js';
+import { backgroundPhrase } from './phrases.js';
 
 const identity = `${packageName}/background`;
 
@@ -14,7 +14,9 @@ const backgroundInput = createValidator({
   inputSchema: { type: 'string', enum: [...backgrounds] },
   parse: (raw) => {
     const match = backgrounds.find((each) => each === raw);
-    return match === undefined ? { issues: [{ message: backgroundIssue }] } : { value: match };
+    return match === undefined
+      ? { issues: [phrasedIssue(backgroundPhrase('backgroundIssue'))] }
+      : { value: match };
   },
 });
 
@@ -54,3 +56,6 @@ export type BackgroundOptions = typeof options;
 export function background(): Plugin<BackgroundOptions> {
   return plugin(identity, { options });
 }
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

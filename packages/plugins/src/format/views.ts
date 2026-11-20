@@ -4,3 +4,6 @@
  */
 export { json, jsonl, jsonlRows } from '../json-views.js';
 export type { EncodingConfig } from '../json-views.js';
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

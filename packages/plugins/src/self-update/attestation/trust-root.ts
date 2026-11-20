@@ -1,15 +1,10 @@
 import { isAbsolute, relative, sep } from 'node:path';
 
-import type { FatalError } from '@loomcli/core';
+import type { FatalError, Phrase } from '@loomcli/core';
 import { TUFError } from '@sigstore/tuf';
 
 import { fatal } from '../fatal.js';
-import {
-  trustRootFolderUnusable,
-  trustRootNotCurrent,
-  trustRootStagingUnusable,
-  trustRootUnreachable,
-} from '../messages.js';
+import { selfUpdatePhrase } from '../phrases.js';
 
 /** What naming a trust-root fault needs: the application, the trust root's folder, the temporary folder. */
 interface TrustRootPlaces {
@@ -112,24 +107,29 @@ function unreachable(error: unknown): { status: number | undefined } | undefined
 }
 
 /** The sentence of a trust-root fault, told apart by its facts in the contract's row order. */
-function trustRootSentence(error: unknown, { folder, name, temporary }: TrustRootPlaces): string {
+function trustRootPhrase(error: unknown, { folder, name, temporary }: TrustRootPlaces): Phrase {
   const host = unreachable(error);
   if (host !== undefined) {
-    return trustRootUnreachable(name, host.status);
+    return selfUpdatePhrase('trustRootUnreachable', name, host.status);
   }
   const path = systemPath(faultOf(error));
   if (path !== undefined && isWithin(folder, path)) {
-    return trustRootFolderUnusable(name, folder);
+    return selfUpdatePhrase('trustRootFolderUnusable', name, folder);
   }
   if (path !== undefined && error instanceof TUFError) {
-    return trustRootStagingUnusable(name, temporary);
+    return selfUpdatePhrase('trustRootStagingUnusable', name, temporary);
   }
-  return trustRootNotCurrent(name, folder, temporary);
+  return selfUpdatePhrase('trustRootNotCurrent', name, folder, temporary);
 }
 
 /** The failure a trust-root fault fails the run with, its error kept as the cause. */
 function trustRootFailure(error: unknown, places: TrustRootPlaces): FatalError {
-  return fatal(trustRootSentence(error, places), error);
+  return fatal(trustRootPhrase(error, places), error);
+}
+
+/** The English text of a trust-root fault's sentence, for a caller that reads text. */
+function trustRootSentence(error: unknown, places: TrustRootPlaces): string {
+  return trustRootPhrase(error, places).text;
 }
 
 export type { TrustRootPlaces };

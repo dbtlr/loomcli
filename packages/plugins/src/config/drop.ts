@@ -1,5 +1,5 @@
-import { DeclarationError, escapeControlCharacters } from '@loomcli/core';
-import type { StandardSchemaV1 } from '@loomcli/core';
+import { DeclarationError, escapeControlCharacters, issuePhrase } from '@loomcli/core';
+import type { Phrase, StandardSchemaV1 } from '@loomcli/core';
 
 import { isRecord } from '../plain-data.js';
 import { configEmptyFile } from '../rules.js';
@@ -14,13 +14,14 @@ import { configEmptyFile } from '../rules.js';
 type Step = string | number;
 
 /**
- * What one removal names: the value it removes, the first message the schema gave for it, and the
+ * What one removal names: the value it removes, the first issue the schema gave for it, and the
  * paths of the issues behind it. An issue's path reaches below the removed value where the drop
  * rule cuts the path, at an array item or at the nearest value the file holds.
  */
 interface Removal {
   readonly path: readonly Step[];
-  readonly message: string;
+  /** The first issue's sentence: its phrase while it carries one, and its `message` otherwise. */
+  readonly sentence: string | Phrase;
   /** The path of the issue whose message the removal names. */
   readonly issuePath: readonly Step[];
   /** The path of every issue behind the removal: each issue whose value lies at or inside it. */
@@ -108,7 +109,7 @@ type Removed = Omit<Removal, 'readIssuePath' | 'readPath'>;
 /** One distinct value a round removes, with the path of each issue that names it. */
 interface Target {
   readonly path: readonly Step[];
-  readonly message: string;
+  readonly sentence: string | Phrase;
   readonly issuePath: readonly Step[];
   readonly issuePaths: Step[][];
 }
@@ -128,20 +129,25 @@ function removalsOf(
     const issuePath = issueSteps(file, keys);
     const target = found.find((entry) => samePath(entry.path, path));
     if (target === undefined) {
-      found.push({ issuePath, issuePaths: [issuePath], message: issue.message, path });
+      found.push({
+        issuePath,
+        issuePaths: [issuePath],
+        path,
+        sentence: issuePhrase(issue) ?? issue.message,
+      });
     } else {
       target.issuePaths.push(issuePath);
     }
   }
   return found
     .filter((entry) => !found.some((other) => other !== entry && isWithin(entry.path, other.path)))
-    .map(({ issuePath, message, path }) => ({
+    .map(({ issuePath, path, sentence }) => ({
       issuePath,
       issuePaths: found
         .filter((other) => isWithin(other.path, path))
         .flatMap((other) => other.issuePaths),
-      message,
       path,
+      sentence,
     }));
 }
 

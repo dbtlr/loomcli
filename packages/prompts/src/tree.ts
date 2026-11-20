@@ -14,7 +14,7 @@ import type { Estimate } from './estimate.js';
 import { joinTree } from './height.js';
 import type { TreePlace, Seat } from './height.js';
 import { keptLinesAt, ProgressLog } from './log.js';
-import { logLinesDropped } from './messages.js';
+import { promptPhrase } from './phrases.js';
 import type {
   Progress,
   ProgressContext,
@@ -257,8 +257,9 @@ class Line {
     if (lines.length === 0) {
       return Promise.resolve();
     }
-    const message = [...(dropped > 0 ? [logLinesDropped(dropped)] : []), ...lines].join('\n');
-    const view = keptLinesAt(this.depth);
+    const notice = dropped > 0 ? promptPhrase('logLinesDropped', dropped) : undefined;
+    const message = [...(notice === undefined ? [] : [notice.text]), ...lines].join('\n');
+    const view = keptLinesAt(this.depth, notice);
     const { out } = this.tree.context;
     return state === 'failed' ? out.error(message, view) : out.warn(message, view);
   }

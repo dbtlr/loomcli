@@ -10,7 +10,7 @@
 import { basename } from 'node:path';
 
 import { applicationDirectory, escapeControlCharacters } from '@loomcli/core';
-import type { Host, Log } from '@loomcli/core';
+import type { Host, Log, Phrase } from '@loomcli/core';
 
 import { programRun } from './change-events.js';
 import { exists } from './installation/disk.js';
@@ -46,9 +46,9 @@ interface RefreshContext {
 interface Refresh {
   readonly words: readonly string[];
   readonly records: readonly string[];
-  readonly warning: string;
+  readonly warning: string | Phrase;
   readonly notStarted: (path: string, name: string) => string;
-  readonly skipped: string;
+  readonly skipped: string | Phrase;
 }
 
 /** The code of a child that succeeded. */

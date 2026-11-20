@@ -1,7 +1,14 @@
 import { join } from 'node:path';
 
-import { applicationDirectory, Command, DeclarationError, InputError, plugin } from '@loomcli/core';
-import type { FatalError, Host, Log, Out, Plugin } from '@loomcli/core';
+import {
+  applicationDirectory,
+  Command,
+  DeclarationError,
+  InputError,
+  phrasedIssue,
+  plugin,
+} from '@loomcli/core';
+import type { FatalError, Host, Log, Out, Phrase, Plugin } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
 import { binaryReplaced, fileWritten } from '../change-events.js';
@@ -20,40 +27,7 @@ import type { Attest, AttestationCheck, AttestationSetting } from './attestation
 import { releaseBinary } from './binary.js';
 import type { ReleaseBinary } from './binary.js';
 import { fatal } from './fatal.js';
-import {
-  alreadyInstalled,
-  assetNotListed,
-  attestationCacheNotAbsolute,
-  binaryChanged,
-  binaryIsLink,
-  binaryMissing,
-  binaryUnwritable,
-  canInstall,
-  canUpdate,
-  channelConflict,
-  channelConflictIssue,
-  channelIssue,
-  digestConflict,
-  digestMismatch,
-  directoryUnwritable,
-  downloading,
-  newerThanNewest,
-  newestRelease,
-  noRelease,
-  notReleaseBinary,
-  otherInstaller,
-  packageManagerRefusal,
-  recordNotAbsolute,
-  recordUnwritable,
-  refreshNoticeConflict,
-  refreshNoticeConflictIssue,
-  requested,
-  requestFailed,
-  resolvedRelease,
-  updated,
-  verifiedAsset,
-  versionIssue,
-} from './messages.js';
+import { selfUpdatePhrase } from './phrases.js';
 import { unwritable } from './place.js';
 import { refreshNotice } from './refresh.js';
 import { fetchBytes, notFound, RequestError } from './request.js';
@@ -69,6 +43,7 @@ import {
 } from './upgrade.js';
 import { compareVersions, equalPrecedence, isChannelName, versionOfArgument } from './version.js';
 import type { Version } from './version.js';
+import { managerName, upgradeCommandLine } from './wording.js';
 
 const identity = `${packageName}/self-update`;
 
@@ -157,16 +132,19 @@ function judgeAttestation(settings: SelfUpdateSettings | undefined): Attest | un
 }
 
 /** A string input that `accepts` or the one-sentence `message`, published as a plain string. */
-function stringInput(accepts: (text: string) => boolean, message: string) {
+function stringInput(accepts: (text: string) => boolean, message: Phrase) {
   return createValidator({
     inputSchema: { type: 'string' },
-    parse: (raw) => (accepts(raw) ? { value: raw } : { issues: [{ message }] }),
+    parse: (raw) => (accepts(raw) ? { value: raw } : { issues: [phrasedIssue(message)] }),
   });
 }
 
-const versionInput = stringInput((text) => versionOfArgument(text) !== undefined, versionIssue);
+const versionInput = stringInput(
+  (text) => versionOfArgument(text) !== undefined,
+  selfUpdatePhrase('versionIssue'),
+);
 
-const channelInput = stringInput(isChannelName, channelIssue);
+const channelInput = stringInput(isChannelName, selfUpdatePhrase('channelIssue'));
 
 /** What a run checked before any request: the binary to replace and where its record lives. */
 interface Checked extends ReleaseBinary {
@@ -179,7 +157,7 @@ interface Checked extends ReleaseBinary {
 function recordDirectory(name: string, host: Host): string {
   const directory = applicationDirectory('installation', name, host);
   if ('variable' in directory) {
-    throw fatal(recordNotAbsolute(name, directory.variable));
+    throw fatal(selfUpdatePhrase('recordNotAbsolute', name, directory.variable));
   }
   return directory.path;
 }
@@ -191,7 +169,7 @@ function recordDirectory(name: string, host: Host): string {
 function attestationCache(name: string, host: Host): string {
   const directory = applicationDirectory('cache', name, host);
   if ('variable' in directory) {
-    throw fatal(attestationCacheNotAbsolute(name, directory.variable));
+    throw fatal(selfUpdatePhrase('attestationCacheNotAbsolute', name, directory.variable));
   }
   return directory.path;
 }
@@ -218,7 +196,7 @@ type Installation = NonNullable<Host['release']['installation']>;
 /** The installation, or the refusal when something other than the installer script placed it. */
 function scriptInstallation(name: string, installation: Installation | undefined): Installation {
   if (installation?.method !== 'script') {
-    throw fatal(otherInstaller(name));
+    throw fatal(selfUpdatePhrase('otherInstaller', name));
   }
   return installation;
 }
@@ -227,13 +205,13 @@ function scriptInstallation(name: string, installation: Installation | undefined
 function intactMode(name: string, installation: Installation): number {
   const found = observe(installation.path);
   if (found.kind === 'link') {
-    throw fatal(binaryIsLink(name, installation.path));
+    throw fatal(selfUpdatePhrase('binaryIsLink', name, installation.path));
   }
   if (found.kind !== 'file') {
-    throw fatal(binaryMissing(name, installation.path));
+    throw fatal(selfUpdatePhrase('binaryMissing', name, installation.path));
   }
   if (found.digest !== installation.digest) {
-    throw fatal(binaryChanged(name, installation.path));
+    throw fatal(selfUpdatePhrase('binaryChanged', name, installation.path));
   }
   return found.mode;
 }
@@ -242,7 +220,7 @@ function intactMode(name: string, installation: Installation): number {
 function requireWritable(name: string, path: string, record: string): void {
   const blocked = unwritable([join(path, '..'), record]);
   if (blocked !== undefined) {
-    throw fatal(directoryUnwritable(name, blocked.directory), blocked.cause);
+    throw fatal(selfUpdatePhrase('directoryUnwritable', name, blocked.directory), blocked.cause);
   }
 }
 
@@ -255,7 +233,7 @@ function requireWritable(name: string, path: string, record: string): void {
 function check(name: string, host: Host): Checked {
   const binary = releaseBinary(host);
   if (binary === undefined) {
-    throw fatal(notReleaseBinary(name));
+    throw fatal(selfUpdatePhrase('notReleaseBinary', name));
   }
   const record = recordDirectory(name, host);
   const installation = scriptInstallation(name, host.release.installation);
@@ -281,7 +259,7 @@ async function target({ name, checked, named, channel, requesting }: Lookup): Pr
   }
   const found = await latestRelease(checked.repository, channel, requesting);
   if (found === undefined) {
-    throw fatal(noRelease(name, channel, checked.repository));
+    throw fatal(selfUpdatePhrase('noRelease', name, channel, checked.repository));
   }
   return found;
 }
@@ -303,10 +281,10 @@ function listedDigest(asset: string, release: Release & { sums: string }): strin
   const listing = listingOf(release.sums, asset);
   const tag = `v${release.version.text}`;
   if ('missing' in listing) {
-    throw fatal(assetNotListed(asset, tag, release.repository));
+    throw fatal(selfUpdatePhrase('assetNotListed', asset, tag, release.repository));
   }
   if ('conflict' in listing) {
-    throw fatal(digestConflict(asset, tag, release.repository));
+    throw fatal(selfUpdatePhrase('digestConflict', asset, tag, release.repository));
   }
   return listing.digest;
 }
@@ -325,10 +303,15 @@ interface NotNewer {
 }
 
 /** The line a resolved release that is not newer prints, which replaces nothing. */
-function notNewerLine({ name, running, found, channel }: NotNewer): string {
+function notNewerLine({ name, running, found, channel }: NotNewer): Phrase {
   return compareVersions(found, running) === equalPrecedence
-    ? newestRelease(name, running.text, channel)
-    : newerThanNewest({ channel, found: found.text, name, running: running.text });
+    ? selfUpdatePhrase('newestRelease', name, running.text, channel)
+    : selfUpdatePhrase('newerThanNewest', {
+        channel,
+        found: found.text,
+        name,
+        running: running.text,
+      });
 }
 
 /**
@@ -359,10 +342,16 @@ async function download({
     requesting,
   );
   if (digestOf(bytes) !== `sha256:${digest}`) {
-    throw fatal(digestMismatch(checked.asset, `v${release.version.text}`, release.repository));
+    throw fatal(
+      selfUpdatePhrase(
+        'digestMismatch',
+        checked.asset,
+        `v${release.version.text}`,
+        release.repository,
+      ),
+    );
   }
-  const verified = verifiedAsset(checked.asset);
-  log.debug(verified.template, verified.fields);
+  log.debug(selfUpdatePhrase('verifiedAssetDigest'), { asset: checked.asset });
   return bytes;
 }
 
@@ -397,7 +386,7 @@ function placeBinary({ name, checked, bytes, signal, log, version }: Placement):
     if (signal.aborted) {
       throw signal.reason;
     }
-    throw fatal(binaryUnwritable(name, join(checked.path, '..')), error);
+    throw fatal(selfUpdatePhrase('binaryUnwritable', name, join(checked.path, '..')), error);
   }
   binaryReplaced(log, { from: checked.running.text, path: checked.path, to: version.text });
 }
@@ -410,7 +399,7 @@ function writeRecord({ name, checked, version, bytes, log }: Placement): void {
     recordLeftovers(log, removeStagingFiles(record));
     replaceFile(record, line, { durable: true, mode: recordMode });
   } catch (error) {
-    throw fatal(recordUnwritable(name, version.text), error);
+    throw fatal(selfUpdatePhrase('recordUnwritable', name, version.text), error);
   }
   fileWritten(log, { path: record });
 }
@@ -454,8 +443,8 @@ function namesRunning(request: Request, checked: Checked): boolean {
 }
 
 /** The line a run that named the running version prints, which replaces nothing. */
-function installedLine(request: Request, checked: Checked): string {
-  return alreadyInstalled(request.name, checked.running.text);
+function installedLine(request: Request, checked: Checked): Phrase {
+  return selfUpdatePhrase('alreadyInstalled', request.name, checked.running.text);
 }
 
 /**
@@ -517,8 +506,7 @@ async function resolve(request: Request, checked: Checked): Promise<Resolved | u
  */
 function sayResolved(request: Request, found: Version, channel: string): void {
   if (request.named === undefined && !request.checkOnly) {
-    const resolved = resolvedRelease(found.text, channel);
-    request.log.debug(resolved.template, resolved.fields);
+    request.log.debug(selfUpdatePhrase('resolvedVersion'), { channel, version: found.text });
   }
 }
 
@@ -526,27 +514,31 @@ function sayResolved(request: Request, found: Version, channel: string): void {
 function requestingOf(log: Log, signal: AbortSignal): Requesting {
   return {
     requested: (url) => {
-      const line = requested(url);
-      log.trace(line.template, line.fields);
+      log.trace(selfUpdatePhrase('requestedUrl'), { url });
     },
     signal,
   };
 }
 
 /** The line a `--check` run prints for the release it resolved. */
-function checkLine(request: Request, checked: Checked, found: Version): string {
+function checkLine(request: Request, checked: Checked, found: Version): Phrase {
   const { name, named } = request;
   if (namesRunning(request, checked)) {
     return installedLine(request, checked);
   }
   if (named !== undefined) {
-    return canInstall(name, named.text, checked.running.text);
+    return selfUpdatePhrase('canInstall', name, named.text, checked.running.text);
   }
   const channel = channelFor(request, checked);
   if (isNotNewer(found, checked.running)) {
     return notNewerLine({ channel, found, name, running: checked.running });
   }
-  return canUpdate({ channel, found: found.text, name, running: checked.running.text });
+  return selfUpdatePhrase('canUpdate', {
+    channel,
+    found: found.text,
+    name,
+    running: checked.running.text,
+  });
 }
 
 /** What verifying an attestation of the resolved release reads, except the cache directory. */
@@ -574,10 +566,12 @@ function attestationCheck(
 async function install(request: Request, checked: Checked, resolved: Resolved): Promise<void> {
   const { log, name, out, requesting, signal } = request;
   const { digest, release } = resolved;
-  await out.info(downloading(checked.asset, release.version.text, release.repository));
+  await out.info(
+    selfUpdatePhrase('downloading', checked.asset, release.version.text, release.repository),
+  );
   const bytes = await download({ checked, digest, log, release, requesting });
   place({ bytes, checked, log, name, signal, version: release.version });
-  await out.success(updated(name, checked.running.text, release.version.text));
+  await out.success(selfUpdatePhrase('updated', name, checked.running.text, release.version.text));
 }
 
 /** Refuses package-manager installs before the checks for replacing a script installation. */
@@ -598,7 +592,13 @@ function refusePackageManager(request: Request): void {
     method !== 'brew' && named === undefined && !isNpmDistTag(version)
       ? undefined
       : upgradeCommand(name, { ...host.release, installation });
-  throw fatal(packageManagerRefusal({ command, method, name, version }));
+  throw fatal(
+    selfUpdatePhrase('packageManagerRefusal', {
+      command: command === undefined ? undefined : upgradeCommandLine(command, version),
+      manager: managerName(method),
+      name,
+    }),
+  );
 }
 
 /** The refusals, then the cache directory an attestation needs, both before any request. */
@@ -655,7 +655,8 @@ interface Given {
  */
 function requestFailure(name: string, error: RequestError, named: string | undefined): FatalError {
   const { kind, status, url } = error;
-  const sentence = requestFailed(
+  const sentence = selfUpdatePhrase(
+    'requestFailed',
     name,
     { kind, status, url },
     status === notFound ? named : undefined,
@@ -666,11 +667,11 @@ function requestFailure(name: string, error: RequestError, named: string | undef
 }
 
 /** The usage error for an option given beside an input it cannot be given with. */
-function conflict(option: string, sentence: string, issue: string): InputError {
+function conflict(option: string, sentence: Phrase, issue: Phrase): InputError {
   return new InputError(sentence, [
     {
       input: { global: false, kind: 'option', name: option },
-      issues: [{ message: issue }],
+      issues: [phrasedIssue(issue)],
       reason: 'invalid',
       spelling: `--${option}`,
     },
@@ -683,10 +684,18 @@ function conflict(option: string, sentence: string, issue: string): InputError {
  */
 function refuseConflicts({ channel, checkOnly, refreshing, version }: Given): void {
   if (refreshing && (version !== undefined || channel !== undefined || checkOnly)) {
-    throw conflict('refresh-notice', refreshNoticeConflict, refreshNoticeConflictIssue);
+    throw conflict(
+      'refresh-notice',
+      selfUpdatePhrase('refreshNoticeConflict'),
+      selfUpdatePhrase('refreshNoticeConflictIssue'),
+    );
   }
   if (channel !== undefined && version !== undefined) {
-    throw conflict('channel', channelConflict, channelConflictIssue);
+    throw conflict(
+      'channel',
+      selfUpdatePhrase('channelConflict'),
+      selfUpdatePhrase('channelConflictIssue'),
+    );
   }
 }
 
@@ -810,3 +819,6 @@ function selfUpdate(settings?: SelfUpdateSettings): Plugin {
 export type { AttestationSetting } from './attestation-setting.js';
 export type { AfterReplaceContext, NoticeSettings, SelfUpdateSettings };
 export { selfUpdate };
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

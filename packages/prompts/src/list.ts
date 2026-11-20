@@ -1,23 +1,15 @@
 import { validateLinkedValue } from '@loomcli/core';
-import type { Region, StandardSchemaV1 } from '@loomcli/core';
+import type { Phrase, Region, StandardSchemaV1 } from '@loomcli/core';
 
 import { TypedLine, graphemes } from './line.js';
 import { askLineByLine } from './lines.js';
 import type { LineAsking } from './lines.js';
 import { invalid, resolveLink } from './link.js';
-import {
-  choiceIssue,
-  chooseAtLeast,
-  chooseAtMost,
-  invalidAnswer,
-  noSelectableChoice,
-  overLimit,
-  typeNumbers,
-  typeOneNumber,
-  unselectable,
-} from './messages.js';
+import { promptPhrase, rejection } from './phrases.js';
 import { asking, liveReader } from './question.js';
 import type { ChoiceEntry, ChoiceSource, PromptContext } from './types.js';
+import { withHint, withIssue } from './view-text.js';
+import type { Issue } from './view-text.js';
 import type { ChoiceRow, NumberedChoice, SeparatorRow } from './views.js';
 
 interface Item {
@@ -86,15 +78,11 @@ function prefillIssue(
   missing: readonly unknown[],
   limited: readonly unknown[],
   max: number | undefined,
-): string | undefined {
-  return (
-    [
-      missing.length ? unselectable(missing) : '',
-      limited.length > 0 && max !== undefined ? overLimit(limited, max) : '',
-    ]
-      .filter(Boolean)
-      .join(' ') || undefined
-  );
+): Issue | undefined {
+  const unavailable = missing.length ? promptPhrase('unselectable', missing) : undefined;
+  const excess =
+    limited.length > 0 && max !== undefined ? promptPhrase('overLimit', limited, max) : undefined;
+  return unavailable && excess ? [unavailable, excess] : (unavailable ?? excess);
 }
 
 /**
@@ -105,7 +93,7 @@ async function validateChosen<Options, Args>(
   context: PromptContext<Options, Args>,
   settings: ListSettings<Options, Args>,
   picked: { readonly chosen: readonly Item[]; readonly multiple: boolean },
-): Promise<{ readonly outputs: unknown[] } | { readonly issue: string }> {
+): Promise<{ readonly outputs: unknown[] } | { readonly issue: string | Phrase }> {
   const { chosen, multiple } = picked;
   const outputs: unknown[] = [];
   for (const choice of chosen) {
@@ -127,8 +115,10 @@ async function validateChosen<Options, Args>(
     }
     context.signal.throwIfAborted();
     if (result.issues !== undefined) {
-      const sentence = result.issues[0]?.message ?? invalidAnswer;
-      return { issue: multiple ? choiceIssue(choice.row.label, sentence) : sentence };
+      const sentence = rejection(result.issues);
+      return {
+        issue: multiple ? promptPhrase('choiceIssue', choice.row.label, sentence) : sentence,
+      };
     }
     outputs.push(result.value);
   }
@@ -194,7 +184,7 @@ async function askList<Options, Args>(
   let entries: readonly ChoiceEntry[] = settings.choices ?? [];
   let highlighted: number | undefined = undefined;
   let start = 0;
-  let issue: string | undefined = undefined;
+  let issue: Issue | undefined = undefined;
   const selection: Item[] = [];
   let answered: { value: string } | undefined = undefined;
   let controller: AbortController | undefined = undefined;
@@ -260,15 +250,17 @@ async function askList<Options, Args>(
       choices,
       cursor: line.cursor,
       highlighted: highlighted === undefined ? undefined : highlighted - start,
-      issue,
+      issue: undefined,
       loading,
       message: settings.message,
       rows,
       term: search ? line.value : undefined,
     };
     return multiple
-      ? draw.frame({ ...data, count: selection.length, kind: 'multiselect', max, min })
-      : draw.frame({ ...data, kind: 'select' });
+      ? draw.frame(
+          withIssue({ ...data, count: selection.length, kind: 'multiselect', max, min }, issue),
+        )
+      : draw.frame(withIssue({ ...data, kind: 'select' }, issue));
   };
   const applyPrefill = async () => {
     const missing: unknown[] = [];
@@ -405,12 +397,12 @@ async function askList<Options, Args>(
           highlighted === undefined ? undefined : item(entries[highlighted] ?? { separator: '' });
         const current = highlightedItem?.row.disabled === false ? highlightedItem : undefined;
         if (!multiple && !current) {
-          issue = noSelectableChoice;
+          issue = promptPhrase('noSelectableChoice');
           await frame();
           continue;
         }
         if (multiple && selection.length < min) {
-          issue = chooseAtLeast(min);
+          issue = promptPhrase('chooseAtLeast', min);
           await frame();
           continue;
         }
@@ -549,21 +541,23 @@ function chosenBy(
   numbers: readonly number[],
   list: NumberedList,
   limits: Limits,
-): { readonly chosen: Item[] } | { readonly issue: string } {
+): { readonly chosen: Item[] } | { readonly issue: Phrase } {
   const highest = list.numbered.length;
   if (!limits.multiple) {
     const choice = numbers.length === 1 ? list.numbered[(numbers[0] ?? 0) - 1] : undefined;
-    return choice === undefined ? { issue: typeOneNumber(highest) } : { chosen: [choice] };
+    return choice === undefined
+      ? { issue: promptPhrase('typeOneNumber', highest) }
+      : { chosen: [choice] };
   }
   if (!numbers.every((number) => number >= 1 && number <= highest)) {
-    return { issue: typeNumbers(highest) };
+    return { issue: promptPhrase('typeNumbers', highest) };
   }
   const chosen = [...new Set(numbers)].flatMap((number) => list.numbered[number - 1] ?? []);
   if (chosen.length < limits.min) {
-    return { issue: chooseAtLeast(limits.min) };
+    return { issue: promptPhrase('chooseAtLeast', limits.min) };
   }
   if (limits.max !== undefined && chosen.length > limits.max) {
-    return { issue: chooseAtMost(limits.max) };
+    return { issue: promptPhrase('chooseAtMost', limits.max) };
   }
   return { chosen };
 }
@@ -581,7 +575,7 @@ function prefilledChoices(
     readonly multiple: boolean;
     readonly max: number | undefined;
   },
-): { readonly picked: Item[]; readonly issue: string | undefined } {
+): { readonly picked: Item[]; readonly issue: Issue | undefined } {
   const missing: unknown[] = [];
   const limited: unknown[] = [];
   const picked: Item[] = [];
@@ -647,7 +641,7 @@ async function askListLines<Options, Args>(
     const answer: Answering = async (chosen, again) => {
       const checked = await validateChosen(context, settings, { chosen, multiple });
       if ('issue' in checked) {
-        await line.print({ issue: checked.issue, kind: 'issue' });
+        await line.reject(checked.issue);
         await again();
         return undefined;
       }
@@ -662,7 +656,7 @@ async function askListLines<Options, Args>(
     await line.print({ choices: list.rows, kind: 'list' });
     const prefill = prefilledChoices(list, entries, { ...facts, max: settings.max });
     if (prefill.issue !== undefined) {
-      await line.print({ issue: prefill.issue, kind: 'issue' });
+      await line.reject(prefill.issue);
     }
     const fallback = multiple ? [] : list.numbered.slice(0, 1);
     const defaults = numbersFor(list, prefill.picked.length > 0 ? prefill.picked : fallback);
@@ -681,7 +675,7 @@ async function askListLines<Options, Args>(
         limits,
       );
       if ('issue' in picked) {
-        await line.print({ issue: picked.issue, kind: 'issue' });
+        await line.reject(picked.issue);
         await askingRow();
         continue;
       }
@@ -701,7 +695,7 @@ async function askListLines<Options, Args>(
 interface SearchDefault {
   readonly picked: readonly Item[];
   /** The issue a supplied value that selects none of the choices prints, under `choices` alone. */
-  readonly issue: string | undefined;
+  readonly issue: Issue | undefined;
 }
 
 /**
@@ -709,11 +703,11 @@ interface SearchDefault {
  * that may be left empty and has no default, and `undefined` at a question that must be answered
  * and has none, whose row shows no brackets.
  */
-function searchHint(picked: readonly Item[], limits: Limits): string | undefined {
+function searchHint(picked: readonly Item[], limits: Limits): string | Phrase | undefined {
   if (picked.length > 0) {
     return picked.map((choice) => choice.row.label).join(',');
   }
-  return limits.multiple && limits.min === 0 ? 'none' : undefined;
+  return limits.multiple && limits.min === 0 ? promptPhrase('none') : undefined;
 }
 
 /**
@@ -783,10 +777,13 @@ async function searchLines<Options, Args>(
     return found;
   };
   const searchRow = () => line.print({ hint: undefined, kind: 'search' });
-  const refineRow = () => line.print({ hint: searchHint(offered(), limits), kind: 'refine' });
+  const refineRow = () => {
+    const hint = searchHint(offered(), limits);
+    return line.print(withHint({ hint: undefined, kind: 'refine' }, hint));
+  };
   try {
     if (fixed?.issue !== undefined) {
-      await line.print({ issue: fixed.issue, kind: 'issue' });
+      await line.reject(fixed.issue);
     }
     line.reasking(searchRow);
     await searchRow();
@@ -796,7 +793,7 @@ async function searchLines<Options, Args>(
       line.signal.throwIfAborted();
       await line.print({ choices: list.rows, kind: 'list' });
       if (list.numbered.length === 0) {
-        await line.print({ issue: noSelectableChoice, kind: 'issue' });
+        await line.reject(promptPhrase('noSelectableChoice'));
         line.reasking(searchRow);
         await searchRow();
         term = await line.read();
@@ -809,7 +806,7 @@ async function searchLines<Options, Args>(
         const picked = typed === '' ? offeredChoice(offered(), limits) : undefined;
         if (picked !== undefined) {
           if ('issue' in picked) {
-            await line.print({ issue: picked.issue, kind: 'issue' });
+            await line.reject(picked.issue);
             await refineRow();
             continue;
           }
@@ -827,7 +824,7 @@ async function searchLines<Options, Args>(
         }
         const numbered = chosenBy(numbers, list, limits);
         if ('issue' in numbered) {
-          await line.print({ issue: numbered.issue, kind: 'issue' });
+          await line.reject(numbered.issue);
           await refineRow();
           continue;
         }
@@ -850,12 +847,12 @@ async function searchLines<Options, Args>(
 function offeredChoice(
   picked: readonly Item[],
   limits: Limits,
-): { readonly chosen: readonly Item[] } | { readonly issue: string } | undefined {
+): { readonly chosen: readonly Item[] } | { readonly issue: Phrase } | undefined {
   if (searchHint(picked, limits) === undefined) {
     return undefined;
   }
   if (limits.multiple && picked.length < limits.min) {
-    return { issue: chooseAtLeast(limits.min) };
+    return { issue: promptPhrase('chooseAtLeast', limits.min) };
   }
   return { chosen: picked };
 }

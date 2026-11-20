@@ -93,3 +93,6 @@ function manpage(): Plugin {
 export type { RefreshContext } from '../refresh.js';
 export { refreshManpages } from './refresh.js';
 export { manpage };
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

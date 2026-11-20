@@ -5,26 +5,63 @@
  * cache it read and the refresh it started, and at `-vv` why it did nothing and a cache it ignored.
  */
 import { applicationDirectory } from '@loomcli/core';
-import type { Host, Log, Middleware, Out, ReleaseFacts } from '@loomcli/core';
+import type { Host, Log, Middleware, Out, Phrase, ReleaseFacts } from '@loomcli/core';
 
 import { fileWritten } from '../change-events.js';
 import { underCI } from '../ci.js';
 import { passOver, say } from '../lane-writes.js';
 import { cachePath, findCache, stale, writeCache } from './cache.js';
 import type { CacheEntry, CacheReading, Lookup } from './cache.js';
-import {
-  ignoredUpdateCache,
-  readUpdateCheck,
-  skippedUpdateCheck,
-  startedRefresh,
-  updateNotice,
-} from './messages.js';
-import type { UpdateCheckSkip } from './messages.js';
+import { selfUpdatePhrase } from './phrases.js';
 import type { selfUpdate } from './plugin.js';
 import { effectiveInstallation, upgradeCommand } from './upgrade.js';
 import type { UpgradeCommand } from './upgrade.js';
 import { compareVersions, equalPrecedence, parseVersion } from './version.js';
 import type { Version } from './version.js';
+import { upgradeCommandLine } from './wording.js';
+
+/** The first condition of the update notices' middleware that fails. */
+type UpdateCheckSkip =
+  | { readonly kind: 'opted-out'; readonly variable: string }
+  | { readonly kind: 'stdout' | 'stderr' | 'ci' | 'self-update' }
+  | { readonly kind: 'not-release' | 'not-installed'; readonly name: string }
+  | { readonly kind: 'no-command'; readonly name: string; readonly method: string }
+  | { readonly kind: 'not-absolute'; readonly variable: string };
+
+/** The sentence of each skip that names nothing. */
+const plainSkips: Readonly<
+  Record<
+    'ci' | 'self-update' | 'stderr' | 'stdout',
+    'skippedCi' | 'skippedSelfUpdate' | 'skippedStderr' | 'skippedStdout'
+  >
+> = {
+  ci: 'skippedCi',
+  'self-update': 'skippedSelfUpdate',
+  stderr: 'skippedStderr',
+  stdout: 'skippedStdout',
+};
+
+/** The `trace` log line of a skip that names a release build or an installation. */
+function logNamedSkip(log: Log, skip: Extract<UpdateCheckSkip, { readonly name: string }>): void {
+  if (skip.kind === 'no-command') {
+    log.trace(selfUpdatePhrase('skippedNoCommand'), { method: skip.method, name: skip.name });
+    return;
+  }
+  const sentence = skip.kind === 'not-release' ? 'skippedNotRelease' : 'skippedNotInstalled';
+  log.trace(selfUpdatePhrase(sentence), { name: skip.name });
+}
+
+/** The `trace` log line of a middleware that did nothing, naming the first reason. */
+function logSkipped(log: Log, skip: UpdateCheckSkip): void {
+  if ('name' in skip) {
+    logNamedSkip(log, skip);
+  } else if ('variable' in skip) {
+    const sentence = skip.kind === 'opted-out' ? 'skippedOptedOut' : 'skippedNotAbsolute';
+    log.trace(selfUpdatePhrase(sentence), { variable: skip.variable });
+  } else {
+    log.trace(selfUpdatePhrase(plainSkips[skip.kind]));
+  }
+}
 
 /** The variable any operator sets to turn update notices off. */
 const operatorOptOut = 'NO_UPDATE_NOTIFIER';
@@ -156,8 +193,12 @@ function newerVersion(reading: CacheReading, running: Version): Version | undefi
 }
 
 /** The notice line, which names the newer version and the running one. */
-function noticeLine({ channel, command, name, running }: Qualified, newer: Version): string {
-  return updateNotice({ channel, found: newer.text, name, running: running.text }, command);
+function noticeLine({ channel, command, name, running }: Qualified, newer: Version): Phrase {
+  return selfUpdatePhrase(
+    'updateNotice',
+    { channel, found: newer.text, name, running: running.text },
+    upgradeCommandLine(command, newer.text),
+  );
 }
 
 /**
@@ -204,14 +245,12 @@ function readNamed(run: Qualified, log: Log, now: number): CacheReading {
   const found = findCache(run.directory, run, now);
   const path = cachePath(run.directory);
   if (found.kind === 'ignored') {
-    const ignored = ignoredUpdateCache(path);
-    log.trace(ignored.template, ignored.fields);
+    log.trace(selfUpdatePhrase('ignoredUpdateCacheAt'), { path });
   }
   if (found.kind !== 'read') {
     return stale;
   }
-  const read = readUpdateCheck(path);
-  log.debug(read.template, read.fields);
+  log.debug(selfUpdatePhrase('readUpdateCheckFrom'), { path });
   return found.reading;
 }
 
@@ -230,7 +269,7 @@ async function notify(run: Qualified, { log, out }: { log: Log; out: Out }): Pro
     const { channel, repository } = run;
     const entry = { channel, checked: new Date(now), latest: reading.latest, repository };
     if (refresh(run, entry, log)) {
-      log.debug(startedRefresh.template);
+      log.debug(selfUpdatePhrase('refreshStarted'));
     }
   }
 }
@@ -248,8 +287,7 @@ function noticeMiddleware(optOut: string | undefined): Middleware<typeof selfUpd
     const { command, graph, host, log, out } = context;
     const run = qualified({ host, name: graph.name, optOut, routed: command.path });
     if ('skipped' in run) {
-      const skipped = skippedUpdateCheck(run.skipped);
-      log.trace(skipped.template, skipped.fields);
+      logSkipped(log, run.skipped);
       return;
     }
     await notify(run, { log, out });

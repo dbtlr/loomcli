@@ -58,3 +58,6 @@ export function manifest(settings?: ManifestSettings): Plugin<ManifestOptions> {
     options: { manifest: { ...options.manifest, ...(short === undefined ? {} : { short }) } },
   });
 }
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

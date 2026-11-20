@@ -6,7 +6,8 @@
 import { lstatSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-import { FatalError, InputError } from '@loomcli/core';
+import { FatalError, InputError, phrasedIssue } from '@loomcli/core';
+import type { Phrase } from '@loomcli/core';
 
 import { fileWritten } from '../change-events.js';
 import { exists, recordLeftovers } from '../installation/disk.js';
@@ -14,26 +15,17 @@ import { writeFolder } from '../installation/folders.js';
 import { loadForRun } from './global.js';
 import type { ChildRun } from './global.js';
 import type { LoadedSkill } from './load.js';
-import {
-  directoryMissing,
-  directoryMissingIssue,
-  directoryWithoutProject,
-  directoryWithoutProjectIssue,
-  installedSkill,
-  installedSkillOver,
-  projectIsGlobal,
-  statusProjectIsGlobal,
-} from './messages.js';
+import { skillsPhrase } from './phrases.js';
 import type { Declared } from './settings.js';
 import { realFolder, selectedTargets, skillsDirectory } from './targets.js';
 import type { Target } from './targets.js';
 
 /** An input problem on the `--directory` option, which exits 2. */
-function directoryProblem(message: string, issue: string): InputError {
+function directoryProblem(message: Phrase, issue: Phrase): InputError {
   return new InputError(message, [
     {
       input: { global: false, kind: 'option', name: 'directory' },
-      issues: [{ message: issue }],
+      issues: [phrasedIssue(issue)],
       reason: 'invalid',
       spelling: '--directory',
     },
@@ -42,14 +34,20 @@ function directoryProblem(message: string, issue: string): InputError {
 
 /** The refusal of `--directory` without `--project`, which the action throws before anything else. */
 function directoryNeedsProject(): InputError {
-  return directoryProblem(directoryWithoutProject, directoryWithoutProjectIssue);
+  return directoryProblem(
+    skillsPhrase('directoryWithoutProject'),
+    skillsPhrase('directoryWithoutProjectIssue'),
+  );
 }
 
 /** The directory the walk starts at: the working directory, or `--directory` resolved against it. */
 function startOf(run: ChildRun, directory: string | undefined): string {
   const start = directory === undefined ? run.host.cwd : resolve(run.host.cwd, directory);
   if (statSync(start, { throwIfNoEntry: false })?.isDirectory() !== true) {
-    throw directoryProblem(directoryMissing(start), directoryMissingIssue);
+    throw directoryProblem(
+      skillsPhrase('directoryMissing', start),
+      skillsPhrase('directoryMissingIssue'),
+    );
   }
   return start;
 }
@@ -108,7 +106,9 @@ function guardGlobal(
   for (const target of selectedTargets(agent)) {
     const clash = clashOf(run, root, { names, target });
     if (clash !== undefined) {
-      throw new FatalError((status ? statusProjectIsGlobal : projectIsGlobal)(run.name, clash));
+      throw new FatalError(
+        skillsPhrase(status ? 'statusProjectIsGlobal' : 'projectIsGlobal', run.name, clash),
+      );
     }
   }
 }
@@ -129,7 +129,9 @@ async function replaceFolder(
   mkdirSync(dirname(folder), { recursive: true });
   recordLeftovers(run.log, writeFolder(folder, loaded.files));
   fileWritten(run.log, { path: folder });
-  await run.success((replacing ? installedSkillOver : installedSkill)(loaded.name, target, folder));
+  await run.success(
+    skillsPhrase(replacing ? 'installedSkillOver' : 'installedSkill', loaded.name, target, folder),
+  );
 }
 
 /**

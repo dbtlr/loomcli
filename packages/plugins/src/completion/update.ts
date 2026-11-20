@@ -7,7 +7,7 @@
 import { recordDirectory } from '../application-folders.js';
 import { install } from '../installation/files.js';
 import type { InstallOutcome, StartupLine } from '../installation/files.js';
-import { noCompletionToUpdate, scriptUnchanged, updatedScript } from './messages.js';
+import { completionPhrase } from './phrases.js';
 import {
   directoryMode,
   outcomeFailure,
@@ -104,13 +104,13 @@ async function updateShell(run: ChildRun, record: string, planned: Planned): Pro
   const content = scriptContent(recorded.shell, run.name);
   const state = scriptState(recorded, script, content);
   if (state === 'steady' && steps.every((step) => step.steady)) {
-    await run.info(scriptUnchanged(script));
+    await run.info(completionPhrase('scriptUnchanged', script));
     return;
   }
   const outcome = rewrite(run, { content, planned, record });
   await (state === 'changed'
-    ? run.success(updatedScript(recorded.shell, script))
-    : run.info(scriptUnchanged(script)));
+    ? run.success(completionPhrase('updatedScript', recorded.shell, script))
+    : run.info(completionPhrase('scriptUnchanged', script)));
   await reportWritten(run, {
     held: false,
     loaded: [],
@@ -141,7 +141,7 @@ async function updateShells(run: ChildRun): Promise<void> {
   const record = recordDirectory(run.name, run.host);
   const found = recordedShells(run, record);
   if (found.length === none) {
-    await run.success(noCompletionToUpdate(run.name));
+    await run.success(completionPhrase('noCompletionToUpdate', run.name));
     return;
   }
   await refuseInTheWay(

@@ -7,7 +7,7 @@ import {
 } from '@loomcli/core';
 import type { OptionNode } from '@loomcli/core';
 
-import { interactionUnavailable } from './messages.js';
+import { promptPhrase } from './phrases.js';
 import type { LinkKey, PromptContext } from './types.js';
 
 const linkRule = diagnosticRule('@loomcli/prompts/link', {
@@ -51,7 +51,7 @@ class InteractionUnavailableError extends FatalError {
   static override readonly code = 'interaction-unavailable';
 
   constructor(message: string, command: string) {
-    super(interactionUnavailable(message, command));
+    super(promptPhrase('interactionUnavailable', message, command));
     this.name = 'InteractionUnavailableError';
   }
 }

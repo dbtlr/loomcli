@@ -3,6 +3,8 @@ import { escapeControlCharacters, glyph, style as textStyle, view } from '@loomc
 
 import { graphemes, leading } from './line.js';
 import { logRow } from './log.js';
+import { promptPhrase } from './phrases.js';
+import { localizedHint, localizedIssue } from './view-text.js';
 
 /** Operator values stay literal even though drawing preserves the library's terminal controls. */
 function literal(text: string): string {
@@ -186,21 +188,21 @@ function clipped(text: string, columns: number, context: ViewContext): string {
 }
 
 type ListData = Exclude<QuestionFrame, TypedFrame | EditorFrame>;
-function listHelp(data: ListData, short = false): string {
+function listHelp(data: ListData, context: ViewContext, short = false): string {
+  const { localize } = context;
   if (data.loading) {
-    return `Searching${glyph.ellipsis}`;
+    return localize(promptPhrase('searching')) + glyph.ellipsis;
   }
   if (data.kind === 'select') {
     if (short) {
-      return '↑↓ Enter';
+      return localize(promptPhrase('selectShortKeys'));
     }
-    return data.term === undefined
-      ? '↑↓ move · Enter select'
-      : '↑↓ move · type to search · Enter select';
+    return localize(promptPhrase(data.term === undefined ? 'selectKeys' : 'selectSearchKeys'));
   }
-  const key = data.term === undefined ? 'Space' : 'Tab';
-  const count = data.max === undefined ? `${data.count}` : `${data.count}/${data.max}`;
-  return `${short ? `↑↓ ${key} Enter` : `↑↓ move · ${key} toggle · Enter submit`} · ${count} selected`;
+  const fixed = short ? 'multiselectShortKeys' : 'multiselectKeys';
+  const search = short ? 'multiselectSearchShortKeys' : 'multiselectSearchKeys';
+  const keys = localize(promptPhrase(data.term === undefined ? fixed : search));
+  return `${keys} · ${localize(promptPhrase('selectedCount', data.count, data.max))}`;
 }
 function listRow(
   data: ListData,
@@ -218,7 +220,8 @@ function listRow(
       ? ''
       : `${row.selected ? style.highlight(glyph.circleFilled) : style.dim(glyph.circle)} `;
   const label =
-    literal(row.label) + (row.disabled ? ` (${literal(row.reason ?? 'disabled')})` : '');
+    literal(row.label) +
+    (row.disabled ? ` (${literal(row.reason ?? context.localize(promptPhrase('disabled')))})` : '');
   if (row.disabled) {
     return style.dim(pointer + mark + label);
   }
@@ -265,8 +268,10 @@ function keyHelp(
   { joined, columns }: { readonly joined: readonly string[]; readonly columns: number },
   context: ViewContext,
 ): string {
-  const whole = [listHelp(data), ...joined].join(' · ');
-  return context.width(whole) <= columns ? whole : [listHelp(data, true), ...joined].join(' · ');
+  const whole = [listHelp(data, context), ...joined].join(' · ');
+  return context.width(whole) <= columns
+    ? whole
+    : [listHelp(data, context, true), ...joined].join(' · ');
 }
 
 /**
@@ -351,8 +356,17 @@ function selectText(data: ListData, context: ViewContext, title: string): string
         context,
       )
     : title;
+  const issueSentence = localizedIssue(data, context);
   const issue =
-    data.issue === undefined ? undefined : style.error(`  ${glyph.cross} ${literal(data.issue)}`);
+    issueSentence === undefined
+      ? undefined
+      : style.error(`  ${glyph.cross} ${literal(issueSentence)}`);
+  const more = (arrow: string, count: number) =>
+    `${arrow} ${context.localize(promptPhrase('moreChoices', count))}`;
+  const noMatches =
+    !data.loading && data.choices.length === 0
+      ? context.localize(promptPhrase('noMatches'))
+      : undefined;
   let start = 0;
   let end = data.choices.length;
   const active = data.highlighted === undefined ? undefined : data.choices[data.highlighted];
@@ -360,20 +374,20 @@ function selectText(data: ListData, context: ViewContext, title: string): string
     const description = active?.kind === 'choice' ? active.description : undefined;
     return [
       firstLine,
-      ...(data.above + start ? [style.dim(`↑ ${data.above + start} more`)] : []),
+      ...(data.above + start ? [style.dim(more('↑', data.above + start))] : []),
       ...data.choices
         .slice(start, end)
         .map((row, index) =>
           listRow(data, { highlighted: index + start === data.highlighted, row }, context),
         ),
-      ...(data.choices.length === 0 && !data.loading ? [style.dim('  No matches')] : []),
+      ...(noMatches === undefined ? [] : [style.dim(`  ${noMatches}`)]),
       ...(data.below + data.choices.length - end
-        ? [style.dim(`↓ ${data.below + data.choices.length - end} more`)]
+        ? [style.dim(more('↓', data.below + data.choices.length - end))]
         : []),
       ...(description !== undefined && columns > 2
         ? [style.dim(`  ${clipped(literal(description), columns - 2, context)}`)]
         : []),
-      style.dim(listHelp(data)),
+      style.dim(listHelp(data, context)),
       ...(issue === undefined ? [] : [issue]),
     ].join('\n');
   };
@@ -410,16 +424,16 @@ function selectText(data: ListData, context: ViewContext, title: string): string
   if (active !== undefined) {
     selected = listRow(data, { highlighted: true, row: active }, context);
   } else if (data.choices.length > 0) {
-    selected = 'No choice can be selected';
-  } else if (!data.loading) {
-    selected = 'No matches';
+    selected = context.localize(promptPhrase('noChoiceAvailable'));
+  } else {
+    selected = noMatches;
   }
   const above = data.above + (data.highlighted ?? 0);
   const below =
     data.below +
     data.choices.length -
     (data.highlighted === undefined ? data.choices.length : data.highlighted + 1);
-  const markers = [...(above ? [`↑ ${above} more`] : []), ...(below ? [`↓ ${below} more`] : [])];
+  const markers = [...(above ? [more('↑', above)] : []), ...(below ? [more('↓', below)] : [])];
   // The markers that would not fit on lines of their own join the key help, in their own order.
   const joined: string[] = [];
   while (
@@ -437,9 +451,9 @@ function selectText(data: ListData, context: ViewContext, title: string): string
           drop: 1,
           width: width(literal(context.plain(selected))),
         };
-  const issueText = `${glyph.cross} ${literal(data.issue ?? '')}`;
+  const issueText = `${glyph.cross} ${literal(issueSentence ?? '')}`;
   const footerPart =
-    data.issue === undefined
+    issueSentence === undefined
       ? {
           draw: (budget: number) => style.dim(clipped(help(budget), budget, context)),
           drop: 0,
@@ -571,7 +585,7 @@ function typedFrame(
   const { style, width } = context;
   const columns = Math.max(1, context.columns ?? 80);
   // Only the glyph or the legend is dim, and the spaces around it are plain.
-  const label = data.kind === 'confirm' ? (data.hint ?? '[y/n]') : '›';
+  const label = data.kind === 'confirm' ? (localizedHint(data, context) ?? '[y/n]') : '›';
   const separator = ` ${style.dim(label)} `;
   const separatorWidth = width(label) + 2;
   let prefix = '';
@@ -634,19 +648,22 @@ const questionFrame = view<QuestionFrame>('@loomcli/prompts/question-frame', {
   render: (data, context) => {
     const { style } = context;
     const title = `${style.info.bold('?')} ${style.bold(data.message)}`;
-    const issue =
-      data.issue === undefined ? '' : `\n  ${style.error(`${glyph.cross} ${literal(data.issue)}`)}`;
     if (data.kind === 'select' || data.kind === 'multiselect') {
       return selectText(data, context, title);
     }
+    const issueSentence = localizedIssue(data, context);
+    const issue =
+      issueSentence === undefined
+        ? ''
+        : `\n  ${style.error(`${glyph.cross} ${literal(issueSentence)}`)}`;
     if (data.kind === 'editor') {
       return (
         typedFrame(
           {
             editor: true,
             hint: data.editing
-              ? `Waiting for your editor to close the file${context.plain(glyph.ellipsis)}`
-              : 'Press Enter to open your editor',
+              ? `${context.localize(promptPhrase('editorWaiting'))}${context.plain(glyph.ellipsis)}`
+              : context.localize(promptPhrase('editorOpen')),
             issue: undefined,
             kind: 'text',
             message: data.message,
@@ -669,10 +686,11 @@ function editorAnswer(
   // An answer with no visible line reads as a dim `empty`, which stays dim however it clips.
   const paint = data.answer === '' ? style.dim : style.highlight;
   let message = data.message;
-  let answer = paint(data.answer === '' ? 'empty' : literal(data.answer));
+  const empty = data.answer === '' ? context.localize(promptPhrase('empty')) : undefined;
+  let answer = paint(empty ?? literal(data.answer));
   let count =
     data.answer !== '' && data.lines > 1
-      ? ` ${style.dim(`(+${data.lines - 1} ${data.lines === 2 ? 'line' : 'lines'})`)}`
+      ? ` ${style.dim(context.localize(promptPhrase('editorAdditionalLines', data.lines - 1)))}`
       : '';
   const row = () => `${style.dim('?')} ${message} ${style.dim('·')} ${answer}${count}`;
   /** The longest run of the text's leading graphemes that fits in `budget`, unescaped. */
@@ -680,10 +698,7 @@ function editorAnswer(
     leading(text, budget, (candidate) => width(literal(candidate)));
   if (width(row()) > columns) {
     const budget = Math.max(width(glyph.ellipsis), columns - width(row()) + width(answer));
-    const kept = clippedTo(
-      data.answer === '' ? 'empty' : data.answer,
-      budget - width(glyph.ellipsis),
-    );
+    const kept = clippedTo(empty ?? data.answer, budget - width(glyph.ellipsis));
     answer = paint(literal(kept) + glyph.ellipsis);
   }
   if (width(row()) > columns) {
@@ -721,6 +736,14 @@ function editorAnswer(
   return `${fitted}\n`;
 }
 
+/** Localizes the display of a Boolean answer, leaving other answers as typed. */
+function confirmAnswer(answer: string, kind: AnsweredLine['kind'], context: ViewContext): string {
+  if (kind === 'confirm' && (answer === 'yes' || answer === 'no')) {
+    return context.localize(promptPhrase(answer === 'yes' ? 'yesAnswer' : 'noAnswer'));
+  }
+  return answer;
+}
+
 /**
  * The declared view that draws the line a question leaves once it is answered. An application
  * restyles it with `override`.
@@ -750,8 +773,8 @@ const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
     // Only an empty selection reads as none: a typed empty answer is the empty string itself.
     const drawn =
       answer === '' && kind === 'multiselect'
-        ? style.dim('none')
-        : style.highlight(literal(answer));
+        ? style.dim(context.localize(promptPhrase('none')))
+        : style.highlight(literal(confirmAnswer(answer, kind, context)));
     return `${style.dim('?')} ${message} ${style.dim('·')} ${drawn}\n`;
   },
 });
@@ -773,7 +796,8 @@ const answeredLine = view<AnsweredLine>('@loomcli/prompts/answered-line', {
  * @public
  */
 const cancelledLine = view<CancelledLine>('@loomcli/prompts/cancelled-line', {
-  render: ({ message }, { style }) => `${style.dim(`? ${message} · cancelled`)}\n`,
+  render: ({ message }, { localize, style }) =>
+    `${style.dim(`? ${message} · ${localize(promptPhrase('cancelled'))}`)}\n`,
 });
 
 /**
@@ -855,10 +879,10 @@ type QuestionLine =
 
 /** The fixed label of each row a select or multiselect asks on. */
 const askingLabels = {
-  number: 'Enter a number',
-  numbers: 'Enter numbers separated by commas',
-  refine: 'Enter a number, or text to search again',
-  search: 'Search',
+  number: 'enterNumber',
+  numbers: 'enterNumbers',
+  refine: 'refineSearch',
+  search: 'search',
 } as const;
 
 /** One row of a numbered list, indented two columns, with its line break. */
@@ -868,7 +892,8 @@ function numberedRow(row: NumberedChoice | SeparatorRow, context: ViewContext): 
     return row.label === '' ? '\n' : `${style.dim(`  ${literal(row.label)}`)}\n`;
   }
   if (row.number === undefined) {
-    return `${style.dim(`  ${literal(row.label)} (${literal(row.reason ?? 'disabled')})`)}\n`;
+    const reason = row.reason ?? context.localize(promptPhrase('disabled'));
+    return `${style.dim(`  ${literal(row.label)} (${literal(reason)})`)}\n`;
   }
   const description =
     row.description === undefined || row.description === ''
@@ -908,21 +933,22 @@ const questionLine = view<QuestionLine>('@loomcli/prompts/question-line', {
       case 'text':
       case 'secret':
       case 'confirm': {
-        return askingRow(style.bold(data.message), data.hint, context);
+        return askingRow(style.bold(data.message), localizedHint(data, context), context);
       }
       case 'title': {
         return `${style.bold(data.message)}\n`;
       }
       case 'list': {
         return data.choices.length === 0
-          ? `${style.dim('  No matches')}\n`
+          ? `${style.dim(`  ${context.localize(promptPhrase('noMatches'))}`)}\n`
           : data.choices.map((row) => numberedRow(row, context)).join('');
       }
       case 'issue': {
-        return `${style.error(`${glyph.cross} ${literal(data.issue)}`)}\n`;
+        return `${style.error(`${glyph.cross} ${literal(localizedIssue(data, context))}`)}\n`;
       }
       default: {
-        return askingRow(askingLabels[data.kind], data.hint, context);
+        const label = context.localize(promptPhrase(askingLabels[data.kind]));
+        return askingRow(label, localizedHint(data, context), context);
       }
     }
   },
@@ -1025,59 +1051,65 @@ function steady(value: number): number {
 }
 
 /** A rate per second in the largest unit of time it reaches 1 in: per second, minute, or hour. */
-function perTime(rate: number): readonly [amount: number, suffix: string] {
+function perTime(
+  rate: number,
+): readonly [amount: number, suffix: 'perSecond' | 'perMinute' | 'perHour'] {
   if (rate >= 1) {
-    return [rate, '/s'];
+    return [rate, 'perSecond'];
   }
   const perMinute = (rate * MINUTE) / SECOND;
-  return perMinute >= 1 ? [perMinute, '/min'] : [(rate * HOUR) / SECOND, '/h'];
+  return perMinute >= 1 ? [perMinute, 'perMinute'] : [(rate * HOUR) / SECOND, 'perHour'];
 }
 
 /**
  * A rate in the largest unit of time it reaches 1 in, `/s`, `/min`, or `/h`, rounded down to a whole
  * number from 10 and to one decimal below: `3.3/s`, `15 files/min`, and `0/s` for none.
  */
-function rateText(rate: number, unit: string | undefined): string {
+function rateText(rate: number, unit: string | undefined, context: ViewContext): string {
   const named = unit === undefined ? '' : ` ${unit}`;
   if (rate === 0) {
-    return `0${named}/s`;
+    return `0${named}${context.localize(promptPhrase('perSecond'))}`;
   }
   const [amount, suffix] = perTime(rate);
   const shown =
     amount >= 10
       ? String(Math.floor(steady(amount)))
       : (Math.floor(steady(amount * 10)) / 10).toFixed(1);
-  return `${shown}${named}${suffix}`;
+  return `${shown}${named}${context.localize(promptPhrase(suffix))}`;
 }
 
 /**
  * A time left in whole seconds rounded up, at least 1, in one unit of time: `about 24s left`,
  * `about 3m left`, and `about 2h left`, minutes and hours rounded half up.
  */
-function timeLeft(remaining: number): string {
+function timeLeft(remaining: number, context: ViewContext): string {
   const seconds = Math.max(1, Math.ceil(steady(remaining / SECOND)));
   const minutes = Math.floor(seconds / 60 + 0.5);
-  let span = `${String(Math.floor(seconds / 3600 + 0.5))}h`;
+  let amount = Math.floor(seconds / 3600 + 0.5);
+  let unit: 'hoursUnit' | 'minutesUnit' | 'secondsUnit' = 'hoursUnit';
   if (seconds < 60) {
-    span = `${String(seconds)}s`;
+    amount = seconds;
+    unit = 'secondsUnit';
   } else if (minutes < 60) {
-    span = `${String(minutes)}m`;
+    amount = minutes;
+    unit = 'minutesUnit';
   }
-  return `about ${span} left`;
+  const span = `${String(amount)}${context.localize(promptPhrase(unit))}`;
+  return context.localize(promptPhrase('timeRemaining', span));
 }
 
 /** Elapsed time, rounded down: `2.4s` under a minute, `1m 05s` under an hour, and `1h 02m` from one. */
-function elapsedTime(elapsed: number): string {
+function elapsedTime(elapsed: number, context: ViewContext): string {
   const whole = Math.max(0, Math.floor(elapsed));
   if (whole < MINUTE) {
-    return `${(Math.floor(whole / 100) / 10).toFixed(1)}s`;
+    return `${(Math.floor(whole / 100) / 10).toFixed(1)}${context.localize(promptPhrase('secondsUnit'))}`;
   }
   if (whole < HOUR) {
     const seconds = Math.floor((whole % MINUTE) / SECOND);
-    return `${String(Math.floor(whole / MINUTE))}m ${String(seconds).padStart(2, '0')}s`;
+    return `${String(Math.floor(whole / MINUTE))}${context.localize(promptPhrase('minutesUnit'))} ${String(seconds).padStart(2, '0')}${context.localize(promptPhrase('secondsUnit'))}`;
   }
   const minutes = Math.floor((whole % HOUR) / MINUTE);
-  return `${String(Math.floor(whole / HOUR))}h ${String(minutes).padStart(2, '0')}m`;
+  return `${String(Math.floor(whole / HOUR))}${context.localize(promptPhrase('hoursUnit'))} ${String(minutes).padStart(2, '0')}${context.localize(promptPhrase('minutesUnit'))}`;
 }
 
 /** A part of a progress row that can give way on a narrow row, named for its turn to drop. */
@@ -1130,17 +1162,17 @@ function runningRow(data: ProgressLine, context: ViewContext): LineRow {
   }
   parts.push({
     drop: 'elapsed',
-    text: ` ${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`,
+    text: ` ${style.dim('·')} ${style.dim(elapsedTime(data.elapsed, context))}`,
   });
   if (data.estimate === true && data.rate !== undefined) {
     parts.push({
       drop: 'rate',
-      text: ` ${style.dim('·')} ${style.dim(rateText(data.rate, data.unit))}`,
+      text: ` ${style.dim('·')} ${style.dim(rateText(data.rate, data.unit, context))}`,
     });
     if (data.remaining !== undefined) {
       parts.push({
         drop: 'left',
-        text: ` ${style.dim('·')} ${style.dim(timeLeft(data.remaining))}`,
+        text: ` ${style.dim('·')} ${style.dim(timeLeft(data.remaining, context))}`,
       });
     }
   }
@@ -1156,16 +1188,17 @@ function runningRow(data: ProgressLine, context: ViewContext): LineRow {
 /** The pieces of a progress line's row in its state: its glyph or frame, label, and parts. */
 function rowOf(data: ProgressLine, context: ViewContext): LineRow {
   const { style } = context;
-  const time: LinePart = {
-    drop: 'elapsed',
-    text: ` ${style.dim('·')} ${style.dim(elapsedTime(data.elapsed))}`,
-  };
   const ended = (mark: string, markStyle: (text: string) => string): LineRow => ({
     label: data.label,
     mark,
     markStyle,
     paint: asIs,
-    parts: [time],
+    parts: [
+      {
+        drop: 'elapsed',
+        text: ` ${style.dim('·')} ${style.dim(elapsedTime(data.elapsed, context))}`,
+      },
+    ],
   });
   const rows: Readonly<Record<ProgressLine['state'], () => LineRow>> = {
     cancelled: () => ({
@@ -1173,7 +1206,7 @@ function rowOf(data: ProgressLine, context: ViewContext): LineRow {
       mark: glyph.squareCenter,
       markStyle: asIs,
       paint: style.dim,
-      parts: [{ drop: 'elapsed', text: ' (cancelled)' }],
+      parts: [{ drop: 'elapsed', text: ` (${context.localize(promptPhrase('cancelled'))})` }],
     }),
     ended: () => ended(glyph.success, style.success),
     failed: () => ended(glyph.error, style.error),
@@ -1183,7 +1216,7 @@ function rowOf(data: ProgressLine, context: ViewContext): LineRow {
       mark: glyph.info,
       markStyle: asIs,
       paint: style.dim,
-      parts: [{ drop: 'elapsed', text: ` · ${elapsedTime(data.elapsed)}` }],
+      parts: [{ drop: 'elapsed', text: ` · ${elapsedTime(data.elapsed, context)}` }],
     }),
     warned: () => ended(glyph.warning, style.warning),
   };
@@ -1323,3 +1356,6 @@ export type {
   ChoiceRow,
   SeparatorRow,
 };
+
+// The package's member of MessagePackages, which this entry's declarations load.
+export type {} from './registry.js';

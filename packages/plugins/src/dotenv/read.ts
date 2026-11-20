@@ -5,10 +5,11 @@ import type { EnvironmentContext } from '@loomcli/core';
 
 import { expandValue } from './expand.js';
 import type { Lookup } from './expand.js';
-import { fileUnreadable, imported, lineMalformed, skippedName } from './messages.js';
-import type { SkipReason } from './messages.js';
 import { parseDotenv } from './parse.js';
 import type { DotenvAssignment } from './parse.js';
+import { dotenvPhrase } from './phrases.js';
+import { imported, skippedName } from './wording.js';
+import type { SkipReason } from './wording.js';
 
 /** The mode the test runner sets, under which `.env.local` is not read. */
 const testMode = 'test';
@@ -38,7 +39,7 @@ async function fileText(
   } catch (error) {
     const code: unknown = error instanceof Error ? Reflect.get(error, 'code') : undefined;
     if (code !== 'ENOENT' && code !== 'ENOTDIR' && code !== 'EISDIR') {
-      await out.warn(fileUnreadable(file));
+      await out.warn(dotenvPhrase('fileUnreadable', file));
     }
     return undefined;
   }
@@ -74,7 +75,7 @@ async function readLayer(
   }
   const { assignments, malformed } = parseDotenv(text, imports);
   for (const { line, name } of malformed) {
-    await out.warn(lineMalformed(name, line, file));
+    await out.warn(dotenvPhrase('lineMalformed', name, line, file));
   }
   return expandFile(assignments, outer);
 }

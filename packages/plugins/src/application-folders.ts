@@ -8,11 +8,11 @@ import { isAbsolute } from 'node:path';
 import { applicationDirectory, FatalError } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
-import { homeNotAbsolute, recordDirectoryNotAbsolute } from './messages.js';
+import { commonPhrase } from './phrases.js';
 
 /** The refusal of a `HOME` that does not hold an absolute path, which exits 1. */
 function homeRefusal(name: string): FatalError {
-  return new FatalError(homeNotAbsolute(name));
+  return new FatalError(commonPhrase('homeNotAbsolute', name));
 }
 
 /** The absolute path a variable of the host's environment holds, or none. */
@@ -42,7 +42,7 @@ function requiredHome(name: string, host: Host): string {
 function recordDirectory(name: string, host: Host): string {
   const directory = applicationDirectory('installation', name, host);
   if ('variable' in directory) {
-    throw new FatalError(recordDirectoryNotAbsolute(name, directory.variable));
+    throw new FatalError(commonPhrase('recordDirectoryNotAbsolute', name, directory.variable));
   }
   return directory.path;
 }

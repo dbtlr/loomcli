@@ -451,6 +451,11 @@ export interface ValidatorDefinition<Output, Return extends ParseReturn<Output> 
     parse: (raw: string, context: ValidationContext) => Return;
 }
 
+// @public @sealed
+export interface ValidatorMessageModules {
+    readonly common: typeof common;
+}
+
 // (No @packageDocumentation comment for this package)
 
 ```

@@ -4,8 +4,6 @@
  */
 import { escapeControlCharacters, nowrap } from '@loomcli/core';
 
-import type { SkillState } from './types.js';
-
 const shown = escapeControlCharacters;
 
 const shownPath = (path: string): string => nowrap(shown(path));
@@ -91,6 +89,9 @@ const skillFileLeftOut =
 /** The refresh's `-vv` line when the installation record holds none of the plugin's files. */
 const skillsRefreshSkipped = 'Skipped the skills refresh: nothing is installed.';
 
+/** The `warn` log event of a refresh whose child failed or could not start. */
+const skillsRefreshFailed = 'Skills were not refreshed after the update.';
+
 function referenceChanged(name: string, file: string): string {
   return `${shownPath(file)} changed since ${shown(name)} skills install wrote it.`;
 }
@@ -101,52 +102,41 @@ function modifiedKept(name: string, folder: string): string {
   return `${shownPath(folder)} was left in place, because command references in it changed since ${shown(name)} skills install wrote them. Copy what you want to keep, then remove the folder.`;
 }
 
-interface NoteScope {
-  readonly target: string;
-  readonly project: boolean;
-  readonly root?: string | undefined;
+/** The note under a project skill that is missing, with the step that installs it. */
+function projectSkillMissing(install: string): string {
+  return `Run ${install} to install it.`;
 }
-/** The target-specific project step, whose values are escaped before composition. */
-function installStep(name: string, scope: NoteScope): string {
-  const directory = scope.root === undefined ? '' : ` --directory ${shown(scope.root)}`;
-  return `${shown(name)} skills install${scope.project ? ' --project' : ''} --agent ${shown(scope.target)}${directory}`;
+
+/** The note under a project skill whose path holds something that is not a folder. */
+function projectSkillUnmanaged(name: string, install: string): string {
+  return `${shown(name)} skills install --project did not write this, because it is not a folder. Run ${install} to replace it.`;
 }
-function projectNote(name: string, state: SkillState, install: string): string[] {
-  if (state === 'missing') {
-    return [`Run ${install} to install it.`];
-  }
-  if (state === 'unmanaged') {
-    return [
-      `${shown(name)} skills install --project did not write this, because it is not a folder. Run ${install} to replace it.`,
-    ];
-  }
-  return [`Run ${install} to replace it with this version's.`];
+
+/** The note under a project skill that differs from this version's. */
+function projectSkillOutdated(install: string): string {
+  return `Run ${install} to replace it with this version's.`;
 }
-/** The global notes explain refusal conditions before offering a replacing command. */
-function globalNote(name: string, state: SkillState, install: string): string[] {
-  if (state === 'missing') {
-    return [`Run ${install} to install it, once no skill reads modified or unmanaged.`];
-  }
-  if (state === 'unmanaged') {
-    return [
-      `The installation record does not list what is at this path. Remove it, or run ${install} --force to replace it.`,
-    ];
-  }
-  if (state === 'modified') {
-    return [
-      `Its command references changed since ${shown(name)} skills install wrote them, so ${shown(name)} skills update will not replace it. Copy the changed files elsewhere to keep them, then run ${install} --force to replace the folder.`,
-    ];
-  }
-  return [
-    `Run ${shown(name)} skills update to bring it up to date, once no skill reads modified or unmanaged.`,
-  ];
+
+/** The note under a global skill that is missing; the global notes explain refusals first. */
+function globalSkillMissing(install: string): string {
+  return `Run ${install} to install it, once no skill reads modified or unmanaged.`;
 }
-function statusNote(name: string, state: SkillState, scope: NoteScope): string[] {
-  if (state === 'current') {
-    return [];
-  }
-  return (scope.project ? projectNote : globalNote)(name, state, installStep(name, scope));
+
+/** The note under a global skill whose path the installation record does not list. */
+function globalSkillUnmanaged(install: string): string {
+  return `The installation record does not list what is at this path. Remove it, or run ${install} --force to replace it.`;
 }
+
+/** The note under a global skill whose command references changed. */
+function globalSkillModified(name: string, install: string): string {
+  return `Its command references changed since ${shown(name)} skills install wrote them, so ${shown(name)} skills update will not replace it. Copy the changed files elsewhere to keep them, then run ${install} --force to replace the folder.`;
+}
+
+/** The note under a global skill that differs from this version's. */
+function globalSkillOutdated(name: string): string {
+  return `Run ${shown(name)} skills update to bring it up to date, once no skill reads modified or unmanaged.`;
+}
+
 function statusRecordUnreadable(name: string, path: string): string {
   return `${shownPath(path)} cannot be read, so ${shown(name)} cannot tell which skills it installed. Remove it and the folders it lists, then run ${shown(name)} skills install again.`;
 }
@@ -162,7 +152,19 @@ function statusProjectIsGlobal(name: string, folder: string): string {
   return `${shown(name)} skills status --project would read ${shownPath(folder)}, the folder ${shown(name)} skills install keeps for your home folder. Run it inside a repository, name one with --directory, or leave out --project.`;
 }
 
+/** The row label of a skill's folder in the status text view. */
+const folderLabel = 'folder';
+
+/** The row label of a file whose command references changed in the status text view. */
+const changedLabel = 'changed';
+
+/** The row label of a note in the status text view. */
+const noteLabel = 'note';
+
 export {
+  changedLabel,
+  folderLabel,
+  noteLabel,
   directoryMissing,
   directoryMissingIssue,
   directoryWithoutProject,
@@ -183,11 +185,18 @@ export {
   skillsInTheWay,
   skillsNotRefreshed,
   skillsRefreshSkipped,
+  skillsRefreshFailed,
   updatedSkill,
   referenceChanged,
   replacedModified,
   modifiedKept,
-  statusNote,
+  globalSkillMissing,
+  globalSkillModified,
+  globalSkillOutdated,
+  globalSkillUnmanaged,
+  projectSkillMissing,
+  projectSkillOutdated,
+  projectSkillUnmanaged,
   statusRecordUnreadable,
   statusSameFolder,
   obsoleteSkill,

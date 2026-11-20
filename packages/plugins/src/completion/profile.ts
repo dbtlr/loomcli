@@ -9,7 +9,7 @@ import { isAbsolute, join } from 'node:path';
 import { FatalError } from '@loomcli/core';
 import type { Host } from '@loomcli/core';
 
-import { profileNotFound } from './messages.js';
+import { completionPhrase } from './phrases.js';
 
 /** The program the profile query runs, and the shell its failures name. */
 const shell = 'pwsh';
@@ -108,15 +108,20 @@ async function answerOf(request: ProfileRequest, program: string): Promise<strin
     .exited;
   signal.throwIfAborted();
   if (answer.kind === 'unstarted') {
-    throw new FatalError(profileNotFound(name, shell, { kind: 'not-started' }));
+    throw new FatalError(completionPhrase('profileNotFound', name, shell, { kind: 'not-started' }));
   }
   if (answer.kind === 'abandoned') {
     throw new FatalError(
-      profileNotFound(name, shell, { answer: answer.stdout.text, kind: 'reported' }),
+      completionPhrase('profileNotFound', name, shell, {
+        answer: answer.stdout.text,
+        kind: 'reported',
+      }),
     );
   }
   if (answer.code !== succeeded) {
-    throw new FatalError(profileNotFound(name, shell, { code: answer.code, kind: 'exited' }));
+    throw new FatalError(
+      completionPhrase('profileNotFound', name, shell, { code: answer.code, kind: 'exited' }),
+    );
   }
   return answer.stdout.text.replace(trailingLineBreak, '');
 }
@@ -129,12 +134,14 @@ async function askProfile(request: ProfileRequest): Promise<string> {
   const { host, name } = request;
   const program = programOf(host);
   if (program === undefined) {
-    throw new FatalError(profileNotFound(name, shell, { kind: 'not-started' }));
+    throw new FatalError(completionPhrase('profileNotFound', name, shell, { kind: 'not-started' }));
   }
   const answer = await answerOf(request, program);
   const profile = profileOf(answer);
   if (profile === undefined) {
-    throw new FatalError(profileNotFound(name, shell, { answer, kind: 'reported' }));
+    throw new FatalError(
+      completionPhrase('profileNotFound', name, shell, { answer, kind: 'reported' }),
+    );
   }
   return profile;
 }

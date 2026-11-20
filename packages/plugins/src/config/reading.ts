@@ -1,15 +1,18 @@
 import { isRecord } from '../plain-data.js';
 import type { Position } from './text.js';
 
-/** The clause that says why a file cannot be used, after its name in a warning or a failure. */
+/**
+ * Why a file cannot be used, as a stable code. The configuration plugin's wording module holds the
+ * English clause and fix of each code, so a phrasebook switches on the code.
+ */
 type Clause =
-  | 'does not exist.'
-  | 'could not be read.'
-  | 'is not valid JSON.'
-  | 'does not hold a JSON object.'
-  | 'is not valid TOML.'
-  | 'is not valid YAML.'
-  | 'does not hold a YAML mapping.';
+  | 'missing'
+  | 'unreadable'
+  | 'invalid-json'
+  | 'not-json-object'
+  | 'invalid-toml'
+  | 'invalid-yaml'
+  | 'not-yaml-mapping';
 
 /**
  * What reading one file found: its top-level object, or the clause that says why it is skipped,
@@ -84,8 +87,11 @@ function readerParser(reader: ConfigurationReader): Parse | undefined {
  * formats the application reads, JSON first.
  */
 interface Unread {
+  /** A file whose format the application passes no reader for. */
   readonly kind: 'unread';
+  /** The file's format. */
   readonly format: ReaderFormat;
+  /** The formats the application reads. */
   readonly formats: readonly string[];
 }
 

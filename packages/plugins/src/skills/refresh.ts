@@ -28,13 +28,14 @@ import { recordName, targets } from './targets.js';
  * @public
  */
 async function refreshSkills(context: RefreshContext): Promise<void> {
-  // The sentence loads with the refresh, so the entry that exports it loads no message module.
-  const { skillsNotRefreshed, skillsRefreshSkipped } = await import('./messages.js');
+  // The phrases load with the refresh, so the entry that exports it loads no message module. The
+  // Shared refresh takes the sentences as text, so they are English.
+  const { skillsPhrase } = await import('./phrases.js');
   await refreshByRunning(context, {
-    notStarted: skillsNotRefreshed,
+    notStarted: (path, name) => skillsPhrase('skillsNotRefreshed', path, name).text,
     records: targets.map(recordName),
-    skipped: skillsRefreshSkipped,
-    warning: 'Skills were not refreshed after the update.',
+    skipped: skillsPhrase('skillsRefreshSkipped'),
+    warning: skillsPhrase('skillsRefreshFailed'),
     words: ['skills', 'update'],
   });
 }

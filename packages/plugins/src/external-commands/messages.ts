@@ -31,24 +31,10 @@ function cannotRun(application: string, program: string, code: string | undefine
   }
 }
 
-/** One log line: its message, a constant Message Template, and the fields it reads. */
-interface LogText {
-  readonly template: string;
-  readonly fields: Readonly<Record<string, string>>;
-}
+/** The `debug` log template for the program the plugin starts. */
+const runningProgram = 'Running {program}.';
 
-/** The `debug` line for the program the plugin starts. */
-function running(program: string): LogText {
-  return { fields: { program: shown(program) }, template: 'Running {program}.' };
-}
+/** The `trace` log template for one `PATH` entry the search passed over. */
+const programNotIn = 'No {program} in {folder}.';
 
-/** The `trace` line for one `PATH` entry the search passed over. */
-function notIn(program: string, folder: string): LogText {
-  return {
-    fields: { folder: shown(folder), program: shown(program) },
-    template: 'No {program} in {folder}.',
-  };
-}
-
-export type { LogText };
-export { cannotRun, notIn, running };
+export { cannotRun, programNotIn, runningProgram };

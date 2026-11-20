@@ -92,11 +92,15 @@ function manpagesNotRefreshed(path: string, name: string): string {
 /** The refresh's `-vv` line when the installation record holds none of the plugin's files. */
 const manpagesRefreshSkipped = 'Skipped the man page refresh: nothing is installed.';
 
+/** The `warn` log event of a refresh whose child failed or could not start. */
+const manpagesRefreshFailed = 'Man pages were not refreshed after the update.';
+
 export type { WritingVerb };
 export {
   installedPages,
   manpagesNotRefreshed,
   manpagesRefreshSkipped,
+  manpagesRefreshFailed,
   manpathAdvice,
   noPagesToRemove,
   noPagesToUpdate,

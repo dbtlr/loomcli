@@ -9,13 +9,7 @@ import { deletePluginFile, writePendingRegistration } from '../installation/file
 import type { RecordedRegistration } from '../installation/record.js';
 import { recordName, selectedAgents } from './agents.js';
 import type { Agent, AgentName } from './agents.js';
-import {
-  noLongerRecorded,
-  nothingToRemove,
-  removedRegistration,
-  staysRegistered,
-  uninstallIncomplete,
-} from './messages.js';
+import { mcpPhrase } from './phrases.js';
 import {
   namesOf,
   none,
@@ -49,11 +43,11 @@ async function removeFrom({ agent, record, recorded, run }: RecordedTarget): Pro
   const answer = await changeAgent(run, agent, agent.remove(names.registration));
   deletePluginFile({ log: run.log, plugin, record });
   if (succeededAt(answer)) {
-    await run.success(removedRegistration(names, agent.name));
+    await run.success(mcpPhrase('removedRegistration', names, agent.name));
     return;
   }
   await warnOutput(run, answer);
-  await run.info(noLongerRecorded(names, agent.name));
+  await run.info(mcpPhrase('noLongerRecorded', names, agent.name));
 }
 
 /** The agents whose plugin's file records a registration, in table order. */
@@ -80,7 +74,7 @@ async function removeEach(
       await removeFrom(target);
     } else {
       unstarted.push(target.agent.name);
-      await run.warn(staysRegistered(namesOf(run), target.agent.name));
+      await run.warn(mcpPhrase('staysRegistered', namesOf(run), target.agent.name));
     }
   }
   return unstarted;
@@ -91,12 +85,12 @@ async function uninstallRegistrations(run: ChildRun, named: AgentName | undefine
   refuseWindows(run, 'uninstall');
   const targets = await recordedTargets(run, recordOf(run), selectedAgents(named));
   if (targets.length === none) {
-    await run.success(nothingToRemove(namesOf(run), named));
+    await run.success(mcpPhrase('nothingToRemove', namesOf(run), named));
     return;
   }
   const unstarted = await removeEach(run, targets);
   if (unstarted.length > none) {
-    throw new FatalError(uninstallIncomplete(namesOf(run), unstarted));
+    throw new FatalError(mcpPhrase('uninstallIncomplete', namesOf(run), unstarted));
   }
 }
 

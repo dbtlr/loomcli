@@ -4,6 +4,7 @@ import type {
   Host,
   Log,
   Out,
+  Phrase,
   StandardSchemaV1,
 } from '@loomcli/core';
 
@@ -11,7 +12,7 @@ import { dropUntilPasses } from './drop.js';
 import type { Removal, Step } from './drop.js';
 import { findFile } from './lookup.js';
 import type { UsableFile } from './lookup.js';
-import { ignoredValue, unknownKeyIssue, unknownKeyLine, valueLine } from './messages.js';
+import { configPhrase } from './phrases.js';
 import { withoutPointer } from './pointer.js';
 import type { ConfigurationReader } from './reading.js';
 import type { Reach } from './scopes.js';
@@ -50,7 +51,7 @@ interface Loaded<Schema extends StandardSchemaV1> {
   /** The file the run read with every dropped value removed, or `undefined` when it found none. */
   readonly usable: UsableFile | undefined;
   /** The line of each covered removal and covered unknown key, which fail the run, in the order found. */
-  readonly held: readonly string[];
+  readonly held: readonly Phrase[];
   readonly output: StandardSchemaV1.InferOutput<Schema>;
 }
 
@@ -91,9 +92,31 @@ function shownPath(path: readonly Step[]): string {
 interface Reporting {
   readonly file: string | undefined;
   /** The line of each covered removal and covered unknown key, in the order found. */
-  readonly held: string[];
+  readonly held: Phrase[];
   readonly log: Log;
   readonly strict: Strictness;
+}
+
+/**
+ * Logs the `debug` line for a removed value or an unknown key: its path, or every key for the whole
+ * file, the file when the run read one, and the issue, which renders in the run's language at `-v`.
+ */
+function logIgnored(
+  log: Log,
+  { file, path }: { readonly path: string | undefined; readonly file: string | undefined },
+  issue: string | Phrase,
+): void {
+  if (path === undefined) {
+    if (file === undefined) {
+      log.debug(configPhrase('ignoredEveryKey'), { issue });
+    } else {
+      log.debug(configPhrase('ignoredEveryKeyIn'), { file, issue });
+    }
+  } else if (file === undefined) {
+    log.debug(configPhrase('ignoredKey'), { issue, key: path });
+  } else {
+    log.debug(configPhrase('ignoredKeyIn'), { file, issue, key: path });
+  }
 }
 
 /**
@@ -108,16 +131,16 @@ async function reportRemoval(
 ): Promise<void> {
   const { file, held, log, strict } = reporting;
   if (!coversRemoval(strict, removal, round)) {
-    const line = ignoredValue(
+    logIgnored(
+      log,
       { file, path: removal.readPath.length === noSteps ? undefined : shownPath(removal.readPath) },
-      removal.message,
+      removal.sentence,
     );
-    log.debug(line.template, line.fields);
     return undefined;
   }
   const path =
     removal.readIssuePath.length === noSteps ? undefined : shownPath(removal.readIssuePath);
-  held.push(valueLine(path, file, removal.message));
+  held.push(configPhrase('valueLine', path, file, removal.sentence));
   return undefined;
 }
 
@@ -126,10 +149,9 @@ async function reportUnknown(paths: readonly Step[][], reporting: Reporting): Pr
   const { file, held, log, strict } = reporting;
   for (const path of paths) {
     if (covers(strict, path)) {
-      held.push(unknownKeyLine(shownUnknownPath(path), file));
+      held.push(configPhrase('unknownKeyLine', shownUnknownPath(path), file));
     } else {
-      const line = ignoredValue({ file, path: shownUnknownPath(path) }, unknownKeyIssue);
-      log.debug(line.template, line.fields);
+      logIgnored(log, { file, path: shownUnknownPath(path) }, configPhrase('unknownKeyIssue'));
     }
   }
 }

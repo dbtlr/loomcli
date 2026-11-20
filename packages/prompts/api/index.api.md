@@ -151,6 +151,11 @@ export type PromptContext<Options, Args = unknown> = Pick<ActionContext<Args, Op
     readonly out: Pick<Out, 'draw' | 'region' | 'lendTerminal'>;
 };
 
+// @public @sealed
+export interface PromptMessageModules {
+    readonly common: typeof common;
+}
+
 // @public
 export function secret<Options, const Key extends LinkKey<Options> = never, Output = string, Args = unknown, const Argument extends LinkKey<Args> = never>(context: PromptContext<Options, Args>, settings: SecretSettings<Key, Output, Argument>): Promise<Answer<Args, Argument, Answer<Options, Key, Output>>>;
 

@@ -220,3 +220,6 @@ export const completionArgument: Extension<
 });
 
 export type { CompletionInputFacts, CompletionValueFacts };
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

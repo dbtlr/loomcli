@@ -25,13 +25,14 @@ import { recordName, shells } from './shell-names.js';
  * @public
  */
 async function refreshCompletion(context: RefreshContext): Promise<void> {
-  // The sentence loads with the refresh, so the entry that exports it loads no message module.
-  const { completionNotRefreshed, completionRefreshSkipped } = await import('./messages.js');
+  // The phrases load with the refresh, so the entry that exports it loads no message module.
+  const { completionPhrase } = await import('./phrases.js');
   await refreshByRunning(context, {
-    notStarted: completionNotRefreshed,
+    // The line goes to the host's stderr, which has no language to render a phrase in, so it is English.
+    notStarted: (path, name) => completionPhrase('completionNotRefreshed', path, name).text,
     records: shells.map(recordName),
-    skipped: completionRefreshSkipped,
-    warning: 'Completion was not refreshed after the update.',
+    skipped: completionPhrase('completionRefreshSkipped'),
+    warning: completionPhrase('completionRefreshFailed'),
     words: ['completion', 'update'],
   });
 }

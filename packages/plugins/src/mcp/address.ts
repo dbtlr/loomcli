@@ -2,9 +2,10 @@
  * The value of `mcp --http`: a port, or `host:port` with an IPv6 host in brackets. It is read on
  * every run that names the option, so it imports no network module.
  */
+import { phrasedIssue } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
-import { httpAddressIssue } from './messages.js';
+import { mcpPhrase } from './phrases.js';
 
 /** Where the HTTP server listens, and the address as the operator wrote it. */
 interface HttpAddress {
@@ -53,7 +54,9 @@ const httpAddress = createValidator({
   inputSchema: { type: 'string' },
   parse: (raw: string) => {
     const address = addressOf(raw);
-    return address === undefined ? { issues: [{ message: httpAddressIssue }] } : { value: address };
+    return address === undefined
+      ? { issues: [phrasedIssue(mcpPhrase('httpAddressIssue'))] }
+      : { value: address };
   },
 });
 

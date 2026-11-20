@@ -56,3 +56,6 @@ export interface HelpPage {
 export const helpPage = view<HelpPage>(`${packageName}/help/page`, {
   render: (page, context) => `${renderPage(page, context)}\n`,
 });
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

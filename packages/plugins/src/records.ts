@@ -1,5 +1,6 @@
 import type { RowView, ViewContext } from '@loomcli/core';
 
+import { commonPhrase } from './phrases.js';
 import { recordBlock } from './record-block.js';
 
 /**
@@ -44,7 +45,6 @@ interface RecordsConfig<Row> {
 
 const EMPTY = 0;
 const FIRST = 0;
-const SINGULAR = 1;
 
 /** One normalized field, including the typed path from a row to its rendered value. */
 interface PreparedField<Row> {
@@ -157,9 +157,8 @@ function records<Row>(config: RecordsConfig<Row>): RowView<Row> {
         row,
       }),
     tail: (count, context) => {
-      const summary = context.style.dim(
-        `${String(count)} ${count === SINGULAR ? 'record' : 'records'}`,
-      );
+      const said = context.localize(commonPhrase('recordCount', count));
+      const summary = context.style.dim(context.style.escape(said));
       return `${count === EMPTY ? '' : '\n'}${summary}\n`;
     },
   };
@@ -167,3 +166,6 @@ function records<Row>(config: RecordsConfig<Row>): RowView<Row> {
 
 export { records };
 export type { Field, FieldDefinition, FieldEntry, RecordsConfig };
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from './registry.js';

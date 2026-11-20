@@ -1,9 +1,10 @@
 import { FatalError, isPortableName } from '@loomcli/core';
 import type { ExitCode, Middleware, MiddlewareContext } from '@loomcli/core';
 
-import { cannotRun, notIn, running } from './messages.js';
+import { externalCommandsPhrase } from './phrases.js';
 import type { externalCommands } from './plugin.js';
 import { findProgram } from './search.js';
+import { notIn, running } from './wording.js';
 
 /** The lowest and highest codes a process exit status holds. */
 const lowestStatus = 0;
@@ -90,7 +91,9 @@ async function runProgram(
   context.log.debug(line.template, line.fields);
   const ended = await start(context, program, rest);
   if (ended?.kind === 'unstarted') {
-    throw new FatalError(cannotRun(context.graph.name, program, ended.code));
+    throw new FatalError(
+      externalCommandsPhrase('cannotRun', context.graph.name, program, ended.code),
+    );
   }
   context.exitCode = ended !== undefined && isExitCode(ended.code) ? ended.code : outOfRange;
 }
