@@ -9,13 +9,15 @@ import type { PackageManagerMethod, UpgradeCommand } from './upgrade.js';
 
 const shown = escapeControlCharacters;
 
-/** The registry installers' install commands, which take a package and a version. */
-const registryInstalls: Readonly<Record<Exclude<PackageManagerMethod, 'brew'>, string>> = {
-  bun: 'bun add -g',
-  npm: 'npm install -g',
-  pnpm: 'pnpm add -g',
-  yarn: 'yarn global add',
-};
+/** A registry installer's install command, a fixed spelling that takes a package and a version. */
+function registryInstall(method: Exclude<PackageManagerMethod, 'brew'>): string {
+  return {
+    bun: 'bun add -g',
+    npm: 'npm install -g',
+    pnpm: 'pnpm add -g',
+    yarn: 'yarn global add',
+  }[method];
+}
 
 /** The command a notice or a refusal tells the operator to run, escaped, with the version or dist-tag it names. */
 function upgradeCommandLine(command: UpgradeCommand, version: string): string {
@@ -27,7 +29,7 @@ function upgradeCommandLine(command: UpgradeCommand, version: string): string {
       return `${shown(command.name)} self-update`;
     }
     default: {
-      return `${shown(registryInstalls[command.method])} ${shown(command.pkg)}@${shown(version)}`;
+      return `${registryInstall(command.method)} ${shown(command.pkg)}@${shown(version)}`;
     }
   }
 }
