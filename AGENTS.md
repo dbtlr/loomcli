@@ -33,10 +33,11 @@ Run a package's tool with `pnpm exec <tool>`. `devEngines` in `package.json` pin
 
 Tests read built `dist`. `pnpm test` and `pnpm verify` build first, but a single file run with `pnpm exec vp test` after a source change needs `pnpm run build` before it, and an example's launch tests need `pnpm run build:examples` as well. A `tsc` run that fails on `rootDir` still emits `.js` and `.d.ts` files into `src`; delete them before lint.
 
-`pnpm check:fix`, which the pre-commit hook also runs, rewrites source in two ways a diff can hide:
+`pnpm check:fix`, which the pre-commit hook also runs, rewrites source in three ways a diff can hide:
 
 - `eslint/sort-keys` sorts object literal keys, in source and in tests' expected objects alike. A module whose key order is a contract turns the rule off in a per-file override in `vite.config.ts` with a comment that says why, as the existing overrides do, and pins the order with a test the fixer cannot rewrite, such as a golden file or an `Object.keys` assertion.
 - Each `//` line gains a capital first letter, so a sentence wrapped across two `//` lines comes back with a capital mid-sentence. Write each `//` line as a whole sentence, or use a `/** */` block for longer prose, and reread wrapped comments in the diff after a fix run.
+- `await null` becomes a bare `null;`, which removes the wait and then fails `no-unused-expressions`. A test that needs a microtask tick writes `await Promise.resolve()`.
 
 ### Operator messages
 

@@ -126,6 +126,7 @@ export const { plugin: configPlugin, values: config } = configuration({
 // src/main.ts
 import { Application, Command } from '@loomcli/core';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { verbose } from '@loomcli/plugins/verbose';
 import { bytes } from '@loomcli/validators';
 
 import { config, configPlugin } from './configuration.js';
@@ -138,7 +139,7 @@ const sources = new Command('sources', { description: 'List the transcript sourc
   },
 );
 
-const app = new Application('collector', { plugins: [configPlugin] })
+const app = new Application('collector', { plugins: [configPlugin, verbose()] })
   .option('min-bytes', {
     env: 'COLLECTOR_MIN_BYTES',
     extensions: [configInput({ path: 'minBytes' })],
@@ -348,12 +349,13 @@ export const { plugin: configPlugin, values: config } = configuration({
 // src/main.ts
 import { Application, Command } from '@loomcli/core';
 import { configInput } from '@loomcli/plugins/config/extension';
+import { verbose } from '@loomcli/plugins/verbose';
 import { bytes, url } from '@loomcli/validators';
 
 import { configPlugin } from './configuration.js';
 const sources = new Command('sources').action(({ out }) => out.print('transcripts'));
 
-const app = new Application('collector', { plugins: [configPlugin] })
+const app = new Application('collector', { plugins: [configPlugin, verbose()] })
   .globalOption('min-bytes', { extensions: [configInput({ path: 'minBytes' })], type: 'string', validate: bytes() })
   .globalOption('webhook', {
     extensions: [configInput({ path: 'delivery.webhook' })],
