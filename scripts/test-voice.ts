@@ -1204,7 +1204,8 @@ function sentenceShape(tokens: readonly Token[], start: number): boolean {
 /**
  * The top-level exports a message module may not hold at all: any `export` not followed by `{`,
  * `function`, `const`, `type`, or `interface`, read as its exported name with the form after it, as
- * in `Reader (class)`, `* (export *)`, or `default (export default)`.
+ * in `Reader (class)`, `* (export *)`, or `default (export default)`, and a specifier exported as
+ * `default` in an `export { }` list.
  */
 function unsentenceExports(tokens: readonly Token[]): string[] {
   const allowed = new Set(['const', 'function', 'interface', 'type']);
@@ -1212,7 +1213,15 @@ function unsentenceExports(tokens: readonly Token[]): string[] {
   let depth = 0;
   tokens.forEach((token, index) => {
     const next = tokens[index + 1];
-    if (depth === 0 && named(token, 'export') && next !== undefined && !is(next, '{')) {
+    if (depth === 0 && named(token, 'export') && is(next, '{')) {
+      // A specifier exported as `default` is the default export in another spelling.
+      const close = closing(tokens, index + 1);
+      for (const specifier of splitTopLevel(tokens.slice(index + 2, close), [','])) {
+        if (specifier.length > 1 && named(specifier.at(-1), 'default')) {
+          sites.push('default (export { as default })');
+        }
+      }
+    } else if (depth === 0 && named(token, 'export') && next !== undefined) {
       if (is(next, '*')) {
         sites.push('* (export *)');
       } else if (named(next, 'default')) {

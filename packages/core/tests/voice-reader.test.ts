@@ -785,6 +785,8 @@ test('with a registry, a message module holds no exported class, enum, let, asyn
     "export async function later(): Promise<string> { return 'Use a value.'; }",
     "export * from './other.js';",
     "export default 'Use a value.';",
+    "const plain = 'Use a value.';",
+    'export { plain as default };',
   ].join('\n');
   expect(
     localizationSites({ 'inputs/messages.ts': module, 'localization/registry.ts': registry }),
@@ -795,6 +797,7 @@ test('with a registry, a message module holds no exported class, enum, let, asyn
     { check: 'export-shape', file: 'inputs/messages.ts', text: 'later (async function)' },
     { check: 'export-shape', file: 'inputs/messages.ts', text: '* (export *)' },
     { check: 'export-shape', file: 'inputs/messages.ts', text: 'default (export default)' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'default (export { as default })' },
   ]);
 });
 
