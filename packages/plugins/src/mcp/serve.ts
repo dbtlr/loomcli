@@ -13,6 +13,7 @@ import type {
   CommandNode,
   InvocationOutcome,
   InvocationValues,
+  InvokeOptions,
 } from '@loomcli/core';
 
 import { singleLine } from '../lines.js';
@@ -159,21 +160,76 @@ function unlistedKey(
   };
 }
 
-/** The resolved metadata zone, or a tool error before any invocation starts. */
-function callTimeZone({ _meta: metadata }: ToolCall): string | CallToolResult | undefined {
+/**
+ * The time zone a call's metadata names: `zone` holds the resolved IANA name, or `undefined` when
+ * the metadata names none, and `refusal` the tool execution error for a value no zone resolves.
+ */
+type CallZone =
+  | { readonly kind: 'resolved'; readonly zone: string | undefined }
+  | { readonly kind: 'refused'; readonly refusal: CallToolResult };
+
+/** The zone the call's metadata names, resolved, or the refusal of a value that names none. */
+function callTimeZone({ _meta: metadata }: ToolCall): CallZone {
   const key = 'io.github.dbtlr.loomcli/timeZone';
   if (metadata === undefined || !Object.hasOwn(metadata, key)) {
-    return undefined;
+    return { kind: 'resolved', zone: undefined };
   }
-  const zone = metadata[key];
-  const resolved = typeof zone === 'string' ? resolveTimeZone(zone) : undefined;
-  return resolved ?? { content: [text(mcpPhrase('invalidTimeZone').text)], isError: true };
+  const named = metadata[key];
+  const zone = typeof named === 'string' ? resolveTimeZone(named) : undefined;
+  return zone === undefined
+    ? {
+        kind: 'refused',
+        refusal: { content: [text(mcpPhrase('invalidTimeZone').text)], isError: true },
+      }
+    : { kind: 'resolved', zone };
+}
+
+/** One tool call on its way to `invoke`: its tool, the call, its values, and its time zone. */
+interface CallRun {
+  readonly entry: ToolEntry;
+  readonly call: ToolCall;
+  readonly values: InvocationValues;
+  readonly timeZone: string | undefined;
+}
+
+/**
+ * How a tool call's run is invoked: without the names the tool leaves out, with each failure kept
+ * as its form, under the call's signal, time zone, and JSON view, and relaying progress when the
+ * call carries a progress token.
+ */
+function invokeOptions(
+  context: ServeContext,
+  { call, entry, timeZone }: CallRun,
+  view: string | undefined,
+): InvokeOptions<FailedCall> {
+  const exclude = excludedNames(context.graph, entry.command);
+  const [firstExcluded] = exclude;
+  return {
+    ...(firstExcluded === undefined ? {} : { exclude }),
+    failure: (_failure, { exitCode, form }): FailedCall => ({ exitCode, failure: { ...form } }),
+    signal: call.signal,
+    ...(timeZone === undefined ? {} : { timeZone }),
+    ...(view === undefined ? {} : { view }),
+    ...(call.progress === undefined ? {} : { onProgress: progressRelay(call.progress) }),
+  };
+}
+
+/** Runs one admitted tool call through `invoke`, as the Command's own run, and answers its result. */
+async function runCall(context: ServeContext, run: CallRun): Promise<CallToolResult> {
+  const view = jsonView(run.entry.command);
+  const outcome = await context.invoke(
+    run.entry.command.path,
+    run.values,
+    invokeOptions(context, run, view),
+  );
+  return callResult(outcome, view);
 }
 
 /**
  * Runs one tool call through `invoke`, as the Command's own run, and answers its result. A key the
- * input schema does not list answers a tool execution error, and no run starts. A call that carries
- * a progress token receives each progress event of the run as a notification.
+ * input schema does not list, and then a metadata time zone that is not a string naming a zone this
+ * runtime knows, each answer a tool execution error, and no run starts. A call that carries a
+ * progress token receives each progress event of the run as a notification.
  */
 async function callTool(
   context: ServeContext,
@@ -182,22 +238,16 @@ async function callTool(
 ): Promise<CallToolResult> {
   const received = argumentsOf(entry, call);
   const properties = propertiesOf(context.graph, entry.command);
-  const timeZone = unlistedKey(entry, properties, received) ?? callTimeZone(call);
-  if (typeof timeZone === 'object') {
-    return timeZone;
+  const unlisted = unlistedKey(entry, properties, received);
+  if (unlisted !== undefined) {
+    return unlisted;
   }
-  const view = jsonView(entry.command);
-  const exclude = excludedNames(context.graph, entry.command);
-  const [firstExcluded] = exclude;
-  const outcome = await context.invoke(entry.command.path, invocationValues(received, properties), {
-    ...(firstExcluded === undefined ? {} : { exclude }),
-    failure: (_failure, { exitCode, form }): FailedCall => ({ exitCode, failure: { ...form } }),
-    signal: call.signal,
-    ...(timeZone === undefined ? {} : { timeZone }),
-    ...(view === undefined ? {} : { view }),
-    ...(call.progress === undefined ? {} : { onProgress: progressRelay(call.progress) }),
-  });
-  return callResult(outcome, view);
+  const called = callTimeZone(call);
+  if (called.kind === 'refused') {
+    return called.refusal;
+  }
+  const values = invocationValues(received, properties);
+  return await runCall(context, { call, entry, timeZone: called.zone, values });
 }
 
 /**

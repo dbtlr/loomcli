@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path';
 
 import { expect, test, vi } from 'vite-plus/test';
 
+import { withoutCoreDump } from '../../../scripts/test-process.js';
 import { zsh } from '../../../scripts/test-pty.js';
 import { drive } from '../../../scripts/test-terminal.js';
 
@@ -53,13 +54,13 @@ function underSh(scenario: string, env: Record<string, string> = {}) {
       '-c',
       [
         `before=$(${ttyModes})`,
-        'if command -v prlimit >/dev/null 2>&1; then prlimit --core=1 "$0" "$1" "$2"',
-        'else ulimit -c 0; "$0" "$1" "$2"; fi',
+        'sh -c "$0" sh "$@"',
         'echo "status=$?"',
         `echo "modes-before=$before"`,
         `echo "modes-after=$(${ttyModes})"`,
         'echo @@DONE@@',
       ].join('; '),
+      withoutCoreDump,
       runtime,
       fixture,
       scenario,

@@ -206,7 +206,7 @@ function boundLog(log: Log, bound: LogFields): Log {
   );
   const level =
     (name: Exclude<keyof Log, 'with'>) =>
-    (message: string, fields?: LogFields): void => {
+    (message: string | Phrase, fields?: LogFields): void => {
       log[name](message, { ...snapshot, ...definedFields(fields) });
     };
   const bounded: Log = {

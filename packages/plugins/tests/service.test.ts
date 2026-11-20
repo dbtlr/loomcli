@@ -181,6 +181,7 @@ interface Scenario {
   readonly env?: Record<string, string | undefined>;
   readonly umask?: number;
   readonly terminal?: ProcessTerminal;
+  readonly german?: boolean;
 }
 
 /** Runs `notes service ...argv` in the sandbox against its fake managers. */
@@ -218,6 +219,7 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
     run: scenario.run ?? runWords,
     terminal: scenario.terminal,
     umask: scenario.umask,
+    german: scenario.german,
   };
   writeFileSync(join(box.root, 'scenario.json'), JSON.stringify(facts));
   const given = Object.values(scenario.answers ?? {}).flat();
@@ -1459,6 +1461,30 @@ describe('status', () => {
     expect(session.stdout).toBe(
       `com.acme.notes: not loaded\n  unit  ${launchdPath(darwin)}\n  note  There is no login session, so com.acme.notes starts when you log in.\n`,
     );
+  });
+
+  it('a note prints in the run language while the JSON view keeps its English text', async () => {
+    const box = sandbox();
+    const installed = await run(box, ['install']);
+    expect(installed.status).toBe(0);
+    const scenario = {
+      answers: {
+        ...shown('active', 4120),
+        [`loginctl show-user ${uid} --property=Linger`]: { stdout: 'Linger=no\n' },
+      },
+      env: { LANG: 'de_DE.UTF-8' },
+      german: true,
+    } satisfies Scenario;
+    const text = await run(box, ['status'], scenario);
+    expect(text).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `com.acme.notes: running (pid 4120)\n  Einheit  ${systemdPath(box)}\n  Hinweis  Lingering ist aus, also hält com.acme.notes beim Abmelden an.\n`,
+    });
+    const json = await run(box, ['status', '--format', 'json'], scenario);
+    expect(JSON.parse(json.stdout).notes).toEqual([
+      'Lingering is off, so com.acme.notes stops when you log out. Run loginctl enable-linger to keep it running.',
+    ]);
   });
 
   it("a probe's rows print under unit, and the probe receives the state and an invoke that runs the application's own Command", async () => {

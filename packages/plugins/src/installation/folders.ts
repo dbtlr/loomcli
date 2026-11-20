@@ -3,7 +3,7 @@
  * staging folder and renames, removed whole without following a symbolic link, and read against
  * recorded per-file digests. The project install of a skill uses the write with no record.
  */
-import { lstatSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { mkdirSync, renameSync, rmSync } from 'node:fs';
 import { basename, dirname, join, posix } from 'node:path';
 
 import {
@@ -11,6 +11,7 @@ import {
   entriesOf,
   exists,
   isMarkedEntry,
+  lstatIfPresent,
   observe,
   replaceFile,
   retiredPath,
@@ -18,6 +19,7 @@ import {
   stagingPath,
   stagingSuffix,
 } from './disk.js';
+import { writing } from './reach.js';
 import type { FolderDigest, RecordedFolder, PendingFolder } from './record.js';
 
 /** One file of an installed folder: its relative POSIX path, its content, and its permission bits. */
@@ -111,14 +113,18 @@ function swapIn(staging: string, path: string): void {
  * Writes the folder at `path` whole: it removes the leftovers of the folder's own name, builds the
  * folder in a staging folder created exclusively beside it, moves whatever is at the path aside,
  * renames the staging folder into place, and removes the retired one whole. The directory above the
- * path exists. A failure removes the staging folder and throws the runtime's error; one between
- * the two renames can leave the path empty and a retired folder beside it, which the next write
- * of that folder removes. It answers the leftovers it removed.
+ * path exists. A staging folder it cannot create, because a file sits in the way or the location
+ * cannot be written, fails naming the folder's path. A later failure removes the staging folder and
+ * throws the runtime's error; one between the two renames can leave the path empty and a retired
+ * folder beside it, which the next write of that folder removes. It answers the leftovers it
+ * removed.
  */
 function writeFolder(path: string, files: readonly FolderFile[]): string[] {
   const leftovers = removeFolderLeftovers(path);
   const staging = stagingPath(path);
-  mkdirSync(staging);
+  writing(path, () => {
+    mkdirSync(staging);
+  });
   try {
     fillFolder(staging, files);
     swapIn(staging, path);
@@ -133,7 +139,7 @@ const executeBits = 0o111;
 
 /** Reads below a real folder without following any internal directory link. */
 function observeIn(folder: string, path: string) {
-  if (lstatSync(folder, { throwIfNoEntry: false })?.isDirectory() !== true) {
+  if (lstatIfPresent(folder)?.isDirectory() !== true) {
     return { kind: 'absent' } satisfies ReturnType<typeof observe>;
   }
   const parts = path.split('/');
@@ -141,7 +147,7 @@ function observeIn(folder: string, path: string) {
   let at = folder;
   for (const part of parts) {
     at = join(at, part);
-    if (lstatSync(at, { throwIfNoEntry: false })?.isDirectory() !== true) {
+    if (lstatIfPresent(at)?.isDirectory() !== true) {
       return { kind: 'absent' } satisfies ReturnType<typeof observe>;
     }
   }

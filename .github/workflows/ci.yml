@@ -98,37 +98,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The tests drive Nushell, which no package manager on the runners pins. The release binary's
-      # checksum is checked, and a developer installs the same version.
       - name: Install Nushell
-        run: |
-          set -euo pipefail
-          version=0.117.0
-          case "$RUNNER_OS-$RUNNER_ARCH" in
-            Linux-X64)
-              target=x86_64-unknown-linux-gnu
-              sum=33b907da92b0e80bd10fea9fa0e8a1624cabfebd89ee2568e365da3c492ffc68
-              ;;
-            macOS-ARM64)
-              target=aarch64-apple-darwin
-              sum=1d0e642ef3bff22113a82749a0fa24a0126f4fea0db46a5909e56e94a4b57527
-              ;;
-            macOS-X64)
-              target=x86_64-apple-darwin
-              sum=f44a99227d1fd19d7da9b4a60adbe32bf45700dc25f1a3cb08e4979dee0c1b2f
-              ;;
-            *)
-              echo "No Nushell release is pinned for $RUNNER_OS-$RUNNER_ARCH." >&2
-              exit 1
-              ;;
-          esac
-          archive="nu-${version}-${target}.tar.gz"
-          curl --fail --location --silent --show-error --output "$RUNNER_TEMP/$archive" "https://github.com/nushell/nushell/releases/download/${version}/${archive}"
-          echo "${sum}  $RUNNER_TEMP/$archive" | shasum -a 256 --check -
-          mkdir -p "$RUNNER_TEMP/nushell"
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/nushell" --strip-components=1
-          echo "$RUNNER_TEMP/nushell" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/nushell/nu" --version
+        uses: ./.github/actions/install-nushell
 
       - name: Install the programs the tests run
         run: |
@@ -178,37 +149,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The tests drive Nushell, which no package manager on the runners pins. The release binary's
-      # checksum is checked, and a developer installs the same version.
       - name: Install Nushell
-        run: |
-          set -euo pipefail
-          version=0.117.0
-          case "$RUNNER_OS-$RUNNER_ARCH" in
-            Linux-X64)
-              target=x86_64-unknown-linux-gnu
-              sum=33b907da92b0e80bd10fea9fa0e8a1624cabfebd89ee2568e365da3c492ffc68
-              ;;
-            macOS-ARM64)
-              target=aarch64-apple-darwin
-              sum=1d0e642ef3bff22113a82749a0fa24a0126f4fea0db46a5909e56e94a4b57527
-              ;;
-            macOS-X64)
-              target=x86_64-apple-darwin
-              sum=f44a99227d1fd19d7da9b4a60adbe32bf45700dc25f1a3cb08e4979dee0c1b2f
-              ;;
-            *)
-              echo "No Nushell release is pinned for $RUNNER_OS-$RUNNER_ARCH." >&2
-              exit 1
-              ;;
-          esac
-          archive="nu-${version}-${target}.tar.gz"
-          curl --fail --location --silent --show-error --output "$RUNNER_TEMP/$archive" "https://github.com/nushell/nushell/releases/download/${version}/${archive}"
-          echo "${sum}  $RUNNER_TEMP/$archive" | shasum -a 256 --check -
-          mkdir -p "$RUNNER_TEMP/nushell"
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/nushell" --strip-components=1
-          echo "$RUNNER_TEMP/nushell" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/nushell/nu" --version
+        uses: ./.github/actions/install-nushell
 
       - name: Install the programs the tests run
         run: |
@@ -256,37 +198,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The tests drive Nushell, which no package manager on the runners pins. The release binary's
-      # checksum is checked, and a developer installs the same version.
       - name: Install Nushell
-        run: |
-          set -euo pipefail
-          version=0.117.0
-          case "$RUNNER_OS-$RUNNER_ARCH" in
-            Linux-X64)
-              target=x86_64-unknown-linux-gnu
-              sum=33b907da92b0e80bd10fea9fa0e8a1624cabfebd89ee2568e365da3c492ffc68
-              ;;
-            macOS-ARM64)
-              target=aarch64-apple-darwin
-              sum=1d0e642ef3bff22113a82749a0fa24a0126f4fea0db46a5909e56e94a4b57527
-              ;;
-            macOS-X64)
-              target=x86_64-apple-darwin
-              sum=f44a99227d1fd19d7da9b4a60adbe32bf45700dc25f1a3cb08e4979dee0c1b2f
-              ;;
-            *)
-              echo "No Nushell release is pinned for $RUNNER_OS-$RUNNER_ARCH." >&2
-              exit 1
-              ;;
-          esac
-          archive="nu-${version}-${target}.tar.gz"
-          curl --fail --location --silent --show-error --output "$RUNNER_TEMP/$archive" "https://github.com/nushell/nushell/releases/download/${version}/${archive}"
-          echo "${sum}  $RUNNER_TEMP/$archive" | shasum -a 256 --check -
-          mkdir -p "$RUNNER_TEMP/nushell"
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/nushell" --strip-components=1
-          echo "$RUNNER_TEMP/nushell" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/nushell/nu" --version
+        uses: ./.github/actions/install-nushell
 
       - name: Install the programs the tests run
         run: |
@@ -335,37 +248,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The tests drive Nushell, which no package manager on the runners pins. The release binary's
-      # checksum is checked, and a developer installs the same version.
       - name: Install Nushell
-        run: |
-          set -euo pipefail
-          version=0.117.0
-          case "$RUNNER_OS-$RUNNER_ARCH" in
-            Linux-X64)
-              target=x86_64-unknown-linux-gnu
-              sum=33b907da92b0e80bd10fea9fa0e8a1624cabfebd89ee2568e365da3c492ffc68
-              ;;
-            macOS-ARM64)
-              target=aarch64-apple-darwin
-              sum=1d0e642ef3bff22113a82749a0fa24a0126f4fea0db46a5909e56e94a4b57527
-              ;;
-            macOS-X64)
-              target=x86_64-apple-darwin
-              sum=f44a99227d1fd19d7da9b4a60adbe32bf45700dc25f1a3cb08e4979dee0c1b2f
-              ;;
-            *)
-              echo "No Nushell release is pinned for $RUNNER_OS-$RUNNER_ARCH." >&2
-              exit 1
-              ;;
-          esac
-          archive="nu-${version}-${target}.tar.gz"
-          curl --fail --location --silent --show-error --output "$RUNNER_TEMP/$archive" "https://github.com/nushell/nushell/releases/download/${version}/${archive}"
-          echo "${sum}  $RUNNER_TEMP/$archive" | shasum -a 256 --check -
-          mkdir -p "$RUNNER_TEMP/nushell"
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/nushell" --strip-components=1
-          echo "$RUNNER_TEMP/nushell" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/nushell/nu" --version
+        uses: ./.github/actions/install-nushell
 
       - name: Install the programs the tests run
         run: |
@@ -443,6 +327,7 @@ jobs:
           LINUX: ${{ needs.node_linux.result }}
           MACOS: ${{ needs.node_macos.result }}
         run: |
+          printf 'changes=%s code=%s docs=%s node_linux=%s node_macos=%s\n' "$CHANGES" "$CODE" "$DOCS" "$LINUX" "$MACOS"
           test "$CHANGES" = success
           test "$MACOS" = success
           if [ "$CODE" = false ]; then
@@ -466,6 +351,7 @@ jobs:
           LINUX: ${{ needs.bun_linux.result }}
           MACOS: ${{ needs.bun_macos.result }}
         run: |
+          printf 'changes=%s code=%s docs=%s bun_linux=%s bun_macos=%s\n' "$CHANGES" "$CODE" "$DOCS" "$LINUX" "$MACOS"
           test "$CHANGES" = success
           test "$MACOS" = success
           if [ "$CODE" = false ]; then

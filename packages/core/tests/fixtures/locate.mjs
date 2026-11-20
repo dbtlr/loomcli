@@ -54,6 +54,7 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
         .command(new Command('list').alias('l').action(dispatch));
       return new Application('kit')
         .globalOption('file', { short: 'f', type: 'string' })
+        .globalOption('gpair', { arity: 2, type: 'string' })
         .globalOption('color', { polarity: 'both', type: 'boolean' })
         .globalOption('quiet', { short: 'q', type: 'boolean' })
         .option('all', { short: 'a', type: 'boolean' })

@@ -11,6 +11,7 @@ import { format } from '@loomcli/plugins/format';
 import { localization } from '@loomcli/plugins/localization';
 import { skills } from '@loomcli/plugins/skills';
 import { version } from '@loomcli/plugins/version';
+import { viewContext } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 import { servicePhrase } from '../src/service/phrases.js';
@@ -34,12 +35,19 @@ const pluginsDe = phrasebook('@loomcli/plugins', {
 /** The localization plugin with the German phrasebook. */
 const german = () => localization({ locales: { de: [pluginsDe] } });
 
-test('the service status text view prints its labels in German and aligns the values', () => {
-  const labels = new Map<string, string>([
-    ['unit', 'Einheit'],
-    ['note', 'Hinweis'],
-  ]);
+/** A context for the service status text view that says each phrase through the labels given. */
+function labelled(labels: ReadonlyMap<string, string>) {
   const localize = (phrase: Phrase): string => labels.get(phrase.text) ?? phrase.text;
+  return viewContext({ render: statusText }, { localize, style });
+}
+
+test('the service status text view prints its labels in German and aligns the values', () => {
+  const context = labelled(
+    new Map([
+      ['unit', 'Einheit'],
+      ['note', 'Hinweis'],
+    ]),
+  );
   const state = stateOf(
     { installed: true, label: 'com.acme.notes', unit: '/units/a.service' },
     {
@@ -50,24 +58,19 @@ test('the service status text view prints its labels in German and aligns the va
     },
   );
   const status = statusOf(state, [{ name: 'connections', value: '3' }]);
-  const lines = statusText(status, style, localize).split('\n');
+  const lines = statusText(status, context).split('\n');
   expect(lines[1]).toBe(`  Einheit      ${nowrap('/units/a.service')}`);
   expect(lines[2]).toBe('  connections  3');
   expect(lines[3]?.startsWith('  Hinweis      ')).toBe(true);
 });
 
 test('the service status text view pads a wide label by its display width', () => {
-  const labels = new Map<string, string>([['unit', '設備']]);
-  const localize = (phrase: Phrase): string => labels.get(phrase.text) ?? phrase.text;
+  const context = labelled(new Map([['unit', '設備']]));
   const state = stateOf(
     { installed: true, label: 'com.acme.notes', unit: '/u' },
     { notes: [], running: true, state: 'active' },
   );
-  const lines = statusText(
-    statusOf(state, [{ name: 'health', value: 'ok' }]),
-    style,
-    localize,
-  ).split('\n');
+  const lines = statusText(statusOf(state, [{ name: 'health', value: 'ok' }]), context).split('\n');
   // 設備 is two characters four columns wide, so it pads like a four-letter label.
   expect(lines[1]).toBe(`  設備    ${nowrap('/u')}`);
   expect(lines[2]).toBe('  health  ok');

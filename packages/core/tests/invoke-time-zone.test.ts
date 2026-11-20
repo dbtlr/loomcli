@@ -6,7 +6,9 @@ import { Application, Command, InputError, resolveTimeZone } from '../src/index.
 const invalidSentence =
   'invoke() timeZone is not an IANA time zone name this runtime knows. Use a name such as "Asia/Tokyo".';
 
-test.each(['Mars/Olympus', '', '+09:00', `${String.fromCodePoint(8722)}09:00`])(
+const invalidZones = ['Mars/Olympus', '', '+09:00', `${String.fromCodePoint(8722)}09:00`];
+
+test.each(invalidZones)(
   'an invalid per-call zone %j is an InputError without a received value',
   async (timeZone) => {
     let ran = false;
@@ -32,6 +34,31 @@ test.each(['Mars/Olympus', '', '+09:00', `${String.fromCodePoint(8722)}09:00`])(
     }
     expect(outcome.failure.problems).toEqual([]);
     expect(ran).toBe(false);
+  },
+);
+
+test.each(invalidZones)(
+  "an action's invoke returns InputError for zone %j and the outer run completes",
+  async (timeZone) => {
+    let outcome: unknown = undefined;
+    let leafRan = false;
+    const app = new Application('clock')
+      .command(
+        new Command('leaf').action(() => {
+          leafRan = true;
+        }),
+      )
+      .action(async ({ invoke }) => {
+        outcome = await invoke(['leaf'], {}, { timeZone });
+      });
+
+    await expect(app.run({ process: mockProcess() })).resolves.toBe(0);
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      failure: expect.any(InputError),
+      status: 'failed',
+    });
+    expect(leafRan).toBe(false);
   },
 );
 

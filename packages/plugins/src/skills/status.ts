@@ -7,6 +7,7 @@ import { exists, observe } from '../installation/disk.js';
 import { readRecorded } from '../installation/files.js';
 import { changedReferences, staleFiles } from '../installation/folders.js';
 import type { RecordedFolder } from '../installation/record.js';
+import { phrasedNotes } from '../phrased-notes.js';
 import { actingPlaces, loadForRun, prepare } from './global.js';
 import type { ChildRun } from './global.js';
 import type { LoadedSkill } from './load.js';
@@ -20,7 +21,6 @@ import {
 } from './project.js';
 import type { Declared } from './settings.js';
 import { statusNote } from './status-notes.js';
-import { rememberNotes } from './status-text.js';
 import { recordName, selectedTargets } from './targets.js';
 import type { Place, Target } from './targets.js';
 import type { SkillState, SkillStatus } from './types.js';
@@ -76,16 +76,15 @@ function rowFor(run: ChildRun, skill: LoadedSkill, subject: Subject): SkillStatu
   const state = stateFor(subject, differences);
   const files = state === 'modified' || state === 'stale' ? differences[state] : [];
   const notes = statusNote(run.name, state, { target, project, root });
-  const row: SkillStatus = {
+  return {
     skill: skill.name,
     target,
     scope: project ? 'project' : 'global',
     state,
     folder,
     files,
-    notes: notes.map((note) => note.text),
+    notes: phrasedNotes(notes),
   };
-  return rememberNotes(row, notes);
 }
 /** Finds the project and loads exactly what an install would write, without writing it. */
 async function projectRows(

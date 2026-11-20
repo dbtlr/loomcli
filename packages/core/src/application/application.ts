@@ -37,8 +37,9 @@ import {
 } from '../commands/inputs.js';
 import type { OptionSet, OptionSetNameConstraint } from '../commands/option-sets.js';
 import { portableName } from '../commands/rules.js';
-import { freshState, layerOf } from '../commands/state.js';
+import { freshState } from '../commands/state.js';
 import type { CommandState } from '../commands/state.js';
+import { layerOf } from '../commands/subjects.js';
 import type { CommandNodeHandle, GlobalNameConstraint, NameConstraint } from '../commands/types.js';
 import { DeclarationError } from '../failures/errors.js';
 import { readTranslations } from '../failures/translators.js';

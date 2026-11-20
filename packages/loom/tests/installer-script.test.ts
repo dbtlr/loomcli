@@ -111,10 +111,9 @@ test('a release name requests that asset, and the binary and record keep the sca
   );
 });
 
-test('with no release name the script is the one the plain call renders, byte for byte', () => {
-  const plain = renderManaged(installerScript(app, repo));
-  expect(renderManaged(installerScript(app, repo, undefined, undefined))).toBe(plain);
-  expect(plain).toContain('  asset=$app-$platform\n');
+test('with no release name install.sh matches the script from before the name key, byte for byte', () => {
+  const golden = new URL('fixtures/installer-script/without-release-name.sh', import.meta.url);
+  expect(Buffer.from(renderManaged(installerScript(app, repo)))).toEqual(readFileSync(golden));
 });
 
 test('with no arguments the script installs the latest release into ~/.local/bin and records it', () => {

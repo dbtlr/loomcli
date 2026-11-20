@@ -290,7 +290,7 @@ function renderDefault(value: unknown): string {
  * `text` as a label, then each name, then, with a `delimiter`, the words that name it, and on a
  * terminal wrapping keeps each name and the delimiter whole. `text` is English, which the man page
  * and a command reference print; help says `phrase`, the start of `text`, in the run's language,
- * and repeats the rest of `text` as written, and says `listing` before the delimiter.
+ * then `rest`, the text after the phrase, as written, and says `listing` before the delimiter.
  */
 interface Fact {
   readonly delimiter?: string;
@@ -299,6 +299,7 @@ interface Fact {
   readonly text: string;
   readonly tone: 'dim' | 'warning';
   readonly phrase?: Phrase;
+  readonly rest?: string;
   readonly listing?: Phrase;
 }
 
@@ -378,10 +379,7 @@ function factWith(
   writer: { readonly text: (text: string) => string; readonly unit: (unit: string) => string },
   say: (phrase: Phrase) => string = english,
 ): string {
-  const text =
-    fact.phrase === undefined
-      ? fact.text
-      : `${say(fact.phrase)}${fact.text.slice(fact.phrase.text.length)}`;
+  const text = fact.phrase === undefined ? fact.text : `${say(fact.phrase)}${fact.rest ?? ''}`;
   if (fact.names === undefined) {
     return writer.text(text);
   }
@@ -411,7 +409,7 @@ function delimiterLiteral(option: OptionNode): string | undefined {
 
 /** A fact help prints dim: its phrase, then any text after it repeated as written. */
 function dimFact(phrase: Phrase, rest = ''): Fact {
-  return { phrase, text: `${phrase.text}${rest}`, tone: 'dim' };
+  return { phrase, rest, text: `${phrase.text}${rest}`, tone: 'dim' };
 }
 
 /**

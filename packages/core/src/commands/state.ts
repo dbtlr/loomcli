@@ -1,7 +1,7 @@
 import { spelled, elided } from '../diagnostics/diagnostic-text.js';
 import type { FactSite } from '../diagnostics/facts.js';
 import { DeclarationError } from '../failures/errors.js';
-import { commandSentence, commandSubject, quoted } from '../failures/wording.js';
+import { commandSentence, quoted } from '../failures/wording.js';
 import type { InputDeclaration } from '../inputs/declarations.js';
 import type { ValidatedInputs } from '../inputs/ledger.js';
 import type { OptionGroup } from '../inputs/option-groups.js';
@@ -11,7 +11,6 @@ import type { ResultView, OpenResult } from '../output/types.js';
 import type {
   AdmittedDescriptor,
   ExtensionStore,
-  ExtensionSubject,
   DescriptorRegistry,
 } from '../plugins/extension.js';
 import { storeCommandLayers } from '../plugins/extension.js';
@@ -22,6 +21,7 @@ import type { CommandOptions } from './command.js';
 import { isPortableName, portableNameCorrection, constructorFinding } from './declaration.js';
 import type { InputRecords } from './globals.js';
 import { portableName } from './rules.js';
+import { layerOf } from './subjects.js';
 import type { BuildContext, CommandNodeHandle, AttachedChild } from './types.js';
 /**
  * One call of the results lane, in the order it was made. A `result()` or `rows()` call declares
@@ -118,11 +118,6 @@ export type Declared = Pick<
   | 'visibleAliases'
 >;
 
-/** How the extension diagnostics of one Command's own layers name it. */
-export function layerOf(name: string | null): ExtensionSubject {
-  return { phrase: `on ${commandSubject(name)}`, sentence: commandSentence(name) };
-}
-
 /**
  * The state every declaration starts from. The unnamed root and each named Command share it. The
  * declaration values arrive checked, because the constructor that read them threw for any fault.
@@ -199,12 +194,6 @@ export function namedState<Globals>(
 }
 
 /**
- * Each authored value registers its handle here, so the public value holds no state to reach or
- * replace.
- */
-export const nodes = new WeakMap<object, CommandNodeHandle>();
-
-/**
  * The handle one Command value registers, closed over its state. The value itself carries no
  * member that reaches the state, so an attached Command stays final.
  */
@@ -218,9 +207,4 @@ export function nodeHandle<Args, Options, Globals>(
     hasAction: state.action !== undefined,
     name,
   });
-}
-
-/** The handle behind a value an author built as a Command, or nothing for any other value. */
-export function commandNode(value: unknown): CommandNodeHandle | undefined {
-  return typeof value === 'object' && value !== null ? nodes.get(value) : undefined;
 }

@@ -954,6 +954,43 @@ test('with no name key the release asset still comes from the bin', async () => 
   expect(JSON.parse(facts).release.asset).toBe('probe-linux-x64');
 });
 
+test(
+  'the configured name gives the host binary its default path',
+  async () => {
+    const root = namedPackage({ name: 'alternate' });
+    const target = hostTarget();
+    const result = await loom(root, ['build', '--target', target]);
+    expect(result).toEqual({
+      status: 0,
+      stderr: '',
+      stdout: `Built dist/alternate for ${target}.\n`,
+    });
+    expect(factsOf(join(root, 'dist/alternate'))).toEqual({ build: 'distributed' });
+  },
+  slow,
+);
+
+test(
+  'the configured name gives the npm launcher its bin entry and the platform binary its asset',
+  async () => {
+    const platform = hostTarget().slice('bun-'.length);
+    const root = namedPackage({
+      name: 'alternate',
+      npm: { launcher: true, platforms: [platform] },
+    });
+    const result = await loom(root, ['build', '--target', 'npm']);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    const npm = join(root, 'dist/npm');
+    const launcher = JSON.parse(readFileSync(join(npm, 'probe/package.json'), 'utf8'));
+    expect(launcher.bin).toEqual({ alternate: 'bin/alternate' });
+    expect(factsOf(join(npm, `probe-${platform}/bin/alternate`))).toMatchObject({
+      release: { asset: `alternate-${platform}` },
+    });
+  },
+  slow,
+);
+
 test('--facts for a compile target prints compiled true with and without --release, and for node and bun prints none', async () => {
   const root = probePackage({ bin: { probe: 'dist/main.js' }, repository: 'acme/probe' });
   await expect(printed(root, ['--target', 'bun-linux-x64', '--facts'])).resolves.toBe(

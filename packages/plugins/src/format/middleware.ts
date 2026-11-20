@@ -2,7 +2,8 @@ import { readExtension } from '@loomcli/core';
 import type { Middleware, MiddlewareContext } from '@loomcli/core';
 
 import { providedViews } from './extension.js';
-import { fieldsFailure, requestedFields, rowFields, valueFields } from './fields.js';
+import { fieldsFailure, requestedFields, rowFields, spellingsOf, valueFields } from './fields.js';
+import type { Spellings } from './fields.js';
 import { formatPhrase } from './phrases.js';
 import type { format } from './plugin.js';
 
@@ -16,10 +17,25 @@ const encodings = new Map([
 const EMPTY = 0;
 
 /**
+ * Fails the run when the selected view is not one the formatter appended, naming the formatter's
+ * views the Command has.
+ */
+function requireAppendedView(context: MiddlewareContext, spellings: Spellings): void {
+  const appended = readExtension(context.command, providedViews) ?? [];
+  if (!appended.includes(context.view ?? '')) {
+    throw fieldsFailure(
+      formatPhrase('fieldsNeedEncoding', spellings.fields, spellings.format, appended),
+      spellings,
+    );
+  }
+}
+
+/**
  * Sets the run's result transform from a supplied `--fields`, which keeps the named fields, when
  * the selected view is one the formatter appended, and fails the run under any other view. It
  * acts only on a request core holds no fault for, so a held fault stays the one raised, and a
- * group, which renders no result, ignores it.
+ * group, which renders no result, ignores it. Its failures name the options as the run supplied
+ * them: by spelling, or by declared name in an invocation by name.
  */
 function selectFields(context: MiddlewareContext): void {
   const fields = requestedFields(context.ownOptions.fields);
@@ -30,11 +46,10 @@ function selectFields(context: MiddlewareContext): void {
   if (result === null) {
     return;
   }
-  const appended = readExtension(context.command, providedViews) ?? [];
-  if (!appended.includes(context.view ?? '')) {
-    throw fieldsFailure(formatPhrase('fieldsNeedEncoding', appended));
-  }
-  context.transform = result.kind === 'rows' ? rowFields(fields) : valueFields(fields);
+  const spellings = spellingsOf(context.invokedBy);
+  requireAppendedView(context, spellings);
+  context.transform =
+    result.kind === 'rows' ? rowFields(fields, spellings) : valueFields(fields, spellings);
 }
 
 /**

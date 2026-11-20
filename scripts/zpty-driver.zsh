@@ -9,9 +9,8 @@
 #                  the output after it; after 15 seconds it prints @@TIMEOUT@@ and the output,
 #                  and when the shell exits first it prints @@EXITED@@ and the output
 #   settle <ms> <file> <seconds>
-#                  reads the terminal until it has been silent for the milliseconds and the file has
-#                  grown, or until the seconds have passed, so a shell that completes in the
-#                  background has finished before the next step
+#                  measures the file, presses Tab, and reads the terminal until it has been silent
+#                  for the milliseconds and the file has grown, or until the seconds have passed
 #   quit           closes the terminal
 # The reads use zpty -rt without a pattern, because a pattern read blocks until a newline and a
 # prompt never ends in one.
@@ -89,6 +88,7 @@ while IFS= read -r line; do
       integer began=$SECONDS size
       size=$(wc -c < $words[2])
       stamp=$EPOCHREALTIME
+      zpty -w -n shell $'\t'
       deadline=$(( SECONDS + 15 ))
       # The loop ends once the file has grown and the output has been quiet since, or when the
       # seconds have passed and the output is quiet.

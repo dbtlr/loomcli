@@ -68,8 +68,8 @@ async function markdownUnder(folder) {
 
 /**
  * The lines of a page that open a TypeScript fence `tsBlocks` does not read: one inside a list item
- * or a block quote, indented four spaces or more, fenced with tildes, or tagged `typescript`, `tsx`,
- * `mts`, or `cts`. Such a block would be skipped without a word, so the check names it instead.
+ * or a block quote, indented four spaces or more, fenced with tildes, separated from its tag by a
+ * space, or tagged `typescript`, `tsx`, `mts`, or `cts`, in any letter case. Such a block would be skipped without a word, so the check names it instead.
  */
 function strayFences(text) {
   const stray = [];
@@ -98,7 +98,10 @@ function isUnreadTypeScriptFence(line) {
     /^(?<lead>[\s>]*(?:(?:[-*+]|\d+[.)])\s+)?)(?<marks>`{3,}|~{3,})(?<gap>\s*)(?<tag>[A-Za-z]+)?(?<rest>.*)$/u.exec(
       line,
     );
-  if (!fence || !['cts', 'mts', 'ts', 'tsx', 'typescript'].includes(fence.groups.tag ?? '')) {
+  if (
+    !fence ||
+    !['cts', 'mts', 'ts', 'tsx', 'typescript'].includes((fence.groups.tag ?? '').toLowerCase())
+  ) {
     return false;
   }
   const { gap, lead, marks, rest, tag } = fence.groups;
@@ -375,6 +378,10 @@ const read = new Command('read').action(handler).extend();
     ['```typescript\nconst n: number = 1;\n```\n', 1],
     ['```tsx\nconst n = 1;\n```\n', 1],
     ['``` ts\nconst n: number = 1;\n```\n', 1],
+    ['```TS\nconst n: number = 1;\n```\n', 1],
+    ['```TypeScript\nconst n: number = 1;\n```\n', 1],
+    ['```mts\nconst n: number = 1;\n```\n', 1],
+    ['```cts\nconst n: number = 1;\n```\n', 1],
   ]) {
     assert.deepEqual(strayFences(stray), [line], stray);
   }

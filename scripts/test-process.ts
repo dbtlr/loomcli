@@ -54,7 +54,7 @@ const sharedHome = join(tmpdir(), 'loom-test-home');
  * exactly one byte, which only `prlimit` can set. Where there is no `prlimit`, as on macOS,
  * `ulimit -c 0` is enough.
  */
-const withoutCoreDump =
+export const withoutCoreDump =
   'if command -v prlimit >/dev/null 2>&1; then exec prlimit --core=1 "$@"; else ulimit -c 0; exec "$@"; fi';
 
 /**

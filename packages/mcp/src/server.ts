@@ -83,7 +83,7 @@ function readChunks(
  * One run of a server over one pair of streams: its connection, which every line of the input
  * reaches, and the writes not yet flushed.
  */
-class StdioSession {
+class StdioRun {
   readonly #output: ServerOutput;
   readonly #connection: Connection;
   readonly #writes = new Set<Promise<void>>();
@@ -95,7 +95,7 @@ class StdioSession {
     this.#connection = new Connection(options);
     this.#output = output;
     // A failed write, such as a broken pipe after the client exits, also emits "error" on the stream.
-    // With no listener that ends the process, so the session listens until it ends.
+    // With no listener that ends the process, so the run listens until it ends.
     output.on('error', dropWriteError);
   }
 
@@ -154,7 +154,7 @@ class StdioSession {
   /** Writes one message as one line. */
   #write(message: object) {
     // A write the client can no longer read has no one to report to, so its callback drops the error.
-    // The session's error listener drops the stream's error event the same way.
+    // The run's error listener drops the stream's error event the same way.
     const written = new Promise<void>((resolve) => {
       this.#output.write(frame(message), () => resolve());
     });
@@ -186,16 +186,16 @@ class McpServer {
    */
   async run(input: ServerInput, output: ServerOutput, options: RunOptions = {}): Promise<void> {
     const { signal } = options;
-    const session = new StdioSession(this.#options, output);
-    const silence = () => session.silence();
+    const stdio = new StdioRun(this.#options, output);
+    const silence = () => stdio.silence();
     if (signal?.aborted === true) {
       silence();
     }
     signal?.addEventListener('abort', silence, { once: true });
     try {
-      await readChunks(input, signal, (chunk) => session.read(chunk));
+      await readChunks(input, signal, (chunk) => stdio.read(chunk));
     } finally {
-      await session.end();
+      await stdio.end();
       signal?.removeEventListener('abort', silence);
     }
   }

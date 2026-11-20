@@ -730,6 +730,19 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     /** The words the program received on its last call, one per line in the file it wrote. */
     const received = () => readFileSync(join(cwd(), 'received'), 'utf8').split('\n').slice(0, -1);
 
+    it.runIf(shell === 'nu')("keeps the r in a word starting with r' and no #", async () => {
+      await complete("kit paths --field r'a b' --fo");
+      expect(received()).toEqual([
+        'completion',
+        '__complete',
+        '--',
+        'paths',
+        '--field',
+        'ra b',
+        '--fo',
+      ]);
+    });
+
     it.each(["'~'", "'*.json'"])(
       'a typed %s before the cursor reaches the program as it is, not expanded',
       async (typed) => {
@@ -1467,6 +1480,21 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
     },
   );
 
+  describe.runIf(installed && shell === 'nu')('an attached value under directive 0', () => {
+    const { complete } = useSession({
+      files: ['-palpha.json'],
+      main: fixture,
+      name: 'kit',
+      shell,
+      sources,
+    });
+
+    it('kit scan -pa<Tab> falls back to Nushell file completion', async () => {
+      const { line } = await complete('kit scan -pa');
+      expect(line.trimEnd()).toBe('kit scan `-palpha.json`');
+    });
+  });
+
   describe.runIf(installed && shell === 'fish')('the Fish listing of hinted file names', () => {
     // A name that holds a tab would split the listing line, so Fish leaves it out.
     const { complete } = useSession({
@@ -1550,7 +1578,11 @@ describe.each(shellSuites())('$title', ({ installed, shell, sources }) => {
 
     it('kit task --id task-1<Tab> inserts the value, and no file name', async () => {
       const { line } = await complete('kit task --id task-1');
-      expect(line.trimEnd()).toBe('kit task --id task-1');
+      // The macOS Bash 3.2 session uses a completion spec that suppresses the space.
+      const appendsSpace = shell === 'bash' && process.platform !== 'darwin';
+      expect(appendsSpace ? line : line.trimEnd()).toBe(
+        appendsSpace ? 'kit task --id task-1 ' : 'kit task --id task-1',
+      );
     });
 
     it('kit task --id q<Tab> offers nothing and no file name', async () => {

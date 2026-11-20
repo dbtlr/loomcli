@@ -5,7 +5,7 @@ import type { Command } from '../commands/command.js';
 import { commandCode } from '../commands/declaration.js';
 import { boundOptions, pluginSites } from '../commands/globals.js';
 import type { InputRecords } from '../commands/globals.js';
-import { commandNode } from '../commands/state.js';
+import { commandNode } from '../commands/nodes.js';
 import type { AttachedChild } from '../commands/types.js';
 import { elided, quoteString, spelled } from '../diagnostics/diagnostic-text.js';
 import type { Finding } from '../diagnostics/diagnostic-text.js';

@@ -95,6 +95,7 @@ async function read(
   | { files: unknown }
   | { folders: unknown; sources: string[] }
   | { loaderThrew: string }
+  | { rendererThrew: string }
 > {
   if (projection === 'skills' || projection === 'docs') {
     const inspected = await loadAndInspectApplication(directory, path);
@@ -113,7 +114,9 @@ async function read(
         (value) => declarationError !== undefined && value instanceof declarationError,
       );
       if ('threw' in thrown) {
-        return projection === 'docs' ? thrown : { loaderThrew: thrown.threw };
+        return projection === 'docs'
+          ? { rendererThrew: thrown.threw }
+          : { loaderThrew: thrown.threw };
       }
       return { ...thrown, loaded: true };
     }

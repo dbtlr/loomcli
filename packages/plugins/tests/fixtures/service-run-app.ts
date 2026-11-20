@@ -1,8 +1,9 @@
 import { existsSync, writeFileSync } from 'node:fs';
 
-import { Application, Command } from '@loomcli/core';
+import { Application, Command, escapeControlCharacters, phrasebook } from '@loomcli/core';
 import type { ProcessTerminal, ReleaseFacts } from '@loomcli/core';
 import { format } from '@loomcli/plugins/format';
+import { localization } from '@loomcli/plugins/localization';
 import { logging } from '@loomcli/plugins/logging';
 import { service } from '@loomcli/plugins/service';
 import type { ServiceSettings } from '@loomcli/plugins/service';
@@ -30,6 +31,26 @@ interface Scenario {
   abortMarker?: string | undefined;
   terminal?: ProcessTerminal | undefined;
   programs?: MockFields['programs'];
+  /** Installs a German phrasebook for the status view's labels and the linger note. */
+  german?: boolean | undefined;
+}
+
+/** The localization plugin with a German phrasebook for the status labels and the linger note. */
+function german() {
+  return localization({
+    locales: {
+      de: [
+        phrasebook('@loomcli/plugins', {
+          service: {
+            lingerNote: (label: string) =>
+              `Lingering ist aus, also hält ${escapeControlCharacters(label)} beim Abmelden an.`,
+            noteLabel: 'Hinweis',
+            unitLabel: 'Einheit',
+          },
+        }),
+      ],
+    },
+  });
 }
 
 function serviceApplication(scenario: Scenario) {
@@ -70,6 +91,7 @@ function serviceApplication(scenario: Scenario) {
       : { description: scenario.description ?? 'Keep notes in sync.' }),
     plugins: [
       format(),
+      ...(scenario.german === true ? [german()] : []),
       ...(scenario.logging === undefined
         ? []
         : [

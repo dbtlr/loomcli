@@ -16,12 +16,16 @@ function codeNote(code: string | undefined): string {
 /*
  * The cause of a system error in Loom's words, from its code, which every sentence about a file the
  * bin cannot use reads, so one cause reads the same at every site. A code no line names gives the
- * bare code in parentheses.
+ * bare code in parentheses. The verb is what the call was doing, as `systemVerb` names it: a create
+ * that finds no entry means the path or a folder on the way is a link to nothing, or a folder on the
+ * way is missing, because the path itself is what the call would make.
  */
-function systemCause(code: string | undefined): string {
+function systemCause(code: string | undefined, verb?: string): string {
   switch (code) {
     case 'ENOENT': {
-      return ', because it does not exist';
+      return verb === 'create'
+        ? ', because it or a folder on the way to it is a link to a path that does not exist, or a folder on the way is missing'
+        : ', because it does not exist';
     }
     case 'EISDIR': {
       return ', because it is a folder';
@@ -81,11 +85,33 @@ function systemVerb(syscall: string): string {
   }
 }
 
+/*
+ * The step for a path the bin was denied, by what the call was doing: making or removing an entry
+ * needs write access to the folder that holds it, and writing a file needs write access to the file
+ * as well, since a new file is an entry in its folder.
+ */
+function permissionStep(verb: string): string {
+  switch (verb) {
+    case 'create':
+    case 'remove': {
+      return 'Check that your user can write to the folder that holds it and has execute access to each folder above that, then run the command again.';
+    }
+    case 'write': {
+      return 'Check that your user can write to it and to the folder that holds it, and has execute access to each folder above that, then run the command again.';
+    }
+    default: {
+      return `Check that your user can ${escaped(verb)} it and has execute access to each folder above it, then run the command again.`;
+    }
+  }
+}
+
 // The step for a file the bin cannot use, from the system error's code.
 function fileStep(verb: string, code: string): string {
   switch (code) {
     case 'ENOENT': {
-      return 'Check the path and each folder on the way to it, then run the command again.';
+      return verb === 'create'
+        ? 'Check where each link on the way points and that each folder on the way exists, then run the command again.'
+        : 'Check the path and each folder on the way to it, then run the command again.';
     }
     case 'EISDIR': {
       return 'Name a file, not a folder, then run the command again.';
@@ -95,7 +121,7 @@ function fileStep(verb: string, code: string): string {
     }
     case 'EACCES':
     case 'EPERM': {
-      return `Check that your user can ${escaped(verb)} it and has execute access to each folder above it, then run the command again.`;
+      return permissionStep(verb);
     }
     case 'EROFS': {
       return 'Name a path on a writable file system, then run the command again.';
@@ -110,7 +136,7 @@ function fileStep(verb: string, code: string): string {
 }
 
 function cannotUseFile(verb: string, path: string, code: string): string {
-  return `Cannot ${escaped(verb)} ${escaped(path)}${systemCause(code)}. ${fileStep(verb, code)}`;
+  return `Cannot ${escaped(verb)} ${escaped(path)}${systemCause(code, verb)}. ${fileStep(verb, code)}`;
 }
 
 function systemFailure(code: string): string {

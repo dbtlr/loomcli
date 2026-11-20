@@ -74,19 +74,38 @@ interface MessageSink {
   raise: (cause: unknown) => void;
 }
 
+/** The characters a trailing run the message holds back is made of. */
+const heldSpaces = new Set([' ', '\t', '\r']);
+
+/** A high surrogate, the first half of a character outside the BMP, read as one code unit. */
+const highSurrogate = /^[\uD800-\uDBFF]$/u;
+
 /**
- * What the text so far ends with and the message does not lay out yet, with only frame closes after
- * it: a trailing run of spaces, tabs, and carriage returns, and a high surrogate whose low surrogate
- * has not arrived. The lane views break a row at a space, so a space that ends the text so far can
- * move the word before it to the next row, which the text that follows it may move back; a carriage
- * return waits to learn whether a line feed follows it; and half a character written alone reaches
- * a terminal as a replacement character, which a `print` never redraws. Each shows once text after
- * it arrives or the message ends.
+ * The text so far without what it ends with and the message does not lay out yet, keeping the
+ * frame closes after it: a trailing run of spaces, tabs, and carriage returns, and a high surrogate
+ * whose low surrogate has not arrived. The lane views break a row at a space, so a space that ends
+ * the text so far can move the word before it to the next row, which the text that follows it may
+ * move back; a carriage return waits to learn whether a line feed follows it; and half a character
+ * written alone reaches a terminal as a replacement character, which a `print` never redraws. Each
+ * shows once text after it arrives or the message ends.
+ *
+ * It reads back from the end and stops at the first character it keeps, so its work is the length
+ * of what it holds and the closes after it, however long a run of spaces inside the text is.
  */
-const trailingHeld = new RegExp(
-  `(?:[ \\t\\r]+[\\uD800-\\uDBFF]?|[\\uD800-\\uDBFF])(?=${close}*$)`,
-  'u',
-);
+function withoutTrailingHeld(text: string): string {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === close) {
+    end -= 1;
+  }
+  let start = end;
+  if (start > 0 && highSurrogate.test(text[start - 1] ?? '')) {
+    start -= 1;
+  }
+  while (start > 0 && heldSpaces.has(text[start - 1] ?? '')) {
+    start -= 1;
+  }
+  return start === end ? text : `${text.slice(0, start)}${text.slice(end)}`;
+}
 
 /**
  * The decoded offset of the escape sequence that ends decoded text without being finished: a lone
@@ -137,7 +156,7 @@ function withoutUnfinishedSequence(text: string, from: number, laid: string): st
  * unfinished escape sequence.
  */
 function heldBack(text: string, from: number, laid: string): string {
-  return withoutUnfinishedSequence(text, from, laid).replace(trailingHeld, '');
+  return withoutTrailingHeld(withoutUnfinishedSequence(text, from, laid));
 }
 
 /**

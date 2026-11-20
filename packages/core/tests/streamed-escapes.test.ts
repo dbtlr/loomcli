@@ -25,6 +25,10 @@
  * - Such a cut followed on the same line by a sequence a later chunk boundary leaves unfinished,
  *   and a style call that spans a finished line and ends inside a CSI, end on a terminal on the
  *   joined screen, and no write holds part of a sequence.
+ * - Under the policy that keeps terminal controls, a `print` and an `info` cut at every offset of a
+ *   DCS, an SOS, a PM, an APC, and a CSI that is not SGR end on a terminal on the joined screen,
+ *   and no write holds part of a sequence. The default policy strips those sequences from every
+ *   write, so only this policy shows a write that holds part of one.
  * - Under the policy that keeps terminal controls, a title after the last line break, which no row
  *   holds, still reaches the terminal at the message's end, so a streamed `print` writes the bytes
  *   of the joined text. So does a title that holds a line feed, last or followed by text, and a
@@ -527,5 +531,30 @@ test.each(lanes)(
     await expect(screen(streamed)).resolves.toEqual(
       await screen(await run(lane, parts.join(''), { terminal: true })),
     );
+  },
+);
+
+/** Texts that hold a control string or a CSI that is not SGR, which the default policy strips. */
+const keptControls: readonly { readonly name: string; readonly text: string }[] = [
+  { name: 'a DCS', text: 'a \u001BP1;2|data\u001B\\ b' },
+  { name: 'an SOS', text: 'a \u001BXhidden\u001B\\ b' },
+  { name: 'a PM', text: 'a \u001B^private\u001B\\ b' },
+  { name: 'an APC', text: 'a \u001B_app\u001B\\ b' },
+  { name: 'a CSI that hides the cursor', text: 'a \u001B[?25l b' },
+];
+
+test.each(lanes.flatMap((lane) => keptControls.map(({ name, text }) => ({ lane, name, text }))))(
+  'on a terminal that keeps terminal controls, a streamed $lane holding $name cut anywhere ends on the joined screen, and no write holds part of a sequence',
+  async ({ lane, text }) => {
+    const whole = await screen(await wholeKept(lane, text, { terminal: true }));
+    for (let offset = 1; offset < text.length; offset += 1) {
+      const parts = [text.slice(0, offset), text.slice(offset)];
+      const { writes } = await checkpointed(lane, parts, { terminal: true });
+      expect({
+        inside: writes.filter(holdsPartOfSequence),
+        parts,
+        shown: await screen(writes),
+      }).toEqual({ inside: [], parts, shown: whole });
+    }
   },
 );

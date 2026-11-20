@@ -18,7 +18,7 @@ import {
   manyApplicationExports,
   noApplicationExport,
 } from '../commands/init/messages.js';
-import { loadFailure, threw } from './application-load-failure.js';
+import { loaderFailure, loadFailure, renderFailure, threw } from './application-load-failure.js';
 import { runReader } from './application-reader.js';
 import type { ReaderRequest } from './application-reader.js';
 import { parseOrThrow } from './parse-or-throw.js';
@@ -72,6 +72,7 @@ const projectionFailure = union([
   threw,
   strictObject({ failure: string(), loaded: boolean() }),
   strictObject({ loaderThrew: string() }),
+  strictObject({ rendererThrew: string() }),
 ]);
 
 /** One read of an application module, a throw while it loaded formatted as its diagnostic. */
@@ -116,7 +117,10 @@ export async function readApplicationProjection<
     throw new Error(loadFailure(request.module, result.threw));
   }
   if ('loaderThrew' in result) {
-    throw new Error(loadFailure(request.module, result.loaderThrew, true));
+    throw new Error(loaderFailure(request.module, result.loaderThrew));
+  }
+  if ('rendererThrew' in result) {
+    throw new Error(renderFailure(request.module, result.rendererThrew));
   }
   if ('failure' in result) {
     throw new Error(result.failure);

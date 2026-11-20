@@ -6,10 +6,16 @@ import { array, nullable, strictObject, string } from 'valibot';
 
 import { readApplicationProjection } from '../../helpers/application-exports.js';
 import { packagePaths } from '../../helpers/loom-config.js';
-import { authorFileInTheWay, docsUnavailable, wroteDocs } from '../../helpers/messages.js';
+import {
+  authorFileInTheWay,
+  cannotUseFile,
+  docsUnavailable,
+  wroteDocs,
+} from '../../helpers/messages.js';
 import { existingModule, shown } from '../../helpers/modules.js';
 import { packageDirectory } from '../../helpers/package-directory.js';
 import { report } from '../../helpers/report.js';
+import { systemErrorFacts } from '../../helpers/system-error.js';
 import type { docs } from './command.js';
 
 const referenceFile = strictObject({ content: string(), name: string() });
@@ -42,6 +48,23 @@ function mayWrite(path: string): boolean {
       return true;
     }
     throw error;
+  }
+}
+
+/**
+ * Writes one reference file. The runtime reports a write it was denied as an open, which reads as a
+ * read, so a system error here is worded as the write it is: a new file needs write access to its
+ * folder.
+ */
+function writeReference(path: string, content: string): void {
+  try {
+    writeFileSync(path, content);
+  } catch (error) {
+    const facts = systemErrorFacts(error);
+    if (facts === undefined) {
+      throw error;
+    }
+    throw new Error(cannotUseFile('write', path, facts.code), { cause: error });
   }
 }
 
@@ -116,7 +139,7 @@ export const writeDocs: ActionHandler<typeof docs> = async (context) => {
     }
     mkdirSync(output, { recursive: true });
     for (const file of files) {
-      writeFileSync(join(output, file.name), file.content);
+      writeReference(join(output, file.name), file.content);
     }
     const removed = removeStaleFiles(
       output,

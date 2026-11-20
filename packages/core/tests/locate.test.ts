@@ -554,6 +554,7 @@ test('reports the words an open arity occurrence received after those of its com
         ['typed', '-p', '1', ''],
         ['typed', '-p', '1', '2', '--point', '3', ''],
         ['typed', '-p', ''],
+        ['--gpair', 'a', ''],
       ],
       'typed',
     ),
@@ -567,5 +568,9 @@ test('reports the words an open arity occurrence received after those of its com
       { options: { point: ['1', '2', '3'] } },
     ),
     typedAt({ kind: 'value', lead: '', option: 'point', prefix: '' }, {}),
+    {
+      ...awaiting([], 'gpair', ''),
+      typed: { arguments: {}, options: { gpair: ['a'] } },
+    },
   ]);
 });

@@ -19,12 +19,14 @@ import {
   rmSync,
   writeSync,
 } from 'node:fs';
+import type { Stats } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
 import type { Log } from '@loomcli/core';
 
 import { nodeCrypto } from '../built-ins.js';
 import { fileRemoved } from '../change-events.js';
+import { errorCode, readFailure, reading } from './reach.js';
 
 /** The permission bits of a file mode, without its file type. */
 const permissionBits = 0o7777;
@@ -40,19 +42,23 @@ type Observed =
   | { readonly kind: 'directory' }
   | { readonly kind: 'special' };
 
-/** The runtime error's code, such as `ENOENT`, or `undefined` for a value that carries none. */
-function errorCode(error: unknown): unknown {
-  return error instanceof Error ? Reflect.get(error, 'code') : undefined;
-}
-
 /** The digest of some bytes, as the record spells it. */
 function digestOf(content: string | Uint8Array): string {
   return `sha256:${nodeCrypto().createHash('sha256').update(content).digest('hex')}`;
 }
 
+/**
+ * What `lstat` finds at `path` without following a link, or `undefined` when nothing is there. A
+ * file where one of its folders is needed fails the read, naming the path, because the path may
+ * still hold what the record says once the folder is back.
+ */
+function lstatIfPresent(path: string): Stats | undefined {
+  return reading(path, () => lstatSync(path, { throwIfNoEntry: false }));
+}
+
 /** What `path` holds, read without following a symbolic link. */
 function observe(path: string): Observed {
-  const stats = lstatSync(path, { throwIfNoEntry: false });
+  const stats = lstatIfPresent(path);
   if (stats === undefined) {
     return { kind: 'absent' };
   }
@@ -63,13 +69,17 @@ function observe(path: string): Observed {
     return { kind: 'directory' };
   }
   return stats.isFile()
-    ? { digest: digestOf(readFileSync(path)), kind: 'file', mode: stats.mode & permissionBits }
+    ? {
+        digest: digestOf(reading(path, () => readFileSync(path))),
+        kind: 'file',
+        mode: stats.mode & permissionBits,
+      }
     : { kind: 'special' };
 }
 
 /** Whether anything is at `path`, a symbolic link included, without reading it. */
 function exists(path: string): boolean {
-  return lstatSync(path, { throwIfNoEntry: false }) !== undefined;
+  return lstatIfPresent(path) !== undefined;
 }
 
 /** The suffix that marks a staging file, which recovery removes when a run leaves one behind. */
@@ -181,10 +191,13 @@ function removeStaging(staging: string): void {
   }
 }
 
-/** The names in a directory, or none when the directory is gone. */
+/**
+ * The names in a directory, or none when the directory is gone. A file at the directory's path, or
+ * where one of its folders is needed, fails the read, naming the directory.
+ */
 function entriesOf(directory: string): string[] {
   try {
-    return readdirSync(directory);
+    return reading(directory, () => readdirSync(directory));
   } catch (error) {
     if (errorCode(error) === 'ENOENT') {
       return [];
@@ -254,9 +267,12 @@ function createDirectory(path: string, mode?: number): void {
   }
 }
 
-/** Removes a directory when it is empty; one that holds anything, or is gone, stays as it is. */
+/**
+ * Removes a directory when it is empty; one that holds anything, or is gone, stays as it is. A file
+ * where one of its folders is needed fails the removal, naming the directory.
+ */
 function removeEmptyDirectory(path: string): void {
-  if (lstatSync(path, { throwIfNoEntry: false })?.isDirectory() !== true) {
+  if (lstatIfPresent(path)?.isDirectory() !== true) {
     return;
   }
   try {
@@ -285,7 +301,7 @@ function realPath(path: string, below: readonly string[] = []): string {
   } catch (error) {
     const parent = dirname(path);
     if (!isMissing(error) || parent === path) {
-      throw error;
+      throw readFailure(path, error);
     }
     return realPath(parent, [basename(path), ...below]);
   }
@@ -312,9 +328,9 @@ export {
   createNew,
   digestOf,
   entriesOf,
-  errorCode,
   exists,
   isMarkedEntry,
+  lstatIfPresent,
   missingParents,
   observe,
   permissionBits,
@@ -328,3 +344,4 @@ export {
   stagingPath,
   stagingSuffix,
 };
+export { errorCode } from './reach.js';

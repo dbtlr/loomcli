@@ -17,6 +17,7 @@ import {
   createDirectory,
   digestOf,
   exists,
+  lstatIfPresent,
   missingParents,
   observe,
   recordLeftovers,
@@ -46,6 +47,7 @@ import {
   unlistedActions,
 } from './lines.js';
 import type { InstalledLine, LineAction, LineListing, StartupLinesOutcome } from './lines.js';
+import { writing } from './reach.js';
 import { nothingRecorded, pluginFilePath, readPluginFile, writePluginFile } from './record.js';
 import type {
   Committed,
@@ -54,6 +56,7 @@ import type {
   PendingFile,
   PendingFolder,
   PendingRegistration,
+  PluginFileRead,
   RecordedFolder,
   RecordedRegistration,
   StartupLine,
@@ -244,6 +247,27 @@ function recoveredFile(entry: PendingFile): CommittedFile[] {
 }
 
 /**
+ * Reads the plugin's file and then every file, folder, and directory it records, so a recorded path
+ * where a file sits in place of one of its folders fails the read, naming that path, before the run
+ * changes anything. Read as gone, such a path would drop from the record while the folder that
+ * holds it may come back.
+ */
+function readReachable(path: string): PluginFileRead {
+  const read = readPluginFile(path);
+  if (read.kind === 'read') {
+    const { directories, files, folders } = read.file;
+    for (const recordedPath of [
+      ...files.map((entry) => entry.path),
+      ...folders.map((entry) => entry.path),
+      ...directories,
+    ]) {
+      lstatIfPresent(recordedPath);
+    }
+  }
+  return read;
+}
+
+/**
  * What the plugin's file records, a missing one recording nothing and a pending one recovered
  * first, or the refusal of a file the module cannot read. Leftover staging files of a plugin's file
  * it can read are removed.
@@ -252,7 +276,7 @@ function recorded(
   path: string,
   log: Log,
 ): { readonly committed: Committed } | { readonly refused: Refusal<RecordRefusalReason> } {
-  const read = readPluginFile(path);
+  const read = readReachable(path);
   if (read.kind === 'refused') {
     return { refused: { path, reason: read.reason } };
   }
@@ -555,10 +579,14 @@ function prepareInstall(
  */
 function writeTargets(plan: InstallPlan, { listed, log }: Carrying): void {
   for (const directory of plan.created) {
-    createDirectory(directory, listed.directoryMode);
+    writing(directory, () => {
+      createDirectory(directory, listed.directoryMode);
+    });
   }
   for (const file of listed.files.filter(({ path }) => !plan.unchanged.has(path))) {
-    replaceFile(file.path, file.content, file.mode === undefined ? {} : { mode: file.mode });
+    writing(file.path, () => {
+      replaceFile(file.path, file.content, file.mode === undefined ? {} : { mode: file.mode });
+    });
     fileWritten(log, { path: file.path });
   }
   for (const folder of listed.folders) {
@@ -716,7 +744,7 @@ type RecordedRead =
  */
 function readRecorded(request: RecordRequest): RecordedRead {
   const path = pluginFilePath(request.record, request.plugin);
-  const read = readPluginFile(path);
+  const read = readReachable(path);
   if (read.kind === 'refused') {
     return { refused: { path, reason: read.reason }, status: 'refused' };
   }
@@ -744,7 +772,7 @@ function readRecorded(request: RecordRequest): RecordedRead {
  * two of its files share to the file that outlives the other.
  */
 function recordedDirectories(request: RecordRequest): readonly string[] {
-  const read = readPluginFile(pluginFilePath(request.record, request.plugin));
+  const read = readReachable(pluginFilePath(request.record, request.plugin));
   if (read.kind !== 'read') {
     return [];
   }
@@ -766,7 +794,7 @@ function adoptDirectories(
 ): boolean {
   const { log } = request;
   const path = pluginFilePath(request.record, request.plugin);
-  const found = readPluginFile(path).kind === 'read' ? recorded(path, log) : undefined;
+  const found = readReachable(path).kind === 'read' ? recorded(path, log) : undefined;
   if (found === undefined || 'refused' in found) {
     return false;
   }
@@ -783,7 +811,7 @@ function adoptDirectories(
  * read without writing. A missing, damaged, or unknown file is not pending.
  */
 function hasPendingRecord(request: RecordRequest): boolean {
-  const read = readPluginFile(pluginFilePath(request.record, request.plugin));
+  const read = readReachable(pluginFilePath(request.record, request.plugin));
   return read.kind === 'read' && read.file.state === 'pending';
 }
 
@@ -811,7 +839,7 @@ type RegistrationRead =
  */
 function readRegistration(request: RecordRequest): RegistrationRead {
   const path = pluginFilePath(request.record, request.plugin);
-  const read = readPluginFile(path);
+  const read = readReachable(path);
   if (read.kind === 'refused') {
     return { refused: { path, reason: read.reason }, status: 'refused' };
   }

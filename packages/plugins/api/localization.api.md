@@ -27,6 +27,7 @@ export interface PluginMessageModules {
     readonly dotenv: typeof dotenv;
     readonly format: typeof format;
     readonly help: typeof help;
+    readonly installation: typeof installation;
     readonly logging: typeof logging;
     readonly manpage: typeof manpage;
     readonly mcp: typeof mcp;

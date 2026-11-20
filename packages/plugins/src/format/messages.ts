@@ -22,32 +22,54 @@ function shownFields(fields: readonly string[]): string {
   return fields.map((field) => `"${escapeControlCharacters(field)}"`).join(', ');
 }
 
-/** Only views appended by the formatter are valid corrections for `--fields`. */
-function fieldsNeedEncoding(views: readonly string[]): string {
-  if (views.length === EMPTY) {
-    return 'Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields.';
-  }
-  return `Option "--fields" applies to the json and jsonl output the formatter provides. Remove --fields, or select output the formatter provides with ${shownFormats(views)}.`;
+/**
+ * An option as a sentence names it, quoted and escaped: `spelling` is its spelling, such as
+ * `--fields`, or its declared name in an invocation by name, which types no spelling.
+ */
+function shownOption(spelling: string): string {
+  return `"${escapeControlCharacters(spelling)}"`;
 }
 
-/** Each view as the `--format` spelling that selects it, joined with `or`. */
-function shownFormats(views: readonly string[]): string {
-  return views.map((view) => `--format ${escapeControlCharacters(view)}`).join(' or ');
+/** The views, escaped, joined with `and`. */
+function viewsAnd(views: readonly string[]): string {
+  return views.map(escapeControlCharacters).join(' and ');
+}
+
+/** The views, escaped, joined with `or`. */
+function viewsOr(views: readonly string[]): string {
+  return views.map(escapeControlCharacters).join(' or ');
+}
+
+/**
+ * `--fields` under a view the formatter did not append. The sentence names the formatter's views
+ * this Command has, `views`, and corrects with them alone, so it never offers a view the Command
+ * lacks; with none, it says only to remove the option. `format` names the option that selects a
+ * view, by spelling or by declared name as `spelling` names `--fields`.
+ */
+function fieldsNeedEncoding(spelling: string, format: string, views: readonly string[]): string {
+  if (views.length === EMPTY) {
+    return `Option ${shownOption(spelling)} applies only to output the formatter provides, and the formatter provides none here. Remove the option.`;
+  }
+  return `Option ${shownOption(spelling)} applies only to the ${viewsAnd(views)} output the formatter provides. Remove the option, or select ${viewsOr(views)} with ${shownOption(format)}.`;
 }
 
 /** The opening of the sentence below, naming the fields the output does not hold. */
-function namedFields(unknown: readonly string[]): string {
-  return `Option "--fields" names ${shownFields(unknown)}`;
+function namedFields(spelling: string, unknown: readonly string[]): string {
+  return `Option ${shownOption(spelling)} names ${shownFields(unknown)}`;
 }
 
 /** `--fields` naming keys the output does not hold, with the keys it does hold. */
-function unknownFields(unknown: readonly string[], available: readonly string[]): string {
-  return `${namedFields(unknown)}, which the output does not hold. Supply fields from ${shownNames(available)}.`;
+function unknownFields(
+  spelling: string,
+  unknown: readonly string[],
+  available: readonly string[],
+): string {
+  return `${namedFields(spelling, unknown)}, which the output does not hold. Supply fields from ${shownNames(available)}.`;
 }
 
 /** `--fields` naming keys of an output that holds no keys at all. */
-function noFieldsHeld(unknown: readonly string[]): string {
-  return `${namedFields(unknown)}, but the output holds no fields. Remove --fields.`;
+function noFieldsHeld(spelling: string, unknown: readonly string[]): string {
+  return `${namedFields(spelling, unknown)}, but the output holds no fields. Remove the option.`;
 }
 
 /** The kinds of JSON value that hold no fields, as the sentence below names them. */
@@ -78,8 +100,8 @@ function fieldlessKind(kind: FieldlessKind): string {
 }
 
 /** `--fields` over a value, an element, or a row that is not an object. */
-function fieldsNeedObjects(kind: FieldlessKind): string {
-  return `Option "--fields" selects fields of objects, but the output holds ${fieldlessKind(kind)}. Remove --fields.`;
+function fieldsNeedObjects(spelling: string, kind: FieldlessKind): string {
+  return `Option ${shownOption(spelling)} selects fields of objects, but the output holds ${fieldlessKind(kind)}. Remove the option.`;
 }
 
 export {

@@ -10,6 +10,7 @@ This reference covers how to build, release, install, and update a Loom applicat
 - **`node`** writes a JavaScript bundle: `main.js` from the entry, `application.js` from the application module, and their shared chunks. Pick it to publish to npm for operators who have Node, as the scaffold's `bin` and `build` script do. The package manager then owns updates, and self-update refuses such an install.
 - **`bun`** writes the same bundle for Bun. Pick it only when the application needs Bun when it runs.
 - **A compile target**, `bun-<os>-<arch>` with `-musl` on Linux, compiles a single binary that needs no runtime on the operator's machine. It is the only kind of build that `install.sh` and self-update serve. One host can compile every target. A `-baseline` or `-modern` x64 build compiles, but neither `install.sh` nor self-update fetches it.
+- **`npm`** writes a launcher package and one platform package per compiled binary into `dist/npm/`, so operators install the compiled binary with their package manager, which then owns updates, under [the npm launcher packages](../../../../../docs/toolchain/build.md#the-npm-launcher-packages). It builds only in a package whose `loom.config.json` holds `"npm": { "launcher": true }`, compiles each binary as a release, and publishes nothing. Your workflow publishes every platform package before the launcher, which pins each one at its exact version, under [Publishing the packages](../../../../../docs/toolchain/build.md#publishing-the-packages).
 - **Ship a distributed build.** `--build distributed` is the default. A [development build](../../../../../docs/core/release-facts.md#development-builds), such as one `--watch` writes, shows each defect's Developer Diagnostic, and a distributed one prints `<name>: Something went wrong.` instead. `service install` refuses any build that is not distributed.
 - **Build through `loom build`.** A bundle built without the `__LOOM_RELEASE__` define reads as a source run, so it shows the author's detail to operators and carries no release facts. When you need another bundler, pass it the value `loom build --define` prints. Such a build carries no skills folder.
 - **Ship the whole output.** A bundle includes its dependencies, `@loomcli/core` among them. A distributed bundle whose application names a skills folder also writes `loom-skills/` beside its chunks, so publish the output directory whole.
@@ -58,6 +59,14 @@ gh release create v1.4.0 dist/notes-* dist/SHA256SUMS --notes "$(npx loom change
 - **List every asset in `SHA256SUMS`.** A release without the file, or without a line for an asset, installs nothing.
 - **Mark what is not the latest stable.** Publish a prerelease version as a GitHub prerelease, and an older line's release with `--latest=false`, so `releases/latest` stays the highest stable version.
 - **Publish the platforms you support.** An operator on a platform the release lacks, such as a musl Linux without a `-musl` asset, cannot install.
+
+## Publish a Homebrew formula
+
+`loom release formula --checksums dist/SHA256SUMS --output <tap>/Formula/<name>.rb` writes a Homebrew formula for a published release, under [Publish a Homebrew formula](../../../../../docs/toolchain/install.md#publish-a-homebrew-formula). Run it at the release's tag after the GitHub Release is published, then commit the formula to your tap repository.
+
+- **It needs four assets.** The formula uses the macOS and glibc Linux binaries on arm64 and x64, so the release publishes those four with their `SHA256SUMS`.
+- **It reads `package.json`.** The repository, version, description, homepage, and license come from the manifest, and the name comes from where `loom build` reads it: `--name`, the `name` key, or the `bin` key.
+- **Its test runs `--version`.** `brew test` passes only for an application that installs the version plugin.
 
 ## Install with install.sh
 

@@ -12,9 +12,14 @@ import type { ProgressReport, Region, RegionCloser, RegionOptions, View } from '
 const escape = '\u001b';
 const bell = '\u0007';
 
-/** Every terminal control sequence, which moves no cursor column a reader counts as text. */
+/**
+ * Every terminal control sequence, which moves no cursor column a reader counts as text. A DCS, an
+ * SOS, a PM, and an APC that `ESC \` ends run through that terminator, so their payload is never
+ * read as text. One that the C1 ST ends, or whose payload holds an ESC, as tmux passthrough's does,
+ * is matched from its ESC only, so its payload counts as text here.
+ */
 const controlSequences = new RegExp(
-  `${escape}(?:\\[[0-?]*[ -/]*[@-~]|\\][^${bell}${escape}]*(?:${bell}|${escape}\\\\)|[@-Z\\\\-_])`,
+  `${escape}(?:\\[[0-?]*[ -/]*[@-~]|\\][^${bell}${escape}]*(?:${bell}|${escape}\\\\)|[PX^_][^${escape}]*${escape}\\\\|[@-Z\\\\-_])`,
   'gu',
 );
 

@@ -29,4 +29,4 @@ The command renders with the application's own `@loomcli/plugins`, so the packag
 
 A failure partway through writing leaves the files written so far, and running the command again completes the set.
 
-A module that cannot load fails with the application reader's report. File-system failures name the path and the cause in Loom's words. Failures exit 1, and a missing directory argument or invalid configuration exits 2.
+A module that cannot load fails with the application reader's report. A renderer that throws once the module has loaded, or a resolved `@loomcli/plugins` skills module that fails to load, fails with the Developer Diagnostic [`@loomcli/loom/command-references-failed`](../core/diagnostics.md#loomcliloomcommand-references-failed), which names `@loomcli/plugins` rather than the module, and nothing is written. File-system failures name the path and the cause in Loom's words. Failures exit 1, and a missing directory argument or invalid configuration exits 2.

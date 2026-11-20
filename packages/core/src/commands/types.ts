@@ -48,7 +48,9 @@ export interface ArgumentSlot {
  * What one dispatch hands its action. `graph` and `command` are the run's inspected graph and the
  * routed node inside it, the values its middleware read. Each builds on its first read, so a run
  * whose action reads neither, whose chain is empty, and which asks no configuration source renders
- * no graph and calls no converter.
+ * no graph at dispatch. A build may have rendered it before dispatch: a development build renders
+ * it to ask every converter, and a plugin's `onGraphBuilt` hook reads it, so either build calls
+ * each converter whatever the dispatch reads.
  */
 export interface DispatchInput {
   cancel: () => void;

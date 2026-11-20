@@ -392,7 +392,7 @@ class HttpTransport {
   }
 
   /** Watches one socket the server accepted, for its receipt deadlines and for shutdown. */
-  connection(socket: Socket) {
+  watch(socket: Socket) {
     if (this.#options.signal.aborted) {
       socket.destroy();
       return;

@@ -26,8 +26,6 @@ import type {
 } from '../inputs/types.js';
 import type { ExtensionSubject } from '../plugins/extension.js';
 import { foreignValue, foreignValueCorrection } from '../plugins/rules.js';
-import { checkSlotOrder } from './build.js';
-import { pathOf } from './declaration.js';
 import type { GlobalTable } from './globals.js';
 import {
   checkLocalOptions,
@@ -37,8 +35,14 @@ import {
 } from './globals.js';
 import type { OptionSet, OptionSetValues, AppliedSet } from './option-sets.js';
 import { setFacts } from './option-sets.js';
-import { declaredName, argumentDeclaredTwice } from './rules.js';
+import {
+  argumentAfterVariadic,
+  declaredName,
+  argumentDeclaredTwice,
+  optionalArgumentLast,
+} from './rules.js';
 import type { Declared, CommandState } from './state.js';
+import { pathOf } from './subjects.js';
 import type { ArgumentSlot } from './types.js';
 /** Where one input was declared: the call on the Command at `path` that declared it. */
 export function inputSite(
@@ -167,6 +171,76 @@ export function slotOf(input: ArgumentInput): ArgumentSlot {
     required: input.config.required === true,
     variadic: input.config.variadic === true,
   };
+}
+
+/** Why an argument cannot reserve exactly one word after a variadic. */
+function invalidTrailingArgument(config: InputDeclaration['config']): string | undefined {
+  if ('variadic' in config && config.variadic) {
+    return 'is variadic';
+  }
+  if (config.type === 'content') {
+    return 'is a content argument';
+  }
+  if (config.required === 'non-interactive') {
+    return 'is required only when input is not interactive';
+  }
+  return config.required === true ? undefined : 'is optional';
+}
+
+/**
+ * Orders the slots up to and including a variadic one in three tiers: required, then required only
+ * when input is not interactive, then optional. A slot never follows one of a later tier, so a
+ * required slot never follows a conditional or optional one, and a conditional slot never follows
+ * an optional one. Slots of one tier may follow each other, and bare words fill them left to right.
+ * Only required scalar arguments that are not content arguments may follow a variadic slot, and
+ * they take their words from the end of the line, so this order does not apply to them.
+ */
+export function checkSlotOrder(
+  slot: ArgumentSlot,
+  next: ArgumentSlot,
+  command: { path: readonly string[]; subject: string },
+) {
+  const { path, subject } = command;
+  const after = inputFinding(path, next.input, 'the argument after it');
+  if (slot.variadic) {
+    const reason = invalidTrailingArgument(next.input.config);
+    if (reason) {
+      throw new DeclarationError(argumentAfterVariadic, {
+        correction: 'Declare only required scalar arguments after a variadic argument.',
+        findings: [inputFinding(path, slot.input, 'the variadic argument'), after],
+        sentence: `Argument "${next.input.name}" ${reason} and follows variadic argument "${slot.input.name}" on ${subject}.`,
+      });
+    }
+    return;
+  }
+  if (slot.input.config.required === 'non-interactive' && needsValue(next)) {
+    throw new DeclarationError(optionalArgumentLast, {
+      correction:
+        'Declare arguments required only when input is not interactive after required ones.',
+      findings: [inputFinding(path, slot.input, 'the conditionally required argument'), after],
+      sentence: `Argument "${slot.input.name}" is required only when input is not interactive and precedes required argument "${next.input.name}" on ${subject}.`,
+    });
+  }
+  if (
+    !slot.required &&
+    slot.input.config.required !== 'non-interactive' &&
+    (needsValue(next) || next.input.config.required === 'non-interactive')
+  ) {
+    throw new DeclarationError(optionalArgumentLast, {
+      correction: 'Declare optional arguments after required ones.',
+      findings: [inputFinding(path, slot.input, 'the optional argument'), after],
+      sentence: `Argument "${slot.input.name}" is optional and precedes required argument "${next.input.name}" on ${subject}.`,
+    });
+  }
+}
+
+/**
+ * Whether a slot must receive a value at a terminal: a required argument, or a content argument
+ * whose minimum asks for at least one source.
+ */
+function needsValue(slot: ArgumentSlot): boolean {
+  const { config } = slot.input;
+  return slot.required || (config.type === 'content' && (config.min ?? 0) > 0);
 }
 
 /**

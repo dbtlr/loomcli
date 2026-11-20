@@ -4,8 +4,7 @@ import { commandSentence, commandSubject } from '../failures/wording.js';
 import type { DeclaredResult } from '../output/types.js';
 import type { DescriptorRegistry } from '../plugins/extension.js';
 import { registerDescriptor } from '../plugins/extension.js';
-import { buildResult } from './build.js';
-import { pathOf, commandPlacement, aliasFinding } from './declaration.js';
+import { commandPlacement, aliasFinding } from './declaration.js';
 import type { GlobalTable } from './globals.js';
 import {
   inputFinding,
@@ -14,9 +13,11 @@ import {
   checkCompiledOptions,
   localScope,
 } from './inputs.js';
+import { commandNode } from './nodes.js';
+import { buildResult } from './results.js';
 import { siblingNameTaken, commandWithoutAction, commandAttachedTwice } from './rules.js';
-import { commandNode } from './state.js';
 import type { Declared, CommandState } from './state.js';
+import { pathOf } from './subjects.js';
 import type { AttachedChild, CommandNodeHandle } from './types.js';
 /** One Command a rule judges: the name its sentence reads, and the path its findings open with. */
 export interface CommandPlace {

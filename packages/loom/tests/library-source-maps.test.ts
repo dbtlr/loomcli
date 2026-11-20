@@ -30,7 +30,10 @@ test.each([
 
     expect(result.status).toBe(0);
     const mapped = frame.exec(result.stdout);
-    expect(mapped).not.toBeNull();
+    expect(
+      mapped,
+      `Expected a stack frame matching ${frame}. Actual stack:\n${result.stdout}`,
+    ).not.toBeNull();
     const lines = readFileSync(new URL(source, packages), 'utf8').split('\n');
     expect(lines[Number(mapped?.groups?.line) - 1]).toContain(code);
   },

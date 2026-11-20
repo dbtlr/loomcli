@@ -1202,13 +1202,51 @@ function sentenceShape(tokens: readonly Token[], start: number): boolean {
 }
 
 /**
+ * The top-level exports a message module may not hold at all: any `export` not followed by `{`,
+ * `function`, `const`, `type`, or `interface`, read as its exported name with the form after it, as
+ * in `Reader (class)`, `* (export *)`, or `default (export default)`, and a specifier exported as
+ * `default` in an `export { }` list.
+ */
+function unsentenceExports(tokens: readonly Token[]): string[] {
+  const allowed = new Set(['const', 'function', 'interface', 'type']);
+  const sites: string[] = [];
+  let depth = 0;
+  tokens.forEach((token, index) => {
+    const next = tokens[index + 1];
+    if (depth === 0 && named(token, 'export') && is(next, '{')) {
+      // A specifier exported as `default` is the default export in another spelling.
+      const close = closing(tokens, index + 1);
+      for (const specifier of splitTopLevel(tokens.slice(index + 2, close), [','])) {
+        if (specifier.length > 1 && named(specifier.at(-1), 'default')) {
+          sites.push('default (export { as default })');
+        }
+      }
+    } else if (depth === 0 && named(token, 'export') && next !== undefined) {
+      if (is(next, '*')) {
+        sites.push('* (export *)');
+      } else if (named(next, 'default')) {
+        sites.push('default (export default)');
+      } else if (next.kind === 'identifier' && !allowed.has(next.text)) {
+        // A modifier such as `async` or `declare` comes before the keyword that names the form.
+        const modified = ['async', 'abstract', 'declare'].includes(next.text);
+        const form = modified ? (tokens[index + 2]?.text ?? next.text) : next.text;
+        const name = tokens[index + (modified ? 3 : 2)]?.text ?? '';
+        sites.push(`${name} (${modified ? `${next.text} ${form}` : form})`);
+      }
+    }
+    depth += depthChange(token);
+  });
+  return sites;
+}
+
+/**
  * The export-shape sites of one message module: each export that is not one declaration of a
  * sentence's shape, read by its exported name, with `(overloaded)` after a function declared more
  * than once and `(not declared here)` after a name the module does not declare.
  */
 function exportShapeSites(tokens: readonly Token[]): string[] {
   const starts = declarationStarts(tokens);
-  const sites: string[] = [];
+  const sites: string[] = unsentenceExports(tokens);
   for (const { exported, local } of exportedValues(tokens)) {
     const declared = starts.filter((start) => tokens[start + 1]?.text === local);
     const [only] = declared;

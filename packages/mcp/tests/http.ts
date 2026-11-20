@@ -121,7 +121,7 @@ async function serve(
     if (socketTimeoutMs > 0) {
       socket.setTimeout(socketTimeoutMs, () => socket.destroy());
     }
-    transport.connection(socket);
+    transport.watch(socket);
   });
   let requests = 0;
   let finishes = 0;

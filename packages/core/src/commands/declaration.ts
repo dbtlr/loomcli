@@ -7,18 +7,10 @@ import type { StdinContext, Action, ActionContext } from '../invocation/types.js
 import type { Out, OpenResult, ResultView } from '../output/types.js';
 import { validateLayer, extendStore } from '../plugins/extension.js';
 import type { BuiltValues } from '../plugins/providers.js';
-import { viewEntries } from './build.js';
+import { viewEntries } from './results.js';
 import { portableName } from './rules.js';
 import type { CommandState, ResultCall } from './state.js';
-import { layerOf } from './state.js';
-/**
- * The path a finding opens with for a declaration call on one Command. The root's is empty. A named
- * Command's call cannot know the parent it will join, so its path is its own name.
- */
-export function pathOf(name: string | null): readonly string[] {
-  return name === null ? [] : [name];
-}
-
+import { layerOf, pathOf } from './subjects.js';
 /** A call's arguments as its author wrote them: the trailing ones left undefined are dropped. */
 function callArguments(...values: readonly unknown[]): readonly unknown[] {
   let length = values.length;

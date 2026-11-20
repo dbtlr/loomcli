@@ -49,10 +49,10 @@ function application(
           closed: new Promise<void>((resolve) =>
             signal.signal.addEventListener('abort', () => resolve(), { once: true }),
           ),
-          connection: () => {},
           request: (_request, response) => {
             response.end();
           },
+          watch: () => {},
         }),
       },
     );

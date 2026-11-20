@@ -6,7 +6,7 @@
 
 ### Migration
 
-**Affected surface.** No compile error: `configuration()` throws a `DeclarationError` when the application starts, under `@loomcli/plugins/config/file-format`. The surface is a `configuration()` call whose `file` names a `toml`, `yaml`, or `yml` extension, in a brace list such as `.textstat.{toml,json}` or as a literal name such as `.textstat.yaml`. A call whose `file` has the extension `*`, or names only JSON files, compiles and starts unchanged and stops reading TOML and YAML files at run time: an operator's `--config` naming a TOML or YAML file fails with code 2, and a TOML or YAML file the `env` variable names warns, or fails under `strict`.
+**Affected surface.** No compile error: `configuration()` throws a `DeclarationError` when the application starts, under `@loomcli/plugins/config/file-format`. The surface is a `configuration()` call whose `file` names a `toml`, `yaml`, or `yml` extension, in a brace list such as `.textstat.{toml,json}` or as a literal name such as `.textstat.yaml`. A call whose `file` has the extension `*`, or names only JSON files, compiles and starts unchanged, and so does a call with no `file`, which looks for `.<app>.json` and so names only a JSON file. Each of these stops reading TOML and YAML files at run time: an operator's `--config` naming a TOML or YAML file fails with code 2, and a TOML or YAML file the `env` variable names warns, or fails under `strict`.
 
 **Why.** The plugin chose a parser at run time, so every application that installed it bundled both parsers whatever format it read. A reader the application passes keeps an unused parser out of the bundle.
 
@@ -40,10 +40,10 @@ export const config = configuration({
 
 **Steps.**
 
-1. Find each `configuration()` call whose `file` names `toml`, `yaml`, or `yml`, or whose extension is `*`.
+1. Find each `configuration()` call: one whose `file` names `toml`, `yaml`, or `yml`, one whose extension is `*`, one whose `file` names only JSON files, and one with no `file`.
 2. For `toml`, import `toml` from `@loomcli/plugins/config/toml` and add it to `formats`.
 3. For `yaml` or `yml`, import `yaml` from `@loomcli/plugins/config/yaml` and add it to `formats`.
 4. For `*`, add the reader of every format the application's operators may write, or neither to read JSON alone.
-5. For a call whose `file` names only JSON files, add the reader of each format operators may name through `--config` or the `env` variable, or neither to read JSON alone.
+5. For a call whose `file` names only JSON files, or that passes no `file` and so looks for `.<app>.json`, add the reader of each format operators may name through `--config` or the `env` variable, or neither to read JSON alone.
 
-**Validation.** Start the application, for example with `--help`, and check that it prints no `@loomcli/plugins/config/file-format` diagnostic. Run it with `--config` naming a TOML or YAML file and check that it reads the file's values.
+**Validation.** Start the application, for example with `--help`, and check that it prints no `@loomcli/plugins/config/file-format` diagnostic. For each reader you added, run it with `--config` naming a file of that format and check that it reads the file's values. For an application that reads JSON alone, run it with `--config` naming a JSON file, and check that a TOML or YAML file fails with code 2.

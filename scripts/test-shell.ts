@@ -925,11 +925,9 @@ async function openSession(options: SessionOptions): Promise<Session> {
     // Nushell completes in the background and drops a read-back that arrives first.
     // So the driver waits for the program to answer, and for the shell to fall silent after it.
     // A Tab that never calls the program, such as one after an unclosed quote, waits the seconds out.
-    const settled = shell === 'nu' ? [`settle 400 ${answered} 5`] : [];
-    const block = await step(
-      [send(line, String.raw`\t`), ...settled, send('', String.raw`\x1d`)],
-      `${readback}*${prompt}`,
-    );
+    const tab =
+      shell === 'nu' ? [send(line), `settle 400 ${answered} 5`] : [send(line, String.raw`\t`)];
+    const block = await step([...tab, send('', String.raw`\x1d`)], `${readback}*${prompt}`);
     const listing = shellListing(shell, block, () => fishListing(line, script, cwd, env));
     const listed = shellWords(shell, listing);
     return { line: readLine(shell, block), listed, listing };
