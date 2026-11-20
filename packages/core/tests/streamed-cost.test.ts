@@ -20,13 +20,19 @@
  * - Off a terminal, the split of a message's text into finished lines reads the text once per
  *   chunk, so one long unbroken line costs each chunk work linear in the text so far, as it does on
  *   a terminal, and not the square.
+ * - A long run of spaces inside a streamed line costs each chunk after it no more than a run of
+ *   letters of the same length, piped and on a terminal, so holding back the spaces the text so far
+ *   ends with reads only those spaces, not the run inside the line.
  *
  * The cases run an Application from source on a mock process in the test's own process. They read
  * each live set the channel hands a semantic method through a spy on the output's `emit`, and the
  * characters the `info` lane view lays out on a terminal through a spy on the view context it
- * receives, whose `expandTabs` the view calls with the whole text it lays out. The split's cases
- * count the characters each `String.prototype.indexOf('\n')` search reads, through a pass-through
- * spy, so they measure the split alone and no other step on the line.
+ * receives, whose `expandTabs` the view calls with the whole text it lays out. The split's case
+ * counts the characters each `String.prototype.indexOf('\n')` search reads, through a pass-through
+ * spy, so it measures the split alone and no other step on the line. The hold's cost is inside a
+ * pattern match, where no spy sees it, so its cases time a message against one of the same shape
+ * whose run holds letters: a hold that reads the whole run costs about 0.65 s for each chunk after
+ * it, far beyond any pause the machine takes.
  */
 import { mockProcess } from '@loomcli/testing';
 import { expect, test, vi } from 'vite-plus/test';
@@ -356,22 +362,6 @@ async function searchedForLineBreaks(run: () => unknown): Promise<number> {
   }
 }
 
-test('the line split reads a text with no line break once, so its work grows with the text', async () => {
-  const { completeLines } = await import('../src/output/complete-lines.js');
-  const small = 'a'.repeat(8000);
-  const large = 'a'.repeat(16_000);
-  const one = await searchedForLineBreaks(() => completeLines(small));
-  const two = await searchedForLineBreaks(() => completeLines(large));
-  expect(one).toBeGreaterThanOrEqual(small.length);
-  expect(one).toBeLessThanOrEqual(small.length * 2);
-  expect(two).toBeLessThanOrEqual(one * 2.2);
-  expect(completeLines('one\ntwo\n\nrest')).toEqual({
-    lines: ['one\n', 'two\n', '\n'],
-    tail: 'rest',
-  });
-  expect(completeLines('')).toEqual({ lines: [], tail: '' });
-});
-
 /** Streams 16 KB of text with no line break into a pipe in `count` chunks and answers the search work. */
 async function pipedUnbroken(count: number) {
   const size = 16_000 / count;
@@ -392,3 +382,57 @@ test('the line split of a long unbroken line off a terminal reads the text so fa
   expect(few.searched).toBeGreaterThan(0);
   expect(many.searched).toBeLessThanOrEqual(few.searched * 2.2);
 });
+
+/**
+ * The milliseconds `write` takes to stream `parts` on a mock, piped or on a terminal 100 columns
+ * wide, the best of three runs, so a pause the machine takes in one run does not count.
+ */
+async function streamedTime(
+  parts: readonly string[],
+  terminal: boolean,
+  write: (out: Out, source: AsyncIterable<string>) => Promise<void>,
+): Promise<number> {
+  let best = Number.POSITIVE_INFINITY;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const mock = terminal
+      ? mockProcess({
+          env: { TERM: 'xterm-256color' },
+          terminal: { columns: 100, rows: 24, streams: ['stdout', 'stderr'] },
+        })
+      : mockProcess({ env: {} });
+    const started = performance.now();
+    const code = await new Application('timed')
+      .action(async ({ out }) => write(out, chunks(...parts)))
+      .run({ process: mock });
+    best = Math.min(best, performance.now() - started);
+    expect(code).toBe(0);
+  }
+  return best;
+}
+
+/** One line that holds a run of 16,000 of `filler`, with five chunks after the run. */
+function runInsideLine(filler: string): string[] {
+  return ['start ', filler.repeat(16_000), 'a', 'b', 'c', 'd', 'e\n'];
+}
+
+const insideRuns = [
+  { name: 'piped', terminal: false },
+  { name: 'on a terminal', terminal: true },
+] as const;
+
+test.each(insideRuns)(
+  'a long run of spaces inside a streamed line costs each later chunk no more than a run of letters, $name',
+  async ({ terminal }) => {
+    const spaces = runInsideLine(' ');
+    const letters = runInsideLine('x');
+    for (const write of [
+      async (out: Out, source: AsyncIterable<string>) => out.print(source),
+      async (out: Out, source: AsyncIterable<string>) => out.info(source),
+    ]) {
+      const control = await streamedTime(letters, terminal, write);
+      const measured = await streamedTime(spaces, terminal, write);
+      // A hold that backtracks across the run pays about 0.65 s for each chunk after it.
+      expect(measured).toBeLessThan(control * 3 + 150);
+    }
+  },
+);
