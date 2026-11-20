@@ -55,33 +55,58 @@ function recordedInstallation(lookup: InstallationLookup, path: string): Install
   }
 }
 
-/** Reads the global layout from the components immediately before the outermost node_modules. */
-function globalInstallation(
-  directories: readonly string[],
-  path: string,
-): Installation | undefined {
+/** A test of one directory component: its whole name, or a pattern the whole name matches. */
+type ComponentTest = string | RegExp;
+
+/** One package manager's global root: the last components before the outermost `node_modules`. */
+interface GlobalRoot {
+  readonly method: 'bun' | 'npm' | 'pnpm' | 'yarn';
+  readonly tail: readonly ComponentTest[];
+}
+
+/** A version folder of all digits. */
+const allDigits = /^\d+$/u;
+
+/** A store folder named `v` and digits. */
+const vAndDigits = /^v\d+$/u;
+
+/** Any one folder, such as a package folder or a hash. */
+const anyFolder = /^/u;
+
+/**
+ * ADR-0211's global roots, row for row. Each tail lists, in order, the last components before the
+ * outermost `node_modules`, ending just before it. No real layout matches two rows.
+ */
+const globalRoots: readonly GlobalRoot[] = [
+  { method: 'npm', tail: ['lib'] },
+  { method: 'pnpm', tail: ['global', allDigits, '.pnpm', anyFolder] },
+  { method: 'pnpm', tail: [vAndDigits, 'links', anyFolder, anyFolder, anyFolder, anyFolder] },
+  { method: 'bun', tail: ['install', 'global'] },
+  { method: 'yarn', tail: ['yarn', 'global'] },
+];
+
+function passes(test: ComponentTest, component: string | undefined): boolean {
+  if (component === undefined) {
+    return false;
+  }
+  return typeof test === 'string' ? component === test : test.test(component);
+}
+
+/** The directory components of an absolute path, without its root and its file name. */
+function directoriesOf(path: string): string[] {
+  return path.slice(parse(path).root.length).split(sep).slice(0, -1);
+}
+
+/** Every global root whose tail ends just before the outermost `node_modules` of the directories. */
+function matchingRoots(directories: readonly string[]): readonly GlobalRoot[] {
   const modules = directories.indexOf('node_modules');
-  const maxRootComponents = 6;
-  const [last, secondLast, thirdLast, fourthLast, fifthLast, sixthLast] = Array.from(
-    { length: maxRootComponents },
-    (_unused, offset) => directories[modules - offset - 1],
-  );
-  if (last === 'lib') {
-    return Object.freeze({ method: 'npm', path });
-  }
-  // The legacy layout has one package folder. The global virtual store has four folders after links.
-  if (
-    (fourthLast === 'global' && /^\d+$/u.test(thirdLast ?? '') && secondLast === '.pnpm') ||
-    (/^v\d+$/u.test(sixthLast ?? '') && fifthLast === 'links')
-  ) {
-    return Object.freeze({ method: 'pnpm', path });
-  }
-  if (last === 'global' && secondLast === 'install') {
-    return Object.freeze({ method: 'bun', path });
-  }
-  return last === 'global' && secondLast === 'yarn'
-    ? Object.freeze({ method: 'yarn', path })
-    : undefined;
+  const before = modules === -1 ? [] : directories.slice(0, modules);
+  return globalRoots.filter(({ tail }) => {
+    const ending = before.slice(-tail.length);
+    return (
+      ending.length === tail.length && tail.every((test, index) => passes(test, ending[index]))
+    );
+  });
 }
 
 /**
@@ -102,14 +127,15 @@ function packageManagerInstallation(path: string, platform: string): ReleaseFact
   if (platform === 'win32') {
     return undefined;
   }
-  const directories = path.slice(parse(path).root.length).split(sep).slice(0, -1);
+  const directories = directoriesOf(path);
   const kegDirectories = 2;
   const cellar = directories.slice(0, -kegDirectories).lastIndexOf('Cellar');
   const formula = cellar === -1 ? undefined : directories[cellar + 1];
   if (formula !== undefined) {
     return Object.freeze({ formula, method: 'brew', path });
   }
-  return globalInstallation(directories, path);
+  const [root] = matchingRoots(directories);
+  return root === undefined ? undefined : Object.freeze({ method: root.method, path });
 }
 
 /** Resolves the application path and prefers a matching record over its directory layout. */
@@ -131,4 +157,4 @@ function readInstallation(
 }
 
 export type { InstallationLookup };
-export { packageManagerInstallation, readInstallation };
+export { directoriesOf, matchingRoots, packageManagerInstallation, readInstallation };

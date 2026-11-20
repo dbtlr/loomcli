@@ -1,6 +1,8 @@
 import { packageManagerInstallation } from '@loomcli/core';
 import { expect, test } from 'vite-plus/test';
 
+import { directoriesOf, matchingRoots } from '../src/shipping/installation.js';
+
 const globalInstallations = [
   { layout: 'Cellar/notes-cli/1.5.0/libexec/lib/node_modules/@acme/notes/cli.js', method: 'brew' },
   { layout: 'prefix/lib/node_modules/cowsay/cli.js', method: 'npm' },
@@ -69,7 +71,7 @@ test.each([...globalInstallations, ...platformBinaries])(
   },
 );
 
-test.each([
+const otherLayouts = [
   'project/node_modules/@acme/notes/cli.js',
   'project/node_modules/.pnpm/cowsay@1.6.0/node_modules/cowsay/cli.js',
   '.npm/_npx/hash/node_modules/cowsay/cli.js',
@@ -83,6 +85,15 @@ test.each([
   'pnpm/store/v11/links-old/@/cowsay/1.6.0/hash/node_modules/cowsay/cli.js',
   '.bun/reinstall/global/node_modules/cowsay/cli.js',
   '.config/not-yarn/global/node_modules/cowsay/cli.js',
-])('%s gives no package-manager installation', (layout) => {
+];
+
+test.each(otherLayouts)('%s gives no package-manager installation', (layout) => {
   expect(packageManagerInstallation(`/home/me/${layout}`, 'linux')).toBeUndefined();
+});
+
+test.each([
+  ...[...globalInstallations, ...platformBinaries].map(({ layout }) => layout),
+  ...otherLayouts,
+])('%s matches at most one global root', (layout) => {
+  expect(matchingRoots(directoriesOf(`/home/me/${layout}`)).length).toBeLessThanOrEqual(1);
 });
