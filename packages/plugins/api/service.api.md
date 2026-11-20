@@ -29,9 +29,12 @@ export interface ServiceDetail {
 
 // @public
 export interface ServiceSettings {
+    readonly environment?: (host: Host) => Readonly<Record<string, string>>;
     readonly label: string;
+    readonly output?: string;
     readonly probe?: (context: ProbeContext) => Promise<readonly ServiceDetail[]> | readonly ServiceDetail[];
     readonly run: readonly string[];
+    readonly stopTimeout?: number;
 }
 
 // @public @sealed
@@ -57,6 +60,10 @@ export interface ServiceStatus extends ServiceState {
     } | {
         readonly kind: 'manager';
         readonly capture: 'journald' | 'none';
+    };
+    readonly output?: {
+        readonly path: string;
+        readonly exists: boolean;
     };
 }
 

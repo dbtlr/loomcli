@@ -173,10 +173,13 @@ const selfUpdateSettings = diagnosticRule(`${packageName}/self-update/settings`,
   headline: 'Invalid self-update setting',
 });
 
-/** A service plugin `label` that is not a reverse-DNS name its unit can carry. */
+/**
+ * A service plugin `label` that is not a reverse-DNS name its unit can carry, an empty `output`,
+ * or a `stopTimeout` that is not a positive whole number of milliseconds.
+ */
 const serviceSettings = diagnosticRule(`${packageName}/service/settings`, {
   explanation:
-    "The service plugin names its unit by label: the systemd unit is <label>.service and the launchd agent's Label is the label. So label is a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most, which keeps the unit name within systemd's 255 characters.",
+    "The service plugin names its unit by label: the systemd unit is <label>.service and the launchd agent's Label is the label. So label is a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most, which keeps the unit name within systemd's 255 characters. When set, output must be a nonempty path and stopTimeout must be a positive whole number of milliseconds.",
   headline: 'Invalid service setting',
 });
 

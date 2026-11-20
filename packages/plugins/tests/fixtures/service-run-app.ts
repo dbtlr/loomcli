@@ -11,6 +11,9 @@ import type { MockFields } from '@loomcli/testing';
 import { runOnMock } from './in-process.ts';
 
 interface Scenario {
+  environment?: Readonly<Record<string, string>> | undefined;
+  output?: string | undefined;
+  stopTimeout?: number | undefined;
   logging?: 'files' | 'console' | undefined;
   logFiles?: readonly string[] | undefined;
   cwd: string;
@@ -80,6 +83,11 @@ function serviceApplication(scenario: Scenario) {
       service({
         label: scenario.label ?? 'com.acme.notes',
         run: scenario.run ?? ['serve'],
+        ...(scenario.environment === undefined
+          ? {}
+          : { environment: ({ env }) => ({ ...scenario.environment, PATH: env.PATH ?? '' }) }),
+        ...(scenario.output === undefined ? {} : { output: scenario.output }),
+        ...(scenario.stopTimeout === undefined ? {} : { stopTimeout: scenario.stopTimeout }),
         ...probe(),
       }),
     ],

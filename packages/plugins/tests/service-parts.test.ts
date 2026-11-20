@@ -13,8 +13,11 @@ import { launchdPlist, systemdUnit } from '../src/service/unit.js';
 
 const values = {
   description: 'Notes 100% & <sync>',
+  environment: [],
   home: '/home/me 50%',
   label: 'com.acme.notes',
+  output: undefined,
+  stopTimeout: undefined,
   words: ['/bin/notes', String.raw`a\b`, 'say "hi"', '$HOME', '%h', "it's <b>&"],
 };
 
@@ -168,6 +171,20 @@ test("a note keeps its English text in the result and renders through the view's
   expect(status.notes).toEqual([noSession]);
   expect(statusText(status, style, (phrase) => `[${phrase.text}]`)).toBe(
     `com.acme.notes: not loaded\n  [unit]  ${nowrap('/u')}\n  [note]  [${noSession}]\n`,
+  );
+});
+
+test('the output row localizes its label and the file absence', () => {
+  const status = statusOf(
+    stateOf(
+      { installed: false, label: 'l.m', unit: '/u' },
+      { notes: [], running: false, state: 'not installed' },
+    ),
+    [],
+    { output: { exists: false, path: '/logs/notes.log' } },
+  );
+  expect(statusText(status, style, (phrase) => `[${phrase.text}]`)).toBe(
+    `l.m: not installed\n  [unit]    ${nowrap('/u')}\n  [output]  ${nowrap('[/logs/notes.log (file missing)]')}\n`,
   );
 });
 

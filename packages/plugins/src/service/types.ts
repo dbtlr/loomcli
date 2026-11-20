@@ -44,7 +44,12 @@ export interface ServiceState {
 export interface ServiceStatus extends ServiceState {
   /** The probe's rows, or none. */
   readonly details: readonly ServiceDetail[];
-  /** Logging destinations resolved for the status host, absent without the logging plugin. */
+  /** The configured stdout and stderr file's absolute path and whether a regular file is at the path. */
+  readonly output?: { readonly path: string; readonly exists: boolean };
+  /**
+   * Logging destinations for the status host, absent without the logging plugin. Status reports
+   * manager capture only when the logging plugin has no files and `output` is unset.
+   */
   readonly logs?:
     | {
         readonly kind: 'files';
@@ -82,6 +87,35 @@ export interface ServiceSettings {
   readonly label: string;
   /** The argument words the unit runs the application with, such as ['serve']. */
   readonly run: readonly string[];
+  /**
+   * Variables the unit sets, computed from the host running `service install`. They are written into
+   * the unit file, which other local users can read, so pass no secret here.
+   *
+   * @example
+   * ```ts
+   * environment: ({ env }) => ({ PATH: env.PATH ?? '' })
+   * ```
+   */
+  readonly environment?: (host: Host) => Readonly<Record<string, string>>;
+  /**
+   * The file receiving stdout and stderr, absolute or relative to the host's home.
+   *
+   * @example
+   * ```ts
+   * output: 'logs/notes.log'
+   * ```
+   */
+  readonly output?: string;
+  /**
+   * The manager's stop timeout in milliseconds. Set it above the Application's `shutdown.timeout`.
+   * On macOS 26.4 and later, launchd caps the effective timeout at 60 seconds.
+   *
+   * @example
+   * ```ts
+   * stopTimeout: 60_000
+   * ```
+   */
+  readonly stopTimeout?: number;
   /** Rows status adds under the unit, once the unit is installed. */
   readonly probe?: (
     context: ProbeContext,

@@ -2,11 +2,18 @@ import { Command, plugin } from '@loomcli/core';
 import type { ActionContext, Plugin } from '@loomcli/core';
 
 import { json } from '../json-views.js';
-import { control, installChild, isPresent, prepare, uninstallChild } from './children.js';
+import {
+  control,
+  installChild,
+  isPresent,
+  outputPath,
+  prepare,
+  uninstallChild,
+} from './children.js';
 import type { ChildRun } from './children.js';
 import { judgeRun } from './route.js';
 import { identity, judgeSettings } from './settings.js';
-import { logsOf, stateOf, statusOf, statusText } from './status.js';
+import { logsOf, outputOf, stateOf, statusOf, statusText } from './status.js';
 import type { ServiceDetail, ServiceSettings, ServiceState, ServiceStatus } from './types.js';
 
 /** What every child reads from its action context. */
@@ -65,23 +72,26 @@ function statusCommand(settings: ServiceSettings) {
     })
     .views({ json: json<ServiceStatus>() })
     .action(async (context) => {
-      const { backend, service: unit } = prepare(childRun(settings.label, context));
+      const { backend, home, service: unit } = prepare(childRun(settings.label, context));
       // Read the log files before any manager call, so status's own records never decide whether a file exists.
-      const logs = logsOf(context.graph, context.host);
+      const output = outputOf(outputPath(home, settings.output));
+      const logs = logsOf(context.graph, context.host, output !== undefined);
       const installed = isPresent(unit.unit);
       const reading = await backend.read(unit, installed);
       const state = stateOf({ installed, label: settings.label, unit: unit.unit }, reading);
-      await context.out.results(statusOf(state, await detailsOf(settings, state, context), logs));
+      await context.out.results(
+        statusOf(state, await detailsOf(settings, state, context), { logs, output }),
+      );
     });
 }
 
 /** The `service` group and its six children. */
 function serviceCommand(settings: ServiceSettings) {
-  const { label, run } = settings;
+  const { label } = settings;
   const child = childrenOf(label);
   return new Command('service', { description: 'Run this application as a background service.' })
     .command(
-      child('install', 'Install the service and start it.', (each) => installChild(each, run)),
+      child('install', 'Install the service and start it.', (each) => installChild(each, settings)),
     )
     .command(child('uninstall', 'Stop the service and remove it.', uninstallChild))
     .command(child('start', 'Start the service.', (each) => control(each, 'start')))

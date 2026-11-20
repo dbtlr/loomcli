@@ -326,7 +326,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 
 ### @loomcli/plugins/service/settings
 
-**Invalid service setting.** The service plugin names its unit by label: the systemd unit is \<label\>.service and the launchd agent's Label is the label. So label is a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most, which keeps the unit name within systemd's 255 characters.
+**Invalid service setting.** The service plugin names its unit by label: the systemd unit is \<label\>.service and the launchd agent's Label is the label. So label is a reverse-DNS name of two or more segments of letters, digits, and hyphens, each opening with a letter or digit, 247 characters at most, which keeps the unit name within systemd's 255 characters. When set, output must be a nonempty path and stopTimeout must be a positive whole number of milliseconds.
 
 ### @loomcli/plugins/skills/commands
 

@@ -14,7 +14,7 @@
  * - A program that cannot start writes no line and records no event.
  * - A call that runs while the run is cancelled writes no line.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -67,6 +67,7 @@ function sandbox(): Sandbox {
 type Answers = Readonly<Record<string, ProgramAnswer>>;
 
 interface Scenario {
+  readonly output?: string;
   readonly platform?: 'linux' | 'darwin';
   readonly answers?: Answers;
   /** The managers that cannot start. */
@@ -79,6 +80,7 @@ interface Scenario {
 async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {}) {
   const events: LogEvent[] = [];
   const calls: string[] = [];
+  const outputFolderExistsAtCalls: boolean[] = [];
   const observer = plugin('fixture/observer', {
     onLog: (event) => {
       events.push(event);
@@ -87,7 +89,15 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
   });
   const app = new Application('notes', {
     description: 'Keep notes in sync.',
-    plugins: [observer, verbose(), service({ label, run: ['serve'] })],
+    plugins: [
+      observer,
+      verbose(),
+      service({
+        label,
+        run: ['serve'],
+        ...(scenario.output === undefined ? {} : { output: scenario.output }),
+      }),
+    ],
   }).command(new Command('serve').action(() => {}));
   const programs: Record<string, Program> = {};
   const controller = new AbortController();
@@ -96,6 +106,7 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
       programs[name] = (call) => {
         const words = [name, ...call.args].join(' ');
         calls.push(words);
+        outputFolderExistsAtCalls.push(existsSync(join(box.home, 'logs', 'nested')));
         if (words === scenario.cancelOn) {
           controller.abort(new Error('The test cancelled the run.'));
         }
@@ -123,7 +134,7 @@ async function run(box: Sandbox, argv: readonly string[], scenario: Scenario = {
     },
     { signal: controller.signal },
   );
-  return { calls, events, status: result.status, stderr: result.stderr };
+  return { calls, events, outputFolderExistsAtCalls, status: result.status, stderr: result.stderr };
 }
 
 /** The `Ran` log lines, their glyph removed. */
@@ -182,6 +193,17 @@ function darwinRecord(box: Sandbox): string {
 }
 
 describe('systemd', () => {
+  it('creates the output folder before calling the manager without a folder log event', async () => {
+    const box = sandbox();
+    const output = 'logs/nested/console.log';
+    const path = join(box.home, 'logs', 'nested');
+    const result = await run(box, ['-v', 'service', 'install'], { output });
+    expect(result.status).toBe(0);
+    expect(result.outputFolderExistsAtCalls).toEqual([true, true, true]);
+    expect(result.stderr).not.toContain(path);
+    expect(result.events.some((event) => event.fields.path === path)).toBe(false);
+  });
+
   it('install names each call at -v, adds nothing at the default level or at -vv', async () => {
     const box = sandbox();
     const quiet = await run(box, ['service', 'install']);
