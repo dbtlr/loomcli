@@ -1,6 +1,8 @@
 // Acceptance plan: see packages/plugins/tests/service.test.ts.
 
 import { nowrap, style } from '@loomcli/core';
+import type { Phrase } from '@loomcli/core';
+import { viewContext } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 import { holdsControlCharacter } from '../src/control-character.js';
@@ -20,6 +22,19 @@ const values = {
   stopTimeout: undefined,
   words: ['/bin/notes', String.raw`a\b`, 'say "hi"', '$HOME', '%h', "it's <b>&"],
 };
+
+/** The status text view, called with a context that states the run's language through `localize`. */
+const statusView = { render: statusText };
+
+/** A view context that says each phrase through `localize` and styles through core's chain. */
+const sayingWith = (localize: (phrase: Phrase) => string) =>
+  viewContext(statusView, { localize, style });
+
+/** A run with no phrasebook says each phrase's English text. */
+const english = sayingWith((phrase) => phrase.text);
+
+/** A run whose phrasebook marks each phrase it says, to show which text went through `localize`. */
+const bracketed = sayingWith((phrase) => `[${phrase.text}]`);
 
 /** The English note of an agent with no login session. */
 const noSession = 'There is no login session, so com.acme.notes starts when you log in.';
@@ -113,7 +128,7 @@ test('the text view keeps the unit path whole for line breaking', () => {
     { installed: true, label: 'com.acme.notes', unit },
     { notes: [], running: false, state: 'not running' },
   );
-  expect(statusText(statusOf(state, []), style)).toBe(
+  expect(statusText(statusOf(state, []), english)).toBe(
     `com.acme.notes: not running\n  unit  ${nowrap(unit)}\n`,
   );
 });
@@ -129,7 +144,7 @@ test('the text view pads the names to the longest plus two, prints author rows a
     },
   );
   const status = statusOf(state, [{ name: 'connections', value: '3' }]);
-  expect(statusText(status, style)).toBe(
+  expect(statusText(status, english)).toBe(
     `com.acme.notes: running (pid 9)\n  unit         ${nowrap(String.raw`/units/a\u000ab.service`)}\n  connections  3\n  note         ${noSession}\n`,
   );
   const unknown = statusOf(
@@ -139,7 +154,7 @@ test('the text view pads the names to the longest plus two, prints author rows a
     ),
     [],
   );
-  expect(statusText(unknown, style)).toBe(
+  expect(statusText(unknown, english)).toBe(
     `com.acme.notes: odd\\u001bword\n  unit  ${nowrap('/u')}\n`,
   );
   expect(
@@ -151,7 +166,7 @@ test('the text view pads the names to the longest plus two, prints author rows a
         ),
         [],
       ),
-      style,
+      english,
     ),
   ).toBe(`com.acme.notes: running\n  unit  ${nowrap('/u')}\n`);
 });
@@ -169,7 +184,7 @@ test("a note keeps its English text in the result and renders through the view's
     [],
   );
   expect(status.notes).toEqual([noSession]);
-  expect(statusText(status, style, (phrase) => `[${phrase.text}]`)).toBe(
+  expect(statusText(status, bracketed)).toBe(
     `com.acme.notes: not loaded\n  [unit]  ${nowrap('/u')}\n  [note]  [${noSession}]\n`,
   );
 });
@@ -183,7 +198,7 @@ test('the output row localizes its label and the file absence', () => {
     [],
     { output: { exists: false, path: '/logs/notes.log' } },
   );
-  expect(statusText(status, style, (phrase) => `[${phrase.text}]`)).toBe(
+  expect(statusText(status, bracketed)).toBe(
     `l.m: not installed\n  [unit]    ${nowrap('/u')}\n  [output]  ${nowrap('[/logs/notes.log (file missing)]')}\n`,
   );
 });

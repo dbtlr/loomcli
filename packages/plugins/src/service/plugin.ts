@@ -67,7 +67,7 @@ function statusCommand(settings: ServiceSettings) {
   return new Command('status', { description: 'Report whether the service is running.' })
     .result<ServiceStatus>({
       views: {
-        text: { render: (status, { localize, style }) => statusText(status, style, localize) },
+        text: { render: statusText },
       },
     })
     .views({ json: json<ServiceStatus>() })

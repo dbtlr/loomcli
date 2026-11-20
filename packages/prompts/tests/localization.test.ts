@@ -13,7 +13,7 @@ import { interaction } from '@loomcli/plugins/interaction';
 import { plain } from '@loomcli/plugins/plain';
 import { confirm, multiselect, progress, select, text } from '@loomcli/prompts';
 import type { ProgressContext, PromptContext } from '@loomcli/prompts';
-import { mockProcess } from '@loomcli/testing';
+import { key, mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
 const validation = { unavailable: 'Not available on this plan.' };
@@ -89,6 +89,35 @@ test('a live list shows its key hint in German', async () => {
   });
   await expect(setup.run({ process: mock })).resolves.toBe(0);
   expect(mock.stderr.text).toContain('↑↓ bewegen · Enter auswählen');
+});
+
+test("a live question's frame shows a validator issue in German", async () => {
+  const mock = mockProcess({
+    env: { LANG: 'de' },
+    terminal: {
+      columns: 80,
+      keys: [`Telemetry${key.enter}${key.backspace.repeat(9)}Backups${key.enter}`],
+      rows: 24,
+    },
+  });
+  const setup = app(async (context) => {
+    await text(context, {
+      message: 'Feature',
+      validate: {
+        '~standard': {
+          validate: (value) =>
+            value === 'Telemetry'
+              ? { issues: [phrasedIssue(validatorPhrase('unavailable'))] }
+              : { value: String(value) },
+          vendor: 'fixture',
+          version: 1,
+        },
+      },
+    });
+  });
+  await expect(setup.run({ process: mock })).resolves.toBe(0);
+  expect(mock.stderr.text).toContain('✘ In diesem Tarif nicht verfügbar.');
+  expect(mock.stderr.text).not.toContain('Not available on this plan.');
 });
 
 test('line-by-line questions localize rejected answers and fall back per sentence', async () => {

@@ -1,9 +1,10 @@
 import { existsSync, statSync } from 'node:fs';
 
 import { escapeControlCharacters, nowrap, readExtension, width } from '@loomcli/core';
-import type { CommandGraph, ContextualStyle, Host, Phrase } from '@loomcli/core';
+import type { CommandGraph, ContextualStyle, Host, Phrase, ViewContext } from '@loomcli/core';
 
 import { loggingFiles, resolveLoggingFiles } from '../logging/extension.js';
+import { localizedNotes, phrasedNotes } from '../phrased-notes.js';
 import type { Reading } from './backend.js';
 import { servicePhrase } from './phrases.js';
 import type { ServiceDetail, ServiceState, ServiceStatus } from './types.js';
@@ -13,13 +14,6 @@ const gutter = 2;
 
 /** The rows' indent under the first line. */
 const indent = '  ';
-
-/**
- * The phrases behind each status's `notes`, keyed by that array, which a status keeps through the
- * spread that adds its rows, so the text view renders each note in the run's language while the
- * result keeps its English text.
- */
-const notePhrases = new WeakMap<readonly string[], readonly Phrase[]>();
 
 /** A logging fact with no files leaves console capture to the manager. */
 const emptyFiles = 0;
@@ -33,8 +27,6 @@ interface Subject {
 
 /** The state status reports, its members in the order the type lists them. */
 function stateOf({ label, unit, installed }: Subject, reading: Reading): ServiceState {
-  const notes = reading.notes.map((note) => note.text);
-  notePhrases.set(notes, reading.notes);
   return {
     label,
     unit,
@@ -42,7 +34,7 @@ function stateOf({ label, unit, installed }: Subject, reading: Reading): Service
     running: reading.running,
     state: reading.state,
     ...(reading.pid === undefined ? {} : { pid: reading.pid }),
-    notes,
+    notes: phrasedNotes(reading.notes),
   };
 }
 
@@ -103,9 +95,6 @@ function logsOf(graph: CommandGraph, host: Host, hasOutput: boolean): ServiceSta
   };
 }
 
-/** The English text of a phrase, for a render that has no run's language. */
-const englishOf = (phrase: Phrase): string => phrase.text;
-
 /** The summary after the label: running with its pid, running, or the state word. */
 function summaryOf(status: ServiceStatus): string {
   if (!status.running) {
@@ -120,18 +109,15 @@ function summaryOf(status: ServiceStatus): string {
  * paths are escaped, and file paths are kept whole for line breaking; the probe's names and
  * values are printed as the author gives them.
  */
-function statusText(
-  status: Readonly<ServiceStatus>,
-  style: ContextualStyle,
-  localize: (phrase: Phrase) => string = englishOf,
-): string {
+function statusText(status: Readonly<ServiceStatus>, context: ViewContext): string {
+  const { localize, style } = context;
   const quoted = (text: string) => style.escape(escapeControlCharacters(text));
   const rows: (readonly [string, string])[] = [
     [localize(servicePhrase('unitLabel')), nowrap(quoted(status.unit))],
     ...outputRows(status.output, style, localize),
     ...logRows(status.logs, style, localize),
     ...status.details.map(({ name, value }): readonly [string, string] => [name, value]),
-    ...notesOf(status.notes, localize).map((note): readonly [string, string] => [
+    ...localizedNotes(status.notes, context).map((note): readonly [string, string] => [
       localize(servicePhrase('noteLabel')),
       quoted(note),
     ]),
@@ -142,15 +128,6 @@ function statusText(
     ([name, value]) => `${indent}${name}${' '.repeat(column - width(name))}${value}`,
   );
   return `${[`${quoted(status.label)}: ${quoted(summaryOf(status))}`, ...lines].join('\n')}\n`;
-}
-
-/** The notes as text for a person: each phrase in the run's language, else the note's own text. */
-function notesOf(
-  notes: readonly string[],
-  localize: (phrase: Phrase) => string,
-): readonly string[] {
-  const phrases = notePhrases.get(notes);
-  return phrases === undefined ? notes : phrases.map((phrase) => localize(phrase));
 }
 
 /** The redirected stdout and stderr file gets a row when configured. */
