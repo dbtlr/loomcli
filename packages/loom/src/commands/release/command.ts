@@ -1,6 +1,7 @@
 import { Command } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
+import { loomConfig } from '../../helpers/loom-config.js';
 import { useHttpUrl, useWholeNumber } from '../../helpers/messages.js';
 
 /*
@@ -160,6 +161,7 @@ export const releaseRecord = new Command('record', {
 
 export const releaseFormula = new Command('formula', {
   description: 'Write a Homebrew formula for a published release.',
+  uses: [loomConfig],
 })
   .option('checksums', {
     description: "Read the release's SHA256SUMS from this file.",
@@ -172,7 +174,8 @@ export const releaseFormula = new Command('formula', {
     type: 'string',
   })
   .option('name', {
-    description: 'Use the application name passed to loom build --name.',
+    description:
+      'Use this application name instead of loom.config.json name or package.json bin, as loom build does.',
     type: 'string',
   })
   .action(async (context) => {

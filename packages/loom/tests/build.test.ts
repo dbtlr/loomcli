@@ -922,6 +922,38 @@ test.each([
   });
 });
 
+/** A package with the bin `probe` whose `loom.config.json` holds the supplied configuration. */
+function namedPackage(config: unknown) {
+  return probePackage(
+    { bin: { probe: 'dist/main.js' }, repository: 'acme/probe' },
+    { 'loom.config.json': `${JSON.stringify(config)}\n` },
+  );
+}
+
+test('the name key of loom.config.json names the release asset in --facts and --define, and --name beats it', async () => {
+  const root = namedPackage({ name: 'alternate' });
+  const facts = await printed(root, ['--target', 'bun-linux-x64', '--release', '--facts']);
+  expect(JSON.parse(facts).release.asset).toBe('alternate-linux-x64');
+  await expect(
+    printed(root, ['--target', 'bun-linux-x64', '--release', '--define']),
+  ).resolves.toContain('"asset":"alternate-linux-x64"');
+  const overridden = await printed(root, [
+    '--target',
+    'bun-linux-x64',
+    '--release',
+    '--facts',
+    '--name',
+    'other',
+  ]);
+  expect(JSON.parse(overridden).release.asset).toBe('other-linux-x64');
+});
+
+test('with no name key the release asset still comes from the bin', async () => {
+  const root = namedPackage({});
+  const facts = await printed(root, ['--target', 'bun-linux-x64', '--release', '--facts']);
+  expect(JSON.parse(facts).release.asset).toBe('probe-linux-x64');
+});
+
 test('--facts for a compile target prints compiled true with and without --release, and for node and bun prints none', async () => {
   const root = probePackage({ bin: { probe: 'dist/main.js' }, repository: 'acme/probe' });
   await expect(printed(root, ['--target', 'bun-linux-x64', '--facts'])).resolves.toBe(

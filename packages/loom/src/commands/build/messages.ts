@@ -106,7 +106,7 @@ function npmPackageNameInvalid(name: string): string {
 }
 
 function npmApplicationNameInvalid(name: string): string {
-  return `The application's name is "${escaped(name)}", which is not a portable name, and the npm packages hold the binary and the launcher's bin entry under it, so set --name or the package.json bin key to letters, digits, ".", "_", and "-", not starting with "-" or ".".`;
+  return `The application's name is "${escaped(name)}", which is not a portable name, and the npm packages hold the binary and the launcher's bin entry under it, so set --name, the name key of loom.config.json, or the package.json bin key to letters, digits, ".", "_", and "-", not starting with "-" or ".".`;
 }
 
 function npmFolderNotOwned(folder: string, pkg: string): string {

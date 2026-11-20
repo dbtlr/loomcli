@@ -1151,8 +1151,12 @@ A statement, signed through Sigstore, that a run of a GitHub Actions workflow bu
 _Avoid_: Signature (for the whole bundle), provenance (for the attestation), checksum
 
 **Release asset**:
-One platform's binary on an application's GitHub Release of the tag `v<version>`, named `<name>-<os>-<arch>`, with `-musl` for a musl Linux build, and listed with its digest in the release's `SHA256SUMS`. The installer script and self-update read this shape, and each repository's own release workflow publishes it.
+One platform's binary on an application's GitHub Release of the tag `v<version>`, named `<name>-<os>-<arch>`, where `<name>` is the release name, with `-musl` for a musl Linux build, and listed with its digest in the release's `SHA256SUMS`. The installer script and self-update read this shape, and each repository's own release workflow publishes it.
 _Avoid_: Artifact, download
+
+**Release name**:
+The application's name in its release assets, `<name>-<os>-<arch>`, and in a release binary's default path: `loom build --name`, else the `name` key of `loom.config.json`, else the name `package.json` `bin` gives. The Homebrew formula and the npm target install the command under it; the installer script requests its asset by it and installs under the name `loom init` scaffolds with.
+_Avoid_: Binary name, asset prefix
 
 **Homebrew formula**:
 A Ruby file in a Homebrew tap that describes how to install and test an application. `loom release formula` renders it from the release's package metadata and the checksums of the macOS and glibc Linux release assets.

@@ -338,7 +338,7 @@ async function buildNpmPackages({ config, cwd, options, run }: NpmRequest) {
   if (!isNpmPackageName(pkg)) {
     throw new NpmPackageNameError(pkg);
   }
-  const appName = applicationName(manifest, options.name);
+  const appName = applicationName(manifest, options.name ?? config.name);
   if (!isPortableName(appName)) {
     throw new NpmApplicationNameError(appName);
   }
@@ -349,7 +349,7 @@ async function buildNpmPackages({ config, cwd, options, run }: NpmRequest) {
       facts: buildFacts({
         build: 'distributed',
         manifest,
-        name: options.name,
+        name: options.name ?? config.name,
         release: { repository: options.repository },
         target: platformTarget(platform),
       }),
@@ -388,7 +388,7 @@ async function buildNpmPackages({ config, cwd, options, run }: NpmRequest) {
     run,
   );
   const warning = outcome.uncarriedSkillsPlugin
-    ? uncarriedWarning(warningName(manifest, options.name, directory), skills)
+    ? uncarriedWarning(warningName(manifest, options.name ?? config.name, directory), skills)
     : undefined;
   return { out, warning };
 }
@@ -438,10 +438,12 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
     const directory = packageDirectory(cwd);
     const manifest = readManifest(directory);
     const target = options.target ?? hostTarget(host);
+    // The release name: `--name`, else the configuration's `name`, else the bin, under ADR-0214.
+    const releaseName = options.name ?? provided.config.name;
     const facts = buildFacts({
       build: options.build ?? (options.watch ? 'development' : 'distributed'),
       manifest,
-      name: options.name,
+      name: releaseName,
       release: options.release ? { repository: options.repository } : undefined,
       target,
     });
@@ -458,7 +460,7 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
     const application = named === entry ? undefined : named;
     separateEntryFiles(cwd, entry, application);
     const output = outputPath(cwd, paths, target, {
-      name: () => applicationName(manifest, options.name),
+      name: () => applicationName(manifest, releaseName),
       out: options.out,
     });
     const run = { host, onShutdown, signal };
@@ -476,7 +478,7 @@ export const buildApplication: ActionHandler<typeof buildCommand> = async ({
       return '';
     }
     if (outcome.uncarriedSkillsPlugin) {
-      await out.warn(uncarriedWarning(warningName(manifest, options.name, directory), skills));
+      await out.warn(uncarriedWarning(warningName(manifest, releaseName, directory), skills));
     }
     return `${built(shown(cwd, output), target.name)}\n`;
   });

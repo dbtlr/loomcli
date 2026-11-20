@@ -1,3 +1,4 @@
+import { releaseAssetName } from '../helpers/build-facts.js';
 import type { PostInstall } from '../helpers/loom-config.js';
 
 /** A value as one single-quoted shell word, so the script reads it back byte for byte. */
@@ -169,7 +170,9 @@ mv -f "$staging" "$record/install.json"
 
 /**
  * The installer script `loom init` manages at `install.sh`, without its header, for the
- * application's name and the GitHub repository, `owner/name`, it installs releases from. Every
+ * application's name and the GitHub repository, `owner/name`, it installs releases from. The
+ * optional release name, from `loom.config.json` under ADR-0214, names the asset it requests; the
+ * installed file, the record, and the sentences keep the application's name. Every
  * step is a function the last line calls inside braces, so a download `curl | sh` cuts short,
  * even within that line, runs nothing. Each downloader writes to stdout, which the shell redirects
  * into the staging file, so a downloader that cannot write hidden paths itself still works. It
@@ -180,10 +183,16 @@ export function installerScript(
   name: string,
   repository: string,
   postInstall?: PostInstall,
+  releaseName?: string,
 ): string {
   const words = postInstall?.command;
   const message = postInstall?.message;
   const skips = words !== undefined;
+  // The asset is `$app-$platform` unless the release has another name, which renders as a quoted word.
+  const assetLine =
+    releaseName === undefined || releaseName === name
+      ? '$app-$platform'
+      : releaseAssetName(shellWord(releaseName), '$platform');
   // Each part of the post-install step is empty where the application declares no such member.
   const step = {
     functions: `${words === undefined ? '' : postInstallFunctions(words)}${message === undefined ? '' : printMessage}`,
@@ -312,7 +321,7 @@ detect_platform() {
       ;;
     *) unsupported_platform ;;
   esac
-  asset=$app-$platform
+  asset=${assetLine}
 }
 
 is_gnu_wget() {

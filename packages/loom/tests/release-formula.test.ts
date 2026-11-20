@@ -49,6 +49,53 @@ test('renders a Homebrew formula for all four release assets', async () => {
   expect(readFileSync(join(root, 'loom-notes.rb'), 'utf8')).toBe(fixture('loom-notes.rb'));
 });
 
+/** A release package whose `loom.config.json` and `SHA256SUMS` name the asset `alternate`. */
+function alternatePackage(config: unknown) {
+  const sums = fixture('SHA256SUMS').replaceAll('loom-notes-', 'alternate-');
+  const root = releasePackage(sums);
+  put(root, 'loom.config.json', `${JSON.stringify(config)}\n`);
+  return root;
+}
+
+test('the name key of loom.config.json names the formula assets and the installed command', async () => {
+  const root = alternatePackage({ name: 'alternate' });
+  await expect(formula(root)).resolves.toMatchObject({ status: 0, stderr: '' });
+  const written = readFileSync(join(root, 'loom-notes.rb'), 'utf8');
+  expect(written).toBe(
+    fixture('loom-notes.rb')
+      .replaceAll('loom-notes-', 'alternate-')
+      .replace('=> "loom-notes"', '=> "alternate"')
+      .replace('bin/"loom-notes"', 'bin/"alternate"'),
+  );
+});
+
+test('--name beats the name key in the formula', async () => {
+  const root = alternatePackage({ name: 'ignored' });
+  const cwd = join(root, 'release');
+  await expect(
+    run(
+      [
+        'release',
+        'formula',
+        '--checksums',
+        'SHA256SUMS',
+        '--output',
+        '../out.rb',
+        '--name',
+        'alternate',
+      ],
+      { ceiling: root, cwd },
+    ),
+  ).resolves.toMatchObject({ status: 0, stderr: '' });
+  expect(readFileSync(join(root, 'out.rb'), 'utf8')).toContain('alternate-linux-x64');
+});
+
+test('a name the configuration rejects fails the formula with code 2', async () => {
+  const root = alternatePackage({ name: 'a/b' });
+  await expect(formula(root)).resolves.toMatchObject({ status: 2 });
+  expect(existsSync(join(root, 'loom-notes.rb'))).toBe(false);
+});
+
 test('names a missing glibc asset and leaves the previous formula in place', async () => {
   const sums = fixture('SHA256SUMS')
     .split('\n')
