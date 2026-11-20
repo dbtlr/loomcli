@@ -203,6 +203,28 @@ test('the output row localizes its label and the file absence', () => {
   );
 });
 
+test('the text view keeps each log row whole for line breaking, a missing file included', () => {
+  const status = statusOf(
+    stateOf(
+      { installed: true, label: 'l.m', unit: '/u' },
+      { notes: [], running: false, state: 'inactive' },
+    ),
+    [],
+    {
+      logs: {
+        files: [
+          { exists: true, path: '/logs/my notes.jsonl' },
+          { exists: false, path: '/logs/debug.jsonl' },
+        ],
+        kind: 'files',
+      },
+    },
+  );
+  expect(statusText(status, english)).toBe(
+    `l.m: inactive\n  unit  ${nowrap('/u')}\n  log   ${nowrap('/logs/my notes.jsonl')}\n  log   ${nowrap('/logs/debug.jsonl (no records yet)')}\n`,
+  );
+});
+
 test('the status members keep the order the type lists them, with no pid when none is reported', () => {
   const withPid = statusOf(
     stateOf(
