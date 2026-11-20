@@ -421,7 +421,7 @@ test('the cut reads no key of the loom.config.json at the repository root, and k
   expect(readdirSync(root)).not.toContain('docs');
 });
 
-test('lockfile preparation failure leaves the original repository unchanged', async () => {
+test('an invalid YAML lockfile leaves the original repository unchanged', async () => {
   const root = repository();
   put(root, '.changes/add.md', '- Add input.\n');
   put(root, 'pnpm-lock.yaml', 'invalid: [\n');
@@ -430,6 +430,27 @@ test('lockfile preparation failure leaves the original repository unchanged', as
   expect(runResult.status).toBe(1);
   expect(git(root, ['status', '--porcelain'])).toBe('');
   expect(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')).toBe('invalid: [\n');
+});
+
+test('a nonzero pnpm exit is reported even when the staged lockfile can be read', async () => {
+  const root = repository();
+  const lockfile = 'lockfileVersion: "9.0"\n';
+  put(root, '.changes/add.md', '- Add input.\n');
+  put(root, 'pnpm-lock.yaml', lockfile);
+  commit(root);
+
+  const result = await run(['release', 'cut'], {
+    cwd: root,
+    pnpm: () => ({ code: 1, stderr: 'The registry is unavailable.\n' }),
+  });
+  expect(result).toEqual({
+    status: 1,
+    stderr: expect.stringContaining(
+      'Lockfile preparation failed, so fix what pnpm reported and run loom release cut again:\nThe registry is unavailable.\n',
+    ),
+    stdout: '',
+  });
+  expect(git(root, ['status', '--porcelain'])).toBe('');
 });
 
 test('the cut supports pnpm multi-document lockfiles and preserves earlier releases', async () => {
