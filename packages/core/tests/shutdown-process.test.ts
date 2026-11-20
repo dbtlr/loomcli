@@ -71,7 +71,9 @@ function onTerminal(scenario: string) {
       '-c',
       [
         `before=$(${ttyModes})`,
-        '"$0" "$1" "$2"',
+        // A scenario that ends by SIGQUIT dumps no core, as under noCoreDump below.
+        'if command -v prlimit >/dev/null 2>&1; then prlimit --core=1 "$0" "$1" "$2"',
+        'else ulimit -c 0; "$0" "$1" "$2"; fi',
         'echo "status=$?"',
         `echo "modes-before=$before"`,
         `echo "modes-after=$(${ttyModes})"`,
@@ -350,6 +352,59 @@ test('a message queued through out just before process.exit() mid-action prints 
     stdout: 'before:0,0,0,0,0\n',
   });
 });
+
+test.skipIf(zsh === undefined).each([
+  { scenario: 'stream-exit-log', status: 4, warning: '' },
+  { scenario: 'stream-exit-warn', status: 4, warning: '⚠ mid-stream warning\r\n' },
+  { scenario: 'stream-term', status: 143, warning: '' },
+  { scenario: 'stream-quit', status: 131, warning: '⚠ mid-stream warning\r\n' },
+])(
+  '$scenario finishes the colored print line before queued stderr writes',
+  async ({ scenario, status, warning }) => {
+    const terminal = onTerminal(scenario);
+    try {
+      const ended = await terminal.expect('@@DONE@@');
+      const normalized = ended
+        .replaceAll(/"time":"[^"]+"/gu, '"time":"<time>"')
+        .replaceAll(/"run":"[0-9a-f]{32}"/gu, '"run":"<run>"');
+      const record =
+        '{"time":"<time>","level":"info","message":"mid-stream","fields":{},' +
+        '"application":{"name":"app","version":"0.0.0"},"run":"<run>","path":[],"plugin":null}';
+      expect(normalized).toContain(
+        `part-a \u001B[31mred part-b\u001B[39m\r\n${warning}› mid-stream\r\n${record}\r\n`,
+      );
+      expect(normalized).toContain(`status=${status}\r\n`);
+    } finally {
+      await terminal.close();
+    }
+  },
+);
+
+test.skipIf(zsh === undefined).each(
+  [4, 5, 6, 7, 8].flatMap((hops) => [
+    { hops, piece: 'stream-exit-queued' },
+    { hops, piece: 'stream-exit-break-queued' },
+  ]),
+)(
+  'process.exit() $hops microtask hops after a held write ends the line before it ($piece)',
+  async ({ hops, piece }) => {
+    const terminal = onTerminal(`${piece}-${hops}`);
+    try {
+      const ended = await terminal.expect('@@DONE@@');
+      const lineStart = ended.indexOf('part-a \u001B[31mred');
+      const lineEnd = ended.indexOf('\u001B[39m\r\n', lineStart);
+      const held = ended.indexOf('› mid-stream', lineStart);
+      expect(lineStart).toBeGreaterThanOrEqual(0);
+      expect(held).toBeGreaterThan(lineEnd);
+      expect(lineEnd).toBeGreaterThan(lineStart);
+      // A piece the iterable had yielded before the exit stays inside its line.
+      expect(ended.slice(lineEnd)).not.toContain(' part-b');
+      expect(ended).toContain('status=4\r\n');
+    } finally {
+      await terminal.close();
+    }
+  },
+);
 
 test('an uncaught exception mid-action calls the pending handler with exit and the status', () => {
   const result = invoke(fixtureUrl, ['uncaught']);

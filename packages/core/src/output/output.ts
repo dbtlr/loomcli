@@ -156,6 +156,7 @@ interface Reservation {
 
 /** A streamed `print`'s hold on the terminal while its line is unfinished: its writes, and its end. */
 interface LineHold {
+  readonly endOrder: Queued['order'];
   write: (text: string, between: () => void) => Promise<void>;
   release: () => void;
 }
@@ -591,6 +592,8 @@ class Destination {
    */
   hold(shared: readonly Destination[]): LineHold {
     const all = [this, ...shared];
+    const place = this.ticket();
+    let pieceCount = 0;
     let pieces: Promise<void> = Promise.all(all.map(({ tail }) => tail)).then(() => undefined);
     let open: (pieces: Promise<void>) => void = unopened;
     const gate = new Promise<void>((resolve) => {
@@ -602,6 +605,9 @@ class Destination {
     }
     let released = false;
     return {
+      get endOrder(): Queued['order'] {
+        return [place, pieceCount + 1];
+      },
       release: () => {
         if (!released) {
           released = true;
@@ -612,7 +618,9 @@ class Destination {
         open(pieces);
       },
       write: (text, between) => {
-        const queued = this.queue([this.ticket(), 0], () => this.parts(text, between), {
+        pieceCount += 1;
+        // The line's pieces keep the hold's place, so an end writes them before the writes held behind it.
+        const queued = this.queue([place, pieceCount], () => this.parts(text, between), {
           composed: false,
           observed: true,
         });
@@ -778,6 +786,8 @@ interface OpenStream {
 interface LineWriter {
   /** The screen change one of its writes makes, if any. */
   change: (piece: Piece) => (() => void) | undefined;
+  /** Where the end of a held line goes, ahead of the writes waiting for it. */
+  readonly endOrder: Queued['order'] | undefined;
   /** Whether it holds the terminal while its `print` line is unfinished. */
   readonly holding: boolean;
   /** Queues one write. */
@@ -1636,6 +1646,9 @@ export class Output {
     };
     return {
       change: (piece) => this.pieceChange(slot, piece),
+      get endOrder() {
+        return hold?.endOrder;
+      },
       get holding() {
         return hold !== undefined;
       },
@@ -1696,15 +1709,15 @@ export class Output {
   }
 
   /**
-   * The rest of each open streamed message, for the process's end to write in its place: after its
-   * last write, as its end would write it, its unfinished row or last line and its one closing line
-   * break. Each message reads no further chunk, and a `print` gives up its hold on the terminal.
+   * The unfinished row or last line and its closing line break, for the process's end to write in
+   * place of the iterable's end. A held line ends before the writes waiting for it. Each message
+   * reads no further chunk, and a `print` gives up its hold on the terminal.
    */
   private streamEnds(): Queued[] {
     return [...this.streams].map((open) => ({
       composed: false,
       observed: false,
-      order: open.place.order,
+      order: open.line.endOrder ?? open.place.order,
       parts: [],
       start: () => {
         const parts = open.message

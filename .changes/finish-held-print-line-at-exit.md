@@ -1,0 +1,1 @@
+- Fix terminal output at process exit and at `SIGQUIT` so an unfinished streamed `print` line ends and resets its color before queued warnings, log lines, and records appear.

@@ -12,6 +12,8 @@ import {
   processHandle,
   provider,
 } from '@loomcli/core';
+import { logging } from '@loomcli/plugins/logging';
+import { verbose } from '@loomcli/plugins/verbose';
 
 /**
  * The shutdown on a real process, one scenario per run: `process.argv[2]` names it. Every line is
@@ -42,6 +44,51 @@ function cancelled(signal) {
       { once: true },
     );
   });
+}
+
+/**
+ * Calls `process.exit(4)` after the given number of microtask hops, so the exit can land while a
+ * piece of the held line is queued and its turn has not begun.
+ */
+function exitAfterHops(hops) {
+  let hop = Promise.resolve();
+  for (let count = 0; count < hops; count += 1) {
+    hop = hop.then(() => undefined);
+  }
+  void hop.then(() => process.exit(4));
+}
+
+/** Ends while a streamed print holds a terminal line with an open foreground color. */
+async function endDuringPrint(scenario) {
+  const app = new Application('app', {
+    plugins: [logging({ level: 'info', to: 'console' }), verbose()],
+  }).action(async ({ log, out, signal }) => {
+    async function* chunks() {
+      yield 'part-a \u001B[31mred';
+      if (scenario === 'stream-exit-warn' || scenario === 'stream-quit') {
+        void out.warn('mid-stream warning');
+      }
+      log.info('mid-stream');
+      const queued = /^stream-exit-(?:break-)?queued-(?<hops>\d+)$/u.exec(scenario);
+      if (queued !== null) {
+        exitAfterHops(Number(queued.groups.hops));
+      }
+      yield scenario.startsWith('stream-exit-break-queued-') ? ' part-b\n' : ' part-b';
+      if (scenario === 'stream-term') {
+        process.kill(process.pid, 'SIGTERM');
+        await cancelled(signal);
+      } else if (scenario === 'stream-quit') {
+        process.kill(process.pid, 'SIGQUIT');
+        await cancelled(signal);
+      } else if (queued !== null) {
+        await cancelled(signal);
+      } else {
+        process.exit(4);
+      }
+    }
+    await out.print(chunks());
+  });
+  await app.run({ process: processHandle({ argv: ['-v'] }) });
 }
 
 /** How many listeners the process holds for each ending signal and for its own end, in order. */
@@ -281,6 +328,8 @@ if (scenario === 'two-copies') {
   });
   line(`ready:${suspending()}:${ending()}`);
   await holdOpen();
+} else if (scenario.startsWith('stream-')) {
+  await endDuringPrint(scenario);
 } else {
   line(`before:${ending()}`);
   const app = await scenarios[scenario]();
