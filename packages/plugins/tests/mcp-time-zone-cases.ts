@@ -1,10 +1,15 @@
 import { resolveTimeZone } from '@loomcli/core';
 
 /** Calls shared by both transports, including an omitted input that takes its declared default. */
-const timeZoneCalls: readonly { zone?: unknown; at?: string; output?: string }[] = [
+const timeZoneCalls: readonly {
+  zone?: unknown;
+  arguments?: Record<string, string>;
+  output?: string;
+  error?: string;
+}[] = [
   { output: 'UTC 2026-09-25T14:30:00.000Z\n' },
   {
-    at: '2026-09-25T14:30:00',
+    arguments: { at: '2026-09-25T14:30:00' },
     output: 'Asia/Tokyo 2026-09-25T05:30:00.000Z\n',
     zone: 'Asia/Tokyo',
   },
@@ -14,6 +19,11 @@ const timeZoneCalls: readonly { zone?: unknown; at?: string; output?: string }[]
     zone: 'US/Eastern',
   },
   { zone: 'Mars/Olympus' },
+  {
+    arguments: { extra: 'unused' },
+    error: 'Tool "stamp" takes no argument "extra". Use a property its input schema lists.',
+    zone: 'Mars/Olympus',
+  },
   { zone: '+09:00' },
   { zone: `${String.fromCodePoint(8722)}09:00` },
   { zone: null },

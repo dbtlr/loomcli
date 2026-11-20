@@ -566,7 +566,7 @@ test.each(['2026-07-28', '2025-11-25', '2025-06-18'])(
             method: 'tools/call',
             params: {
               _meta: requestMeta,
-              arguments: call.at === undefined ? {} : { at: call.at },
+              arguments: call.arguments ?? {},
               name: 'stamp',
             },
           },
@@ -585,7 +585,7 @@ test.each(['2026-07-28', '2025-11-25', '2025-06-18'])(
       expect(message.id).toBe(id);
       const result = Object(message.result);
       expect(result).toMatchObject({
-        content: [{ text: call.output ?? invalidTimeZone, type: 'text' }],
+        content: [{ text: call.output ?? call.error ?? invalidTimeZone, type: 'text' }],
         isError: call.output === undefined,
       });
       expect(result).not.toHaveProperty('structuredContent');
