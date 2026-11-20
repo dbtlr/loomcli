@@ -289,6 +289,8 @@ declare function valuesNoun(arity: number): string;
 
 declare function pathBlocked(path: string): string;
 
+declare function readUnreadable(path: string): string;
+
 declare function writeUnwritable(path: string, readOnly: boolean): string;
 
 declare function badFile(name: string, value: string): string;

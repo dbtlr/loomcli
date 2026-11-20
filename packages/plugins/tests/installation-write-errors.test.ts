@@ -93,6 +93,16 @@ async function readOnly<Result>(path: string, check: () => Promise<Result>): Pro
   }
 }
 
+/** Runs `check` with the folder at `path` unsearchable, so nothing below it can be reached. */
+async function unsearchable<Result>(path: string, check: () => Promise<Result>): Promise<Result> {
+  chmodSync(path, 0o600);
+  try {
+    return await check();
+  } finally {
+    chmodSync(path, 0o755);
+  }
+}
+
 /** Every file below `folder` with its content, which a failed run must leave as it found it. */
 function contents(folder: string): Record<string, string> {
   const found: Record<string, string> = {};
@@ -109,6 +119,9 @@ const blocked = (path: string) =>
   `Cannot reach ${path} because a file sits where one of its folders is needed. Remove or rename that file, then run the command again.\n`;
 const unwritable = (path: string) =>
   `Cannot write ${path} because you do not have permission to write there. Make the location writable, then run the command again.\n`;
+
+const unreadable = (path: string) =>
+  `Cannot read ${path} because you do not have permission to reach or read it. Make it readable, then run the command again.\n`;
 
 /** The failure a run ends with, and nothing on stdout. */
 const failure = (stderr: string) => ({ status: 1, stderr, stdout: '' });
@@ -199,6 +212,24 @@ describe('service', () => {
 
     expect(result).toEqual(failure(unwritable(unitPath(box))));
     expect(readdirSync(unitFolder(box))).toEqual([]);
+  });
+
+  it.skipIf(isRoot)('install names the unit its config folder will not let it reach', async () => {
+    const box = sandbox();
+
+    const result = await unsearchable(box.config, () => runService(box, ['install']));
+
+    expect(result).toEqual(failure(unreadable(unitPath(box))));
+    expect(existsSync(serviceRecord(box))).toBe(false);
+  });
+
+  it.skipIf(isRoot)('install names the record its state folder will not let it reach', async () => {
+    const box = sandbox();
+
+    const result = await unsearchable(box.state, () => runService(box, ['install']));
+
+    expect(result).toEqual(failure(unreadable(serviceRecord(box))));
+    expect(existsSync(join(box.config, 'systemd'))).toBe(false);
   });
 
   it('install names the record when a file holds the place of its folder', async () => {

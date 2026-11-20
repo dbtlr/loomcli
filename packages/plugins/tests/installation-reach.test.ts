@@ -81,7 +81,13 @@ describe('reading', () => {
     expect(() => reading(path, failing('ENOTDIR'))).toThrow(blocked(path));
   });
 
-  it.each(['ENOENT', 'EEXIST', 'EACCES'])('passes %s through as it was thrown', (code) => {
+  it.each(['EACCES', 'EPERM'])('says the path cannot be reached or read for %s', (code) => {
+    expect(() => reading(path, failing(code))).toThrow(
+      new FatalError(installationPhrase('readUnreadable', path)),
+    );
+  });
+
+  it.each(['ENOENT', 'EEXIST', 'EROFS'])('passes %s through as it was thrown', (code) => {
     expect(() => reading(path, failing(code))).toThrow(expect.objectContaining({ code }));
   });
 });

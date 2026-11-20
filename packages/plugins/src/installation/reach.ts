@@ -17,16 +17,21 @@ function blocked(path: string): FatalError {
 }
 
 /**
- * Runs a read or a removal at `path` and turns the system error that says a file sits where one of
- * its folders is needed into a failure that names the path and a step, so the module never reads a
- * path below a file as gone. Any other error passes through.
+ * Runs a read at `path` and turns the system error that says a file sits where one of its folders
+ * is needed, or that the run's user may not reach or read it, into a failure that names the path
+ * and a step, so the module never reads a path below a file as gone. Any other error passes
+ * through.
  */
 function reading<Result>(path: string, read: () => Result): Result {
   try {
     return read();
   } catch (error) {
-    if (errorCode(error) === 'ENOTDIR') {
+    const code = errorCode(error);
+    if (code === 'ENOTDIR') {
       throw blocked(path);
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      throw new FatalError(installationPhrase('readUnreadable', path));
     }
     throw error;
   }
