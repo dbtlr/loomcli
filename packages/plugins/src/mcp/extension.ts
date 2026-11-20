@@ -182,3 +182,6 @@ export const mcpArgument: Extension<
 });
 
 export type { McpAnnotations, McpArgumentFacts, McpCommandFacts, McpInputFacts };
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

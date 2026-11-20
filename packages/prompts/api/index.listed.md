@@ -44,4 +44,104 @@ type LinkedChoices<Key, Argument> = [
 };
 
 type StringValue<Value> = unknown extends Value ? string : Extract<Value, string>;
+
+declare const answerFileRemoved = "The editor removed the answer's file. Save the answer before you close the editor.";
+
+declare function answerFileUnreadable(code: string): string;
+
+declare const answerNotUtf8 = "The saved answer is not UTF-8 text. Save it as UTF-8.";
+
+declare const cancelled = "cancelled";
+
+declare function choiceIssue(label: string, issueSentence: string): string;
+
+declare function chooseAtLeast(min: number): string;
+
+declare function chooseAtMost(max: number): string;
+
+declare const disabled = "disabled";
+
+declare function editorAdditionalLines(count: number): string;
+
+declare function editorExited(editor: string, status: number): string;
+
+declare function editorFileUnwritable(folder: string, code: string): string;
+
+declare function editorNotStarted(editor: string): string;
+
+declare const editorOpen = "Press Enter to open your editor";
+
+declare const editorWaiting = "Waiting for your editor to close the file";
+
+declare const empty = "empty";
+
+declare const enterNumber = "Enter a number";
+
+declare const enterNumbers = "Enter numbers separated by commas";
+
+declare const hoursUnit = "h";
+
+declare function interactionUnavailable(question: string, command: string): string;
+
+declare const invalidAnswer = "The answer is invalid.";
+
+declare function logLinesDropped(dropped: number): string;
+
+declare const minutesUnit = "m";
+
+declare function moreChoices(count: number): string;
+
+declare const multiselectKeys = "\u2191\u2193 move \u00B7 Space toggle \u00B7 Enter submit";
+
+declare const multiselectSearchKeys = "\u2191\u2193 move \u00B7 Tab toggle \u00B7 Enter submit";
+
+declare const multiselectSearchShortKeys = "\u2191\u2193 Tab Enter";
+
+declare const multiselectShortKeys = "\u2191\u2193 Space Enter";
+
+declare const noAnswer = "no";
+
+declare const noChoiceAvailable = "No choice can be selected";
+
+declare const noMatches = "No matches";
+
+declare const noSelectableChoice = "No choice can be selected. Change the search.";
+
+declare const none = "none";
+
+declare function overLimit(values: readonly unknown[], max: number): string;
+
+declare const perHour = "/h";
+
+declare const perMinute = "/min";
+
+declare const perSecond = "/s";
+
+declare const refineSearch = "Enter a number, or text to search again";
+
+declare const search = "Search";
+
+declare const searching = "Searching";
+
+declare const secondsUnit = "s";
+
+declare const selectKeys = "\u2191\u2193 move \u00B7 Enter select";
+
+declare const selectSearchKeys = "\u2191\u2193 move \u00B7 type to search \u00B7 Enter select";
+
+declare const selectShortKeys = "\u2191\u2193 Enter";
+
+declare function selectedCount(count: number, max: number | undefined): string;
+
+declare function timeRemaining(span: string): string;
+
+declare function typeNumbers(highest: number): string;
+
+declare function typeOneNumber(highest: number): string;
+
+declare function unselectable(values: readonly unknown[]): string;
+
+declare const yesAnswer = "yes";
+
+declare const yesOrNo = "Type y or n.";
 ```

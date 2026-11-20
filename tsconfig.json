@@ -25,6 +25,8 @@
     "node_modules",
     "examples/jsonkit/**",
     "packages/core/tests/type-consumer/**",
+    "packages/validators/tests/type-consumer/**",
+    "packages/prompts/tests/type-consumer/**",
     "packages/core/tests/runtime-consumer/registered/**"
   ]
 }

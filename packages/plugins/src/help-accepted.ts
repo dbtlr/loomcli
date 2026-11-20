@@ -1,11 +1,12 @@
 import { readExtension } from '@loomcli/core';
-import type { ArgumentNode, OptionNode } from '@loomcli/core';
+import type { ArgumentNode, OptionNode, Phrase } from '@loomcli/core';
 
 import { closedSet } from './closed-set.js';
 import type { Schema } from './closed-set.js';
 import { escapeControls } from './encode.js';
 import { oneLine } from './help-cells.js';
 import { helpArgument, helpInput } from './help/extension.js';
+import { helpPhrase } from './help/phrases.js';
 import { terminator } from './lines.js';
 
 /** The most values a derived list names; a larger set is the author's to state with `accepts`. */
@@ -30,21 +31,26 @@ function listed(value: string): string {
  * eight distinct strings. A multiple option or a variadic argument publishes the schema of each
  * value, so it derives the same way. Anything else derives nothing.
  */
-function derived(schema: Schema | null): string | undefined {
+function derived(schema: Schema | null): Phrase | undefined {
   const distinct = closedSet(schema) ?? [];
   const [first] = distinct;
   if (first === undefined || distinct.length > maximumValues) {
     return undefined;
   }
-  return `One of: ${distinct.map((value) => listed(value)).join(', ')}.`;
+  return helpPhrase('acceptedValues', distinct.map((value) => listed(value)).join(', '));
+}
+
+/** A sentence's English text, as the man page and a command reference print it. */
+function englishOf(sentence: string | Phrase | undefined): string | undefined {
+  return typeof sentence === 'object' ? sentence.text : sentence;
 }
 
 /**
  * The accepted-values sentence one option's row prints: its authored `accepts`, which always
- * wins, or the list derived from its schema. A Boolean or counted option takes no value and prints
- * none.
+ * wins and prints as declared, or the list derived from its schema, which help says in the run's
+ * language. A Boolean or counted option takes no value and prints none.
  */
-function optionAccepts(option: OptionNode): string | undefined {
+function optionAcceptsSaid(option: OptionNode): string | Phrase | undefined {
   if (option.type !== 'string' && option.type !== 'content') {
     return undefined;
   }
@@ -52,8 +58,18 @@ function optionAccepts(option: OptionNode): string | undefined {
 }
 
 /** The accepted-values sentence one argument's row prints, authored or derived as an option's is. */
-function argumentAccepts(argument: ArgumentNode): string | undefined {
+function argumentAcceptsSaid(argument: ArgumentNode): string | Phrase | undefined {
   return readExtension(argument, helpArgument)?.accepts ?? derived(argument.schema);
 }
 
-export { argumentAccepts, optionAccepts };
+/** An option's accepted-values sentence in English. */
+function optionAccepts(option: OptionNode): string | undefined {
+  return englishOf(optionAcceptsSaid(option));
+}
+
+/** An argument's accepted-values sentence in English. */
+function argumentAccepts(argument: ArgumentNode): string | undefined {
+  return englishOf(argumentAcceptsSaid(argument));
+}
+
+export { argumentAccepts, argumentAcceptsSaid, optionAccepts, optionAcceptsSaid };

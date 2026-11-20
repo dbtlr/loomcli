@@ -103,12 +103,12 @@ async function readYaml(text: string): Promise<Reading> {
   );
   const offset = faultOffset(parser.visit, document);
   if (offset !== undefined) {
-    return { at: positionAt(text, offset), clause: 'is not valid YAML.', kind: 'unusable' };
+    return { at: positionAt(text, offset), clause: 'invalid-yaml', kind: 'unusable' };
   }
   try {
-    return readingOf(document.toJS({ maxAliasCount: -1 }), 'does not hold a YAML mapping.');
+    return readingOf(document.toJS({ maxAliasCount: -1 }), 'not-yaml-mapping');
   } catch {
-    return { clause: 'is not valid YAML.', kind: 'unusable' };
+    return { clause: 'invalid-yaml', kind: 'unusable' };
   }
 }
 
@@ -137,3 +137,6 @@ async function readYaml(text: string): Promise<Reading> {
 export const yaml: ConfigurationReader = defineReader('YAML', readYaml);
 
 export type { ConfigurationReader, ReaderFormat } from './reading.js';
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

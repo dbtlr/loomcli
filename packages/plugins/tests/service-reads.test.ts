@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { readCall, readLimit } from '../src/service/manager.js';
 import type { Call, Manager } from '../src/service/manager.js';
-import { ranCall } from '../src/service/messages.js';
+import { ranCall } from '../src/service/wording.js';
 
 const call: Call = { args: ['--user', 'show'], program: 'systemctl', report: 'systemctl status' };
 

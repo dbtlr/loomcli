@@ -1,5 +1,5 @@
 import { applicationDirectory, FatalError } from '@loomcli/core';
-import type { Host, Log, OnShutdown } from '@loomcli/core';
+import type { Host, Log, OnShutdown, Phrase } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
 import { holdsControlCharacter } from '../control-character.js';
@@ -10,28 +10,8 @@ import type { CommittedFile } from '../installation/record.js';
 import { singleLineOf } from '../lines.js';
 import type { Backend, Service } from './backend.js';
 import { launchd } from './launchd.js';
-import {
-  fileGone,
-  fileKept,
-  noServiceToRemove,
-  platformUnsupported,
-  recordUnreadable,
-  removedFile,
-  restartedService,
-  serviceFromBuild,
-  serviceNotInstalled,
-  startedService,
-  stoppedService,
-  unitChanged,
-  unitHoldsControl,
-  unitHomeNotAbsolute,
-  unitNotRegular,
-  unitUnchanged,
-  unitUnrecorded,
-  unitUnrecordedUninstall,
-  wroteUnit,
-} from './messages.js';
 import type { Child } from './messages.js';
+import { servicePhrase } from './phrases.js';
 import { systemd } from './systemd.js';
 
 /** The unit file's mode whatever the umask, because launchd refuses a plist its group or others can write. */
@@ -50,8 +30,8 @@ interface ChildRun {
   /** The action's log, which records each file the child writes or removes. */
   readonly log: Log;
   readonly onShutdown: OnShutdown;
-  readonly info: (message: string) => Promise<void>;
-  readonly success: (message: string) => Promise<void>;
+  readonly info: (message: string | Phrase) => Promise<void>;
+  readonly success: (message: string | Phrase) => Promise<void>;
 }
 
 /** What the checks found: the run's service, its backend, its home, and its record directory. */
@@ -75,7 +55,7 @@ const backends: Readonly<Record<string, Backend>> = { darwin: launchd, linux: sy
 /** The run's user id, or the platform refusal where the process has none. */
 function userId(name: string, host: Host): number {
   if (host.uid === undefined) {
-    throw new FatalError(platformUnsupported(name, host.platform));
+    throw new FatalError(servicePhrase('platformUnsupported', name, host.platform));
   }
   return host.uid;
 }
@@ -95,7 +75,7 @@ function managerEnv(host: Host, uid: number): Host['env'] {
 function recordDirectory(run: ChildRun): string {
   const directory = applicationDirectory('installation', run.name, run.host);
   if ('variable' in directory) {
-    throw new FatalError(unitHomeNotAbsolute(run.name));
+    throw new FatalError(servicePhrase('unitHomeNotAbsolute', run.name));
   }
   return directory.path;
 }
@@ -104,7 +84,7 @@ function recordDirectory(run: ChildRun): string {
 function backendOf(run: ChildRun): Backend {
   const backend = backends[run.host.platform];
   if (backend === undefined) {
-    throw new FatalError(platformUnsupported(run.name, run.host.platform));
+    throw new FatalError(servicePhrase('platformUnsupported', run.name, run.host.platform));
   }
   return backend;
 }
@@ -113,7 +93,7 @@ function backendOf(run: ChildRun): Backend {
 function unitHome(run: ChildRun): string {
   const home = homeOf(run.host);
   if (home === undefined) {
-    throw new FatalError(unitHomeNotAbsolute(run.name));
+    throw new FatalError(servicePhrase('unitHomeNotAbsolute', run.name));
   }
   return home;
 }
@@ -143,7 +123,7 @@ function isPresent(path: string): boolean {
 function requireDistributed(run: ChildRun): void {
   const { build } = run.host.release;
   if (build !== 'distributed') {
-    throw new FatalError(serviceFromBuild(run.name, build));
+    throw new FatalError(servicePhrase('serviceFromBuild', run.name, build));
   }
 }
 
@@ -151,7 +131,9 @@ function requireDistributed(run: ChildRun): void {
 function recordedFiles(prepared: Prepared, child: Child): readonly CommittedFile[] {
   const read = readRecorded({ plugin: recordName, record: prepared.record });
   if (read.status === 'refused') {
-    throw new FatalError(recordUnreadable(prepared.run.name, read.refused.path, child));
+    throw new FatalError(
+      servicePhrase('recordUnreadable', prepared.run.name, read.refused.path, child),
+    );
   }
   return read.files;
 }
@@ -160,17 +142,17 @@ function recordedFiles(prepared: Prepared, child: Child): readonly CommittedFile
 function refusalOf(run: ChildRun, refusal: Refusal): Error {
   switch (refusal.reason) {
     case 'unrecorded': {
-      return new FatalError(unitUnrecorded(run.name, refusal.path));
+      return new FatalError(servicePhrase('unitUnrecorded', run.name, refusal.path));
     }
     case 'changed': {
-      return new FatalError(unitChanged(run.name, refusal.path));
+      return new FatalError(servicePhrase('unitChanged', run.name, refusal.path));
     }
     case 'damaged':
     case 'unknown-format': {
-      return new FatalError(recordUnreadable(run.name, refusal.path, 'install'));
+      return new FatalError(servicePhrase('recordUnreadable', run.name, refusal.path, 'install'));
     }
     default: {
-      return new FatalError(unitNotRegular(run.name, refusal.path));
+      return new FatalError(servicePhrase('unitNotRegular', run.name, refusal.path));
     }
   }
 }
@@ -192,7 +174,7 @@ function renderUnit(prepared: Prepared, words: readonly string[]): string {
   const description = singleLineOf(run.description) ?? run.name;
   const { program } = run.host;
   if ([...program, description, home].some(holdsControlCharacter)) {
-    throw new FatalError(unitHoldsControl(run.name));
+    throw new FatalError(servicePhrase('unitHoldsControl', run.name));
   }
   return prepared.backend.render({
     description,
@@ -214,10 +196,10 @@ function isUnchanged(unit: string, text: string, files: readonly CommittedFile[]
 /** States the recorded files the module removed, and those it kept because they changed. */
 async function reportRemovals(run: ChildRun, removals: Removals): Promise<void> {
   for (const path of removals.removed) {
-    await run.info(removedFile(path));
+    await run.info(servicePhrase('removedFile', path));
   }
   for (const path of removals.kept) {
-    await run.info(fileKept(run.name, path));
+    await run.info(servicePhrase('fileKept', run.name, path));
   }
 }
 
@@ -247,7 +229,7 @@ async function writeUnit(prepared: Prepared, text: string, files: readonly Commi
     refuse(run, outcome.refused);
     return;
   }
-  await run.info(wroteUnit(service.unit));
+  await run.info(servicePhrase('wroteUnit', service.unit));
   await reportRemovals(run, outcome);
 }
 
@@ -260,17 +242,21 @@ async function installChild(run: ChildRun, words: readonly string[]): Promise<vo
   const files = recordedFiles(prepared, 'install');
   refuse(run, targetRefusals([service.unit], files));
   const unchanged = isUnchanged(service.unit, text, files);
-  await (unchanged ? run.info(unitUnchanged(service.unit)) : writeUnit(prepared, text, files));
+  await (unchanged
+    ? run.info(servicePhrase('unitUnchanged', service.unit))
+    : writeUnit(prepared, text, files));
   await prepared.backend.install(service, !unchanged);
-  await run.success(startedService(run.label));
+  await run.success(servicePhrase('startedService', run.label));
 }
 
 /** The line one recorded file's removal states: removed, kept because it changed, or already gone. */
-function removalLine(run: ChildRun, path: string, removals: Removals): string {
+function removalLine(run: ChildRun, path: string, removals: Removals): Phrase {
   if (removals.removed.includes(path)) {
-    return removedFile(path);
+    return servicePhrase('removedFile', path);
   }
-  return removals.kept.includes(path) ? fileKept(run.name, path) : fileGone(path);
+  return removals.kept.includes(path)
+    ? servicePhrase('fileKept', run.name, path)
+    : servicePhrase('fileGone', path);
 }
 
 /** Stops every recorded unit, removes the recorded files, and states each one. */
@@ -282,7 +268,9 @@ async function removeUnits(prepared: Prepared, files: readonly CommittedFile[]):
   const outcome = uninstall({ log: run.log, plugin: recordName, record, signal: run.signal });
   if (outcome.status === 'refused') {
     const [refusal] = outcome.refused;
-    throw new FatalError(recordUnreadable(run.name, refusal?.path ?? record, 'uninstall'));
+    throw new FatalError(
+      servicePhrase('recordUnreadable', run.name, refusal?.path ?? record, 'uninstall'),
+    );
   }
   await backend.afterRemoval(service);
   for (const file of files) {
@@ -296,11 +284,11 @@ async function uninstallChild(run: ChildRun): Promise<void> {
   const { unit } = prepared.service;
   const files = recordedFiles(prepared, 'uninstall');
   if (isPresent(unit) && !files.some(({ path }) => path === unit)) {
-    throw new FatalError(unitUnrecordedUninstall(run.name, unit));
+    throw new FatalError(servicePhrase('unitUnrecordedUninstall', run.name, unit));
   }
   const [recorded] = files;
   await (recorded === undefined
-    ? run.success(noServiceToRemove(run.label))
+    ? run.success(servicePhrase('noServiceToRemove', run.label))
     : removeUnits(prepared, files));
 }
 
@@ -308,19 +296,25 @@ async function uninstallChild(run: ChildRun): Promise<void> {
 function installedService(run: ChildRun): Prepared {
   const prepared = prepare(run);
   if (!isPresent(prepared.service.unit)) {
-    throw new FatalError(serviceNotInstalled(run.name, run.label));
+    throw new FatalError(servicePhrase('serviceNotInstalled', run.name, run.label));
   }
   return prepared;
 }
 
 /** The line each control child states once its call succeeded. */
-const controlLines = { restart: restartedService, start: startedService, stop: stoppedService };
+const controlLines: Readonly<
+  Record<'restart' | 'start' | 'stop', 'restartedService' | 'startedService' | 'stoppedService'>
+> = {
+  restart: 'restartedService',
+  start: 'startedService',
+  stop: 'stoppedService',
+};
 
 /** `start`, `stop`, and `restart`: the manager's call for an installed unit, then its line. */
 async function control(run: ChildRun, verb: keyof typeof controlLines): Promise<void> {
   const { backend, service } = installedService(run);
   await backend[verb](service);
-  await run.success(controlLines[verb](run.label));
+  await run.success(servicePhrase(controlLines[verb], run.label));
 }
 
 export type { ChildRun, Prepared };

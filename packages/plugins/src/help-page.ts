@@ -1,9 +1,16 @@
 import { nowrap, readExtension } from '@loomcli/core';
-import type { CommandGraph, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
+import type {
+  CommandGraph,
+  CommandNode,
+  ContextualStyle,
+  OptionNode,
+  Phrase,
+  ViewContext,
+} from '@loomcli/core';
 
-import { argumentAccepts, optionAccepts } from './help-accepted.js';
+import { argumentAcceptsSaid, optionAcceptsSaid } from './help-accepted.js';
 import {
-  aliasLabels,
+  aliasLabelPhrases,
   aliasSeparator,
   argumentFacts,
   argumentForm,
@@ -22,9 +29,10 @@ import { hangLines, onTerminal, prose } from './help-layout.js';
 import { sectionBlocks } from './help-sections.js';
 import type { SectionMember } from './help-sections.js';
 import { helpCommand, helpInput } from './help/extension.js';
+import { helpPhrase } from './help/phrases.js';
 import type { HelpPage, HelpVariant } from './help/views.js';
 import { singleLineOf } from './lines.js';
-import { groupSentences } from './option-groups.js';
+import { groupPhrases } from './option-groups.js';
 import { continuation } from './text-lines.js';
 
 /**
@@ -102,7 +110,11 @@ function aliasLine(command: CommandNode, context: ViewContext): string[] {
     return [];
   }
   return labeled(
-    { label: aliasLabels(names).line, text: names.join(aliasSeparator), tone: 'dim' },
+    {
+      label: context.localize(aliasLabelPhrases(names).line),
+      text: names.join(aliasSeparator),
+      tone: 'dim',
+    },
     context,
   );
 }
@@ -131,9 +143,23 @@ function masthead(path: string, command: CommandNode, context: ViewContext): str
   const deprecation =
     deprecated === undefined
       ? []
-      : labeled({ label: 'Deprecated: ', text: deprecated, tone: 'warning' }, context);
+      : labeled(
+          {
+            label: context.localize(helpPhrase('deprecatedLabel')),
+            text: deprecated,
+            tone: 'warning',
+          },
+          context,
+        );
   const terminal = command.needsTerminal
-    ? labeled({ label: terminalNeed.label, text: terminalNeed.text, tone: 'dim' }, context)
+    ? labeled(
+        {
+          label: context.localize(terminalNeedPhrases.label),
+          text: context.localize(terminalNeedPhrases.text),
+          tone: 'dim',
+        },
+        context,
+      )
     : [];
   return [...opening, ...aliasLine(command, context), ...terminal, ...deprecation];
 }
@@ -191,8 +217,19 @@ function usageForms({ children, command, graph }: UsageSubject, writer: UsageWri
   return forms;
 }
 
-/** The line that says a Command needs a terminal, which help, the man page, and a command reference each show. */
-const terminalNeed = { label: 'Needs a terminal: ', text: 'stdin and stderr, outside CI.' };
+/** The line that says a Command needs a terminal, as phrases help says in the run's language. */
+const terminalNeedPhrases = {
+  label: helpPhrase('needsTerminalLabel'),
+  text: helpPhrase('needsTerminalText'),
+};
+
+/** The line that says a Command needs a terminal, in English, as the man page and a command reference show it. */
+const terminalNeed = { label: terminalNeedPhrases.label.text, text: terminalNeedPhrases.text.text };
+
+/** A fixed label of the page, said in the run's language and printed dim. */
+function dimLabel(phrase: Phrase, { localize, style }: ViewContext): string {
+  return style.dim(style.escape(localize(phrase)));
+}
 
 /** Whether the first usage form begins with a producer for required standalone input. */
 function needsProducer(command: CommandNode): boolean {
@@ -200,7 +237,8 @@ function needsProducer(command: CommandNode): boolean {
 }
 
 /** The USAGE block: one line per form, its words styled as the page styles them. */
-function usage(subject: UsageSubject, { style }: ViewContext): string[] {
+function usage(subject: UsageSubject, context: ViewContext): string[] {
+  const { style } = context;
   const forms = usageForms(subject, {
     path: (text) => style.highlight(style.escape(text)),
     spelling: (text) => style.highlight(style.escape(text)),
@@ -210,7 +248,7 @@ function usage(subject: UsageSubject, { style }: ViewContext): string[] {
   return isEmpty(forms)
     ? []
     : [
-        style.dim('USAGE'),
+        dimLabel(helpPhrase('usageHeading'), context),
         ...forms.map(
           (form) =>
             `  ${needsProducer(subject.command) && form === firstForm ? `${style.dim.italic('<producer>')} | ` : ''}${form}`,
@@ -257,6 +295,7 @@ function commands(
 ): string[][] {
   return sectionBlocks(
     {
+      labels: new Map([['COMMANDS', helpPhrase('commandsHeading')]]),
       order: commandHelp(command)?.commandSections,
       rows: commandMembers(children).map(({ fallback, path, row }) => ({
         fallback,
@@ -269,7 +308,10 @@ function commands(
 }
 
 /** The right cell of the `--` row that tells an operator how to pass a child's name as an argument. */
-const escapeDescription = 'Read every later word as an argument, even a command name.';
+const escapePhrase = helpPhrase('escapeDescription');
+
+/** The right cell of the `--` row in English, as the man page shows it. */
+const escapeDescription = escapePhrase.text;
 
 /**
  * Whether the page notes the `--` escape: the node declares an argument, holds a visible child
@@ -279,15 +321,41 @@ function notesEscape(command: CommandNode, children: readonly CommandNode[]): bo
   return !isEmpty(command.arguments) && !isEmpty(children) && !command.passthrough;
 }
 
+/** The parts of a right cell that are help's own sentences, which help says in the run's language. */
+interface SaidText {
+  readonly accepts?: Phrase | undefined;
+  readonly description?: Phrase;
+}
+
 /**
  * One ARGUMENTS row before a projection styles it: the left cell's literal lead and the word after
- * it that help prints dim and italic, and the right cell's text and facts.
+ * it that help prints dim and italic, and the right cell's text and facts, in English. A part of
+ * the text that is help's own sentence, not declared, is in `said` too as a phrase.
  */
 interface ArgumentRowParts {
   readonly lead: string;
   readonly word: string;
   readonly text: CellText;
   readonly facts: readonly Fact[];
+  readonly said: SaidText;
+}
+
+/** A sentence that is declared text or help's own phrase, split into its English and its phrase. */
+function sentenceParts(sentence: string | Phrase | undefined): {
+  readonly english: string | undefined;
+  readonly phrase: Phrase | undefined;
+} {
+  return typeof sentence === 'object'
+    ? { english: sentence.text, phrase: sentence }
+    : { english: sentence, phrase: undefined };
+}
+
+/** A right cell's text with help's own sentences said in the run's language. */
+function saidText(text: CellText, said: SaidText, { localize }: ViewContext): CellText {
+  return {
+    accepts: said.accepts === undefined ? text.accepts : localize(said.accepts),
+    description: said.description === undefined ? text.description : localize(said.description),
+  };
 }
 
 /**
@@ -301,22 +369,33 @@ function argumentRows({
   command: CommandNode;
   children: readonly CommandNode[];
 }): ArgumentRowParts[] {
-  const rows: ArgumentRowParts[] = command.arguments.map((argument) => ({
-    facts: argumentFacts(argument),
-    lead: '',
-    text: { accepts: argumentAccepts(argument), description: argument.description },
-    word: argument.name,
-  }));
+  const rows: ArgumentRowParts[] = command.arguments.map((argument) => {
+    const accepts = sentenceParts(argumentAcceptsSaid(argument));
+    return {
+      facts: argumentFacts(argument),
+      lead: '',
+      said: { accepts: accepts.phrase },
+      text: { accepts: accepts.english, description: argument.description },
+      word: argument.name,
+    };
+  });
   if (command.passthrough) {
     rows.push({
       facts: [],
       lead: '-- ',
+      said: {},
       text: { description: command.passthrough.description },
       word: '<args>...',
     });
   }
   if (notesEscape(command, children)) {
-    rows.push({ facts: [], lead: '--', text: { description: escapeDescription }, word: '' });
+    rows.push({
+      facts: [],
+      lead: '--',
+      said: { description: escapePhrase },
+      text: { description: escapeDescription },
+      word: '',
+    });
   }
   return rows;
 }
@@ -326,18 +405,25 @@ function args(
   context: ViewContext,
 ): string[] {
   const { style } = context;
-  const rows = argumentRows(subject).map(({ facts, lead, text, word }) => ({
+  const rows = argumentRows(subject).map(({ facts, lead, said, text, word }) => ({
     left: `${lead}${word === '' ? '' : style.dim.italic(style.escape(word))}`,
-    right: rightCell(text, facts, context),
+    right: rightCell(saidText(text, said, context), facts, context),
   }));
-  return isEmpty(rows) ? [] : [style.dim('ARGUMENTS'), ...column(rows, context)];
+  return isEmpty(rows)
+    ? []
+    : [dimLabel(helpPhrase('argumentsHeading'), context), ...column(rows, context)];
 }
 
 function optionRow(option: OptionNode, context: ViewContext): Row {
+  const accepts = sentenceParts(optionAcceptsSaid(option));
   return {
     left: optionCell(option, context),
     right: rightCell(
-      { accepts: optionAccepts(option), description: option.description },
+      saidText(
+        { accepts: accepts.english, description: option.description },
+        { accepts: accepts.phrase },
+        context,
+      ),
       pageOptionFacts(option),
       context,
     ),
@@ -372,6 +458,10 @@ function options(command: CommandNode, graph: CommandGraph, context: ViewContext
   const globalHeading = foldsGlobals(graph) ? 'OPTIONS' : 'GLOBAL OPTIONS';
   return sectionBlocks(
     {
+      labels: new Map([
+        ['GLOBAL OPTIONS', helpPhrase('globalOptionsHeading')],
+        ['OPTIONS', helpPhrase('optionsHeading')],
+      ]),
       order: commandHelp(command)?.optionSections,
       rows: optionMembers(command, { globalHeading, globals: graph.globals }).map(
         ({ fallback, path, row }) => ({ fallback, path, row: optionRow(row, context) }),
@@ -400,17 +490,20 @@ function exampleLines(name: string, example: Example, context: ViewContext): str
 function examples(graph: CommandGraph, command: CommandNode, context: ViewContext): string[] {
   const listed = commandHelp(command)?.examples ?? [];
   const lines = listed.flatMap((example) => exampleLines(graph.name, example, context));
-  return isEmpty(lines) ? [] : [context.style.dim('EXAMPLES'), ...lines];
+  return isEmpty(lines) ? [] : [dimLabel(helpPhrase('examplesHeading'), context), ...lines];
 }
 
 /**
- * One hint: `Run`, the command it names, and what that command shows. On a terminal the hint wraps
- * at the left margin, and the command sits in `nowrap`, so it stays on one line.
+ * One hint: the sentence the run's language says around the command it names. On a terminal the
+ * hint wraps at the left margin, and the command sits in `nowrap`, so it stays on one line.
  */
-function hint(command: string, rest: string, context: ViewContext): string[] {
-  const { style } = context;
+function hint(
+  command: string,
+  say: (named: string, style: ContextualStyle) => Phrase,
+  context: ViewContext,
+): string[] {
   const named = onTerminal(context) ? nowrap(command) : command;
-  return prose(`${style.dim('Run')} ${named} ${style.dim(rest)}`, { lead: '' }, context);
+  return prose(context.localize(say(named, context.style)), { lead: '' }, context);
 }
 
 /**
@@ -440,42 +533,57 @@ function hints(
     lines.push(
       ...hint(
         `${name} ${style.dim.italic('<command>')} ${style.highlight(spelling)}`,
-        'for command details.',
+        (named, said) => helpPhrase('childHint', named, said),
         context,
       ),
     );
   }
   if (variant === 'compact' && omitted) {
     lines.push(
-      ...hint(`${name} ${style.highlight('--help')}`, 'for details and examples.', context),
+      ...hint(
+        `${name} ${style.highlight('--help')}`,
+        (named, said) => helpPhrase('extendedHint', named, said),
+        context,
+      ),
     );
   }
   return lines;
 }
 
 /**
- * The plain text of the INPUT block's lines for a Command that declares a standalone stdin: the
+ * The INPUT block's lines for a Command that declares a standalone stdin, as phrases: the
  * description on one line, when it has one, the sentence that says whether stdin is required, and
  * the example line. A Command with no stdin has none.
  */
-function stdinParts(
+function stdinPhrases(
   command: CommandNode,
   graph: CommandGraph,
-): { summary: string | undefined; sentence: string; example: string } | undefined {
+): { summary: string | undefined; sentence: Phrase; example: Phrase } | undefined {
   const input = command.stdin;
   if (input === undefined) {
     return undefined;
   }
   return {
-    example: `Example: <producer> | ${pathOf(graph, command)}`,
-    sentence: `${input.required ? 'Required.' : 'Optional.'} Reads piped or redirected stdin. Terminal input is not accepted.`,
+    example: helpPhrase('stdinExample', pathOf(graph, command)),
+    sentence: helpPhrase(input.required ? 'stdinRequired' : 'stdinOptional'),
     summary: singleLineOf(input.description),
   };
 }
 
+/** The plain English text of the INPUT block's lines, as a command reference shows them. */
+function stdinParts(
+  command: CommandNode,
+  graph: CommandGraph,
+): { summary: string | undefined; sentence: string; example: string } | undefined {
+  const parts = stdinPhrases(command, graph);
+  return parts === undefined
+    ? undefined
+    : { example: parts.example.text, sentence: parts.sentence.text, summary: parts.summary };
+}
+
 function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewContext): string[] {
-  const { style } = context;
-  const parts = stdinParts(command, graph);
+  const { localize, style } = context;
+  const parts = stdinPhrases(command, graph);
   if (parts === undefined) {
     return [];
   }
@@ -484,19 +592,26 @@ function stdinInput(command: CommandNode, graph: CommandGraph, context: ViewCont
     parts.summary === undefined
       ? []
       : prose(style.primary(style.escape(parts.summary)), { lead: '  ' }, context);
+  const sentence = style.escape(localize(parts.sentence));
+  const example = style.escape(localize(parts.example));
   return [
-    style.dim('INPUT'),
+    dimLabel(helpPhrase('inputHeading'), context),
     ...description,
-    ...prose(style.primary(parts.sentence), { lead: '  ' }, context),
-    `  ${style.primary(style.escape(parts.example))}`,
+    ...prose(style.primary(sentence), { lead: '  ' }, context),
+    `  ${style.primary(example)}`,
   ];
 }
 
-/** Each option-group sentence is prose, so on a terminal it wraps and continues at its indent. */
+/**
+ * Each option-group sentence is prose, said in the run's language, so on a terminal it wraps and
+ * continues at its indent.
+ */
 function groupLines(command: CommandNode, context: ViewContext): string[] {
-  return groupSentences(command).flatMap((sentence) =>
-    prose(context.style.primary(context.style.escape(sentence)), { lead: '  ' }, context),
-  );
+  const { localize, style } = context;
+  return groupPhrases(command).flatMap((phrase) => {
+    const sentence = style.escape(localize(phrase));
+    return prose(style.primary(sentence), { lead: '  ' }, context);
+  });
 }
 
 /**

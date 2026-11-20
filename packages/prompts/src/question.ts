@@ -1,16 +1,20 @@
 import { questionValidationOptions } from '@loomcli/core';
-import type { Region, StandardSchemaV1 } from '@loomcli/core';
+import type { Phrase, Region, StandardSchemaV1 } from '@loomcli/core';
 
 import { controls, hideCursor, pasteOff, showCursor } from './controls.js';
 import { TypedLine, graphemes } from './line.js';
 import { askLineByLine } from './lines.js';
-import { invalidAnswer } from './messages.js';
+import { promptPhrase, rejection } from './phrases.js';
 import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
+import { withHint, withIssue } from './view-text.js';
 import { answeredLine, cancelledLine, questionFrame } from './views.js';
 import type { QuestionFrame } from './views.js';
 
-/** A confirm question's legend, whose capital letter is the prefill: `Y/n`, `y/N`, or `y/n`. */
+/**
+ * A confirm question's legend, whose capital letter is the prefill: `Y/n`, `y/N`, or `y/n`. Its
+ * letters are the keys the answer accepts, which no locale changes, so it is no phrasebook entry.
+ */
 function confirmLegend(hint: string | undefined): string {
   if (hint === 'yes') {
     return 'Y/n';
@@ -32,7 +36,7 @@ function displayAnswer(kind: string, raw: string, value: unknown): string | unde
     return undefined;
   }
   if (kind === 'confirm') {
-    return value ? 'yes' : 'no';
+    return promptPhrase(value ? 'yesAnswer' : 'noAnswer').text;
   }
   return raw;
 }
@@ -152,17 +156,28 @@ async function askText<Options, Output>(
   const reader = liveReader(context, region);
   const draw = asking(context, settings, { reader, region });
   const line = new TypedLine();
-  let issue: string | undefined = undefined;
+  let issue: string | Phrase | undefined = undefined;
   let answered: { value: string | undefined } | undefined = undefined;
+  const confirm = settings.kind === 'confirm';
+  const hint = confirm ? confirmLegend(settings.hint) : settings.hint;
   const frame = () =>
-    draw.frame({
-      cursor: settings.kind === 'secret' ? 0 : line.cursor,
-      hint: settings.kind === 'confirm' ? `[${confirmLegend(settings.hint)}]` : settings.hint,
-      issue,
-      kind: settings.kind,
-      message: settings.message,
-      typed: settings.kind === 'secret' ? '' : line.value,
-    });
+    draw.frame(
+      withIssue(
+        withHint(
+          {
+            cursor: settings.kind === 'secret' ? 0 : line.cursor,
+            hint: undefined,
+            issue: undefined,
+            kind: settings.kind,
+            message: settings.message,
+            typed: settings.kind === 'secret' ? '' : line.value,
+          },
+          hint,
+          confirm,
+        ),
+        issue,
+      ),
+    );
   try {
     await frame();
     while (true) {
@@ -184,7 +199,7 @@ async function askText<Options, Output>(
           };
           return result.value;
         }
-        issue = result.issues[0]?.message ?? invalidAnswer;
+        issue = rejection(result.issues);
         await frame();
       } else {
         if (
@@ -226,11 +241,12 @@ async function askTextLines<Options, Output>(
   const secret = settings.kind === 'secret';
   return askLineByLine(context, { message: settings.message, region }, async (line) => {
     const row = () =>
-      line.print({
-        hint: settings.kind === 'confirm' ? confirmLegend(settings.hint) : settings.hint,
-        kind: settings.kind,
-        message: settings.message,
-      });
+      line.print(
+        withHint(
+          { hint: undefined, kind: settings.kind, message: settings.message },
+          settings.kind === 'confirm' ? confirmLegend(settings.hint) : settings.hint,
+        ),
+      );
     line.reasking(row);
     await row();
     while (true) {
@@ -244,10 +260,7 @@ async function askTextLines<Options, Output>(
         }
         return result.value;
       }
-      await line.print({
-        issue: result.issues[0]?.message ?? invalidAnswer,
-        kind: 'issue',
-      });
+      await line.reject(rejection(result.issues));
       await row();
     }
   });

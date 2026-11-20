@@ -25,13 +25,14 @@ import { recordName } from './pages.js';
  * @public
  */
 async function refreshManpages(context: RefreshContext): Promise<void> {
-  // The sentence loads with the refresh, so the entry that exports it loads no message module.
-  const { manpagesNotRefreshed, manpagesRefreshSkipped } = await import('./messages.js');
+  // The phrases load with the refresh, so the entry that exports it loads no message module.
+  const { manpagePhrase } = await import('./phrases.js');
   await refreshByRunning(context, {
-    notStarted: manpagesNotRefreshed,
+    // The line goes to the host's stderr, which has no language to render a phrase in, so it is English.
+    notStarted: (path, name) => manpagePhrase('manpagesNotRefreshed', path, name).text,
     records: [recordName],
-    skipped: manpagesRefreshSkipped,
-    warning: 'Man pages were not refreshed after the update.',
+    skipped: manpagePhrase('manpagesRefreshSkipped'),
+    warning: manpagePhrase('manpagesRefreshFailed'),
     words: ['manpage', 'update'],
   });
 }

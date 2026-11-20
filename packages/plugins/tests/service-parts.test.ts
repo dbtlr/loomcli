@@ -5,6 +5,7 @@ import { expect, test } from 'vite-plus/test';
 
 import { holdsControlCharacter } from '../src/control-character.js';
 import { readPrinted } from '../src/service/launchd.js';
+import { servicePhrase } from '../src/service/phrases.js';
 import { isLabel } from '../src/service/settings.js';
 import { stateOf, statusOf, statusText } from '../src/service/status.js';
 import { readShown } from '../src/service/systemd.js';
@@ -16,6 +17,9 @@ const values = {
   label: 'com.acme.notes',
   words: ['/bin/notes', String.raw`a\b`, 'say "hi"', '$HOME', '%h', "it's <b>&"],
 };
+
+/** The English note of an agent with no login session. */
+const noSession = 'There is no login session, so com.acme.notes starts when you log in.';
 
 test(
   String.raw`systemd wraps each ExecStart word in quotes, escapes \, ", and $, and doubles % in every value`,
@@ -114,11 +118,16 @@ test('the text view keeps the unit path whole for line breaking', () => {
 test('the text view pads the names to the longest plus two, prints author rows as given, and escapes manager words and paths', () => {
   const state = stateOf(
     { installed: true, label: 'com.acme.notes', unit: '/units/a\nb.service' },
-    { notes: ['A note.'], pid: 9, running: true, state: 'active' },
+    {
+      notes: [servicePhrase('noSessionNote', 'com.acme.notes')],
+      pid: 9,
+      running: true,
+      state: 'active',
+    },
   );
   const status = statusOf(state, [{ name: 'connections', value: '3' }]);
   expect(statusText(status, style)).toBe(
-    `com.acme.notes: running (pid 9)\n  unit         ${nowrap(String.raw`/units/a\u000ab.service`)}\n  connections  3\n  note         A note.\n`,
+    `com.acme.notes: running (pid 9)\n  unit         ${nowrap(String.raw`/units/a\u000ab.service`)}\n  connections  3\n  note         ${noSession}\n`,
   );
   const unknown = statusOf(
     stateOf(
@@ -142,6 +151,24 @@ test('the text view pads the names to the longest plus two, prints author rows a
       style,
     ),
   ).toBe(`com.acme.notes: running\n  unit  ${nowrap('/u')}\n`);
+});
+
+test("a note keeps its English text in the result and renders through the view's localize", () => {
+  const status = statusOf(
+    stateOf(
+      { installed: true, label: 'com.acme.notes', unit: '/u' },
+      {
+        notes: [servicePhrase('noSessionNote', 'com.acme.notes')],
+        running: false,
+        state: 'not loaded',
+      },
+    ),
+    [],
+  );
+  expect(status.notes).toEqual([noSession]);
+  expect(statusText(status, style, (phrase) => `[${phrase.text}]`)).toBe(
+    `com.acme.notes: not loaded\n  [unit]  ${nowrap('/u')}\n  [note]  [${noSession}]\n`,
+  );
 });
 
 test('the status members keep the order the type lists them, with no pid when none is reported', () => {

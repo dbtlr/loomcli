@@ -8,28 +8,36 @@ const shown = escapeControlCharacters;
 
 const shownNames = (names: readonly string[]): string => names.map(shown).join(', ');
 
-function didYouMean(first: string, names: readonly string[]): string {
-  const [, second] = names;
-  return second === undefined
-    ? `Did you mean "${shown(first)}"?`
-    : `Did you mean one of these: ${shownNames(names)}?`;
+function didYouMeanOne(name: string): string {
+  return `Did you mean "${shown(name)}"?`;
 }
 
-function unknownWithSuggestion(
+function didYouMeanMany(names: readonly string[]): string {
+  return `Did you mean one of these: ${shownNames(names)}?`;
+}
+
+/** An unknown command or option with the one declared name nearest it. */
+function unknownWithSuggestion(kind: 'command' | 'option', typed: string, name: string): string {
+  return `Unknown ${shown(kind)} "${shown(typed)}". ${didYouMeanOne(name)}`;
+}
+
+/** An unknown command or option with the several declared names nearest it. */
+function unknownWithSuggestions(
   kind: 'command' | 'option',
   typed: string,
   names: readonly string[],
-): string | undefined {
-  const [first] = names;
-  return first === undefined
-    ? undefined
-    : `Unknown ${shown(kind)} "${shown(typed)}". ${didYouMean(first, names)}`;
+): string {
+  return `Unknown ${shown(kind)} "${shown(typed)}". ${didYouMeanMany(names)}`;
 }
 
-/** The fix for a rejected value names accepted candidates alone, never the received value. */
-function valueSuggestion(names: readonly string[]): string | undefined {
-  const [first] = names;
-  return first === undefined ? undefined : didYouMean(first, names);
+/** The fix for a rejected value that names the one accepted candidate, never the received value. */
+function valueSuggestion(name: string): string {
+  return didYouMeanOne(name);
 }
 
-export { unknownWithSuggestion, valueSuggestion };
+/** The fix for a rejected value that names several accepted candidates, never the received value. */
+function valueSuggestions(names: readonly string[]): string {
+  return didYouMeanMany(names);
+}
+
+export { unknownWithSuggestion, unknownWithSuggestions, valueSuggestion, valueSuggestions };

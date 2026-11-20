@@ -21,9 +21,9 @@ interface Parser {
 async function readJson(text: string): Promise<Reading> {
   const scan = scanJson(text);
   if ('offset' in scan) {
-    return { at: positionAt(text, scan.offset), clause: 'is not valid JSON.', kind: 'unusable' };
+    return { at: positionAt(text, scan.offset), clause: 'invalid-json', kind: 'unusable' };
   }
-  return readingOf(JSON.parse(scan.json), 'does not hold a JSON object.');
+  return readingOf(JSON.parse(scan.json), 'not-json-object');
 }
 
 /** A parser that removes a leading byte order mark before it reads. */

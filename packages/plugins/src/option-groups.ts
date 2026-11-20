@@ -1,10 +1,7 @@
 import { reportedSpelling } from '@loomcli/core';
-import type { CommandNode, OptionGroup } from '@loomcli/core';
+import type { CommandNode, OptionGroup, Phrase } from '@loomcli/core';
 
-/** Two names join with `and` alone. */
-const pairMembers = 2;
-const listStart = 0;
-const lastMember = -1;
+import { commonPhrase } from './phrases.js';
 
 /** Every option a group names, in the order its call names them: a requirement's option first. */
 function groupMembers(group: OptionGroup): readonly string[] {
@@ -21,41 +18,39 @@ function visibleOptionGroups(command: CommandNode): CommandNode['optionGroups'] 
   );
 }
 
-/** Spellings joined for a sentence: `a`, `a and b`, or `a, b, and c`. */
-function joined(names: readonly string[]): string {
-  return names.length <= pairMembers
-    ? names.join(' and ')
-    : `${names.slice(listStart, lastMember).join(', ')}, and ${names.at(lastMember) ?? ''}`;
-}
-
-/** The rule a group over all its members states, without its period. */
-function memberRule(
-  group: Exclude<OptionGroup, { readonly kind: 'requires' }>,
+/** The sentence a group states, with the caveat when a member reads piped stdin. */
+function groupPhrase(
+  group: OptionGroup,
   spelled: (name: string) => string,
-): string {
-  const members = joined(group.options.map(spelled));
-  const rules = {
-    exclusive: `Use at most one of ${members}`,
-    oneRequired: `Supply at least one of ${members}`,
-    requiredTogether: `Use ${members} together`,
-  };
-  return rules[group.kind];
-}
-
-/** The rule a requirement states, its option and then the options it needs, without its period. */
-function requirementRule(
-  group: Extract<OptionGroup, { readonly kind: 'requires' }>,
-  spelled: (name: string) => string,
-): string {
-  return `Use ${spelled(group.option)} only with ${joined(group.requires.map(spelled))}`;
+  stdin: boolean,
+): Phrase {
+  switch (group.kind) {
+    case 'requires': {
+      return commonPhrase(
+        'requiresGroup',
+        spelled(group.option),
+        group.requires.map(spelled),
+        stdin,
+      );
+    }
+    case 'exclusive': {
+      return commonPhrase('exclusiveGroup', group.options.map(spelled), stdin);
+    }
+    case 'oneRequired': {
+      return commonPhrase('oneRequiredGroup', group.options.map(spelled), stdin);
+    }
+    default: {
+      return commonPhrase('requiredTogetherGroup', group.options.map(spelled), stdin);
+    }
+  }
 }
 
 /**
- * The plain sentence of each visible option group, in declaration order, which help and the man
- * page both print. Rules speak about supplied options, independently of their defaults or prepared
+ * The sentence of each visible option group, in declaration order, as a phrase help says in the
+ * run's language. Rules speak about supplied options, independently of their defaults or prepared
  * stdin, so a group that holds a content option that accepts stdin says that piping does not count.
  */
-function groupSentences(command: CommandNode): string[] {
+function groupPhrases(command: CommandNode): Phrase[] {
   return visibleOptionGroups(command).map((group) => {
     const members = groupMembers(group);
     const nodes = command.options.filter((option) => members.includes(option.name));
@@ -63,13 +58,14 @@ function groupSentences(command: CommandNode): string[] {
       const option = nodes.find((node) => node.name === name);
       return option === undefined ? name : reportedSpelling(option);
     };
-    const rule =
-      group.kind === 'requires' ? requirementRule(group, spelled) : memberRule(group, spelled);
-    const caveat = nodes.some((option) => option.type === 'content' && option.stdin)
-      ? ' (piped stdin does not count)'
-      : '';
-    return `${rule}${caveat}.`;
+    const stdin = nodes.some((option) => option.type === 'content' && option.stdin);
+    return groupPhrase(group, spelled, stdin);
   });
 }
 
-export { groupMembers, groupSentences, visibleOptionGroups };
+/** The plain English sentence of each visible option group, which the man page prints. */
+function groupSentences(command: CommandNode): string[] {
+  return groupPhrases(command).map((phrase) => phrase.text);
+}
+
+export { groupMembers, groupPhrases, groupSentences, visibleOptionGroups };

@@ -4,6 +4,7 @@
 
 ```ts
 
+import type { ContextualStyle } from '@loomcli/core';
 import type { Phrasebook } from '@loomcli/core';
 import type { Plugin as Plugin_2 } from '@loomcli/core';
 
@@ -13,6 +14,26 @@ export function localization(settings: LocalizationSettings): Plugin_2;
 // @public
 export interface LocalizationSettings {
     readonly locales: Readonly<Record<string, readonly Phrasebook[]>>;
+}
+
+// @public @sealed
+export interface PluginMessageModules {
+    readonly 'external-commands': typeof externalCommands;
+    readonly 'self-update': typeof selfUpdate;
+    readonly background: typeof background;
+    readonly common: typeof common;
+    readonly completion: typeof completion;
+    readonly config: typeof config;
+    readonly dotenv: typeof dotenv;
+    readonly format: typeof format;
+    readonly help: typeof help;
+    readonly logging: typeof logging;
+    readonly manpage: typeof manpage;
+    readonly mcp: typeof mcp;
+    readonly service: typeof service;
+    readonly skills: typeof skills;
+    readonly suggestions: typeof suggestions;
+    readonly version: typeof version;
 }
 
 // (No @packageDocumentation comment for this package)

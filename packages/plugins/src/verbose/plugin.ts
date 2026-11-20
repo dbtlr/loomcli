@@ -48,3 +48,6 @@ export type VerboseOptions = typeof options;
 export function verbose(): Plugin<VerboseOptions> {
   return plugin(identity, { options });
 }
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

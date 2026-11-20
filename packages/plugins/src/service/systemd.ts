@@ -1,11 +1,13 @@
 import { basename, isAbsolute, join } from 'node:path';
 
+import type { Phrase } from '@loomcli/core';
+
 import { observe } from '../installation/disk.js';
 import { unknownReading } from './backend.js';
 import type { Backend, Reading, Service } from './backend.js';
 import { expectChange, readCall, readLimitSeconds, succeeded } from './manager.js';
 import type { Call, Read } from './manager.js';
-import { callUnreadableNote, lingerNote, managerMissing, timedOutNote } from './messages.js';
+import { servicePhrase } from './phrases.js';
 import { systemdUnit } from './unit.js';
 
 /** `systemctl stop`'s code for a unit that is not loaded. */
@@ -75,7 +77,7 @@ function readShown(stdout: string, installed: boolean): Omit<Reading, 'notes'> {
 }
 
 /** The note `Linger=no` adds, or none for any other answer. */
-async function lingerNotes(service: Service): Promise<readonly string[]> {
+async function lingerNotes(service: Service): Promise<readonly Phrase[]> {
   const answer = await readCall(service.manager, {
     args: ['show-user', String(service.uid), '--property=Linger'],
     program: 'loginctl',
@@ -83,19 +85,19 @@ async function lingerNotes(service: Service): Promise<readonly string[]> {
   });
   const lingering = answer.kind === 'exited' && answer.code === succeeded;
   return lingering && shownProperties(answer.stdout).get('Linger') === 'no'
-    ? [lingerNote(service.label)]
+    ? [servicePhrase('lingerNote', service.label)]
     : [];
 }
 
 /** The note of a `show` call that could not report the unit. */
-function unreadableNote(service: Service, name: string, answer: Read): string {
+function unreadableNote(service: Service, name: string, answer: Read): Phrase {
   if (answer.kind === 'missing') {
-    return managerMissing(service.manager.name, 'systemctl');
+    return servicePhrase('managerMissing', service.manager.name, 'systemctl');
   }
   const call = { manager: 'systemctl --user', report: statusCommand(name), target: name };
   return answer.kind === 'timedOut'
-    ? timedOutNote(call, readLimitSeconds)
-    : callUnreadableNote(call, answer.code);
+    ? servicePhrase('timedOutNote', call, readLimitSeconds)
+    : servicePhrase('callUnreadableNote', call, answer.code);
 }
 
 /** The manager's state of the label's unit, and the session note for an installed one. */

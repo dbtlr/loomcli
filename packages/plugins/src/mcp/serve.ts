@@ -19,7 +19,7 @@ import { singleLine } from '../lines.js';
 import { isRecord } from '../plain-data.js';
 import type { HttpAddress } from './address.js';
 import { excludedNames } from './exposure.js';
-import { argumentsNotObject, invalidTimeZone, unknownTool, unlistedArgument } from './messages.js';
+import { mcpPhrase } from './phrases.js';
 import type { McpSettings } from './plugin.js';
 import { progressRelay } from './progress.js';
 import { listedTool, propertiesOf, toolEntries } from './tools.js';
@@ -112,7 +112,10 @@ function callResult(
 function argumentsOf(entry: ToolEntry, call: ToolCall): Readonly<Record<string, unknown>> {
   const received = call.arguments === undefined ? {} : call.arguments;
   if (!isRecord(received)) {
-    throw new ProtocolError(errorCodes.invalidParams, argumentsNotObject(entry.name));
+    throw new ProtocolError(
+      errorCodes.invalidParams,
+      mcpPhrase('argumentsNotObject', entry.name).text,
+    );
   }
   return received;
 }
@@ -151,7 +154,7 @@ function unlistedKey(
     return undefined;
   }
   return {
-    content: [text(unlistedArgument(entry.name, unlisted))],
+    content: [text(mcpPhrase('unlistedArgument', entry.name, unlisted).text)],
     isError: true,
   };
 }
@@ -164,7 +167,7 @@ function callTimeZone({ _meta: metadata }: ToolCall): string | CallToolResult | 
   }
   const zone = metadata[key];
   const resolved = typeof zone === 'string' ? resolveTimeZone(zone) : undefined;
-  return resolved ?? { content: [text(invalidTimeZone)], isError: true };
+  return resolved ?? { content: [text(mcpPhrase('invalidTimeZone').text)], isError: true };
 }
 
 /**
@@ -210,7 +213,7 @@ async function serve(context: ServeContext, { http, settings }: Serving): Promis
     callTool: (call) => {
       const entry = byName.get(call.name);
       if (entry === undefined) {
-        throw new ProtocolError(errorCodes.invalidParams, unknownTool(call.name));
+        throw new ProtocolError(errorCodes.invalidParams, mcpPhrase('unknownTool', call.name).text);
       }
       return callTool(context, entry, call);
     },

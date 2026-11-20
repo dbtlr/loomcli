@@ -16,7 +16,9 @@ import {
  * so the place reads the same whichever parser found it and whichever runtime runs it.
  */
 interface Position {
+  /** The line, counted from 1. */
   readonly line: number;
+  /** The column, counted from 1. */
   readonly column: number;
 }
 

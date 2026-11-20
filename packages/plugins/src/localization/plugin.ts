@@ -45,3 +45,4 @@ function localization(settings: LocalizationSettings): Plugin {
 
 export type { LocalizationSettings };
 export { localization };
+export type { PluginMessageModules } from '../registry.js';

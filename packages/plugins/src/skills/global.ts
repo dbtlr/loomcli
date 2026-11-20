@@ -6,7 +6,7 @@
 import { join } from 'node:path';
 
 import { FatalError } from '@loomcli/core';
-import type { CommandGraph, Host, Log } from '@loomcli/core';
+import type { CommandGraph, Host, Log, Phrase } from '@loomcli/core';
 
 import { recordDirectory } from '../application-folders.js';
 import { realPath } from '../installation/disk.js';
@@ -27,24 +27,7 @@ import { changedReferences, staleFiles } from '../installation/folders.js';
 import type { RecordedFolder } from '../installation/record.js';
 import { isOwned, loadSkills, withModes } from './load.js';
 import type { LoadedSkill } from './load.js';
-import {
-  referenceChanged,
-  modifiedKept,
-  replacedModified,
-  folderGone,
-  folderNotInstalled,
-  folderUnchanged,
-  installedSkill,
-  noSkillsToRemove,
-  noSkillsToUpdate,
-  recordUnreadable,
-  removedFolder,
-  replacedFolder,
-  sameSkillsFolder,
-  skillFileLeftOut,
-  skillsInTheWay,
-  updatedSkill,
-} from './messages.js';
+import { skillsPhrase } from './phrases.js';
 import type { Declared } from './settings.js';
 import { globalPlaces, recordName, selectedTargets } from './targets.js';
 import type { Place, Target } from './targets.js';
@@ -58,9 +41,9 @@ interface ChildRun {
   readonly signal: AbortSignal;
   /** The action's log, which records each file the child writes or removes. */
   readonly log: Log;
-  readonly info: (message: string) => Promise<void>;
-  readonly success: (message: string) => Promise<void>;
-  readonly warn: (message: string) => Promise<void>;
+  readonly info: (message: string | Phrase) => Promise<void>;
+  readonly success: (message: string | Phrase) => Promise<void>;
+  readonly warn: (message: string | Phrase) => Promise<void>;
 }
 
 /** The count of an empty list. */
@@ -86,7 +69,7 @@ function foldersIn(directory: string, loaded: readonly LoadedSkill[]): NamedFold
 async function loadForRun(run: ChildRun, declared: Declared): Promise<readonly LoadedSkill[]> {
   const loaded = await loadSkills(declared, { build: run.host.release.build, graph: run.graph });
   for (const { path, skill } of loaded.leftOut) {
-    run.log.trace(skillFileLeftOut, { path, skill });
+    run.log.trace(skillsPhrase('skillFileLeftOut'), { path, skill });
   }
   return loaded.skills.map(({ files, name }) => ({
     files: withModes(files).map((file) => {
@@ -134,7 +117,7 @@ function prepare(
 async function actingPlaces(
   run: ChildRun,
   places: readonly Place[],
-  message = sameSkillsFolder,
+  message: 'sameSkillsFolder' | 'statusSameFolder' = 'sameSkillsFolder',
 ): Promise<readonly Place[]> {
   const [first, second] = places;
   if (first === undefined || second === undefined) {
@@ -143,7 +126,7 @@ async function actingPlaces(
   if (realPath(first.directory) !== realPath(second.directory)) {
     return places;
   }
-  await run.info(message(run.name, second.directory, first.directory));
+  await run.info(skillsPhrase(message, run.name, second.directory, first.directory));
   return [first];
 }
 
@@ -165,7 +148,9 @@ function recordedBy(
     const request = { plugin: recordName(place.target), record: where.record };
     const read = readRecorded(request);
     if (read.status === 'refused') {
-      throw new FatalError(recordUnreadable(where.run.name, read.refused.path, verb));
+      throw new FatalError(
+        skillsPhrase('recordUnreadable', where.run.name, read.refused.path, verb),
+      );
     }
     return {
       folders: (read.folders ?? []).map(({ path }) => path),
@@ -219,9 +204,9 @@ function isUnchanged({ folders, pending, wanted, recorded }: Wanted): boolean {
 function failureOf(run: ChildRun, verb: WritingVerb, refused: readonly Refusal[]): Error {
   const [first] = refused;
   if (first?.reason === 'damaged' || first?.reason === 'unknown-format') {
-    return new FatalError(recordUnreadable(run.name, first.path, 'install'));
+    return new FatalError(skillsPhrase('recordUnreadable', run.name, first.path, 'install'));
   }
-  return new FatalError(skillsInTheWay(run.name, verb));
+  return new FatalError(skillsPhrase('skillsInTheWay', run.name, verb));
 }
 
 /** What `install` and `update` read from the command line. */
@@ -248,22 +233,22 @@ async function reportInstall(
   for (const folder of outcome.replaced ?? []) {
     await run.info(
       entry.modified.has(folder)
-        ? replacedModified(run.name, folder)
-        : replacedFolder(run.name, folder),
+        ? skillsPhrase('replacedModified', run.name, folder)
+        : skillsPhrase('replacedFolder', run.name, folder),
     );
   }
   for (const { name, path } of entry.wanted) {
     await run.success(
       writing.verb === 'update'
-        ? updatedSkill(name, entry.place.target, path)
-        : installedSkill(name, entry.place.target, path),
+        ? skillsPhrase('updatedSkill', name, entry.place.target, path)
+        : skillsPhrase('installedSkill', name, entry.place.target, path),
     );
   }
   for (const folder of outcome.kept) {
-    await run.warn(modifiedKept(run.name, folder));
+    await run.warn(skillsPhrase('modifiedKept', run.name, folder));
   }
   for (const folder of outcome.removed) {
-    await run.info(removedFolder(folder));
+    await run.info(skillsPhrase('removedFolder', folder));
   }
 }
 
@@ -272,7 +257,7 @@ async function writeTarget(writing: Writing, entry: Wanted): Promise<void> {
   const { record, run } = writing;
   if (isUnchanged(entry)) {
     for (const { path } of entry.wanted) {
-      await run.info(folderUnchanged(path));
+      await run.info(skillsPhrase('folderUnchanged', path));
     }
     return;
   }
@@ -327,12 +312,12 @@ async function refuseUnrecorded(
   for (const refusal of refused) {
     await run.warn(
       refusal.reason === 'changed'
-        ? referenceChanged(run.name, join(refusal.path, refusal.file))
-        : folderNotInstalled(run.name, refusal.path),
+        ? skillsPhrase('referenceChanged', run.name, join(refusal.path, refusal.file))
+        : skillsPhrase('folderNotInstalled', run.name, refusal.path),
     );
   }
   if (refused.length > none) {
-    throw new FatalError(skillsInTheWay(run.name, request.verb));
+    throw new FatalError(skillsPhrase('skillsInTheWay', run.name, request.verb));
   }
 }
 
@@ -345,7 +330,7 @@ async function installGlobal(run: ChildRun, request: InstallRequest): Promise<vo
   const { places, ...where } = prepare(run, request.agent);
   const chosen = await chosenTargets(where, request, places);
   if (chosen.length === none) {
-    await run.success(noSkillsToUpdate(run.name));
+    await run.success(skillsPhrase('noSkillsToUpdate', run.name));
     return;
   }
   await refuseUnrecorded(run, request, chosen);
@@ -366,12 +351,18 @@ async function removeTarget(where: Where, entry: Recorded): Promise<void> {
   });
   if (outcome.status === 'refused') {
     const [refused] = outcome.refused;
-    throw new FatalError(recordUnreadable(run.name, refused?.path ?? record, 'uninstall'));
+    throw new FatalError(
+      skillsPhrase('recordUnreadable', run.name, refused?.path ?? record, 'uninstall'),
+    );
   }
   for (const folder of entry.folders) {
     await (outcome.kept.includes(folder)
-      ? run.warn(modifiedKept(run.name, folder))
-      : run.info(outcome.removed.includes(folder) ? removedFolder(folder) : folderGone(folder)));
+      ? run.warn(skillsPhrase('modifiedKept', run.name, folder))
+      : run.info(
+          outcome.removed.includes(folder)
+            ? skillsPhrase('removedFolder', folder)
+            : skillsPhrase('folderGone', folder),
+        ));
   }
 }
 
@@ -383,7 +374,7 @@ async function uninstallGlobal(run: ChildRun, agent: Target | undefined): Promis
     ({ folders }) => folders.length > none,
   );
   if (recording.length === none) {
-    await run.success(noSkillsToRemove(run.name));
+    await run.success(skillsPhrase('noSkillsToRemove', run.name));
     return;
   }
   for (const entry of recording) {

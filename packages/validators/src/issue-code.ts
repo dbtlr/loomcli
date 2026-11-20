@@ -1,5 +1,5 @@
-import { isRuleIdentity } from '@loomcli/core';
-import type { StandardSchemaV1 } from '@loomcli/core';
+import { isRuleIdentity, phrasedIssue } from '@loomcli/core';
+import type { Phrase, StandardSchemaV1 } from '@loomcli/core';
 
 import { fault } from './faults.js';
 import { issueCodeName, issueParameters } from './rules.js';
@@ -73,6 +73,45 @@ function accepted<Params>(
  * @public
  */
 function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): IssueCode<Params> {
+  const { message } = config;
+  // The issue carries its code and parameters beside the message, which views read by code.
+  return describeIssueCode(code, config, (params) => ({ code, message: message(params), params }));
+}
+
+/**
+ * What `catalogIssueCode` declares beside the code: the parameter schema and the phrase of the one
+ * sentence, which the catalog's message module holds.
+ */
+interface CatalogIssueCodeConfig<Params> {
+  /** The schema the parameters pass. */
+  schema: StandardSchemaV1<Params>;
+  /** Says the issue's one sentence from its parameters, so a phrasebook may translate it. */
+  phrase: (params: Params) => Phrase;
+}
+
+/**
+ * Declares one of the catalog's issue codes. It is `issueCode` for a sentence the package's message
+ * module holds: the issue carries its phrase, so core renders it in the run's language, and its
+ * `message` stays the English sentence.
+ */
+function catalogIssueCode<Params>(
+  code: string,
+  config: CatalogIssueCodeConfig<Params>,
+): IssueCode<Params> {
+  return describeIssueCode(code, config, (params) =>
+    phrasedIssue(config.phrase(params), { code, params }),
+  );
+}
+
+/**
+ * Checks the code's grammar and returns its descriptor: `issue` checks the parameters against the
+ * schema and builds the issue with `build`, and `read` recovers the typed parameters.
+ */
+function describeIssueCode<Params>(
+  code: string,
+  config: { readonly schema: StandardSchemaV1<Params> },
+  build: (params: Params) => StandardSchemaV1.Issue,
+): IssueCode<Params> {
   if (!isRuleIdentity(code)) {
     throw fault(
       issueCodeName,
@@ -84,7 +123,7 @@ function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): Issue
       },
     );
   }
-  const { message, schema } = config;
+  const { schema } = config;
   return {
     code,
     issue: (params: Params): StandardSchemaV1.Issue => {
@@ -99,9 +138,7 @@ function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): Issue
           },
         );
       }
-      // The issue carries its code and parameters beside the message, which views read by code.
-      const built = { code, message: message(verdict.params), params: verdict.params };
-      return built;
+      return build(verdict.params);
     },
     // Core hands a failure view a plain-object copy of each issue a validator returned.
     // Reading the copy's own fields runs no getter, and its parameters reach the schema as they are.
@@ -120,5 +157,5 @@ function issueCode<Params>(code: string, config: IssueCodeConfig<Params>): Issue
   };
 }
 
-export { issueCode };
+export { catalogIssueCode, issueCode };
 export type { IssueCode, IssueCodeConfig };

@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 
+import type { Phrase } from '@loomcli/core';
 import { bundleFromJSON, isBundleWithDsseEnvelope } from '@sigstore/bundle';
 import type { BundleWithDsseEnvelope } from '@sigstore/bundle';
 import { getTrustedRoot } from '@sigstore/tuf';
@@ -8,16 +9,7 @@ import type { Signer, TrustMaterial } from '@sigstore/verify';
 
 import type { AttestationCheck } from '../attestation-setting.js';
 import { fatal } from '../fatal.js';
-import {
-  attestationNotVerified,
-  attestationOtherRef,
-  attestationOtherSigner,
-  attestationOtherSubject,
-  attestationUnreadable,
-  checkedTrustRoot,
-  requestFailed,
-  verifiedAttestation,
-} from '../messages.js';
+import { selfUpdatePhrase } from '../phrases.js';
 import { fetchBytes, RequestError, shownAddress } from '../request.js';
 import { isAssetStatement, isPinnedSigner, isReleaseRun } from './checks.js';
 import type { Expected, SignerIdentity } from './checks.js';
@@ -44,7 +36,7 @@ const namesAsset = 5;
 /** Why one attestation did not pass: the step it failed at, its sentence, and the error beneath. */
 interface Fault {
   readonly step: number;
-  readonly sentence: string;
+  readonly sentence: Phrase;
   readonly beneath?: unknown;
 }
 
@@ -56,13 +48,17 @@ interface Context {
 }
 
 /** A fault at `step` with its sentence. */
-function faultAt(step: number, sentence: string, beneath?: unknown): Fault {
+function faultAt(step: number, sentence: Phrase, beneath?: unknown): Fault {
   return beneath === undefined ? { sentence, step } : { beneath, sentence, step };
 }
 
 /** The fault of a bundle that does not read. */
 function unreadable({ check }: Context, cause?: unknown): Fault {
-  return faultAt(reads, attestationUnreadable(releaseOf(check), check.name), cause);
+  return faultAt(
+    reads,
+    selfUpdatePhrase('attestationUnreadable', releaseOf(check), check.name),
+    cause,
+  );
 }
 
 /** Whether a listed value is an absolute HTTPS URL. */
@@ -87,7 +83,12 @@ async function bundleBytes(url: URL, check: AttestationCheck): Promise<Uint8Arra
     }
     const { kind, status } = error;
     throw fatal(
-      requestFailed(check.name, { kind, status, url: shownAddress(url) }, undefined),
+      selfUpdatePhrase(
+        'requestFailed',
+        check.name,
+        { kind, status, url: shownAddress(url) },
+        undefined,
+      ),
       error,
     );
   }
@@ -134,7 +135,11 @@ function verifiedSigner(bundle: BundleWithDsseEnvelope, context: Context): Signe
   try {
     return context.verifier.verify(toSignedEntity(bundle));
   } catch (error) {
-    return faultAt(verifies, attestationNotVerified(releaseOf(context.check)), error);
+    return faultAt(
+      verifies,
+      selfUpdatePhrase('attestationNotVerified', releaseOf(context.check)),
+      error,
+    );
   }
 }
 
@@ -170,15 +175,18 @@ function releaseFault(
   const identity = identityOf(signer);
   const expected = expectedOf(context);
   if (!isPinnedSigner(identity, expected)) {
-    return faultAt(signedByWorkflow, attestationOtherSigner(releaseOf(check), workflow));
+    return faultAt(
+      signedByWorkflow,
+      selfUpdatePhrase('attestationOtherSigner', releaseOf(check), workflow),
+    );
   }
   if (!isReleaseRun(identity, expected)) {
-    return faultAt(onTag, attestationOtherRef(releaseOf(check)));
+    return faultAt(onTag, selfUpdatePhrase('attestationOtherRef', releaseOf(check)));
   }
   const envelope = bundle.content.dsseEnvelope;
   return isAssetStatement(envelope, { asset: check.asset, digest: check.digest })
     ? undefined
-    : faultAt(namesAsset, attestationOtherSubject(releaseOf(check)));
+    : faultAt(namesAsset, selfUpdatePhrase('attestationOtherSubject', releaseOf(check)));
 }
 
 /** Whether a step's outcome is a fault. */
@@ -222,8 +230,7 @@ async function currentMaterial(check: AttestationCheck, folder: string): Promise
 /** The verifier of Sigstore's current trust root, named at `-v` once it is current. */
 async function trustRoot(check: AttestationCheck, folder: string): Promise<Verifier> {
   const verifier = verifierOf(Verifier, await currentMaterial(check, folder));
-  const line = checkedTrustRoot(folder);
-  check.log.debug(line.template, line.fields);
+  check.log.debug(selfUpdatePhrase('checkedTrustRootIn'), { path: folder });
   return verifier;
 }
 
@@ -261,8 +268,7 @@ async function verifyAttestation(workflow: string, check: AttestationCheck): Pro
   if (fault !== undefined) {
     throw fatal(fault.sentence, fault.beneath);
   }
-  const line = verifiedAttestation(check.asset, workflow);
-  check.log.debug(line.template, line.fields);
+  check.log.debug(selfUpdatePhrase('verifiedAttestationFrom'), { asset: check.asset, workflow });
 }
 
 export { verifyAttestation };

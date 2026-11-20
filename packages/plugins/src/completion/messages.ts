@@ -144,6 +144,9 @@ const completerFailedEvent = 'A completer failed, so completion offered no value
 /** The refresh's `-vv` line when the installation record holds none of the plugin's files. */
 const completionRefreshSkipped = 'Skipped the completion refresh: nothing is installed.';
 
+/** The `warn` log event of a refresh whose child failed or could not start. */
+const completionRefreshFailed = 'Completion was not refreshed after the update.';
+
 export type { ProfileFault };
 export {
   addedLine,
@@ -153,6 +156,7 @@ export {
   completerFailedEvent,
   completionNotRefreshed,
   completionRefreshSkipped,
+  completionRefreshFailed,
   installedScript,
   installsNotOnWindows,
   lineNoLongerHeld,

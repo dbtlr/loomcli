@@ -1,5 +1,7 @@
 import { basename, join } from 'node:path';
 
+import type { Phrase } from '@loomcli/core';
+
 import { unknownReading } from './backend.js';
 import type { Backend, Reading, Service } from './backend.js';
 import {
@@ -11,7 +13,7 @@ import {
   succeeded,
 } from './manager.js';
 import type { Call, Read } from './manager.js';
-import { callUnreadableNote, managerMissing, noSessionNote, timedOutNote } from './messages.js';
+import { servicePhrase } from './phrases.js';
 import { launchdPlist } from './unit.js';
 
 /** `launchctl`'s code for a service or domain that is not loaded. */
@@ -117,26 +119,26 @@ function readPrinted(stdout: string): Omit<Reading, 'notes'> {
 }
 
 /** The note a domain with no login session adds, or none for any other answer. */
-async function sessionNotes(service: Service): Promise<readonly string[]> {
+async function sessionNotes(service: Service): Promise<readonly Phrase[]> {
   const answer = await readCall(service.manager, {
     args: ['print', domain(service)],
     program: 'launchctl',
     report: '',
   });
   return answer.kind === 'exited' && answer.code === notLoaded
-    ? [noSessionNote(service.label)]
+    ? [servicePhrase('noSessionNote', service.label)]
     : [];
 }
 
 /** The note of a `print` call that could not report the agent. */
-function unreadableNote(service: Service, name: string, answer: Read): string {
+function unreadableNote(service: Service, name: string, answer: Read): Phrase {
   if (answer.kind === 'missing') {
-    return managerMissing(service.manager.name, 'launchctl');
+    return servicePhrase('managerMissing', service.manager.name, 'launchctl');
   }
   const call = { manager: 'launchctl', report: `launchctl print ${name}`, target: name };
   return answer.kind === 'timedOut'
-    ? timedOutNote(call, readLimitSeconds)
-    : callUnreadableNote(call, answer.code);
+    ? servicePhrase('timedOutNote', call, readLimitSeconds)
+    : servicePhrase('callUnreadableNote', call, answer.code);
 }
 
 /** The state `print` reports for the label's agent, and the session note for an installed one. */

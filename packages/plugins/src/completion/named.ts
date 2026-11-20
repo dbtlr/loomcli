@@ -6,7 +6,7 @@ import type {
   CompletionValue,
   CompletionValues,
 } from './completer.js';
-import { completerFailedEvent } from './messages.js';
+import { completionPhrase } from './phrases.js';
 
 /** One offered value of a completer, before the plugin's own rules apply. */
 interface NamedOffer {
@@ -73,7 +73,7 @@ async function callCompleter(
     return given === 'aborted' ? { failed: true } : { offers: offersOf(given) };
   } catch (error) {
     if (!signal.aborted) {
-      log.warn(completerFailedEvent, { completer: completer.name, error });
+      log.warn(completionPhrase('completerFailedEvent'), { completer: completer.name, error });
     }
     return { failed: true };
   }

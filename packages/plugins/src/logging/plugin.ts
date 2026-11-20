@@ -13,9 +13,9 @@ import type { LoggingError } from './error.js';
 import { loggingFiles } from './extension.js';
 import { writeRecord } from './file.js';
 import type { Report, Written } from './file.js';
-import { badFile, badLevel, failureLog, loggingTo, rotated } from './messages.js';
 import { emitEvent } from './otel.js';
 import type { OpenTelemetryLogger } from './otel.js';
+import { loggingPhrase } from './phrases.js';
 import { isWritten, recordOf } from './record.js';
 import type { WrittenLevel } from './record.js';
 import { resolveLoggingFiles } from './resolution.js';
@@ -47,11 +47,11 @@ interface Telling {
  */
 function sayWritten(path: string, written: Written, { announced, destination }: Telling): void {
   if (written.rotated) {
-    destination.log.trace(rotated, { path });
+    destination.log.trace(loggingPhrase('rotated'), { path });
   }
   if (written.appended && !announced.has(destination)) {
     announced.add(destination);
-    destination.log.debug(loggingTo, { path });
+    destination.log.debug(loggingPhrase('loggingTo'), { path });
   }
 }
 
@@ -145,10 +145,14 @@ function warnRejected(
   }
   warned.add(destination);
   if (rejected.level !== undefined) {
-    void destination.out.warn(badLevel(rejected.level.variable, rejected.level.value));
+    void destination.out.warn(
+      loggingPhrase('badLevel', rejected.level.variable, rejected.level.value),
+    );
   }
   if (rejected.file !== undefined) {
-    void destination.out.warn(badFile(rejected.file.variable, rejected.file.value));
+    void destination.out.warn(
+      loggingPhrase('badFile', rejected.file.variable, rejected.file.value),
+    );
   }
 }
 
@@ -219,7 +223,7 @@ function hintOf(
         'path' in file && latest.appended.has(file.path) ? [file.path] : [],
       ),
     );
-    return [...paths].map((path) => failureLog(path, context.run));
+    return [...paths].map((path) => loggingPhrase('failureLog', path, context.run));
   };
 }
 
@@ -272,3 +276,6 @@ export type { WrittenLevel } from './record.js';
 export type { LoggingDestinationSettings, LoggingSettings } from './settings.js';
 
 export type { OpenTelemetryLogger, OpenTelemetryLogRecord, OpenTelemetryLogValue } from './otel.js';
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

@@ -17,13 +17,7 @@ import {
   uninstall,
 } from '../installation/files.js';
 import type { StartupLine, UninstallOutcome } from '../installation/files.js';
-import {
-  noCompletionToRemove,
-  recordUnreadable,
-  removedFile,
-  scriptGone,
-  scriptLeftInPlace,
-} from './messages.js';
+import { completionPhrase } from './phrases.js';
 import {
   hasPluginFile,
   readShell,
@@ -62,11 +56,11 @@ async function reportScripts(
 ): Promise<void> {
   for (const { path } of recorded.files) {
     if (outcome.removed.includes(path)) {
-      await run.info(removedFile(path));
+      await run.info(completionPhrase('removedFile', path));
     } else if (outcome.kept.includes(path)) {
-      await run.warn(scriptLeftInPlace(run.name, path));
+      await run.warn(completionPhrase('scriptLeftInPlace', run.name, path));
     } else {
-      await run.info(scriptGone(path));
+      await run.info(completionPhrase('scriptGone', path));
     }
   }
 }
@@ -83,7 +77,9 @@ async function removeShell(run: ChildRun, record: string, planned: Planned): Pro
   });
   if (outcome.status === 'refused') {
     const [refused] = outcome.refused;
-    throw new FatalError(recordUnreadable(run.name, refused?.path ?? record, 'uninstall'));
+    throw new FatalError(
+      completionPhrase('recordUnreadable', run.name, refused?.path ?? record, 'uninstall'),
+    );
   }
   await reportScripts(run, recorded, outcome);
   await reportLines(run, outcome.lines, false);
@@ -170,7 +166,7 @@ async function uninstallShells(run: ChildRun, argument: Shell | undefined): Prom
     await removeShell(run, record, entry);
   }
   if (!selected.some(recordsAnything)) {
-    await run.success(noCompletionToRemove(run.name));
+    await run.success(completionPhrase('noCompletionToRemove', run.name));
   }
 }
 

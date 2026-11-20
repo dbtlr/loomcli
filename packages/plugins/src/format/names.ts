@@ -1,6 +1,7 @@
+import { phrasedIssue } from '@loomcli/core';
 import { createValidator } from '@loomcli/validators';
 
-import { fieldsIssue, formatIssue } from './messages.js';
+import { formatPhrase } from './phrases.js';
 
 /** The unadvertised alias `--format` accepts for `jsonl`, unless a record names it directly. */
 const ndjsonAlias = 'ndjson';
@@ -23,14 +24,14 @@ export function splitFields(value: string): string[] {
  * names alone and the unadvertised alias stays out of it.
  */
 export function formatName(names: readonly string[]) {
-  const issue = formatIssue(names);
+  const issue = formatPhrase('formatIssue', names);
   const aliased = !names.includes(ndjsonAlias);
   return createValidator({
     inputSchema: { type: 'string', enum: [...names] },
     parse: (raw) => {
       const name = aliased && raw === ndjsonAlias ? 'jsonl' : raw;
       const match = names.find((each) => each === name);
-      return match === undefined ? { issues: [{ message: issue }] } : { value: match };
+      return match === undefined ? { issues: [phrasedIssue(issue)] } : { value: match };
     },
   });
 }
@@ -44,6 +45,8 @@ export function fieldList() {
   return createValidator({
     inputSchema: { type: 'string' },
     parse: (raw) =>
-      splitFields(raw).includes('') ? { issues: [{ message: fieldsIssue }] } : { value: raw },
+      splitFields(raw).includes('')
+        ? { issues: [phrasedIssue(formatPhrase('fieldsIssue'))] }
+        : { value: raw },
   });
 }

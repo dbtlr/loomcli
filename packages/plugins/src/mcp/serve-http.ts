@@ -9,22 +9,12 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 
 import { FatalError, InternalError } from '@loomcli/core';
-import type { ActionContext } from '@loomcli/core';
+import type { ActionContext, Phrase } from '@loomcli/core';
 
 import { exactText } from '../exact-text.js';
 import { mcpBrokenAuthorizeHook } from '../rules.js';
 import type { HttpAddress } from './address.js';
-import {
-  bindFailed,
-  brokenAuthorizeHook,
-  brokenAuthorizeHookCorrection,
-  cleartextWarning,
-  hookThrewLine,
-  openNetworkWarning,
-  originRefusedLine,
-  serverErrorLine,
-  unauthorizedLine,
-} from './messages.js';
+import { mcpPhrase } from './phrases.js';
 import type { McpSettings } from './plugin.js';
 
 /**
@@ -106,7 +96,7 @@ function boundOf(server: Server, address: HttpAddress): Bound {
 function listen(server: Server, address: HttpAddress, name: string): Promise<Bound> {
   return new Promise((resolve, reject) => {
     const fail = (error: unknown) => {
-      const sentence = bindFailed(name, address.written, codeOf(error));
+      const sentence = mcpPhrase('bindFailed', name, address.written, codeOf(error));
       reject(new FatalError(sentence));
     };
     server.once('error', fail);
@@ -133,12 +123,12 @@ function authorizer(
     try {
       const allowed = await authorize({ headers });
       if (!allowed) {
-        log.debug(unauthorizedLine);
+        log.debug(mcpPhrase('unauthorizedLine'));
       }
       return allowed;
     } catch (error) {
       thrown.first ??= { value: error };
-      log.error(hookThrewLine, { error });
+      log.error(mcpPhrase('hookThrewLine'), { error });
       throw error;
     }
   };
@@ -149,7 +139,7 @@ async function announce({ out, signal }: HttpContext, serving: HttpServing, boun
   if (signal.aborted) {
     return;
   }
-  const warning = networkWarning(bound, serving.address, serving.settings.authorize !== undefined);
+  const warning = warningPhrase(bound, serving.address, serving.settings.authorize !== undefined);
   if (warning !== undefined) {
     await out.warn(warning);
   }
@@ -163,11 +153,18 @@ async function announce({ out, signal }: HttpContext, serving: HttpServing, boun
  * The warning a bind writes: none on a loopback address, and otherwise open access without an
  * authorize hook, or credentials in the clear with one.
  */
-function networkWarning(bound: Bound, address: HttpAddress, hooked: boolean): string | undefined {
+function warningPhrase(bound: Bound, address: HttpAddress, hooked: boolean): Phrase | undefined {
   if (isLoopback(bound.address)) {
     return undefined;
   }
-  return hooked ? cleartextWarning(address.written) : openNetworkWarning(address.written);
+  return hooked
+    ? mcpPhrase('cleartextWarning', address.written)
+    : mcpPhrase('openNetworkWarning', address.written);
+}
+
+/** The English text of the warning a bind writes, for a caller that reads text. */
+function networkWarning(bound: Bound, address: HttpAddress, hooked: boolean): string | undefined {
+  return warningPhrase(bound, address, hooked)?.text;
 }
 
 /** The URL line: the endpoint at the host the URL names and the port the server bound. */
@@ -215,9 +212,17 @@ function servingServer(transport: Transport) {
 /** Reports accept errors without stopping the listener. */
 function watchErrors(server: Server, context: HttpContext) {
   server.on('error', (error: unknown) => {
-    context.log.error(serverErrorLine, { code: codeOf(error), error });
+    context.log.error(mcpPhrase('serverErrorLine'), { code: codeOf(error), error });
   });
 }
+
+/** The Developer Diagnostic's sentence for a throw of the authorize hook, which stays English. */
+const brokenAuthorizeHookSentence =
+  'The authorize hook given to mcp() threw while it judged a request, so the server answered that request with 500.';
+
+/** The Developer Diagnostic's correction for a throw of the authorize hook, which stays English. */
+const brokenAuthorizeHookCorrection =
+  'Return true or false from authorize for every request, and throw from it for none.';
 
 /** Fails the run once with the authorize hook's first throw, when it threw at all. */
 function reportFirstThrow({ first }: Thrown) {
@@ -225,7 +230,7 @@ function reportFirstThrow({ first }: Thrown) {
     throw new InternalError(mcpBrokenAuthorizeHook, {
       cause: first.value,
       correction: brokenAuthorizeHookCorrection,
-      sentence: brokenAuthorizeHook,
+      sentence: brokenAuthorizeHookSentence,
     });
   }
 }
@@ -240,8 +245,7 @@ function transportOptions(
     authorize: authorizer(context, settings, thrown),
     maxBodyBytes: settings.maxBodyBytes ?? defaultMaxBodyBytes,
     onOriginRefused: (origin) => {
-      const line = originRefusedLine(origin);
-      context.log.debug(line.template, line.fields);
+      context.log.debug(mcpPhrase('originRefused'), { origin });
     },
     sessionIdleMs: settings.sessionIdleMs ?? defaultSessionIdleMs,
     signal: context.signal,

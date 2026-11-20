@@ -105,3 +105,6 @@ export function version(settings?: VersionSettings): Plugin<VersionOptions> {
     views: [versionLine, versionFacts],
   });
 }
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

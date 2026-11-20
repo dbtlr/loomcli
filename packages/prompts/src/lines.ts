@@ -5,6 +5,8 @@ import { controls } from './controls.js';
 import { TypedLine } from './line.js';
 import { openReader } from './reader.js';
 import type { PromptContext } from './types.js';
+import { withIssue } from './view-text.js';
+import type { Issue } from './view-text.js';
 import { cancelledLine, questionLine } from './views.js';
 import type { QuestionLine } from './views.js';
 
@@ -91,6 +93,8 @@ interface LineAsking {
   readonly signal: AbortSignal;
   /** Prints one piece through `questionLine`. An asking row leaves its row open for the answer. */
   print(piece: QuestionLine): Promise<void>;
+  /** Prints the reason an answer was rejected. */
+  reject(issue: Issue): Promise<void>;
   /**
    * Prints one frame through another view, as the editor prints its frames, leaving its row open
    * for the answer when `opensRow` is true.
@@ -215,6 +219,9 @@ async function askLineByLine<Answer>(
     },
     reclaim() {
       keys.resume();
+    },
+    async reject(issue) {
+      await asking.print(withIssue({ issue: undefined, kind: 'issue' }, issue));
     },
     signal,
   };

@@ -4,7 +4,7 @@
  * reading its text. It draws nothing; the line reads its rows at each frame and its kept lines at
  * an end.
  */
-import type { ViewContext } from '@loomcli/core';
+import type { Phrase, ViewContext } from '@loomcli/core';
 import { escapeControlCharacters, glyph, style as textStyle } from '@loomcli/core';
 
 import { leading } from './line.js';
@@ -255,14 +255,20 @@ function logRow(entry: string, context: ViewContext, depth: number): string {
  * lane's: each line of the message on a row of its own, two spaces in, and two more for each level
  * of the line's `depth`, dim and whole.
  */
-function keptLinesAt(depth: number): { render: (message: string, context: ViewContext) => string } {
+function keptLinesAt(
+  depth: number,
+  notice: Phrase | undefined,
+): { render: (message: string, context: ViewContext) => string } {
   const indent = logIndent(depth);
   return {
-    render: (message, context) =>
-      message
-        .split('\n')
+    render: (message, context) => {
+      const lines = message.split('\n');
+      const rendered =
+        notice === undefined ? lines : [...context.localize(notice).split('\n'), ...lines.slice(1)];
+      return rendered
         .map((line) => context.style.dim(textStyle.escape(indent + logText(line, context))))
-        .join('\n'),
+        .join('\n');
+    },
   };
 }
 

@@ -265,3 +265,6 @@ export type {
 export type { ConfigurationReader, ReaderFormat } from './reading.js';
 export type { ConfigurationSchemaMustAcceptAnEmptyFile, EmptyFileGuard } from './schema-types.js';
 export type { Scope, ScopeSettings } from './scopes.js';
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

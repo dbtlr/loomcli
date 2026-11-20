@@ -3,7 +3,7 @@
  * in the installation record, and the lines they write about startup lines.
  */
 import { FatalError } from '@loomcli/core';
-import type { Host, Log } from '@loomcli/core';
+import type { Host, Log, Phrase } from '@loomcli/core';
 
 import { digestOf, exists } from '../installation/disk.js';
 import { hasPendingRecord, readRecorded, targetRefusals } from '../installation/files.js';
@@ -16,21 +16,7 @@ import type {
   StartupLinesOutcome,
 } from '../installation/files.js';
 import { pluginFilePath } from '../installation/record.js';
-import {
-  addedLine,
-  alreadyLoads,
-  installsNotOnWindows,
-  lineNoLongerHeld,
-  recordUnreadable,
-  removedFile,
-  removedLine,
-  removeLineYourself,
-  scriptChanged,
-  scriptLeftInPlace,
-  scriptNotInstalled,
-  scriptsInTheWay,
-  updatedLine,
-} from './messages.js';
+import { completionPhrase } from './phrases.js';
 import { recordName } from './shell-names.js';
 import type { Shell } from './shell-names.js';
 
@@ -41,10 +27,10 @@ interface ChildRun {
   readonly signal: AbortSignal;
   /** The action's log, which records each file the child writes or removes. */
   readonly log: Log;
-  readonly info: (message: string) => Promise<void>;
-  readonly success: (message: string) => Promise<void>;
-  readonly warn: (message: string) => Promise<void>;
-  readonly print: (message: string) => Promise<void>;
+  readonly info: (message: string | Phrase) => Promise<void>;
+  readonly success: (message: string | Phrase) => Promise<void>;
+  readonly warn: (message: string | Phrase) => Promise<void>;
+  readonly print: (message: string | Phrase) => Promise<void>;
 }
 
 /** A recorded file and its digest, as a plugin's file lists it. */
@@ -65,7 +51,7 @@ interface ShellRecord {
 function refuseWindows(run: ChildRun, shell?: Shell): void {
   if (run.host.platform === 'win32') {
     const printer = shell === undefined || shell === 'pwsh' ? 'powershell' : shell;
-    throw new FatalError(installsNotOnWindows(run.name, printer));
+    throw new FatalError(completionPhrase('installsNotOnWindows', run.name, printer));
   }
 }
 
@@ -89,7 +75,7 @@ function readShell(
   const request = { plugin: recordName(shell), record };
   const read = readRecorded(request);
   if (read.status === 'refused') {
-    throw new FatalError(recordUnreadable(run.name, read.refused.path, verb));
+    throw new FatalError(completionPhrase('recordUnreadable', run.name, read.refused.path, verb));
   }
   return {
     files: read.files,
@@ -154,13 +140,13 @@ async function refuseInTheWay(
   for (const { refusal } of refused) {
     await run.warn(
       refusal.reason === 'changed'
-        ? scriptChanged(run.name, refusal.path)
-        : scriptNotInstalled(run.name, refusal.path),
+        ? completionPhrase('scriptChanged', run.name, refusal.path)
+        : completionPhrase('scriptNotInstalled', run.name, refusal.path),
     );
   }
   const [first] = refused;
   if (first !== undefined) {
-    throw new FatalError(scriptsInTheWay(run.name, verb, first.shell));
+    throw new FatalError(completionPhrase('scriptsInTheWay', run.name, verb, first.shell));
   }
 }
 
@@ -182,9 +168,9 @@ function outcomeFailure(
 ): Error {
   const [first] = refused;
   if (first?.reason === 'damaged' || first?.reason === 'unknown-format') {
-    return new FatalError(recordUnreadable(run.name, first.path, 'install'));
+    return new FatalError(completionPhrase('recordUnreadable', run.name, first.path, 'install'));
   }
-  return new FatalError(scriptsInTheWay(run.name, verb, shell));
+  return new FatalError(completionPhrase('scriptsInTheWay', run.name, verb, shell));
 }
 
 /**
@@ -192,7 +178,7 @@ function outcomeFailure(
  * line itself through `print`, the only thing these children write to stdout.
  */
 interface Notice {
-  readonly sentence: string;
+  readonly sentence: string | Phrase;
   readonly line: string;
 }
 
@@ -206,7 +192,10 @@ async function writeNotices(run: ChildRun, notices: readonly Notice[]): Promise<
 
 /** The notice of a recorded line the plugin released and the operator removes by hand. */
 function removeNotice(run: ChildRun, released: StartupLine): Notice {
-  return { line: released.line, sentence: removeLineYourself(run.name, released.path) };
+  return {
+    line: released.line,
+    sentence: completionPhrase('removeLineYourself', run.name, released.path),
+  };
 }
 
 /**
@@ -220,19 +209,19 @@ async function reportLines(
   held: boolean,
 ): Promise<void> {
   for (const { path } of outcome?.removed ?? []) {
-    await run.info(removedLine(path));
+    await run.info(completionPhrase('removedLine', path));
   }
   for (const { path } of outcome?.noLongerHeld ?? []) {
-    await run.info(lineNoLongerHeld(run.name, path));
+    await run.info(completionPhrase('lineNoLongerHeld', run.name, path));
   }
   for (const { path } of outcome?.added ?? []) {
-    await run.success(addedLine(path));
+    await run.success(completionPhrase('addedLine', path));
   }
   for (const { path } of outcome?.replaced ?? []) {
-    await run.success(updatedLine(path));
+    await run.success(completionPhrase('updatedLine', path));
   }
   for (const { path } of held ? (outcome?.held ?? []) : []) {
-    await run.info(alreadyLoads(path));
+    await run.info(completionPhrase('alreadyLoads', path));
   }
 }
 
@@ -256,14 +245,14 @@ async function reportWritten(
   { held, loaded, notices, outcome }: Written,
 ): Promise<void> {
   for (const path of outcome.removed) {
-    await run.info(removedFile(path));
+    await run.info(completionPhrase('removedFile', path));
   }
   for (const path of outcome.kept) {
-    await run.warn(scriptLeftInPlace(run.name, path));
+    await run.warn(completionPhrase('scriptLeftInPlace', run.name, path));
   }
   await reportLines(run, outcome.lines, held);
   for (const path of loaded) {
-    await run.info(alreadyLoads(path));
+    await run.info(completionPhrase('alreadyLoads', path));
   }
   await writeNotices(run, notices);
 }

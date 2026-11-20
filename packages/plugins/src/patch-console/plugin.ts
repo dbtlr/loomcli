@@ -133,3 +133,6 @@ const onLiveRegions: LiveRegionsHook = (state, context) => {
 export function patchConsole(): Plugin {
   return plugin(identity, { onLiveRegions });
 }
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

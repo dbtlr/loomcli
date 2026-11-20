@@ -5,8 +5,6 @@
  */
 import { escapeControlCharacters, nowrap } from '@loomcli/core';
 
-import type { PackageManagerMethod, UpgradeCommand } from './upgrade.js';
-
 const shown = escapeControlCharacters;
 
 const shownPlace = (place: string): string => nowrap(shown(place));
@@ -44,8 +42,11 @@ function directoryUnwritable(name: string, directory: string): string {
 }
 
 interface FailedRequest {
+  /** Why the request failed: a redirect off HTTPS, too many redirects, a status, or no response. */
   readonly kind: 'insecure' | 'too-many' | 'status' | 'no-response';
+  /** The address requested, as the sentence shows it. */
   readonly url: string;
+  /** The response's status, for a request that received one. */
   readonly status: number | undefined;
 }
 
@@ -75,10 +76,6 @@ function requestFailed(
     return `${shown(name)} was redirected too many times while downloading ${shownPlace(url)}. Run self-update again later.`;
   }
   return `${shown(name)} could not download ${shownPlace(url)} (${answered(status)}). ${downloadCorrection(missingRelease)}`;
-}
-
-function requestErrorText(url: string, kind: string): string {
-  return `The request for ${shown(url)} failed: ${shown(kind)}.`;
 }
 
 function cacheUnwritable(name: string, directory: string): string {
@@ -124,9 +121,13 @@ const channelConflict =
 const channelConflictIssue = 'Leave out --channel, or the version.';
 
 interface FoundRelease {
+  /** The application's name. */
   readonly name: string;
+  /** The version that is running. */
   readonly running: string;
+  /** The release channel the check read. */
   readonly channel: string;
+  /** The newer version the check found. */
   readonly found: string;
 }
 
@@ -158,43 +159,21 @@ function updated(name: string, running: string, version: string): string {
   return `Updated ${shown(name)} from ${shown(running)} to ${shown(version)}.`;
 }
 
-/** The command shared by a notice and a refusal, with the version or dist-tag they name. */
-function showUpgradeCommand(command: UpgradeCommand, version: string): string {
-  switch (command.method) {
-    case 'brew': {
-      return `brew upgrade ${shown(command.formula)}`;
-    }
-    case 'script': {
-      return `${shown(command.name)} self-update`;
-    }
-    default: {
-      const install = {
-        bun: 'bun add -g',
-        npm: 'npm install -g',
-        pnpm: 'pnpm add -g',
-        yarn: 'yarn global add',
-      }[command.method];
-      return `${shown(install)} ${shown(command.pkg)}@${shown(version)}`;
-    }
-  }
-}
-
+/**
+ * The refusal of a package-manager install. `manager` is the manager's display name, and `command`
+ * is the rendered, escaped command that upgrades it, absent when no command names the version.
+ */
 function packageManagerRefusal({
   command,
-  method,
+  manager,
   name,
-  version,
 }: {
-  readonly command: UpgradeCommand | undefined;
-  readonly method: PackageManagerMethod;
+  readonly command: string | undefined;
+  readonly manager: string;
   readonly name: string;
-  readonly version: string;
 }): string {
-  const manager = { brew: 'Homebrew', bun: 'Bun', npm: 'npm', pnpm: 'pnpm', yarn: 'Yarn' }[method];
   const correction =
-    command === undefined
-      ? `Update it with ${shown(manager)}.`
-      : `Run ${showUpgradeCommand(command, version)}.`;
+    command === undefined ? `Update it with ${shown(manager)}.` : `Run ${command}.`;
   const refusal = `${shown(name)} was installed with ${shown(manager)}, so self-update cannot replace it. `;
   return refusal + correction;
 }
@@ -203,110 +182,57 @@ function noReleaseFacts(name: string): string {
   return `${shown(name)} has no release facts, so it cannot check for updates. Install a release build of ${shown(name)}, then try again.`;
 }
 
-function updateNotice(
-  { channel, found, name, running }: FoundRelease,
-  command: UpgradeCommand,
-): string {
-  return `${shown(name)} ${shown(found)} is available on the ${shown(channel)} channel. Run ${showUpgradeCommand(command, found)} to update from ${shown(running)}.`;
+/** The update notice. `command` is the rendered, escaped command that installs the found version. */
+function updateNotice({ channel, found, name, running }: FoundRelease, command: string): string {
+  return `${shown(name)} ${shown(found)} is available on the ${shown(channel)} channel. Run ${command} to update from ${shown(running)}.`;
 }
 
-/** The first condition of the update notices' middleware that fails. */
-type UpdateCheckSkip =
-  | { readonly kind: 'opted-out'; readonly variable: string }
-  | { readonly kind: 'stdout' | 'stderr' | 'ci' | 'self-update' }
-  | { readonly kind: 'not-release' | 'not-installed'; readonly name: string }
-  | { readonly kind: 'no-command'; readonly name: string; readonly method: string }
-  | { readonly kind: 'not-absolute'; readonly variable: string };
+/** The `trace` log template of a middleware an opt-out variable skipped. */
+const skippedOptedOut = 'Skipped the update check: {variable} is set.';
 
-/** One log line: its message, a constant Message Template, and the fields it reads. */
-interface LogText {
-  readonly template: string;
-  readonly fields?: Readonly<Record<string, string>>;
-}
+/** The `trace` log template of a middleware skipped because stdout is not a terminal. */
+const skippedStdout = 'Skipped the update check: stdout is not a terminal.';
 
-/** The `trace` log line of a middleware that did nothing, naming the first reason. */
-function skippedUpdateCheck(skip: UpdateCheckSkip): LogText {
-  switch (skip.kind) {
-    case 'opted-out': {
-      return {
-        fields: { variable: skip.variable },
-        template: 'Skipped the update check: {variable} is set.',
-      };
-    }
-    case 'stdout': {
-      return { template: 'Skipped the update check: stdout is not a terminal.' };
-    }
-    case 'stderr': {
-      return { template: 'Skipped the update check: stderr is not a terminal.' };
-    }
-    case 'ci': {
-      return { template: 'Skipped the update check: CI is set.' };
-    }
-    case 'self-update': {
-      return { template: 'Skipped the update check: self-update is running.' };
-    }
-    case 'not-release': {
-      return {
-        fields: { name: skip.name },
-        template: 'Skipped the update check: {name} is not a release build.',
-      };
-    }
-    case 'not-installed': {
-      return {
-        fields: { name: skip.name },
-        template:
-          "Skipped the update check: {name} has no installation record and does not run from a Homebrew Cellar or a package manager's global root.",
-      };
-    }
-    case 'no-command': {
-      return {
-        fields: { method: skip.method, name: skip.name },
-        template:
-          'Skipped the update check: {name} was installed by {method}, and its facts give no upgrade command.',
-      };
-    }
-    default: {
-      return {
-        fields: { variable: skip.variable },
-        template: 'Skipped the update check: {variable} is not an absolute path.',
-      };
-    }
-  }
-}
+/** The `trace` log template of a middleware skipped because stderr is not a terminal. */
+const skippedStderr = 'Skipped the update check: stderr is not a terminal.';
 
-/** The `debug` log line that names the cache the middleware read. */
-function readUpdateCheck(path: string): LogText {
-  return { fields: { path }, template: 'Read the update check from {path}.' };
-}
+/** The `trace` log template of a middleware skipped under CI. */
+const skippedCi = 'Skipped the update check: CI is set.';
 
-/** The `trace` log line for something at the cache's path that is not a cache this version reads. */
-function ignoredUpdateCache(path: string): LogText {
-  return {
-    fields: { path },
-    template: 'Ignored {path}: it is not an update cache this version reads.',
-  };
-}
+/** The `trace` log template of a middleware skipped while self-update runs. */
+const skippedSelfUpdate = 'Skipped the update check: self-update is running.';
 
-/** The `debug` log line once the detached refresh started. */
-const startedRefresh: LogText = { template: 'Started a refresh of the update check.' };
+/** The `trace` log template of a middleware skipped for a build that is not a release. */
+const skippedNotRelease = 'Skipped the update check: {name} is not a release build.';
 
-/** The `trace` log line before each request the Command sends. */
-function requested(url: string): LogText {
-  return { fields: { url }, template: 'Requested {url}.' };
-}
+/** The `trace` log template of a middleware skipped for a binary no installer it reads installed. */
+const skippedNotInstalled =
+  "Skipped the update check: {name} has no installation record and does not run from a Homebrew Cellar or a package manager's global root.";
 
-/** The `debug` log line once a run without a version found a newer release on its channel. */
-function resolvedRelease(version: string, channel: string): LogText {
-  return {
-    fields: { channel, version },
-    template: 'Resolved v{version} on the {channel} channel.',
-  };
-}
+/** The `trace` log template of a middleware skipped for a package manager with no upgrade command. */
+const skippedNoCommand =
+  'Skipped the update check: {name} was installed by {method}, and its facts give no upgrade command.';
 
-/** The `debug` log line once the downloaded asset matches its listed digest. */
-function verifiedAsset(asset: string): LogText {
-  return { fields: { asset }, template: 'Verified {asset} against SHA256SUMS.' };
-}
+/** The `trace` log template of a middleware skipped for a cache path that is not absolute. */
+const skippedNotAbsolute = 'Skipped the update check: {variable} is not an absolute path.';
+
+/** The `debug` log template that names the cache the middleware read. */
+const readUpdateCheckFrom = 'Read the update check from {path}.';
+
+/** The `trace` log template for something at the cache's path that is not a cache this version reads. */
+const ignoredUpdateCacheAt = 'Ignored {path}: it is not an update cache this version reads.';
+
+/** The `debug` log template once the detached refresh started. */
+const refreshStarted = 'Started a refresh of the update check.';
+
+/** The `trace` log template before each request the Command sends. */
+const requestedUrl = 'Requested {url}.';
+
+/** The `debug` log template once a run without a version found a newer release on its channel. */
+const resolvedVersion = 'Resolved v{version} on the {channel} channel.';
+
+/** The `debug` log template once the downloaded asset matches its listed digest. */
+const verifiedAssetDigest = 'Verified {asset} against SHA256SUMS.';
 
 /*
  * The attestation's sentences, under ADR-0212. The subpath `@loomcli/plugins/self-update/attestation`
@@ -315,8 +241,11 @@ function verifiedAsset(asset: string): LogText {
 
 /** What every attestation sentence names: the asset, the version being installed, and the repository. */
 interface AttestedRelease {
+  /** The release asset the attestation covers. */
   readonly asset: string;
+  /** The release's version, without its `v`. */
   readonly version: string;
+  /** The repository whose release it is, as `owner/name`. */
   readonly repository: string;
 }
 
@@ -391,18 +320,11 @@ function attestationOtherSubject(release: AttestedRelease): string {
   return `The attestation of ${attestedRelease(release)} does not name ${shown(release.asset)} with the digest its SHA256SUMS lists. Tell its maintainers, and name another version to install a release that verifies.`;
 }
 
-/** The `debug` log line once Sigstore's trust root is current. */
-function checkedTrustRoot(path: string): LogText {
-  return { fields: { path }, template: "Checked Sigstore's trust root in {path}." };
-}
+/** The `debug` log template once Sigstore's trust root is current. */
+const checkedTrustRootIn = "Checked Sigstore's trust root in {path}.";
 
-/** The `debug` log line once an attestation of the asset passes. */
-function verifiedAttestation(asset: string, workflow: string): LogText {
-  return {
-    fields: { asset, workflow },
-    template: 'Verified {asset} against its attestation from {workflow}.',
-  };
-}
+/** The `debug` log template once an attestation of the asset passes. */
+const verifiedAttestationFrom = 'Verified {asset} against its attestation from {workflow}.';
 
 export type { AttestedRelease };
 export {
@@ -415,25 +337,33 @@ export {
   attestationsRateLimited,
   attestationsUnreadable,
   attestationUnreadable,
-  checkedTrustRoot,
+  checkedTrustRootIn,
   noAttestation,
   trustRootFolderUnusable,
   trustRootNotCurrent,
   trustRootStagingUnusable,
   trustRootUnreachable,
-  verifiedAttestation,
+  verifiedAttestationFrom,
 };
 
-export type { FailedRequest, FoundRelease, LogText, UpdateCheckSkip };
+export type { FailedRequest, FoundRelease };
 export { noReleaseFacts, packageManagerRefusal };
 export {
-  ignoredUpdateCache,
-  readUpdateCheck,
-  requested,
-  resolvedRelease,
-  skippedUpdateCheck,
-  startedRefresh,
-  verifiedAsset,
+  ignoredUpdateCacheAt,
+  readUpdateCheckFrom,
+  refreshStarted,
+  requestedUrl,
+  resolvedVersion,
+  skippedCi,
+  skippedNoCommand,
+  skippedNotAbsolute,
+  skippedNotInstalled,
+  skippedNotRelease,
+  skippedOptedOut,
+  skippedSelfUpdate,
+  skippedStderr,
+  skippedStdout,
+  verifiedAssetDigest,
   alreadyInstalled,
   assetNotListed,
   binaryChanged,
@@ -460,7 +390,6 @@ export {
   recordUnwritable,
   refreshNoticeConflict,
   refreshNoticeConflictIssue,
-  requestErrorText,
   requestFailed,
   updated,
   updateNotice,

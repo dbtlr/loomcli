@@ -3,7 +3,7 @@ import type { Middleware, MiddlewareContext } from '@loomcli/core';
 
 import { providedViews } from './extension.js';
 import { fieldsFailure, requestedFields, rowFields, valueFields } from './fields.js';
-import { fieldsNeedEncoding } from './messages.js';
+import { formatPhrase } from './phrases.js';
 import type { format } from './plugin.js';
 
 /** The media type each of the formatter's views declares, which a group's `--format` states. */
@@ -32,7 +32,7 @@ function selectFields(context: MiddlewareContext): void {
   }
   const appended = readExtension(context.command, providedViews) ?? [];
   if (!appended.includes(context.view ?? '')) {
-    throw fieldsFailure(fieldsNeedEncoding(appended));
+    throw fieldsFailure(formatPhrase('fieldsNeedEncoding', appended));
   }
   context.transform = result.kind === 'rows' ? rowFields(fields) : valueFields(fields);
 }

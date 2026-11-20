@@ -245,15 +245,52 @@ export default defineConfig({
       },
       {
         /*
-         * Core's registry names each message module by the module's own type, and each concept
+         * A registry names each message module by the module's own type, and each concept
          * module's phrase maker binds its message module whole, because every export of a message
          * module is a sentence a phrasebook holds (ADR-0200).
          */
-        files: ['packages/core/src/localization/registry.ts', 'packages/core/src/*/phrases.ts'],
+        files: [
+          'packages/core/src/localization/registry.ts',
+          'packages/core/src/*/phrases.ts',
+          'packages/validators/src/registry.ts',
+          'packages/validators/src/phrases.ts',
+        ],
         rules: {
           'import/no-namespace': 'off',
           'typescript/consistent-type-imports': 'off',
         },
+      },
+      {
+        /*
+         * The plugin pack's registry names each message module by the module's own type, and each
+         * phrase maker binds its message module whole, as core's do (ADR-0200).
+         */
+        files: [
+          'packages/plugins/src/phrases.ts',
+          'packages/plugins/src/registry.ts',
+          'packages/plugins/src/*/phrases.ts',
+        ],
+        rules: {
+          'import/no-namespace': 'off',
+          'typescript/consistent-type-imports': 'off',
+        },
+      },
+      {
+        /*
+         * Each public entry of the plugin pack, prompts, and validators re-exports no name from its
+         * package's registry, so the entry's declarations load the package's member of
+         * MessagePackages for an author who writes a phrasebook, and its surface gains nothing
+         * (ADR-0200). A side-effect import would load the module at run time as well.
+         */
+        files: [
+          'packages/plugins/src/{box,heading,list,prose,records,rule,step,table}.ts',
+          'packages/plugins/src/*/{extension,plugin,views}.ts',
+          'packages/plugins/src/config/{toml,yaml}.ts',
+          'packages/plugins/src/self-update/attestation.ts',
+          'packages/prompts/src/{index,views}.ts',
+          'packages/validators/src/index.ts',
+        ],
+        rules: { 'unicorn/require-module-specifiers': 'off' },
       },
       {
         files: ['packages/core/src/failures/errors.ts'],

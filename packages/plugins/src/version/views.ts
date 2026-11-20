@@ -3,15 +3,16 @@ import type { CommandGraph, ReleaseFacts } from '@loomcli/core';
 
 import { packageName } from '../constants.js';
 import { recordBlock } from '../record-block.js';
+import { versionPhrase } from './phrases.js';
 
 /** The labels of the block's six rows, in the order they print, with the member each reads. */
 const factRows = [
-  ['channel', 'channel'],
-  ['build', 'build'],
-  ['asset', 'asset'],
-  ['installation method', 'installationMethod'],
-  ['runtime', 'runtime'],
-  ['platform', 'platform'],
+  ['channelLabel', 'channel'],
+  ['buildLabel', 'build'],
+  ['assetLabel', 'asset'],
+  ['installationMethodLabel', 'installationMethod'],
+  ['runtimeLabel', 'runtime'],
+  ['platformLabel', 'platform'],
 ] as const;
 
 /**
@@ -112,9 +113,12 @@ export const versionFacts = view<VersionFacts>(`${packageName}/version/facts`, {
   render: (facts, context) =>
     recordBlock(
       factRows.map(([label, key]) => ({
-        label,
+        label: context.style.escape(context.localize(versionPhrase(label))),
         value: context.style.primary(context.style.escape(facts[key] ?? '')),
       })),
       context,
     ),
 });
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

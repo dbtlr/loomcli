@@ -83,6 +83,7 @@ test('--version loads each plugin Command declaration, no Command implementation
       'mcp/faults.js',
       'mcp/groups.js',
       'mcp/messages.js',
+      'mcp/phrases.js',
       'mcp/plugin.js',
       'mcp/tools.js',
     ]),

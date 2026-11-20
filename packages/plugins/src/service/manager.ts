@@ -11,7 +11,8 @@ import { FatalError } from '@loomcli/core';
 import type { ChildExit, Host, Log, OnShutdown } from '@loomcli/core';
 
 import { programRun } from '../change-events.js';
-import { managerExited, managerMissing, ranCall } from './messages.js';
+import { servicePhrase } from './phrases.js';
+import { ranCall } from './wording.js';
 
 /** What one call answered: the code it exited with and its standard output, or that it never started. */
 type Answer =
@@ -143,12 +144,12 @@ async function expectRead(
   const answer = await run(manager, call, changing ? accepted : []);
   if (answer.kind === 'missing') {
     throw new FatalError(
-      managerMissing(manager.name, call.program),
+      servicePhrase('managerMissing', manager.name, call.program),
       answer.error === undefined ? undefined : { cause: answer.error },
     );
   }
   if (!accepted.includes(answer.code)) {
-    throw new FatalError(managerExited(callText(call), answer.code, call.report));
+    throw new FatalError(servicePhrase('managerExited', callText(call), answer.code, call.report));
   }
   return answer;
 }

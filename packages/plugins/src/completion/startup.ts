@@ -10,7 +10,7 @@ import { dirname } from 'node:path';
 import { errorCode, exists } from '../installation/disk.js';
 import { inspectStartupFile } from '../installation/files.js';
 import type { InstalledLine } from '../installation/files.js';
-import { addLineInPlace, addLineYourself } from './messages.js';
+import { completionPhrase } from './phrases.js';
 import { removeNotice } from './run.js';
 import type { ChildRun, Notice } from './run.js';
 
@@ -173,7 +173,10 @@ function placeLine(run: ChildRun, request: LineRequest, judgement: Placeable): L
   if (judgement.holds === true || (update && notices.length === none)) {
     return { lines: [], loaded: judgement.holds === true ? [path] : [], notices, release };
   }
-  const sentence = notices.length === none ? addLineYourself(run.name, path) : addLineInPlace(path);
+  const sentence =
+    notices.length === none
+      ? completionPhrase('addLineYourself', run.name, path)
+      : completionPhrase('addLineInPlace', path);
   return { lines: [], loaded: [], notices: [...notices, { line, sentence }], release };
 }
 

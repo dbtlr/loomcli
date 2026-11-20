@@ -1,29 +1,18 @@
 import { lstat, readFile, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-import { escapeControlCharacters, InputError } from '@loomcli/core';
+import { escapeControlCharacters, InputError, phrasedIssue } from '@loomcli/core';
 import type { ContextualStyle, Host, Log, Out } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
 import { chooseParser } from './formats.js';
-import {
-  brokenFileLine,
-  exclusiveFileOptions,
-  isSilent,
-  lookedFor,
-  namedFileFailure,
-  namedFileIssue,
-  noFileFound,
-  noFileNotice,
-  readFrom,
-  skippedCandidates,
-  skippedUnusable,
-} from './messages.js';
 import type { Problem } from './messages.js';
 import { splitExtension } from './names.js';
+import { configPhrase } from './phrases.js';
 import type { Clause, ConfigurationReader, Reading, Unread } from './reading.js';
 import type { Reach } from './scopes.js';
 import { strictFailure } from './strict.js';
+import { isSilent } from './wording.js';
 
 /**
  * The configuration plugin's lookup: the one file a run reads. `--config` names it, or else the
@@ -206,7 +195,7 @@ async function readText(path: string): Promise<{ text: string } | { clause: Clau
   try {
     return { text: await readFile(path, 'utf8') };
   } catch (error) {
-    return { clause: isAbsent(error) ? 'does not exist.' : 'could not be read.' };
+    return { clause: isAbsent(error) ? 'missing' : 'unreadable' };
   }
 }
 
@@ -236,10 +225,10 @@ function namedFailure(
   invokedBy: Lookup['invokedBy'],
 ): InputError {
   const spelling = invokedBy === 'name' ? 'config' : '--config';
-  return new InputError(namedFileFailure(spelling, file.shown, problem), [
+  return new InputError(configPhrase('namedFileFailure', spelling, file.shown, problem), [
     {
       input: { global: true, kind: 'option', name: 'config' },
-      issues: [{ message: namedFileIssue(file.shown, problem) }],
+      issues: [phrasedIssue(configPhrase('namedFileIssue', file.shown, problem))],
       reason: 'invalid',
       spelling,
     },
@@ -253,7 +242,7 @@ function namedFailure(
 function bothFailure(invokedBy: Lookup['invokedBy']): InputError {
   const names = ['config', 'no-config'];
   const spellings = names.map((name) => (invokedBy === 'name' ? name : `--${name}`));
-  return new InputError(exclusiveFileOptions(spellings), [
+  return new InputError(configPhrase('exclusiveFileOptions', spellings), [
     {
       inputs: names.map((name) => ({ global: true, kind: 'option', name })),
       reason: 'exclusive',
@@ -283,8 +272,7 @@ async function namedFile(named: string, lookup: Lookup): Promise<UsableFile> {
 
 /** Logs the `trace` line for one place the lookup looked and found nothing. */
 function traceAbsent(file: ConfigFile, { log }: Channels): void {
-  const line = lookedFor(file.shown);
-  log.trace(line.template, line.fields);
+  log.trace(configPhrase('lookedFor'), { file: file.shown });
 }
 
 const nothingFound = 0;
@@ -320,7 +308,8 @@ async function warnSkipped(
     return;
   }
   await out.warn(
-    skippedCandidates(
+    configPhrase(
+      'skippedCandidates',
       skipped.map((file) => file.shown),
       found.shown,
       style,
@@ -356,9 +345,13 @@ async function discoveredFile(
     return undefined;
   }
   if (lookup.strict) {
-    throw strictFailure([brokenFileLine(file.shown, reading)], [], lookup.invokedBy);
+    throw strictFailure(
+      [configPhrase('brokenFileLine', file.shown, reading)],
+      [],
+      lookup.invokedBy,
+    );
   }
-  await channels.out.warn(skippedUnusable(file.shown, reading, channels.style));
+  await channels.out.warn(configPhrase('skippedUnusable', file.shown, reading, channels.style));
   return { kind: 'ended' };
 }
 
@@ -482,7 +475,7 @@ async function announceNoFile(lookup: Lookup, { out, style }: Channels): Promise
   if (first === undefined) {
     return false;
   }
-  await out.info(noFileNotice(first.shown, lookup.app, style));
+  await out.info(configPhrase('noFileNotice', first.shown, lookup.app, style));
   return true;
 }
 
@@ -498,14 +491,13 @@ async function reportNoFile(
   const noticed =
     outcome === undefined && lookup.notice && (await announceNoFile(lookup, channels));
   if (!noticed) {
-    channels.log.debug(noFileFound);
+    channels.log.debug(configPhrase('noFileFound'));
   }
 }
 
 /** Logs the `debug` line that names the file the run reads, and answers it. */
 function announceRead(usable: UsableFile, { log }: Channels): UsableFile {
-  const line = readFrom(usable.file.shown);
-  log.debug(line.template, line.fields);
+  log.debug(configPhrase('readFrom'), { file: usable.file.shown });
   return usable;
 }
 

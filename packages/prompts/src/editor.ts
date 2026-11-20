@@ -2,21 +2,14 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { FatalError } from '@loomcli/core';
-import type { Region, StandardSchemaV1 } from '@loomcli/core';
+import type { Phrase, Region, StandardSchemaV1 } from '@loomcli/core';
 
 import { controls, pasteOff, showCursor } from './controls.js';
 import { askLineByLine } from './lines.js';
-import {
-  answerFileRemoved,
-  answerFileUnreadable,
-  answerNotUtf8,
-  editorExited,
-  editorFileUnwritable,
-  editorNotStarted,
-  invalidAnswer,
-} from './messages.js';
+import { promptPhrase, rejection } from './phrases.js';
 import { asking, liveReader, validateAnswer } from './question.js';
 import type { PromptContext } from './types.js';
+import { withIssue } from './view-text.js';
 import { answeredLine, questionFrame } from './views.js';
 
 /**
@@ -54,7 +47,11 @@ class EditorError extends FatalError {
   /** The editor's exit status, or `undefined` when it did not exit with one. */
   readonly status: number | undefined;
 
-  constructor(message: string, editor: string, status: number | undefined) {
+  constructor(message: string, editor: string, status: number | undefined);
+  /** @internal Allows prompts to carry a phrase without changing the public constructor. */
+  // oxlint-disable-next-line typescript/unified-signatures
+  constructor(message: Phrase, editor: string, status: number | undefined);
+  constructor(message: string | Phrase, editor: string, status: number | undefined) {
     super(message);
     this.name = 'EditorError';
     this.editor = editor;
@@ -76,7 +73,7 @@ type EditorQuestion<Output> = {
 
 /** What one opening of the editor ends in: the issue that refuses the saved text, or the answer. */
 type Edited<Output> =
-  | { readonly issue: string }
+  | { readonly issue: string | Phrase }
   | {
       readonly answer: {
         readonly output: string | Output;
@@ -145,7 +142,7 @@ class AnswerFile<Options, Output> {
       }
     } catch (error) {
       throw new EditorError(
-        editorFileUnwritable(context.host.tmpdir, systemCode(error)),
+        promptPhrase('editorFileUnwritable', context.host.tmpdir, systemCode(error)),
         this.#command,
         undefined,
       );
@@ -183,10 +180,10 @@ class AnswerFile<Options, Output> {
     signal.throwIfAborted();
     const status = exit.kind === 'exited' ? exit.code : undefined;
     if (status === undefined || status === 126 || status === 127) {
-      throw new EditorError(editorNotStarted(command), command, status);
+      throw new EditorError(promptPhrase('editorNotStarted', command), command, status);
     }
     if (status !== 0) {
-      throw new EditorError(editorExited(command, status), command, status);
+      throw new EditorError(promptPhrase('editorExited', command, status), command, status);
     }
     let bytes: Buffer | undefined = undefined;
     try {
@@ -194,19 +191,24 @@ class AnswerFile<Options, Output> {
     } catch (error) {
       this.#lost = true;
       const code = systemCode(error);
-      return { issue: code === 'ENOENT' ? answerFileRemoved : answerFileUnreadable(code) };
+      return {
+        issue:
+          code === 'ENOENT'
+            ? promptPhrase('answerFileRemoved')
+            : promptPhrase('answerFileUnreadable', code),
+      };
     }
     this.#held = bytes;
     let saved = '';
     try {
       saved = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     } catch {
-      return { issue: answerNotUtf8 };
+      return { issue: promptPhrase('answerNotUtf8') };
     }
     const result = await validateAnswer(context, this.#settings, saved);
     signal.throwIfAborted();
     if (result.issues !== undefined) {
-      return { issue: result.issues[0]?.message ?? invalidAnswer };
+      return { issue: rejection(result.issues) };
     }
     const lines = saved === '' ? [] : saved.replace(/\r?\n$/u, '').split(/\r?\n/u);
     return {
@@ -235,10 +237,12 @@ async function askEditor<Options, Output>(
   const draw = asking(context, { kind: 'editor', message: settings.message }, { reader, region });
   const signal = AbortSignal.any([context.signal, draw.signal]);
   const file = new AnswerFile(context, settings, command);
-  let issue: string | undefined = undefined;
+  let issue: string | Phrase | undefined = undefined;
   let answered: { value: string; lines: number } | undefined = undefined;
   const frame = (editing: boolean) =>
-    draw.frame({ editing, issue, kind: 'editor', message: settings.message });
+    draw.frame(
+      withIssue({ editing, issue: undefined, kind: 'editor', message: settings.message }, issue),
+    );
   try {
     await frame(false);
     // The question shows now, so keys left from the reads an earlier question took are not its own.
@@ -333,7 +337,7 @@ async function askEditorLines<Options, Output>(
           );
           return edited.answer.output;
         }
-        await line.print({ issue: edited.issue, kind: 'issue' });
+        await line.reject(edited.issue);
         await frame(false);
       }
     });

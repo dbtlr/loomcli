@@ -76,78 +76,72 @@ test.each([
   ['a mismatched bracket', '{ "a": [1} }', 1, 10],
   ['an unclosed object', '{ "a": 1', 1, 9],
 ])('a JSON file with %s names its line and column', async (_case, text, line, column) => {
-  await expect(parseFile('.app.json', text)).resolves.toEqual(
-    broken('is not valid JSON.', line, column),
-  );
+  await expect(parseFile('.app.json', text)).resolves.toEqual(broken('invalid-json', line, column));
 });
 
 test('a column counts characters, so an emoji or an accent before the fault counts once', async () => {
   await expect(parseFile('.app.json', '{ "é😀": x }')).resolves.toEqual(
-    broken('is not valid JSON.', 1, 9),
+    broken('invalid-json', 1, 9),
   );
 });
 
 test('a line ends at LF, at CRLF, or at a lone CR', async () => {
   await expect(parseFile('.app.json', '{\r\n"a": 1,\r\n"b": x}')).resolves.toEqual(
-    broken('is not valid JSON.', 3, 6),
+    broken('invalid-json', 3, 6),
   );
-  await expect(parseFile('.app.json', '{\r"a": x}')).resolves.toEqual(
-    broken('is not valid JSON.', 2, 6),
-  );
+  await expect(parseFile('.app.json', '{\r"a": x}')).resolves.toEqual(broken('invalid-json', 2, 6));
 });
 
 test('a sign with no digit after it breaks at the sign', async () => {
-  await expect(parseFile('.app.json', '{"a": -}')).resolves.toEqual(
-    broken('is not valid JSON.', 1, 7),
-  );
+  await expect(parseFile('.app.json', '{"a": -}')).resolves.toEqual(broken('invalid-json', 1, 7));
 });
 
 test('a CRLF, a lone CR, and an astral character before the fault count as one position rule', async () => {
   await expect(parseFile('.app.json', '{\r\n"😀": 1,\r"b": x}')).resolves.toEqual(
-    broken('is not valid JSON.', 3, 6),
+    broken('invalid-json', 3, 6),
   );
 });
 
 test('a leading byte order mark is not a column', async () => {
   await expect(parseFile('.app.json', `${String.fromCodePoint(65_279)}{ x }`)).resolves.toEqual(
-    broken('is not valid JSON.', 1, 3),
+    broken('invalid-json', 1, 3),
   );
 });
 
 test('a JSON file whose top level is not an object has no position', async () => {
   await expect(parseFile('.app.json', '[1] // a list')).resolves.toEqual({
-    clause: 'does not hold a JSON object.',
+    clause: 'not-json-object',
     kind: 'unusable',
   });
 });
 
 test('a TOML file that does not parse names its line and column', async () => {
   await expect(parseFile('.app.toml', 'a = 1\nb = \nc = 3\n')).resolves.toEqual(
-    broken('is not valid TOML.', 2, 5),
+    broken('invalid-toml', 2, 5),
   );
   await expect(parseFile('.app.toml', 'a = 1\r\nb = "é😀" x\r\n')).resolves.toEqual(
-    broken('is not valid TOML.', 2, 10),
+    broken('invalid-toml', 2, 10),
   );
 });
 
 test('a YAML file that does not parse names its line and column', async () => {
   await expect(parseFile('.app.yaml', 'a: 1\nb: [1, 2\n')).resolves.toEqual(
-    broken('is not valid YAML.', 3, 1),
+    broken('invalid-yaml', 3, 1),
   );
   await expect(parseFile('.app.yaml', 'a: 1\na: 2\n')).resolves.toEqual(
-    broken('is not valid YAML.', 2, 1),
+    broken('invalid-yaml', 2, 1),
   );
 });
 
 test('a YAML tag outside the core schema names its line and column', async () => {
   await expect(parseFile('.app.yaml', 'a: 1\nb: !!binary aGk=\n')).resolves.toEqual(
-    broken('is not valid YAML.', 2, 4),
+    broken('invalid-yaml', 2, 4),
   );
 });
 
 test('a YAML alias that names no preceding anchor names the alias', async () => {
   await expect(parseFile('.app.yaml', 'a: 1\nb: *missing\n')).resolves.toEqual(
-    broken('is not valid YAML.', 2, 4),
+    broken('invalid-yaml', 2, 4),
   );
 });
 

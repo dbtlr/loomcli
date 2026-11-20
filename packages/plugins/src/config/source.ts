@@ -1,11 +1,19 @@
 import { dirname } from 'node:path';
 
-import { escapeControlCharacters, issuePath, readExtension, reportedSpelling } from '@loomcli/core';
+import {
+  escapeControlCharacters,
+  issuePath,
+  issuePhrase,
+  phrasedIssue,
+  readExtension,
+  reportedSpelling,
+} from '@loomcli/core';
 import type {
   ContextualStyle,
   InputProblem,
   OptionNode,
   Log,
+  Phrase,
   Plugin,
   SourceAnswer,
   SourceContext,
@@ -16,17 +24,7 @@ import type {
 import { isRecord } from '../plain-data.js';
 import { configInput } from './extension.js';
 import type { UsableFile } from './lookup.js';
-import {
-  booleanIssue,
-  countIssue,
-  filledOptionLine,
-  ignoredOption,
-  stringListIssue,
-  stringOrNumberIssue,
-  tupleIssue,
-  tupleListIssue,
-} from './messages.js';
-import type { LogText } from './messages.js';
+import { configPhrase } from './phrases.js';
 import type { ConfigOptions } from './plugin.js';
 import { loadOnce } from './shared.js';
 import type { Shared } from './shared.js';
@@ -42,6 +40,12 @@ import type { LinkedProblem, Strictness } from './strict.js';
 
 /** One issue of a wrong value, as the problem's `issues` carry it. */
 type Issue = Extract<InputProblem, { reason: 'invalid' }>['issues'][number];
+
+/** One `-v` line: its template, and the fields it reads, each a phrase or text. */
+interface LogText {
+  readonly template: Phrase;
+  readonly fields: Readonly<Record<string, string | Phrase>>;
+}
 
 /** A value read at a request's path: one the option takes, or the issues that say why not. */
 type Shaped =
@@ -108,7 +112,7 @@ function shapeList(value: readonly unknown[]): Shaped {
   value.forEach((item, index) => {
     const text = textOf(item);
     if (text === undefined) {
-      issues.push({ message: stringOrNumberIssue, path: [index] });
+      issues.push(phrasedIssue(configPhrase('stringOrNumberIssue'), { path: [index] }));
     } else {
       items.push(text);
     }
@@ -142,13 +146,13 @@ function shapeArity(request: StringNode, value: unknown, arity: number): Shaped 
     return held !== undefined && held.length === tuples?.length
       ? { kind: 'value', value: held }
       : {
-          issues: [{ message: tupleListIssue(arity) }],
+          issues: [phrasedIssue(configPhrase('tupleListIssue', arity))],
           kind: 'wrong',
         };
   }
   const tuple = shapeTuple(value, arity);
   return tuple === undefined
-    ? { issues: [{ message: tupleIssue(arity) }], kind: 'wrong' }
+    ? { issues: [phrasedIssue(configPhrase('tupleIssue', arity))], kind: 'wrong' }
     : { kind: 'value', value: tuple };
 }
 
@@ -178,11 +182,11 @@ function shapeStrings(
   if (request.multiple) {
     return Array.isArray(value)
       ? shapeList(value)
-      : { issues: [{ message: stringListIssue }], kind: 'wrong' };
+      : { issues: [phrasedIssue(configPhrase('stringListIssue'))], kind: 'wrong' };
   }
   const text = textOf(value);
   return text === undefined
-    ? { issues: [{ message: stringOrNumberIssue }], kind: 'wrong' }
+    ? { issues: [phrasedIssue(configPhrase('stringOrNumberIssue'))], kind: 'wrong' }
     : { kind: 'value', value: text };
 }
 
@@ -194,12 +198,12 @@ function shape(request: OptionNode, value: unknown): Shaped {
   if (request.type === 'boolean') {
     return typeof value === 'boolean'
       ? { kind: 'value', value }
-      : { issues: [{ message: booleanIssue }], kind: 'wrong' };
+      : { issues: [phrasedIssue(configPhrase('booleanIssue'))], kind: 'wrong' };
   }
   if (request.type === 'count') {
     const count = countOf(value);
     return count === undefined
-      ? { issues: [{ message: countIssue }], kind: 'wrong' }
+      ? { issues: [phrasedIssue(configPhrase('countIssue'))], kind: 'wrong' }
       : { kind: 'value', value: count };
   }
   return shapeStrings(request, value);
@@ -217,9 +221,17 @@ function ignoredLines(
   subject: { label: string; spelling: string },
   issues: readonly Issue[],
 ): LogText[] {
-  return issues.map((issue) =>
-    ignoredOption({ ...subject, path: issuePath(issue) }, issue.message),
-  );
+  return issues.map((issue) => {
+    const path = issuePath(issue);
+    const fields = {
+      issue: issuePhrase(issue) ?? issue.message,
+      label: subject.label,
+      option: subject.spelling,
+    };
+    return path === undefined
+      ? { fields, template: configPhrase('ignoredOption') }
+      : { fields: { ...fields, position: path }, template: configPhrase('ignoredOptionAt') };
+  });
 }
 
 /**
@@ -230,9 +242,13 @@ function ignoredLines(
 function strictLines(
   subject: { label: string; spelling: string },
   issues: readonly Issue[],
-): string[] {
+): Phrase[] {
   return issues.map((issue) =>
-    filledOptionLine({ ...subject, path: issuePath(issue) }, issue.message),
+    configPhrase(
+      'filledOptionLine',
+      { ...subject, path: issuePath(issue) },
+      issuePhrase(issue) ?? issue.message,
+    ),
   );
 }
 

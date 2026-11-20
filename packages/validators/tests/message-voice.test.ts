@@ -48,5 +48,5 @@ const exceptions: VoiceExceptions = {
 };
 
 test('every sentence the validators package says to an operator keeps the voice the voice test holds', async () => {
-  await expect(voiceReport(src, exceptions, sinks)).resolves.toEqual([]);
+  await expect(voiceReport(src, exceptions, sinks, 'registry.ts')).resolves.toEqual([]);
 });

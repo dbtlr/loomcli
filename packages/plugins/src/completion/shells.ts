@@ -12,8 +12,8 @@ import { exists } from '../installation/disk.js';
 import { identifier, posixQuoted, powershellQuoted } from '../shell-quoting.js';
 import { bashScript } from './bash.js';
 import { fishScript } from './fish.js';
-import { shellUnknown } from './messages.js';
 import { nuScript } from './nu.js';
+import { completionPhrase } from './phrases.js';
 import { powershellScript } from './powershell.js';
 import { shells } from './shell-names.js';
 import type { Shell } from './shell-names.js';
@@ -32,7 +32,7 @@ function shellNamed(name: string): Shell | undefined {
 
 /** The usage error of a `SHELL` that names none of the five shells, on the `shell` argument. */
 function unknownShell(name: string, login: string | undefined): InputError {
-  return new InputError(shellUnknown(name, login), [
+  return new InputError(completionPhrase('shellUnknown', name, login), [
     {
       input: { global: false, kind: 'argument', name: 'shell' },
       reason: 'missing',

@@ -1,7 +1,9 @@
+import { phrasedIssue } from '@loomcli/core';
+
 import { askEditor } from './editor.js';
 import { resolveLink } from './link.js';
 import { askList } from './list.js';
-import { yesOrNo } from './messages.js';
+import { promptPhrase } from './phrases.js';
 import { askText } from './question.js';
 import type {
   Answer,
@@ -259,7 +261,7 @@ async function confirm<Options, Key extends LinkKey<Options>>(
               return { value: false };
             }
           }
-          return { issues: [{ message: yesOrNo }] };
+          return { issues: [phrasedIssue(promptPhrase('yesOrNo'))] };
         },
         vendor: '@loomcli/prompts',
         version: 1,
@@ -398,3 +400,6 @@ export type {
 } from './types.js';
 export { EditorError } from './editor.js';
 export { editor, confirm, secret, select, multiselect, text };
+
+// The package's member of MessagePackages, which this entry's declarations load.
+export type { PromptMessageModules } from './registry.js';

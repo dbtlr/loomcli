@@ -102,21 +102,15 @@ function wroteUnit(path: string): string {
   return `Wrote ${shownPath(path)}.`;
 }
 
-/**
- * The `-v` line once a service manager call that started ends, whatever its code: the program and
- * its words joined by single spaces, each word kept whole, as a failure repeats the call.
- */
-/** The `debug` log line for one service manager call, with its words joined by single spaces. */
-function ranCall(
-  program: string,
-  args: readonly string[],
-): { readonly template: string; readonly fields: { readonly call: string } } {
-  return { fields: { call: [program, ...args].join(' ') }, template: 'Ran {call}.' };
-}
+/** The `debug` log template for one service manager call, the `-v` line once it ends. */
+const ranManagerCall = 'Ran {call}.';
 
 interface UnreadableCall {
+  /** The service manager the call ran, such as systemctl. */
   readonly manager: string;
+  /** The unit or label the call named. */
   readonly target: string;
+  /** What the service manager reported. */
   readonly report: string;
 }
 
@@ -148,9 +142,21 @@ function managerLogRow(capture: 'journald' | 'none'): string {
     : 'Service console output goes nowhere: launchd discards it.';
 }
 
+/** The row label of the unit's path in the status text view. */
+const unitLabel = 'unit';
+
+/** The row label of a log in the status text view. */
+const logLabel = 'log';
+
+/** The row label of a note in the status text view. */
+const noteLabel = 'note';
+
 export type { Child, UnreadableCall };
 export {
   fileGone,
+  logLabel,
+  noteLabel,
+  unitLabel,
   fileKept,
   lingerNote,
   managerExited,
@@ -158,7 +164,7 @@ export {
   noServiceToRemove,
   noSessionNote,
   platformUnsupported,
-  ranCall,
+  ranManagerCall,
   recordUnreadable,
   removedFile,
   restartedService,

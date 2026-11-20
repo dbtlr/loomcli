@@ -1,57 +1,5 @@
-import { issueCode } from './issue-code.js';
+import { catalogIssueCode, issueCode } from './issue-code.js';
 import type { IssueCode } from './issue-code.js';
-import {
-  expectedCidr,
-  expectedCidrV4,
-  expectedCidrV6,
-  expectedDate,
-  expectedDateLayouts,
-  expectedDateTime,
-  expectedDateTimeLayouts,
-  expectedDuration,
-  expectedDurationMax,
-  expectedDurationMin,
-  expectedDurationMinutes,
-  expectedDurationRange,
-  expectedEmail,
-  expectedExactLength,
-  expectedHost,
-  expectedHostOrIp,
-  expectedInteger,
-  expectedIntegerMax,
-  expectedIntegerMin,
-  expectedIntegerRange,
-  expectedIp,
-  expectedIpV4,
-  expectedIpV6,
-  expectedKeyValue,
-  expectedLengthRange,
-  expectedMaxLength,
-  expectedMinLength,
-  expectedNetworkAddress,
-  expectedNonempty,
-  expectedNumber,
-  expectedNumberMax,
-  expectedNumberMin,
-  expectedNumberRange,
-  expectedOneOf,
-  expectedPath,
-  expectedPort,
-  expectedReadablePath,
-  expectedSize,
-  expectedSizeMax,
-  expectedSizeMin,
-  expectedSizeRange,
-  expectedTime,
-  expectedTimeLayouts,
-  expectedTimeMax,
-  expectedTimeMin,
-  expectedTimeRange,
-  expectedUrl,
-  expectedUrlScheme,
-  expectedUuid,
-  expectedWritablePath,
-} from './messages.js';
 import {
   formsParams,
   isCount,
@@ -69,6 +17,7 @@ import {
   valuesParams,
 } from './params.js';
 import type { NoParams } from './params.js';
+import { validatorPhrase } from './phrases.js';
 
 /**
  * The catalog's issue codes, one for each sentence a catalog validator prints. Each code's
@@ -96,8 +45,8 @@ function catalogCode(rule: string): string {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const textNonemptyIssue = issueCode(catalogCode('text-nonempty'), {
-  message: () => expectedNonempty,
+const textNonemptyIssue = catalogIssueCode(catalogCode('text-nonempty'), {
+  phrase: () => validatorPhrase('expectedNonempty'),
   schema: noParams,
 });
 
@@ -115,8 +64,8 @@ const textNonemptyIssue = issueCode(catalogCode('text-nonempty'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const textMinLengthIssue = issueCode(catalogCode('text-min-length'), {
-  message: ({ min }) => expectedMinLength(min),
+const textMinLengthIssue = catalogIssueCode(catalogCode('text-min-length'), {
+  phrase: ({ min }) => validatorPhrase('expectedMinLength', min),
   schema: minParams(isCount),
 });
 
@@ -134,8 +83,8 @@ const textMinLengthIssue = issueCode(catalogCode('text-min-length'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const textMaxLengthIssue = issueCode(catalogCode('text-max-length'), {
-  message: ({ max }) => expectedMaxLength(max),
+const textMaxLengthIssue = catalogIssueCode(catalogCode('text-max-length'), {
+  phrase: ({ max }) => validatorPhrase('expectedMaxLength', max),
   schema: maxParams(isCount),
 });
 
@@ -153,8 +102,8 @@ const textMaxLengthIssue = issueCode(catalogCode('text-max-length'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const textExactLengthIssue = issueCode(catalogCode('text-exact-length'), {
-  message: ({ length }) => expectedExactLength(length),
+const textExactLengthIssue = catalogIssueCode(catalogCode('text-exact-length'), {
+  phrase: ({ length }) => validatorPhrase('expectedExactLength', length),
   schema: lengthParams,
 });
 
@@ -172,8 +121,8 @@ const textExactLengthIssue = issueCode(catalogCode('text-exact-length'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const textLengthRangeIssue = issueCode(catalogCode('text-length-range'), {
-  message: ({ max, min }) => expectedLengthRange(min, max),
+const textLengthRangeIssue = catalogIssueCode(catalogCode('text-length-range'), {
+  phrase: ({ max, min }) => validatorPhrase('expectedLengthRange', min, max),
   schema: rangeParams(isCount),
 });
 
@@ -210,8 +159,8 @@ const textPatternIssue = issueCode(catalogCode('text-pattern'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const integerIssue = issueCode(catalogCode('integer'), {
-  message: () => expectedInteger,
+const integerIssue = catalogIssueCode(catalogCode('integer'), {
+  phrase: () => validatorPhrase('expectedInteger'),
   schema: noParams,
 });
 
@@ -229,8 +178,8 @@ const integerIssue = issueCode(catalogCode('integer'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const integerRangeIssue = issueCode(catalogCode('integer-range'), {
-  message: ({ max, min }) => expectedIntegerRange(min, max),
+const integerRangeIssue = catalogIssueCode(catalogCode('integer-range'), {
+  phrase: ({ max, min }) => validatorPhrase('expectedIntegerRange', min, max),
   schema: rangeParams(isFiniteNumber),
 });
 
@@ -248,8 +197,8 @@ const integerRangeIssue = issueCode(catalogCode('integer-range'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const integerMinIssue = issueCode(catalogCode('integer-min'), {
-  message: ({ min }) => expectedIntegerMin(min),
+const integerMinIssue = catalogIssueCode(catalogCode('integer-min'), {
+  phrase: ({ min }) => validatorPhrase('expectedIntegerMin', min),
   schema: minParams(isFiniteNumber),
 });
 
@@ -267,8 +216,8 @@ const integerMinIssue = issueCode(catalogCode('integer-min'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const integerMaxIssue = issueCode(catalogCode('integer-max'), {
-  message: ({ max }) => expectedIntegerMax(max),
+const integerMaxIssue = catalogIssueCode(catalogCode('integer-max'), {
+  phrase: ({ max }) => validatorPhrase('expectedIntegerMax', max),
   schema: maxParams(isFiniteNumber),
 });
 
@@ -286,8 +235,8 @@ const integerMaxIssue = issueCode(catalogCode('integer-max'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const numberIssue = issueCode(catalogCode('number'), {
-  message: () => expectedNumber,
+const numberIssue = catalogIssueCode(catalogCode('number'), {
+  phrase: () => validatorPhrase('expectedNumber'),
   schema: noParams,
 });
 
@@ -305,8 +254,8 @@ const numberIssue = issueCode(catalogCode('number'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const numberRangeIssue = issueCode(catalogCode('number-range'), {
-  message: ({ max, min }) => expectedNumberRange(min, max),
+const numberRangeIssue = catalogIssueCode(catalogCode('number-range'), {
+  phrase: ({ max, min }) => validatorPhrase('expectedNumberRange', min, max),
   schema: rangeParams(isFiniteNumber),
 });
 
@@ -324,8 +273,8 @@ const numberRangeIssue = issueCode(catalogCode('number-range'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const numberMinIssue = issueCode(catalogCode('number-min'), {
-  message: ({ min }) => expectedNumberMin(min),
+const numberMinIssue = catalogIssueCode(catalogCode('number-min'), {
+  phrase: ({ min }) => validatorPhrase('expectedNumberMin', min),
   schema: minParams(isFiniteNumber),
 });
 
@@ -343,8 +292,8 @@ const numberMinIssue = issueCode(catalogCode('number-min'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const numberMaxIssue = issueCode(catalogCode('number-max'), {
-  message: ({ max }) => expectedNumberMax(max),
+const numberMaxIssue = catalogIssueCode(catalogCode('number-max'), {
+  phrase: ({ max }) => validatorPhrase('expectedNumberMax', max),
   schema: maxParams(isFiniteNumber),
 });
 
@@ -362,8 +311,8 @@ const numberMaxIssue = issueCode(catalogCode('number-max'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const portIssue = issueCode(catalogCode('port'), {
-  message: () => expectedPort,
+const portIssue = catalogIssueCode(catalogCode('port'), {
+  phrase: () => validatorPhrase('expectedPort'),
   schema: noParams,
 });
 
@@ -381,8 +330,8 @@ const portIssue = issueCode(catalogCode('port'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const oneOfIssue = issueCode(catalogCode('one-of'), {
-  message: ({ values }) => expectedOneOf(values),
+const oneOfIssue = catalogIssueCode(catalogCode('one-of'), {
+  phrase: ({ values }) => validatorPhrase('expectedOneOf', values),
   schema: valuesParams,
 });
 
@@ -400,8 +349,8 @@ const oneOfIssue = issueCode(catalogCode('one-of'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const urlIssue = issueCode(catalogCode('url'), {
-  message: () => expectedUrl,
+const urlIssue = catalogIssueCode(catalogCode('url'), {
+  phrase: () => validatorPhrase('expectedUrl'),
   schema: noParams,
 });
 
@@ -419,8 +368,8 @@ const urlIssue = issueCode(catalogCode('url'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const urlSchemeIssue = issueCode(catalogCode('url-scheme'), {
-  message: ({ protocols }) => expectedUrlScheme(protocols),
+const urlSchemeIssue = catalogIssueCode(catalogCode('url-scheme'), {
+  phrase: ({ protocols }) => validatorPhrase('expectedUrlScheme', protocols),
   schema: protocolsParams,
 });
 
@@ -438,8 +387,8 @@ const urlSchemeIssue = issueCode(catalogCode('url-scheme'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const uuidIssue = issueCode(catalogCode('uuid'), {
-  message: () => expectedUuid,
+const uuidIssue = catalogIssueCode(catalogCode('uuid'), {
+  phrase: () => validatorPhrase('expectedUuid'),
   schema: noParams,
 });
 
@@ -457,8 +406,8 @@ const uuidIssue = issueCode(catalogCode('uuid'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const dateIssue = issueCode(catalogCode('date'), {
-  message: () => expectedDate,
+const dateIssue = catalogIssueCode(catalogCode('date'), {
+  phrase: () => validatorPhrase('expectedDate'),
   schema: noParams,
 });
 
@@ -476,8 +425,8 @@ const dateIssue = issueCode(catalogCode('date'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const dateTimeIssue = issueCode(catalogCode('date-time'), {
-  message: () => expectedDateTime,
+const dateTimeIssue = catalogIssueCode(catalogCode('date-time'), {
+  phrase: () => validatorPhrase('expectedDateTime'),
   schema: noParams,
 });
 
@@ -495,8 +444,8 @@ const dateTimeIssue = issueCode(catalogCode('date-time'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const dateLayoutsIssue = issueCode(catalogCode('date-layouts'), {
-  message: ({ forms }) => expectedDateLayouts(forms),
+const dateLayoutsIssue = catalogIssueCode(catalogCode('date-layouts'), {
+  phrase: ({ forms }) => validatorPhrase('expectedDateLayouts', forms),
   schema: formsParams,
 });
 
@@ -514,8 +463,8 @@ const dateLayoutsIssue = issueCode(catalogCode('date-layouts'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const dateTimeLayoutsIssue = issueCode(catalogCode('date-time-layouts'), {
-  message: ({ forms }) => expectedDateTimeLayouts(forms),
+const dateTimeLayoutsIssue = catalogIssueCode(catalogCode('date-time-layouts'), {
+  phrase: ({ forms }) => validatorPhrase('expectedDateTimeLayouts', forms),
   schema: formsParams,
 });
 
@@ -533,8 +482,8 @@ const dateTimeLayoutsIssue = issueCode(catalogCode('date-time-layouts'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const timeIssue = issueCode(catalogCode('time'), {
-  message: () => expectedTime,
+const timeIssue = catalogIssueCode(catalogCode('time'), {
+  phrase: () => validatorPhrase('expectedTime'),
   schema: noParams,
 });
 
@@ -552,8 +501,8 @@ const timeIssue = issueCode(catalogCode('time'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const timeLayoutsIssue = issueCode(catalogCode('time-layouts'), {
-  message: ({ forms }) => expectedTimeLayouts(forms),
+const timeLayoutsIssue = catalogIssueCode(catalogCode('time-layouts'), {
+  phrase: ({ forms }) => validatorPhrase('expectedTimeLayouts', forms),
   schema: formsParams,
 });
 
@@ -571,8 +520,8 @@ const timeLayoutsIssue = issueCode(catalogCode('time-layouts'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const timeRangeIssue = issueCode(catalogCode('time-range'), {
-  message: ({ max, min }) => expectedTimeRange(min, max),
+const timeRangeIssue = catalogIssueCode(catalogCode('time-range'), {
+  phrase: ({ max, min }) => validatorPhrase('expectedTimeRange', min, max),
   schema: rangeParams(isTimeOfDay),
 });
 
@@ -590,8 +539,8 @@ const timeRangeIssue = issueCode(catalogCode('time-range'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const timeMinIssue = issueCode(catalogCode('time-min'), {
-  message: ({ min }) => expectedTimeMin(min),
+const timeMinIssue = catalogIssueCode(catalogCode('time-min'), {
+  phrase: ({ min }) => validatorPhrase('expectedTimeMin', min),
   schema: minParams(isTimeOfDay),
 });
 
@@ -609,8 +558,8 @@ const timeMinIssue = issueCode(catalogCode('time-min'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const timeMaxIssue = issueCode(catalogCode('time-max'), {
-  message: ({ max }) => expectedTimeMax(max),
+const timeMaxIssue = catalogIssueCode(catalogCode('time-max'), {
+  phrase: ({ max }) => validatorPhrase('expectedTimeMax', max),
   schema: maxParams(isTimeOfDay),
 });
 
@@ -628,8 +577,8 @@ const timeMaxIssue = issueCode(catalogCode('time-max'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const durationIssue = issueCode(catalogCode('duration'), {
-  message: () => expectedDuration,
+const durationIssue = catalogIssueCode(catalogCode('duration'), {
+  phrase: () => validatorPhrase('expectedDuration'),
   schema: noParams,
 });
 
@@ -647,8 +596,8 @@ const durationIssue = issueCode(catalogCode('duration'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const durationCapitalMIssue = issueCode(catalogCode('duration-capital-m'), {
-  message: () => expectedDurationMinutes,
+const durationCapitalMIssue = catalogIssueCode(catalogCode('duration-capital-m'), {
+  phrase: () => validatorPhrase('expectedDurationMinutes'),
   schema: noParams,
 });
 
@@ -666,8 +615,8 @@ const durationCapitalMIssue = issueCode(catalogCode('duration-capital-m'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const durationRangeIssue = issueCode(catalogCode('duration-range'), {
-  message: ({ max, min }) => expectedDurationRange(min, max),
+const durationRangeIssue = catalogIssueCode(catalogCode('duration-range'), {
+  phrase: ({ max, min }) => validatorPhrase('expectedDurationRange', min, max),
   schema: rangeParams(isFiniteNumber),
 });
 
@@ -685,8 +634,8 @@ const durationRangeIssue = issueCode(catalogCode('duration-range'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const durationMinIssue = issueCode(catalogCode('duration-min'), {
-  message: ({ min }) => expectedDurationMin(min),
+const durationMinIssue = catalogIssueCode(catalogCode('duration-min'), {
+  phrase: ({ min }) => validatorPhrase('expectedDurationMin', min),
   schema: minParams(isFiniteNumber),
 });
 
@@ -704,8 +653,8 @@ const durationMinIssue = issueCode(catalogCode('duration-min'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const durationMaxIssue = issueCode(catalogCode('duration-max'), {
-  message: ({ max }) => expectedDurationMax(max),
+const durationMaxIssue = catalogIssueCode(catalogCode('duration-max'), {
+  phrase: ({ max }) => validatorPhrase('expectedDurationMax', max),
   schema: maxParams(isFiniteNumber),
 });
 
@@ -723,8 +672,8 @@ const durationMaxIssue = issueCode(catalogCode('duration-max'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const pathIssue = issueCode(catalogCode('path'), {
-  message: () => expectedPath,
+const pathIssue = catalogIssueCode(catalogCode('path'), {
+  phrase: () => validatorPhrase('expectedPath'),
   schema: noParams,
 });
 
@@ -742,8 +691,8 @@ const pathIssue = issueCode(catalogCode('path'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const pathReadableIssue = issueCode(catalogCode('path-readable'), {
-  message: ({ kind }) => expectedReadablePath(kind),
+const pathReadableIssue = catalogIssueCode(catalogCode('path-readable'), {
+  phrase: ({ kind }) => validatorPhrase('expectedReadablePath', kind),
   schema: kindParams,
 });
 
@@ -761,8 +710,8 @@ const pathReadableIssue = issueCode(catalogCode('path-readable'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const pathWritableIssue = issueCode(catalogCode('path-writable'), {
-  message: ({ kind }) => expectedWritablePath(kind),
+const pathWritableIssue = catalogIssueCode(catalogCode('path-writable'), {
+  phrase: ({ kind }) => validatorPhrase('expectedWritablePath', kind),
   schema: kindParams,
 });
 
@@ -780,8 +729,8 @@ const pathWritableIssue = issueCode(catalogCode('path-writable'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const bytesIssue = issueCode(catalogCode('bytes'), {
-  message: () => expectedSize,
+const bytesIssue = catalogIssueCode(catalogCode('bytes'), {
+  phrase: () => validatorPhrase('expectedSize'),
   schema: noParams,
 });
 
@@ -799,8 +748,8 @@ const bytesIssue = issueCode(catalogCode('bytes'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const bytesRangeIssue = issueCode(catalogCode('bytes-range'), {
-  message: ({ max, min }) => expectedSizeRange(min, max),
+const bytesRangeIssue = catalogIssueCode(catalogCode('bytes-range'), {
+  phrase: ({ max, min }) => validatorPhrase('expectedSizeRange', min, max),
   schema: rangeParams(isCount),
 });
 
@@ -818,8 +767,8 @@ const bytesRangeIssue = issueCode(catalogCode('bytes-range'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const bytesMinIssue = issueCode(catalogCode('bytes-min'), {
-  message: ({ min }) => expectedSizeMin(min),
+const bytesMinIssue = catalogIssueCode(catalogCode('bytes-min'), {
+  phrase: ({ min }) => validatorPhrase('expectedSizeMin', min),
   schema: minParams(isCount),
 });
 
@@ -837,8 +786,8 @@ const bytesMinIssue = issueCode(catalogCode('bytes-min'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const bytesMaxIssue = issueCode(catalogCode('bytes-max'), {
-  message: ({ max }) => expectedSizeMax(max),
+const bytesMaxIssue = catalogIssueCode(catalogCode('bytes-max'), {
+  phrase: ({ max }) => validatorPhrase('expectedSizeMax', max),
   schema: maxParams(isCount),
 });
 
@@ -856,8 +805,8 @@ const bytesMaxIssue = issueCode(catalogCode('bytes-max'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const hostIssue = issueCode(catalogCode('host'), {
-  message: () => expectedHost,
+const hostIssue = catalogIssueCode(catalogCode('host'), {
+  phrase: () => validatorPhrase('expectedHost'),
   schema: noParams,
 });
 
@@ -875,8 +824,8 @@ const hostIssue = issueCode(catalogCode('host'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const hostOrIpIssue = issueCode(catalogCode('host-or-ip'), {
-  message: () => expectedHostOrIp,
+const hostOrIpIssue = catalogIssueCode(catalogCode('host-or-ip'), {
+  phrase: () => validatorPhrase('expectedHostOrIp'),
   schema: noParams,
 });
 
@@ -894,8 +843,8 @@ const hostOrIpIssue = issueCode(catalogCode('host-or-ip'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const ipIssue = issueCode(catalogCode('ip'), {
-  message: () => expectedIp,
+const ipIssue = catalogIssueCode(catalogCode('ip'), {
+  phrase: () => validatorPhrase('expectedIp'),
   schema: noParams,
 });
 
@@ -913,8 +862,8 @@ const ipIssue = issueCode(catalogCode('ip'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const ipV4Issue = issueCode(catalogCode('ip-v4'), {
-  message: () => expectedIpV4,
+const ipV4Issue = catalogIssueCode(catalogCode('ip-v4'), {
+  phrase: () => validatorPhrase('expectedIpV4'),
   schema: noParams,
 });
 
@@ -932,8 +881,8 @@ const ipV4Issue = issueCode(catalogCode('ip-v4'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const ipV6Issue = issueCode(catalogCode('ip-v6'), {
-  message: () => expectedIpV6,
+const ipV6Issue = catalogIssueCode(catalogCode('ip-v6'), {
+  phrase: () => validatorPhrase('expectedIpV6'),
   schema: noParams,
 });
 
@@ -951,8 +900,8 @@ const ipV6Issue = issueCode(catalogCode('ip-v6'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const cidrIssue = issueCode(catalogCode('cidr'), {
-  message: () => expectedCidr,
+const cidrIssue = catalogIssueCode(catalogCode('cidr'), {
+  phrase: () => validatorPhrase('expectedCidr'),
   schema: noParams,
 });
 
@@ -970,8 +919,8 @@ const cidrIssue = issueCode(catalogCode('cidr'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const cidrV4Issue = issueCode(catalogCode('cidr-v4'), {
-  message: () => expectedCidrV4,
+const cidrV4Issue = catalogIssueCode(catalogCode('cidr-v4'), {
+  phrase: () => validatorPhrase('expectedCidrV4'),
   schema: noParams,
 });
 
@@ -989,8 +938,8 @@ const cidrV4Issue = issueCode(catalogCode('cidr-v4'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const cidrV6Issue = issueCode(catalogCode('cidr-v6'), {
-  message: () => expectedCidrV6,
+const cidrV6Issue = catalogIssueCode(catalogCode('cidr-v6'), {
+  phrase: () => validatorPhrase('expectedCidrV6'),
   schema: noParams,
 });
 
@@ -1008,8 +957,8 @@ const cidrV6Issue = issueCode(catalogCode('cidr-v6'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const cidrHostBitsIssue = issueCode(catalogCode('cidr-host-bits'), {
-  message: () => expectedNetworkAddress,
+const cidrHostBitsIssue = catalogIssueCode(catalogCode('cidr-host-bits'), {
+  phrase: () => validatorPhrase('expectedNetworkAddress'),
   schema: noParams,
 });
 
@@ -1027,8 +976,8 @@ const cidrHostBitsIssue = issueCode(catalogCode('cidr-host-bits'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const keyValueIssue = issueCode(catalogCode('key-value'), {
-  message: ({ separator }) => expectedKeyValue(separator),
+const keyValueIssue = catalogIssueCode(catalogCode('key-value'), {
+  phrase: ({ separator }) => validatorPhrase('expectedKeyValue', separator),
   schema: separatorParams,
 });
 
@@ -1046,8 +995,8 @@ const keyValueIssue = issueCode(catalogCode('key-value'), {
  * @see https://github.com/dbtlr/loomcli/blob/main/docs/libs/validators.md#issue-codes
  * @public
  */
-const emailIssue = issueCode(catalogCode('email'), {
-  message: () => expectedEmail,
+const emailIssue = catalogIssueCode(catalogCode('email'), {
+  phrase: () => validatorPhrase('expectedEmail'),
   schema: noParams,
 });
 

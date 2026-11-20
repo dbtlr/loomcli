@@ -1,6 +1,6 @@
 /*
  * The operator sentences of the configuration plugin, under ADR-0164. A clause that says why a file
- * cannot be used is one of the fixed `Clause` strings the readers return, or names the format of a
+ * cannot be used is one of the `Clause` codes the readers return, or names the format of a
  * file the application passes no reader for. `tests/message-
  * voice.test.ts` holds this module to the failure message voice.
  */
@@ -9,47 +9,14 @@ import type { ContextualStyle } from '@loomcli/core';
 
 import type { Clause, Unread } from './reading.js';
 import type { Position } from './text.js';
+import { clauses, fixes } from './wording.js';
 
 const shown = escapeControlCharacters;
 
-/** What the operator does about one clause: for the file `--config` named, and for a discovered file. */
-interface Fix {
-  readonly named: string;
-  /** Absent for a clause a discovered file is silent about. */
-  readonly discovered?: string;
-}
-
-/** The one table of fixes, so each sentence the plugin writes ends with its step. */
-const fixes: Readonly<Record<Clause, Fix>> = {
-  'could not be read.': {
-    discovered: 'Make it readable, or remove it.',
-    named: 'Supply a file this process can read.',
-  },
-  'does not exist.': { named: 'Supply the path of an existing file.' },
-  'does not hold a JSON object.': {
-    discovered: 'Write its settings as one JSON object, or remove it.',
-    named: 'Write its settings as one JSON object.',
-  },
-  'does not hold a YAML mapping.': {
-    discovered: 'Write its settings as one YAML mapping, or remove it.',
-    named: 'Write its settings as one YAML mapping.',
-  },
-  'is not valid JSON.': {
-    discovered: 'Correct its syntax, or remove it.',
-    named: 'Correct its syntax, or supply another file.',
-  },
-  'is not valid TOML.': {
-    discovered: 'Correct its syntax, or remove it.',
-    named: 'Correct its syntax, or supply another file.',
-  },
-  'is not valid YAML.': {
-    discovered: 'Correct its syntax, or remove it.',
-    named: 'Correct its syntax, or supply another file.',
-  },
-};
-
 interface Unusable {
+  /** Why a reader could not use the file. */
   readonly clause: Clause;
+  /** Where in the file the reader stopped, for a syntax error. */
   readonly at?: Position | undefined;
 }
 
@@ -69,11 +36,6 @@ function unreadStep({ formats }: Unread): string {
   return `Supply a ${formatChoices(formats)} file.`;
 }
 
-/** Whether a discovered file the problem describes warns, or the lookup passes over it in silence. */
-function isSilent(problem: Problem): boolean {
-  return 'clause' in problem && fixes[problem.clause].discovered === undefined;
-}
-
 function discoveredStep(problem: Problem): string {
   return 'clause' in problem ? (fixes[problem.clause].discovered ?? '') : unreadStep(problem);
 }
@@ -88,7 +50,7 @@ const closingStop = -1;
 
 /** A clause without its closing full stop, so the sentence can go on. Every clause ends in one. */
 function withoutStop(clause: Clause): string {
-  return clause.slice(clauseStart, closingStop);
+  return clauses[clause].slice(clauseStart, closingStop);
 }
 
 function place(line: number, column: number): string {
@@ -154,21 +116,11 @@ function noFileNotice(file: string, app: string, style: ContextualStyle): string
   return `${noFileFound} Create ${warned(file, style)} to configure ${shown(app)}.`;
 }
 
-/** One log line: its message, a constant Message Template, and the fields it reads. */
-interface LogText {
-  readonly template: string;
-  readonly fields: Readonly<Record<string, string>>;
-}
+/** The `debug` log template that names the file the run read. */
+const readFrom = 'Read configuration from {file}.';
 
-/** The `debug` log line that names the file the run read. */
-function readFrom(file: string): LogText {
-  return { fields: { file }, template: 'Read configuration from {file}.' };
-}
-
-/** The `trace` log line for one place the lookup looked and found nothing. */
-function lookedFor(file: string): LogText {
-  return { fields: { file }, template: 'Looked for {file}: not found.' };
-}
+/** The `trace` log template for one place the lookup looked and found nothing. */
+const lookedFor = 'Looked for {file}: not found.';
 
 const stops = ['.', '!', '?'];
 
@@ -194,27 +146,25 @@ function unknownKeyLine(path: string, file: string | undefined): string {
 
 const unknownKeyIssue = 'Unknown key. Check its spelling, or remove it.';
 
-/**
- * The `debug` log line for a removed value or an unknown key: its path, or every key for the whole
- * file, the file when the run read one, and the issue.
- */
-function ignoredValue(
-  { file, path }: { readonly path: string | undefined; readonly file: string | undefined },
-  issue: string,
-): LogText {
-  if (path === undefined) {
-    return file === undefined
-      ? { fields: { issue }, template: 'Ignored every key: {issue}' }
-      : { fields: { file, issue }, template: 'Ignored every key in {file}: {issue}' };
-  }
-  return file === undefined
-    ? { fields: { issue, key: path }, template: 'Ignored {key}: {issue}' }
-    : { fields: { file, issue, key: path }, template: 'Ignored {key} in {file}: {issue}' };
-}
+/** The `debug` log template for a whole file's removed value when the run read no named file. */
+const ignoredEveryKey = 'Ignored every key: {issue}';
 
+/** The `debug` log template for a whole file's removed value, naming the file. */
+const ignoredEveryKeyIn = 'Ignored every key in {file}: {issue}';
+
+/** The `debug` log template for a removed value or an unknown key when the run read no named file. */
+const ignoredKey = 'Ignored {key}: {issue}';
+
+/** The `debug` log template for a removed value or an unknown key, naming the file. */
+const ignoredKeyIn = 'Ignored {key} in {file}: {issue}';
+
+/** A value the file filled an option with, as a line names it. */
 interface FileFill {
+  /** The option's spelling, or its declared name in an invocation by name. */
   readonly spelling: string;
+  /** Where the value came from: its path and the file, escaped. */
   readonly label: string;
+  /** The issue's position inside the value, when it has one. */
   readonly path: string | undefined;
 }
 
@@ -223,18 +173,13 @@ function position(path: string | undefined): string {
 }
 
 /**
- * The `debug` log line for a value the option cannot take, in core's form for a dropped fill: the
- * option by its reported spelling, any position, the label, and the issue.
+ * The `debug` log template for a value the option cannot take, in core's form for a dropped fill:
+ * the option by its reported spelling, the label, and the issue.
  */
-function ignoredOption(fill: FileFill, issueSentence: string): LogText {
-  const fields = { issue: issueSentence, label: fill.label, option: fill.spelling };
-  return fill.path === undefined
-    ? { fields, template: 'Ignored option "{option}" from {label}: {issue}' }
-    : {
-        fields: { ...fields, position: fill.path },
-        template: 'Ignored option "{option}" at {position} from {label}: {issue}',
-      };
-}
+const ignoredOption = 'Ignored option "{option}" from {label}: {issue}';
+
+/** The `debug` log template for a value the option cannot take, with its position in the value. */
+const ignoredOptionAt = 'Ignored option "{option}" at {position} from {label}: {issue}';
 
 function filledOptionLine(fill: FileFill, issueSentence: string): string {
   return `Option "${shown(fill.spelling)}" (from ${shown(fill.label)})${position(fill.path)}: ${issueSentence}`;
@@ -256,16 +201,19 @@ const booleanIssue = 'Use true or false.';
 
 const countIssue = 'Use a whole number of 0 or more.';
 
-export type { FileFill, LogText, Problem };
+export type { FileFill, Problem };
 export {
   booleanIssue,
   brokenFileLine,
   countIssue,
   exclusiveFileOptions,
   filledOptionLine,
+  ignoredEveryKey,
+  ignoredEveryKeyIn,
+  ignoredKey,
+  ignoredKeyIn,
   ignoredOption,
-  ignoredValue,
-  isSilent,
+  ignoredOptionAt,
   lookedFor,
   namedFileFailure,
   namedFileIssue,

@@ -12,20 +12,7 @@ import {
 } from '../installation/files.js';
 import { recordName, selectedAgents } from './agents.js';
 import type { Agent, AgentName } from './agents.js';
-import {
-  addFailed,
-  agentMissing,
-  buildNote,
-  cannotTell,
-  nameHeld,
-  noAgent,
-  pathHoldsControl,
-  registered,
-  registrationInTheWay,
-  replacedServer,
-  runtimeFlagsDropped,
-  skippedAgent,
-} from './messages.js';
+import { mcpPhrase } from './phrases.js';
 import { callAgent, commandLine } from './registration.js';
 import type { Answer } from './registration.js';
 import {
@@ -83,7 +70,11 @@ async function startedAgents(
 ): Promise<readonly Agent[]> {
   const started = await startedAmong(run, selected);
   if (started.length === none) {
-    throw new FatalError(named === undefined ? noAgent(run.name) : agentMissing(run.name, named));
+    throw new FatalError(
+      named === undefined
+        ? mcpPhrase('noAgent', run.name)
+        : mcpPhrase('agentMissing', run.name, named),
+    );
   }
   return started;
 }
@@ -102,7 +93,7 @@ async function holdsName(run: ChildRun, agent: Agent): Promise<boolean> {
     return answer.code === succeeded;
   }
   await warnOutput(run, answer);
-  throw new FatalError(cannotTell(names, agent.name, codeOf(answer)));
+  throw new FatalError(mcpPhrase('cannotTell', names, agent.name, codeOf(answer)));
 }
 
 /** The agents, among those that start, that hold a name the record does not list. */
@@ -130,10 +121,10 @@ async function refuseNameInTheWay(
     return;
   }
   for (const agent of held) {
-    await run.warn(nameHeld(namesOf(run), agent.name));
+    await run.warn(mcpPhrase('nameHeld', namesOf(run), agent.name));
   }
   if (held.size > none) {
-    throw new FatalError(registrationInTheWay(namesOf(run)));
+    throw new FatalError(mcpPhrase('registrationInTheWay', namesOf(run)));
   }
 }
 
@@ -176,7 +167,7 @@ async function removeFirst(registering: Registering, force: boolean): Promise<bo
   const words = agent.remove(namesOf(run).registration);
   const removed = succeededAt(await changeAgent(run, agent, words));
   if (removed && recorded === undefined) {
-    await run.info(replacedServer(namesOf(run), agent.name));
+    await run.info(mcpPhrase('replacedServer', namesOf(run), agent.name));
   }
   return removed;
 }
@@ -191,14 +182,16 @@ async function commit({ agent, command, record, run }: Registering): Promise<voi
     plugin: recordName(agent),
     record,
   });
-  await run.success(registered(names, agent.name, command));
+  await run.success(mcpPhrase('registered', names, agent.name, command));
 }
 
 /** Fails a registration whose `add` failed: the agent's output, the record restored, the correction. */
 async function failAdd(registering: Registering, answer: Answer, removed: boolean): Promise<never> {
   await warnOutput(registering.run, answer);
   restoreRecord(registering, removed);
-  throw new FatalError(addFailed(namesOf(registering.run), registering.agent.name, codeOf(answer)));
+  throw new FatalError(
+    mcpPhrase('addFailed', namesOf(registering.run), registering.agent.name, codeOf(answer)),
+  );
 }
 
 /** Registers with one agent, or fails with its output and the record restored. */
@@ -220,9 +213,9 @@ async function noteBuild(run: ChildRun): Promise<void> {
   if (build === 'distributed') {
     return;
   }
-  await run.info(buildNote(run.name, build));
+  await run.info(mcpPhrase('buildNote', run.name, build));
   if (build === 'source') {
-    await run.info(runtimeFlagsDropped);
+    await run.info(mcpPhrase('runtimeFlagsDropped'));
   }
 }
 
@@ -231,7 +224,7 @@ async function checkFirst(run: ChildRun, named: AgentName | undefined) {
   refuseWindows(run, 'install');
   const command = commandLine(run.host);
   if (command.some(holdsControlCharacter)) {
-    throw new FatalError(pathHoldsControl(run.name));
+    throw new FatalError(mcpPhrase('pathHoldsControl', run.name));
   }
   const record = recordOf(run);
   const agents = selectedAgents(named);
@@ -250,7 +243,9 @@ async function registerStarted(
   force: boolean,
 ): Promise<void> {
   if (held.has(registering.agent)) {
-    await registering.run.info(replacedServer(namesOf(registering.run), registering.agent.name));
+    await registering.run.info(
+      mcpPhrase('replacedServer', namesOf(registering.run), registering.agent.name),
+    );
   }
   await registerWith(registering, force);
 }
@@ -268,7 +263,7 @@ async function installRegistrations(run: ChildRun, request: InstallRequest): Pro
           held,
           request.force,
         )
-      : run.info(skippedAgent(agent.name)));
+      : run.info(mcpPhrase('skippedAgent', agent.name)));
   }
   await noteBuild(run);
 }

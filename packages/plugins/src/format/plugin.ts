@@ -58,3 +58,6 @@ export function format(settings?: FormatSettings): Plugin<{}> {
     onCommandAttach: attachFormat(settings?.short),
   });
 }
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from '../registry.js';

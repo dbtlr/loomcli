@@ -240,7 +240,9 @@ function listedDeclarations(program, entryFile, projectFolder, names) {
       if (ts.isIdentifier(node) && accepts(node.text)) {
         const symbol = checker.getSymbolAtLocation(node);
         const target = symbol && aliasTarget(symbol);
-        if (target && accepts(target.name) && !exported.includes(target)) {
+        // A namespace import's target is its module, named by its path, so the local name decides.
+        const named = target?.declarations?.some(ts.isSourceFile) ? node.text : target?.name;
+        if (target && accepts(named) && !exported.includes(target)) {
           for (const declaration of target.declarations ?? []) {
             if (ts.isSourceFile(declaration)) {
               recordModule(target, node.text);
@@ -474,11 +476,27 @@ function checkApi(root, packages, { update = false } = {}) {
   if (entries.length === 0) {
     return failures;
   }
-  const compilerState = CompilerState.create(entries[0].config, {
-    additionalEntryPoints: entries.map(({ config }) => config.mainEntryPointFilePath),
-  });
+  /*
+   * One program per package, shared by its entries. A package that joins localization merges its
+   * member into core's MessagePackages, and API Extractor cannot analyze a merged declaration of
+   * another package, so core's entry is read in a program that holds no other package's augmentation.
+   */
+  const compilerStates = new Map();
+  for (const { config, packageName } of entries) {
+    if (!compilerStates.has(packageName)) {
+      compilerStates.set(
+        packageName,
+        CompilerState.create(config, {
+          additionalEntryPoints: entries
+            .filter((candidate) => candidate.packageName === packageName)
+            .map((candidate) => candidate.config.mainEntryPointFilePath),
+        }),
+      );
+    }
+  }
   const parser = docParser();
   for (const { config, entry, listedFile, packageName, policy } of entries) {
+    const compilerState = compilerStates.get(packageName);
     const seenForgotten = new Set();
     const seenExternal = new Set();
     // Extractor silently preserves external re-exports, so inspect its resolved export symbols.
@@ -598,7 +616,12 @@ function checkApi(root, packages, { update = false } = {}) {
     );
     // A name API Extractor reports as forgotten is always reachable from an exported declaration.
     // An unresolved one therefore means this resolution is wrong, so the run stops.
-    const unresolved = [...listed].filter((name) => ![...found.values()].includes(name));
+    // A namespace, such as a message module a public type reads whole, is found through its members.
+    const foundNames = [...found.values()];
+    const unresolved = [...listed].filter(
+      (name) =>
+        !foundNames.includes(name) && !foundNames.some((each) => each.startsWith(`${name}.`)),
+    );
     if (unresolved.length > 0) {
       throw new Error(
         `check:api found no declaration for ${unresolved.join(', ')} in entry ${entry} of ${packageName}.`,

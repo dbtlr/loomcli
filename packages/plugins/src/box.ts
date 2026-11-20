@@ -127,3 +127,6 @@ function box<Data = string>(
 
 export { box };
 export type { BoxConfig };
+
+// The plugin pack's member of MessagePackages, which this entry's declarations load.
+export type {} from './registry.js';

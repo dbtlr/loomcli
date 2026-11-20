@@ -1,5 +1,5 @@
 import { nowrap, pad, readExtension } from '@loomcli/core';
-import type { ArgumentNode, CommandNode, OptionNode, ViewContext } from '@loomcli/core';
+import type { ArgumentNode, CommandNode, OptionNode, Phrase, ViewContext } from '@loomcli/core';
 
 import { aliasSpellings } from './aliases.js';
 import { isStrings } from './closed-set.js';
@@ -7,6 +7,7 @@ import { configInput } from './config/extension.js';
 import { hanging, onTerminal } from './help-layout.js';
 import type { TerminalContext } from './help-layout.js';
 import { helpInput } from './help/extension.js';
+import { helpPhrase } from './help/phrases.js';
 import { singleLine, singleLineOf, terminators } from './lines.js';
 import { addsOccurrence, oneOccurrence } from './occurrences.js';
 import { unitWidth } from './text-lines.js';
@@ -287,7 +288,9 @@ function renderDefault(value: unknown): string {
 /**
  * One fact of a row's parenthesis, and the tone help prints it in. A fact with `names` prints its
  * `text` as a label, then each name, then, with a `delimiter`, the words that name it, and on a
- * terminal wrapping keeps each name and the delimiter whole.
+ * terminal wrapping keeps each name and the delimiter whole. `text` is English, which the man page
+ * and a command reference print; help says `phrase`, the start of `text`, in the run's language,
+ * and repeats the rest of `text` as written, and says `listing` before the delimiter.
  */
 interface Fact {
   readonly delimiter?: string;
@@ -295,7 +298,12 @@ interface Fact {
   readonly names?: readonly string[];
   readonly text: string;
   readonly tone: 'dim' | 'warning';
+  readonly phrase?: Phrase;
+  readonly listing?: Phrase;
 }
+
+/** A phrase's English text, which the man page and a command reference print. */
+const english = (phrase: Phrase): string => phrase.text;
 
 /** How a right cell styles its parts: the prose, each fact, and the parenthesis and its commas. */
 interface CellWriter {
@@ -330,7 +338,7 @@ function rightCellWith(text: CellText, facts: readonly Fact[], writer: CellWrite
   return parenthesis === '' ? joined : `${joined}${gutter}${parenthesis}`;
 }
 
-/** The right cell of one row as help styles it. */
+/** The right cell of one row as help styles it, its facts said in the run's language. */
 function rightCell(text: CellText, facts: readonly Fact[], context: ViewContext): string {
   const { style } = context;
   return rightCellWith(text, facts, {
@@ -347,31 +355,42 @@ function rightCell(text: CellText, facts: readonly Fact[], context: ViewContext)
 function styledFact(fact: Fact, context: ViewContext): string {
   const { style } = context;
   const tone = style[fact.tone];
-  return factWith(fact, {
-    text: (text) => tone(style.escape(text)),
-    unit: (unit) => {
-      const styled = tone(style.escape(unit));
-      return onTerminal(context) ? nowrap(styled) : styled;
+  return factWith(
+    fact,
+    {
+      text: (text) => tone(style.escape(text)),
+      unit: (unit) => {
+        const styled = tone(style.escape(unit));
+        return onTerminal(context) ? nowrap(styled) : styled;
+      },
     },
-  });
+    context.localize,
+  );
 }
 
 /**
  * One fact, its words written by `text` and each name and delimiter by `unit`: the text alone, or
- * a label, the names, and the delimiter and what it splits the variable into.
+ * a label, the names, and the delimiter and what it splits the variable into. `say` renders the
+ * fact's phrases, English unless help passes the run's language.
  */
 function factWith(
   fact: Fact,
   writer: { readonly text: (text: string) => string; readonly unit: (unit: string) => string },
+  say: (phrase: Phrase) => string = english,
 ): string {
+  const text =
+    fact.phrase === undefined
+      ? fact.text
+      : `${say(fact.phrase)}${fact.text.slice(fact.phrase.text.length)}`;
   if (fact.names === undefined) {
-    return writer.text(fact.text);
+    return writer.text(text);
   }
+  const listing = fact.listing ?? helpPhrase('separatedBy', fact.noun ?? helpPhrase('listNoun'));
   const list =
     fact.delimiter === undefined
       ? ''
-      : `${writer.text(` as ${fact.noun ?? 'a list'} separated by `)}${writer.unit(fact.delimiter)}`;
-  return `${writer.text(`${fact.text} `)}${fact.names.map((name) => writer.unit(name)).join(writer.text(' '))}${list}`;
+      : `${writer.text(say(listing))}${writer.unit(fact.delimiter)}`;
+  return `${writer.text(`${text} `)}${fact.names.map((name) => writer.unit(name)).join(writer.text(' '))}${list}`;
 }
 
 /** One fact as plain text, as help prints it with no style. */
@@ -390,17 +409,24 @@ function delimiterLiteral(option: OptionNode): string | undefined {
   return JSON.stringify(option.envDelimiter);
 }
 
-/** A fact help prints dim. */
-function dimFact(text: string): Fact {
-  return { text, tone: 'dim' };
+/** A fact help prints dim: its phrase, then any text after it repeated as written. */
+function dimFact(phrase: Phrase, rest = ''): Fact {
+  return { phrase, text: `${phrase.text}${rest}`, tone: 'dim' };
 }
 
 /**
- * What a variable's value splits into: a list for a multiple option, and exactly its arity of
- * values for a scalar arity option, as in `2 values`.
+ * What a variable's value splits into, as a phrase: a list for a multiple option, and exactly its
+ * arity of values for a scalar arity option, as in `2 values`.
  */
+function splitNounPhrase(option: OptionNode): Phrase {
+  return option.type === 'string' && option.arity !== null
+    ? helpPhrase('valuesNoun', option.arity)
+    : helpPhrase('listNoun');
+}
+
+/** What a variable's value splits into, in English, as the man page names it. */
 function splitNoun(option: OptionNode): string {
-  return option.type === 'string' && option.arity !== null ? `${option.arity} values` : 'a list';
+  return splitNounPhrase(option).text;
 }
 
 /**
@@ -408,13 +434,19 @@ function splitNoun(option: OptionNode): string {
  * splits the variable into.
  */
 function bindingFact(
-  label: string,
+  label: Phrase,
   names: readonly string[],
-  split?: { readonly delimiter: string; readonly noun: string },
+  split?: { readonly delimiter: string; readonly noun: Phrase },
 ): Fact {
+  const fact: Fact = { names, phrase: label, text: label.text, tone: 'dim' };
   return split === undefined
-    ? { names, text: label, tone: 'dim' }
-    : { ...split, names, text: label, tone: 'dim' };
+    ? fact
+    : {
+        ...fact,
+        delimiter: split.delimiter,
+        listing: helpPhrase('separatedBy', split.noun),
+        noun: split.noun.text,
+      };
 }
 
 /** The fact one declared default contributes, which an explicit `undefined` default does not. */
@@ -422,15 +454,13 @@ function defaultFacts(declared: { readonly value: unknown } | undefined): Fact[]
   if (declared === undefined || declared.value === undefined) {
     return [];
   }
-  return [dimFact(`default: ${renderDefault(declared.value)}`)];
+  return [dimFact(helpPhrase('defaultFact', renderDefault(declared.value)))];
 }
 
 /** The fact an implied value contributes, which prints and escapes as a string default does. */
 function impliedFacts(implied: string | null): Fact[] {
-  return implied === null ? [] : [dimFact(`implied: ${oneLine(implied)}`)];
+  return implied === null ? [] : [dimFact(helpPhrase('impliedFact', oneLine(implied)))];
 }
-
-const singularSourceCount = 1;
 
 /** The native source routing and count bounds shared by help and man page rows. */
 function contentFacts(
@@ -440,28 +470,22 @@ function contentFacts(
   if (input.type !== 'content') {
     return [];
   }
-  const routing = collected
-    ? 'files and piped stdin; - places stdin'
-    : 'file or piped stdin; - selects stdin';
+  const routing = collected ? helpPhrase('filesAndStdinFact') : helpPhrase('fileOrStdinFact');
   return [
-    dimFact(input.stdin ? routing : 'file path'),
-    ...(input.min === undefined
-      ? []
-      : [dimFact(`min: ${input.min} ${input.min === singularSourceCount ? 'source' : 'sources'}`)]),
-    ...(input.max === undefined
-      ? []
-      : [dimFact(`max: ${input.max} ${input.max === singularSourceCount ? 'source' : 'sources'}`)]),
+    dimFact(input.stdin ? routing : helpPhrase('filePathFact')),
+    ...(input.min === undefined ? [] : [dimFact(helpPhrase('minSourcesFact', input.min))]),
+    ...(input.max === undefined ? [] : [dimFact(helpPhrase('maxSourcesFact', input.max))]),
   ];
 }
 
 function stringFacts(option: StringOption): Fact[] {
   return [
     ...contentFacts(option, option.multiple),
-    ...(option.required ? [dimFact('required')] : []),
+    ...(option.required ? [dimFact(helpPhrase('requiredFact'))] : []),
     ...(option.requiredWhen === 'non-interactive'
-      ? [dimFact('required when not interactive')]
+      ? [dimFact(helpPhrase('requiredWhenNotInteractiveFact'))]
       : []),
-    ...(option.multiple ? [dimFact('repeatable')] : []),
+    ...(option.multiple ? [dimFact(helpPhrase('repeatableFact'))] : []),
     ...defaultFacts(option.default),
     ...impliedFacts(option.implied),
   ];
@@ -470,7 +494,7 @@ function stringFacts(option: StringOption): Fact[] {
 /** The facts one Boolean option row carries. Its absent value is its only possible one. */
 function booleanFacts(option: Extract<OptionNode, { type: 'boolean' }>): Fact[] {
   // A negative polarity means the absent value is `true` and both spellings set it to `false`.
-  return option.polarity === 'negative' ? [dimFact('default: true')] : [];
+  return option.polarity === 'negative' ? [dimFact(helpPhrase('defaultFact', 'true'))] : [];
 }
 
 /**
@@ -478,23 +502,37 @@ function booleanFacts(option: Extract<OptionNode, { type: 'boolean' }>): Fact[] 
  * prints it last, so a reader takes everything after `deprecated: ` as the message.
  */
 function deprecatedFacts(member: { readonly deprecated: string | undefined }): Fact[] {
-  return member.deprecated === undefined
-    ? []
-    : [{ text: `deprecated: ${singleLine(member.deprecated)}`, tone: 'warning' }];
+  if (member.deprecated === undefined) {
+    return [];
+  }
+  const phrase = helpPhrase('deprecatedFact', singleLine(member.deprecated));
+  return [{ phrase, text: phrase.text, tone: 'warning' }];
 }
 
 /** How the alias fact and a Command's `Alias:` line join several names. */
 const aliasSeparator = ', ';
 
 /**
- * The labels visible aliases print under, by how many names follow: the fact's in a row's
- * parenthesis, and the line's under a Command's masthead and in its man page DESCRIPTION.
+ * The labels visible aliases print under, by how many names follow, as phrases: the fact's in a
+ * row's parenthesis, and the line's under a Command's masthead.
  */
-function aliasLabels(names: readonly string[]): { readonly fact: string; readonly line: string } {
+function aliasLabelPhrases(names: readonly string[]): {
+  readonly fact: Phrase;
+  readonly line: Phrase;
+} {
   const [, second] = names;
   return second === undefined
-    ? { fact: 'alias: ', line: 'Alias: ' }
-    : { fact: 'aliases: ', line: 'Aliases: ' };
+    ? { fact: helpPhrase('aliasFactLabel'), line: helpPhrase('aliasLabel') }
+    : { fact: helpPhrase('aliasesFactLabel'), line: helpPhrase('aliasesLabel') };
+}
+
+/**
+ * The labels visible aliases print under, in English, as the man page's DESCRIPTION and a command
+ * reference print them.
+ */
+function aliasLabels(names: readonly string[]): { readonly fact: string; readonly line: string } {
+  const { fact, line } = aliasLabelPhrases(names);
+  return { fact: fact.text, line: line.text };
 }
 
 /**
@@ -502,7 +540,7 @@ function aliasLabels(names: readonly string[]): { readonly fact: string; readonl
  * right-cell rule prints first; a member with none contributes no fact.
  */
 function aliasFacts(names: readonly string[]): Fact[] {
-  return isEmpty(names) ? [] : [dimFact(`${aliasLabels(names).fact}${names.join(aliasSeparator)}`)];
+  return isEmpty(names) ? [] : [dimFact(aliasLabelPhrases(names).fact, names.join(aliasSeparator))];
 }
 
 /**
@@ -559,10 +597,10 @@ function bindingFacts(option: OptionNode): Fact[] {
   }
   const path = readExtension(option, configInput)?.path;
   const delimiter = delimiterLiteral(option);
-  const split = delimiter === undefined ? undefined : { delimiter, noun: splitNoun(option) };
+  const split = delimiter === undefined ? undefined : { delimiter, noun: splitNounPhrase(option) };
   return [
-    ...(isEmpty(option.env) ? [] : [bindingFact('env:', option.env, split)]),
-    ...(path === undefined ? [] : [bindingFact('config:', [path])]),
+    ...(isEmpty(option.env) ? [] : [bindingFact(helpPhrase('envFactLabel'), option.env, split)]),
+    ...(path === undefined ? [] : [bindingFact(helpPhrase('configFactLabel'), [path])]),
   ];
 }
 
@@ -591,7 +629,7 @@ function argumentFacts(argument: ArgumentNode): Fact[] {
   return [
     ...contentFacts(argument, argument.variadic),
     ...(argument.requiredWhen === 'non-interactive'
-      ? [dimFact('required when not interactive')]
+      ? [dimFact(helpPhrase('requiredWhenNotInteractiveFact'))]
       : []),
     ...defaultFacts(argument.default),
   ];
@@ -689,6 +727,7 @@ export type {
   ValueParts,
 };
 export {
+  aliasLabelPhrases,
   aliasLabels,
   aliasSeparator,
   argumentFacts,
