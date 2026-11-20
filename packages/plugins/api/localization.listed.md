@@ -287,7 +287,7 @@ declare function usageHint(command: readonly string[]): string;
 
 declare function valuesNoun(arity: number): string;
 
-declare function writeBlocked(path: string): string;
+declare function pathBlocked(path: string): string;
 
 declare function writeUnwritable(path: string, readOnly: boolean): string;
 

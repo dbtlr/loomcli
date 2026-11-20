@@ -26,6 +26,7 @@ import type { Log } from '@loomcli/core';
 
 import { nodeCrypto } from '../built-ins.js';
 import { fileRemoved } from '../change-events.js';
+import { errorCode, reading } from './reach.js';
 
 /** The permission bits of a file mode, without its file type. */
 const permissionBits = 0o7777;
@@ -41,29 +42,18 @@ type Observed =
   | { readonly kind: 'directory' }
   | { readonly kind: 'special' };
 
-/** The runtime error's code, such as `ENOENT`, or `undefined` for a value that carries none. */
-function errorCode(error: unknown): unknown {
-  return error instanceof Error ? Reflect.get(error, 'code') : undefined;
-}
-
 /** The digest of some bytes, as the record spells it. */
 function digestOf(content: string | Uint8Array): string {
   return `sha256:${nodeCrypto().createHash('sha256').update(content).digest('hex')}`;
 }
 
 /**
- * What `lstat` finds at `path` without following a link, or `undefined` when nothing is there or a
- * file sits where a folder of its path should be, which holds nothing at `path` either.
+ * What `lstat` finds at `path` without following a link, or `undefined` when nothing is there. A
+ * file where one of its folders is needed fails the read, naming the path, because the path may
+ * still hold what the record says once the folder is back.
  */
 function lstatIfPresent(path: string): Stats | undefined {
-  try {
-    return lstatSync(path);
-  } catch (error) {
-    if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') {
-      return undefined;
-    }
-    throw error;
-  }
+  return reading(path, () => lstatSync(path, { throwIfNoEntry: false }));
 }
 
 /** What `path` holds, read without following a symbolic link. */
@@ -197,12 +187,15 @@ function removeStaging(staging: string): void {
   }
 }
 
-/** The names in a directory, or none when the directory is gone or a file sits in its place. */
+/**
+ * The names in a directory, or none when the directory is gone. A file at the directory's path, or
+ * where one of its folders is needed, fails the read, naming the directory.
+ */
 function entriesOf(directory: string): string[] {
   try {
-    return readdirSync(directory);
+    return reading(directory, () => readdirSync(directory));
   } catch (error) {
-    if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') {
+    if (errorCode(error) === 'ENOENT') {
       return [];
     }
     throw error;
@@ -270,9 +263,12 @@ function createDirectory(path: string, mode?: number): void {
   }
 }
 
-/** Removes a directory when it is empty; one that holds anything, or is gone, stays as it is. */
+/**
+ * Removes a directory when it is empty; one that holds anything, or is gone, stays as it is. A file
+ * where one of its folders is needed fails the removal, naming the directory.
+ */
 function removeEmptyDirectory(path: string): void {
-  if (lstatSync(path, { throwIfNoEntry: false })?.isDirectory() !== true) {
+  if (lstatIfPresent(path)?.isDirectory() !== true) {
     return;
   }
   try {
@@ -328,9 +324,9 @@ export {
   createNew,
   digestOf,
   entriesOf,
-  errorCode,
   exists,
   isMarkedEntry,
+  lstatIfPresent,
   missingParents,
   observe,
   permissionBits,
@@ -344,3 +340,4 @@ export {
   stagingPath,
   stagingSuffix,
 };
+export { errorCode } from './reach.js';
