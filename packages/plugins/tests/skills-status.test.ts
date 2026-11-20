@@ -690,6 +690,17 @@ test.skipIf(process.getuid?.() === 0)(
   },
 );
 
+test('a project note quotes a root that holds a space, so its step pastes as one word', async () => {
+  const box = fixture();
+  const spaced = join(box.root, 'my notes');
+  mkdirSync(join(spaced, '.git'), { recursive: true });
+  const args = ['--project', '--directory', spaced];
+  const [row] = await box.report(args);
+  expect(row.notes).toEqual([
+    `Run notes skills install --project --agent claude --directory '${spaced}' to install it.`,
+  ]);
+});
+
 test.each([false, true])(
   'project notes name directory only when explicitly supplied: %s',
   async (explicit) => {

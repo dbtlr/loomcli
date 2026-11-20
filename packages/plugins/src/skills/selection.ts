@@ -70,14 +70,21 @@ function spokenPath(command: CommandNode): string {
   return command.path.join(' ');
 }
 
-/** The fault of two Commands that give one file, the earlier in graph order named first. */
+/**
+ * The fault of two Commands that give one file, the earlier in graph order named first. Without a
+ * skill, the caller's operator may not choose the paths, as `loom docs` selects every Command, so
+ * the correction leaves selection out.
+ */
 function sameName(
   subject: Subject,
   { earlier, file, later }: { earlier: CommandNode; later: CommandNode; file: string },
 ): DeclarationError {
   const commands = `Commands "${spokenPath(earlier)}" and "${spokenPath(later)}"`;
   return new DeclarationError(skillsReferenceNameTaken, {
-    correction: 'Rename one of them, hide one, or select one of them alone.',
+    correction:
+      subject === undefined
+        ? 'Rename one of them, or hide one.'
+        : 'Rename one of them, hide one, or select one of them alone.',
     sentence:
       subject === undefined
         ? `${commands} both give the file ${file}.`
@@ -85,10 +92,16 @@ function sameName(
   });
 }
 
-/** The fault of a selected root whose file would be the index's. */
+/**
+ * The fault of a selected root whose file would be the index's. Without a skill the caller's
+ * operator may not choose the paths, and the root cannot be hidden, so renaming is the fix.
+ */
 function rootIsIndex(subject: Subject, graph: CommandGraph): DeclarationError {
   return new DeclarationError(skillsReferenceNameTaken, {
-    correction: 'Select the root\'s Commands by their own paths, such as ["get"], in place of [].',
+    correction:
+      subject === undefined
+        ? 'Rename the application.'
+        : 'Select the root\'s Commands by their own paths, such as ["get"], in place of [].',
     sentence:
       subject === undefined
         ? `The root of ${graph.name} gives the file ${indexFile}, which is the name of the index.`

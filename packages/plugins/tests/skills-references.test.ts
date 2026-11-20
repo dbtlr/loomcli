@@ -434,7 +434,7 @@ describe('judged at build', () => {
     ).toStrictEqual({ ...expected, sentence: 'The path ["note", "show"] names no Command.' });
   });
 
-  it('fails the build for two Commands that give one file, unless one is hidden', () => {
+  it('fails the build for two Commands that give one file, unless one is hidden, and corrects a caller without a skill with no selection', () => {
     const correction = 'Rename one of them, hide one, or select one of them alone.';
     expect(thrown(() => configApplication(false).inspect())).toStrictEqual({
       correction,
@@ -450,13 +450,13 @@ describe('judged at build', () => {
     expect(
       thrown(() => commandReferences(graph, { commands: [[]], guidance: true })),
     ).toStrictEqual({
-      correction,
+      correction: 'Rename one of them, or hide one.',
       rule: '@loomcli/plugins/skills/reference-name-taken',
       sentence: 'Commands "config set" and "config-set" both give the file notes-config-set.md.',
     });
   });
 
-  it('fails the build for a selected root whose file is the index', () => {
+  it('fails the build for a selected root whose file is the index, and corrects a caller without a skill by renaming', () => {
     const correction =
       'Select the root\'s Commands by their own paths, such as ["get"], in place of [].';
     expect(thrown(() => toolsApplication([[]]).inspect())).toStrictEqual({
@@ -469,7 +469,7 @@ describe('judged at build', () => {
     expect(
       thrown(() => commandReferences(graph, { commands: [[]], guidance: true })),
     ).toStrictEqual({
-      correction,
+      correction: 'Rename the application.',
       rule: '@loomcli/plugins/skills/reference-name-taken',
       sentence: 'The root of index gives the file index.md, which is the name of the index.',
     });

@@ -37,6 +37,17 @@ function posixQuoted(name: string): string {
   return `'${name.replaceAll("'", String.raw`'\''`)}'`;
 }
 
+/**
+ * A path as one word a shell reads back as the path, for a step an operator pastes: as written
+ * when it holds only ASCII letters, digits, `_`, `.`, `/`, `:`, and `-`, which no shell reads
+ * specially inside an absolute path, and otherwise as a Bash or Zsh single-quoted string, as
+ * `shlex.quote` gives it. Bash, Zsh, PowerShell, and Nushell read a single-quoted string that holds
+ * no `'` as written, and so does Fish unless it also holds two backslashes in a row.
+ */
+function shellWord(path: string): string {
+  return /^[\w./:-]+$/u.test(path) ? path : posixQuoted(path);
+}
+
 /** The name as a Fish single-quoted string, which reads `\\` and `\'` as escapes. */
 function fishQuoted(name: string): string {
   return `'${name.replaceAll('\\', String.raw`\\`).replaceAll("'", String.raw`\'`)}'`;
@@ -73,4 +84,4 @@ function powershellQuoted(text: string): string {
   return `'${doubled.join('')}'`;
 }
 
-export { fishQuoted, identifier, nuQuoted, posixQuoted, powershellQuoted };
+export { fishQuoted, identifier, nuQuoted, posixQuoted, powershellQuoted, shellWord };
