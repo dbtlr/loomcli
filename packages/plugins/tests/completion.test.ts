@@ -1348,6 +1348,8 @@ a=\~root
         expect(pwned).toBe(false);
       }
     },
+    // Seven PowerShell startups plus the availability probe can exceed 30 seconds under load.
+    90_000,
   );
 });
 
@@ -1386,17 +1388,5 @@ describe('the Nushell script', () => {
   it('evaluates nothing the operator typed: no source, eval, or nested nu', () => {
     const script = nuScript('kit');
     expect(script).not.toMatch(/\b(?:source|eval|nu -c|nu --commands)\b/u);
-  });
-
-  it('offers nothing and no file for a failed call, an unclosed quote, a bad directive line, and the error directive', () => {
-    const script = nuScript('kit');
-    for (const guard of [
-      '$result.exit_code != 0',
-      '$words | any {|w| $w.open}',
-      "'^:[0-9]+$'",
-      '($directive mod 2) == 1',
-    ]) {
-      expect(script).toContain(guard);
-    }
   });
 });

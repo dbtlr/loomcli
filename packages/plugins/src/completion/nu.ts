@@ -113,7 +113,7 @@ def __${id}_token [chars: list<string>, start: int, in_list: bool] {
     } else if $c == 'r' and $at == $start {
       let hashes = ($chars | skip ($at + 1) | take while {|h| $h == '#'} | length)
       let quote = $at + 1 + $hashes
-      if $quote < $count and ($chars | get $quote) == "'" {
+      if $hashes > 0 and $quote < $count and ($chars | get $quote) == "'" {
         $body = $quote + 1
         $closer = ("'" + (0..<$hashes | each {'#'} | str join))
       }
