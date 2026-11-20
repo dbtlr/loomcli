@@ -1,5 +1,5 @@
 import type Fs from 'node:fs';
-import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { assertSkillsMatch, mockProcess } from '@loomcli/testing';
@@ -325,4 +325,30 @@ export const app = new Application('notes', { description: 'Notes.', plugins: [s
   );
   expect(result.stderr).toContain('Fix the skill files loader and run loom skills export again.');
   expect(existsSync(join(root, 'committed'))).toBe(false);
+});
+
+test('an output folder the user cannot write names write access to that folder', async () => {
+  const root = fixture();
+  const output = join(root, 'committed');
+  mkdirSync(output);
+  chmodSync(output, 0o555);
+  try {
+    const result = await loom(root, ['skills', 'export', 'committed']);
+    expect(result).toMatchObject({
+      status: 1,
+      stderr: `Cannot create ${join(output, 'notes')}, because permission was denied. Check that your user can write to the folder that holds it and has execute access to each folder above that, then run the command again.\n`,
+    });
+  } finally {
+    chmodSync(output, 0o755);
+  }
+});
+
+test('an output that is a link to nothing names the link, not a missing path', async () => {
+  const root = fixture();
+  symlinkSync(join(root, 'missing'), join(root, 'committed'));
+  const result = await loom(root, ['skills', 'export', 'committed']);
+  expect(result).toMatchObject({
+    status: 1,
+    stderr: `Cannot create ${join(root, 'committed/notes')}, because it or a folder on the way to it is a link to a path that does not exist, or a folder on the way is missing. Check where each link on the way points and that each folder on the way exists, then run the command again.\n`,
+  });
 });

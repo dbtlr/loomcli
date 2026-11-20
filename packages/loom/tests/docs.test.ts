@@ -1,5 +1,13 @@
 import type Fs from 'node:fs';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import { afterEach, expect, test, vi } from 'vite-plus/test';
@@ -348,4 +356,20 @@ test('a package without the renderer gets the docs dependency correction', async
     'The package resolves no @loomcli/plugins that renders command references. Install a current @loomcli/plugins, then run loom docs again.\n',
   );
   expect(existsSync(join(root, 'reference'))).toBe(false);
+});
+
+test('a reference folder the user cannot write names the write, not an open', async () => {
+  const root = fixture();
+  const output = join(root, 'reference');
+  mkdirSync(output);
+  chmodSync(output, 0o555);
+  try {
+    const result = await loom(root, ['docs', 'reference']);
+    expect(result).toMatchObject({
+      status: 1,
+      stderr: `Cannot write ${join(output, 'index.md')}, because permission was denied. Check that your user can write to it and to the folder that holds it, and has execute access to each folder above that, then run the command again.\n`,
+    });
+  } finally {
+    chmodSync(output, 0o755);
+  }
 });
