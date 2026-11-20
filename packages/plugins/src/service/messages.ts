@@ -21,7 +21,7 @@ function unitChanged(name: string, path: string): string {
 }
 
 function unitHoldsControl(name: string): string {
-  return `${shown(name)} cannot write its service unit because a path or its description holds a control character. Install ${shown(name)} where its path has none.`;
+  return `${shown(name)} cannot write its service unit because a path, the description, or an environment variable holds a control character the unit cannot store. Remove the character, then run ${shown(name)} service install again.`;
 }
 
 function unitHomeNotAbsolute(name: string): string {
@@ -30,6 +30,14 @@ function unitHomeNotAbsolute(name: string): string {
 
 function unitNotRegular(name: string, path: string): string {
   return `${shownPath(path)} is not a regular file, so install leaves it alone. Remove it, then run ${shown(name)} service install again.`;
+}
+
+function outputFolderBlocked(name: string, path: string): string {
+  return `Cannot create the service output folder ${shownPath(path)} because a file sits where a folder is needed. Remove or rename the file, then run ${shown(name)} service install again.`;
+}
+
+function outputFolderUnwritable(name: string, path: string, readOnly: boolean): string {
+  return `Cannot create the service output folder ${shownPath(path)} because ${readOnly ? 'the file system is read-only' : 'you do not have permission to create it'}. Make the location writable, then run ${shown(name)} service install again.`;
 }
 
 function serviceNotInstalled(name: string, label: string): string {
@@ -130,6 +138,14 @@ function callUnreadableNote({ manager, report, target }: UnreadableCall, code: n
   return `${shown(manager)} could not report ${shown(target)} (exit ${String(code)}). Run ${shown(report)} to see why.`;
 }
 
+/** The output path and its absence, when the manager has yet to open the file. */
+function outputFileRow(path: string, exists: boolean): string {
+  return `${shown(path)}${exists ? '' : ' (file missing)'}`;
+}
+
+/** The row label of the configured console output file. */
+const outputLabel = 'output';
+
 /** The log path remains useful before the first record creates the file. */
 function logFileRow(path: string, exists: boolean): string {
   return `${shown(path)}${exists ? '' : ' (no records yet)'}`;
@@ -154,6 +170,10 @@ const noteLabel = 'note';
 export type { Child, UnreadableCall };
 export {
   fileGone,
+  outputFileRow,
+  outputFolderBlocked,
+  outputFolderUnwritable,
+  outputLabel,
   logLabel,
   noteLabel,
   unitLabel,

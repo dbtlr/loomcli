@@ -1,9 +1,12 @@
+import { mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+
 import { applicationDirectory, FatalError } from '@loomcli/core';
 import type { Host, Log, OnShutdown, Phrase } from '@loomcli/core';
 
 import { homeOf } from '../application-folders.js';
 import { holdsControlCharacter } from '../control-character.js';
-import { digestOf, observe } from '../installation/disk.js';
+import { digestOf, errorCode, observe } from '../installation/disk.js';
 import { install, readRecorded, targetRefusals, uninstall } from '../installation/files.js';
 import type { Refusal } from '../installation/files.js';
 import type { CommittedFile } from '../installation/record.js';
@@ -13,6 +16,7 @@ import { launchd } from './launchd.js';
 import type { Child } from './messages.js';
 import { servicePhrase } from './phrases.js';
 import { systemd } from './systemd.js';
+import type { ServiceSettings } from './types.js';
 
 /** The unit file's mode whatever the umask, because launchd refuses a plist its group or others can write. */
 const unitMode = 0o644;
@@ -166,21 +170,42 @@ function refuse(run: ChildRun, refused: readonly Refusal[]): void {
 }
 
 /**
- * The unit's text, or the refusal of a value the file cannot hold. The description is read on one
- * line first, as help reads it, so only a path or a character that form keeps is refused.
+ * Renders the unit or refuses a value the file cannot hold. The description is read on one
+ * line first, as help reads it.
  */
-function renderUnit(prepared: Prepared, words: readonly string[]): string {
+function renderUnit(
+  prepared: Prepared,
+  settings: ServiceSettings,
+  output: string | undefined,
+): string {
   const { run, home } = prepared;
   const description = singleLineOf(run.description) ?? run.name;
   const { program } = run.host;
-  if ([...program, description, home].some(holdsControlCharacter)) {
+  if ([...program, description, home, output ?? ''].some(holdsControlCharacter)) {
+    throw new FatalError(servicePhrase('unitHoldsControl', run.name));
+  }
+  const variables = settings.environment?.(run.host) ?? {};
+  // ES2022 has no toSorted, and Object.entries returns a new array.
+  // oxlint-disable-next-line unicorn/no-array-sort
+  const environment = Object.entries(variables).sort(
+    ([left], [right]) => Number(left > right) - Number(left < right),
+  );
+  // XML allows tab, line feed, and carriage return in environment text.
+  if (
+    environment.some((entry) =>
+      entry.some((text) => holdsControlCharacter(text.replaceAll(/[\t\n\r]/gu, ''))),
+    )
+  ) {
     throw new FatalError(servicePhrase('unitHoldsControl', run.name));
   }
   return prepared.backend.render({
     description,
+    environment,
     home,
     label: run.label,
-    words: [...program, ...words],
+    output,
+    stopTimeout: settings.stopTimeout,
+    words: [...program, ...settings.run],
   });
 }
 
@@ -233,14 +258,45 @@ async function writeUnit(prepared: Prepared, text: string, files: readonly Commi
   await reportRemovals(run, outcome);
 }
 
-/** `install`: the checks and refusals, then the unit written unless unchanged, loaded, and started. */
-async function installChild(run: ChildRun, words: readonly string[]): Promise<void> {
+/** Resolves the console output path relative to the home the unit runs from. */
+function outputPath(home: string, output: string | undefined): string | undefined {
+  return output === undefined ? undefined : resolve(home, output);
+}
+
+/** Creates the output folder or tells the operator how to make it available. */
+function createOutputFolder(name: string, folder: string): void {
+  try {
+    mkdirSync(folder, { recursive: true });
+  } catch (error) {
+    const code = errorCode(error);
+    if (code === 'ENOTDIR' || code === 'EEXIST') {
+      throw new FatalError(servicePhrase('outputFolderBlocked', name, folder));
+    }
+    if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
+      throw new FatalError(servicePhrase('outputFolderUnwritable', name, folder, code === 'EROFS'));
+    }
+    throw error;
+  }
+}
+
+/** Checks the installation and ensures the output folder is ready before any manager work. */
+function prepareInstall(run: ChildRun, settings: ServiceSettings) {
   const prepared = prepare(run);
   requireDistributed(run);
-  const text = renderUnit(prepared, words);
-  const { service } = prepared;
+  const output = outputPath(prepared.home, settings.output);
+  const text = renderUnit(prepared, settings, output);
   const files = recordedFiles(prepared, 'install');
-  refuse(run, targetRefusals([service.unit], files));
+  refuse(run, targetRefusals([prepared.service.unit], files));
+  if (output !== undefined) {
+    createOutputFolder(run.name, dirname(output));
+  }
+  return { files, prepared, text };
+}
+
+/** `install`: the checks and refusals, then the unit written unless unchanged, loaded, and started. */
+async function installChild(run: ChildRun, settings: ServiceSettings): Promise<void> {
+  const { files, prepared, text } = prepareInstall(run, settings);
+  const { service } = prepared;
   const unchanged = isUnchanged(service.unit, text, files);
   await (unchanged
     ? run.info(servicePhrase('unitUnchanged', service.unit))
@@ -318,4 +374,4 @@ async function control(run: ChildRun, verb: keyof typeof controlLines): Promise<
 }
 
 export type { ChildRun, Prepared };
-export { control, installChild, isPresent, prepare, uninstallChild };
+export { control, installChild, isPresent, outputPath, prepare, uninstallChild };

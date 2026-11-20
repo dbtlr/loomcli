@@ -591,6 +591,14 @@ declare function noSessionNote(label: string): string;
 
 declare const noteLabel = "note";
 
+declare function outputFileRow(path: string, exists: boolean): string;
+
+declare function outputFolderBlocked(name: string, path: string): string;
+
+declare function outputFolderUnwritable(name: string, path: string, readOnly: boolean): string;
+
+declare const outputLabel = "output";
+
 declare function platformUnsupported(name: string, platform: string): string;
 
 declare const ranManagerCall = "Ran {call}.";

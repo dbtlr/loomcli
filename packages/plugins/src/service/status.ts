@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 
 import { escapeControlCharacters, nowrap, readExtension, width } from '@loomcli/core';
 import type { CommandGraph, ContextualStyle, Host, Phrase } from '@loomcli/core';
@@ -50,19 +50,45 @@ function stateOf({ label, unit, installed }: Subject, reading: Reading): Service
 function statusOf(
   state: ServiceState,
   details: readonly ServiceDetail[],
-  logs?: ServiceStatus['logs'],
+  destinations: {
+    readonly output?: ServiceStatus['output'];
+    readonly logs?: ServiceStatus['logs'];
+  } = {},
 ): ServiceStatus {
-  return { ...state, details, ...(logs === undefined ? {} : { logs }) };
+  const { logs, output } = destinations;
+  return {
+    ...state,
+    details,
+    ...(output === undefined ? {} : { output }),
+    ...(logs === undefined ? {} : { logs }),
+  };
+}
+
+/** Reads the configured console output destination without creating anything. */
+function outputOf(path: string | undefined): ServiceStatus['output'] {
+  if (path === undefined) {
+    return undefined;
+  }
+  try {
+    return { path, exists: statSync(path).isFile() };
+  } catch {
+    return { path, exists: false };
+  }
 }
 
 /** Resolves the logging plugin's files for the status host, without creating them. */
-function logsOf(graph: CommandGraph, host: Host): ServiceStatus['logs'] {
+function logsOf(graph: CommandGraph, host: Host, hasOutput: boolean): ServiceStatus['logs'] {
   const facts = readExtension(graph.root, loggingFiles);
   if (facts === undefined) {
     return undefined;
   }
   if (facts.files.length === emptyFiles) {
-    return { kind: 'manager', capture: host.platform === 'linux' ? 'journald' : 'none' };
+    return hasOutput
+      ? undefined
+      : {
+          kind: 'manager',
+          capture: host.platform === 'linux' ? 'journald' : 'none',
+        };
   }
   const resolved = resolveLoggingFiles(facts, { application: graph.name, host });
   return {
@@ -102,6 +128,7 @@ function statusText(
   const quoted = (text: string) => style.escape(escapeControlCharacters(text));
   const rows: (readonly [string, string])[] = [
     [localize(servicePhrase('unitLabel')), nowrap(quoted(status.unit))],
+    ...outputRows(status.output, style, localize),
     ...logRows(status.logs, style, localize),
     ...status.details.map(({ name, value }): readonly [string, string] => [name, value]),
     ...notesOf(status.notes, localize).map((note): readonly [string, string] => [
@@ -124,6 +151,19 @@ function notesOf(
 ): readonly string[] {
   const phrases = notePhrases.get(notes);
   return phrases === undefined ? notes : phrases.map((phrase) => localize(phrase));
+}
+
+/** The redirected stdout and stderr file gets a row when configured. */
+function outputRows(
+  output: ServiceStatus['output'],
+  style: ContextualStyle,
+  localize: (phrase: Phrase) => string,
+): (readonly [string, string])[] {
+  if (output === undefined) {
+    return [];
+  }
+  const row = localize(servicePhrase('outputFileRow', output.path, output.exists));
+  return [[localize(servicePhrase('outputLabel')), nowrap(style.escape(row))]];
 }
 
 /** Each file gets a row; a file-free installation names the manager's capture instead. */
@@ -149,4 +189,4 @@ function logRows(
   });
 }
 
-export { logsOf, stateOf, statusOf, statusText };
+export { logsOf, outputOf, stateOf, statusOf, statusText };

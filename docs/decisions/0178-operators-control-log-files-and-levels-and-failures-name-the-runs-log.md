@@ -47,3 +47,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 ## Changelog
 
 - 2026-11-18: Proposed for operator log controls, failure hints, and the logging plugin's file fact and resolver (LM-373).
+- 2026-11-20: [ADR-0216](0216-service-units-can-set-environment-output-and-stop-timeout.md), proposed, narrows **Service status names the files**. When `output` is set, status reports the redirected output file and omits the manager capture row and its `logs: { kind: 'manager', capture }` member. Logging plugin file destinations still get their own rows and `logs: { kind: 'files', files }` member. It binds when that record is accepted.

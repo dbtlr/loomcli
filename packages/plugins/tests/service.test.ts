@@ -75,10 +75,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DeclarationError } from '@loomcli/core';
 import type { ProcessTerminal, ReleaseFacts } from '@loomcli/core';
+import { service } from '@loomcli/plugins/service';
+import type { ServiceSettings } from '@loomcli/plugins/service';
 import { afterEach, describe, expect, it } from 'vite-plus/test';
 
 import { invoke } from '../../../scripts/test-process.js';
@@ -162,6 +165,9 @@ interface Answer {
 type Answers = Record<string, Answer | readonly Answer[]>;
 
 interface Scenario {
+  readonly environment?: Readonly<Record<string, string>>;
+  readonly output?: string;
+  readonly stopTimeout?: number;
   readonly logging?: 'files' | 'console';
   readonly logFiles?: readonly string[];
   readonly platform?: string;
@@ -198,6 +204,9 @@ async function run(box: Box, argv: string[], scenario: Scenario = {}) {
       XDG_STATE_HOME: box.state,
       ...scenario.env,
     },
+    environment: scenario.environment,
+    output: scenario.output,
+    stopTimeout: scenario.stopTimeout,
     logging: scenario.logging,
     logFiles: scenario.logFiles,
     label: scenario.label,
@@ -333,6 +342,98 @@ const notLoaded: Answers = { [`launchctl print ${agent}`]: { exit: 113 } };
 const loaded: Answers = { [`launchctl print ${agent}`]: { exit: 0 } };
 
 describe('installing', () => {
+  it.each([
+    ['linux', 'name', { 'LESS\u001b': 'plain' }],
+    ['linux', 'value', { LESS_TERMCAP_md: '\u001b[1m' }],
+    ['darwin', 'name', { 'LESS\u001b': 'plain' }],
+    ['darwin', 'value', { LESS_TERMCAP_md: '\u001b[1m' }],
+  ])(
+    'on %s refuses a control character in an environment %s before writing',
+    async (platform, _field, environment) => {
+      const box = sandbox();
+      const result = await run(box, ['install'], {
+        answers: notLoaded,
+        environment,
+        output: 'logs/notes.log',
+        platform,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('notes cannot write its service unit');
+      expect(result.stderr).toContain('control character');
+      expect(existsSync(platform === 'linux' ? systemdPath(box) : launchdPath(box))).toBe(false);
+      expect(existsSync(join(box.home, 'logs'))).toBe(false);
+      expect(calls(box)).toEqual([]);
+    },
+  );
+
+  it('renders the Linux settings with literal environment values and an absolute output path', async () => {
+    const box = sandbox();
+    const output = join(box.home, 'logs', 'nested', 'notes "%$.log');
+    const scenario = {
+      environment: { ZED: `${String.raw`space "quote" & < > % $HOME \tail`}\nnext`, EMPTY: '' },
+      output: 'logs/nested/notes "%$.log',
+      stopTimeout: 180_001,
+    };
+    const first = await run(box, ['install'], scenario);
+    expect(first.status).toBe(0);
+    expect(statSync(dirname(output)).isDirectory()).toBe(true);
+    expect(existsSync(output)).toBe(false);
+    const directives = [
+      'Environment="EMPTY="',
+      `Environment="PATH=${box.bin}"`,
+      String.raw`Environment="ZED=space \"quote\" & < > %% $HOME \\tail\nnext"`,
+      `StandardOutput=append:${box.home}/logs/nested/notes "%%$.log`,
+      `StandardError=append:${box.home}/logs/nested/notes "%%$.log`,
+      'TimeoutStopSec=180001ms',
+    ];
+    expect(readFileSync(systemdPath(box), 'utf8')).toBe(
+      pinnedUnit(box).replace('\n\n[Install]', `\n${directives.join('\n')}\n\n[Install]`),
+    );
+    writeFileSync(output, 'service output\n');
+    const again = await run(box, ['install'], {
+      ...scenario,
+      environment: { EMPTY: '', ZED: scenario.environment.ZED },
+    });
+    expect(again.stderr).toContain('is unchanged.');
+    const uninstalled = await run(box, ['uninstall'], scenario);
+    expect(uninstalled.status).toBe(0);
+    expect(readFileSync(output, 'utf8')).toBe('service output\n');
+  });
+
+  it('renders the macOS settings with XML entities and rounds the stop timeout up', async () => {
+    const box = sandbox();
+    const output = join(box.home, 'logs', 'notes & < > " \' %$.log');
+    const first = await run(box, ['install'], {
+      answers: notLoaded,
+      environment: { ZED: `${String.raw`space "quote" & < > % $HOME \tail`}\nnext`, EMPTY: '' },
+      output,
+      platform: 'darwin',
+      stopTimeout: 180_001,
+    });
+    expect(first.status).toBe(0);
+    expect(statSync(dirname(output)).isDirectory()).toBe(true);
+    const directives = [
+      '  <key>EnvironmentVariables</key>',
+      '  <dict>',
+      '    <key>EMPTY</key>',
+      '    <string></string>',
+      '    <key>PATH</key>',
+      `    <string>${box.bin}</string>`,
+      '    <key>ZED</key>',
+      `${String.raw`    <string>space &quot;quote&quot; &amp; &lt; &gt; % $HOME \tail`}\nnext</string>`,
+      '  </dict>',
+      '  <key>StandardOutPath</key>',
+      `  <string>${box.home}/logs/notes &amp; &lt; &gt; &quot; &apos; %$.log</string>`,
+      '  <key>StandardErrorPath</key>',
+      `  <string>${box.home}/logs/notes &amp; &lt; &gt; &quot; &apos; %$.log</string>`,
+      '  <key>ExitTimeOut</key>',
+      '  <integer>181</integer>',
+    ];
+    expect(readFileSync(launchdPath(box), 'utf8')).toBe(
+      pinnedPlist(box).replace('\n</dict>', `\n${directives.join('\n')}\n</dict>`),
+    );
+  });
+
   it('a distributed install on linux writes the pinned unit, records it, and reloads, enables, and restarts; a second is unchanged', async () => {
     const box = sandbox();
     const result = await run(box, ['install']);
@@ -571,6 +672,23 @@ WantedBy=default.target
 });
 
 describe('refusing', () => {
+  it('a regular file at the output folder fails install before writing the unit', async () => {
+    const box = sandbox();
+    const folder = join(box.home, 'logs');
+    writeFileSync(folder, '');
+
+    const result = await run(box, ['install'], { output: 'logs/console.log' });
+
+    expect(result).toEqual({
+      status: 1,
+      stderr: `Cannot create the service output folder ${folder} because a file sits where a folder is needed. Remove or rename the file, then run notes service install again.\n`,
+      stdout: '',
+    });
+    expect(existsSync(systemdPath(box))).toBe(false);
+    expect(existsSync(linuxRecord(box))).toBe(false);
+    expect(calls(box)).toEqual([]);
+  });
+
   it.each([
     ['source', 'a source build'],
     ['development', 'a development build'],
@@ -685,7 +803,7 @@ describe('refusing', () => {
     expect(result).toEqual({
       status: 1,
       stderr:
-        'notes cannot write its service unit because a path or its description holds a control character. Install notes where its path has none.\n',
+        'notes cannot write its service unit because a path, the description, or an environment variable holds a control character the unit cannot store. Remove the character, then run notes service install again.\n',
       stdout: '',
     });
     expect(existsSync(systemdPath(box))).toBe(false);
@@ -1009,6 +1127,58 @@ function shown(active: string, pid: number): Answers {
 }
 
 describe('status', () => {
+  it('reports the service state when a regular file blocks the output folder', async () => {
+    const box = sandbox();
+    const installed = await run(box, ['install']);
+    expect(installed.status).toBe(0);
+    writeFileSync(join(box.home, 'logs'), '');
+    const result = await run(box, ['status', '--format', 'json'], {
+      answers: shown('active', 4120),
+      output: 'logs/console.log',
+    });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      output: { exists: false, path: join(box.home, 'logs', 'console.log') },
+      running: true,
+      state: 'active',
+    });
+  });
+
+  it.each(['linux', 'darwin'])('reports output separately from logging on %s', async (platform) => {
+    const box = sandbox();
+    const output = 'console.log';
+    const path = join(box.home, output);
+    const scenario = {
+      answers: platform === 'linux' ? shown('inactive', 0) : notLoaded,
+      logging: 'console',
+      output,
+      platform,
+    } satisfies Scenario;
+    const text = await run(box, ['status'], scenario);
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain(`  output  ${path} (file missing)\n`);
+    expect(text.stdout).not.toContain('  log ');
+    const missing = await run(box, ['status', '--format', 'json'], scenario);
+    expect(JSON.parse(missing.stdout)).toHaveProperty('output', { exists: false, path });
+    expect(JSON.parse(missing.stdout)).not.toHaveProperty('logs');
+    mkdirSync(path);
+    const directory = await run(box, ['status', '--format', 'json'], scenario);
+    expect(JSON.parse(directory.stdout)).toHaveProperty('output', { exists: false, path });
+    rmSync(path, { recursive: true });
+    writeFileSync(path, '');
+    const logPath = join(box.home, 'records.log');
+    const present = await run(box, ['status', '--format', 'json'], {
+      ...scenario,
+      logFiles: [logPath],
+      logging: 'files',
+    });
+    expect(JSON.parse(present.stdout)).toHaveProperty('output', { exists: true, path });
+    expect(JSON.parse(present.stdout)).toHaveProperty('logs', {
+      files: [{ exists: false, path: logPath }],
+      kind: 'files',
+    });
+  });
+
   it.each(['linux', 'darwin'])('names each log file and its absence on %s', async (platform) => {
     const box = sandbox();
     const first = join(box.root, 'first.jsonl');
@@ -1471,6 +1641,22 @@ async function runGraph(words: readonly string[], build: 'distributed' | 'develo
 }
 
 describe('settings and the graph', () => {
+  it.each<[Partial<ServiceSettings>, string]>([
+    [{ output: '' }, 'output'],
+    ...[0, -1, 1.5, NaN, Infinity].map((stopTimeout): [Partial<ServiceSettings>, string] => [
+      { stopTimeout },
+      'stopTimeout',
+    ]),
+  ])('marks the rejected settings in %j at service()', (invalid, field) => {
+    expect(() => service({ label: 'com.acme.notes', run: ['serve'], ...invalid })).toThrow(
+      expect.objectContaining({
+        constructor: DeclarationError,
+        findings: [expect.objectContaining({ mark: `0.${field}` })],
+        rule: expect.objectContaining({ identity: '@loomcli/plugins/service/settings' }),
+      }),
+    );
+  });
+
   it.each([
     ['an unknown Command', ['bogus']],
     ['a group', ['cache']],
