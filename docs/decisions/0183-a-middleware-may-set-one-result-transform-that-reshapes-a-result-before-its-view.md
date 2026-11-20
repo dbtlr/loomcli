@@ -4,7 +4,7 @@ title: ADR-0183 - A middleware may set one result transform that reshapes a resu
 description: A middleware assigns one result transform per run through transform on its context, last assignment before the dispatch boundary wins; core applies it to a value result once and to each row of a rows result before the selected view renders, as it arrives under a row view or when the collected rows render under a whole view, so views stay pure. The formatter's --fields, a repeatable control option of comma lists, sets one that keeps named top-level keys under the json and jsonl views the formatter appended, and fails with exit 2 under any other view, for a field the output does not hold, and for a value that is not an object. This narrows ADR-0021's and ADR-0023's rule that a view alone decides what a result renders as, and ADR-0023's rule that a run reaches a result's rendering by view name alone.
 status: proposed
 created: 2026-11-18
-modified: 2026-11-19
+modified: 2026-11-20
 ---
 
 # ADR-0183 - A middleware may set one result transform that reshapes a result before its view
@@ -49,3 +49,4 @@ Proposed. It moves to accepted in the release PR of the release that ships it.
 
 - 2026-11-18: Proposed with the result transform and the formatter's `--fields`.
 - 2026-11-19: Limit the wrong-view refusal's correction to the formatter-appended views the Command has; with none, say only to remove `--fields`.
+- 2026-11-20: The wrong-view refusal names only the formatter views the Command has, and in an invocation by name every `--fields` failure names the options by their declared names, `fields` and `format`.
