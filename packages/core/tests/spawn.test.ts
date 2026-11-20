@@ -14,19 +14,21 @@
  *   child a signal ended is 128 plus its number. A command no program answers to is `unstarted`,
  *   and `spawn` never throws. A detached child runs in a process group of its own.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable, Writable } from 'node:stream';
 
+import { Application, Command, plugin, processHandle } from '@loomcli/core';
+import type { Child, ChildExit, Host, ProcessHandle, SpawnOptions } from '@loomcli/core';
 import { afterEach, expect, test, vi } from 'vite-plus/test';
 
 import { childEnvironment } from '../../../scripts/test-process.js';
-import { Application, Command, plugin, processHandle } from '../src/index.js';
-import type { Child, ChildExit, Host, ProcessHandle, SpawnOptions } from '../src/index.js';
 
 const roots: string[] = [];
+
+vi.mock(import('node:child_process'), { spy: true });
 
 afterEach(() => {
   for (const root of roots.splice(0)) {
@@ -626,7 +628,30 @@ test('abandon unpipes and drains outputs even when a Writable applies backpressu
   }
 });
 
-test('abandon closes inherited piped stdin and leaves its source open', async () => {
+test('abandon removes the collectors from captured output pipes', async () => {
+  const child = startReal(script('setInterval(() => {}, 1000)'));
+  try {
+    const spawned = vi.mocked(spawn).mock.results.at(-1);
+    if (spawned?.type !== 'return' || !spawned.value.stdout || !spawned.value.stderr) {
+      throw new Error('Expected the real child to have two captured output pipes.');
+    }
+    // The public exit snapshot stays fixed even if a collector keeps retaining later bytes.
+    const captures = [spawned.value.stdout, spawned.value.stderr].map((pipe) => ({
+      listeners: pipe.listeners('data'),
+      pipe,
+    }));
+    child.abandon();
+    for (const { listeners, pipe } of captures) {
+      expect(listeners).toHaveLength(1);
+      expect(pipe.listeners('data')).not.toContain(listeners[0]);
+    }
+    await expect(child.exited).resolves.toMatchObject({ kind: 'abandoned' });
+  } finally {
+    child.kill('SIGKILL');
+  }
+});
+
+test('abandon unpipes inherited stdin and leaves its source open', async () => {
   const root = sandbox();
   const input = new PassThrough();
   const child = processHandle({ stdin: input }).spawn(
@@ -646,7 +671,9 @@ test('abandon closes inherited piped stdin and leaves its source open', async ()
     input.write('before');
     await waitForFixture(() => expect(existsSync(join(root, 'read'))).toBe(true));
     child.abandon();
+    expect(input.readableFlowing).toBe(false);
     input.write('after');
+    expect(input.read()).toEqual(Buffer.from('after'));
     await waitForFixture(() => expect(readFileSync(join(root, 'input'), 'utf8')).toBe('before'));
     expect(input.destroyed).toBe(false);
     expect(input.writableEnded).toBe(false);
