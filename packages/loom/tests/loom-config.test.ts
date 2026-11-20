@@ -288,6 +288,22 @@ test('a path the schema rejects fails every command that reads the file with cod
   );
 });
 
+test.each([[''], ['a/b'], [3], ['-x'], ['.hidden']])(
+  'a name of %j fails every command that reads the file with code 2, naming name',
+  async (name) => {
+    const directory = configuredPackage({ name });
+    const result = await runLoom(directory, ['build', '--target', 'node']);
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Configuration value name in loom.config.json:');
+  },
+);
+
+test('a name the schema accepts is a portable name', async () => {
+  const directory = configuredPackage({ name: 'my.app_2-x' }, { '.changes/fix.md': '- Fix.\n' });
+  await expect(runLoom(directory, ['changelog', 'check'])).resolves.toMatchObject({ status: 0 });
+});
+
 test('a cut over a wrong file changes nothing: the changelog, package.json, and the fragments stay', async () => {
   for (const config of ['{ "paths": \n', `${JSON.stringify({ paths: { changes: '' } })}\n`]) {
     const directory = configuredPackage(

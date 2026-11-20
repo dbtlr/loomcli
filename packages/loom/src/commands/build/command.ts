@@ -70,7 +70,8 @@ export const buildCommand = new Command('build', {
     validate: repositoryOption,
   })
   .option('name', {
-    description: "Name the application for a binary's path and asset instead of package.json bin.",
+    description:
+      "Name the application for a binary's path and asset instead of loom.config.json name or package.json bin.",
     type: 'string',
   })
   .option('facts', {

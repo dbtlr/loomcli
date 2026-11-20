@@ -747,6 +747,22 @@ test('init renders the post-install declaration of loom.config.json into install
   );
 });
 
+test('the name key renders the installer asset as the release name and keeps the scaffolded name elsewhere', async () => {
+  const root = installPackage({ 'loom.config.json': `${JSON.stringify({ name: 'alternate' })}\n` });
+  await expect(loom(root, ['init', '--only', 'install'])).resolves.toMatchObject({ status: 0 });
+  const script = read(root, 'install.sh');
+  expect(script).toBe(renderManaged(installerScript('notes', 'me/notes', undefined, 'alternate')));
+  expect(script).toContain("asset='alternate'-$platform\n");
+  expect(script).toContain("app='notes'\n");
+  expect(script).not.toContain('asset=$app-$platform');
+});
+
+test('a name key equal to the scaffolded name renders the script it renders with no key', async () => {
+  const root = installPackage({ 'loom.config.json': `${JSON.stringify({ name: 'notes' })}\n` });
+  await loom(root, ['init', '--only', 'install']);
+  expect(read(root, 'install.sh')).toBe(renderManaged(installerScript('notes', 'me/notes')));
+});
+
 test('a package whose configuration declares no postInstall gets install.sh with no post-install step', async () => {
   const root = installPackage({});
   const runResult = await loom(root, ['init', '--only', 'install']);

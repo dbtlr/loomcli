@@ -13,6 +13,7 @@ export const writeReleaseFormula: ActionHandler<typeof releaseFormula> = async (
   host,
   options,
   out,
+  provided,
   signal,
 }) => {
   await report({ out, signal }, () => {
@@ -21,7 +22,7 @@ export const writeReleaseFormula: ActionHandler<typeof releaseFormula> = async (
     const formula = renderReleaseFormula({
       checksums: { path: checksums, text: readFileSync(resolve(host.cwd, checksums), 'utf8') },
       manifest: { path: manifest, text: readFileSync(manifest, 'utf8') },
-      name,
+      name: name ?? provided.config.name,
       output,
     });
     const target = resolve(host.cwd, output);

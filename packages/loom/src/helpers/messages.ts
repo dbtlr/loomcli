@@ -139,7 +139,7 @@ function invalidVersionField(version: unknown): string {
 }
 
 const noBinName =
-  'package.json names no application in bin, a string or an object with one key, so pass --name <name>.';
+  'package.json names no application in bin, a string or an object with one key, so pass --name <name>, or set name in loom.config.json.';
 
 const noApplicationName =
   'package.json names no application in bin or name, so set its name field and run loom init again.';
@@ -191,6 +191,9 @@ function notAString(value: unknown): string {
 }
 
 const notAWordList = 'Expected a non-empty array of strings';
+
+const notPortableName =
+  'Expected a name of letters, digits, ".", "_", and "-", not starting with "-" or "."';
 
 const repeatedPlatform = 'Expected each platform once';
 
@@ -265,6 +268,7 @@ export {
   noVersionField,
   notAString,
   notAWordList,
+  notPortableName,
   notAnObject,
   platformsNeedLauncher,
   refusedTarget,

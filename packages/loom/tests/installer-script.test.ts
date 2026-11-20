@@ -95,6 +95,28 @@ function recordBytes(path: string, digest = testDigest) {
   return `{"format":1,"method":"script","path":"${path}","digest":"sha256:${digest}"}\n`;
 }
 
+test('a release name requests that asset, and the binary and record keep the scaffolded name', () => {
+  const alternate = { ...release(latest, { 'alternate-linux-x64': 'test' }) };
+  const box = sandbox(
+    { release: alternate },
+    renderManaged(installerScript(app, repo, undefined, 'alternate')),
+  );
+  const result = runScript(box);
+  const target = join(defaultDirectory(box), app);
+  expect(result.status).toBe(0);
+  expect(requested(box)).toEqual([`${latest}SHA256SUMS`, `${latest}alternate-linux-x64`]);
+  expect(readFileSync(target, 'utf8')).toBe('test');
+  expect(readFileSync(join(recordDirectory(box), 'install.json'), 'utf8')).toBe(
+    recordBytes(target),
+  );
+});
+
+test('with no release name the script is the one the plain call renders, byte for byte', () => {
+  const plain = renderManaged(installerScript(app, repo));
+  expect(renderManaged(installerScript(app, repo, undefined, undefined))).toBe(plain);
+  expect(plain).toContain('  asset=$app-$platform\n');
+});
+
 test('with no arguments the script installs the latest release into ~/.local/bin and records it', () => {
   const box = sandbox();
   const result = runScript(box);

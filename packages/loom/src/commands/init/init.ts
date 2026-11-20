@@ -38,7 +38,7 @@ import {
   scaffoldName,
 } from '../../helpers/build-facts.js';
 import { packagePaths } from '../../helpers/loom-config.js';
-import type { PostInstall } from '../../helpers/loom-config.js';
+import type { LoomConfig, PostInstall } from '../../helpers/loom-config.js';
 import { loomVersion, typescriptRange } from '../../helpers/loom-version.js';
 import { driftWarning, hasDrifted, readManaged, renderManaged } from '../../helpers/managed.js';
 import { parseManifest } from '../../helpers/manifest.js';
@@ -139,11 +139,12 @@ interface Target {
   readonly directory: string;
   readonly fresh: boolean;
   readonly layout: ScaffoldLayout;
+  readonly name: string | undefined;
   readonly postInstall: PostInstall | undefined;
 }
 
 /** Where init acts, before the configuration places its files. */
-type Place = Omit<Target, 'layout' | 'postInstall'>;
+type Place = Omit<Target, 'layout' | 'name' | 'postInstall'>;
 
 /** A directory init starts a new application in, which fails when npm or core would reject its name. */
 function newPackageDirectory(directory: string): Place {
@@ -393,12 +394,12 @@ function writeAuthoringSkill(run: Run) {
 
 /**
  * Keeps the installer script current for the application's name, the package's GitHub repository,
- * and the configuration's post-install declaration, through `writeManaged`. Each write sets mode
- * 755, and an unchanged script is left alone, mode and all. A package that names no GitHub
+ * and the configuration's release name and post-install declaration, through `writeManaged`. Each
+ * write sets mode 755, and an unchanged script is left alone, mode and all. A package that names no GitHub
  * repository gets no script and a warning, so an author who sets `repository` gets the script on
  * the next run.
  */
-function writeInstaller(run: Run, postInstall: PostInstall | undefined) {
+function writeInstaller(run: Run, config: Pick<LoomConfig, 'name' | 'postInstall'>) {
   const manifest = readManifest(run.directory);
   const repository = githubRepository(manifest);
   if (repository === undefined) {
@@ -408,7 +409,7 @@ function writeInstaller(run: Run, postInstall: PostInstall | undefined) {
   writeManaged(
     run,
     run.layout.installer,
-    installerScript(scaffoldName(manifest), repository, postInstall),
+    installerScript(scaffoldName(manifest), repository, config.postInstall, config.name),
     executableMode,
   );
 }
@@ -702,7 +703,7 @@ async function runInit(
     writeAuthoringSkill(context);
   }
   if (selected('install')) {
-    writeInstaller(context, run.target.postInstall);
+    writeInstaller(context, run.target);
   }
 }
 
@@ -720,6 +721,7 @@ export const initPackage: ActionHandler<typeof init> = async (context) => {
     const target = {
       ...place,
       layout: scaffoldLayout(place.directory, packagePaths(place.directory, config)),
+      name: config.name,
       postInstall: config.postInstall,
     };
     const existing = existingTooling(target);

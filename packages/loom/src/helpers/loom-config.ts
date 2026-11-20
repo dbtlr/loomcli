@@ -1,5 +1,6 @@
 import { join, relative, resolve, sep } from 'node:path';
 
+import { isPortableName } from '@loomcli/core';
 import { configuration } from '@loomcli/plugins/config';
 import {
   array,
@@ -21,13 +22,24 @@ import {
 import type { InferOutput } from 'valibot';
 
 import { conventionalChangelog, conventionalFragments } from './conventions.js';
-import { notAWordList, platformsNeedLauncher, repeatedPlatform } from './messages.js';
+import {
+  notAWordList,
+  notPortableName,
+  platformsNeedLauncher,
+  repeatedPlatform,
+} from './messages.js';
 
 /**
  * One path the configuration file names. An empty string or a value of another type is an issue at
  * its own key, which fails the run under the bin's `strict: true`.
  */
 const pathValue = optional(pipe(string(), minLength(1)));
+
+/**
+ * The application's release name, under ADR-0214: a portable name, because it becomes a file name,
+ * a URL segment, a Ruby string, and a shell word. Any other value is an issue at `name`.
+ */
+const releaseName = optional(pipe(string(), check(isPortableName, notPortableName)));
 
 /** The post-install command's words, which hold at least one. */
 const postInstallWordList = tupleWithRest([string()], string());
@@ -98,11 +110,13 @@ const npmSettings = pipe(
 
 /**
  * The schema of `loom.config.json`. Every key is optional, and valibot's `object` strips a key it
- * does not describe, so an unknown key is ignored. The file names no skills folder, which the
+ * does not describe, so an unknown key is ignored. `name` is the release name that `loom build`,
+ * `loom release formula`, and `loom init` read. The file names no skills folder, which the
  * skills plugin's `folder` setting names. `sharedVersion` passes through as written, and
  * `loom changelog write` checks it as one value and fails on a malformed one.
  */
 const loomConfigSchema = object({
+  name: releaseName,
   npm: optional(npmSettings),
   paths: optional(
     object({

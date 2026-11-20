@@ -1,1 +1,1 @@
-- Add `loom release formula` to render a Homebrew formula for a published binary release from its `SHA256SUMS`.
+- Add `loom release formula` to render a Homebrew formula for a published binary release from its `SHA256SUMS`. It reads the application's name from `--name`, else `loom.config.json`'s `name`, else `package.json` `bin`, and a `loom.config.json` that cannot be used fails it with code 2.
