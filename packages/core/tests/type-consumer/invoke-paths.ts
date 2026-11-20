@@ -133,6 +133,16 @@ const either = app.invoke(dry ? ['get'] : ['remote'], { options: { file: 'x' } }
 const eitherMisspelled = app.invoke(dry ? ['gte'] : ['remote'], { options: { anything: 1 } });
 const eitherUndeclared = app.invoke(dry ? ['get'] : ['remote'], { options: { anything: 1 } });
 
+// A union inside one element names either of two Commands, so the values take either Command's.
+// That holds when the two declare no option in common, and a name neither declares is rejected.
+const pull = new Command('pull').option('rebase', { type: 'boolean' }).action(() => undefined);
+const push = new Command('push').option('tags', { type: 'boolean' }).action(() => undefined);
+const sync = new Application('sync').command(new Command('remote').command(pull).command(push));
+const eitherPull = sync.invoke(['remote', dry ? 'pull' : 'push'], { options: { rebase: true } });
+const eitherPush = sync.invoke(['remote', dry ? 'pull' : 'push'], { options: { tags: true } });
+// @ts-expect-error TS2353: An option neither Command declares is rejected.
+const eitherNeither = sync.invoke(['remote', dry ? 'pull' : 'push'], { options: { force: true } });
+
 // An explicit `Mapped` leaves the path at its default, so the call is dynamic.
 const explicitMapped = app.invoke<string>(['gte'], { options: { anything: 1 } });
 
@@ -153,6 +163,9 @@ const formatDynamic = formatted.invoke(listPath, { options: { fields: 'name', fo
 
 export {
   either,
+  eitherNeither,
+  eitherPull,
+  eitherPush,
   eitherMisspelled,
   eitherUndeclared,
   explicitMapped,

@@ -507,13 +507,13 @@ type NamedOptionValue<Config extends OptionConfig> = Config extends {
     implied: unknown;
 } ? true : never);
 
-type NamedValues<Values, Accepted, Empty> = [
+type NamedValues<Values, Accepted, Empty> = Values extends unknown ? [
     keyof Values
 ] extends [
     never
 ] ? Empty : {
     readonly [Name in keyof Values]?: Extract<Values[Name], Accepted> | undefined;
-};
+} : never;
 
 type NodeFor<Target extends ExtensionTarget> = Target extends 'command' ? CommandNode | AttachedCommand : Target extends 'option' ? OptionNode : ArgumentNode;
 

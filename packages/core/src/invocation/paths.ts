@@ -227,10 +227,14 @@ type PathParameter<Paths, Path extends readonly string[]> =
  * The values of one set of inputs, each optional, and `Empty` where the set is empty: a record whose
  * one key says so, so an object literal's undeclared key is an excess property the error names. Each
  * value is read within what `InvocationValues` accepts there, so a typed call is one of its values.
+ * It distributes over a union, so a path element that names either of two Commands takes either
+ * Command's values, even when the two declare no name in common.
  */
-type NamedValues<Values, Accepted, Empty> = [keyof Values] extends [never]
-  ? Empty
-  : { readonly [Name in keyof Values]?: Extract<Values[Name], Accepted> | undefined };
+type NamedValues<Values, Accepted, Empty> = Values extends unknown
+  ? [keyof Values] extends [never]
+    ? Empty
+    : { readonly [Name in keyof Values]?: Extract<Values[Name], Accepted> | undefined }
+  : never;
 
 /** What `InvocationValues` accepts for one argument. */
 type ArgumentValue = NonNullable<InvocationValues['args']>[string];
