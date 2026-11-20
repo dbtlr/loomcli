@@ -90,9 +90,14 @@ test('--name beats the name key in the formula', async () => {
   expect(readFileSync(join(root, 'out.rb'), 'utf8')).toContain('alternate-linux-x64');
 });
 
-test('a name the configuration rejects fails the formula with code 2', async () => {
+test('a name the configuration rejects fails the formula with code 2 at name', async () => {
   const root = alternatePackage({ name: 'a/b' });
-  await expect(formula(root)).resolves.toMatchObject({ status: 2 });
+  await expect(formula(root)).resolves.toMatchObject({
+    status: 2,
+    stderr: expect.stringContaining(
+      `Configuration value name in ${join(root, 'loom.config.json')}:`,
+    ),
+  });
   expect(existsSync(join(root, 'loom-notes.rb'))).toBe(false);
 });
 

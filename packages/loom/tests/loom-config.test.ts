@@ -289,13 +289,16 @@ test('a path the schema rejects fails every command that reads the file with cod
 });
 
 test.each([[''], ['a/b'], [3], ['-x'], ['.hidden']])(
-  'a name of %j fails every command that reads the file with code 2, naming name',
+  'a name of %j fails build and init with code 2 at name',
   async (name) => {
     const directory = configuredPackage({ name });
-    const result = await runLoom(directory, ['build', '--target', 'node']);
-    expect(result.status).toBe(2);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Configuration value name in loom.config.json:');
+    const failure = {
+      status: 2,
+      stderr: expect.stringContaining('Configuration value name in loom.config.json:'),
+      stdout: '',
+    };
+    await expect(runLoom(directory, ['build', '--target', 'node'])).resolves.toEqual(failure);
+    await expect(runLoom(directory, ['init', '--only', 'install'])).resolves.toEqual(failure);
   },
 );
 
