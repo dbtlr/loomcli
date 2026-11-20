@@ -5,7 +5,7 @@
  */
 import { escapeControlCharacters, nowrap } from '@loomcli/core';
 
-import type { UpgradeCommand } from './upgrade.js';
+import type { PackageManagerMethod, UpgradeCommand } from './upgrade.js';
 
 const shown = escapeControlCharacters;
 
@@ -164,11 +164,17 @@ function showUpgradeCommand(command: UpgradeCommand, version: string): string {
     case 'brew': {
       return `brew upgrade ${shown(command.formula)}`;
     }
-    case 'npm': {
-      return `npm install -g ${shown(command.pkg)}@${shown(version)}`;
+    case 'script': {
+      return `${shown(command.name)} self-update`;
     }
     default: {
-      return `${shown(command.name)} self-update`;
+      const install = {
+        bun: 'bun add -g',
+        npm: 'npm install -g',
+        pnpm: 'pnpm add -g',
+        yarn: 'yarn global add',
+      }[command.method];
+      return `${shown(install)} ${shown(command.pkg)}@${shown(version)}`;
     }
   }
 }
@@ -180,11 +186,11 @@ function packageManagerRefusal({
   version,
 }: {
   readonly command: UpgradeCommand | undefined;
-  readonly method: 'brew' | 'npm';
+  readonly method: PackageManagerMethod;
   readonly name: string;
   readonly version: string;
 }): string {
-  const manager = method === 'brew' ? 'Homebrew' : 'npm';
+  const manager = { brew: 'Homebrew', bun: 'Bun', npm: 'npm', pnpm: 'pnpm', yarn: 'Yarn' }[method];
   const correction =
     command === undefined
       ? `Update it with ${shown(manager)}.`
@@ -249,7 +255,7 @@ function skippedUpdateCheck(skip: UpdateCheckSkip): LogText {
       return {
         fields: { name: skip.name },
         template:
-          'Skipped the update check: {name} was not installed by install.sh, Homebrew, or npm.',
+          "Skipped the update check: {name} has no installation record and does not run from a Homebrew Cellar or a package manager's global root.",
       };
     }
     case 'no-command': {

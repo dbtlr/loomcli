@@ -61,7 +61,12 @@ import type { Requesting } from './request.js';
 import { downloadUrl, fetchSums, latestRelease } from './resolve.js';
 import type { Release } from './resolve.js';
 import { listingOf } from './sums.js';
-import { effectiveInstallation, isNpmDistTag, upgradeCommand } from './upgrade.js';
+import {
+  effectiveInstallation,
+  isNpmDistTag,
+  isRegistryInstallationMethod,
+  upgradeCommand,
+} from './upgrade.js';
 import { compareVersions, equalPrecedence, isChannelName, versionOfArgument } from './version.js';
 import type { Version } from './version.js';
 
@@ -582,7 +587,7 @@ function refusePackageManager(request: Request): void {
   const installation = effectiveInstallation(host.release, host.platform);
   if (
     installation === undefined ||
-    (installation.method !== 'brew' && installation.method !== 'npm')
+    (installation.method !== 'brew' && !isRegistryInstallationMethod(installation.method))
   ) {
     return;
   }
@@ -590,7 +595,7 @@ function refusePackageManager(request: Request): void {
   const followed = request.channel ?? release?.channel ?? 'stable';
   const version = named?.text ?? (followed === 'stable' ? 'latest' : followed);
   const command =
-    method === 'npm' && named === undefined && !isNpmDistTag(version)
+    method !== 'brew' && named === undefined && !isNpmDistTag(version)
       ? undefined
       : upgradeCommand(name, { ...host.release, installation });
   throw fatal(packageManagerRefusal({ command, method, name, version }));

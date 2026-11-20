@@ -33,7 +33,7 @@ export const about = new Command('about').action(({ host, out }) => {
   if (installation === undefined) {
     return out.print('Installed some other way.');
   }
-  // Homebrew and npm runs carry an installation too, with no digest, so check the method.
+  // Package-managed runs carry an installation too, with no digest, so check the method.
   return out.print(
     installation.method === 'script'
       ? `Installed by install.sh at ${installation.path}.`
@@ -92,12 +92,18 @@ Core fills `host.release.installation` during host capture for `run()` and `app.
    | First matching layout | Installation |
    | --- | --- |
    | `.../Cellar/<formula>/<version>/...` with the application file beneath the version directory | `{ method: 'brew', path, formula }`. The nearest qualifying `Cellar` ancestor wins. Its next component is the formula name. The version directory can have any name. |
-   | `.../lib/node_modules/...`, where this `node_modules` is the outermost one in the path | `{ method: 'npm', path }`. This is npm's global root, `<prefix>/lib/node_modules`, such as `/usr/local/lib/node_modules/@acme/notes/`. It covers a bundle in a global package and the binary a launcher package starts from its platform package, such as `.../lib/node_modules/@acme/notes/node_modules/@acme/notes-linux-x64/bin/notes`. |
+   | `<prefix>/lib/node_modules/...` | `{ method: 'npm', path }`. npm on Linux and macOS. |
+   | `.../global/<number>/.pnpm/<package-folder>/node_modules/...` | `{ method: 'pnpm', path }`. pnpm 9 and 10, with an all-digit global directory version. |
+   | `.../v<number>/links/<scope>/<name>/<version>/<hash>/node_modules/...` | `{ method: 'pnpm', path }`. The global virtual store from pnpm 11 on. The store defaults to `$PNPM_HOME/store`, and the scope folder is `@` for an unscoped package. |
+   | `$BUN_INSTALL/install/global/node_modules/...` | `{ method: 'bun', path }`. Bun, with `BUN_INSTALL` defaulting to `~/.bun`. |
+   | `.../yarn/global/node_modules/...` | `{ method: 'yarn', path }`. Yarn 1, as in `~/.config/yarn/global/node_modules` or `$XDG_DATA_HOME/yarn/global/node_modules`. |
    | Any other path | The installation is absent. |
 
-   A Homebrew formula that wraps an npm package, such as `/opt/homebrew/Cellar/notes-cli/1.5.0/libexec/lib/node_modules/@acme/notes/`, matches both rows, and the Cellar row wins. Every other `node_modules` layout reads as absent, because `npm install -g` is not the command that updates it: a project's dependency, such as `~/code/app/node_modules/@acme/notes/`, a package `npx` runs from `~/.npm/_npx/<hash>/node_modules/`, and the global roots of pnpm, Bun, and Yarn. On Windows, npm's global root is `<prefix>\node_modules`, which no component tells apart from a project's, so a Windows path derives nothing. A project or workspace directory named `lib` that contains `node_modules`, such as `~/code/lib/node_modules/@acme/notes/`, matches the npm rule. The notice then names `npm install -g`, which installs a second copy globally. The path alone cannot distinguish this layout from an npm global root, and there is no cheap check to distinguish them.
+   A Homebrew formula that wraps an npm package still matches the Cellar row first. Each global root must end at the outermost `node_modules`. This covers an entry script in an unscoped or scoped package and a binary in a launcher's platform package, such as `.../lib/node_modules/@acme/notes/node_modules/@acme/notes-linux-x64/bin/notes`. Project dependencies, npx and pnpm dlx caches, a pnpm global that the hoisted linker or a turned-off global virtual store leaves at `global/<version>/node_modules`, a global folder moved by Bun's `globalDir` or Yarn's `--global-folder`, and a Bun global installed with `--backend=symlink` derive nothing. A project folder laid out as `install/global/node_modules` or `yarn/global/node_modules` reads as Bun or Yarn, because the path cannot tell it from a global root. Windows derives nothing.
 
-The derived `path` is the realpath. `packageManagerInstallation(path, platform)` from `@loomcli/core` applies the layout rules to an absolute realpath without reading a record. Core reports no lookup failures, writes no record, and computes no digest. Only a matching record carries a digest. Before replacing a script-installed binary, the self-update plugin checks the recorded path's package-manager ownership and verifies the digest. Homebrew and npm own their own updates. [ADR-0211](../decisions/0211-update-notices-name-the-package-managers-upgrade-command.md) records the derivation.
+   Core infers ownership from layout alone. A project with a matching layout, such as `~/code/lib/node_modules/` or a pnpm project using the global virtual store, also matches and can get a notice whose command would install a second copy globally.
+
+The derived `path` is the realpath. `packageManagerInstallation(path, platform)` from `@loomcli/core` applies the layout rules to an absolute realpath without reading a record. Core reports no lookup failures, writes no record, and computes no digest. Only a matching record carries a digest. Before replacing a script-installed binary, the self-update plugin checks the recorded path's package-manager ownership and verifies the digest. Each package manager owns its updates. [ADR-0211](../decisions/0211-update-notices-name-the-package-managers-upgrade-command.md) records the derivation.
 
 ## Installed files
 

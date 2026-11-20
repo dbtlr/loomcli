@@ -18,12 +18,11 @@
  *   a time, or that is a directory is stale.
  * - Package managers. An eligible terminal run with a newer GitHub release in the cache shows
  *   the pinned `brew upgrade notes-cli` line for a Homebrew installation and the pinned
- *   `npm install -g @acme/notes@1.5.1` line for npm, naming the cached version, including for an
- *   assetless release bundle; a cached `1.6.0-next.2` on `next` names `@acme/notes@1.6.0-next.2`.
- *   A matching script installation still shows the script command. A matching script record whose
- *   path resolves into a Cellar or npm's global root reads as the refusal of `self-update` reads
- *   it: it shows `brew upgrade notes-cli`, or the npm line when the package name is baked, and
- *   with no baked package name it shows no notice. An npm installation with no
+ *   global install command for npm, pnpm, Bun, and Yarn, naming the exact cached version on
+ *   stable and prerelease channels, including for an assetless release bundle. A matching
+ *   script installation still shows the script command. A matching script record whose path
+ *   resolves into a Cellar or a package manager's global root shows that manager's command,
+ *   as the refusal of `self-update` does. An npm installation with no
  *   baked package name, a package name or formula outside its grammar, such as `-rf`, `@Acme/x`,
  *   or `a b`, shows no notice, starts no refresh, and names the third skip reason at `-vv`. A
  *   run with no release group and one with no installation each name their own pinned reason. A
@@ -581,20 +580,24 @@ test.each([
     method: 'brew',
     version: '1.5.0',
   },
-  {
-    channel: 'stable',
-    command: 'npm install -g @acme/notes@1.5.1',
-    latest: '1.5.1',
-    method: 'npm',
-    version: '1.5.0',
-  },
-  {
-    channel: 'next',
-    command: 'npm install -g @acme/notes@1.6.0-next.2',
-    latest: '1.6.0-next.2',
-    method: 'npm',
-    version: '1.6.0-next.1',
-  },
+  ...[
+    { install: 'npm install -g', method: 'npm' },
+    { install: 'pnpm add -g', method: 'pnpm' },
+    { install: 'bun add -g', method: 'bun' },
+    { install: 'yarn global add', method: 'yarn' },
+  ].flatMap(({ install, method }) =>
+    [
+      { channel: 'stable', latest: '1.5.1', version: '1.5.0' },
+      { channel: 'next', latest: '1.6.0-next.2', version: '1.6.0-next.1' },
+    ].map(({ channel, latest, version }) => ({
+      channel,
+      command: `${install} @acme/notes@${latest}`,
+      formula: undefined,
+      latest,
+      method,
+      version,
+    })),
+  ),
 ])(
   'a $method install on $channel names $command in the notice',
   async ({ channel, command, formula, latest, method, version }) => {
@@ -663,6 +666,21 @@ test.each([
   {
     command: 'npm install -g @acme/notes@1.5.1',
     managed: 'prefix/lib/node_modules/@acme/notes/bin',
+    npmPackage: '@acme/notes',
+  },
+  {
+    command: 'pnpm add -g @acme/notes@1.5.1',
+    managed: 'pnpm/store/v11/links/@acme/notes/1.5.0/hash/node_modules/@acme/notes/bin',
+    npmPackage: '@acme/notes',
+  },
+  {
+    command: 'bun add -g @acme/notes@1.5.1',
+    managed: '.bun/install/global/node_modules/@acme/notes/bin',
+    npmPackage: '@acme/notes',
+  },
+  {
+    command: 'yarn global add @acme/notes@1.5.1',
+    managed: '.config/yarn/global/node_modules/@acme/notes/bin',
     npmPackage: '@acme/notes',
   },
 ])(

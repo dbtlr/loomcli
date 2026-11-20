@@ -25,17 +25,17 @@
  *   reads the same installation. `run({ process: processHandle({ release }) })` reads the override.
  *   It skips the installation lookup.
  * - Derived installations. Run release fixtures from temporary paths under
- *   `Cellar/notes-cli/1.5.0/bin/` and `lib/node_modules/`. Core reports `brew` and `npm`
- *   respectively with the resolved path and no digest. The Homebrew fact names `notes-cli`.
+ *   a Homebrew Cellar and the npm, pnpm, Bun, and Yarn global roots. Core reports the method
+ *   with the resolved path and no digest. The Homebrew fact names `notes-cli`.
  *   A project dependency under `code/lib/node_modules/` matches the npm layout by design. Use a
- *   Node bundle with its runtime outside the package tree and a compiled launcher payload in a
- *   platform package for npm. A symlink to either fixture reports the target's facts. A Cellar
+ *   Node bundle with its runtime outside the package tree and compiled launcher payloads in
+ *   platform packages. A symlink to a fixture reports the target's facts. A Cellar
  *   ancestor wins when both layouts match, as for `Cellar/notes-cli/1.5.0/libexec/lib/node_modules/`.
  *   A matching script record wins over either layout, keeps its original path and digest, and
  *   carries no formula, whatever its method. A Node bundle ignores a matching record and
  *   derives its installation. A stale or malformed record falls through. A project
  *   dependency under `app/node_modules/`, an npx cache under `.npm/_npx/<hash>/node_modules/`, the
- *   pnpm, Bun, and Yarn global roots, an inner `lib/node_modules/` below an outer `node_modules`,
+ *   pnpm project and dlx caches, an inner `lib/node_modules/` below an outer `node_modules`,
  *   an ordinary path, a partial directory marker, and a failed realpath each leave the
  *   installation absent.
  * - Installing. Installing two files into a temporary directory writes both and a `committed` file
@@ -233,6 +233,22 @@ test.each([
   ],
   ['prefix/lib/node_modules/@acme/notes/bin/notes', 'compiled', { method: 'npm' }],
   ['code/lib/node_modules/@acme/notes/index.js', 'bundle', { method: 'npm' }],
+  ['pnpm/global/5/.pnpm/cowsay@1.6.0/node_modules/cowsay/cli.js', 'bundle', { method: 'pnpm' }],
+  [
+    'pnpm/store/v11/links/@acme/notes/1.6.0/hash/node_modules/@acme/notes/node_modules/@acme/notes-linux-x64/bin/notes',
+    'binary',
+    { method: 'pnpm' },
+  ],
+  [
+    '.bun/install/global/node_modules/@acme/notes/node_modules/@acme/notes-linux-x64/bin/notes',
+    'binary',
+    { method: 'bun' },
+  ],
+  [
+    '.config/yarn/global/node_modules/@acme/notes/node_modules/@acme/notes-linux-x64/bin/notes',
+    'binary',
+    { method: 'yarn' },
+  ],
 ])('the real path %s gives its installation for a %s', (layout, kind, installation) => {
   const box = sandbox();
   const path = applicationFile(box, layout);
@@ -248,8 +264,8 @@ test.each([
   'app/node_modules/@acme/notes/bin/notes',
   '.npm/_npx/hash/node_modules/@acme/notes/bin/notes',
   '.local/share/pnpm/global/5/node_modules/@acme/notes/bin/notes',
-  '.bun/install/global/node_modules/@acme/notes/bin/notes',
-  '.config/yarn/global/node_modules/@acme/notes/bin/notes',
+  'app/node_modules/.pnpm/cowsay@1.6.0/node_modules/cowsay/cli.js',
+  'cache/dlx/hash/id/node_modules/.pnpm/cowsay@1.6.0/node_modules/cowsay/cli.js',
   'app/node_modules/outer/lib/node_modules/notes/bin/notes',
   'notCellar/notes/1/bin/notes',
   'prefix/library/node_modules/notes/bin/notes',

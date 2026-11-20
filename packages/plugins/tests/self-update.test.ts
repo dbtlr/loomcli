@@ -30,15 +30,13 @@
  *   calls no hook. `--check` prints the pinned lines for a channel, for a named version, and for
  *   the running version named, requests `SHA256SUMS` and no binary, writes nothing, and calls no
  *   hook.
- * - Package managers. For a Homebrew or npm installation, ordinary `self-update` and
- *   `--check` exit 1 with the pinned sentence. Homebrew names `brew upgrade notes-cli` with or
- *   without a version. npm names `@acme/notes@1.4.2` for `1.4.2` and `v1.4.2`, `@next` for
- *   `--channel next` or a plain run on `next`, and `@latest` for a plain run on stable or
- *   for `--channel stable`. They refuse
- *   before checking the release asset or record directory, with no request or write. An older
- *   npm artifact with no usable package name or dist-tag is told to update with npm. A matching
- *   script record whose path resolves into a Cellar or npm's global root gives the same refusal
- *   as a derived installation and leaves the record and the binary in place.
+ * - Package managers. Ordinary `self-update` and `--check` exit 1 with the pinned sentence
+ *   for Homebrew, npm, pnpm, Bun, and Yarn installations. Homebrew names `brew upgrade notes-cli`.
+ *   The others name their global install command for a named version without the leading `v`,
+ *   a selected or running prerelease channel, or `latest` for stable. With no usable package
+ *   name or dist-tag, the refusal names the manager. The Command makes no request or write and
+ *   refuses before checking the asset or record directory. A matching script record whose path
+ *   resolves into a Cellar or a manager's global root gives that manager's refusal.
  * - Refusals. A run with no release group, no asset, no installation, an unknown method, an
  *   unresolvable record directory, a missing file, a symbolic link at the recorded path, a file
  *   whose digest changed, and a read-only directory each exit 1 with the pinned sentence, make no
@@ -569,6 +567,86 @@ test.each([
   },
 );
 
+test.each(
+  [
+    { install: 'pnpm add -g', manager: 'pnpm', method: 'pnpm' },
+    { install: 'bun add -g', manager: 'Bun', method: 'bun' },
+    { install: 'yarn global add', manager: 'Yarn', method: 'yarn' },
+  ].flatMap(({ install, manager, method }) =>
+    [
+      {
+        argv: [],
+        channel: 'stable',
+        npmPackage: '@acme/notes',
+        suffix: 'latest',
+        version: '1.4.2',
+      },
+      {
+        argv: ['v1.4.2'],
+        channel: 'stable',
+        npmPackage: '@acme/notes',
+        suffix: '1.4.2',
+        version: '1.4.2',
+      },
+      {
+        argv: ['--channel', 'next'],
+        channel: 'stable',
+        npmPackage: '@acme/notes',
+        suffix: 'next',
+        version: '1.4.2',
+      },
+      {
+        argv: [],
+        channel: 'next',
+        npmPackage: '@acme/notes',
+        suffix: 'next',
+        version: '1.6.0-next.1',
+      },
+      {
+        argv: ['--check'],
+        channel: 'next',
+        npmPackage: '@acme/notes',
+        suffix: 'next',
+        version: '1.6.0-next.1',
+      },
+      { argv: ['--channel', 'v1'], channel: 'stable', npmPackage: '@acme/notes', version: '1.4.2' },
+      { argv: [], channel: 'stable', version: '1.4.2' },
+    ].map(({ argv, channel, npmPackage, suffix, version }) => ({
+      argv,
+      channel,
+      install,
+      manager,
+      method,
+      npmPackage,
+      suffix,
+      version,
+    })),
+  ),
+)(
+  '$manager refuses $argv on $channel with package $npmPackage and suffix $suffix',
+  async ({ argv, channel, install, manager, method, npmPackage, suffix, version }) => {
+    const box = sandbox();
+    const result = await run(box, argv, {
+      env: { HOME: 'home', XDG_STATE_HOME: '' },
+      installation: { method, path: box.binary },
+      release: {
+        channel,
+        ...(npmPackage === undefined ? {} : { npmPackage }),
+        repository: 'acme/notes',
+        version,
+      },
+    });
+    const correction =
+      suffix === undefined ? `Update it with ${manager}.` : `Run ${install} @acme/notes@${suffix}.`;
+    expect(result).toMatchObject({
+      status: 1,
+      stderr: `notes was installed with ${manager}, so self-update cannot replace it. ${correction}\n`,
+    });
+    expect(requests(box)).toEqual([]);
+    untouched(box);
+  },
+);
+
 test.each([{ argv: [] }, { argv: ['1.4.2'] }, { argv: ['--check'] }])(
   'Homebrew refuses $argv and names the formula upgrade',
   async ({ argv }) => {
@@ -618,6 +696,24 @@ test.each([
     'prefix/lib/node_modules/@acme/notes/bin',
     'npm',
     'npm install -g @acme/notes@latest',
+  ],
+  [
+    'a binary link',
+    'pnpm/global/5/.pnpm/@acme+notes@1.4.2/node_modules/@acme/notes/bin',
+    'pnpm',
+    'pnpm add -g @acme/notes@latest',
+  ],
+  [
+    'a parent link',
+    '.bun/install/global/node_modules/@acme/notes/bin',
+    'Bun',
+    'bun add -g @acme/notes@latest',
+  ],
+  [
+    'a parent link',
+    '.config/yarn/global/node_modules/@acme/notes/bin',
+    'Yarn',
+    'yarn global add @acme/notes@latest',
   ],
 ])(
   'a matching script record through %s into %s refuses replacement',

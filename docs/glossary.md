@@ -399,7 +399,7 @@ The release line a version belongs to, which core derives from the version: its 
 _Avoid_: Lane (a lane is an output area), channel (alone, which names `out`), track, dist-tag
 
 **Installation method**:
-The release fact that says how the running application was installed: `script` from a matching installation record, or `brew` or `npm`, which core infers from the install layout, a Homebrew Cellar path or npm's global root. The installer owns updates.
+The release fact that says how the running application was installed and who owns its updates. A matching installation record supplies the method, which the installer script records as `script`. Core can also infer `brew` from a Homebrew Cellar or `npm`, `pnpm`, `bun`, or `yarn` from the corresponding global root.
 _Avoid_: Installer, install source, distribution channel
 
 **Installation record**:

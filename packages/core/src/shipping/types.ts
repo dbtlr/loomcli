@@ -26,7 +26,7 @@ export interface ReleaseFacts {
    * application's resolved path.
    */
   readonly installation?: {
-    /** The recorded method, or `brew` or `npm` from the resolved path. The script records `script`. */
+    /** The recorded method, or `brew`, `npm`, `pnpm`, `bun`, or `yarn` from the resolved path. The script records `script`. */
     readonly method: string;
     readonly path: string;
     /** The digest from a matching installation record. */

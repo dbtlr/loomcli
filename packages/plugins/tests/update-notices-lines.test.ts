@@ -221,7 +221,7 @@ test('-vv names the first reason the middleware did nothing, in the contract ord
           release: { asset, channel: 'stable', repository: 'acme/notes', version: '1.5.0' },
         },
       },
-      'notes was not installed by install.sh, Homebrew, or npm.',
+      "notes has no installation record and does not run from a Homebrew Cellar or a package manager's global root.",
     ],
     [
       {
