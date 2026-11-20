@@ -269,16 +269,23 @@ type WalkedEntry<Walked> = Walked extends { entry: infer Entry extends CommandPa
 
 /** The values an entry, or either of several, takes, with every global option. */
 interface EntryValues<Paths, Entry extends CommandPaths> {
+  /** The value each argument takes, by declared name. */
   readonly args?: NamedValues<
     Entry['args'],
     ArgumentValue,
     { readonly 'The Command declares no arguments'?: never }
   >;
+  /** The value of each local or global option, by declared name. */
   readonly options?: NamedValues<
     Entry['options'] & (Paths extends CommandPaths ? Paths['globals'] : {}),
     OptionValue,
     { readonly 'The Command and the Application declare no options'?: never }
   >;
+  /**
+   * The words a command line would give after the `--` separator. They reach a Command that
+   * declares the passthrough mode as its `passthrough`, and are refused, when not empty, on a
+   * Command without it.
+   */
   readonly passthrough?: readonly string[];
 }
 
