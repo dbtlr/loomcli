@@ -773,6 +773,31 @@ test('with a registry, every export of a message module is a string constant or 
   ]);
 });
 
+test('with a registry, a message module holds no exported class, enum, let, async function, export *, or default', () => {
+  const module = [
+    "export const fixed = 'Use a value.';",
+    'export function named(name: string): string { return `Name ${name}.`; }',
+    'export type Shape = string;',
+    'export interface Member { readonly name: string }',
+    'export class Helper {}',
+    'export enum Mode { A }',
+    "export let counter = 'Use a value.';",
+    "export async function later(): Promise<string> { return 'Use a value.'; }",
+    "export * from './other.js';",
+    "export default 'Use a value.';",
+  ].join('\n');
+  expect(
+    localizationSites({ 'inputs/messages.ts': module, 'localization/registry.ts': registry }),
+  ).toEqual([
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'Helper (class)' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'Mode (enum)' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'counter (let)' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'later (async function)' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: '* (export *)' },
+    { check: 'export-shape', file: 'inputs/messages.ts', text: 'default (export default)' },
+  ]);
+});
+
 test('an inline type specifier in an export list is a type, not a sentence', () => {
   const module = [
     "const fixed = 'Use a value.';",
