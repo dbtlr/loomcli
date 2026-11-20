@@ -12,8 +12,8 @@
  *   and from a bundle whose baked facts read distributed.
  * - app.invoke(). A call by name reuses the graph a run kept, and a run reuses one a call kept.
  * - check(). Every call builds anew and calls every hook, and it keeps nothing a run reuses.
- * - A fault. A build a hook rejects keeps nothing, so each later call builds again and meets the
- *   same fault.
+ * - A fault. A build a hook or converter rejects keeps nothing, so a later call builds again.
+ * - Overlap. Two runs started together share the graph of the first successful build.
  * - Defaults. A declared default passes through its validator on every run.
  */
 
@@ -24,6 +24,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Application, Command, DeclarationError, diagnosticRule, plugin } from '@loomcli/core';
+import type { CommandGraph } from '@loomcli/core';
 import { mockProcess } from '@loomcli/testing';
 import { afterAll, expect, test } from 'vite-plus/test';
 
@@ -68,7 +69,7 @@ function counted() {
     )
     .command(
       new Command('caller').action(async ({ invoke: call }) => {
-        await call(['count'], {});
+        await expect(call(['count'], {})).resolves.toMatchObject({ status: 'completed' });
       }),
     );
   return { app, calls, read };
@@ -87,6 +88,16 @@ test.each(builds)('a second run() in a %s build calls no build hook', async (bui
   expect(calls).toEqual({ attached: 3, built: 1 });
   await expect(app.run({ process: processFor(build) })).resolves.toBe(0);
   expect(calls).toEqual({ attached: 3, built: 1 });
+  expect(read[1]).toBe(read[0]);
+});
+
+test.each(builds)('overlapping first runs in a %s build share one graph', async (build) => {
+  const { app, calls, read } = counted();
+  const first = app.run({ process: processFor(build) });
+  const second = app.run({ process: processFor(build) });
+  await expect(Promise.all([first, second])).resolves.toEqual([0, 0]);
+  expect(calls).toEqual({ attached: 3, built: 1 });
+  expect(read).toHaveLength(2);
   expect(read[1]).toBe(read[0]);
 });
 
@@ -154,8 +165,11 @@ test.each(builds)(
     await ran.app.run({ process: processFor(build) });
     const called = await ran.app.invoke(['count'], {}, { process: processFor(build, []) });
     expect(called.status).toBe('completed');
-    await ran.app.invoke(['caller'], {}, { process: processFor(build, []) });
+    await expect(
+      ran.app.invoke(['caller'], {}, { process: processFor(build, []) }),
+    ).resolves.toMatchObject({ status: 'completed' });
     expect(ran.calls).toEqual({ attached: 3, built: 1 });
+    expect(ran.read).toHaveLength(3);
     expect(new Set(ran.read).size).toBe(1);
 
     const invoked = counted();
@@ -209,6 +223,62 @@ test('a build a hook rejects keeps nothing, so every later call builds again and
   expect(() => app.inspect()).toThrow('The graph shares a name.');
   expect(() => app.inspect()).toThrow('The graph shares a name.');
   expect(judged).toBe(6);
+});
+
+test('a converter fault keeps no development graph and a distributed run still builds', async () => {
+  let attached = 0;
+  let converted = 0;
+  const built: CommandGraph[] = [];
+  const read: CommandGraph[] = [];
+  const observer = plugin('@fixture/observer', {
+    onCommandAttach: (command) => {
+      attached += 1;
+      return command;
+    },
+    onGraphBuilt: (graph) => {
+      built.push(graph);
+      return undefined;
+    },
+  });
+  const app = new Application('probe', { plugins: [observer] })
+    .option('path', {
+      type: 'string',
+      validate: {
+        '~standard': {
+          jsonSchema: {
+            input() {
+              converted += 1;
+              throw new Error('No JSON Schema for a transform.');
+            },
+            output: () => ({}),
+          },
+          validate: (value) => ({ value }),
+          vendor: 'fixture',
+          version: 1,
+        },
+      },
+    })
+    .action(({ graph }) => {
+      read.push(graph);
+    });
+
+  for (const attempts of [1, 2]) {
+    const process = processFor('development', []);
+    await expect(app.run({ process })).resolves.toBe(1);
+    expect(process.stderr.text).toContain('No JSON Schema for a transform.');
+    expect(attached).toBe(attempts);
+    expect(converted).toBe(attempts);
+  }
+  expect(built).toHaveLength(0);
+  expect(read).toHaveLength(0);
+
+  await expect(app.run({ process: processFor('distributed', []) })).resolves.toBe(0);
+  expect(attached).toBe(3);
+  expect(converted).toBe(3);
+  expect(built).toHaveLength(1);
+  expect(read).toHaveLength(1);
+  expect(read[0]).toBe(built[0]);
+  expect(read[0]?.root.options).toMatchObject([{ name: 'path', schema: null }]);
 });
 
 test('a declared default passes through its validator on every run', async () => {
