@@ -22,7 +22,7 @@ import type { McpSettings } from './plugin.js';
  * declarations name no private package.
  */
 interface Transport {
-  connection(socket: Socket): void;
+  watch(socket: Socket): void;
   request(request: IncomingMessage, response: ServerResponse): void;
   readonly closed: Promise<void>;
 }
@@ -162,11 +162,6 @@ function warningPhrase(bound: Bound, address: HttpAddress, hooked: boolean): Phr
     : mcpPhrase('openNetworkWarning', address.written);
 }
 
-/** The English text of the warning a bind writes, for a caller that reads text. */
-function networkWarning(bound: Bound, address: HttpAddress, hooked: boolean): string | undefined {
-  return warningPhrase(bound, address, hooked)?.text;
-}
-
 /** The URL line: the endpoint at the host the URL names and the port the server bound. */
 function endpointLine(bound: Bound, address: HttpAddress): string {
   return `http://${urlHost(bound, address)}:${String(bound.port)}/mcp\n`;
@@ -204,7 +199,7 @@ async function serveHttp(context: HttpContext, serving: HttpServing): Promise<vo
 /** Hands the listener's sockets and requests to the transport. */
 function servingServer(transport: Transport) {
   const server = createServer();
-  server.on('connection', (socket: Socket) => transport.connection(socket));
+  server.on('connection', (socket: Socket) => transport.watch(socket));
   server.on('request', (request, response) => transport.request(request, response));
   return server;
 }
@@ -252,4 +247,4 @@ function transportOptions(
   };
 }
 
-export { endpointLine, networkWarning, serveHttp };
+export { endpointLine, serveHttp, warningPhrase };

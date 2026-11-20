@@ -46,7 +46,7 @@ import {
   statusOf,
 } from '../../mcp/tests/http.js';
 import { addressOf } from '../src/mcp/address.js';
-import { endpointLine, networkWarning } from '../src/mcp/serve-http.js';
+import { endpointLine, warningPhrase } from '../src/mcp/serve-http.js';
 import { invalidTimeZone, timeZoneCalls, timeZoneKey } from './mcp-time-zone-cases.js';
 
 const fixture = fileURLToPath(new URL('fixtures/mcp.mjs', import.meta.url));
@@ -254,17 +254,19 @@ function named(written: string) {
 describe('what a bind tells the operator', () => {
   it('writes no warning for a loopback address, IPv4-mapped included', () => {
     for (const bound of ['127.0.0.1', '127.0.0.5', '::1', '::ffff:127.0.0.1']) {
-      expect(networkWarning({ address: bound, port: 1 }, named('0'), false)).toBeUndefined();
+      expect(warningPhrase({ address: bound, port: 1 }, named('0'), false)).toBeUndefined();
     }
   });
 
   it('warns about open access without a hook, and about cleartext credentials with one', () => {
     const address = named('0.0.0.0:8080');
     const bound = { address: '0.0.0.0', port: 8080 };
-    expect(networkWarning(bound, address, false)).toBe(
+    expect(warningPhrase(bound, address, false)?.text).toBe(
       'Serving at 0.0.0.0:8080, which other hosts can reach, with no authorize hook, so any host that reaches it can call the tools without credentials. Serve on 127.0.0.1, or put the server behind something that authenticates.',
     );
-    expect(networkWarning({ address: '10.1.2.3', port: 8080 }, named('10.1.2.3:8080'), true)).toBe(
+    expect(
+      warningPhrase({ address: '10.1.2.3', port: 8080 }, named('10.1.2.3:8080'), true)?.text,
+    ).toBe(
       'Serving at 10.1.2.3:8080 over plain HTTP, so requests and their credentials cross the network unencrypted, where anyone on the path can read and replay them. Put TLS in front of the server, such as a reverse proxy that terminates it.',
     );
   });
