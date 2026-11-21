@@ -2,7 +2,7 @@
 
 ### Migration
 
-**Affected surface.** The type checker reports every affected site. The surface is a test that states an `out` lane, `out.fatal`, or a `log` level whose parameter is typed from the context and used as a string, such as `log: { info: (message) => { lines.push(message); } }`, and a stated lane written `(...call: MessageArguments)` that narrows a streamed message with `typeof message === 'string'` and then iterates it.
+**Affected surface.** The type checker reports a stated lane or level whose parameter is typed from the context and used as a string, such as `log: { info: (message) => { lines.push(message); } }`, and a lane written `(...call: MessageArguments)` that narrows with `typeof message === 'string'` and then iterates. No compile error: a double whose parameter is annotated `string`, or that turns its parameter into text with `String()` or a template, receives a `Phrase` at run time when the code under test passes one.
 
 **Why.** Core renders a phrase in the run's language where it writes text for a person, and the failure form and the log record keep its English text, so the members that carry Loom's text to core take a phrase as well as a string.
 

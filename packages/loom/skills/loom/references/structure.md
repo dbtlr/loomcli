@@ -23,7 +23,7 @@ Write the application module in this order, because each step types the next:
 
 Keep one registration per TypeScript project. A second application, an example, or a test with its own registration needs its own `tsconfig.json`.
 
-[`configuration()`](../../../../../docs/plugins/config.md#the-plugin-and-its-values) returns the plugin and a provider, `{ plugin, values }`. When a Command opts in to `values`, call `configuration()` in a module of its own, such as `src/config.ts`, so the application module imports the plugin and the Command imports the provider, and no Command imports the application module. Under a supervisor, where nobody reads `-v`, pass `strict` to `configuration()`, `true` or a list of key paths, so a broken setting fails the run with code 2 instead of being dropped, under [The strict setting](../../../../../docs/plugins/config.md#the-strict-setting).
+[`configuration()`](../../../../../docs/plugins/config.md#the-plugin-and-its-values) returns the plugin and a provider, `{ plugin, values }`. It reads JSON alone unless you pass a reader in `formats`: `toml` from `@loomcli/plugins/config/toml`, `yaml` from `@loomcli/plugins/config/yaml`. A `file` that names a TOML or YAML extension without its reader throws at `configuration()`, so pass the reader of each format your operators may write, under [Readers](../../../../../docs/plugins/config.md#readers). When a Command opts in to `values`, call `configuration()` in a module of its own, such as `src/config.ts`, so the application module imports the plugin and the Command imports the provider, and no Command imports the application module. Under a supervisor, where nobody reads `-v`, pass `strict` to `configuration()`, `true` or a list of key paths, so a broken setting fails the run with code 2 instead of being dropped, under [The strict setting](../../../../../docs/plugins/config.md#the-strict-setting).
 
 ## Commands and files
 
@@ -47,6 +47,7 @@ Each setting's doc comment states its rules. Choose among them by what the opera
 - **Options that depend on each other.** `exclusive()`, `oneRequired()`, and `requiredTogether()` constrain a group, and [`requires('password', 'user')`](../../../../../docs/core/options.md#a-one-way-requirement) refuses `--password` without `--user` while it accepts `--user` alone. A default never counts as supplied.
 - **Words after `--`.** The first bare `--` ends option parsing, and the words after it fill the Command's arguments, so `rm -- -draft.txt` takes a file name that starts with a hyphen. A Command that forwards words to another program declares [`.passthrough()`](../../../../../docs/core/options.md#passthrough) before `action()`, and its action reads them untouched in `passthrough`. Without the mode, the action has no `passthrough`.
 - **A list before a fixed argument.** Required arguments may follow a variadic one, as in `copy <src...> <dest>`. They fill from the end of the line, and the variadic takes the words between.
+- **What Tab offers for a value.** Mark an option with `completionInput` or an argument with `completionArgument` from `@loomcli/plugins/completion/extension`, with `extensions`, `directories`, or `none`; an argument may also take `commands`. For values your code knows, such as task ids, define a named completer in `completion({ values: { task: ... } })` and name it with `values: 'task'`. A closed-set validator already completes its set, under [Value hints](../../../../../docs/plugins/completion.md#value-hints) and [Named completers](../../../../../docs/plugins/completion.md#named-completers).
 - **An input a question asks for.** Declare `required: 'non-interactive'` on it, so a run that cannot ask fails before the action, and link the question to it, under [Middleware and actions](middleware-and-actions.md).
 
 ## Plugins
@@ -58,6 +59,8 @@ Install every plugin in the `plugins` list of the Application constructor. The l
 - Plugin Commands attach to the root ahead of the application's own Commands, and listings show them first.
 
 An application that needs its own middleware or lifecycle hook writes a plugin of its own. Give it a folder, such as `src/plugins/<name>/`, with an entry module that exports the factory with an annotated return type and a middleware module that the entry loads with `import()`, as the [explain example's plugin](../../../../../examples/explain/src/plugin.ts) does. Name its identity under the application's name, such as `notes/timing`. [Middleware and actions](middleware-and-actions.md) says when a plugin of your own is the right choice.
+
+A skill the application installs for agents can carry a generated reference for each Command: name the Commands with `commands`, such as `[[]]` for the whole application, on the skill or on a `{ name, commands }` entry beside a `folder`. Add per-Command guidance with `skillCommand`, under [Command references](../../../../../docs/plugins/skills.md#command-references).
 
 ## Options shared across Commands
 

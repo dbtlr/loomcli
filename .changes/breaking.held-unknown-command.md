@@ -50,17 +50,19 @@ function describe(code: ExitCode): string {
 }
 ```
 
-An `'always'` middleware now also runs on an unknown command, where its `next()` rejects. Before, this audit middleware never saw `app nope`; after, it records the run and the rejection reaches it:
+An `'always'` middleware now also runs on an unknown command, where its `next()` rejects. Loaded by a plugin `auditing()` that declares `middleware: { activate: 'always', load: () => import('./audit.js') }`, this audit middleware never saw `app nope` before; after, it records the run and the rejection reaches it:
 
 ```ts
-const audit: Middleware = async (context, next) => {
+const audit: Middleware<typeof auditing> = async ({ next, unknownCommand }) => {
   try {
     await next();
   } finally {
-    // After: also runs for `app nope`, where `context.unknownCommand` is { word: 'nope', rest: [] }.
-    record(context.unknownCommand?.word ?? 'routed');
+    // After: also runs for `app nope`, where `unknownCommand` is { word: 'nope', rest: [] }.
+    record(unknownCommand?.word ?? 'routed');
   }
 };
+
+export default audit;
 ```
 
 **Steps.**
@@ -68,4 +70,4 @@ const audit: Middleware = async (context, next) => {
 1. Run the type checker, and give each site it reports a branch for any code from 0 through 255 that a takeover may state.
 2. In an `'always'` middleware that reads `request`, `options`, or a value only a routed run has, check `unknownCommand` first, or read the `null` request as it reads one under any held fault.
 
-**Validation.** Run the type checker with no errors. Run the application with an unknown command, such as `app nope`, and check that it prints the same unknown-command failure and exits 2.
+**Validation.** Run the type checker with no errors. Run the application with an unknown command, such as `app nope`, and check that it prints the same unknown-command failure and exits 2. Check that each `'always'` middleware completes on that run without reading a `null` `request` or `options`.

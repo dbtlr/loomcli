@@ -2,7 +2,7 @@
 name: loom
 description: Use when writing, changing, testing, building, or shipping a command-line application built with Loom (@loomcli/core). Teaches how a Loom application fits together, which the code and its doc comments do not show, and links the reference for each rule.
 metadata:
-  version: "0.19.0"
+  version: "0.20.0"
 ---
 
 # Author a Loom application

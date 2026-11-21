@@ -8,6 +8,15 @@
 
 **Before and after.** Before, two `run()` calls on one Application ran each `onGraphBuilt` hook twice. After, they run it once, and a second `inspect()` returns the same object as the first.
 
+```ts
+let builds = 0;
+const counter = plugin('@acme/counter', { onGraphBuilt: () => { builds += 1; } });
+const app = new Application('notes', { plugins: [counter] }).action(() => {});
+await app.run({ process: mockProcess({ argv: [] }) });
+await app.run({ process: mockProcess({ argv: [] }) });
+// 0.19.0: builds === 2. 0.20.0: builds === 1; app.check() still builds anew.
+```
+
 **Steps.**
 
 1. Find `onCommandAttach` and `onGraphBuilt` hooks that read the host, the environment, or anything that changes between runs, and move that work into middleware or the action.

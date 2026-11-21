@@ -8,7 +8,7 @@
 
 ### Migration
 
-**Affected surface.** The type checker reports every affected site for the removals. The surface is each call to `out.debug` or `out.trace`, each read of `lanes.debug` or `lanes.trace`, an `onLog` hook that reads a member of `destination.out` other than `warn`, an `onEnvironment` hook that calls `out.debug` or `out.trace`, an `afterReplace` or refresh function that reads its context's `out`, and a test that states `debug` or `trace` in a `@loomcli/testing` builder's `out` or a member other than `warn` in `logDestination`'s `out`. No compile error for the rest: at run time, an application with a verbose-marked option now shows its own `log` events at `-v`, an override of `lanes.debug` or `lanes.trace` no longer applies, and a first-party plugin's lines move from a nested run's output to the outermost run's.
+**Affected surface.** The type checker reports every affected site for the removals. The surface is each call to `out.debug` or `out.trace`, each read of `lanes.debug` or `lanes.trace`, an `onLog` hook that reads a member of `destination.out` other than `warn`, an `onEnvironment` hook that calls `out.debug` or `out.trace`, an `afterReplace` function that reads its context's `out`, a call to `refreshCompletion`, `refreshManpages`, or `refreshSkills` whose context states `out`, and a test that states `debug` or `trace` in a `@loomcli/testing` builder's `out` or a member other than `warn` in `logDestination`'s `out`. No compile error for the rest: at run time, an application with a verbose-marked option now shows its own `log` events at `-v`, and a first-party plugin's lines move from a nested run's output to the outermost run's.
 
 **Why.** Two calls did one job: `out.debug` reached the screen and never the log, and `log.debug` reached the log and never the screen. One call per job ends the choice, and `-v` now shows what the log records, as uv does.
 
@@ -45,9 +45,9 @@ destination.log.debug('Wrote {path}.', { path });
 
 1. Run the type checker, and replace each `out.debug(x)` with `log.debug(x)` and each `out.trace(x)` with `log.trace(x)`, taking `log` from the same context. A `log` call returns `undefined`, so drop its `await`.
 2. Move each value a message interpolates into the call's fields and name it with a placeholder, `log.debug('Read {file}.', { file })`, and drop the `style.escape` and `escapeControlCharacters` calls around it: the log line escapes every value, and the record keeps the template constant.
-3. Replace a view passed to `out.debug` or `out.trace`, and an override of `lanes.debug` or `lanes.trace`, with an override of `logLine`, or pass the view to `out.info` when the line must reach the operator without `-v`.
+3. Replace a view passed to `out.debug` or `out.trace`, and an override of `lanes.debug` or `lanes.trace`, with an override of `logLine`, or pass the view to `out.info` when the line must reach the operator without `-v`. Collect a streamed message passed to `out.debug` or `out.trace` into a string before logging it.
 4. In an `onLog` hook, replace `destination.out.debug(x)` and `destination.out.trace(x)` with `destination.log.debug(x)` and `destination.log.trace(x)`.
-   In an `afterReplace` or refresh function, replace `context.out.debug(x)` and `context.out.trace(x)` with `context.log.debug(x)` and `context.log.trace(x)`.
+   In an `afterReplace` function, replace `context.out.debug(x)` and `context.out.trace(x)` with `context.log.debug(x)` and `context.log.trace(x)`, and drop `out` from a context you pass to a refresh function. Replace any other `context.out` call with `context.log.info` or `context.log.warn`, which the operator sees at `-v`; the hook no longer writes to the operator without `-v`.
 5. In tests, remove `debug` and `trace` from a builder's `out` values and narrow `logDestination`'s `out` to `warn`. State `log` for its log calls.
 
 **Validation.** Run `tsc --noEmit` and the application's tests. Run the application with `-v` and `-vv` and read each line it shows on stderr, and run `grep -rnE "out\.(debug|trace)" src` to confirm no call remains.
