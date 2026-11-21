@@ -25,10 +25,10 @@ This reference covers how to build, release, install, and update a Loom applicat
 
 ## Keep one name
 
-The application's name appears four times, and the four must match:
+The application's name appears four times. The Application's name, the `bin` key, and the name `install.sh` records under must match, and the asset prefix follows the release name when one is set:
 
 - the Application's name, under which core reads the [installation record](../../../../../docs/core/installation-record.md);
-- the `bin` key in `package.json`, which `loom build` names the binary and its asset after, unless `--name` or `loom.config.json`'s `name` key sets a release name. With the key set, the asset and the formula use the release name, while `install.sh` installs and records under the `bin` key's name, so the `bin` key must still equal the Application's name;
+- the `bin` key in `package.json`, which `loom build` names the binary and its asset after, unless `--name` or `loom.config.json`'s `name` key sets a release name. With the key set, the asset and the formula use the release name, while `install.sh` installs and records under the `bin` key's name, so the `bin` key must still equal the Application's name. Run `loom init --only install` after setting the key, so `install.sh` requests the renamed asset;
 - the asset prefix, which `install.sh` and self-update download;
 - the name `loom init` renders into `install.sh`, under which the script writes `install.json`.
 
