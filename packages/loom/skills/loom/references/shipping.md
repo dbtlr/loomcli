@@ -28,7 +28,7 @@ This reference covers how to build, release, install, and update a Loom applicat
 The application's name appears four times, and the four must match:
 
 - the Application's name, under which core reads the [installation record](../../../../../docs/core/installation-record.md);
-- the `bin` key in `package.json`, which `loom build` names the binary and its asset after, unless `--name` overrides it;
+- the `bin` key in `package.json`, which `loom build` names the binary and its asset after, unless `--name` or `loom.config.json`'s `name` key sets a release name. With the key set, the asset and the formula use the release name, while `install.sh` installs and records under the `bin` key's name, so the `bin` key must still equal the Application's name;
 - the asset prefix, which `install.sh` and self-update download;
 - the name `loom init` renders into `install.sh`, under which the script writes `install.json`.
 
@@ -74,6 +74,7 @@ gh release create v1.4.0 dist/notes-* dist/SHA256SUMS --notes "$(npx loom change
 - **Commit it and serve it.** Give operators its raw URL to pipe into `sh`. A monorepo places it with `paths.installer`, such as at the repository root.
 - **What it installs.** With no version argument, it installs the latest stable release into `$HOME/.local/bin`, never a prerelease. It verifies the asset against `SHA256SUMS` and then writes `install.json` with the method `script`, which is what lets self-update replace the binary later.
 - **It is a managed file.** Do not edit it. A re-run of init re-renders it for the installed toolchain.
+- **A side copy.** `install.sh --unmanaged --dir <directory>` installs a verified binary and writes no `install.json`, prints no PATH advice, and runs no post-install command, so it leaves a live install's record and self-update as they were. Run `loom init` to render it, under [A side copy](../../../../../docs/toolchain/install.md#a-side-copy).
 
 ## Run after install
 
@@ -87,7 +88,8 @@ gh release create v1.4.0 dist/notes-* dist/SHA256SUMS --notes "$(npx loom change
 
 `selfUpdate()` from `@loomcli/plugins/self-update` adds the `self-update` Command and, unless `notices: false`, update notices, under [the self-update plugin](../../../../../docs/plugins/self-update.md).
 
-- **It replaces only what `install.sh` placed.** The binary must be a compile target built with `--release`, installed by the script, and unchanged since. For a Homebrew install or a global npm install, the notice and the refusal name the package manager’s command when its name is valid. A changed script installation says to install it again with `install.sh`.
+- **It replaces only what `install.sh` placed.** The binary must be a compile target built with `--release`, installed by the script, and unchanged since. For a Homebrew install or a global npm, pnpm, Bun, or Yarn install, which core derives from the binary's real path, the notice and the refusal name that package manager's upgrade command. A `--release` build bakes the npm package name the command needs, and without it the notice is skipped. A changed script installation says to install it again with `install.sh`.
+- **Verify where the asset was built.** `selfUpdate({ attestation: attestation({ workflow: '.github/workflows/release.yml' }) })`, with `attestation` from `@loomcli/plugins/self-update/attestation`, refuses an asset without a GitHub artifact attestation from that workflow at the release tag. The application then depends on the `@sigstore/*` peers, and your release workflow adds the attestation job, under [Attestation](../../../../../docs/plugins/self-update.md#attestation).
 - **A root that declares arguments can install it.** The `self-update` Command is a child like any other, so a word that names it routes there, and `--` passes that word as an argument.
 - **`afterReplace` runs the old code.** The hook runs in the replaced process, so anything that needs the new version runs the binary at `path`. The completion, man page, and skills plugins each export a refresh that does this. Compose them in one hook:
 
@@ -120,6 +122,6 @@ export const notes = new Application("notes", {
 Loom ships no release workflow, and init writes none. Your repository owns:
 
 - when to cut, and the commit of the cut with the refreshed lockfile;
-- the build matrix, `SHA256SUMS`, the tag, and the GitHub Release;
+- the build matrix, `SHA256SUMS` and its attestation job, the tag, and the GitHub Release;
 - publishing to npm, and any PR guards;
 - where operators fetch `install.sh` from.

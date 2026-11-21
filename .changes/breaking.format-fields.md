@@ -35,4 +35,4 @@ For a positional argument, rename `.argument('fields', ...)` to `.argument('colu
 2. Rename each one, or remove it where the formatter's `--fields` already does its job. For a renamed argument, update action code reading `args.fields` to read the new name. For an alias, remove or rename the alias; the option and its readers stay as they are.
 3. Update the application's scripts and documentation that pass the old spelling.
 
-**Validation.** Run the application's `inspect()` or `--help` on each Command that declares a result; a collision fails with `@loomcli/core/option-declared-twice` naming `fields`, or with `@loomcli/core/name-shared-across-kinds` for an argument. Run the application's test command.
+**Validation.** Run the application's `inspect()` or `--help` on each Command that declares a result; a collision fails with `@loomcli/core/option-declared-twice` naming `fields`, with `@loomcli/core/spelling-taken` for an alias, or with `@loomcli/core/name-shared-across-kinds` for an argument. Run the application's test command.
