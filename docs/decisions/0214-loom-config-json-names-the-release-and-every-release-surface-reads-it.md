@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0214 - loom.config.json names the release, and every release surface reads it
 description: A top-level name key in loom.config.json, a portable name, gives the application's release name. loom build and loom release formula read --name, then the key, then package.json bin; loom init reads the key, then the name it scaffolds with, and renders the installer script's asset through releaseAssetName. The installer keeps the scaffolded name for the installed file, the installation record, and its sentences.
-status: proposed
+status: accepted
 created: 2026-11-20
-modified: 2026-11-20
+modified: 2026-11-21
 ---
 
 # ADR-0214 - loom.config.json names the release, and every release surface reads it
@@ -51,7 +51,7 @@ The acceptance plans live beside the [build](../../packages/loom/tests/build.tes
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

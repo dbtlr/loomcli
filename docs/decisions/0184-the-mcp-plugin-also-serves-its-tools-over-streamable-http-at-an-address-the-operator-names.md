@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0184 - The MCP plugin also serves its tools over streamable HTTP at an address the operator names
 description: 'app mcp --http <address> serves the same tools over the protocol''s streamable HTTP transport through node:http, on 127.0.0.1 unless the operator names a host, at the one path /mcp. A request that carries an Origin header is refused, an optional authorize hook on mcp() judges each request from its headers, a POST body has a size limit, 2026-07-28 requests are served statelessly with their metadata headers checked, and an initialize-era client gets a session that holds what a stdio connection holds and expires when idle. Calls that reach their handler answer as event streams, other requests as JSON. A non-loopback bind always warns. A call runs on the server''s host and time zone. stdio stays the default, and mcp install and config are unchanged.'
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-20
+modified: 2026-11-21
 ---
 
 # ADR-0184 - The MCP plugin also serves its tools over streamable HTTP at an address the operator names
@@ -72,7 +72,7 @@ This narrows ADR-0063's clause that the `mcp` action "runs a stdio server until 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

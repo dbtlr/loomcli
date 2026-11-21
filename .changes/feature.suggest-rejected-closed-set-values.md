@@ -1,2 +1,0 @@
-- Add nearest accepted-value suggestions for rejected closed-set inputs. The suggestions plugin replaces the accepted-values fix in each affected sentence and preserves other input problems without repeating the received value.
-- Add `FailureHookContext.received(problem)` so failure hooks can read a rejected input's raw value without exposing it on the failure. The testing context builder accepts an optional reader and defaults to returning `undefined`.

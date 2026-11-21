@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0176 - A log binds fields with with, and an Application redacts field paths from every log event at the copy
 description: Every Log gains with(fields), which copies the fields once and returns a Log whose every event carries them, nesting, with a call's own field winning a shared name and a bound field filling a template placeholder. An Application declares log.redact once, a list of dotted field paths that step through arrays, and core writes "[Redacted]" for each when it copies an event's fields, bound fields included, so no onLog hook, log line, logging destination, or export reads the value. Loom redacts nothing by default, and a path that is not dotted nonempty keys is a declaration error from the constructor.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0176 - A log binds fields with with, and an Application redacts field paths from every log event at the copy
@@ -55,7 +55,7 @@ The glossary gains Bound fields and Redaction, and its Log entry names `with`.
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

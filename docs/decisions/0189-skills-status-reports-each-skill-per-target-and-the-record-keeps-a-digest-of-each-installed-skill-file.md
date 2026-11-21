@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0189 - Skills status reports each skill per target, and the record keeps a digest of each installed skill file
 description: The skills plugin gains skills status, which reports each declared skill for each agent target as missing, unmanaged, modified, stale, or current, one result row each with a typed state, and exits 0 whenever it produced a report. A global install records each skill folder with the digest of every file it wrote, marking the generated command references, in a format-2 plugin's file that the installed-files module writes only for a file that records a folder and reads beside the old format once. A skill is modified only when a recorded command reference changed on disk; then install and update refuse it, uninstall and a removal leave the folder in place, and only an operator's install --force replaces it, as the man page and completion treat a changed file. An edit to an author's file still reads stale and is replaced by the next update. Project installs keep no record and report missing, unmanaged, stale, or current by comparing the disk with what this version writes. It supersedes three rules of ADR-0076 and narrows a fourth.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0189 - Skills status reports each skill per target, and the record keeps a digest of each installed skill file
@@ -67,7 +67,7 @@ An operator's edit to an installed command reference now survives every update u
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

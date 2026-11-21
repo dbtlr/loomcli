@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0211 - Update notices name the package manager's upgrade command
 description: Core derives a Homebrew installation from a Cellar path, and an npm, pnpm, Bun, or Yarn installation from that package manager's global root, when no installation record matches. The build bakes the npm package name, and loom build --target npm bakes it into each platform binary. The self-update plugin uses GitHub release facts to show notices that name the installer's command for the announced version, and gives the command for the version asked for when it refuses to replace a package-managed installation. A name outside an allow-list grammar gives no command.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-20
+modified: 2026-11-21
 ---
 
 # ADR-0211 - Update notices name the package manager's upgrade command
@@ -127,7 +127,7 @@ The acceptance plans live beside the [installation](../../packages/plugins/tests
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0177 - One logging installation writes to several destinations
 description: One logging hook writes identical JSONL records to an ordered list of independently filtered file and console destinations, retaining the single-destination shorthand.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0177 - One logging installation writes to several destinations
@@ -36,7 +36,7 @@ The [logging reference](../plugins/logging.md) documents both forms and independ
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

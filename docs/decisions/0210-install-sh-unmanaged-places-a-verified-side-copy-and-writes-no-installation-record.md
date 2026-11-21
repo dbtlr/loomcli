@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0210 - install.sh --unmanaged places a verified side copy and writes no installation record
 description: The installer script takes an explicit --unmanaged flag. It verifies and places the binary as before, then writes no install.json, prints no PATH advice, and runs no post-install command, printing the skipped command line where one is declared. A binary with no record keeps today's behavior, so self-update refuses it. It amends ADR-0072's verify, place, then record rule and its advice-never-edits PATH clause, and ADR-0113's message-last and same-script clauses.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0210 - install.sh --unmanaged places a verified side copy and writes no installation record
@@ -38,7 +38,7 @@ An operator installs a verified copy beside a live install, and the live install
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

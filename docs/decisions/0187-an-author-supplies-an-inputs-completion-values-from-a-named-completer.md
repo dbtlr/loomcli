@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0187 - An author supplies an input's completion values from a named completer
 description: An option or an argument names a completer with a values member of its completion extension value, the functions live in the completion plugin's settings, the answer calls one at Tab time with the typed inputs and offers what it returns under the exact-or-omitted rules, and a name the settings do not define is a build fault.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0187 - An author supplies an input's completion values from a named completer
@@ -40,7 +40,7 @@ This narrows ADR-0180's hint, which gains a sixth member in both of its facts ty
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

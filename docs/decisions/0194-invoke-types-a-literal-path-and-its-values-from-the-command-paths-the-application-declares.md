@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0194 - invoke types a literal path and its values from the Command paths the Application declares
 description: Each Command and the Application carry their Command paths at the type level, the value each declared argument and option takes keyed by canonical name at each level, and invoke reads them through one conditional signature. A literal path the paths declare types its values against that Command, every global option included, and a mistyped name in the path is rejected at that element; an array path, a path deeper than four Commands, and a level no type names take the dynamic InvocationValues. Where a literal path is checked against canonical names, an alias in it is a compile error; a caller passes an alias path as readonly string[] so routing resolves it at run time. An action's invoke reads the paths the completed Application registers under Register.paths. It supersedes in part ADR-0059's clause that the values are loosely typed and invoke does not type its path.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0194 - invoke types a literal path and its values from the Command paths the Application declares
@@ -41,7 +41,7 @@ modified: 2026-11-19
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

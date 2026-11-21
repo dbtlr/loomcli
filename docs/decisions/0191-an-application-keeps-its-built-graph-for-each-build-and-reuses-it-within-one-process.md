@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0191 - An Application keeps its built graph for each build and reuses it within one process
 description: An Application keeps the graph a successful graph build produced, one for a development build and one for a distributed build, and every later run(), app.invoke(), and inspect() on that Application in that build reuses it, so the first successful graph build of each build is kept and later calls reuse it without calling onCommandAttach or onGraphBuilt. run() and app.invoke() pick the graph their host's release facts name and inspect() the one its baked facts name. check() always builds anew and keeps nothing, and a build that faults keeps nothing. Each run still validates every declared default and implied value against its own host. It extends ADR-0134, whose launch decision stands, because a launch is one process whose first run builds the graph, and it supersedes in part ADR-0010's rules that inspect() caches nothing and that the built graph is not cached across calls.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0191 - An Application keeps its built graph for each build and reuses it within one process
@@ -55,7 +55,7 @@ The owner settled the shape on 2026-11-18: the key is the Application and its bu
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it. The implementation adds a dated entry with the measured cost of a usage refusal on a second run.
+Accepted in 0.20.0.
 
 ## Changelog
 

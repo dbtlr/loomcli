@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0178 - Operators control log files and levels, and failures name the run's log
 description: Two variables named after the application let the operator set the logging plugin's file level and redirect its first file, an unusable value warns and keeps the author's setting, a configurable failure hint names the file and run, and the plugin publishes its files as its own extension fact on the root Command with a resolver beside the descriptor that another plugin imports.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0178 - Operators control log files and levels, and failures name the run's log
@@ -42,7 +42,7 @@ This narrows ADR-0070's author-only settings, ADR-0177's independent file levels
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

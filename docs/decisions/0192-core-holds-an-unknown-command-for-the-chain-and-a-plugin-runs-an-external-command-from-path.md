@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0192 - Core holds an unknown command for the chain, and a plugin runs an external command from PATH
 description: Routing still finds an unknown command where it does today, but core holds UnknownCommandError and raises it at the dispatch boundary, in run() and invoke() alike, after running only the 'always' middleware. Those middleware read the unknown word and the words after it under a new unknownCommand member of the middleware context, beside invokedBy, so one can take the run over, and a run whose action never dispatched may end with a code a middleware stated. Nothing past the word is parsed or validated, so an application without such a middleware prints and exits as it does today. The first-party externalCommands() plugin uses the seam: when the first word of argv is unknown, it walks the run's PATH for a file named <application>-<word>, starts the file it found, and exits with the child's code. It supersedes in part ADR-0017's and ADR-0055's rule that an unknown command fails before the chain, and narrows ADR-0028, ADR-0032, ADR-0059, ADR-0095, and ADR-0097.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0192 - Core holds an unknown command for the chain, and a plugin runs an external command from PATH
@@ -160,7 +160,7 @@ A spawn's error cannot say whether a program exists. On Windows, libuv searches 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

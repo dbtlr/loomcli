@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0182 - Failure hooks read received values without putting them on failures
 description: Failure hooks read rejected inputs through a context reader while failures remain free of received values.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0182 - Failure hooks read received values without putting them on failures
@@ -39,7 +39,7 @@ The suggestions plugin locates each problem's lines by walking `failure.message`
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

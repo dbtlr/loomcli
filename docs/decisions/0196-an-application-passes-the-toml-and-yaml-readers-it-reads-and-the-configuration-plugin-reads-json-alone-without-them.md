@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0196 - An application passes the TOML and YAML readers it reads, and the configuration plugin reads JSON alone without them
 description: The configuration plugin reads JSON itself and reads TOML and YAML only through the reader values an application passes in a new formats setting, toml from @loomcli/plugins/config/toml and yaml from @loomcli/plugins/config/yaml. The plugin's own modules import neither reader, so an application bundles only the parsers it passes. With no formats an application reads JSON alone, a file pattern that names toml, yaml, or yml without its reader throws at configuration(), * names the extensions of the readers passed and then json and jsonc, and --config naming a TOML or YAML file the application does not read fails with a sentence that names the file's format and the formats it reads. The loom bin passes no readers. This supersedes ADR-0054's clause that the extension chooses the parser among every format the plugin reads, and narrows its parsers and file-pattern clauses and ADR-0130's --config clause.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0196 - An application passes the TOML and YAML readers it reads, and the configuration plugin reads JSON alone without them
@@ -46,7 +46,7 @@ This supersedes ADR-0054's clause **The extension chooses the parser** in so far
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 
