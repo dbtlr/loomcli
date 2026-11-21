@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0215 - A caller abandons a spawned child so the process can exit without it
 description: The spawn contract's Child gains abandon(), which tells core the caller has stopped waiting for a child. It sends no signal. It unreferences the child, stops forwarding and capturing its output while still draining the output pipes, and closes the pipe into its stdin, so the host process can exit while the child runs. exited settles at once with a new ChildExit kind, abandoned, that carries the output captured until then; a child whose exit the runtime has already reported while a descendant holds its pipes settles as exited with its code. abandon() does nothing once exited has settled, kill and the spawn's signal still act until the child's own exit, and a mock's scripted child settles the same way. Adding the kind breaks an exhaustive switch on kind, code that reads code after ruling out unstarted or error after ruling out exited, and a hand-built process handle, whose children must implement abandon(). It extends ADR-0107's Child programs clause.
-status: proposed
+status: accepted
 created: 2026-11-20
-modified: 2026-11-20
+modified: 2026-11-21
 ---
 
 # ADR-0215 - A caller abandons a spawned child so the process can exit without it
@@ -64,7 +64,7 @@ An abandoned child that is still running when the host exits is an orphan. It st
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

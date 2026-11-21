@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0195 - Completion installs for Nushell as one owned file in its vendor autoload folder
 description: The completion plugin serves a fifth shell, Nushell, named nu. Its script is Loom's own and declares one root extern whose completer asks the application for matches, so Nushell's one global external completer stays the operator's. Install writes one file into the vendor autoload folder of the operator's platform, with no startup line and no edit to config.nu, recorded and removed under the owned-file rules, and Nushell 0.117 is the floor. It narrows ADR-0101's four-shell clause.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0195 - Completion installs for Nushell as one owned file in its vendor autoload folder
@@ -46,7 +46,7 @@ This narrows ADR-0101's **Four shells on Linux and macOS** clause, which becomes
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

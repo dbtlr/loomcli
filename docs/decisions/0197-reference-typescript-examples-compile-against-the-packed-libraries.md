@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0197 - Reference TypeScript examples compile against the packed libraries
 description: Bare ts blocks in the reference compile against the packed libraries. Use ts sketch for signature listings, illustrations that cannot stand alone, and source excerpts that depend on omitted modules.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0197 - Reference TypeScript examples compile against the packed libraries
@@ -34,7 +34,7 @@ Complete examples on new reference pages enter the check by default. Changes to 
 
 ## Status
 
-Proposed until the release that includes the check.
+Accepted in 0.20.0.
 
 ## Changelog
 

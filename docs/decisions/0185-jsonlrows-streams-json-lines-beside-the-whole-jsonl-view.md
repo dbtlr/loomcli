@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0185 - jsonlRows streams JSON Lines beside the whole jsonl view
 description: The formatter declares jsonlRows for rows results and jsonl for value results, preserving whole-view mapping while streaming each row and retaining written lines on failure.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0185 - jsonlRows streams JSON Lines beside the whole jsonl view
@@ -35,7 +35,7 @@ Under the hook's row view, a consumer may see valid rows before a nonzero exit, 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

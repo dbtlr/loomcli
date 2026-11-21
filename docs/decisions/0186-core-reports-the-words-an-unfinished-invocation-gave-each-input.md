@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0186 - Core reports the words an unfinished invocation gave each input
 description: Every position locate reports but none holds typed, the words the earlier words gave each option and each argument by name, exactly as the parser read them, so a reader that completes one input narrows by the others without a second reading of the grammar.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0186 - Core reports the words an unfinished invocation gave each input
@@ -36,7 +36,7 @@ This narrows ADR-0042's position members, which gain `typed`. The [graph inspect
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0190 - A log event's writes to the run's stderr keep call order and reach the stream at once when nothing waits ahead
 description: What an onLog hook writes to the run's stderr joins the run's stderr order on a terminal and off one, and so does core's log line at -v. Each such write reaches the stream in the call when nothing waits ahead of it, and waits behind the earlier writes otherwise. Once an end has written the run's queue, each goes straight to the stream after whatever was queued since, so a shutdown handler's record prints. A record that waited behind earlier writes is lost to an abort with them, which narrows ADR-0070's crash survival for the console destination. It supersedes ADR-0157's onLog clause.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0190 - A log event's writes to the run's stderr keep call order and reach the stream at once when nothing waits ahead
@@ -43,7 +43,7 @@ This supersedes ADR-0157's **What is queued** clause, so far as it carries an `o
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

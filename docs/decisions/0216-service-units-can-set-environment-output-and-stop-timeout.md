@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0216 - Service units can set environment, output, and stop timeout
 description: The service plugin can set variables from the install host, send stdout and stderr to one file, and set the manager's stop timeout. Without these settings it writes the same unit as before.
-status: proposed
+status: accepted
 created: 2026-11-20
-modified: 2026-11-20
+modified: 2026-11-21
 ---
 
 # ADR-0216 - Service units can set environment, output, and stop timeout
@@ -29,7 +29,7 @@ This narrows ADR-0074's environment and output defaults to units whose correspon
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0193 - Invoke takes a per-call time zone, and MCP reads it from request metadata
 description: InvokeOptions gains an optional timeZone for one invocation and its nested invocations. The MCP plugin reads io.github.dbtlr.loomcli/timeZone from each tools/call request's params._meta on every transport and passes it to invoke. No other host fact is settable per call.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0193 - Invoke takes a per-call time zone, and MCP reads it from request metadata
@@ -48,7 +48,7 @@ It also narrows ADR-0191's **Each run's own work stays each run's** clause: an a
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships the implementation.
+Accepted in 0.20.0.
 
 ## Changelog
 

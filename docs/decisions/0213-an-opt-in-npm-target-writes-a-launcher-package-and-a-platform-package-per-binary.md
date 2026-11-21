@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0213 - An opt-in npm target writes a launcher package and a platform package per binary
 description: A package whose loom.config.json sets npm.launcher to true builds with loom build --target npm, which compiles one release binary per platform, each baking the launcher's package name, and writes N+1 package directories under <out>/npm, the launcher package <pkg> and one platform package <pkg>-<os>-<arch>[-musl] per binary, named like the release assets, moving the launcher's directory last. Each platform package declares its exact os, cpu, and libc, and the launcher pins each as an optional dependency at the exact version. The launcher is Loom-rendered CommonJS with no dependencies that resolves the matching platform package, reads musl from the runtime's report without its network section as core does, and replaces itself with the binary through process.execve, or, on a Node without it, spawns the binary, forwards signals, and dies by the child's signal. Its sentences render from the loom messages module at build time. Publishing stays in the author's workflow, platform packages before the launcher and a prerelease under its channel's tag. It narrows ADR-0099's one-target clause and ADR-0130's file.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0213 - An opt-in npm target writes a launcher package and a platform package per binary
@@ -170,7 +170,7 @@ A prerelease published under its channel's tag leaves `npm install -g <pkg>` on 
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0181 - A Command may declare that it needs a terminal, and runs only at one
 description: A needsTerminal() call publishes a node fact; such a Command fails before its action with TerminalUnavailableError, exit 1, when stdin or stderr is not a terminal or the run is under CI, an invocation by name always refuses it, the MCP plugin rejects it as a tool at build, and help and the manifest show the fact.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0181 - A Command may declare that it needs a terminal, and runs only at one
@@ -39,7 +39,7 @@ Core exports `TerminalUnavailableError`, `CommandBuilder` and `Application` gain
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

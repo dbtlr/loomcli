@@ -1,1 +1,0 @@
-- Fix a streamed message off a terminal taking time that grows with the cube of an unbroken line's length, so a long relayed token stream with no line breaks, written to a pipe or a file, stalled for minutes. Each chunk now costs work linear in the text so far, as it does on a terminal, and the bytes written are unchanged.

@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0200 - Loom says its own sentences in the operator's language through phrasebooks the localization plugin installs
 description: Core reads the operator's locale into host.locale from LC_ALL, LC_MESSAGES, and LANG as a canonical BCP 47 tag. Each Loom package registers its message modules by package name, and phrasebook(package, sentences) checks a phrasebook against them, namespaced by module, so a wrong name or parameter type fails to compile. The localization() plugin installs phrasebooks per language. A failure, line, log template, hint, issue, or view label Loom says is a phrase, the sentence with its values and a lazily computed English text, and phrases compose, so an issue inside an input line is one too. Core renders a phrase in the run's language where it renders text for a person, falling back per sentence to the English export. The failure form, failure codes, records, and every machine-read surface stay English. Without the plugin no output byte changes. It supersedes ADR-0164's rejection of message keys and a locale provider, its Not localization clause, and its rule that fixed labels stay where they are, and narrows its Internal and Message modules clauses, ADR-0007's default text, ADR-0046's hint lines and failure view context, ADR-0110's view context builder, and ADR-0174's log line, and adds the locale to ADR-0107's facts.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0200 - Loom says its own sentences in the operator's language through phrasebooks the localization plugin installs
@@ -296,7 +296,7 @@ A language-only match cannot tell Traditional Chinese from Simplified or Brazili
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships the implementation.
+Accepted in 0.20.0.
 
 ## Changelog
 

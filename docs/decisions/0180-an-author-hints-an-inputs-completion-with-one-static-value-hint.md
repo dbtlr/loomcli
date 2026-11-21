@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0180 - An author hints an input's completion with one static value hint
 description: The completion plugin defines two plain-data extensions, one on options and one on arguments, whose value holds exactly one hint, which the answer writes as Cobra's directives 8, 16, 4, or 0, a commands hint, on arguments only, reads the words an argument holds to offer the Command path they reached, and every script honors the directives, Fish included, without evaluating typed text.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0180 - An author hints an input's completion with one static value hint
@@ -41,7 +41,7 @@ This narrows [ADR-0043](0043-shell-completion-follows-cobras-protocol-and-never-
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

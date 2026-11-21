@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0188 - The skills plugin generates each skill's command references from the graph at install
 description: A skill selects Commands by their paths from the root, and the skills plugin generates one Markdown command reference for each selected Command an operator can find, plus an index that also lists the global options, under the skill's references/commands/ folder, from the graph of the binary that installs it. A skillCommand extension in a declarations-only module adds skill guidance to a Command's file. A skills-folder skill selects through a list entry without files, which the settings type accepts only beside a folder. The file reuses help's usage forms and cells, shows a Command's visible aliases and no option alias, escapes the text it shows, inserts the author's Markdown as written, and depends on nothing but the graph. Two public functions serve tools outside an install, commandReferences for the renderer and skillFolders for a declared skill's whole file set, which finds the declaration through a weak map from graph to declaration that every copy of the package shares, narrowing ADR-0060.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0188 - The skills plugin generates each skill's command references from the graph at install
@@ -70,7 +70,7 @@ A skill's installed folder now holds files the plugin generates beside the autho
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

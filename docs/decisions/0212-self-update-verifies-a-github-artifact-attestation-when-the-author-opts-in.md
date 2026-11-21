@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0212 - Self-update verifies a GitHub artifact attestation when the author opts in
 description: An author who passes selfUpdate({ attestation: attestation({ workflow }) }), from the subpath @loomcli/plugins/self-update/attestation, makes self-update verify a GitHub artifact attestation of the release asset before it downloads the asset. The Command asks GitHub's attestations API for the digest SHA256SUMS lists, brings Sigstore's trust root current over TUF in the application's cache directory, reads each SLSA provenance bundle, verifies it in full with sigstore-js, and checks the issuer, the signing workflow and repository, that the run was on the release's own tag, and a statement subject with the asset's name and digest. It never falls back to the digest alone. The setting is a branded value only attestation() makes. The sigstore-js packages are optional peer dependencies that only the subpath loads. It supersedes ADR-0073's HTTPS alone clause for the attestation case, and names exceptions to ADR-0093's removal of a check TypeScript already makes, ADR-0107's one-module read of the process, and ADR-0165's one event per change.
-status: proposed
+status: accepted
 created: 2026-11-19
-modified: 2026-11-19
+modified: 2026-11-21
 ---
 
 # ADR-0212 - Self-update verifies a GitHub artifact attestation when the author opts in
@@ -110,7 +110,7 @@ The ADR-0093, ADR-0165, and ADR-0107 exceptions above are the plugin's only depa
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

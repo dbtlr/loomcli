@@ -1,2 +1,0 @@
-- Speed up unbundled Loom applications on Node by loading fewer files at startup.
-- Ship source maps with the TypeScript sources embedded, so a stack trace under `node --enable-source-maps` names the source file and line. The packed libraries grow with them: `@loomcli/core` from about 446 KB to 742 KB.

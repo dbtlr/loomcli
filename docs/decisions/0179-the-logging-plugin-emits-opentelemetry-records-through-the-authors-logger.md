@@ -2,9 +2,9 @@
 type: adr
 title: ADR-0179 - The logging plugin emits OpenTelemetry records through the author's logger
 description: An OpenTelemetry destination bridges each log event to the author's structurally typed logger without an SDK dependency, preserving templates, copied fields, and failure facts.
-status: proposed
+status: accepted
 created: 2026-11-18
-modified: 2026-11-18
+modified: 2026-11-21
 ---
 
 # ADR-0179 - The logging plugin emits OpenTelemetry records through the author's logger
@@ -30,7 +30,7 @@ The mapping follows the [OpenTelemetry logs data model](https://opentelemetry.io
 
 ## Status
 
-Proposed. It moves to accepted in the release PR of the release that ships it.
+Accepted in 0.20.0.
 
 ## Changelog
 

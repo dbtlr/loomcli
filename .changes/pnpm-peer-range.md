@@ -1,1 +1,0 @@
-- Allow any pnpm from 12.16.1 on as `@loomcli/loom`'s optional peer dependency, so a project on a later pnpm installs `@loomcli/loom` with no unmet peer warning. `loom release` prepares `pnpm-lock.yaml` with the pnpm the project installs.

@@ -1,1 +1,0 @@
-- Add an OpenTelemetry logging destination that sends message templates, redacted fields, and run and failure facts to an author's own logger, with an independent level and no runtime SDK dependency.

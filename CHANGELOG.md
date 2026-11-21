@@ -6,6 +6,668 @@ description: Published library release history and migration instructions for br
 
 Release history starts with the first library release. Pending changes live in [.changes/](.changes/README.md).
 
+## v0.20.0 - 2026-11-21
+
+This is the agents and operators release. An application's skills carry command references generated from its graph. Completion asks the application for values at every Tab, in Nushell too. MCP also serves over streamable HTTP, and `invoke` types its paths from the Application. `-v` now shows the log, which gains message templates, bound fields, redaction, several destinations, operator controls, and OpenTelemetry export. Loom says its own sentences in the operator's language through phrasebooks. Output gains streamed JSON Lines rows and `--fields`. Distribution gains npm launcher packages, a Homebrew formula, artifact attestation, and `install.sh --unmanaged`.
+
+Keep all installed `@loomcli` packages at the same exact version, `0.20.0`. Before upgrading, act on these breaks, which no compile error reports, one line each:
+
+- A `configuration()` whose `file` names a TOML or YAML extension now throws at startup unless the application passes that format's reader in `formats`. Without that reader, a `*` pattern no longer finds a file in that format, `--config` naming one fails with code 2, and one the `env` variable names warns and is not read, or fails under `strict`.
+- An `onLog` hook or a JSONL log-file reader that reads a failure event's `hints` now receives an empty array.
+- With `format()` installed, an option, alias, global option, or argument named `fields` on a Command with a result fails every run with the hook-collision error, under `@loomcli/core/name-shared-across-kinds` for an argument.
+- An `'always'` middleware now runs on a run that names an unknown command, where `next()` rejects with `UnknownCommandError` and `request` and `options` read `null`.
+- With an option marked verbose, the application's own `log` events now show at `-v`, and a first-party plugin's lines show on the outermost run's stderr, or in `app.invoke`'s `messages`.
+- With `mcp()` installed, a global option named `http`, or one that claims `--http`, fails graph construction.
+- A test double whose lane or level parameter is annotated `string`, or turned into text, now receives a `Phrase` when the code under test passes one.
+- `host.release.installation` is now present on Homebrew and on global npm, pnpm, Bun, and Yarn runs, so it no longer identifies a script installation.
+- A second `run()`, `app.invoke()`, or `inspect()` on one Application reuses its built graph, so `onCommandAttach` and `onGraphBuilt` run once per Application and build in a process.
+
+Then run `tsc --noEmit` and fix what it reports:
+
+- `out.debug` and `out.trace` calls and `lanes.debug` and `lanes.trace` reads, which now go through `log`; `destination.out` members other than `warn` in an `onLog` hook; the `out` of an `afterReplace` or refresh context; and `debug` or `trace` in a `@loomcli/testing` builder's `out`;
+- `invoke` calls with a literal path that supply an undeclared input or a plugin-added option such as `format`, or that use an alias, and a value typed as one Application or Command that is given another that declares different Commands;
+- `ExitCode` narrowings;
+- reads of `ChildExit.code` or `ChildExit.error` that assumed one kind, `ChildExit` switches without `abandoned`, and hand-built children without `abandon()`;
+- a required `installation.digest`;
+- stated lanes or log levels whose parameter is used as a string.
+
+Each breaking entry below carries its migration.
+
+Known limitation: Nushell completion. Once the completion script is loaded, Nushell runs the program through the script's `extern`. Four typed forms then reach the program differently than with no script:
+
+- a quote inside a word keeps its quotes, so `--field="a b"` arrives as typed;
+- an interpolation that holds a subexpression, such as `$"($dir)/*.txt"`, expands as a wildcard;
+- a bare `true`, `false`, or `null` fails to parse;
+- a list such as `[b c]` reaches the program as the text `[b c]`.
+
+To pass literal text, quote the whole word, as in `"--field=a b"`. [ADR-0195](docs/decisions/0195-completion-installs-for-nushell-as-one-owned-file-in-its-vendor-autoload-folder.md) and [Nushell](docs/plugins/completion.md#nushell) state these forms.
+
+### Breaking Changes
+
+- Remove `out.debug` and `out.trace`, and `lanes.debug` and `lanes.trace`. `out` keeps `print`, `info`, `success`, `warn`, and `error`, which tell the operator, and detail an operator reads only when they ask for it goes through `log`.
+- Change `-v` and `-vv` to show the log: at `-v` core shows each log event at `debug`, `info`, `warn`, and `error` as a log line on stderr, and at `-vv` it adds `trace`, with or without an `onLog` hook installed. No flag and `-q` show none, and a failure event never shows. Log lines follow the outermost run's verbosity, so under an action's `invoke` or an MCP tool call they show on the parent run's stderr, and under `app.invoke` in its `messages` when its values ask for them. See [At -v](docs/core/logging.md#at--v).
+- Add message templates: a log message's `{name}` placeholders fill from its fields on a log line, the fields it does not place trail as dim `name=value`, `{{` and `}}` write a brace, and every value shown is escaped, while the event's `message` keeps the template as written. See [Message templates](docs/core/logging.md#message-templates).
+- Add `logLine`, the declared view `@loomcli/core/log/line` a log line draws through, and the types `LogLine`, `LogLineField`, and `LogLineLevel`, so an application restyles or replaces the line through `views`.
+- Narrow `LogDestination`'s `out` to `warn` and add `log`: an event an `onLog` hook logs through it shows at `-v` and reaches every other hook, never the hook itself. Narrow an `onEnvironment` hook's `out` to `warn`. `@loomcli/testing`'s `logDestination` fills `log` with levels that do nothing, and its builders' `out` no longer holds `debug` or `trace`.
+- Remove `out` from the self-update plugin's `AfterReplaceContext` and from `RefreshContext`, which 0.19.0 added to carry the `-v` lines of an `afterReplace` function; the function logs through the context's `log`, whose `debug` and `trace` events show at `-v` and `-vv`.
+- Change the first-party plugins' `-v` and `-vv` lines, and core's line for a dropped configuration fill, into `log.debug` and `log.trace` events, so a log file records them. The plugins' change events, which are `info`, now show at `-v` too, so the five lines that said what a change event already says are removed: `Replaced <path>.`, `Ran <call>.` for a service manager call that changes something, `Refreshed completion after the update.`, `Refreshed the man pages after the update.`, and `Refreshed the skills after the update.` The change event, such as `Binary replaced.` or `Program run.`, is the line at `-v` in their place. Every other line keeps its words.
+
+### Migration
+
+**Affected surface.** The type checker reports every affected site for the removals. The surface is each call to `out.debug` or `out.trace`, each read of `lanes.debug` or `lanes.trace`, an `onLog` hook that reads a member of `destination.out` other than `warn`, an `onEnvironment` hook that calls `out.debug` or `out.trace`, an `afterReplace` function that reads its context's `out`, a call to `refreshCompletion`, `refreshManpages`, or `refreshSkills` whose context states `out`, and a test that states `debug` or `trace` in a `@loomcli/testing` builder's `out` or a member other than `warn` in `logDestination`'s `out`. No compile error for the rest: at run time, an application with a verbose-marked option now shows its own `log` events at `-v`, and a first-party plugin's lines move from a nested run's output to the outermost run's.
+
+**Why.** Two calls did one job: `out.debug` reached the screen and never the log, and `log.debug` reached the log and never the screen. One call per job ends the choice, and `-v` now shows what the log records, as uv does.
+
+**Before and after.**
+
+Before:
+
+```ts
+.action(async ({ args, out, style }) => {
+  await out.debug(`Read ${style.escape(args.file)}.`);
+  await out.trace('Reusing the open connection.');
+})
+```
+
+After, with the value in a field, which the line fills and escapes:
+
+```ts
+.action(({ args, log }) => {
+  log.debug('Read {file}.', { file: args.file });
+  log.trace('Reusing the open connection.');
+})
+```
+
+An `onLog` hook that wrote its own line through its destination:
+
+```ts
+// Before
+void destination.out.debug(`Wrote ${path}.`).catch(() => {});
+// After
+destination.log.debug('Wrote {path}.', { path });
+```
+
+**Steps.**
+
+1. Run the type checker, and replace each `out.debug(x)` with `log.debug(x)` and each `out.trace(x)` with `log.trace(x)`, taking `log` from the same context. A `log` call returns `undefined`, so drop its `await`.
+2. Move each value a message interpolates into the call's fields and name it with a placeholder, `log.debug('Read {file}.', { file })`, and drop the `style.escape` and `escapeControlCharacters` calls around it: the log line escapes every value, and the record keeps the template constant.
+3. Replace a view passed to `out.debug` or `out.trace`, and an override of `lanes.debug` or `lanes.trace`, with an override of `logLine`, or pass the view to `out.info` when the line must reach the operator without `-v`. Collect a streamed message passed to `out.debug` or `out.trace` into a string before logging it.
+4. In an `onLog` hook, replace `destination.out.debug(x)` and `destination.out.trace(x)` with `destination.log.debug(x)` and `destination.log.trace(x)`.
+   In an `afterReplace` function, replace `context.out.debug(x)` and `context.out.trace(x)` with `context.log.debug(x)` and `context.log.trace(x)`, and drop `out` from a context you pass to a refresh function. Replace any other `context.out` call with `context.log.info` or `context.log.warn`, which the operator sees at `-v`; the hook no longer writes to the operator without `-v`.
+5. In tests, remove `debug` and `trace` from a builder's `out` values and narrow `logDestination`'s `out` to `warn`. State `log` for its log calls.
+
+**Validation.** Run `tsc --noEmit` and the application's tests. Run the application with `-v` and `-vv` and read each line it shows on stderr, and run `grep -rnE "out\.(debug|trace)" src` to confirm no call remains.
+
+- Change failure log events to carry `failure.hints: []`. Core records the failure before gathering hints; the failure report still shows every hint.
+
+### Migration
+
+**Affected surface.** No compile error: `onLog` hooks and JSONL log-file readers that read `failure.hints` now receive an empty array instead of the `onFailure` hooks' hints recorded in 0.19.0.
+
+**Why.** Core records the failure before gathering hints, so a failure that is a run's first record reaches the log file and a hint can name that file and run.
+
+**Before and after.**
+
+Before, a failure event's form could include a hook's hint:
+
+```json
+{ "code": "fatal", "exitCode": 1, "message": "Cannot finish.", "hints": ["Check the connection."] }
+```
+
+After, the same event's form has no hints:
+
+```json
+{ "code": "fatal", "exitCode": 1, "message": "Cannot finish.", "hints": [] }
+```
+
+The failure report still includes `Check the connection.`.
+
+**Steps.**
+
+1. Find `onLog` hooks and log-file readers that read `failure.hints`.
+2. Read hints from the failure report. If a consumer needs hints separately, pass the hints your `onFailure` hook returns directly to that consumer.
+
+**Validation.** Run `tsc --noEmit` and the application's tests. Trigger a failure for which an `onFailure` hook returns a hint. Check that the failure report or the hook supplies that hint to its consumer, while the failure event in `onLog` and the JSONL file carries `hints: []`.
+
+- Add `--fields` to every Command the formatter gives `--format`. It keeps the named top-level keys of the json and jsonl output the formatter itself appended, in the order named, for a value, an array, and rows as they stream: `notes list --format jsonl --fields title,id`. An author-declared json or jsonl view is excluded, even without a map; its author shapes the data themselves. It repeats, takes a comma list, and is a control option, so it is on the help page and off MCP tool inputs. A field the output does not hold, a value that is not an object, or a view the formatter did not append fails with exit 2 and a sentence that says what to supply. The refusal under another view names only the formatter's views the Command has, and in an invocation by name each `--fields` failure names the options by their declared names, `fields` and `format`. See [Selecting fields](docs/plugins/format.md#selecting-fields).
+- Add `transform` to `MiddlewareContext` and export `ResultTransform` from `@loomcli/core`. A middleware assigns one function per run before the dispatch boundary, and core applies it to a value result once, and to each row of a rows result before the selected view renders: as it arrives under a row view, or when the collected rows render under a whole view. `middlewareContext` from `@loomcli/testing` keeps the last transform assigned. See [Middleware](docs/core/middleware.md).
+
+### Migration
+
+**Affected surface.** No compile error: the application fails every run with the hook-collision error. The surface is an application that installs `format()` and declares its own option named `fields` on a Command that declares a result, or on a group, or a global option or another plugin's option named `fields`, or an option that claims the spelling `--fields` through `aliases` or `visibleAliases`. A positional argument named `fields` on a Command that receives `--fields` also collides: core rejects it with `@loomcli/core/name-shared-across-kinds`.
+
+**Why.** The formatter now declares `--fields` beside `--format`, and a second declaration of one name on a Command is the hook-collision build error, as it is for `format`. An argument and an option also cannot share the declared name `fields`.
+
+**Before and after.**
+
+Before, a Command's own option, which now collides:
+
+```ts
+new Command('list')
+  .option('fields', { type: 'string' })
+  .rows<Note>({ views: { table: notesTable } })
+  .action(listNotes);
+```
+
+After, the option renamed, or removed in favor of the formatter's `--fields` under `--format json` or `--format jsonl`:
+
+```ts
+new Command('list')
+  .option('columns', { type: 'string' })
+  .rows<Note>({ views: { table: notesTable } })
+  .action(listNotes);
+```
+
+For a positional argument, rename `.argument('fields', ...)` to `.argument('columns', ...)` and change action code from `args.fields` to `args.columns`.
+
+**Steps.**
+
+1. Search the application for options named `fields`: `.option('fields'` and `.globalOption('fields'`, and plugins whose `options` name `fields`. Also search for `.argument('fields'`, and for `aliases` or `visibleAliases` that include `fields`.
+2. Rename each one, or remove it where the formatter's `--fields` already does its job. For a renamed argument, update action code reading `args.fields` to read the new name. For an alias, remove or rename the alias; the option and its readers stay as they are.
+3. Update the application's scripts and documentation that pass the old spelling.
+
+**Validation.** Run the application's `inspect()` or `--help` on each Command that declares a result; a collision fails with `@loomcli/core/option-declared-twice` naming `fields`, with `@loomcli/core/spelling-taken` for an alias, or with `@loomcli/core/name-shared-across-kinds` for an argument. Run the application's test command.
+
+- Add `mcp --http <address>`, which serves an application's MCP tools over the protocol's streamable HTTP transport at `http://<host>:<port>/mcp` instead of stdin and stdout. A port alone listens on 127.0.0.1, port 0 takes any free port, and the run writes the endpoint as its one stdout line. See the [MCP plugin reference](docs/plugins/mcp.md#serving-over-http).
+  - A request that carries an `Origin` header is refused with 403, a POST body has a size limit, and each `2026-07-28` request is served on its own while an initialize-era client gets a session that ends on DELETE or when idle. A call answers as an event stream with its progress, and the run's signal aborts every call and tears down each open subscription.
+  - A non-loopback address always writes a warning before the endpoint line: about open access without an `authorize` hook, and about unencrypted credentials with one.
+- Add optional settings to `mcp()` for the HTTP server alone: `authorize`, which judges each request from a copy of its headers, `maxBodyBytes`, 4 MiB by default, and `sessionIdleMs`, 30 minutes by default. A hook that throws answers 500, and the run reports its first throw once when the server stops, as the Developer Diagnostic `@loomcli/plugins/mcp/broken-authorize-hook` in a development build.
+- Change the stdio server so the run's signal ends each open subscription with `notifications/cancelled` and its closing result, as the end of stdin already did, because the protocol requires that teardown of a server on any transport.
+
+### Migration
+
+**Affected surface.** No compile error: graph construction fails at run time. Applications that install `mcp()` and declare a global option named `http`, including one supplied by another plugin, or a global option that claims the spelling `--http` through `aliases` or `visibleAliases`, collide with the MCP Command's new local option.
+
+**Why.** The `mcp` Command now declares `--http`, and core rejects a local option that shares a global option's name or spelling.
+
+**Before and after.**
+
+Before:
+
+```ts
+app.globalOption('http', { type: 'string' });
+// The action reads options.http.
+```
+
+After:
+
+```ts
+app.globalOption('endpoint', { type: 'string' });
+// The action reads options.endpoint.
+```
+
+**Steps.**
+
+1. Find the application's global option named `http`, including plugin options, and any global option whose `aliases` or `visibleAliases` include `http`.
+2. Rename an option named `http` and update its readers from `options.http` to the new name. For an alias, remove or rename the alias; the option and its readers stay as they are.
+3. Update scripts and documentation that pass the application's old spelling.
+
+**Validation.** Run the application's `--help` and `mcp --help` commands to verify that the graph builds and the renamed option appears. Run the application's test command.
+
+- Change `run()`, `app.invoke()`, and `inspect()` to reuse the graph an Application already built in the same process, one for a development build and one for a distributed build. A second call on one Application builds no Command and runs no `onCommandAttach` or `onGraphBuilt` hook, so repeated runs in a test suite or an embedding host cost only the run's own work, and two `inspect()` calls return the same object. `check()` still builds anew on every call, a build that faults keeps nothing, and every run still validates its declared defaults and implied values. A launch is unchanged. See [Reusing the built graph](docs/core/graph-inspection.md#reusing-the-built-graph).
+
+### Migration
+
+**Affected surface.** No compile error. A plugin's `onCommandAttach` or `onGraphBuilt` hook, and a test that counts their calls, now sees one graph build per Application and build in a process, where 0.19.0 built the graph, and ran both hooks, on every `run()`, `app.invoke()`, and `inspect()`.
+
+**Why.** A built graph depends only on the Application's declarations and its build, so repeated calls in one process, in a test suite or an embedding host, no longer pay for a build each time.
+
+**Before and after.** Before, two `run()` calls on one Application ran each `onGraphBuilt` hook twice. After, they run it once, and a second `inspect()` returns the same object as the first.
+
+```ts
+let builds = 0;
+const counter = plugin('@acme/counter', { onGraphBuilt: () => { builds += 1; } });
+const app = new Application('notes', { plugins: [counter] }).action(() => {});
+await app.run({ process: mockProcess({ argv: [] }) });
+await app.run({ process: mockProcess({ argv: [] }) });
+// 0.19.0: builds === 2. 0.20.0: builds === 1; app.check() still builds anew.
+```
+
+**Steps.**
+
+1. Find `onCommandAttach` and `onGraphBuilt` hooks that read the host, the environment, or anything that changes between runs, and move that work into middleware or the action.
+2. In tests that count hook calls or need a fresh build, call `check()`, which still builds anew, or build a new Application value, since every authoring call returns one.
+
+**Validation.** Run `tsc --noEmit` and the application's tests. Run the application twice in one process and check that each hook runs once and both runs give the same output.
+
+- Change `app.invoke` and an action's `invoke` to type a literal path and its values from the Commands the Application declares. A mistyped Command name in a literal path, an option or argument the routed Command does not declare, and a value of the wrong kind are compile errors, such as `Type '"gte"' is not assignable to type '"get" | "remote"'`. A path typed as `readonly string[]` keeps the dynamic `InvocationValues`, as do a union of literal paths, a path deeper than four Commands, and a first name an Application with plugins does not declare. A union inside one element, such as `['remote', dry ? 'add' : 'rm']`, stays typed: its values take either Command's, and the run checks them against the Command the path routes to. Where a literal path is checked against canonical names, an alias in it is a compile error; pass an alias path as a `readonly string[]` so routing resolves it at run time. See [Typed paths](docs/core/invocation.md#typed-paths).
+- Add `Register.paths`, which `PathsOf<typeof app>` fills, so an action's `invoke` types a literal path in a registered compilation, and export `CommandPaths`, `PathsOf`, and `Invoke`.
+
+### Migration
+
+**Affected surface.** The type checker reports every affected site. The surface is an `invoke` call with a literal path, such as `[]` or `['get']`, whose values name an input the routed Command and the global options do not declare, name an option a plugin's attach hook adds, such as the `--format` and `--fields` options `format()` adds to every Command with a result, or use an alias in the path; and a variable or parameter whose inferred type is one Application's or one Command's and that is given another one that declares different Commands or another name.
+
+**Why.** Each Command and Application now carries its Command paths in its type, so `invoke` can check a literal path and its values, and two values that declare different Commands no longer share a type.
+
+**Before and after.**
+
+Before, a call that selects a view through the formatter's option:
+
+```ts
+await app.invoke(['list'], { options: { format: 'json' } });
+```
+
+After, the view goes in the call's options:
+
+```ts
+await app.invoke(['list'], {}, { view: 'json' });
+```
+
+Before, a parameter that takes its type from one Application:
+
+```ts
+const run = (application = app()) => application.run({ process: mockProcess({ argv: [] }) });
+
+run(otherApp());
+```
+
+After, it takes the neutral annotation:
+
+```ts
+const run = (application: Application = app()) => application.run({ process: mockProcess({ argv: [] }) });
+```
+
+**Steps.**
+
+1. Run the type checker and open each reported `invoke` call.
+2. Correct a mistyped Command, option, or argument name, or a value of the wrong kind, that the call meant to supply.
+3. For a call that supplies `format` to select a view, such as `{ options: { format: 'json' } }`, pass the view in the call's options instead, as `invoke(['list'], {}, { view: 'json' })`.
+4. For a call that supplies an undeclared name on purpose, another option an attach hook adds, such as `fields`, or names an alias, pass the path as a `readonly string[]` value.
+5. Give a variable or parameter that holds Applications or Commands declaring different Commands the `Application` or `Command` annotation.
+6. To type an action's `invoke`, add `paths: PathsOf<typeof app>` to the `Register` augmentation, naming the completed Application.
+
+**Validation.** Run the application's type check, such as `tsc --noEmit`, and its tests: each `invoke` call compiles, and every call whose path is dynamic behaves as before.
+
+- Change an unknown command to a held fault: core raises `UnknownCommandError` at the dispatch boundary after running the `'always'` middleware, which read the unknown word and the words after it under the new `unknownCommand` member of the middleware context. A middleware may take such a run over. An application with no such middleware prints and exits as before. See [Middleware](docs/core/middleware.md) and [ADR-0192](docs/decisions/0192-core-holds-an-unknown-command-for-the-chain-and-a-plugin-runs-an-external-command-from-path.md).
+- Add `invokedBy` and `exitCode` to the middleware context. A takeover, a middleware that returns without calling `next()` or that catches the fault the dispatch boundary raised, may assign `exitCode` to end the run with that code and print nothing. `invoke()`'s `completed` outcome gains an optional `exitCode`, present when a takeover stated a code other than 0.
+- Change `ExitCode` to every whole number from 0 through 255, because a takeover may state a child program's code. `FailureExitCode` still bounds a failure class at 1 through 125.
+
+### Migration
+
+**Affected surface.** The type checker reports code that narrows an `ExitCode` to `FailureExitCode` or to the codes it listed before, such as a `switch` whose `default` branch assigns the code to `FailureExitCode` or `never`. No compile error: behavior changes at run time for an `'always'` middleware, which now runs on a run that names an unknown command, where its `next()` rejects with `UnknownCommandError`, its `request` and `options` read `null`, and its `ownOptions` reads an empty record.
+
+**Why.** An operator extends an application by putting `<application>-<word>` on `PATH`, which a middleware can serve only when it sees the unknown command and can end the run with the program's exit code.
+
+**Before and after.**
+
+Before, code that read every code past the cancellations as a failure class's:
+
+```ts
+function describe(code: ExitCode): string {
+  switch (code) {
+    case 0:
+      return 'ok';
+    case 129:
+    case 130:
+    case 131:
+    case 141:
+    case 143:
+      return 'cancelled';
+    default: {
+      const failure: FailureExitCode = code;
+      return `failed with ${String(failure)}`;
+    }
+  }
+}
+```
+
+After, the remaining codes are any code a takeover stated:
+
+```ts
+function describe(code: ExitCode): string {
+  switch (code) {
+    case 0:
+      return 'ok';
+    case 129:
+    case 130:
+    case 131:
+    case 141:
+    case 143:
+      return 'cancelled';
+    default:
+      return `exited ${String(code)}`;
+  }
+}
+```
+
+An `'always'` middleware now also runs on an unknown command, where its `next()` rejects. Loaded by a plugin `auditing()` that declares `middleware: { activate: 'always', load: () => import('./audit.js') }`, this audit middleware never saw `app nope` before; after, it records the run and the rejection reaches it:
+
+```ts
+const audit: Middleware<typeof auditing> = async ({ next, unknownCommand }) => {
+  try {
+    await next();
+  } finally {
+    // After: also runs for `app nope`, where `unknownCommand` is { word: 'nope', rest: [] }.
+    record(unknownCommand?.word ?? 'routed');
+  }
+};
+
+export default audit;
+```
+
+**Steps.**
+
+1. Run the type checker, and give each site it reports a branch for any code from 0 through 255 that a takeover may state.
+2. In an `'always'` middleware that reads `request`, `options`, or a value only a routed run has, check `unknownCommand` first, or read the `null` request as it reads one under any held fault.
+
+**Validation.** Run the type checker with no errors. Run the application with an unknown command, such as `app nope`, and check that it prints the same unknown-command failure and exits 2. Check that each `'always'` middleware completes on that run without reading a `null` `request` or `options`.
+
+- Change the configuration plugin to read JSON alone unless the application passes a reader for TOML or YAML in the new `formats` setting: `toml` from the new `@loomcli/plugins/config/toml` subpath reads `.toml` files, and `yaml` from the new `@loomcli/plugins/config/yaml` subpath reads `.yaml` and `.yml` files. The plugin no longer imports either parser itself, so an application that passes neither reader bundles neither `smol-toml` nor `yaml` (about 266 KB) and carries neither license. See [Configuration](docs/plugins/config.md#readers) and [ADR-0196](docs/decisions/0196-an-application-passes-the-toml-and-yaml-readers-it-reads-and-the-configuration-plugin-reads-json-alone-without-them.md).
+- Add the `@loomcli/plugins/config/file-format` rule: a `file` that names a `toml`, `yaml`, or `yml` file, in a brace list or as a literal name, without its format's reader in `formats` throws at `configuration()`, naming the reader to pass.
+- Change `*` in `file` to name the extensions of the readers passed, then `json` and `jsonc`. With no readers, `*` names `json` and `jsonc` alone.
+- Change `--config` naming a `.toml`, `.yaml`, or `.yml` file the application does not read to fail with code 2, naming the file's format and the formats the application reads, as in `Option "--config": File "x.toml" is TOML, which this application does not read. Supply a JSON file.` A file the `env` variable names in such a format warns and the run reads no configuration. A file of any other name still reads as JSON.
+- Change the `loom` bin to read JSON alone: `loom --config x.toml` now fails, and `@loomcli/loom` no longer bundles `smol-toml` or declares BSD-3-Clause.
+
+### Migration
+
+**Affected surface.** No compile error: `configuration()` throws a `DeclarationError` when the application starts, under `@loomcli/plugins/config/file-format`. The surface is a `configuration()` call whose `file` names a `toml`, `yaml`, or `yml` extension, in a brace list such as `.textstat.{toml,json}` or as a literal name such as `.textstat.yaml`. A call whose `file` has the extension `*`, or names only JSON files, compiles and starts unchanged, and so does a call with no `file`, which looks for `.<app>.json` and so names only a JSON file. Under `*`, a TOML or YAML file the walk used to find is no longer looked for, so its settings stop applying with no warning. Each of these stops reading TOML and YAML files at run time: an operator's `--config` naming a TOML or YAML file fails with code 2, and a TOML or YAML file the `env` variable names warns, or fails under `strict`.
+
+**Why.** The plugin chose a parser at run time, so every application that installed it bundled both parsers whatever format it read. A reader the application passes keeps an unused parser out of the bundle.
+
+**Before and after.**
+
+Before:
+
+```ts
+import { configuration } from '@loomcli/plugins/config';
+import { z } from 'zod';
+
+export const config = configuration({
+  file: '.textstat.{toml,json}',
+  schema: z.object({ minBytes: z.number().optional() }),
+});
+```
+
+After, passing the reader the file pattern names:
+
+```ts
+import { configuration } from '@loomcli/plugins/config';
+import { toml } from '@loomcli/plugins/config/toml';
+import { z } from 'zod';
+
+export const config = configuration({
+  file: '.textstat.{toml,json}',
+  formats: [toml],
+  schema: z.object({ minBytes: z.number().optional() }),
+});
+```
+
+**Steps.**
+
+1. Find each `configuration()` call: one whose `file` names `toml`, `yaml`, or `yml`, one whose extension is `*`, one whose `file` names only JSON files, and one with no `file`.
+2. For `toml`, import `toml` from `@loomcli/plugins/config/toml` and add it to `formats`.
+3. For `yaml` or `yml`, import `yaml` from `@loomcli/plugins/config/yaml` and add it to `formats`.
+4. For `*`, add the reader of every format the application's operators may write, or neither to read JSON alone.
+5. For a call whose `file` names only JSON files, or that passes no `file` and so looks for `.<app>.json`, add the reader of each format operators may name through `--config` or the `env` variable, or neither to read JSON alone.
+6. If you pass `loom --config` a TOML file, convert it to `loom.config.json`.
+
+**Validation.** Start the application, for example with `--help`, and check that it prints no `@loomcli/plugins/config/file-format` diagnostic. For each reader you added, run it with `--config` naming a file of that format and check that it reads the file's values. For an application that reads JSON alone, run it with `--config` naming a JSON file, and check that a TOML or YAML file fails with code 2. For a `*` pattern, test each format whose reader you passed one at a time: put one file the `file` pattern names in a directory the lookup's `scopes` search, with no other configuration file there and no `--config` or `env` override, and check that its values apply.
+
+- Derive Homebrew, npm, pnpm, Bun, and Yarn installations from the resolved application path when no installation record matches. `host.release.installation.digest` is now optional because a derived installation has no recorded digest.
+- Show the package manager's upgrade command in update notices and when `self-update` refuses a package-managed installation, when the facts the command needs are available, such as the npm package name the build bakes. Otherwise an update notice is skipped, and the refusal tells you to update with the package manager. A script-recorded binary whose real path is in a Homebrew Cellar or a package manager's global root counts as that package manager's installation.
+- Export `packageManagerInstallation(path, platform)` from `@loomcli/core`, which derives the Homebrew installation or the global installation for npm, pnpm, Bun, or Yarn for an absolute realpath.
+- Export `isNpmPackageName(name)` from `@loomcli/core`, the npm package name rule that update notices and `loom build --target npm` judge a name by.
+
+### Migration
+
+**Affected surface.** Code that requires `host.release.installation.digest` to be a string can now fail type checking. Code that uses the presence of `host.release.installation` to identify a script installation changes behavior at run time without a compile error. `host.release.installation` is now present on Homebrew, npm, pnpm, Bun, and Yarn runs that match the layout rules.
+
+**Why.** The resolved application path can identify a package-managed installation. Only a matching installation record supplies its verified digest.
+
+**Before and after.**
+
+Before:
+
+```ts
+const { installation } = host.release;
+if (installation !== undefined) {
+  checkInstalledBinary(installation.path, installation.digest);
+}
+```
+
+After:
+
+```ts
+const { installation } = host.release;
+if (installation?.method === 'script' && installation.digest !== undefined) {
+  checkInstalledBinary(installation.path, installation.digest);
+}
+```
+
+**Steps.**
+
+1. Check `installation.method === 'script'` anywhere presence previously meant a script installation.
+2. Check `installation.digest !== undefined` before using the digest.
+
+**Validation.** Run your project's type checker, for example `pnpm exec tsc --noEmit`. Run the application with a matching script record and from a matching Homebrew, npm, pnpm, Bun, or Yarn path. Confirm that only the script installation enters the code that needs its recorded digest.
+
+- Change the `out` lanes, `out.fatal`, `MessageArguments`, and the `log` levels to take `string | Phrase` where they took `string`, so Loom's own code can hand core a sentence it renders in the operator's language. A test double an author states for one of these members, through `@loomcli/testing`'s builders, now receives a parameter that may be a `Phrase`.
+
+### Migration
+
+**Affected surface.** The type checker reports a stated lane or level whose parameter is typed from the context and used as a string, such as `log: { info: (message) => { lines.push(message); } }`, and a lane written `(...call: MessageArguments)` that narrows with `typeof message === 'string'` and then iterates. No compile error: a double whose parameter is annotated `string`, or that turns its parameter into text with `String()` or a template, receives a `Phrase` at run time when the code under test passes one.
+
+**Why.** Core renders a phrase in the run's language where it writes text for a person, and the failure form and the log record keep its English text, so the members that carry Loom's text to core take a phrase as well as a string.
+
+**Before and after.**
+
+Before, a stated `log` level typed from the context:
+
+```ts
+const lines: string[] = [];
+const context = actionContext(handler, {
+  args: {},
+  log: { info: (message) => { lines.push(message); } },
+  options: {},
+  provided: {},
+});
+```
+
+After, the parameter is annotated, because the action under test passes strings:
+
+```ts
+const lines: string[] = [];
+const context = actionContext(handler, {
+  args: {},
+  log: { info: (message: string) => { lines.push(message); } },
+  options: {},
+  provided: {},
+});
+```
+
+A stated lane that takes `(...call: MessageArguments)` reads a phrase's English text before it narrows a stream:
+
+```ts
+import { Phrase, type MessageArguments } from '@loomcli/core';
+
+const print = async (...[message]: MessageArguments) => {
+  if (message instanceof Phrase) lines.push(message.text);
+  else if (typeof message === 'string') lines.push(message);
+  else for await (const part of message) lines.push(part);
+};
+```
+
+**Steps.**
+
+1. Run the project's type check, such as `tsc --noEmit`, and note each stated lane or level it reports.
+2. Annotate the parameter `(message: string)` where the code under test passes only strings. Where it may pass a phrase, type the parameter `string | Phrase` and narrow with `message instanceof Phrase` to read `message.text`: a double annotated `(message: string)` still compiles there, because the builder hands the argument through unchanged, and fails only when it runs.
+
+**Validation.** Run the type check again and confirm it reports no stated lane or level, then run the tests that state them.
+
+- Add `Child.abandon()` to release a spawned child's connections so the host can exit while the child runs. Abandoning sends no signal and can settle `exited` with the new `abandoned` kind and the output captured so far.
+
+### Migration
+
+**Affected surface.** The type checker reports reads of `ChildExit.code` or `ChildExit.error` that no longer narrow to one kind, exhaustive switches that omit `abandoned`, and hand-built `ProcessHandle` children without `abandon()`.
+
+**Why.** A caller can stop waiting before the child reports an exit or a failed start.
+
+**Before and after.**
+
+Before, ruling out `unstarted` also narrowed to an exit code:
+
+```ts sketch
+const exit = await child.exited;
+if (exit.kind === 'unstarted') throw exit.error;
+return exit.code;
+```
+
+After, handle each kind:
+
+```ts sketch
+const exit = await child.exited;
+switch (exit.kind) {
+  case 'unstarted':
+    throw exit.error;
+  case 'exited':
+    return exit.code;
+  case 'abandoned':
+    return undefined;
+}
+```
+
+**Steps.**
+
+1. Narrow on `kind === 'exited'` before reading `code`, and on `kind === 'unstarted'` before reading `error`.
+2. Handle `abandoned` in exhaustive switches over `ChildExit.kind`.
+3. Implement `abandon()` on children returned by a hand-built `ProcessHandle`. While `exited` is pending, `abandon()` settles it at once and stops waiting for the child: as `{ kind: 'exited', code, stdout, stderr }` when the child's exit has already been reported, and otherwise as `{ kind: 'abandoned', stdout, stderr }`, each with the output captured so far. Once `exited` has settled, it does nothing.
+
+**Validation.** Run the application's type check, such as `tsc --noEmit`: every read of `code` or `error` and every exhaustive `switch` on `kind` compiles. Run the application's test command, such as `pnpm test`, including the tests of code that starts child programs through `host.spawn` or a `mockProcess` script. If your code calls `abandon()`, check that it handles the captured output without expecting an exit code.
+
+### Features
+
+- Add multiple destinations to one `logging()` installation through `destinations`, each with its own level and each file with its own path, rotation, and error callback. Every eligible file and console destination writes identical JSONL record bytes. Existing single-destination calls keep working.
+
+- Add `log.with(fields)`, which returns a `Log` whose every event carries those fields, copied once, as a pino or winston child logger does. It nests, a call's own field wins over a bound one of the same name, and a bound field fills a message template's placeholder. Every context that carries `log` has it, a log destination's included, and `@loomcli/testing`'s builders' `log` passes the bound fields to the levels a test states. `logDestination` takes its `log` level by level, as the builders do, so a test that states only `debug` keeps the other levels inert. See [Bound fields](docs/core/logging.md#bound-fields).
+- Add `log: { redact }` to the Application options: a list of dotted field paths whose values read `"[Redacted]"` in every log event, so no `onLog` hook, log line at `-v`, or log record sees them. A path steps through arrays, bound fields are redacted too, and Loom redacts nothing an Application does not list. A path that is not dotted nonempty keys is the declaration error `@loomcli/core/invalid-redact-path` from the constructor. See [Redaction](docs/core/logging.md#redaction).
+
+- Add an OpenTelemetry logging destination that sends message templates, redacted fields, and run and failure facts to an author's own logger, with an independent level and no runtime SDK dependency.
+
+- Add two operator variables to the logging plugin, named after the application, such as `HEIMDALL_LOG_LEVEL` and `HEIMDALL_LOG_FILE`: the first sets every file destination's level, and the second redirects the first file destination. `levelEnv` and `fileEnv` rename either, and `false` turns either off. An unusable value prints one warning and keeps the author's setting. See the [logging reference](docs/plugins/logging.md#operator-variables).
+- Add a failure hint to the logging plugin that names the log file the failure was appended to and the run's id. `failureHint` selects `'runtime'` failures by default, every failure but a usage error, or `'always'`, `'defects'`, or `false`.
+- Add `@loomcli/plugins/logging/extension`, which exports `loggingFiles`, the fact the logging plugin publishes on the root Command, and `resolveLoggingFiles`, which turns the fact and a host's `env`, `home`, and `platform` into the files a run writes, with the operator's variables applied.
+- Add `run` to `FailureHookContext`, the identifier every log event of the run carries. `failureHookContext` in `@loomcli/testing` takes `run`, and `logDestination` gives `out` an inert `warn`.
+
+- Add logging destinations to `service status` text and JSON when the logging plugin is installed. Status names every resolved file and notes files with no records yet. It reports journald or discarded console output when the logging plugin has no files and `output` is unset. Paths use the environment running status. A service manager with different variables can resolve different paths.
+
+- Add nearest accepted-value suggestions for rejected closed-set inputs. The suggestions plugin replaces the accepted-values fix in each affected sentence and preserves other input problems without repeating the received value.
+- Add `FailureHookContext.received(problem)` so failure hooks can read a rejected input's raw value without exposing it on the failure. The testing context builder accepts an optional reader and defaults to returning `undefined`.
+
+- Add `needsTerminal()` on a Command and on the Application, so a Command whose action works only at a terminal, such as a full-screen view, says so. Without a terminal, where stdin or stderr is not one or the run is under CI, the run fails before the action with the new `TerminalUnavailableError`, failure code `terminal-unavailable`, exit 1. `--no-input` does not refuse it. `invoke` and `app.invoke` always refuse it, because an invocation by name has no terminal. See [A Command that needs a terminal](docs/core/commands.md#a-command-that-needs-a-terminal).
+- Add `needsTerminal` to `CommandNode`, the manifest's Command entry, the help page, which prints `Needs a terminal: stdin and stderr, outside CI.` under the Command's masthead, and the man page, which prints it as a paragraph of DESCRIPTION.
+- Add the MCP build fault `@loomcli/plugins/mcp/tool-needs-terminal`: a Command that carries `mcpCommand` and needs a terminal fails every build, so it never reaches `tools/list`.
+
+- Add `jsonlRows()`, a row view that writes one JSON Lines line per row as the row arrives, exported from `@loomcli/plugins/format` and `@loomcli/plugins/format/views`. Its `map` applies to each row, and its bytes equal `jsonl()`'s for the same rows.
+- Change `--format jsonl` on a Command that declares `rows()` to write each line as its row arrives, so an unbounded source prints as it goes. A run that fails after its first row now leaves the rows it wrote before the failure on stdout, where it wrote nothing before, and the failure line goes to stderr. A Command that needs all-or-nothing output declares `jsonl: jsonl()` in its `views`, which collects the rows and writes nothing when the run fails. A value result keeps the whole view too.
+
+- Add static value hints to shell completion. `completionInput` and `completionArgument` from `@loomcli/plugins/completion/extension` mark an option or an argument as completing file names, files of some extensions, directories only, nothing, or, for an argument only, the Commands its earlier words have reached; Tab then completes accordingly in Bash, Zsh, Fish, and PowerShell, including, for the files-of-some-extensions and directories-only hints, a value attached to its option, as in `--config=a` or `-ca`, and never falls back to a file name the hint rejects. The Fish script now filters by extension and to directories instead of completing every file name.
+  ```ts
+  new Command('load').option('config', {
+    extensions: [completionInput({ extensions: ['json', 'yaml'] })],
+    type: 'string',
+  });
+  ```
+- Complete Commands after `help` when the help Command is on: `app help ta<Tab>` offers `task`, and `app help task sh<Tab>` offers its children.
+
+- Add named completers to shell completion. `completion({ values: { task: ({ word, typed }) => [...] } })` holds functions that supply an option's or an argument's values at Tab time, and `completionInput({ values: 'task' })` or `completionArgument({ values: 'task' })` names one. A completer reads the word being completed, the words the earlier words gave each input, the run signal, and the host, and returns, now or later, values as text or `{ value, description }`. The answer offers those that start with the typed word, after `--option=` or an attached short letter as for any value. A completer that throws offers nothing and logs a `warn` event, while child Commands that share its position are still offered, and a name the settings do not define is the declaration fault `@loomcli/plugins/completion/unknown-completer`. See the [completion reference](docs/plugins/completion.md#named-completers).
+  ```ts
+  completion({ values: { task: async () => [{ description: 'Fix the build.', value: 'task-1' }] } });
+  ```
+
+- Add `typed` to every position `locate()` reports except `none`: the words the earlier words gave each option and each argument, by declared name, exactly as the parser read them and before any validation, a parent's own option that routing still holds included, and an arity option's words ending with those its unfinished occurrence has received. `TypedInputs` is exported as a type. A reader that completes one input can now narrow by the others.
+  ```ts
+  const position = locate(graph, ['task', '--project', 'alpha', '']);
+  position.kind === 'argument' && position.typed.options.get('project'); // ['alpha']
+  ```
+
+- Add command references to installed agent skills. A skill selects Commands by their paths with `commands`, such as `[['note']]` or `[[]]` for the whole application, and `skills install`, `skills update`, and a project install write a Markdown command reference for each selected Command an operator can find, plus an `index.md` that lists them and the global options, under the skill's `references/commands/`, generated from the installing binary's graph. Each reference shows the usage forms, arguments, standard input, options, result, and the `manifestCommand` details, examples, and failures as help's cells state them, with no option alias. A path that names no Command, or two Commands that give one file name, fails the build. The [skills plugin](docs/plugins/skills.md#command-references) describes the files.
+- Add an entry without `files` to the `skills` list of settings that name a `folder`, `{ name, commands }`, which selects Commands for the folder's skill of that name. `skills()` takes the new `FolderSkillsSettings` for it, whose `folder` is required, so such an entry without a folder is a compile error.
+- Add `skillCommand` from `@loomcli/plugins/skills/extension`, which adds guidance for an agent to a Command's command reference.
+- Add `commandReferences` and `skillFolders` to `@loomcli/plugins/skills`, which give a tool outside an install the command references a selection renders and every file an install writes for each declared skill.
+
+- Add `skills status` to report each skill as missing, unmanaged, modified, stale, or current, globally or in a project. Global installs record each installed file's digest and protect changes to generated command references until `skills install --force` replaces them; earlier skill records roll forward on install or update. A binary older than this release refuses the new record file. A project row's note quotes a project root that holds a space or another character a shell reads, as `shlex.quote` does, so its `--directory` step pastes as one word.
+
+- Add `loom skills export <directory>` to write all or selected application skills with the same files and generated command references as an install.
+- Add `assertSkillsMatch(application, directory, options?)` to `@loomcli/testing` to fail a test at the first file that differs from a committed skill copy. Select skills with `options.skills` and resolve a relative source folder with `options.moduleDirectory`. It loads the optional `@loomcli/plugins` companion only when called.
+
+- Add `loom docs <directory>` to write a Markdown command reference for every non-hidden Command of the application, with an `index.md`, using the renderer that skill command references use. A renderer that throws fails the run with the Developer Diagnostic [`@loomcli/loom/command-references-failed`](docs/core/diagnostics.md#loomcliloomcommand-references-failed), which names `@loomcli/plugins` and says to install it and `@loomcli/core` at one version. A reference file it cannot write is reported as a write, with the folder whose write access it needs.
+
+- Add `timeZone` to invocation options so embedded and nested calls resolve zone-less date-time inputs, declared defaults, and implied values in the caller's zone. Nested calls inherit the zone unless they supply their own, and the parent and process handle keep their zones. `resolveTimeZone` resolves a runtime-known IANA name and refuses numeric offsets. MCP tool calls accept the zone through `params._meta["io.github.dbtlr.loomcli/timeZone"]` over stdio and HTTP, and invalid metadata returns a tool error naming the key and the accepted form.
+
+- Add the [external-commands plugin](docs/plugins/external-commands.md), `externalCommands()` from `@loomcli/plugins/external-commands`. When the first word of argv names no Command, it runs the first executable `<application>-<word>` on the run's `PATH` with the words after it, and the run exits with the program's code. With no such program, the unknown command reports as before.
+
+- Add Nushell completion. `jsonkit completion nu` prints a script that declares one extern for the application's name and asks the application for matches, and `jsonkit completion install nu` writes it into Nushell's vendor autoload folder, `$XDG_DATA_HOME/nushell/vendor/autoload`, by default `~/.local/share/nushell/vendor/autoload` on Linux and `~/Library/Application Support/nushell/vendor/autoload` on macOS, with no edit to `config.nu`; `update`, `uninstall`, and the self-update refresh act on it as on the other shells. Nushell 0.117 is the floor. Under a value hint for file names, Nushell lists every file name by its own rule, and completes none after an `=` or a short option's attached value, as [Completion](docs/plugins/completion.md#nushell) states.
+
+- Speed up unbundled Loom applications on Node by loading fewer files at startup.
+- Ship source maps with the TypeScript sources embedded, so a stack trace under `node --enable-source-maps` names the source file and line. The packed libraries grow with them: `@loomcli/core` from about 446 KB to 742 KB.
+
+- Add `--unmanaged` to the `install.sh` that `loom init` manages. With `--dir`, which it requires, it installs a verified side copy of the binary and writes no `install.json`, prints no PATH advice or post-install message, and runs no post-install command, so running it beside a live install leaves that install's record, and its self-update, as they were. A declared post-install command is printed as skipped, with a note that running it would point shared setup at the side copy. Run `loom init` to render the new script; see [the installer script](docs/toolchain/install.md).
+
+- Add `@loomcli/plugins/self-update/attestation`, whose `attestation({ workflow })` makes self-update verify a GitHub artifact attestation of the release asset before it downloads the asset. Pass its value as `selfUpdate({ attestation: attestation({ workflow: '.github/workflows/release.yml' }) })`. An update then passes only when an attestation verifies in full against Sigstore's trust root and names the pinned workflow in the application's repository, a run on the release's own tag, and the asset's name with the digest `SHA256SUMS` lists. A rate limit, a missing attestation, and every failed check fail the update, and none falls back to the digest alone. The [self-update reference](docs/plugins/self-update.md#attestation) states the requests, the failures, and the release workflow the author adds.
+  - The subpath verifies with `@sigstore/verify`, `@sigstore/bundle`, and `@sigstore/tuf`, which are optional peer dependencies of `@loomcli/plugins`. An application that imports the subpath adds them to its own dependencies and runs on Node `^22.22.2 || ^24.15.0 || >=26.0.0`. An application that does not import it bundles none of their code, and self-update without `attestation` makes the same requests as before.
+  - `selfUpdate()` throws a `DeclarationError` with the diagnostic code `@loomcli/plugins/self-update/attestation-setting` for an `attestation` value that `attestation()` did not make, and `attestation()` throws one with `@loomcli/plugins/self-update/attestation-workflow` for a `workflow` that is not a workflow file in `.github/workflows`.
+
+- Add `loom build --target npm`, which ships a compiled application through npm as a launcher package and one platform package per binary, as esbuild and Biome do. Turn it on with `"npm": { "launcher": true }` in `loom.config.json`, and name the platforms with `npm.platforms`, any of `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-arm64-musl`, `linux-x64`, and `linux-x64-musl`, all six by default. The build compiles each platform's release binary, which bakes the launcher package's name so an `npm install -g` reads the installation method `npm`, and writes `<out>/npm/<package>` and `<out>/npm/<package>-<platform>`, each named for the package without its scope, moving the set into place only once every binary compiled. It replaces or removes only a package folder whose `package.json` names the package it writes there, so a folder it did not write fails the build before anything compiles, or stays when its platform was dropped, and a `package.json` `name` outside npm's package name rule fails with code 2. The launcher is dependency-free CommonJS that runs the matching platform package's binary in its own place through `process.execve`, or as a child that forwards signals and dies by the child's signal on a Node without it. Publishing stays in your workflow; see [the npm launcher packages](docs/toolchain/build.md#the-npm-launcher-packages).
+
+- Add `loom release formula` to render a Homebrew formula for a published binary release from its `SHA256SUMS`. It reads the application's name from `--name`, else `loom.config.json`'s `name`, else `package.json` `bin`, and a `loom.config.json` that cannot be used fails it with code 2.
+
+- Add localization of Loom's own sentences through phrasebooks. `localization({ locales: { de: [coreDe] } })` from `@loomcli/plugins/localization` installs phrasebooks per language, and `phrasebook('@loomcli/core', sentences)` makes one, checked at compile time against core's message modules, so a misspelled package, module, or sentence, or a parameter of the wrong type, fails to compile in a phrasebook written as an object literal; a sentence object declared apart and passed by name checks the entries it shares with the module but not a misspelled extra one, which falls back to English. Core renders a failure's sentence, an `out` line, a hint, an issue, and a `-v` log line in the run's language wherever it renders text for a person, and falls back per sentence to English. The failure form, failure codes, `failure.message`, `invoke`'s outcome, JSON output, and the log record stay English. Without a plugin that installs phrasebooks, every output byte is unchanged. See [Localization](docs/core/localization.md) and [the localization plugin](docs/plugins/localization.md).
+- Add `host.locale`, the operator's locale as a canonical BCP 47 tag, resolved once at entry from `LC_ALL`, `LC_MESSAGES`, and `LANG`, or from a process handle's new optional `locale`, and `resolveLocale(env)`, the rule that reads it. `mockProcess({ locale })` sets it in a test.
+- Add phrases: `phrases(packageName).module(key, sentences)` makes a module's phrases, `Phrase` holds a sentence with its values and computes its English text on first read, and `phrasedIssue`, `issuePhrase`, `failureLines`, and `replaceValue` let a plugin build and rebuild Loom's text. A failure class's constructor, a log call's top-level field values, and an `onFailure` hook's hints take a phrase where they took a string, and a failure class's constructor takes a list of lines. An application may register its own message modules on `MessagePackages` and translate them the same way.
+- Add `ViewContext.localize(phrase)` and `FailureViewContext.message`, the failure's sentence in the run's language. `@loomcli/testing`'s `viewContext()` answers an unstated `localize` with the phrase's English text.
+- Add the declaration rule [`@loomcli/core/phrasebook-language`](docs/core/diagnostics.md#loomclicorephrasebook-language), which `plugin()` raises for a phrasebook map keyed by anything but a canonical language subtag, such as `de-AT`, `DE`, or `iw`.
+- Publish each core sentence's export name and parameters through `MessagePackages`, so a later rename or a changed parameter is a breaking change for a phrasebook that holds the sentence, and a reworded English sentence is named in its release's notes.
+
+- Add a `name` key to `loom.config.json`, the application's release name. `loom build`, `loom release formula`, and `loom init` read it, so the release asset, the Homebrew formula, the npm target's binaries, and the installer script agree on `<name>` when it differs from the one `package.json` `bin` gives: the installer script requests the `<name>-<platform>` asset the build bakes. `--name` still beats the key, and a value that is not a portable name fails the run with code 2.
+- Change the sentence for a build that finds no application name in `bin` to name the `name` key as well as `--name`.
+
+- Change the `-vv` reason when the installation is absent from `Skipped the update check: notes was not installed by install.sh.` to `Skipped the update check: notes has no installation record and does not run from a Homebrew Cellar or a package manager's global root.`, where `notes` is the application name.
+- Change the `-vv` reason for a run without release facts from `Skipped the update check: notes is not a release binary.` to `Skipped the update check: notes is not a release build.`, because a release bundle now passes it.
+
+- Add the plugin pack's sentences to localization. `phrasebook('@loomcli/plugins', sentences)` makes a phrasebook for the pack, checked at compile time against its message modules, and compiles for an application that imports any of the pack's subpaths. The modules are keyed `background`, `common`, `completion`, `config`, `dotenv`, `external-commands`, `format`, `help`, `installation`, `logging`, `manpage`, `mcp`, `self-update`, `service`, `skills`, `suggestions`, and `version`. Installed through `localization()`, it renders in the run's language the help page's headings, facts, hints, and INPUT and option-group sentences, the records view's count, the failures, issues, and `-v` lines of the configuration and format plugins, the help plugin's usage hint, the shared change events at `-v`, the suggestions plugin's fix inside core's line, and every other plugin's failures, notices, status notes, and `-v` lines. Declared descriptions, man pages, and skill references stay English. Without a plugin that installs phrasebooks, every output byte is unchanged. See [the localization plugin](docs/plugins/localization.md).
+- Add `PluginMessageModules`, exported from `@loomcli/plugins/localization`, the pack's member of `MessagePackages`. Each sentence's export name and parameters are public through it, so a later rename or a changed parameter is a breaking change for a phrasebook that holds the sentence, and a reworded English sentence is named in its release's notes.
+- Add `@loomcli/validators`' sentences to localization. `phrasebook('@loomcli/validators', { common: { ... } })` makes a phrasebook for the validator catalog's issues, which compiles for an application that imports `@loomcli/validators`. Each issue the catalog reports carries its phrase, so an input's line renders the issue in the run's language, while the issue's `message`, `code`, and `params` stay English and unchanged, and the validators run outside Loom as before. A catalog issue now lists `message` after `code` and `params`, so an inline snapshot or `util.inspect` of one shows the members in that order; deep equality is unchanged.
+- Add `@loomcli/prompts`' sentences to localization. `phrasebook('@loomcli/prompts', { common: { ... } })` makes a phrasebook for the prompts package, which compiles for an application that imports `@loomcli/prompts` or `@loomcli/prompts/views`. Its failures, the line under a rejected answer, the dropped-lines notice, and the fixed labels the default views draw, such as the key hints under a question, `Searching…`, `No matches`, and progress units, render in the run's language. A view override still receives strings.
+- Fix `service status` lining up a row name in wide characters, such as a probe's row an author names `接続`: it padded names by string length, so that row's value began a column or two early. It now pads by display width, as the new `skills status` does.
+
+- Allow `issueCode`'s `message` to return a `Phrase` as well as a string, so a validator package built on `issueCode` localizes its issues through a phrasebook. The change is additive: an existing config still compiles and behaves the same, and a string `message` builds the same issue. Only code that calls a config's own `message` and expects a `string` needs to narrow the result.
+
+- Add `environment`, `output`, and `stopTimeout` to the service plugin's settings: environment variables the unit sets, one file for the service's stdout and stderr, and the manager's stop timeout in milliseconds. When `output` is set, service status reports the configured output file and whether it exists in place of the manager's console capture. The `unitHoldsControl` sentence, for a control character the unit cannot store, now names an environment variable too, and `service install` fails with the new `outputFolderBlocked` or `outputFolderUnwritable` sentence when the output file's folder cannot be created.
+
+- Teach the authoring skill that `loom init` writes the 0.20.0 surface: the configuration plugin's TOML and YAML readers, `--fields` and the streamed `jsonl` row view, log message templates, `log.with`, redaction, and the `logging()` plugin's destinations, `needsTerminal()`, completion value hints and named completers, generated command references in an application's skills, a middleware's `unknownCommand`, `invokedBy`, and `transform`, the run-once `onCommandAttach` and `onGraphBuilt` hooks, typed `invoke` paths and the call's `view`, `context.message` and `localization()` in a failure view, package-manager update notices, the release name, `install.sh --unmanaged`, and self-update attestation.
+
+### Fixes
+
+- Fix the order of the logging plugin's console records on a stderr that is not a terminal, such as under `2>run.log` or in CI. Core now carries what an `onLog` hook writes to the run's stderr through the run's stderr order off a terminal as well as on one, so each record follows its own `-v` log line and precedes the warnings, log lines, and progress lines of later calls, where a record could land above the output of earlier calls before. A record, and a `-v` log line, still reach stderr in the log call when nothing waits ahead of them, so they survive a `process.abort()` or a crash that follows. A record logged while an earlier write is still queued, such as right after an unawaited `out.warn`, waits for that write: `process.exit()` and a signal's shutdown write both, and an abort before its turn loses both. A record an `onShutdown` handler logs, and the `A shutdown handler failed.` event, reach stderr before the process ends. See [At the process's end](docs/core/output.md#at-the-processs-end).
+
+- Fix a streamed message on a lane view core ships laying out its whole text again at every chunk once a finished line held a raw color or hyperlink sequence, a lone carriage return or another terminal control, a pad or no-wrap frame, a header core rejects, a stray close, or a style that names a token the application's theme adds, so the work of a long message grew with the square of its length. The message now carries what such a line leaves open into the lines after it and lays out each finished line a bounded number of times, writing the same bytes as before. It still lays out everything after the last line it had finished once a finished line holds a style naming a token the application's palette lacks, or a frame header or terminal control string that never ends. Where the rendering policy keeps terminal controls, the message carries every raw SGR command Loom does not track, because each one is written as it is, so a message that sets such a command on every line still lays out text that grows with the square of its length. See [A streamed message](docs/core/output.md#a-streamed-message).
+
+- Fix SIGINT cancellation of rows sources whose pulls resolve through microtasks alone. Under row views and while collecting for whole views, core reads a monotonic clock every 64 rows and gives the event loop a turn once 50 ms have passed since the last one, so a Ctrl-C stops the sequence at the first check point after about 50 ms of the source's own work and reports incomplete output. A row's own work is not interrupted, so a source whose rows each take longer stops a check point's worth of rows later.
+
+- Fix the Zsh completion script running text typed in a file path when Tab lists file names. With Tab bound to `complete-word`, a typed `$(…)/`, such as in `--config $(touch x)/`, ran when the script handed the word to Zsh's `_files` or `_path_files`. The script now lists file names itself and reads the typed folder as text, so the script never runs what was typed. Zsh itself can still expand the word, and the script cannot prevent it: the default Tab widget, `expand-or-complete`, and the `_expand` completer, when the operator's `completer` style lists it, each run a typed `$(…)`. The listing keeps the operator's completion styles, such as `matcher-list` and `format`, except `file-patterns`, which `_files` honored and the script's own listing does not, and inserts each name exactly, with a leading `~` or `=` escaped. It matches only the last path component, so an abbreviated path such as `D/R` no longer expands to `Docs/Readme.json`. A leading `~/` still lists the home folder; a typed `$HOME/`, `~user/`, `~[x]`, or `=cmd` is read as text.
+
+- Fix shell completion of a file name attached to its option when the option has no value hint or has `{ files: true }`. A value attached to the short spelling, as in `-pa<Tab>` or a short group `-vpa<Tab>`, listed nothing in any shell, and `--path=a<Tab>` and `-p=a<Tab>` listed nothing in Zsh and PowerShell. The `__complete` answer now writes the option's lead, such as `-p`, `-vp`, or `--path=`, as its first word under directive `0` when some of the value follows it, and the Bash, Zsh, Fish, and PowerShell scripts list every file name for the rest of the word and insert each behind the lead, so `-pa<Tab>` inserts `-palpha.json`. Nothing typed is evaluated. In Nushell these words still list nothing. A script an operator installed before this release completes these words as it did, until `completion update` replaces it.
+
+- Fix a streamed message on a terminal writing part of an escape sequence when a chunk ended inside one, such as inside an OSC 8 link's close: a streamed `print` counted that part as text it had written and never wrote the text after it, so that text was missing from the screen. Before its end, a streamed message now holds back a lone ESC, a CSI without its final byte, or an OSC, DCS, SOS, PM, or APC string without its terminator that ends the text so far, until the chunk that finishes it arrives or the iterable ends. It reads the text as resolution does, so frame markup between a sequence's bytes, as two chunks that each wrap part of it in a style call leave it, does not part them. Bytes off a terminal are unchanged. See [A streamed message](docs/core/output.md#a-streamed-message).
+- Fix a streamed message on a terminal dropping the terminal controls that the text writes after its last line break with no text after them, such as a window title or a bell under a rendering policy that keeps terminal controls. At its end the message now writes them, with the line break the method writes after them for the joined text.
+
+- Fix Zsh and PowerShell completion of a file name for a value whose word ends at its option's lead, as in `--path=<Tab>`, `-p=<Tab>`, or a short group `-vp=<Tab>`, when the option has no value hint or has `{ files: true }`. Those shells listed no file name for such a word. The scripts now read such a word as the lead, list every name in the current folder that does not start with `.`, and insert each behind it, so `--path=<Tab>` inserts `--path=alpha.json`. A word is read as a lead only when it is `--` and a name of ASCII letters, digits, `_`, `.`, and `-` that starts with a letter or digit, or `-` and ASCII letters, followed by `=`, so nothing typed is evaluated and a word that holds `$(…)` or a backtick lists nothing. A script an operator installed before this release completes these words as it did, until `completion update` replaces it.
+
+- Fix PowerShell completion of a value attached to its short option after a typed `.`, as in `-pnotes.<Tab>` or `-calpha.j<Tab>`, which listed nothing, because PowerShell splits such a word at its first `.` before the script reads it. The script now reads a word under the cursor that starts with `.` and touches the parameter before it as one word, its quoting and escapes removed as in any other word, so ``-pnotes.` j<Tab>`` matches `notes. january.txt`, and inserts each name with the rest of the word single-quoted after the parameter, so `-pnotes.<Tab>` inserts `-pnotes'.txt'`, which the program receives as `-pnotes.txt`. A `.` after a space, as in `-p .j`, still starts a word of its own, and nothing typed is evaluated. A script an operator installed before this release completes these words as it did, until `completion update` replaces it.
+
+- Fix raw ANSI text that sets an underline color, such as `\e[58;5;3m` or `\e[58;2;1;3;4m`, whose parameters Loom read as separate codes, so they could turn modifiers on, change the text or background color, or reset every attribute. Loom now reads the command whole and does not track it, so the `terminalControls` setting keeps it whole under `'preserve'` and drops it otherwise. The colon form `\e[4:0m`, which turns underline off, no longer turns it on.
+
+- Fix a streamed message off a terminal taking time that grows with the cube of an unbroken line's length, so a long relayed token stream with no line breaks, written to a pipe or a file, stalled for minutes. Each chunk now costs work linear in the text so far, as it does on a terminal, and the bytes written are unchanged.
+
+- Fix terminal output at process exit and at `SIGQUIT` so an unfinished streamed `print` line ends and resets its color before queued warnings, log lines, and records appear.
+
+- Fix a streamed message costing each chunk time in the square of a long run of spaces or tabs inside one line, on a terminal and off one: a run of 16,000 spaces took about 0.65 seconds a chunk. The trailing run a streamed message holds back is now found in time linear in its length, and the bytes written are unchanged.
+- Fix a streamed `print` on a terminal, under a rendering policy that keeps terminal controls, counting the payload of a DCS, SOS, PM, or APC string as visible text and writing the string's terminator in a separate write. Such a string that `ESC \` ends, with no ESC in its payload, is now written whole, terminator included, and takes no width; one that the C1 ST ends, or whose payload holds an ESC, as tmux passthrough's does, still counts its payload as text.
+- Fix the `loom` bin's sentence for a path it is denied creating or removing, which spoke of execute access to each folder above the path: it now says to give write access to the folder that holds it. A create that meets a link to a missing path, on the path or a folder on the way, now says that it or a folder on the way to it is a link to a path that does not exist, or that a folder on the way is missing, instead of saying the path does not exist.
+- Fix the service, completion, man page, and skills plugins failing with "Something went wrong." and no path when a file sits where a folder belongs on the way to a file or folder they install or record, or when the folder cannot be written. The same fix covers a folder they cannot search or a file they cannot read. `install`, `uninstall`, and `update`, like the new `skills status`, now name the path they cannot reach and say to remove or rename that file, or name the path they cannot read and say to make it readable, and `install` and `update` name the path they could not write and say to make the location writable, then run the command again. A run that meets a file in place of a folder fails before it changes any installed file or the installation record, so the installed files stay owned once the folder is back; it may already have removed a stopped run's leftover staging files or recovered a pending record, as the next run would. A service install whose new unit's location cannot be written has already stopped and disabled an earlier unit when it fails. `completion uninstall` of one shell no longer adds its shared folders to another shell's record before it fails on a third shell's path.
+
+- Allow any pnpm from 12.16.1 on as `@loomcli/loom`'s optional peer dependency, so a project on a later pnpm installs `@loomcli/loom` with no unmet peer warning. `loom release` prepares `pnpm-lock.yaml` with the pnpm the project installs.
+
 ## v0.19.0 - 2026-11-17
 
 This is the polish release: every published export is documented and guarded by `check:api`, the SDK's contracts read one way across core, the plugins, and the libraries, and the prompt, validator, option, and progress floor fills in. `loom init` now also keeps an authoring skill current for an author's coding agent.
