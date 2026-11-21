@@ -61,6 +61,8 @@ const audit: Middleware<typeof auditing> = async ({ next, unknownCommand }) => {
     record(unknownCommand?.word ?? 'routed');
   }
 };
+
+export default audit;
 ```
 
 **Steps.**

@@ -28,7 +28,7 @@ This reference covers how to build, release, install, and update a Loom applicat
 The application's name appears four times. The Application's name, the `bin` key, and the name `install.sh` records under must match, and the asset prefix follows the release name when one is set:
 
 - the Application's name, under which core reads the [installation record](../../../../../docs/core/installation-record.md);
-- the `bin` key in `package.json`, which `loom build` names the binary and its asset after, unless `--name` or `loom.config.json`'s `name` key sets a release name. With the key set, the asset and the formula use the release name, while `install.sh` installs and records under the `bin` key's name, so the `bin` key must still equal the Application's name. Run `loom init --only install` after setting the key, so `install.sh` requests the renamed asset;
+- the `bin` key in `package.json`, which `loom build` names the binary and its asset after, unless `--name` or `loom.config.json`'s `name` key sets a release name. With the key set, the asset and the formula use the release name, while `install.sh` installs and records under the `bin` key's name, so the `bin` key must still equal the Application's name. Set the key rather than passing `--name` alone, and run `loom init --only install` after setting it, so `install.sh` requests the renamed asset;
 - the asset prefix, which `install.sh` and self-update download;
 - the name `loom init` renders into `install.sh`, under which the script writes `install.json`.
 
@@ -74,7 +74,7 @@ gh release create v1.4.0 dist/notes-* dist/SHA256SUMS --notes "$(npx loom change
 - **Commit it and serve it.** Give operators its raw URL to pipe into `sh`. A monorepo places it with `paths.installer`, such as at the repository root.
 - **What it installs.** With no version argument, it installs the latest stable release into `$HOME/.local/bin`, never a prerelease. It verifies the asset against `SHA256SUMS` and then writes `install.json` with the method `script`, which is what lets self-update replace the binary later.
 - **It is a managed file.** Do not edit it. A re-run of init re-renders it for the installed toolchain.
-- **A side copy.** `install.sh --unmanaged --dir <directory>` installs a verified binary and writes no `install.json`, prints no PATH advice, and runs no post-install command, so it leaves a live install's record and self-update as they were. Run `loom init` to render it, under [A side copy](../../../../../docs/toolchain/install.md#a-side-copy).
+- **A side copy.** `install.sh --unmanaged --dir <directory>`, with a directory other than the live install's, installs a verified binary and writes no `install.json`, prints no PATH advice, and runs no post-install command, so it leaves a live install's record and self-update as they were. Run `loom init` to render it, under [A side copy](../../../../../docs/toolchain/install.md#a-side-copy).
 
 ## Run after install
 
@@ -122,6 +122,6 @@ export const notes = new Application("notes", {
 Loom ships no release workflow, and init writes none. Your repository owns:
 
 - when to cut, and the commit of the cut with the refreshed lockfile;
-- the build matrix, `SHA256SUMS` and its attestation job, the tag, and the GitHub Release;
+- the build matrix and its attestation job, `SHA256SUMS`, the tag, and the GitHub Release;
 - publishing to npm, and any PR guards;
 - where operators fetch `install.sh` from.
