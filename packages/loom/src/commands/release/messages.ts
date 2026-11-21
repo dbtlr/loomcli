@@ -36,7 +36,7 @@ function tagExists(version: string): string {
 // Lockfiles.
 
 const pnpmMissing =
-  'Preparing pnpm-lock.yaml requires pnpm, an optional peer dependency of @loomcli/loom. Install pnpm 12.16.1 beside @loomcli/loom and run the command again.';
+  'Preparing pnpm-lock.yaml requires pnpm, an optional peer dependency of @loomcli/loom. Install pnpm 12.16.1 or later beside @loomcli/loom and run the command again.';
 
 const lockfileInvalidYaml =
   'pnpm-lock.yaml is invalid YAML, so regenerate it with pnpm install, commit it, and run loom release cut again.';
