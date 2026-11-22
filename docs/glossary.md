@@ -1269,7 +1269,7 @@ _Avoid_: End-to-end test, integration test, acceptance test
 Loom written natively in one programming language, such as TypeScript or Rust. Every implementation lives in this repository. [ADR-0217](decisions/0217-parity-between-looms-implementations-is-the-operators-experience.md) states what implementations share.
 
 **Parity**:
-What implementations share: for the same arguments, environment, and files, the same application gives an operator the same look and feel and the same features. A limit of the programming language, such as the largest integer it holds exactly, is not part of it, and neither is the API an author writes against, which follows each language's conventions.
+What implementations share: for the same arguments, environment, and files, the same application gives an operator the same look and feel and the same features. A limit of the programming language, such as the largest integer it holds exactly, is not part of it, and neither is the API an author writes against, which follows each language's conventions. An implementation's named deviations are its recorded exceptions.
 
 **Reference implementation**:
 The implementation whose documents are the specification and whose tests decide correct behavior for every other implementation, and through which a feature enters first. It is the TypeScript implementation until the implementations share a set of cases that states what an operator sees.
