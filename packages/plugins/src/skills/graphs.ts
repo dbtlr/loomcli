@@ -36,7 +36,7 @@ type SkillsReader = (
 ) => Promise<readonly SkillFolder[]>;
 
 /** The map every copy shares, created by the first copy that needs it. */
-function graphs(): WeakMap<object, unknown> {
+function graphs(): WeakMap<WeakKey, unknown> {
   const existing: unknown = Reflect.get(globalThis, graphsKey);
   if (existing instanceof WeakMap) {
     return existing;
