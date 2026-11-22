@@ -104,7 +104,7 @@ Use a body file or a structured API argument to preserve Markdown and avoid shel
 
 Watch the exact PR head through the required checks and review. Resolve findings before declaring the cut ready. A changed base requires refreshed preparation even if old checks passed.
 
-Report the PR URL, validated head, check state, and remaining blockers. Explicit maintainer merge approval remains required, and the merge must preserve the release title. This skill never merges, publishes packages, or creates a Git tag or GitHub Release; the release workflow does that after the merge.
+Report the PR URL, validated head, check state, and remaining blockers. Explicit maintainer merge approval remains required, and the merge must preserve the release title. The maintainer's squash merge through `gh pr merge --squash` passes `--subject` with the exact PR title, because GitHub otherwise appends ` (#NNN)` to the subject. This skill never merges, publishes packages, or creates a Git tag or GitHub Release; the release workflow does that after the merge.
 
 ## Confirm the release after the merge
 
