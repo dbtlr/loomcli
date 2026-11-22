@@ -279,8 +279,6 @@ function recorded(tag: string): string {
 
 // Commands: releases.
 
-const cutFromRoot = 'Run release cut from the repository root.';
-
 const cleanCheckoutRequired =
   'release cut requires a clean checkout. Commit the release inputs first.';
 
@@ -339,7 +337,6 @@ export {
   conflictingFormulaChecksums,
   createdRelease,
   createdTag,
-  cutFromRoot,
   deletedAsset,
   formulaMetadataRequired,
   formulaRepositoryRequired,

@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { boolean, looseObject, minLength, object, optional, pipe, string } from 'valibot';
@@ -14,6 +14,7 @@ import {
   libraryNamesRepeat,
   libraryVersionsDiffer,
   noLibraries,
+  outsideWorkspace,
   releaseShallow,
   symlinkedPackage,
   unstableLibraryVersions,
@@ -38,10 +39,22 @@ const manifestSchema = looseObject({
 });
 
 /**
- * Settings that change what history commands print. A signature printed before the format output,
- * or a log that follows a fragment across a rename, would misplace it, so every call turns them off.
+ * Settings that change what git prints. A signature printed before the format output, or a log that
+ * follows a fragment across a rename, would misplace it, and `diff.relative` would limit a diff to
+ * the working directory and print its paths from there, where `gitPaths` reads them from the top of
+ * the work tree, so every call turns them off. No other setting changes how the paths read are
+ * spelled: each call whose paths are read passes `-z`, which prints them verbatim whatever
+ * `core.quotePath` says, and the other listings, `git status` and `git ls-tree` of one path, are
+ * read only for whether they print anything or for a mode.
  */
-const neutralSettings = ['-c', 'log.showSignature=false', '-c', 'log.follow=false'];
+const neutralSettings = [
+  '-c',
+  'log.showSignature=false',
+  '-c',
+  'log.follow=false',
+  '-c',
+  'diff.relative=false',
+];
 
 /**
  * The failure of a git that could not start, in the bin's words: the sentence for a git that is not
@@ -83,6 +96,32 @@ async function gitBytes(checkout: Checkout, args: string[]) {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
+/**
+ * A path relative to the checkout's root at a revision, in git's `<ref>:<path>` form. Git reads a
+ * plain path there from the top of the work tree and one that starts with `./` from the working
+ * directory, which is the root, so `./../README.md` names the top's `README.md`.
+ */
+function atRevision(ref: string, path: string) {
+  return `${ref}:./${path}`;
+}
+
+/** Whether the revision holds `pnpm-workspace.yaml` at `location`, a path from the checkout's root. */
+async function holdsWorkspace(checkout: Checkout, ref: string, location: string) {
+  return (await git(checkout, ['ls-tree', ref, '--', `${location}pnpm-workspace.yaml`])) !== '';
+}
+
+/**
+ * Loom's own release commands and PR guard read the workspace's `packages/`, `.changes/`,
+ * `CHANGELOG.md`, and lockfile where they run, so `command` runs only in the workspace directory,
+ * the one that holds `pnpm-workspace.yaml`, at the top of the work tree or below it. Each command
+ * checks it before it reads anything else.
+ */
+export function requireWorkspaceDirectory(root: string, command: string) {
+  if (!existsSync(join(root, 'pnpm-workspace.yaml'))) {
+    throw new Error(outsideWorkspace(command));
+  }
+}
+
 /** A git checkout the toolchain reads, at `root`, and the run it reads it for, which starts git. */
 export interface Checkout extends RunHost {
   readonly root: string;
@@ -100,11 +139,68 @@ export async function gitLine(checkout: Checkout, args: string[]) {
   return output.trim();
 }
 
+/**
+ * Where the checkout's root sits in its git work tree: `prefix` is the path from the top of the
+ * work tree down to the root, with a trailing `/`, and `up` is the path from the root back up to the
+ * top, such as `../`. Both are empty when the root is the top.
+ */
+export interface Placement {
+  readonly prefix: string;
+  readonly up: string;
+}
+
+/** The checkout's placement, which git prints one line each, empty at the top of the work tree. */
+export async function readPlacement(checkout: Checkout): Promise<Placement> {
+  const output = await git(checkout, ['rev-parse', '--show-prefix', '--show-cdup']);
+  const [prefix = '', up = ''] = output.split('\n').map((line) => line.trim());
+  return { prefix, up };
+}
+
+/**
+ * A path git prints from the top of the work tree, such as a `git diff --name-only` entry, made
+ * relative to the checkout's root as every other path the toolchain handles is. A path outside the
+ * root climbs to the top first, as `../README.md` does.
+ */
+export function fromTop(placement: Placement, path: string) {
+  return path.startsWith(placement.prefix)
+    ? path.slice(placement.prefix.length)
+    : `${placement.up}${path}`;
+}
+
+/**
+ * The paths a git command prints, NUL-separated from the top of the work tree, made relative to the
+ * checkout's root.
+ */
+export async function gitPaths(checkout: Checkout, placement: Placement, args: string[]) {
+  const output = await git(checkout, args);
+  return output
+    .split('\0')
+    .filter(Boolean)
+    .map((path) => fromTop(placement, path));
+}
+
+/**
+ * Where the workspace sat at a revision, as the path from the checkout's root to its directory
+ * there, to put in front of a workspace path read at that revision. It is the root itself, `''`,
+ * when the revision holds `pnpm-workspace.yaml` there, and the top of the work tree, such as
+ * `../`, when the revision holds it only at the top, as a revision from before the workspace moved
+ * below the top does. A revision that holds it in neither place reads from the root, as one with no
+ * workspace at all does. The working tree, read without a revision, is always at the root.
+ */
+export async function workspaceAt(checkout: Checkout, ref: string | undefined) {
+  if (ref === undefined || (await holdsWorkspace(checkout, ref, ''))) {
+    return '';
+  }
+  const { up } = await readPlacement(checkout);
+  return up !== '' && (await holdsWorkspace(checkout, ref, up)) ? up : '';
+}
+
 export async function readDirectory(checkout: Checkout, path: string, ref?: string) {
   if (ref === undefined) {
     return readdirSync(join(checkout.root, path), { withFileTypes: true });
   }
-  const listing = await git(checkout, ['ls-tree', '-z', `${ref}:${path}`]);
+  // Below the top, ls-tree limits even a named tree to the working directory unless --full-tree.
+  const listing = await git(checkout, ['ls-tree', '--full-tree', '-z', atRevision(ref, path)]);
   return listing
     .split('\0')
     .filter(Boolean)
@@ -146,7 +242,7 @@ export async function readRegularFileBytes(checkout: Checkout, path: string, ref
   if (!/^100(?:644|755) blob /u.test(entry)) {
     throw new Error(expectedRegularFile(path));
   }
-  return gitBytes(checkout, ['show', `${ref}:${path}`]);
+  return gitBytes(checkout, ['show', atRevision(ref, path)]);
 }
 
 export async function readRegularFile(checkout: Checkout, path: string, ref?: string) {
@@ -190,23 +286,28 @@ export interface Participant {
   source: string;
 }
 
-// The non-private manifests under packages/, empty when the ref carries no packages tree.
+/**
+ * The non-private manifests under the workspace's packages/, empty when the ref carries no packages
+ * tree. A ref is read where its own workspace sat, and each participant's paths are named from the
+ * workspace directory whichever revision it comes from.
+ */
 export async function readParticipants(checkout: Checkout, ref?: string) {
+  const location = await workspaceAt(checkout, ref);
   if (ref !== undefined) {
-    const packages = await git(checkout, ['ls-tree', '-z', ref, '--', 'packages']);
+    const packages = await git(checkout, ['ls-tree', '-z', ref, '--', `${location}packages`]);
     if (!packages.startsWith('040000 tree ')) {
       return [];
     }
   }
   const participants: Participant[] = [];
-  for (const entry of await readDirectory(checkout, 'packages', ref)) {
+  for (const entry of await readDirectory(checkout, `${location}packages`, ref)) {
     if (entry.isSymbolicLink()) {
       throw new Error(symlinkedPackage(entry.name));
     }
     if (entry.isDirectory()) {
       const directory = `packages/${entry.name}`;
       const path = `${directory}/package.json`;
-      const source = await readRegularFile(checkout, path, ref);
+      const source = await readRegularFile(checkout, `${location}${path}`, ref);
       const input = parseManifest(source, path);
       if (!parseOrThrow(visibility, input).private) {
         participants.push({

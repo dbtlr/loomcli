@@ -21,7 +21,7 @@ import {
 import { withoutByteOrderMark } from './byte-order-mark.js';
 import { conventionalFragments } from './conventions.js';
 import { requireClosedBlocks } from './markdown.js';
-import { readDirectory, readRegularFileBytes } from './repository.js';
+import { readDirectory, readRegularFileBytes, workspaceAt } from './repository.js';
 import type { Checkout } from './repository.js';
 import { systemErrorCode } from './system-error.js';
 
@@ -178,7 +178,7 @@ function validateBody(path: string, kind: FragmentKind, body: string) {
 async function readFragment(
   checkout: Checkout,
   entry: Awaited<ReturnType<typeof readDirectory>>[number],
-  ref: string | undefined,
+  at: { location: string; ref: string | undefined },
   folder: string,
 ) {
   const { name } = entry;
@@ -190,7 +190,7 @@ async function readFragment(
   if (kind === undefined) {
     throw new Error(expectedFragmentName(path));
   }
-  const bytes = await readRegularFileBytes(checkout, path, ref);
+  const bytes = await readRegularFileBytes(checkout, `${at.location}${path}`, at.ref);
   requireSafeCharacters(path, bytes, 'fragment');
   const source = bytes.toString('utf8');
   const body = withoutByteOrderMark(source);
@@ -214,8 +214,8 @@ function fragmentFailure(path: string, error: unknown): string {
 export type FragmentKind = 'breaking' | 'feature' | 'fix';
 
 /**
- * Every fragment in the folder under the root, read from the working tree or from a revision. The
- * folder is relative to the root, with `/` between its segments, and may leave it. The regular file
+ * Every fragment in the folder under the root, read from the working tree or from a revision, which
+ * is read where its own workspace sat, as `workspaceAt` finds it. The folder is relative to the root, with `/` between its segments, and may leave it. The regular file
  * `README.md` is the guide, not a fragment. A hidden entry, one whose name starts with `.`, is
  * ignored, and a missing working-tree folder holds no fragments. One error names every invalid
  * entry, so a single run reports them all.
@@ -230,13 +230,14 @@ export async function readFragments(
   }
   const failures: string[] = [];
   const fragments = [];
-  const listed = await readDirectory(checkout, folder, ref);
+  const location = await workspaceAt(checkout, ref);
+  const listed = await readDirectory(checkout, `${location}${folder}`, ref);
   const entries = listed
     .filter((entry) => !entry.name.startsWith('.'))
     .filter((entry) => entry.name !== 'README.md' || !entry.isFile());
   for (const entry of entries) {
     try {
-      fragments.push(await readFragment(checkout, entry, ref, folder));
+      fragments.push(await readFragment(checkout, entry, { location, ref }, folder));
     } catch (error) {
       // A cancelled run reads no further fragment and reports none.
       checkout.signal.throwIfAborted();

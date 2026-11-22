@@ -9,14 +9,18 @@ import { prepareLockfile } from '../../helpers/release-files.js';
 import { prepareRelease, requireReleaseNotes } from '../../helpers/release.js';
 import type { Release } from '../../helpers/release.js';
 import { report } from '../../helpers/report.js';
-import { git, gitLine, readWorkingFile } from '../../helpers/repository.js';
+import {
+  git,
+  gitLine,
+  readWorkingFile,
+  requireWorkspaceDirectory,
+} from '../../helpers/repository.js';
 import type { Checkout } from '../../helpers/repository.js';
 import type { releaseCut } from './command.js';
 import {
   changedDuringPreparation,
   checkoutChanged,
   cleanCheckoutRequired,
-  cutFromRoot,
   lockExists,
   rollbackIncomplete,
   tagExists,
@@ -37,9 +41,6 @@ async function checkoutMoved(checkout: Checkout, release: Release) {
  */
 async function installRelease(checkout: Checkout, release: Release) {
   const { root } = checkout;
-  if ((await gitLine(checkout, ['rev-parse', '--show-prefix'])) !== '') {
-    throw new Error(cutFromRoot);
-  }
   if (await gitLine(checkout, ['status', '--porcelain', '--untracked-files=all'])) {
     throw new Error(cleanCheckoutRequired);
   }
@@ -170,6 +171,7 @@ export const cutRelease: ActionHandler<typeof releaseCut> = async ({
 }) => {
   await report({ out, signal }, async () => {
     const checkout = { host, onShutdown, root: host.cwd, signal };
+    requireWorkspaceDirectory(checkout.root, 'release cut');
     const release = await prepare(checkout, options);
     if (!options['dry-run']) {
       await writeRelease(checkout, release);

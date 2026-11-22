@@ -9,6 +9,7 @@ import { parseOrThrow } from '../../helpers/parse-or-throw.js';
 import { planSchema } from '../../helpers/release-plan.js';
 import { recordRelease } from '../../helpers/release-record.js';
 import { report } from '../../helpers/report.js';
+import { requireWorkspaceDirectory } from '../../helpers/repository.js';
 import { systemErrorFacts } from '../../helpers/system-error.js';
 import type { releaseRecord } from './command.js';
 import { planNotJson, planNotJsonAt, tokenRequired } from './messages.js';
@@ -46,6 +47,7 @@ export const recordPlannedRelease: ActionHandler<typeof releaseRecord> = async (
   signal,
 }) => {
   await report({ out, signal }, async () => {
+    requireWorkspaceDirectory(host.cwd, 'release record');
     const token = host.env.GH_TOKEN;
     if (token === undefined || token === '') {
       throw new Error(tokenRequired);

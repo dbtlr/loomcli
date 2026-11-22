@@ -36,8 +36,9 @@ import {
   readLibraries,
   readRegularFile,
   readRegularFileBytes,
+  workspaceAt,
 } from './repository.js';
-import type { Checkout } from './repository.js';
+import type { Checkout, Placement } from './repository.js';
 
 /** The authoring skill `loom init` ships, whose version a release carries. */
 const authoringSkillPath = `${authoringSkillSource}/SKILL.md`;
@@ -73,7 +74,8 @@ function skillVersion(text: string): { reason: string } | { version: string } {
 async function checkSkillVersion(checkout: Checkout, head: string, version: string) {
   let text = '';
   try {
-    text = await readRegularFile(checkout, authoringSkillPath, head);
+    const location = await workspaceAt(checkout, head);
+    text = await readRegularFile(checkout, `${location}${authoringSkillPath}`, head);
   } catch (error) {
     checkout.signal.throwIfAborted();
     const reason = error instanceof Error ? error.message : String(error);
@@ -113,14 +115,17 @@ export async function checkRelease(
   base: string,
   head: string,
   version: string,
-  changed: string[],
+  diff: { changed: string[]; placement: Placement },
 ) {
+  const { changed } = diff;
   const previous = await readLibraries(checkout, base);
   const libraries = await readLibraries(checkout, head);
-  const changelogBytes = await readRegularFileBytes(checkout, 'CHANGELOG.md', head);
+  const atBase = await workspaceAt(checkout, base);
+  const atHead = await workspaceAt(checkout, head);
+  const changelogBytes = await readRegularFileBytes(checkout, `${atHead}CHANGELOG.md`, head);
   const changelog = changelogBytes.toString('utf8');
   const { after, before } = releaseInsertion(
-    await readRegularFile(checkout, 'CHANGELOG.md', base),
+    await readRegularFile(checkout, `${atBase}CHANGELOG.md`, base),
     version,
   );
   if (
@@ -172,7 +177,7 @@ export async function checkRelease(
     base,
     head,
     { date: options.date, version },
-    changed,
+    diff,
   );
   const allowed = new Set([
     'CHANGELOG.md',
@@ -194,7 +199,7 @@ export async function checkRelease(
     }
   }
   if (
-    (await readRegularFile(checkout, 'pnpm-lock.yaml', head)) !==
+    (await readRegularFile(checkout, `${atHead}pnpm-lock.yaml`, head)) !==
     (await prepareLockfile(checkout, release, base))
   ) {
     throw new Error(lockfileMismatch);

@@ -521,7 +521,10 @@ const tarball = 'core tarball bytes';
 
 // Recording checks the provenance commit against the checkout, so its fixture is a repository.
 function recordRepository() {
-  return repository({ files: { 'README.md': '# Fixture\n' }, prefix: 'loom-record-' });
+  return repository({
+    files: { 'README.md': '# Fixture\n', 'pnpm-workspace.yaml': 'packages:\n  - packages/*\n' },
+    prefix: 'loom-record-',
+  });
 }
 
 const coreLibrary = { directory: 'packages/core', name: library, published: true };

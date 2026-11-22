@@ -2,6 +2,7 @@ import type { ActionHandler } from '@loomcli/core';
 
 import { checkPullRequest } from '../../helpers/pr-check.js';
 import { report } from '../../helpers/report.js';
+import { requireWorkspaceDirectory } from '../../helpers/repository.js';
 import type { prCheck } from './command.js';
 import { prChecksPassed } from './messages.js';
 
@@ -14,6 +15,7 @@ export const checkPr: ActionHandler<typeof prCheck> = async ({
   signal,
 }) => {
   await report({ out, signal }, async () => {
+    requireWorkspaceDirectory(host.cwd, 'pr check');
     await checkPullRequest(
       { host, onShutdown, root: host.cwd, signal },
       {

@@ -5,7 +5,7 @@ import {
   stableTargetOnly,
   targetBelowRelease,
 } from '../commands/release/messages.js';
-import { highestKind, landedFragments, renderSection } from './changelog.js';
+import { highestKind, landedWorkspaceFragments, renderSection } from './changelog.js';
 import { materialBaseline, unchangedLibraries } from './material.js';
 import { currentVersion, readLibraries } from './repository.js';
 import type { Checkout } from './repository.js';
@@ -25,7 +25,7 @@ export async function prepareRelease(
   },
   ref?: string,
 ) {
-  const { fragments, head } = await landedFragments(checkout, ref);
+  const { fragments, head } = await landedWorkspaceFragments(checkout, ref);
   const libraries = await readLibraries(checkout, ref);
   const current = currentVersion(libraries);
   if (options.initial && current.text !== '0.0.0') {

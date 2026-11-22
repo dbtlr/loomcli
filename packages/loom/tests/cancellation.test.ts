@@ -57,6 +57,7 @@ function topicRepository() {
       '.changes/README.md': '# Guide\n',
       'package.json': '{"name":"fixture","private":true,"version":"9.0.0"}\n',
       'packages/core/package.json': '{"name":"@sample/core","version":"0.1.0"}\n',
+      'pnpm-workspace.yaml': 'packages:\n  - packages/*\n',
     },
     prefix: 'loom-cancel-',
   });

@@ -60,6 +60,26 @@ npm install --package-lock-only --ignore-scripts
 
 Move the pin when a release changes the release commands, and check that the workflow's calls still match the new version's options.
 
+## Workspace directory
+
+`release plan`, `release record`, `release cut`, and `pr check` run in the workspace directory: the directory that holds `pnpm-workspace.yaml`, beside `packages/`, `.changes/`, `CHANGELOG.md`, and `pnpm-lock.yaml`. The workspace directory can sit at the git root or in a directory below it, and no option names it: each command takes its working directory as the workspace directory.
+
+Before it reads anything else, each command checks that its working directory holds `pnpm-workspace.yaml`. In any other directory, such as a package folder or the git root above a workspace, it writes nothing, exits with status 1, and prints `Run <command> from the workspace directory, the one that holds pnpm-workspace.yaml.`, with the command's name in place of `<command>`, such as `Run release plan from the workspace directory, the one that holds pnpm-workspace.yaml.` `release cut` refuses the same way with `--dry-run`.
+
+Git prints changed paths from the top of the work tree, and the commands run git with `diff.relative` off, so a repository's setting cannot change that. The commands rewrite each changed path relative to the workspace directory, so each path they print or compare, and each `libraries[].directory` in a plan, is relative to the workspace directory. A path outside the workspace climbs to the git root first, as `../docs/decisions/README.md` does. The file paths an operator passes, such as `--output`, `--plan`, and `--narrative`, are read from the working directory, which is the workspace directory.
+
+The commands give the same plan, cut, record, and verdict in both layouts:
+
+- `libraries[].directory` in a plan names the library's directory relative to the workspace directory, such as `packages/core` in both layouts. The `build` job passes it to `pnpm --dir`, so the job's pack step runs in the workspace directory.
+- The decision records stay in `docs/decisions/` at the git root, shared by every workspace below it. The [PR guard](pr-guards.md) reads them there.
+- The build-path policy judges a path inside the workspace from the workspace directory, and a path outside it from the git root. Under either, `docs/` and top-level Markdown files never affect a build, and any other path does, such as `.github/workflows/ci.yml` at the git root.
+
+The workspace can move from the git root to a directory below it in one commit, and the history before the move stays readable. A command that reads the workspace at an earlier revision finds it where that revision held `pnpm-workspace.yaml`: in the working directory when the revision holds the file there, else at the git root when the revision holds it there, else in the working directory. That rule covers every read of a workspace file at a revision: the libraries' manifests, such as the version each earlier commit set and the libraries at a pull request's merge base, the change fragments, `CHANGELOG.md`, `pnpm-lock.yaml`, the authoring skill, and the files a release PR's lockfile is prepared from. A read of a path at the git root, such as `docs/decisions/`, names that path at every revision. Each path a command prints stays relative to the current workspace directory, so a file read where an earlier revision held the workspace at the git root reads as `../CHANGELOG.md`.
+
+Two reads follow a file at both places, the path in the current workspace directory and the same path at the git root. The material-change baseline walk follows each library's manifest that way, so the first cut after the move takes its baseline from the release before the move. A cut's landing order, which the release PR's check derives again, follows each pending fragment that way: at each place, it takes the newest first-parent commit that added the fragment there, and the earlier of those two commits is the fragment's landing commit, so a fragment that landed before the move keeps its landing order after it, and the move commit sets the order only of a fragment it added. The material report reads a file that the move carried to the same path in the workspace, with the same mode and content, as unchanged, so the move alone changes no library materially.
+
+Publish a pending cut before the move merges. `release plan` refuses a version cut before the move and published after it, because its diff from the cut commit to the head sees every file the move carried as changed.
+
 ## Commands
 
 Both commands read `GH_TOKEN` from the environment. `plan` sends it as a bearer token when it is set, and `record` fails without it. Both accept `--registry` (default `https://registry.npmjs.org`) and `--github-api` (default `https://api.github.com`), each an http or https URL; a value with no scheme, such as `registry.npmjs.org`, is a usage error before any request.
@@ -91,7 +111,7 @@ The command reads the participating libraries at the head, takes their synchroni
 }
 ```
 
-`publish` is true when any library is absent from the registry. `record` is true when the tag is absent, the Release is absent, or the Release is incomplete.
+Each `directory` is relative to the [workspace directory](#workspace-directory). `publish` is true when any library is absent from the registry. `record` is true when the tag is absent, the Release is absent, or the Release is incomplete.
 
 The manifests carry `0.0.0` until the initial cut. That version is never published, tagged, or released, so the command reports it as the unreleased version with nothing to reconcile and writes a plan with `publish: false`, `record: false`, and empty notes. It reads no registry and needs no changelog section. Every other version carries the notes of its section.
 

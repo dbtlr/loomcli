@@ -6,6 +6,7 @@ import type { ActionHandler } from '@loomcli/core';
 import { cannotUseFile } from '../../helpers/messages.js';
 import { planRelease, renderPlan } from '../../helpers/release-plan.js';
 import { report } from '../../helpers/report.js';
+import { requireWorkspaceDirectory } from '../../helpers/repository.js';
 import { systemErrorFacts } from '../../helpers/system-error.js';
 import type { releasePlan } from './command.js';
 import { outputFolderMissing } from './messages.js';
@@ -40,6 +41,7 @@ export const writeReleasePlan: ActionHandler<typeof releasePlan> = async ({
   signal,
 }) => {
   await report({ out, signal }, async () => {
+    requireWorkspaceDirectory(host.cwd, 'release plan');
     const plan = await planRelease({
       checkout: { host, onShutdown, root: host.cwd, signal },
       githubApi: options['github-api'],

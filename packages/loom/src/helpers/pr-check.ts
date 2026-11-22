@@ -13,7 +13,16 @@ import { parseManifest } from './manifest.js';
 import { isBuildAffectingPath } from './material.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import { checkRelease } from './release-check.js';
-import { currentVersion, git, gitLine, readLibraries, readRegularFile } from './repository.js';
+import {
+  currentVersion,
+  git,
+  gitLine,
+  gitPaths,
+  readLibraries,
+  readPlacement,
+  readRegularFile,
+  workspaceAt,
+} from './repository.js';
 import type { Checkout } from './repository.js';
 
 /** A revision named for the check, resolved to the commit it names. */
@@ -32,7 +41,8 @@ export async function checkPullRequest(
   const head = await commitOf(checkout, options.head);
   const ancestor = await gitLine(checkout, ['merge-base', base, head]);
   const fragments = await readFragments(checkout, head);
-  const diff = await git(checkout, [
+  const placement = await readPlacement(checkout);
+  const changed = await gitPaths(checkout, placement, [
     'diff',
     '--no-renames',
     '--name-only',
@@ -41,7 +51,6 @@ export async function checkPullRequest(
     head,
     '--',
   ]);
-  const changed = diff.split('\0').filter(Boolean);
   if (options.title.startsWith('chore(release)')) {
     const version =
       /^chore\(release\): Release v(?<version>0\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)) - (?:\S[^\r\n]*)$/u.exec(
@@ -56,7 +65,7 @@ export async function checkPullRequest(
     if (fragments.length > 0) {
       throw new Error(fragmentsAfterCut);
     }
-    await checkRelease(checkout, base, head, version, changed);
+    await checkRelease(checkout, base, head, version, { changed, placement });
     return;
   }
   const libraries = await readLibraries(checkout, head);
@@ -68,11 +77,13 @@ export async function checkPullRequest(
       throw new Error(versionMustStay(library.path, current.text));
     }
   }
+  const location = await workspaceAt(checkout, head);
   for (const library of previous) {
-    if (await git(checkout, ['ls-tree', head, '--', library.path])) {
+    const path = `${location}${library.path}`;
+    if (await git(checkout, ['ls-tree', head, '--', path])) {
       const manifest = parseOrThrow(
         object({ version: string() }),
-        parseManifest(await readRegularFile(checkout, library.path, head), library.path),
+        parseManifest(await readRegularFile(checkout, path, head), library.path),
       );
       if (manifest.version !== library.manifest.version) {
         throw new Error(versionMustStay(library.path, current.text));
@@ -80,7 +91,7 @@ export async function checkPullRequest(
     }
   }
   if (
-    changed.some(isBuildAffectingPath) &&
+    changed.some((path) => isBuildAffectingPath(path, placement)) &&
     !fragments.some((fragment) => changed.includes(`.changes/${fragment.name}`)) &&
     !options.labels.includes('skip-changelog')
   ) {

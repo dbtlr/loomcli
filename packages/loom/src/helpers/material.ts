@@ -1,14 +1,18 @@
 import { posix } from 'node:path';
 
 import { noVersionCommit } from '../commands/release/messages.js';
-import type { Checkout, Libraries } from './repository.js';
+import type { Checkout, Libraries, Placement } from './repository.js';
 import {
   currentVersion,
+  fromTop,
   git,
   gitLine,
+  gitPaths,
   readParticipants,
+  readPlacement,
   requireCoherentLibraries,
   requireFullHistory,
+  workspaceAt,
 } from './repository.js';
 
 function dependencyName(directory: string, name: string, range: string, libraries: Libraries) {
@@ -37,8 +41,74 @@ async function synchronizedVersion(checkout: Checkout, ref: string | undefined) 
   return currentVersion(requireCoherentLibraries([first, ...rest])).text;
 }
 
-// An abandoned version never receives a tag, so the baseline is the commit that set the current version.
-// The walk visits the first-parent commits that touched a participating manifest, newest first.
+/** One path a diff changed, relative to the checkout's root, with its status and each side's mode and blob. */
+interface DiffEntry {
+  after: string;
+  before: string;
+  path: string;
+  status: string;
+}
+
+/**
+ * The paths that changed from the first revision to the second, or to the working tree when only
+ * one is given, each with its status and the mode and blob on each side, as `--raw` prints them.
+ * The working tree's side of a changed file has no blob yet, so git prints it as zeros.
+ */
+async function rawDiff(checkout: Checkout, placement: Placement, revisions: string[]) {
+  const output = await git(checkout, [
+    'diff',
+    '--no-renames',
+    '--raw',
+    '--no-abbrev',
+    '-z',
+    ...revisions,
+    '--',
+  ]);
+  const fields = output.split('\0');
+  const entries: DiffEntry[] = [];
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const [beforeMode, afterMode, beforeBlob, afterBlob, status] = (fields[index] ?? '')
+      .slice(1)
+      .split(' ');
+    entries.push({
+      after: `${afterMode} ${afterBlob}`,
+      before: `${beforeMode} ${beforeBlob}`,
+      path: fromTop(placement, fields[index + 1] ?? ''),
+      status: status ?? '',
+    });
+  }
+  return entries;
+}
+
+/**
+ * The changed paths of a diff from a revision whose workspace sat at `location`, without the moves
+ * of the workspace since: a file deleted from that workspace and added, with the same mode and
+ * content, at the same path in the workspace directory now has not changed for the workspace. With
+ * the workspace where it was, at `''`, no file moved, and every path stays.
+ */
+function withoutMove(entries: DiffEntry[], location: string) {
+  if (location === '') {
+    return entries.map((entry) => entry.path);
+  }
+  const deleted = new Map(
+    entries.filter((entry) => entry.status === 'D').map((entry) => [entry.path, entry.before]),
+  );
+  const moved = new Set<string>();
+  for (const entry of entries) {
+    const origin = `${location}${entry.path}`;
+    if (entry.status === 'A' && deleted.get(origin) === entry.after) {
+      moved.add(entry.path).add(origin);
+    }
+  }
+  return entries.map((entry) => entry.path).filter((path) => !moved.has(path));
+}
+
+/**
+ * An abandoned version never receives a tag, so the baseline is the commit that set the current
+ * version. The walk visits the first-parent commits that touched a participating manifest, newest
+ * first, where the workspace sits now or, below the top of the work tree, at the top, where it sat
+ * before it moved, and reads each commit's version where that commit's workspace sat.
+ */
 export async function materialBaseline(
   checkout: Checkout,
   libraries: Libraries,
@@ -46,13 +116,16 @@ export async function materialBaseline(
   head: string,
 ) {
   await requireFullHistory(checkout);
+  const { up } = await readPlacement(checkout);
   const log = await git(checkout, [
     'log',
     '--first-parent',
     '--format=%H %P',
     head,
     '--',
-    ...libraries.map((library) => library.path),
+    ...libraries.flatMap((library) =>
+      up === '' ? [library.path] : [library.path, `${up}${library.path}`],
+    ),
   ]);
   const candidates = log.split('\n').flatMap((line) => {
     const [commit, parent] = line.split(' ').filter(Boolean);
@@ -69,9 +142,15 @@ export async function materialBaseline(
   throw new Error(noVersionCommit(version));
 }
 
-// Root Markdown and docs do not enter the current library build.
-export function isBuildAffectingPath(path: string) {
-  return !path.startsWith('docs/') && !(!path.includes('/') && /\.md$/iu.test(path));
+/**
+ * Root Markdown and docs do not enter the current library build. A path is judged from the root it
+ * sits under: a path in the checkout's root from that root, and one outside it, which climbs to the
+ * top of the work tree, from the top, so `../README.md` is top-level Markdown as `README.md` is.
+ */
+export function isBuildAffectingPath(path: string, placement: Placement) {
+  // At the top, `up` is empty, so every path is judged as it reads.
+  const judged = path.startsWith(placement.up) ? path.slice(placement.up.length) : path;
+  return !judged.startsWith('docs/') && !(!judged.includes('/') && /\.md$/iu.test(judged));
 }
 
 export async function unchangedLibraries(
@@ -87,24 +166,27 @@ export async function unchangedLibraries(
     `${since}^{commit}`,
   ]);
   await git(checkout, ['merge-base', '--is-ancestor', base, head ?? 'HEAD']);
-  const diff = await git(checkout, [
-    'diff',
-    '--no-renames',
-    '--name-only',
-    '-z',
-    base,
-    ...(head === undefined ? [] : [head]),
-    '--',
-  ]);
-  const paths = diff.split('\0').filter(Boolean);
-  const others =
+  const placement = await readPlacement(checkout);
+  const paths = withoutMove(
+    await rawDiff(checkout, placement, [base, ...(head === undefined ? [] : [head])]),
+    await workspaceAt(checkout, base),
+  );
+  // Untracked files anywhere in the work tree, as the diff reads it, printed from its top.
+  const untracked =
     head === undefined
-      ? await git(checkout, ['ls-files', '--others', '--exclude-standard', '-z'])
-      : '';
-  const untracked = others.split('\0').filter(Boolean);
+      ? await gitPaths(checkout, placement, [
+          'ls-files',
+          '--others',
+          '--exclude-standard',
+          '--full-name',
+          '-z',
+          '--',
+          placement.up === '' ? '.' : placement.up,
+        ])
+      : [];
   const changed = new Set<string>();
   for (const path of [...paths, ...untracked].filter(
-    (candidate) => !candidate.startsWith('.changes/') && isBuildAffectingPath(candidate),
+    (candidate) => !candidate.startsWith('.changes/') && isBuildAffectingPath(candidate, placement),
   )) {
     const owner = libraries.find((library) => path.startsWith(`${library.directory}/`));
     if (!owner) {

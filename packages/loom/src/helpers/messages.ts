@@ -246,7 +246,11 @@ const libraryNamesRepeat = 'Publishable library names must be unique.';
 const libraryVersionsDiffer = 'Publishable library versions must match.';
 
 const noLibraries =
-  'No publishable libraries in packages/*, so run the command at the root of a repository whose packages/* holds a package that is not private.';
+  'No publishable libraries in packages/*, so run the command in a workspace directory, the one that holds pnpm-workspace.yaml, whose packages/* holds a package that is not private.';
+
+function outsideWorkspace(command: string): string {
+  return `Run ${escaped(command)} from the workspace directory, the one that holds pnpm-workspace.yaml.`;
+}
 
 const unstableLibraryVersions = 'Library versions must be stable 0.x versions.';
 
@@ -296,6 +300,7 @@ export {
   notAWordList,
   notPortableName,
   notAnObject,
+  outsideWorkspace,
   platformsNeedLauncher,
   refusedTarget,
   releaseShallow,

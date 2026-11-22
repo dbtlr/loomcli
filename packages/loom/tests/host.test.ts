@@ -33,10 +33,14 @@ const commands = [
   ['changelog write', ['changelog', 'write', '--dry-run']],
 ] as const;
 
-/** One run of the command in a package directory whose git fails to start with the code. */
+/**
+ * One run of the command in a package directory, which is also a workspace directory, whose git
+ * fails to start with the code.
+ */
 async function withUnstartedGit(argv: readonly string[], code: string) {
   const root = temporaryRoot('loom-host-');
   put(root, 'package.json', '{ "name": "notes", "version": "1.0.0" }\n');
+  put(root, 'pnpm-workspace.yaml', 'packages:\n  - packages/*\n');
   const mock = mockProcess({
     argv: [...argv],
     cwd: root,
