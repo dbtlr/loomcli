@@ -36,9 +36,10 @@ import { readProvenance, readPublished, tarballName } from './registry.js';
 import type { RegistryTarget } from './registry.js';
 import {
   currentVersion,
-  git,
   gitLine,
+  gitPaths,
   readLibraries,
+  readPlacement,
   readRegularFile,
   requireFullHistory,
 } from './repository.js';
@@ -49,6 +50,7 @@ type ReleaseAssets = NonNullable<Awaited<ReturnType<typeof readRelease>>>['asset
 const nonEmpty = pipe(string(), minLength(1));
 
 const librarySchema = object({
+  // Relative to the workspace directory the plan ran in, where the workflow passes it to `pnpm --dir`.
   directory: nonEmpty,
   name: nonEmpty,
   published: boolean(),
@@ -159,7 +161,7 @@ function requireTagAtPublication(
   }
 }
 
-// The paths whose bytes can reach a published library build.
+// The paths whose bytes can reach a published library build, relative to the workspace directory.
 // Publication attests the head commit, so a change to any of them after the cut commit would attest bytes the cut did not produce.
 // Documentation and root Markdown are absent from this set and never refuse a publication.
 const sharedBuildInputs = [
@@ -252,7 +254,7 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
   const publish = libraries.some((library) => !library.published);
   let provenanceCommit: string | null = null;
   if (publish) {
-    const diff = await git(checkout, [
+    const changed = await gitPaths(checkout, await readPlacement(checkout), [
       'diff',
       '--name-only',
       '-z',
@@ -262,7 +264,6 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
       ...libraries.map((library) => library.directory),
       ...sharedBuildInputs,
     ]);
-    const changed = diff.split('\0').filter(Boolean);
     if (changed.length > 0) {
       throw abandon(version, changedSinceCut(changed, cutCommit, head));
     }

@@ -16,7 +16,7 @@ import {
   changedDuringPreparation,
   checkoutChanged,
   cleanCheckoutRequired,
-  cutFromRoot,
+  cutFromWorkspace,
   lockExists,
   rollbackIncomplete,
   tagExists,
@@ -37,9 +37,6 @@ async function checkoutMoved(checkout: Checkout, release: Release) {
  */
 async function installRelease(checkout: Checkout, release: Release) {
   const { root } = checkout;
-  if ((await gitLine(checkout, ['rev-parse', '--show-prefix'])) !== '') {
-    throw new Error(cutFromRoot);
-  }
   if (await gitLine(checkout, ['status', '--porcelain', '--untracked-files=all'])) {
     throw new Error(cleanCheckoutRequired);
   }
@@ -136,6 +133,17 @@ async function writeRelease(checkout: Checkout, release: Release) {
   }
 }
 
+/**
+ * The cut reads and writes the workspace's `packages/`, `.changes/`, `CHANGELOG.md`, and lockfile
+ * where it runs, so it runs only in the workspace directory, the one that holds
+ * `pnpm-workspace.yaml`, at the top of the work tree or below it.
+ */
+function requireWorkspaceDirectory(root: string) {
+  if (!existsSync(join(root, 'pnpm-workspace.yaml'))) {
+    throw new Error(cutFromWorkspace);
+  }
+}
+
 async function prepare(
   checkout: Checkout,
   options: {
@@ -170,6 +178,7 @@ export const cutRelease: ActionHandler<typeof releaseCut> = async ({
 }) => {
   await report({ out, signal }, async () => {
     const checkout = { host, onShutdown, root: host.cwd, signal };
+    requireWorkspaceDirectory(checkout.root);
     const release = await prepare(checkout, options);
     if (!options['dry-run']) {
       await writeRelease(checkout, release);

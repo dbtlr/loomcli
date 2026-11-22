@@ -1,9 +1,9 @@
 import { decisionIndexChanged, decisionRecordChanged } from '../commands/pr/messages.js';
 import { git, readRegularFile } from './repository.js';
-import type { Checkout } from './repository.js';
+import type { Checkout, Placement } from './repository.js';
 
-const decisionsDirectory = 'docs/decisions/';
-const decisionIndex = `${decisionsDirectory}README.md`;
+/** The decisions folder, which sits at the top of the work tree, shared by every workspace below it. */
+const decisionsFolder = 'docs/decisions/';
 const recordName = /^\d{4}-[^/]+\.md$/u;
 
 /**
@@ -81,16 +81,19 @@ async function present(checkout: Checkout, ref: string, path: string) {
 
 /**
  * Admits the decision files a release cut may change: each record it marks accepted, and the index
- * row of each one. Any other change to a record or the index throws naming the file. Returns the
- * admitted paths.
+ * row of each one. Any other change to a record or the index throws naming the file. The changed
+ * paths and the admitted ones are relative to the checkout's root, so from a workspace one level
+ * below the top of the work tree the folder's paths start with `../`. Returns the admitted paths.
  */
 export async function checkDecisions(
   checkout: Checkout,
   base: string,
   head: string,
   release: { date: string; version: string },
-  changed: string[],
+  { changed, placement }: { changed: string[]; placement: Placement },
 ) {
+  const decisionsDirectory = `${placement.up}${decisionsFolder}`;
+  const decisionIndex = `${decisionsDirectory}README.md`;
   const records = changed.filter(
     (path) =>
       path.startsWith(decisionsDirectory) && recordName.test(path.slice(decisionsDirectory.length)),

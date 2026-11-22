@@ -173,7 +173,7 @@ export function renderSection(release: {
 
 /**
  * The changelog and the fragment folder a cut names, as the operator reads them: relative to the
- * package directory, or to the repository root for Loom's own release.
+ * package directory, or to the workspace directory for Loom's own release.
  */
 export interface ChangelogFiles {
   readonly changelog: string;

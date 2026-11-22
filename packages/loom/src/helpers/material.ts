@@ -1,12 +1,14 @@
 import { posix } from 'node:path';
 
 import { noVersionCommit } from '../commands/release/messages.js';
-import type { Checkout, Libraries } from './repository.js';
+import type { Checkout, Libraries, Placement } from './repository.js';
 import {
   currentVersion,
   git,
   gitLine,
+  gitPaths,
   readParticipants,
+  readPlacement,
   requireCoherentLibraries,
   requireFullHistory,
 } from './repository.js';
@@ -69,9 +71,15 @@ export async function materialBaseline(
   throw new Error(noVersionCommit(version));
 }
 
-// Root Markdown and docs do not enter the current library build.
-export function isBuildAffectingPath(path: string) {
-  return !path.startsWith('docs/') && !(!path.includes('/') && /\.md$/iu.test(path));
+/**
+ * Root Markdown and docs do not enter the current library build. A path is judged from the root it
+ * sits under: a path in the checkout's root from that root, and one outside it, which climbs to the
+ * top of the work tree, from the top, so `../README.md` is top-level Markdown as `README.md` is.
+ */
+export function isBuildAffectingPath(path: string, placement: Placement) {
+  const judged =
+    placement.up !== '' && path.startsWith(placement.up) ? path.slice(placement.up.length) : path;
+  return !judged.startsWith('docs/') && !(!judged.includes('/') && /\.md$/iu.test(judged));
 }
 
 export async function unchangedLibraries(
@@ -87,7 +95,8 @@ export async function unchangedLibraries(
     `${since}^{commit}`,
   ]);
   await git(checkout, ['merge-base', '--is-ancestor', base, head ?? 'HEAD']);
-  const diff = await git(checkout, [
+  const placement = await readPlacement(checkout);
+  const paths = await gitPaths(checkout, placement, [
     'diff',
     '--no-renames',
     '--name-only',
@@ -96,15 +105,22 @@ export async function unchangedLibraries(
     ...(head === undefined ? [] : [head]),
     '--',
   ]);
-  const paths = diff.split('\0').filter(Boolean);
-  const others =
+  // Untracked files anywhere in the work tree, as the diff reads it, printed from its top.
+  const untracked =
     head === undefined
-      ? await git(checkout, ['ls-files', '--others', '--exclude-standard', '-z'])
-      : '';
-  const untracked = others.split('\0').filter(Boolean);
+      ? await gitPaths(checkout, placement, [
+          'ls-files',
+          '--others',
+          '--exclude-standard',
+          '--full-name',
+          '-z',
+          '--',
+          placement.up === '' ? '.' : placement.up,
+        ])
+      : [];
   const changed = new Set<string>();
   for (const path of [...paths, ...untracked].filter(
-    (candidate) => !candidate.startsWith('.changes/') && isBuildAffectingPath(candidate),
+    (candidate) => !candidate.startsWith('.changes/') && isBuildAffectingPath(candidate, placement),
   )) {
     const owner = libraries.find((library) => path.startsWith(`${library.directory}/`));
     if (!owner) {

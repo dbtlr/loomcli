@@ -83,6 +83,15 @@ async function gitBytes(checkout: Checkout, args: string[]) {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
+/**
+ * A path relative to the checkout's root at a revision, in git's `<ref>:<path>` form. Git reads a
+ * plain path there from the top of the work tree and one that starts with `./` or `../` from the
+ * working directory, which is the root.
+ */
+function atRevision(ref: string, path: string) {
+  return `${ref}:${path.startsWith('../') ? path : `./${path}`}`;
+}
+
 /** A git checkout the toolchain reads, at `root`, and the run it reads it for, which starts git. */
 export interface Checkout extends RunHost {
   readonly root: string;
@@ -100,11 +109,52 @@ export async function gitLine(checkout: Checkout, args: string[]) {
   return output.trim();
 }
 
+/**
+ * Where the checkout's root sits in its git work tree: `prefix` is the path from the top of the
+ * work tree down to the root, with a trailing `/`, and `up` is the path from the root back up to the
+ * top, such as `../`. Both are empty when the root is the top.
+ */
+export interface Placement {
+  readonly prefix: string;
+  readonly up: string;
+}
+
+/** The checkout's placement, which git prints one line each, empty at the top of the work tree. */
+export async function readPlacement(checkout: Checkout): Promise<Placement> {
+  const output = await git(checkout, ['rev-parse', '--show-prefix', '--show-cdup']);
+  const [prefix = '', up = ''] = output.split('\n').map((line) => line.trim());
+  return { prefix, up };
+}
+
+/**
+ * A path git prints from the top of the work tree, such as a `git diff --name-only` entry, made
+ * relative to the checkout's root as every other path the toolchain handles is. A path outside the
+ * root climbs to the top first, as `../README.md` does.
+ */
+export function fromTop(placement: Placement, path: string) {
+  return path.startsWith(placement.prefix)
+    ? path.slice(placement.prefix.length)
+    : `${placement.up}${path}`;
+}
+
+/**
+ * The paths a git command prints, NUL-separated from the top of the work tree, made relative to the
+ * checkout's root.
+ */
+export async function gitPaths(checkout: Checkout, placement: Placement, args: string[]) {
+  const output = await git(checkout, args);
+  return output
+    .split('\0')
+    .filter(Boolean)
+    .map((path) => fromTop(placement, path));
+}
+
 export async function readDirectory(checkout: Checkout, path: string, ref?: string) {
   if (ref === undefined) {
     return readdirSync(join(checkout.root, path), { withFileTypes: true });
   }
-  const listing = await git(checkout, ['ls-tree', '-z', `${ref}:${path}`]);
+  // Below the top, ls-tree limits even a named tree to the working directory unless --full-tree.
+  const listing = await git(checkout, ['ls-tree', '--full-tree', '-z', atRevision(ref, path)]);
   return listing
     .split('\0')
     .filter(Boolean)
@@ -146,7 +196,7 @@ export async function readRegularFileBytes(checkout: Checkout, path: string, ref
   if (!/^100(?:644|755) blob /u.test(entry)) {
     throw new Error(expectedRegularFile(path));
   }
-  return gitBytes(checkout, ['show', `${ref}:${path}`]);
+  return gitBytes(checkout, ['show', atRevision(ref, path)]);
 }
 
 export async function readRegularFile(checkout: Checkout, path: string, ref?: string) {

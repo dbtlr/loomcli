@@ -1079,8 +1079,12 @@ _Avoid_: Framework (for the package), runtime, engine
 ## Releases
 
 **Participating library**:
-A publishable first-party package under `packages/`, a library or the `@loomcli/loom` toolchain, included in the synchronized release version and package set.
+A publishable first-party package under the workspace directory's `packages/`, a library or the `@loomcli/loom` toolchain, included in the synchronized release version and package set.
 _Avoid_: Release target, public workspace
+
+**Workspace directory**:
+The directory of this repository's pnpm workspace, which holds `pnpm-workspace.yaml`, `packages/`, `.changes/`, and `CHANGELOG.md`, at the git root or below it. Loom's own release commands and PR guard run there and name paths relative to it; the decision records stay at the git root.
+_Avoid_: Repository root (for the workspace), package directory
 
 **Public export**:
 A name a published library's entry points export. Every public export is judged as a function or constant, an input type, an output type, or a class the author may or must not subclass, and a change to it is classified by that judgment.

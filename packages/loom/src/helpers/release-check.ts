@@ -37,7 +37,7 @@ import {
   readRegularFile,
   readRegularFileBytes,
 } from './repository.js';
-import type { Checkout } from './repository.js';
+import type { Checkout, Placement } from './repository.js';
 
 /** The authoring skill `loom init` ships, whose version a release carries. */
 const authoringSkillPath = `${authoringSkillSource}/SKILL.md`;
@@ -113,8 +113,9 @@ export async function checkRelease(
   base: string,
   head: string,
   version: string,
-  changed: string[],
+  diff: { changed: string[]; placement: Placement },
 ) {
+  const { changed } = diff;
   const previous = await readLibraries(checkout, base);
   const libraries = await readLibraries(checkout, head);
   const changelogBytes = await readRegularFileBytes(checkout, 'CHANGELOG.md', head);
@@ -172,7 +173,7 @@ export async function checkRelease(
     base,
     head,
     { date: options.date, version },
-    changed,
+    diff,
   );
   const allowed = new Set([
     'CHANGELOG.md',

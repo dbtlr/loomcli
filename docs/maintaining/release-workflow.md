@@ -60,6 +60,18 @@ npm install --package-lock-only --ignore-scripts
 
 Move the pin when a release changes the release commands, and check that the workflow's calls still match the new version's options.
 
+## Workspace directory
+
+`release plan`, `release record`, `release cut`, and `pr check` act on the pnpm workspace they run in: the working directory, which holds `pnpm-workspace.yaml`, `packages/`, `.changes/`, `CHANGELOG.md`, and `pnpm-lock.yaml`. The workspace can sit at the git root or in a directory below it, and no option names it. Git prints changed paths from the top of the work tree, and the commands rewrite each one relative to the workspace directory, so every path they print or compare, and every path in a plan, is relative to the workspace directory. A path outside the workspace climbs to the git root first, as `../docs/decisions/README.md` does.
+
+The commands give the same plan, cut, record, and verdict in both layouts:
+
+- `libraries[].directory` in a plan names the library's directory relative to the workspace directory, such as `packages/core` in both layouts. The `build` job passes it to `pnpm --dir`, so the job's pack step runs in the workspace directory.
+- The decision records stay in `docs/decisions/` at the git root, shared by every workspace below it. The [PR guard](pr-guards.md) reads them there.
+- The build-path policy judges a path inside the workspace from the workspace directory, and a path outside it from the git root. Under either, `docs/` and top-level Markdown files never affect a build, and any other path does, such as `.github/workflows/ci.yml` at the git root.
+
+`release cut` refuses to run, including with `--dry-run`, in a directory that holds no `pnpm-workspace.yaml`, because it would read and write another directory's release files.
+
 ## Commands
 
 Both commands read `GH_TOKEN` from the environment. `plan` sends it as a bearer token when it is set, and `record` fails without it. Both accept `--registry` (default `https://registry.npmjs.org`) and `--github-api` (default `https://api.github.com`), each an http or https URL; a value with no scheme, such as `registry.npmjs.org`, is a usage error before any request.
@@ -91,7 +103,7 @@ The command reads the participating libraries at the head, takes their synchroni
 }
 ```
 
-`publish` is true when any library is absent from the registry. `record` is true when the tag is absent, the Release is absent, or the Release is incomplete.
+Each `directory` is relative to the [workspace directory](#workspace-directory). `publish` is true when any library is absent from the registry. `record` is true when the tag is absent, the Release is absent, or the Release is incomplete.
 
 The manifests carry `0.0.0` until the initial cut. That version is never published, tagged, or released, so the command reports it as the unreleased version with nothing to reconcile and writes a plan with `publish: false`, `record: false`, and empty notes. It reads no registry and needs no changelog section. Every other version carries the notes of its section.
 
