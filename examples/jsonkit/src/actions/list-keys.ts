@@ -1,3 +1,4 @@
+import { escapeControlCharacters } from '@loomcli/core';
 import type { ActionHandler } from '@loomcli/core';
 
 import type { keys } from '../commands/keys.js';
@@ -10,7 +11,8 @@ export const listKeys: ActionHandler<typeof keys> = async ({ args, log, options,
   const document = await readJson({ log, options });
   const path: string | undefined = args.path;
   const value = path === undefined ? document : resolvePath(document, path);
-  const where = path === undefined ? 'the root' : path;
+  // The fatal message is marked text, so the operator's path is escaped where it enters it.
+  const where = path === undefined ? 'the root' : style.escape(escapeControlCharacters(path));
   const record = isRecord(value)
     ? value
     : out.fatal(

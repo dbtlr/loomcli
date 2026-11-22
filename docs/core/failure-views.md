@@ -16,7 +16,7 @@ import { Application, InputError, override, UnknownCommandError } from '@loomcli
 import type { FailureView } from '@loomcli/core';
 
 const inputProblems: FailureView<InputError> = {
-  render: (failure, { style }) => `Invalid input: ${style.escape(failure.message)}\n`,
+  render: (_failure, { message, style }) => `Invalid input: ${style.escape(message)}\n`,
 };
 const unknownCommand: FailureView<UnknownCommandError> = {
   render: (failure, { style }) => `Unknown Command: ${style.escape(failure.token)}\n`,
@@ -35,19 +35,23 @@ Resolution follows the one walk [Views](views.md) defines: the application's ove
 
 Core's default text for each class is a plain function that runs no application code but the entries of the run's [phrasebooks](localization.md#phrasebooks). The class's default view is that function, and the plain fallback path in the [ordinary failure path](failures.md#the-ordinary-failure-path) calls it in English, with no phrasebook, so neither a broken override nor a phrasebook entry that throws can leave a failure unreported.
 
-An application can treat fatal messages as literal error text with one override:
+A `FatalError`'s message is marked text its author wrote, whether an action passes it to `out.fatal(message)` or a helper throws `new FatalError(message)`. A view for `FatalError` therefore prints the context's [`message`](#failure-view-context) as it is. The message keeps its frames, such as the `nowrap` frame a first-party plugin puts around a path. A first-party plugin's sentence reads in the operator's language, and a string the author wrote prints as written. Core's default text escapes the message of every other class as data, so a view for another class escapes `message`, as the `InputError` view above does, and only a `FatalError`'s message prints as it is. Code that puts an operator's value into a `FatalError`'s message escapes that value where it raises the failure: `escapeControlCharacters` for control characters, then `style.escape` for markup, as the [configuration plugin](../plugins/config.md) does for a file path in its warnings. Core exports both at module level, so a helper that raises a failure needs no output or style context:
 
 ```ts
-import { Application, FatalError, override } from '@loomcli/core';
+import { Application, escapeControlCharacters, FatalError, override, style } from '@loomcli/core';
 
-const app = new Application('reader', {
-  views: [override(FatalError, {
-    render: (failure, { style }) => `${style.escape(failure.message)}\n`,
-  })],
+export function pathNotFound(path: string): FatalError {
+  return new FatalError(
+    `Path not found: "${style.escape(escapeControlCharacters(path))}". Run reader keys to list the keys at the root.`,
+  );
+}
+
+export const reader = new Application('reader', {
+  views: [override(FatalError, { render: (_failure, { message }) => `${message}\n` })],
 });
 ```
 
-Its actions call `out.fatal(message)`, and its helpers throw `new FatalError(message)` and jsonkit's `PathNotFoundError`, a subclass. Both pass unescaped messages. The view escapes once, so helpers need no output or style context. Jsonkit and textstat use this pattern. The override applies to those applications; core's default `FatalError` view still accepts authored marked text.
+Core's default text for `FatalError` already prints `message`, then each hint. This override prints the sentence alone, without hints, as jsonkit and textstat do. A `FatalError` view that escapes the whole message, `style.escape(failure.message)`, shows each frame's delimiters as text, so a completion install that cannot reach its folder prints `Cannot reach ["nowrap"]/…` with the delimiters visible. Under a phrasebook it also prints English, because `failure.message` is the English sentence. Jsonkit and textstat print `message` and escape each operator value where they raise.
 
 ### Failure view context
 
@@ -76,8 +80,8 @@ import { Application, override, UsageError } from '@loomcli/core';
 export const store = new Application('store', {
   views: [
     override(UsageError, {
-      render: (failure, { application, hints, path, style }) =>
-        [`${[application, ...path].join(' ')}: ${style.escape(failure.message)}`, ...hints]
+      render: (_failure, { application, hints, message, path, style }) =>
+        [`${[application, ...path].join(' ')}: ${style.escape(message)}`, ...hints]
           .map((line) => `${line}\n`)
           .join(''),
     }),

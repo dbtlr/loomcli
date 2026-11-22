@@ -38,9 +38,9 @@ afterEach(() => {
   rmSync(directory, { force: true, recursive: true });
 });
 
-/** Runs jsonkit in this process from the test's folder, with the stdin a case pipes. */
-async function run(argv: string[], stdin = '') {
-  const mock = mockProcess({ argv, cwd: directory, env: { HOME: directory }, stdin });
+/** Runs jsonkit in this process from the test's folder, with the stdin and variables a case sets. */
+async function run(argv: string[], stdin = '', env: Record<string, string> = {}) {
+  const mock = mockProcess({ argv, cwd: directory, env: { HOME: directory, ...env }, stdin });
   const status = await jsonkit.run({ process: mock });
   return { status, stderr: mock.stderr.text, stdout: mock.stdout.text };
 }
@@ -165,6 +165,21 @@ test('a declared failure and a translated SyntaxError each exit 65 through the F
   });
 });
 
+test("an operator's path prints literally in a FatalError, not read as markup", async () => {
+  // A path that spells a nowrap frame in Loom's internal delimiters, then one that holds ESC.
+  const framed = '\uE000["nowrap"]\uE001x\uE002';
+  await expect(run(['get', framed, '-f', 'doc.json'])).resolves.toEqual({
+    status: 65,
+    stderr: `Path not found: "${framed}". Run jsonkit keys to list the keys at the root.\n`,
+    stdout: '',
+  });
+  await expect(run(['keys', 'name\u001b[31m', '-f', 'doc.json'])).resolves.toEqual({
+    status: 65,
+    stderr: 'Path not found: "name\\u001b[31m". Run jsonkit keys to list the keys at the root.\n',
+    stdout: '',
+  });
+});
+
 test('help prints the details get.md carries, and version the declared version', async () => {
   const help = await run(['get', '--help']);
   expect(help.stdout).toContain('A path is a dot-separated walk from the root of the document.');
@@ -200,6 +215,19 @@ test('the manifest and inspect() describe the graph, without the hidden Commands
 test('completion answers a word three levels below the root', async () => {
   const { stdout } = await run(['completion', '__complete', '--', 'stats', 'depth', 'm']);
   expect(stdout).toContain('max');
+});
+
+test('an installation failure prints its path whole, with no frame text, through the FatalError view', async () => {
+  const blocker = join(directory, 'blocker');
+  writeFileSync(blocker, '');
+  const data = join(blocker, 'data');
+  await expect(
+    run(['completion', 'install', 'bash'], '', { XDG_DATA_HOME: data }),
+  ).resolves.toEqual({
+    status: 1,
+    stderr: `Cannot reach ${data}/jsonkit/completion/jsonkit.bash because a file sits where one of its folders is needed. Remove or rename that file, then run the command again.\n`,
+    stdout: '',
+  });
 });
 
 test('the MCP server lists the document Commands as tools', async () => {

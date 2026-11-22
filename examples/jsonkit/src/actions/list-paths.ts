@@ -1,4 +1,4 @@
-import { FatalError } from '@loomcli/core';
+import { escapeControlCharacters, FatalError, style } from '@loomcli/core';
 import type { ActionHandler } from '@loomcli/core';
 
 import type { paths } from '../commands/paths.js';
@@ -27,15 +27,17 @@ function join(parent: string, segment: string): string {
 
 /**
  * One entry per reachable path, the parent before its members. Each row waits on a microtask, so
- * the walk is a real asynchronous source and the writer requests one row at a time.
+ * the walk is a real asynchronous source and the writer requests one row at a time. A path is built
+ * from the document's keys, so the failure escapes it where it enters the marked message.
  */
 async function* from(path: string, value: unknown): AsyncGenerator<Entry> {
   await Promise.resolve();
   yield { kind: describeKind(value), path };
   for (const [segment, member] of members(value)) {
     if (segment === REFUSED) {
+      const refused = join(path, segment);
       throw new FatalError(
-        `Cannot walk ${join(path, segment)}. Remove the "${REFUSED}" key from the document.`,
+        `Cannot walk ${style.escape(escapeControlCharacters(refused))}. Remove the "${REFUSED}" key from the document.`,
       );
     }
     yield* from(join(path, segment), member);

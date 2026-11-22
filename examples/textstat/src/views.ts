@@ -1,10 +1,16 @@
-import type { FatalError, View, ViewContext } from '@loomcli/core';
+import type { FailureView, FatalError, ViewContext } from '@loomcli/core';
 
 import { totalRow } from './row.js';
 import type { Row } from './row.js';
 
-export const fatalError: View<FatalError> = {
-  render: (failure, { style }) => `${style.escape(failure.message)}\n`,
+/**
+ * A `FatalError`'s message is marked text its author wrote, so the view prints the context's
+ * `message` as it is: a plugin's `nowrap` frame resolves, and the sentence reads in the run's
+ * language. Each site that puts an operator's value into the message escapes it there. The view
+ * prints no hints, so a read failure reads as its one sentence, without the logging plugin's line.
+ */
+export const fatalError: FailureView<FatalError> = {
+  render: (_failure, { message }) => `${message}\n`,
 };
 
 /** The summary marker cannot collide with a filename or enter JSON results. */

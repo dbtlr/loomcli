@@ -124,6 +124,34 @@ test("a read failure prints through textstat's FatalError view, with no table", 
   });
 });
 
+test("an installation failure prints its path whole, with no frame text, through textstat's FatalError view", async () => {
+  const blocker = join(directory, 'blocker');
+  writeFileSync(blocker, '');
+  const data = join(blocker, 'data');
+  await expect(
+    run(['completion', 'install', 'bash'], { env: { HOME: directory, XDG_DATA_HOME: data } }),
+  ).resolves.toEqual({
+    status: 1,
+    stderr: `Cannot reach ${data}/textstat/completion/textstat.bash because a file sits where one of its folders is needed. Remove or rename that file, then run the command again.\n`,
+    stdout: '',
+  });
+});
+
+test("a read failure's reason prints literally in textstat's FatalError, not read as markup", async () => {
+  // A reason that spells a nowrap frame in Loom's internal delimiters, then holds a bell.
+  const framed = '\uE000["nowrap"]\uE001x\uE002';
+  const failing = new Readable({
+    read() {
+      this.destroy(new Error(`Cannot open ${framed}\u0007`));
+    },
+  });
+  await expect(run(['one.txt'], { stdin: failing })).resolves.toEqual({
+    status: 1,
+    stderr: `Cannot read stdin: Cannot open ${framed}\\u0007. Supply readable files, or pipe text to stdin.\n`,
+    stdout: '',
+  });
+});
+
 test('help prints the page its helpCommand values describe, with the formatter’s --format row', async () => {
   const { status, stdout } = await run(['--help']);
   expect(status).toBe(0);
