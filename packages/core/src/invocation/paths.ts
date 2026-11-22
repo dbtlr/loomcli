@@ -53,11 +53,10 @@ type NamedOptionValue<Config extends OptionConfig> = Config extends { type: 'boo
       ? Config extends { multiple: true }
         ? readonly (string | number)[] | readonly (readonly (string | number)[])[]
         : readonly (string | number)[]
-      :
-          | (Config extends { multiple: true }
-              ? string | number | readonly (string | number)[]
-              : string | number)
-          | (Config extends { implied: unknown } ? true : never);
+      : | (Config extends { multiple: true }
+            ? string | number | readonly (string | number)[]
+            : string | number)
+        | (Config extends { implied: unknown } ? true : never);
 
 /** An entry with one more argument. */
 type WithArgument<Paths, Name extends string, Config extends ArgumentConfig> =

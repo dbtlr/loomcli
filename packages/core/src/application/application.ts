@@ -144,6 +144,58 @@ type RootRequirement<Globals, Requires> = [Globals] extends [Requires]
   ? unknown
   : { readonly 'The Application declares no global option its root providers read': Requires };
 
+// The alias is declared above ApplicationBuilder, and its emitted declaration keeps that order.
+// TypeScript 7.1 measures the variance of an alias in a cycle by declaration order (microsoft/TypeScript#64930).
+// Declared below its class, `Application` reads most of its type parameters as independent, so an Application is assignable to one whose globals, arguments, options, or other declarations differ.
+// With the alias below the class, `vp check` reports the rejected uses in tests/type-consumer as unused directives.
+/**
+ * The authoring surface of an Application in one type state: the root Command's calls, `command()`,
+ * `inspect()`, `check()`, `run()`, `invoke()`, and `name`. Every authoring call returns a new
+ * declaration value, leaves its receiver unchanged, and publishes only the calls that are still
+ * valid after it. `inspect()`, `check()`, `run()`, `invoke()`, and `name` survive every call. `State` lists the authoring calls a value still offers.
+ * It defaults to the state after `action()`, which publishes the fewest calls, so
+ * `Application<A, O, G>` accepts an application in any state, a finished one included.
+ *
+ * @public
+ * @sealed
+ */
+export type Application<
+  Args = {},
+  Options = {},
+  Globals = {},
+  State extends ApplicationMethod = AfterAction,
+  Plugins extends readonly Plugin[] = readonly Plugin[],
+  Result = unknown,
+  Stdin extends StdinContext = StdinContext,
+  Provided = {},
+  Requires = {},
+  Paths = unknown,
+> = Pick<
+  ApplicationBuilder<
+    Args,
+    Options,
+    Globals,
+    State,
+    Plugins,
+    Result,
+    Stdin,
+    Provided,
+    Requires,
+    Paths
+  >,
+  | typeof applicationEnvironment
+  | typeof declaredTypes
+  | typeof commandPaths
+  | 'check'
+  | 'extend'
+  | 'inspect'
+  | 'invoke'
+  | 'name'
+  | 'run'
+  | State
+  | ResultMethod<Result>
+>;
+
 /**
  * The Application holds the unnamed root's declaration state and applies the same transitions a
  * Command does, so each declaration call has one typed implementation and no builder to recover.
@@ -249,7 +301,18 @@ class ApplicationBuilder<
     Requires,
     Paths
   > {
-    return new ApplicationBuilder(
+    return new ApplicationBuilder<
+      Args,
+      Options,
+      Globals,
+      Exclude<State, 'needsTerminal'>,
+      Plugins,
+      Result,
+      Stdin,
+      Provided,
+      Requires,
+      Paths
+    >(
       this.#name,
       {
         config: this.#config,
@@ -279,7 +342,18 @@ class ApplicationBuilder<
     Requires,
     Paths
   > {
-    return new ApplicationBuilder(
+    return new ApplicationBuilder<
+      Args,
+      Options,
+      Globals,
+      Exclude<State, 'passthrough'>,
+      Plugins,
+      Result,
+      Stdin & { passthrough: string[] },
+      Provided,
+      Requires,
+      Paths
+    >(
       this.#name,
       {
         config: this.#config,
@@ -930,54 +1004,6 @@ class ApplicationBuilder<
     };
   }
 }
-
-/**
- * The authoring surface of an Application in one type state: the root Command's calls, `command()`,
- * `inspect()`, `check()`, `run()`, `invoke()`, and `name`. Every authoring call returns a new
- * declaration value, leaves its receiver unchanged, and publishes only the calls that are still
- * valid after it. `inspect()`, `check()`, `run()`, `invoke()`, and `name` survive every call. `State` lists the authoring calls a value still offers.
- * It defaults to the state after `action()`, which publishes the fewest calls, so
- * `Application<A, O, G>` accepts an application in any state, a finished one included.
- *
- * @public
- * @sealed
- */
-export type Application<
-  Args = {},
-  Options = {},
-  Globals = {},
-  State extends ApplicationMethod = AfterAction,
-  Plugins extends readonly Plugin[] = readonly Plugin[],
-  Result = unknown,
-  Stdin extends StdinContext = StdinContext,
-  Provided = {},
-  Requires = {},
-  Paths = unknown,
-> = Pick<
-  ApplicationBuilder<
-    Args,
-    Options,
-    Globals,
-    State,
-    Plugins,
-    Result,
-    Stdin,
-    Provided,
-    Requires,
-    Paths
-  >,
-  | typeof applicationEnvironment
-  | typeof declaredTypes
-  | typeof commandPaths
-  | 'check'
-  | 'extend'
-  | 'inspect'
-  | 'invoke'
-  | 'name'
-  | 'run'
-  | State
-  | ResultMethod<Result>
->;
 
 /**
  * Every rule `new Application(name, options)` applies, in the order it reads the slot: the

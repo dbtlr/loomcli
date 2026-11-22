@@ -747,11 +747,10 @@ export type GlobalOmissionConstraint<Config> = [Extract<Config, { type: 'content
 
 export type ArgumentValue<Config extends ArgumentConfig> = Config extends { variadic: true }
   ? ValidatedValue<Config, string[]>
-  :
-      | ValidatedValue<Config, string>
-      | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
-          ? never
-          : undefined);
+  : | ValidatedValue<Config, string>
+    | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
+        ? never
+        : undefined);
 
 /**
  * A Boolean option: one polarity with any spelling, both polarities with long forms, the color
@@ -865,11 +864,10 @@ export type GlobalOptionConfig = Exclude<OptionConfig, ContentOption> &
 export type OptionValue<Config extends OptionConfig> = Config extends StringOption | ContentOption
   ? Config extends { multiple: true }
     ? ValidatedValue<Config, RawValue<Config>>
-    :
-        | ValidatedValue<Config, RawValue<Config>>
-        | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
-            ? never
-            : undefined)
+    : | ValidatedValue<Config, RawValue<Config>>
+      | (Config extends { required: true } | { default: unknown } | { validateOmitted: true }
+          ? never
+          : undefined)
   : Config extends CountOption
     ? number
     : boolean;

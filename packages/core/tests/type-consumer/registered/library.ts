@@ -78,6 +78,20 @@ acceptApplication(
     .globalOption('quiet', { short: 'q', type: 'boolean' })
     .globalOption('limit', { type: 'string', validate: z.string().transform(Number) }),
 );
+acceptApplication(
+  // @ts-expect-error TS2345: An Application that declares no global option the annotation names is rejected.
+  new Application('bare'),
+);
+function acceptArguments(value: Application<{ path: string }>) {
+  return value;
+}
+// @ts-expect-error TS2345: An Application that declares no argument the annotation names is rejected.
+acceptArguments(new Application('bare-arguments'));
+function acceptOptions(value: Application<{}, { raw: boolean }>) {
+  return value;
+}
+// @ts-expect-error TS2345: An Application that declares no option the annotation names is rejected.
+acceptOptions(new Application('bare-options'));
 // @ts-expect-error TS2554: Constructor type parameters cannot forge global outputs.
 new Application<{ file: number }>('wrong-output')
   .globalOption('file', { short: 'f', type: 'string' })
