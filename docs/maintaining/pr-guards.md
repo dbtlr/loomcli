@@ -16,7 +16,7 @@ pnpm loom pr check --base origin/main --title "Fix command output"
 pnpm loom pr check --base origin/main --title "Refactor internal code" --label skip-changelog
 ```
 
-Run the command in the pnpm workspace, at the git root or in a directory below it, as the [release workflow reference](release-workflow.md#workspace-directory) describes. It reads the workspace's `packages/`, `.changes/`, and `CHANGELOG.md` there, and names each path relative to the workspace directory.
+Run the command in the workspace directory, the one that holds `pnpm-workspace.yaml`, at the git root or below it. In any other directory it refuses before it reads anything, as the [release workflow reference](release-workflow.md#workspace-directory) describes. It reads the workspace's `packages/`, `.changes/`, and `CHANGELOG.md` there, and names each path relative to the workspace directory.
 
 `--base` and `--title` are required. `--head` defaults to `HEAD`. Repeat `--label` for multiple labels. Base and head can be commit references. The command requires full Git history and reads Git objects, so local edits and untracked files do not affect the result. It leaves the checkout, commits, and tags unchanged.
 

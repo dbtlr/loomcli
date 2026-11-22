@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { boolean, looseObject, minLength, object, optional, pipe, string } from 'valibot';
@@ -14,6 +14,7 @@ import {
   libraryNamesRepeat,
   libraryVersionsDiffer,
   noLibraries,
+  outsideWorkspace,
   releaseShallow,
   symlinkedPackage,
   unstableLibraryVersions,
@@ -38,10 +39,22 @@ const manifestSchema = looseObject({
 });
 
 /**
- * Settings that change what history commands print. A signature printed before the format output,
- * or a log that follows a fragment across a rename, would misplace it, so every call turns them off.
+ * Settings that change what git prints. A signature printed before the format output, or a log that
+ * follows a fragment across a rename, would misplace it, and `diff.relative` would limit a diff to
+ * the working directory and print its paths from there, where `gitPaths` reads them from the top of
+ * the work tree, so every call turns them off. No other setting changes how the paths read are
+ * spelled: each call whose paths are read passes `-z`, which prints them verbatim whatever
+ * `core.quotePath` says, and the other listings, `git status` and `git ls-tree` of one path, are
+ * read only for whether they print anything or for a mode.
  */
-const neutralSettings = ['-c', 'log.showSignature=false', '-c', 'log.follow=false'];
+const neutralSettings = [
+  '-c',
+  'log.showSignature=false',
+  '-c',
+  'log.follow=false',
+  '-c',
+  'diff.relative=false',
+];
 
 /**
  * The failure of a git that could not start, in the bin's words: the sentence for a git that is not
@@ -85,11 +98,23 @@ async function gitBytes(checkout: Checkout, args: string[]) {
 
 /**
  * A path relative to the checkout's root at a revision, in git's `<ref>:<path>` form. Git reads a
- * plain path there from the top of the work tree and one that starts with `./` or `../` from the
- * working directory, which is the root.
+ * plain path there from the top of the work tree and one that starts with `./` from the working
+ * directory, which is the root, so `./../README.md` names the top's `README.md`.
  */
 function atRevision(ref: string, path: string) {
-  return `${ref}:${path.startsWith('../') ? path : `./${path}`}`;
+  return `${ref}:./${path}`;
+}
+
+/**
+ * Loom's own release commands and PR guard read the workspace's `packages/`, `.changes/`,
+ * `CHANGELOG.md`, and lockfile where they run, so `command` runs only in the workspace directory,
+ * the one that holds `pnpm-workspace.yaml`, at the top of the work tree or below it. Each command
+ * checks it before it reads anything else.
+ */
+export function requireWorkspaceDirectory(root: string, command: string) {
+  if (!existsSync(join(root, 'pnpm-workspace.yaml'))) {
+    throw new Error(outsideWorkspace(command));
+  }
 }
 
 /** A git checkout the toolchain reads, at `root`, and the run it reads it for, which starts git. */

@@ -279,9 +279,6 @@ function recorded(tag: string): string {
 
 // Commands: releases.
 
-const cutFromWorkspace =
-  'Run release cut from the workspace directory, the one that holds pnpm-workspace.yaml.';
-
 const cleanCheckoutRequired =
   'release cut requires a clean checkout. Commit the release inputs first.';
 
@@ -340,7 +337,6 @@ export {
   conflictingFormulaChecksums,
   createdRelease,
   createdTag,
-  cutFromWorkspace,
   deletedAsset,
   formulaMetadataRequired,
   formulaRepositoryRequired,

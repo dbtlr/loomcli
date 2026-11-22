@@ -9,14 +9,18 @@ import { prepareLockfile } from '../../helpers/release-files.js';
 import { prepareRelease, requireReleaseNotes } from '../../helpers/release.js';
 import type { Release } from '../../helpers/release.js';
 import { report } from '../../helpers/report.js';
-import { git, gitLine, readWorkingFile } from '../../helpers/repository.js';
+import {
+  git,
+  gitLine,
+  readWorkingFile,
+  requireWorkspaceDirectory,
+} from '../../helpers/repository.js';
 import type { Checkout } from '../../helpers/repository.js';
 import type { releaseCut } from './command.js';
 import {
   changedDuringPreparation,
   checkoutChanged,
   cleanCheckoutRequired,
-  cutFromWorkspace,
   lockExists,
   rollbackIncomplete,
   tagExists,
@@ -133,17 +137,6 @@ async function writeRelease(checkout: Checkout, release: Release) {
   }
 }
 
-/**
- * The cut reads and writes the workspace's `packages/`, `.changes/`, `CHANGELOG.md`, and lockfile
- * where it runs, so it runs only in the workspace directory, the one that holds
- * `pnpm-workspace.yaml`, at the top of the work tree or below it.
- */
-function requireWorkspaceDirectory(root: string) {
-  if (!existsSync(join(root, 'pnpm-workspace.yaml'))) {
-    throw new Error(cutFromWorkspace);
-  }
-}
-
 async function prepare(
   checkout: Checkout,
   options: {
@@ -178,7 +171,7 @@ export const cutRelease: ActionHandler<typeof releaseCut> = async ({
 }) => {
   await report({ out, signal }, async () => {
     const checkout = { host, onShutdown, root: host.cwd, signal };
-    requireWorkspaceDirectory(checkout.root);
+    requireWorkspaceDirectory(checkout.root, 'release cut');
     const release = await prepare(checkout, options);
     if (!options['dry-run']) {
       await writeRelease(checkout, release);

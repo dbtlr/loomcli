@@ -62,15 +62,17 @@ Move the pin when a release changes the release commands, and check that the wor
 
 ## Workspace directory
 
-`release plan`, `release record`, `release cut`, and `pr check` act on the pnpm workspace they run in: the working directory, which holds `pnpm-workspace.yaml`, `packages/`, `.changes/`, `CHANGELOG.md`, and `pnpm-lock.yaml`. The workspace can sit at the git root or in a directory below it, and no option names it. Git prints changed paths from the top of the work tree, and the commands rewrite each one relative to the workspace directory, so every path they print or compare, and every path in a plan, is relative to the workspace directory. A path outside the workspace climbs to the git root first, as `../docs/decisions/README.md` does.
+`release plan`, `release record`, `release cut`, and `pr check` run in the workspace directory: the directory that holds `pnpm-workspace.yaml`, beside `packages/`, `.changes/`, `CHANGELOG.md`, and `pnpm-lock.yaml`. The workspace directory can sit at the git root or in a directory below it, and no option names it: each command takes its working directory as the workspace directory.
+
+Before it reads anything else, each command checks that its working directory holds `pnpm-workspace.yaml`. In any other directory, such as a package folder or the git root above a workspace, it writes nothing, exits with status 1, and prints `Run <command> from the workspace directory, the one that holds pnpm-workspace.yaml.`, with the command's name in place of `<command>`, such as `Run release plan from the workspace directory, the one that holds pnpm-workspace.yaml.` `release cut` refuses the same way with `--dry-run`.
+
+Git prints changed paths from the top of the work tree, and the commands run git with `diff.relative` off, so a repository's setting cannot change that. The commands rewrite each changed path relative to the workspace directory, so each path they print or compare, and each `libraries[].directory` in a plan, is relative to the workspace directory. A path outside the workspace climbs to the git root first, as `../docs/decisions/README.md` does. The file paths an operator passes, such as `--output`, `--plan`, and `--narrative`, are read from the working directory, which is the workspace directory.
 
 The commands give the same plan, cut, record, and verdict in both layouts:
 
 - `libraries[].directory` in a plan names the library's directory relative to the workspace directory, such as `packages/core` in both layouts. The `build` job passes it to `pnpm --dir`, so the job's pack step runs in the workspace directory.
 - The decision records stay in `docs/decisions/` at the git root, shared by every workspace below it. The [PR guard](pr-guards.md) reads them there.
 - The build-path policy judges a path inside the workspace from the workspace directory, and a path outside it from the git root. Under either, `docs/` and top-level Markdown files never affect a build, and any other path does, such as `.github/workflows/ci.yml` at the git root.
-
-`release cut` refuses to run, including with `--dry-run`, in a directory that holds no `pnpm-workspace.yaml`, because it would read and write another directory's release files.
 
 ## Commands
 

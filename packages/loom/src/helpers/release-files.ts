@@ -107,6 +107,11 @@ export async function prepareLockfile(
   };
   const removeCleanup = checkout.onShutdown(removeStage);
   try {
+    /*
+     * Without `--full-tree`, both listings hold only the files under the working directory, named
+     * from it, so a workspace below the top of the work tree stages its own files alone. That limit
+     * is relied on: pnpm reads only the workspace, and the scratch folder is its root.
+     */
     const paths = await git(
       checkout,
       ref === undefined ? ['ls-files', '-z'] : ['ls-tree', '-r', '--name-only', '-z', ref],

@@ -77,8 +77,8 @@ export async function materialBaseline(
  * top of the work tree, from the top, so `../README.md` is top-level Markdown as `README.md` is.
  */
 export function isBuildAffectingPath(path: string, placement: Placement) {
-  const judged =
-    placement.up !== '' && path.startsWith(placement.up) ? path.slice(placement.up.length) : path;
+  // At the top, `up` is empty, so every path is judged as it reads.
+  const judged = path.startsWith(placement.up) ? path.slice(placement.up.length) : path;
   return !judged.startsWith('docs/') && !(!judged.includes('/') && /\.md$/iu.test(judged));
 }
 

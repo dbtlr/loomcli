@@ -1,17 +1,17 @@
 /*
  * Loom's own release commands, `release cut`, `release plan`, `release record`, and `pr check`, run
- * from the release workspace, the directory that holds `pnpm-workspace.yaml`. Each case runs one
+ * from the workspace directory, the one that holds `pnpm-workspace.yaml`. Each case runs one
  * scenario twice: once with the workspace at the git root, and once with it in `typescript/` below
  * the root, while `docs/` and `.github/` stay at the root. Both runs expect the same literal cut,
  * verdict, plan, and record, so a layout that changes any of them fails a case.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { commit, put, removeRoots, repository } from './fixture.js';
+import { commit, git, put, removeRoots, repository } from './fixture.js';
 import { run } from './run.js';
 import { startServices, stopServices } from './services.js';
 
@@ -62,7 +62,7 @@ const proposedIndex = [
 
 const acceptedIndex = proposedIndex.replace('| proposed |', '| accepted |');
 
-/** The files of the release workspace, by their path inside it. */
+/** The files of the workspace directory, by their path inside it. */
 const workspaceFiles = {
   '.changes/README.md': '# Guide\n',
   'CHANGELOG.md': '# Changelog\n\n',
@@ -89,8 +89,9 @@ const layouts = [
 ];
 
 /**
- * A repository at 0.4.7 whose release workspace sits at `workspace` below the git root. `top` is the
- * git root, `root` is the workspace directory the commands run in, and `base` is the first commit.
+ * A repository at 0.4.7 whose workspace directory sits at `workspace` below the git root. `top` is
+ * the git root, `root` is the workspace directory the commands run in, and `base` is the first
+ * commit.
  */
 function layoutRepository(workspace: string) {
   const files: Record<string, string> = { ...topFiles };
@@ -366,6 +367,81 @@ test.each(layouts)(
       status: 0,
       stderr: '',
       stdout: '## v0.4.8 - 2026-09-07\n\n### Fixes\n\n- Fix output.\n\n',
+    });
+  },
+);
+
+/**
+ * Each command other than `release cut` that reads the workspace, run from the directory `cwd`.
+ * `release plan` would write `cwd/plan.json`, and `release record` would read it, though it does
+ * not exist, so only a refusal before any read names the workspace directory.
+ */
+const workspaceCommands = [
+  {
+    command: 'pr check',
+    run: async (cwd: string, base: string) => await prCheck(cwd, base, 'Fix output'),
+  },
+  {
+    command: 'release plan',
+    run: async (cwd: string, _base: string, endpoints: Endpoints) =>
+      await plan(cwd, cwd, endpoints),
+  },
+  {
+    command: 'release record',
+    run: async (cwd: string, _base: string, endpoints: Endpoints) =>
+      await record(cwd, cwd, endpoints),
+  },
+];
+
+// Every workspace command from a package folder of the root layout and from the top of the other.
+const refusalCases = workspaceCommands.flatMap(({ command, run: runCommand }) => [
+  { command, from: 'a package folder', runCommand, workspace: '' },
+  { command, from: 'the git root above the workspace', runCommand, workspace: 'typescript' },
+]);
+
+test.each(refusalCases)(
+  '$command from $from refuses a directory other than the workspace directory',
+  async ({ command, runCommand, workspace }) => {
+    const { base, root, top } = layoutRepository(workspace);
+    const endpoints = await startServices({ packages: {}, repository: owner, version: '0.4.8' });
+    const cwd = workspace === '' ? join(root, 'packages/core') : top;
+    await expect(runCommand(cwd, base, endpoints)).resolves.toEqual({
+      status: 1,
+      stderr: `Run ${command} from the workspace directory, the one that holds pnpm-workspace.yaml.\n`,
+      stdout: '',
+    });
+    expect(existsSync(join(cwd, 'plan.json'))).toBe(false);
+    await expect(endpoints.writes()).resolves.toEqual([]);
+  },
+);
+
+test.each(layouts)(
+  'pr check $layout gives the same verdicts when the repository sets diff.relative',
+  async ({ workspace }) => {
+    const { base: first, root, top } = layoutRepository(workspace);
+    // A setting that makes git diff print and compare paths from the working directory alone.
+    git(top, ['config', 'diff.relative', 'true']);
+    put(root, 'packages/core/index.js', 'export const value = 2;\n');
+    put(root, '.changes/value.md', '- Change the value.\n');
+    commit(top);
+    await expect(prCheck(root, first, 'Change the value')).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'PR checks passed.\n',
+    });
+    const { base } = await releasePullRequest(root, top);
+    await expect(prCheck(root, base, releaseTitle)).resolves.toEqual({
+      status: 0,
+      stderr: '',
+      stdout: 'PR checks passed.\n',
+    });
+    put(top, 'docs/decisions/0001-first.md', acceptedRecord.replace('The context.', 'New.'));
+    commit(top);
+    const path = `${workspace === '' ? '' : '../'}docs/decisions/0001-first.md`;
+    await expect(prCheck(root, base, releaseTitle)).resolves.toEqual({
+      status: 1,
+      stderr: `${path}: a release cut changes a decision record only to mark a proposed decision accepted, with status accepted, modified 2026-09-07, and a Status section that reads "Accepted in 0.4.8.". Make any other change in an ordinary PR.\n`,
+      stdout: '',
     });
   },
 );
