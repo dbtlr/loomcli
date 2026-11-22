@@ -3,15 +3,24 @@
  * whole every time. Nothing is recorded, so a project folder has no update, uninstall, or takeover
  * check.
  */
-import { lstatSync, mkdirSync, statSync } from 'node:fs';
+import { lstatSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import { FatalError, InputError, phrasedIssue } from '@loomcli/core';
 import type { Phrase } from '@loomcli/core';
 
 import { fileWritten } from '../change-events.js';
-import { exists, recordLeftovers } from '../installation/disk.js';
+import {
+  checkEmptiable,
+  checkWritable,
+  createDirectory,
+  exists,
+  folderLeftovers,
+  missingParents,
+  recordLeftovers,
+} from '../installation/disk.js';
 import { writeFolder } from '../installation/folders.js';
+import { writing } from '../installation/reach.js';
 import { loadForRun } from './global.js';
 import type { ChildRun } from './global.js';
 import type { LoadedSkill } from './load.js';
@@ -120,13 +129,28 @@ interface ProjectRequest {
   readonly directory: string | undefined;
 }
 
+/**
+ * Checks that the run's user may write each of the given skill folders and empty each one that is
+ * there and each leftover staging and retired folder beside it, then creates each missing folder
+ * above them, outermost first, before any skill folder is written, so a folder that cannot be
+ * written, emptied, or created fails the run naming that folder, with no skill folder replaced.
+ */
+function readyFolders(folders: readonly string[]): void {
+  checkWritable(folders);
+  checkEmptiable([...folders, ...folders.flatMap(folderLeftovers)]);
+  for (const directory of new Set(folders.flatMap(missingParents))) {
+    writing(directory, () => {
+      createDirectory(directory);
+    });
+  }
+}
+
 /** Replaces one skill's folder under the root whole, records it, and states it. */
 async function replaceFolder(
   run: ChildRun,
   { folder, loaded, target }: { folder: string; loaded: LoadedSkill; target: Target },
 ): Promise<void> {
   const replacing = exists(folder);
-  mkdirSync(dirname(folder), { recursive: true });
   recordLeftovers(run.log, writeFolder(folder, loaded.files));
   fileWritten(run.log, { path: folder });
   await run.success(
@@ -136,8 +160,11 @@ async function replaceFolder(
 
 /**
  * `install --project`: the root, the guard against the global folder, the folder and the loaders,
- * and the guard again for the folder's skills, all before any write, then each skill's folder
- * replaced whole for each selected target.
+ * the guard again for the folder's skills, and the check that the run's user may write every skill
+ * folder of every selected target and empty each one that is there and each leftover staging and
+ * retired folder beside it, all before any write, then the missing folders above every skill
+ * folder created, and each skill's folder replaced whole for each selected target. So a folder
+ * one target cannot take fails the run with no copy replaced.
  */
 async function installProject(run: ChildRun, request: ProjectRequest): Promise<void> {
   const root = repositoryRoot(startOf(run, request.directory));
@@ -147,14 +174,16 @@ async function installProject(run: ChildRun, request: ProjectRequest): Promise<v
   // Only the folder knows its skills' names, so its skills meet the guard once they are read.
   guardGlobal(run, root, { agent, names: loaded.map(({ name }) => name) });
   run.signal.throwIfAborted();
-  for (const target of selectedTargets(request.agent)) {
-    for (const skill of loaded) {
-      await replaceFolder(run, {
-        folder: projectFolder(root, target, skill.name),
-        loaded: skill,
-        target,
-      });
-    }
+  const writes = selectedTargets(request.agent).flatMap((target) =>
+    loaded.map((skill) => ({
+      folder: projectFolder(root, target, skill.name),
+      loaded: skill,
+      target,
+    })),
+  );
+  readyFolders(writes.map(({ folder }) => folder));
+  for (const write of writes) {
+    await replaceFolder(run, write);
   }
 }
 

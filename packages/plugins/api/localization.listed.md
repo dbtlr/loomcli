@@ -291,6 +291,8 @@ declare function folderChangedMeanwhile(path: string): string;
 
 declare function pathBlocked(path: string): string;
 
+declare function pathDangling(path: string): string;
+
 declare function readUnreadable(path: string): string;
 
 declare function writeUnwritable(path: string, readOnly: boolean): string;

@@ -7,6 +7,7 @@ import { appendFileSync, lstatSync, readFileSync, realpathSync, statSync } from 
 import { basename, dirname, join } from 'node:path';
 
 import { createNew, errorCode, permissionBits, replaceFile } from './disk.js';
+import { reading } from './reach.js';
 
 /** The encodings the module reads: UTF-8 with or without its byte order mark. */
 type StartupEncoding = 'utf8' | 'utf8-bom';
@@ -65,13 +66,19 @@ function encode(text: string, encoding: StartupEncoding): Buffer {
   return encoding === 'utf8-bom' ? Buffer.concat([utf8Mark, bytes]) : bytes;
 }
 
-/** What `path` is, followed through a symbolic link, without reading its content. */
+/**
+ * What `path` is, followed through a symbolic link, without reading its content. A file where one
+ * of the path's folders is needed, or a folder on the way the run's user may not search, fails the
+ * read, naming the path.
+ */
 function startupKind(path: string): StartupRead | 'file' {
-  const own = lstatSync(path, { throwIfNoEntry: false });
+  const own = reading(path, () => lstatSync(path, { throwIfNoEntry: false }));
   if (own === undefined) {
     return { kind: 'absent' };
   }
-  const stats = own.isSymbolicLink() ? statSync(path, { throwIfNoEntry: false }) : own;
+  const stats = own.isSymbolicLink()
+    ? reading(path, () => statSync(path, { throwIfNoEntry: false }))
+    : own;
   if (stats === undefined) {
     return { kind: 'not-file', reason: 'link' };
   }

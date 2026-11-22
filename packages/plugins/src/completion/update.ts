@@ -5,7 +5,7 @@
  * before it writes any.
  */
 import { recordDirectory } from '../application-folders.js';
-import { install } from '../installation/files.js';
+import { checkInstall, install } from '../installation/files.js';
 import type { InstallOutcome, StartupLine } from '../installation/files.js';
 import { completionPhrase } from './phrases.js';
 import {
@@ -71,31 +71,61 @@ function planShell(run: ChildRun, recorded: ShellRecord, script: string): Planne
   return { recorded, script, steps };
 }
 
-/** Rewrites the script and lines through the module, or throws the failure of a refusal. */
-function rewrite(
-  run: ChildRun,
-  {
-    content,
-    planned,
-    record,
-  }: { readonly record: string; readonly planned: Planned; readonly content: string },
-): Extract<InstallOutcome, { status: 'installed' }> {
+/** What a rewrite of one shell reads: the record's directory, the shell's plan, and its script's content. */
+interface Rewrite {
+  readonly record: string;
+  readonly planned: Planned;
+  readonly content: string;
+}
+
+/** What the module's install of one shell's update is asked to write, which its check reads too. */
+function updateRequestOf({ content, planned, record }: Rewrite) {
   const { recorded, script, steps } = planned;
-  const outcome = install({
+  return {
     directoryMode,
     files: [scriptFile(script, content)],
     lines: steps.flatMap((step) => step.lines),
-    log: run.log,
     plugin: recordName(recorded.shell),
     record,
     release: steps.flatMap((step) => step.release),
-    signal: run.signal,
     update: true,
-  });
+  };
+}
+
+/** Rewrites the script and lines through the module, or throws the failure of a refusal. */
+function rewrite(
+  run: ChildRun,
+  rewriting: Rewrite,
+): Extract<InstallOutcome, { status: 'installed' }> {
+  const { recorded } = rewriting.planned;
+  const outcome = install({ ...updateRequestOf(rewriting), log: run.log, signal: run.signal });
   if (outcome.status === 'refused') {
     throw outcomeFailure(run, { refused: outcome.refused, shell: recorded.shell, verb: 'update' });
   }
   return outcome;
+}
+
+/** Whether a shell's script and lines are steady, so its update writes nothing. */
+function isSteady(run: ChildRun, { recorded, script, steps }: Planned): boolean {
+  const content = scriptContent(recorded.shell, run.name);
+  return scriptState(recorded, script, content) === 'steady' && steps.every((step) => step.steady);
+}
+
+/**
+ * What the update does to each recorded shell, after the module's reads and checks of every shell
+ * it rewrites, before it rewrites any.
+ */
+function checkedPlans(
+  run: ChildRun,
+  record: string,
+  found: readonly { readonly recorded: ShellRecord; readonly script: string }[],
+): readonly Planned[] {
+  const planned = found.map(({ recorded, script }) => planShell(run, recorded, script));
+  for (const entry of planned.filter((shell) => !isSteady(run, shell))) {
+    const content = scriptContent(entry.recorded.shell, run.name);
+    checkInstall(updateRequestOf({ content, planned: entry, record }));
+  }
+  return planned;
 }
 
 /** Rewrites one shell's script and lines, or states them unchanged, then states each change. */
@@ -103,7 +133,7 @@ async function updateShell(run: ChildRun, record: string, planned: Planned): Pro
   const { recorded, script, steps } = planned;
   const content = scriptContent(recorded.shell, run.name);
   const state = scriptState(recorded, script, content);
-  if (state === 'steady' && steps.every((step) => step.steady)) {
+  if (isSteady(run, planned)) {
     await run.info(completionPhrase('scriptUnchanged', script));
     return;
   }
@@ -133,8 +163,9 @@ function recordedShells(
 
 /**
  * `update`: the platform, the record's directory, every shell's plugin's file, every recorded
- * script, and every recorded startup file, each checked for every shell before any is written,
- * then each shell rewritten and its changes stated.
+ * script, and every recorded startup file, each checked for every shell, and the module's reads
+ * and checks of every shell it rewrites, before any is written, then each shell rewritten and its
+ * changes stated.
  */
 async function updateShells(run: ChildRun): Promise<void> {
   refuseWindows(run);
@@ -149,8 +180,7 @@ async function updateShells(run: ChildRun): Promise<void> {
     'update',
     found.map(({ recorded, script }) => ({ files: recorded.files, script, shell: recorded.shell })),
   );
-  const planned = found.map(({ recorded, script }) => planShell(run, recorded, script));
-  for (const entry of planned) {
+  for (const entry of checkedPlans(run, record, found)) {
     await updateShell(run, record, entry);
   }
 }

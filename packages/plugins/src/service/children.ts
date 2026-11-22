@@ -7,7 +7,15 @@ import type { Host, Log, OnShutdown, Phrase } from '@loomcli/core';
 import { homeOf } from '../application-folders.js';
 import { holdsControlCharacter } from '../control-character.js';
 import { digestOf, errorCode, observe } from '../installation/disk.js';
-import { install, readRecorded, targetRefusals, uninstall } from '../installation/files.js';
+import {
+  checkInstall,
+  checkUninstall,
+  hasPendingRecord,
+  install,
+  readRecorded,
+  targetRefusals,
+  uninstall,
+} from '../installation/files.js';
 import type { Refusal } from '../installation/files.js';
 import type { CommittedFile } from '../installation/record.js';
 import { singleLineOf } from '../lines.js';
@@ -228,6 +236,13 @@ async function reportRemovals(run: ChildRun, removals: Removals): Promise<void> 
   }
 }
 
+/** Stops every unit the record lists. */
+async function retireAll(prepared: Prepared, files: readonly CommittedFile[]): Promise<void> {
+  for (const file of files) {
+    await prepared.backend.retire(prepared.service, file.path);
+  }
+}
+
 /** Stops each earlier unit the record lists at a path other than the unit's. */
 async function retireEarlier(prepared: Prepared, files: readonly CommittedFile[]): Promise<void> {
   const { backend, service } = prepared;
@@ -236,20 +251,28 @@ async function retireEarlier(prepared: Prepared, files: readonly CommittedFile[]
   }
 }
 
-/**
- * Writes the unit through the installed-files module after stopping each earlier unit the record
- * lists, and states what the module did.
- */
-async function writeUnit(prepared: Prepared, text: string, files: readonly CommittedFile[]) {
-  const { record, run, service } = prepared;
-  await retireEarlier(prepared, files);
-  const outcome = install({
+/** The installed-files request that writes the unit with `text`. */
+function unitRequest({ record, service }: Prepared, text: string) {
+  return {
     files: [{ content: text, mode: unitMode, path: service.unit }],
-    log: run.log,
     plugin: recordName,
     record,
-    signal: run.signal,
-  });
+  };
+}
+
+/**
+ * Writes the unit through the installed-files module after stopping each earlier unit the record
+ * lists, and states what the module did. The caller makes the module's reads and checks first, so
+ * a unit or record it cannot write fails the run before any earlier unit is stopped.
+ */
+async function writeUnit(
+  prepared: Prepared,
+  request: ReturnType<typeof unitRequest>,
+  files: readonly CommittedFile[],
+) {
+  const { run, service } = prepared;
+  await retireEarlier(prepared, files);
+  const outcome = install({ ...request, log: run.log, signal: run.signal });
   if (outcome.status === 'refused') {
     refuse(run, outcome.refused);
     return;
@@ -279,7 +302,7 @@ function createOutputFolder(name: string, folder: string): void {
   }
 }
 
-/** Checks the installation and ensures the output folder is ready before any manager work. */
+/** Checks the installation and renders the unit, the output path it names, and the recorded files. */
 function prepareInstall(run: ChildRun, settings: ServiceSettings) {
   const prepared = prepare(run);
   requireDistributed(run);
@@ -287,20 +310,38 @@ function prepareInstall(run: ChildRun, settings: ServiceSettings) {
   const text = renderUnit(prepared, settings, output);
   const files = recordedFiles(prepared, 'install');
   refuse(run, targetRefusals([prepared.service.unit], files));
+  return { files, output, prepared, text };
+}
+
+/**
+ * Everything `install` does before it changes the unit: the checks and refusals, whether the unit
+ * is unchanged, and, unless it is, the module's reads and checks of the unit and its record, then
+ * the output folder created. A pending plugin's file is never unchanged: the module's install
+ * recovers and commits it, and the manager reloads the unit the run that left it wrote. So a unit
+ * or record the module cannot write fails the run with no output folder created.
+ */
+function readyInstall(run: ChildRun, settings: ServiceSettings) {
+  const { files, output, prepared, text } = prepareInstall(run, settings);
+  const { record, service } = prepared;
+  const unchanged =
+    !hasPendingRecord({ plugin: recordName, record }) && isUnchanged(service.unit, text, files);
+  const request = unitRequest(prepared, text);
+  if (!unchanged) {
+    checkInstall(request);
+  }
   if (output !== undefined) {
     createOutputFolder(run.name, dirname(output));
   }
-  return { files, prepared, text };
+  return { files, prepared, request, unchanged };
 }
 
-/** `install`: the checks and refusals, then the unit written unless unchanged, loaded, and started. */
+/** `install`: what `readyInstall` does, then the unit written unless unchanged, loaded, and started. */
 async function installChild(run: ChildRun, settings: ServiceSettings): Promise<void> {
-  const { files, prepared, text } = prepareInstall(run, settings);
+  const { files, prepared, request, unchanged } = readyInstall(run, settings);
   const { service } = prepared;
-  const unchanged = isUnchanged(service.unit, text, files);
   await (unchanged
     ? run.info(servicePhrase('unitUnchanged', service.unit))
-    : writeUnit(prepared, text, files));
+    : writeUnit(prepared, request, files));
   await prepared.backend.install(service, !unchanged);
   await run.success(servicePhrase('startedService', run.label));
 }
@@ -315,12 +356,14 @@ function removalLine(run: ChildRun, path: string, removals: Removals): Phrase {
     : servicePhrase('fileGone', path);
 }
 
-/** Stops every recorded unit, removes the recorded files, and states each one. */
+/**
+ * Stops every recorded unit, removes the recorded files, and states each one. The module's reads
+ * and checks come first, so a unit it cannot remove fails the run before any unit is stopped.
+ */
 async function removeUnits(prepared: Prepared, files: readonly CommittedFile[]): Promise<void> {
   const { backend, record, run, service } = prepared;
-  for (const file of files) {
-    await backend.retire(service, file.path);
-  }
+  checkUninstall({ plugin: recordName, record });
+  await retireAll(prepared, files);
   const outcome = uninstall({ log: run.log, plugin: recordName, record, signal: run.signal });
   if (outcome.status === 'refused') {
     const [refusal] = outcome.refused;

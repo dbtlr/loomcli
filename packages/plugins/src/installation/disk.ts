@@ -4,6 +4,7 @@
  * so a run that hashes and stages no file never loads it (ADR-0135).
  */
 import {
+  accessSync,
   chmodSync,
   closeSync,
   fchmodSync,
@@ -17,7 +18,9 @@ import {
   renameSync,
   rmdirSync,
   rmSync,
+  statSync,
   writeSync,
+  constants,
 } from 'node:fs';
 import type { Stats } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
@@ -26,7 +29,7 @@ import type { Log } from '@loomcli/core';
 
 import { nodeCrypto } from '../built-ins.js';
 import { fileRemoved } from '../change-events.js';
-import { errorCode, readFailure, reading } from './reach.js';
+import { changedMeanwhile, dangling, errorCode, readFailure, reading, writing } from './reach.js';
 
 /** The permission bits of a file mode, without its file type. */
 const permissionBits = 0o7777;
@@ -49,11 +52,37 @@ function digestOf(content: string | Uint8Array): string {
 
 /**
  * What `lstat` finds at `path` without following a link, or `undefined` when nothing is there. A
- * file where one of its folders is needed fails the read, naming the path, because the path may
- * still hold what the record says once the folder is back.
+ * file where one of its folders is needed, or a link to a folder that does not exist, fails the
+ * read, naming the path, because the path may still hold what the record says once the folder is
+ * back.
  */
 function lstatIfPresent(path: string): Stats | undefined {
-  return reading(path, () => lstatSync(path, { throwIfNoEntry: false }));
+  const stats = reading(path, () => lstatSync(path, { throwIfNoEntry: false }));
+  if (stats === undefined && hasDanglingLink(dirname(path))) {
+    throw dangling(path);
+  }
+  return stats;
+}
+
+/**
+ * Whether `path`, or the nearest folder above it that exists, is a symbolic link to a folder that
+ * does not exist, as a dotfile manager can leave behind: that link is read without following it,
+ * and then followed. Every failure that says a missing path is below such a link asks this first,
+ * so a path another run took away, with no link on it, is never reported as one.
+ */
+function hasDanglingLink(path: string): boolean {
+  let folder = path;
+  let stats = reading(folder, () => lstatSync(folder, { throwIfNoEntry: false }));
+  while (stats === undefined && dirname(folder) !== folder) {
+    folder = dirname(folder);
+    const above = folder;
+    stats = reading(above, () => lstatSync(above, { throwIfNoEntry: false }));
+  }
+  const link = folder;
+  return (
+    stats?.isSymbolicLink() === true &&
+    reading(link, () => statSync(link, { throwIfNoEntry: false })) === undefined
+  );
 }
 
 /** What `path` holds, read without following a symbolic link. */
@@ -223,7 +252,8 @@ function isStagingFile(entry: string, name: string): boolean {
 
 /**
  * Removes every staging file a run left beside `path`, and nothing else in its directory, and
- * answers the paths it removed.
+ * answers the paths it removed. A removal its folder refuses fails naming `path`, the file the
+ * folder holds.
  */
 function removeStagingFiles(path: string): string[] {
   const directory = dirname(path);
@@ -231,7 +261,9 @@ function removeStagingFiles(path: string): string[] {
   for (const entry of entriesOf(directory)) {
     if (isStagingFile(entry, basename(path))) {
       const staging = join(directory, entry);
-      rmSync(staging, { force: true });
+      writing(path, () => {
+        rmSync(staging, { force: true });
+      });
       removed.push(staging);
     }
   }
@@ -322,13 +354,136 @@ function missingParents(path: string): string[] {
   return missing;
 }
 
+/**
+ * The folder whose write permission decides whether `path` can be written, created, or removed,
+ * and the path a failure names: the path's own folder when it exists, naming the path, and
+ * otherwise the nearest folder above it that exists, naming the outermost missing folder, the one
+ * a write would create first.
+ */
+function writableLocation(path: string): { readonly folder: string; readonly named: string } {
+  const [outermost] = missingParents(path);
+  return outermost === undefined
+    ? { folder: dirname(path), named: path }
+    : { folder: dirname(outermost), named: outermost };
+}
+
+/**
+ * Checks, before a run writes or removes anything, that the run's user may write the folder each
+ * path is written, created, or removed in, so a run that would fail partway fails first, naming the
+ * path and a step. A path below a file fails the read, naming the path, and a folder another run
+ * took away since the run planned fails as one another run changed.
+ */
+function checkWritable(paths: readonly string[]): void {
+  for (const path of paths) {
+    const { folder, named } = writableLocation(path);
+    mayWrite(named, folder);
+  }
+}
+
+/**
+ * Checks that the run's user may reach `folder` as `access` asks, failing naming `named`, and
+ * answers whether the folder is there: a folder that is, or is below, a link to a folder that does
+ * not exist fails as one, and one the user may not write or search fails as a write. A folder that
+ * is gone with no such link on it answers `false`, and the caller decides what that means.
+ */
+function accessible(named: string, folder: string, access: number): boolean {
+  try {
+    writing(named, () => {
+      accessSync(folder, access);
+    });
+    return true;
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') {
+      throw error;
+    }
+    if (hasDanglingLink(folder)) {
+      throw dangling(named);
+    }
+    return false;
+  }
+}
+
+/**
+ * Checks that the run's user may write `folder`, which existed when the run planned, failing naming
+ * `named`. A folder that is gone by the check, with no link to a missing folder on it, was taken by
+ * another run, so the run fails saying so before it changes anything.
+ */
+function mayWrite(named: string, folder: string): void {
+  if (!accessible(named, folder, constants.W_OK)) {
+    throw changedMeanwhile(named);
+  }
+}
+
+/**
+ * Checks that the run's user may write and search the directory `directory` and then every
+ * directory below it, read without following a symbolic link, each before it is read, so a failure
+ * names the first directory in walk order that refuses, the one the operator makes writable. A
+ * directory that is gone by the time the walk reaches it was taken by another run, which leaves
+ * nothing in it to empty, so the walk passes over it.
+ */
+function checkWalk(directory: string): void {
+  if (!accessible(directory, directory, constants.W_OK | constants.X_OK)) {
+    return;
+  }
+  for (const entry of directoriesIn(directory)) {
+    checkWalk(join(directory, entry));
+  }
+}
+
+/**
+ * The names of the directories in `directory`, each read without following a link, or none when
+ * the directory is gone. The names are listed first and each entry's type read after, so an entry
+ * another run takes away in between is passed over alone and every other entry is still answered.
+ */
+function directoriesIn(directory: string): string[] {
+  return entriesOf(directory).filter((entry) => {
+    const path = join(directory, entry);
+    return reading(path, () => lstatSync(path, { throwIfNoEntry: false }))?.isDirectory() === true;
+  });
+}
+
+/**
+ * Checks, before a run replaces or removes the folders at `folders`, that the run's user may empty
+ * each one that is a directory: write and search it and every directory below it, read without
+ * following a symbolic link. A folder it may not empty fails naming the first directory in it that
+ * refuses. Anything else at a folder's path is removed alone and needs no more, and a folder, or a
+ * directory in it, that another run took away before the check reaches it is passed over.
+ */
+function checkEmptiable(folders: readonly string[]): void {
+  for (const folder of folders) {
+    if (lstatIfPresent(folder)?.isDirectory() === true) {
+      checkWalk(folder);
+    }
+  }
+}
+
+/**
+ * The leftover staging and retired folders beside the folder at `path`,
+ * `.<name>.<random>.loom-staging` and `.<name>.<random>.loom-retired` for that folder's own name
+ * alone, which a write of the folder or a recovery removes.
+ */
+function folderLeftovers(path: string): string[] {
+  const directory = dirname(path);
+  const name = basename(path);
+  return entriesOf(directory)
+    .filter(
+      (entry) =>
+        isMarkedEntry(entry, name, stagingSuffix) || isMarkedEntry(entry, name, retiredSuffix),
+    )
+    .map((entry) => join(directory, entry));
+}
+
 export type { Observed, ReplaceOptions };
 export {
+  checkEmptiable,
+  checkWritable,
   createDirectory,
   createNew,
   digestOf,
   entriesOf,
   exists,
+  folderLeftovers,
+  hasDanglingLink,
   isMarkedEntry,
   lstatIfPresent,
   missingParents,

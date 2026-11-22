@@ -334,12 +334,11 @@ function heldLine(entry: PendingLine): StartupLine[] {
 }
 
 /**
- * Resolves a pending startup line as `heldLine` reads it, after removing the leftover staging files
- * beside its startup file's real path, each recorded as removed.
+ * Removes the leftover staging files beside a pending startup line's real path, each recorded as
+ * removed, which recovery does once `heldLine` has resolved the line.
  */
-function recoveredLine(entry: PendingLine, log: Log): StartupLine[] {
+function removeLineLeftovers(entry: PendingLine, log: Log): void {
   recordLeftovers(log, removeStagingFiles(realPathOf(entry.path)));
-  return heldLine(entry);
 }
 
 export type { InstalledLine, LineAction, LineListing, LineRefusal, StartupLinesOutcome };
@@ -351,6 +350,6 @@ export {
   outcomeOf,
   pendingOf,
   planLines,
-  recoveredLine,
+  removeLineLeftovers,
   unlistedActions,
 };
