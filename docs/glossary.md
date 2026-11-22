@@ -1266,13 +1266,10 @@ _Avoid_: End-to-end test, integration test, acceptance test
 ## Implementations
 
 **Implementation**:
-Loom written natively in one language, such as TypeScript or Rust. Every implementation lives in this repository, and the same application written against each gives an operator the same experience, as [ADR-0217](decisions/0217-parity-between-looms-languages-is-the-operators-experience.md) states.
-_Avoid_: Port, binding, SDK
+Loom written natively in one programming language, such as TypeScript or Rust. Every implementation lives in this repository. [ADR-0217](decisions/0217-parity-between-looms-implementations-is-the-operators-experience.md) states what implementations share.
 
 **Parity**:
-What implementations share: for the same arguments, environment, and files, the same application gives an operator the same look and feel and the same features. A limit of the language, such as the largest integer it holds exactly, is not part of it, and neither is the API an author writes against, which follows each language's conventions.
-_Avoid_: Byte equality, mirrored API
+What implementations share: for the same arguments, environment, and files, the same application gives an operator the same look and feel and the same features. A limit of the programming language, such as the largest integer it holds exactly, is not part of it, and neither is the API an author writes against, which follows each language's conventions.
 
 **Reference implementation**:
 The implementation whose documents are the specification and whose tests decide correct behavior for every other implementation, and through which a feature enters first. It is the TypeScript implementation until the implementations share a set of cases that states what an operator sees.
-_Avoid_: Canonical implementation, primary implementation
