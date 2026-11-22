@@ -1,4 +1,4 @@
-import { FatalError } from '@loomcli/core';
+import { escapeControlCharacters, FatalError, style } from '@loomcli/core';
 import type { ActionHandler, ActionOptions, Content, Log } from '@loomcli/core';
 
 import type { textstat } from './application.js';
@@ -8,10 +8,14 @@ import type { Row } from './row.js';
 
 /**
  * The reason a read failed, as one sentence ending in a period. A reason that already ends with one
- * keeps it, so the fix that follows never reads after two periods.
+ * keeps it, so the fix that follows never reads after two periods. A runtime reason can quote the
+ * path it failed on, so its control characters and markup are escaped as the name's are.
  */
 function explain(error: unknown): string {
-  const reason = error instanceof Error ? error.message : 'The source could not be read.';
+  const reason =
+    error instanceof Error
+      ? style.escape(escapeControlCharacters(error.message))
+      : 'The source could not be read.';
   return reason.endsWith('.') ? reason : `${reason}.`;
 }
 
@@ -35,8 +39,12 @@ async function countAll(
   let total = 0;
   for (const source of selected) {
     const counts = await countSource(source.stream(), options.metric).catch((error: unknown) => {
+      const subject =
+        source.kind === 'stdin'
+          ? 'stdin'
+          : `file: ${style.escape(escapeControlCharacters(source.name))}`;
       throw new FatalError(
-        `Cannot read ${source.kind === 'stdin' ? 'stdin' : `file: ${source.name}`}: ${explain(error)} Supply readable files, or pipe text to stdin.`,
+        `Cannot read ${subject}: ${explain(error)} Supply readable files, or pipe text to stdin.`,
       );
     });
     if (counts.bytes >= minimum) {

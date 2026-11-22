@@ -33,7 +33,7 @@ textstat is an example application that counts the bytes, words, or lines of fil
   ```
 
 - **The formatter** ([reference](../../docs/plugins/format.md)). textstat installs `format({ short: 'f' })` after `help()` and `version()` and ahead of the example plugin. `textstat -f json one.txt` and `textstat --format json one.txt` print the rows as one indented array, with the `--timing` line still on stderr. `textstat --format jsonl one.txt` prints one line per row, and `textstat one.txt` prints its table. `inspect()` reports `['table', 'json', 'jsonl']` on the root.
-- **Failure views** ([reference](../../docs/core/failure-views.md#failure-views)). [`src/views.ts`](src/views.ts) overrides the literal `FatalError` view, so a read failure prints its escaped message and nothing else.
+- **Failure views** ([reference](../../docs/core/failure-views.md#failure-views)). [`src/views.ts`](src/views.ts) overrides the `FatalError` view, which prints the context's `message` as it is and no hints, so a read failure prints its one sentence. The sentence escapes the source's name and the runtime's reason where [`src/count-files.ts`](src/count-files.ts) raises it, because a `FatalError`'s message is marked text.
 
 ### Help and plugins
 

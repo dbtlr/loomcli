@@ -1,13 +1,15 @@
-import { escapeControlCharacters, FatalError } from '@loomcli/core';
+import { escapeControlCharacters, FatalError, style } from '@loomcli/core';
 import type { Content, Log } from '@loomcli/core';
 
 /**
  * The reason a runtime gave, or the fallback, as one sentence ending in a period. A reason that
  * already ends with one keeps it, so the fix that follows never reads after two periods. A runtime
- * reason can quote the path it failed on, so its control characters are escaped as the name's are.
+ * reason can quote the path it failed on, so its control characters and markup are escaped as the
+ * name's are.
  */
 function explain(error: unknown, fallback: string): string {
-  const reason = error instanceof Error ? escapeControlCharacters(error.message) : fallback;
+  const reason =
+    error instanceof Error ? style.escape(escapeControlCharacters(error.message)) : fallback;
   return reason.endsWith('.') ? reason : `${reason}.`;
 }
 
@@ -31,7 +33,8 @@ export async function readJson({ log, options }: DocumentReading): Promise<unkno
   } else {
     log.debug('Reading {file}.', { file: file.name });
   }
-  const subject = file.kind === 'stdin' ? 'stdin' : `file: ${escapeControlCharacters(file.name)}`;
+  const subject =
+    file.kind === 'stdin' ? 'stdin' : `file: ${style.escape(escapeControlCharacters(file.name))}`;
   const contents = await file.text().catch((error: unknown) => {
     throw new FatalError(
       `Cannot read ${subject}: ${explain(error, 'The source could not be read.')} Supply a readable file, or pipe JSON to stdin.`,

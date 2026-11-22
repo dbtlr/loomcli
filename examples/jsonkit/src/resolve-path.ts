@@ -1,4 +1,4 @@
-import { escapeControlCharacters, EX_DATAERR, FatalError } from '@loomcli/core';
+import { escapeControlCharacters, EX_DATAERR, FatalError, style } from '@loomcli/core';
 
 import { isRecord } from './kinds.js';
 
@@ -19,9 +19,9 @@ function resolveSegment(current: unknown, segment: string): { value: unknown } |
 /**
  * A path the document does not hold. The document was read, so its data holds no value there,
  * which `EX_DATAERR` reports and `EX_NOINPUT` would misreport as a missing input file. The path is
- * quoted, so a trailing dot stays inside the quotes, with its control characters escaped; the
- * application's `FatalError` view escapes its markup. A machine reader branches on its failure
- * code, `path-not-found`, which the manifest lists.
+ * quoted, so a trailing dot stays inside the quotes. The message is marked text, so the path's
+ * control characters and markup are escaped here, where the operator's value enters it. A machine
+ * reader branches on its failure code, `path-not-found`, which the manifest lists.
  */
 export class PathNotFoundError extends FatalError {
   static override readonly code = 'path-not-found';
@@ -29,7 +29,7 @@ export class PathNotFoundError extends FatalError {
 
   constructor(path: string) {
     super(
-      `Path not found: "${escapeControlCharacters(path)}". Run jsonkit keys to list the keys at the root.`,
+      `Path not found: "${style.escape(escapeControlCharacters(path))}". Run jsonkit keys to list the keys at the root.`,
     );
     this.name = 'PathNotFoundError';
   }
