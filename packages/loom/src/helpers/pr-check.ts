@@ -21,6 +21,7 @@ import {
   readLibraries,
   readPlacement,
   readRegularFile,
+  workspaceAt,
 } from './repository.js';
 import type { Checkout } from './repository.js';
 
@@ -76,11 +77,13 @@ export async function checkPullRequest(
       throw new Error(versionMustStay(library.path, current.text));
     }
   }
+  const location = await workspaceAt(checkout, head);
   for (const library of previous) {
-    if (await git(checkout, ['ls-tree', head, '--', library.path])) {
+    const path = `${location}${library.path}`;
+    if (await git(checkout, ['ls-tree', head, '--', path])) {
       const manifest = parseOrThrow(
         object({ version: string() }),
-        parseManifest(await readRegularFile(checkout, library.path, head), library.path),
+        parseManifest(await readRegularFile(checkout, path, head), library.path),
       );
       if (manifest.version !== library.manifest.version) {
         throw new Error(versionMustStay(library.path, current.text));

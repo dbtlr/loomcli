@@ -42,6 +42,7 @@ import {
   readPlacement,
   readRegularFile,
   requireFullHistory,
+  workspaceAt,
 } from './repository.js';
 import type { Checkout, Libraries, Participant } from './repository.js';
 
@@ -232,7 +233,11 @@ export async function planRelease(request: PlanRequest): Promise<ReleasePlan> {
       version,
     };
   }
-  const changelog = await readRegularFile(checkout, 'CHANGELOG.md', head);
+  const changelog = await readRegularFile(
+    checkout,
+    `${await workspaceAt(checkout, head)}CHANGELOG.md`,
+    head,
+  );
   const notes = changelogSection(changelog, version);
   const [participant, ...others] = participants;
   const registry = { policy: request.policy, registry: request.registry };

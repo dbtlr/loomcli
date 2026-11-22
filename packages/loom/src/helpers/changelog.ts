@@ -16,7 +16,7 @@ import { conventionalChangelog, conventionalFragments } from './conventions.js';
 import type { FragmentKind } from './fragments.js';
 import { readFragments, requireSafeCharacters } from './fragments.js';
 import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
-import { git, gitLine, requireFullHistory } from './repository.js';
+import { git, gitLine, requireFullHistory, workspaceAt } from './repository.js';
 import type { Checkout } from './repository.js';
 
 function compareNames(left: string, right: string) {
@@ -82,8 +82,10 @@ export async function landedFragments(
   const chain = history.split('\n').filter(Boolean);
   const positions = new Map(chain.map((commit, index) => [commit, chain.length - index]));
   const landed = [];
+  const location = await workspaceAt(checkout, ref);
   for (const fragment of await readFragments(checkout, ref, folder)) {
     const path = `${folder}/${fragment.name}`;
+    // The path is the one the revision holds, so a fragment the workspace's move carried lands with the move.
     const commit = await gitLine(checkout, [
       'log',
       '--first-parent',
@@ -92,7 +94,7 @@ export async function landedFragments(
       '--format=%H',
       head,
       '--',
-      path,
+      `${location}${path}`,
     ]);
     const added = positions.get(commit);
     if (added === undefined) {

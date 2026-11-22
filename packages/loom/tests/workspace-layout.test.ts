@@ -3,15 +3,17 @@
  * from the workspace directory, the one that holds `pnpm-workspace.yaml`. Each case runs one
  * scenario twice: once with the workspace at the git root, and once with it in `typescript/` below
  * the root, while `docs/` and `.github/` stay at the root. Both runs expect the same literal cut,
- * verdict, plan, and record, so a layout that changes any of them fails a case.
+ * verdict, plan, and record, so a layout that changes any of them fails a case. The transition
+ * cases start with the workspace at the git root and move it into `typescript/`, and expect the
+ * commands there to read the history from before the move.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterEach, expect, test } from 'vite-plus/test';
 import { z } from 'zod';
 
-import { commit, git, put, removeRoots, repository } from './fixture.js';
+import { commit, git, put, removeRoots, repository, temporaryRoot } from './fixture.js';
 import { run } from './run.js';
 import { startServices, stopServices } from './services.js';
 
@@ -237,6 +239,138 @@ test.each(layouts)(
 
 const fragmentRequired =
   'Build-affecting PRs require an added or modified fragment or skip-changelog.\n';
+
+/** The entries at the top of the workspace directory, which the move takes into `typescript/`. */
+const workspaceEntries = [
+  ...new Set(Object.keys(workspaceFiles).map((path) => path.split('/')[0] ?? path)),
+];
+
+/**
+ * A repository whose history starts with the workspace at the git root, cuts, publishes, and
+ * records 0.4.8 there as the full scenario does, and then moves the workspace into `typescript/`
+ * with `git mv` in one commit. An ordinary pull request that writes `changes`, by their path from
+ * the git root, lands between the release and the move when it names any. `before` is the commit
+ * before the move and `move` the move itself.
+ */
+async function movedRepository(changes: Record<string, string> = {}) {
+  const { root: top } = layoutRepository('');
+  const { head } = await releasePullRequest(top, top);
+  const output = temporaryRoot('loom-layout-plan-');
+  const published = await startServices({
+    packages: { [library]: { provenanceCommit: head, published: true, tarball: 'fix bytes' } },
+    repository: owner,
+    version: '0.4.8',
+  });
+  await expect(plan(top, output, published)).resolves.toMatchObject({ status: 0, stderr: '' });
+  await expect(record(top, output, published)).resolves.toMatchObject({ status: 0, stderr: '' });
+  for (const [path, body] of Object.entries(changes)) {
+    put(top, path, body);
+  }
+  const before = Object.keys(changes).length > 0 ? commit(top) : head;
+  const root = join(top, 'typescript');
+  mkdirSync(root);
+  git(top, ['mv', ...workspaceEntries, 'typescript/']);
+  const move = commit(top);
+  return { before, move, root, top };
+}
+
+test('pr check from typescript/ judges the pull request that moves the workspace there', async () => {
+  const { before, root } = await movedRepository();
+  await expect(
+    prCheck(root, before, 'Move the workspace', '--label', 'skip-changelog'),
+  ).resolves.toEqual({ status: 0, stderr: '', stdout: 'PR checks passed.\n' });
+  await expect(prCheck(root, before, 'Move the workspace')).resolves.toEqual({
+    status: 1,
+    stderr: fragmentRequired,
+    stdout: '',
+  });
+});
+
+test('pr check from typescript/ passes an ordinary pull request with a fragment after the move', async () => {
+  const { move, root, top } = await movedRepository();
+  put(root, 'packages/core/index.js', 'export const value = 2;\n');
+  put(root, '.changes/value.md', '- Change the value.\n');
+  commit(top);
+  await expect(prCheck(root, move, 'Change the value')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
+});
+
+const dryRunAfterMove = async (root: string) =>
+  await run(['release', 'cut', '--dry-run', '--date', '2026-09-14'], { cwd: root });
+
+test('a release cut dry run from typescript/ reports a library the move left as it was unchanged', async () => {
+  const { root } = await movedRepository({
+    '.changes/guide.md': '- Fix the guide.\n',
+    'docs/guide.md': '# Guide\n',
+  });
+  const fixes = '## v0.4.9 - 2026-09-14\n\n### Fixes\n\n- Fix the guide.\n\n';
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: `${fixes}No material changes: @sample/core.\n\n`,
+  });
+  put(root, 'packages/core/extra.js', 'export const extra = 1;\n');
+  await expect(dryRunAfterMove(root)).resolves.toEqual({ status: 0, stderr: '', stdout: fixes });
+  rmSync(join(root, 'packages/core/extra.js'));
+});
+
+test('the first release after the workspace moved into typescript/ cuts, plans, publishes, and records from there', async () => {
+  // The library changes before the move, so the material report reads across it to the last cut.
+  const { root, top } = await movedRepository({
+    '.changes/value.md': '- Change the value.\n',
+    'packages/core/index.js': 'export const value = 2;\n',
+  });
+  const fixes = '## v0.4.9 - 2026-09-14\n\n### Fixes\n\n- Change the value.\n\n';
+  await expect(dryRunAfterMove(root)).resolves.toEqual({ status: 0, stderr: '', stdout: fixes });
+  put(
+    root,
+    'packages/loom/skills/loom/SKILL.md',
+    "---\nname: loom\ndescription: The authoring skill.\nmetadata:\n  version: '0.4.9'\n---\n\n# Author\n",
+  );
+  const base = commit(top);
+  const cut = await run(['release', 'cut', '--date', '2026-09-14'], { cwd: root });
+  expect(cut).toEqual({ status: 0, stderr: '', stdout: fixes });
+  const head = commit(top);
+  await expect(
+    prCheck(root, base, 'chore(release): Release v0.4.9 - Change the value'),
+  ).resolves.toEqual({ status: 0, stderr: '', stdout: 'PR checks passed.\n' });
+  const output = temporaryRoot('loom-layout-plan-');
+  const absent = await startServices({ packages: {}, repository: owner, version: '0.4.9' });
+  await expect(plan(root, output, absent)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: expect.stringContaining('Publish: yes. Record: yes.'),
+  });
+  expect(planned(output)).toEqual({
+    cutCommit: head,
+    head,
+    libraries: [{ directory: 'packages/core', name: library, published: false }],
+    notes: '### Fixes\n\n- Change the value.',
+    provenanceCommit: null,
+    publish: true,
+    record: true,
+    release: { present: false },
+    tag: { commit: null, present: false },
+    version: '0.4.9',
+  });
+  const published = await startServices({
+    packages: { [library]: { provenanceCommit: head, published: true, tarball: 'fix bytes' } },
+    repository: owner,
+    version: '0.4.9',
+  });
+  await expect(plan(root, output, published)).resolves.toMatchObject({ status: 0, stderr: '' });
+  expect(planned(output)).toMatchObject({ provenanceCommit: head, publish: false, record: true });
+  await expect(record(root, output, published)).resolves.toMatchObject({ status: 0, stderr: '' });
+  await expect(published.writes()).resolves.toMatchObject([
+    { body: { object: head, tag: 'v0.4.9' }, method: 'POST' },
+    { body: { ref: 'refs/tags/v0.4.9' }, method: 'POST' },
+    { body: { name: 'v0.4.9', tag_name: 'v0.4.9' }, method: 'POST' },
+    { name: 'sample-core-0.4.9.tgz', size: 9 },
+  ]);
+});
 
 // Each change names a path in the workspace, or, with `top`, a path at the git root.
 const ordinaryChanges = [

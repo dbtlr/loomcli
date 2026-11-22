@@ -36,6 +36,7 @@ import {
   readLibraries,
   readRegularFile,
   readRegularFileBytes,
+  workspaceAt,
 } from './repository.js';
 import type { Checkout, Placement } from './repository.js';
 
@@ -73,7 +74,8 @@ function skillVersion(text: string): { reason: string } | { version: string } {
 async function checkSkillVersion(checkout: Checkout, head: string, version: string) {
   let text = '';
   try {
-    text = await readRegularFile(checkout, authoringSkillPath, head);
+    const location = await workspaceAt(checkout, head);
+    text = await readRegularFile(checkout, `${location}${authoringSkillPath}`, head);
   } catch (error) {
     checkout.signal.throwIfAborted();
     const reason = error instanceof Error ? error.message : String(error);
@@ -118,10 +120,12 @@ export async function checkRelease(
   const { changed } = diff;
   const previous = await readLibraries(checkout, base);
   const libraries = await readLibraries(checkout, head);
-  const changelogBytes = await readRegularFileBytes(checkout, 'CHANGELOG.md', head);
+  const atBase = await workspaceAt(checkout, base);
+  const atHead = await workspaceAt(checkout, head);
+  const changelogBytes = await readRegularFileBytes(checkout, `${atHead}CHANGELOG.md`, head);
   const changelog = changelogBytes.toString('utf8');
   const { after, before } = releaseInsertion(
-    await readRegularFile(checkout, 'CHANGELOG.md', base),
+    await readRegularFile(checkout, `${atBase}CHANGELOG.md`, base),
     version,
   );
   if (
@@ -195,7 +199,7 @@ export async function checkRelease(
     }
   }
   if (
-    (await readRegularFile(checkout, 'pnpm-lock.yaml', head)) !==
+    (await readRegularFile(checkout, `${atHead}pnpm-lock.yaml`, head)) !==
     (await prepareLockfile(checkout, release, base))
   ) {
     throw new Error(lockfileMismatch);

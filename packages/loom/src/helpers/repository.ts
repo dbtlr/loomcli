@@ -105,6 +105,11 @@ function atRevision(ref: string, path: string) {
   return `${ref}:./${path}`;
 }
 
+/** Whether the revision holds `pnpm-workspace.yaml` at `location`, a path from the checkout's root. */
+async function holdsWorkspace(checkout: Checkout, ref: string, location: string) {
+  return (await git(checkout, ['ls-tree', ref, '--', `${location}pnpm-workspace.yaml`])) !== '';
+}
+
 /**
  * Loom's own release commands and PR guard read the workspace's `packages/`, `.changes/`,
  * `CHANGELOG.md`, and lockfile where they run, so `command` runs only in the workspace directory,
@@ -172,6 +177,22 @@ export async function gitPaths(checkout: Checkout, placement: Placement, args: s
     .split('\0')
     .filter(Boolean)
     .map((path) => fromTop(placement, path));
+}
+
+/**
+ * Where the workspace sat at a revision, as the path from the checkout's root to its directory
+ * there, to put in front of a workspace path read at that revision. It is the root itself, `''`,
+ * when the revision holds `pnpm-workspace.yaml` there, and the top of the work tree, such as
+ * `../`, when the revision holds it only at the top, as a revision from before the workspace moved
+ * below the top does. A revision that holds it in neither place reads from the root, as one with no
+ * workspace at all does. The working tree, read without a revision, is always at the root.
+ */
+export async function workspaceAt(checkout: Checkout, ref: string | undefined) {
+  if (ref === undefined || (await holdsWorkspace(checkout, ref, ''))) {
+    return '';
+  }
+  const { up } = await readPlacement(checkout);
+  return up !== '' && (await holdsWorkspace(checkout, ref, up)) ? up : '';
 }
 
 export async function readDirectory(checkout: Checkout, path: string, ref?: string) {
@@ -265,23 +286,28 @@ export interface Participant {
   source: string;
 }
 
-// The non-private manifests under packages/, empty when the ref carries no packages tree.
+/**
+ * The non-private manifests under the workspace's packages/, empty when the ref carries no packages
+ * tree. A ref is read where its own workspace sat, and each participant's paths are named from the
+ * workspace directory whichever revision it comes from.
+ */
 export async function readParticipants(checkout: Checkout, ref?: string) {
+  const location = await workspaceAt(checkout, ref);
   if (ref !== undefined) {
-    const packages = await git(checkout, ['ls-tree', '-z', ref, '--', 'packages']);
+    const packages = await git(checkout, ['ls-tree', '-z', ref, '--', `${location}packages`]);
     if (!packages.startsWith('040000 tree ')) {
       return [];
     }
   }
   const participants: Participant[] = [];
-  for (const entry of await readDirectory(checkout, 'packages', ref)) {
+  for (const entry of await readDirectory(checkout, `${location}packages`, ref)) {
     if (entry.isSymbolicLink()) {
       throw new Error(symlinkedPackage(entry.name));
     }
     if (entry.isDirectory()) {
       const directory = `packages/${entry.name}`;
       const path = `${directory}/package.json`;
-      const source = await readRegularFile(checkout, path, ref);
+      const source = await readRegularFile(checkout, `${location}${path}`, ref);
       const input = parseManifest(source, path);
       if (!parseOrThrow(visibility, input).private) {
         participants.push({

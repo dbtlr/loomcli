@@ -14,7 +14,7 @@ import {
 import { parseJsonFile, withVersion } from './manifest.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import type { Release } from './release.js';
-import { git, readRegularFileBytes, readWorkingFile } from './repository.js';
+import { git, readRegularFileBytes, readWorkingFile, workspaceAt } from './repository.js';
 import type { Checkout } from './repository.js';
 import type { RunHost } from './run-host.js';
 
@@ -108,17 +108,25 @@ export async function prepareLockfile(
   const removeCleanup = checkout.onShutdown(removeStage);
   try {
     /*
-     * Without `--full-tree`, both listings hold only the files under the working directory, named
-     * from it, so a workspace below the top of the work tree stages its own files alone. That limit
-     * is relied on: pnpm reads only the workspace, and the scratch folder is its root.
+     * Each listing holds only the files under the workspace directory, named from it, so a
+     * workspace below the top of the work tree stages its own files alone. `ls-files` without
+     * `--full-tree` lists the working directory, and a revision lists the tree where its own
+     * workspace sat. That limit is relied on: pnpm reads only the workspace, and the scratch folder
+     * is its root.
      */
+    const location = await workspaceAt(checkout, ref);
     const paths = await git(
       checkout,
-      ref === undefined ? ['ls-files', '-z'] : ['ls-tree', '-r', '--name-only', '-z', ref],
+      ref === undefined
+        ? ['ls-files', '-z']
+        : ['ls-tree', '-r', '--full-tree', '--name-only', '-z', `${ref}:./${location}`],
     );
     for (const path of paths.split('\0').filter(Boolean)) {
       mkdirSync(dirname(join(stage, path)), { recursive: true });
-      writeFileSync(join(stage, path), await readRegularFileBytes(checkout, path, ref));
+      writeFileSync(
+        join(stage, path),
+        await readRegularFileBytes(checkout, `${location}${path}`, ref),
+      );
     }
     for (const library of release.libraries) {
       writeFileSync(join(stage, library.path), withVersion(library.source, release.version));
