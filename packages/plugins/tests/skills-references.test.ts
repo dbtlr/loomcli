@@ -323,7 +323,7 @@ describe('the text a command reference shows', () => {
         '',
         '# index-tools commands',
         '',
-        '- [index-tools get](index-tools-get.md): 1. Read \\<path> & see \\&amp; or \\[x] \\*now\\*\\_ok a_b \\_c NOTES_TAG \\`t\\` (aliases: read, fetch, deprecated)',
+        '- [index-tools get](index-tools-get.md): 1. Read \\<path> & see \\&amp; or \\[x] \\*now\\*\\_ok a_b \\_c NOTES_TAG \\`t\\` (aliases: read, fetch; deprecated)',
         '',
         '## Global options',
         '',
@@ -823,7 +823,19 @@ describe('exact command reference text witnesses', () => {
       `# p8 get\n\nAlias: e\n\nNeeds a terminal: stdin and stderr, outside CI.\n\nDeprecated: Use open.\n\nEdit a note.\n\n## Usage\n\n\`\`\`text\np8 get [options]\n\`\`\`\n`,
     );
     expect(index?.content).toContain(
-      '- [p8 get](p8-get.md): Edit a note. (alias: e, needs a terminal, deprecated)\n',
+      '- [p8 get](p8-get.md): Edit a note. (alias: e; needs a terminal; deprecated)\n',
+    );
+  });
+
+  it("separates a Command's facts with a semicolon and its alias names with a comma", () => {
+    const command = new Command('get', { deprecated: 'Use open.', description: 'Edit a note.' })
+      .visibleAlias('t', 'tp')
+      .needsTerminal()
+      .action(() => {});
+    const graph = new Application('p8').command(command).inspect();
+    const [index] = commandReferences(graph, { commands: [['get']], guidance: true });
+    expect(index?.content).toContain(
+      '- [p8 get](p8-get.md): Edit a note. (aliases: t, tp; needs a terminal; deprecated)\n',
     );
   });
 

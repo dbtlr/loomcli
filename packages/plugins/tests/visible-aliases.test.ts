@@ -114,7 +114,7 @@ test('a group page lists each visible alias as the first fact of its row, before
       '  clear   Empty the cache.',
       '  list    List the cache.  (alias: ls)',
       '  remove  Remove an entry.  (aliases: rm, delete)',
-      '  old     List it.  (alias: ol, deprecated: Use list instead.)',
+      '  old     List it.  (alias: ol; deprecated: Use list instead.)',
     ].join('\n'),
   );
 });
@@ -389,4 +389,21 @@ test('a visible alias whose spelling the option already accepts is listed by nei
   expect(command.options.map(({ aliases, name }) => [name, aliases])).toEqual([
     ['color', ['colour']],
   ]);
+});
+
+/** An application whose `edit` Command has two visible aliases, needs a terminal, and is deprecated. */
+function editor() {
+  return new Application('notes', { plugins: [help()], version: '1.0.0' }).command(
+    new Command('edit', { deprecated: 'Use open instead.', description: 'Edit a note.' })
+      .visibleAlias('e', 'ed')
+      .needsTerminal()
+      .action(() => {}),
+  );
+}
+
+test("help separates a Command row's facts with a semicolon and keeps a comma between names, and the man page keeps its comma", async () => {
+  const { stdout } = await runOnMock(editor(), { argv: ['--help'] });
+  expect(stdout).toContain('  edit  Edit a note.  (aliases: e, ed; deprecated: Use open instead.)');
+  const page = manPages(editor().inspect()).find(({ file }) => file === 'notes.1');
+  expect(page?.text).toContain('Edit a note.  (aliases: e, ed, deprecated: Use open instead.)');
 });

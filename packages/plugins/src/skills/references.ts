@@ -11,6 +11,8 @@ import { optionAccepts } from '../help-accepted.js';
 import {
   aliasLabels,
   aliasSeparator,
+  commandFactSeparator,
+  factSeparator,
   isEmpty,
   optionLabel,
   plainFact,
@@ -40,6 +42,7 @@ const plainCell: CellWriter = {
   fact: (fact: Fact) => plainFact(fact),
   mark: (mark) => mark,
   prose: (prose) => prose,
+  separator: factSeparator,
 };
 
 /** Help's right cell for a row as the escaped text of a list item. */
@@ -251,7 +254,7 @@ function indexEntry(graph: CommandGraph, command: CommandNode): string {
   return [
     `- ${link}`,
     description === undefined ? '' : `: ${shownText(description, { paragraph: false })}`,
-    isEmpty(facts) ? '' : ` (${facts.join(', ')})`,
+    isEmpty(facts) ? '' : ` (${facts.join(`${commandFactSeparator} `)})`,
   ].join('');
 }
 
