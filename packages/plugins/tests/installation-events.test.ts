@@ -13,7 +13,7 @@
  * - `manpage generate` records each page it writes.
  * - The Commands print no line of their own at -vv.
  */
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -209,7 +209,8 @@ test.skipIf(process.getuid?.() === 0)(
     const box = sandbox();
     const skillNames = ['notes', 'other'];
     const first = join(box.home, '.agents', 'skills', 'notes');
-    const second = join(box.home, '.agents', 'skills', 'other');
+    const skillsFolder = join(box.home, '.agents', 'skills');
+    const second = join(skillsFolder, 'other');
     const installed = await run(box, ['skills', 'install', '--agent', 'agents'], { skillNames });
     expect(installed.status).toBe(0);
     // A folder that lets nothing be removed from it makes the second removal fail.
@@ -224,8 +225,14 @@ test.skipIf(process.getuid?.() === 0)(
       });
       expect(removed.status).not.toBe(0);
       expect(removed.changes).toEqual([['File removed.', first]]);
+      // The removal claimed the folder under a retired name before it failed inside it.
+      expect(readdirSync(skillsFolder)).toEqual([
+        expect.stringMatching(/^\.other\.[\da-f]{16}\.loom-retired$/u),
+      ]);
     } finally {
-      chmodSync(locked, 0o755);
+      for (const entry of readdirSync(skillsFolder)) {
+        chmodSync(join(skillsFolder, entry, 'locked'), 0o755);
+      }
     }
   },
 );
