@@ -1262,3 +1262,17 @@ _Avoid_: Fake context, stub context, mock context (a mock is a process handle)
 **Process test**:
 A test that starts the application as a child process, kept for behavior only a process has, such as a real signal and its exit status, a pseudo-terminal, a real shell, or stdio framing. Every other test runs the application in the test's own process through `run()` or `invoke` on a process handle, usually a mock, or calls one author function with a built context.
 _Avoid_: End-to-end test, integration test, acceptance test
+
+## Implementations
+
+**Implementation**:
+Loom written natively in one language, such as TypeScript or Rust. Every implementation lives in this repository, and the same application written against each gives an operator the same experience, as [ADR-0217](decisions/0217-parity-between-looms-languages-is-the-operators-experience.md) states.
+_Avoid_: Port, binding, SDK
+
+**Parity**:
+What implementations share: for the same arguments, environment, and files, the same application gives an operator the same look and feel and the same features. A limit of the language, such as the largest integer it holds exactly, is not part of it, and neither is the API an author writes against, which follows each language's conventions.
+_Avoid_: Byte equality, mirrored API
+
+**Reference implementation**:
+The implementation whose documents are the specification and whose tests decide correct behavior for every other implementation, and through which a feature enters first. It is the TypeScript implementation until the implementations share a set of cases that states what an operator sees.
+_Avoid_: Canonical implementation, primary implementation
