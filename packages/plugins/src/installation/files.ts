@@ -14,9 +14,12 @@ import type { Log } from '@loomcli/core';
 
 import { fileRemoved, fileWritten } from '../change-events.js';
 import {
+  checkEmptiable,
+  checkWritable,
   createDirectory,
   digestOf,
   exists,
+  folderLeftovers,
   lstatIfPresent,
   missingParents,
   observe,
@@ -43,7 +46,7 @@ import {
   outcomeOf,
   pendingOf,
   planLines,
-  recoveredLine,
+  removeLineLeftovers,
   unlistedActions,
 } from './lines.js';
 import type { InstalledLine, LineAction, LineListing, StartupLinesOutcome } from './lines.js';
@@ -175,10 +178,15 @@ function writeRecordFile(path: string, file: Committed | Pending, log: Log): voi
   fileWritten(log, { path });
 }
 
-/** Deletes a file when it is there and records the removal; one already gone records nothing. */
+/**
+ * Deletes a file when it is there and records the removal; one already gone records nothing. A
+ * removal its folder refuses fails naming the path.
+ */
 function removeIfPresent(path: string, log: Log): void {
   if (exists(path)) {
-    rmSync(path, { force: true });
+    writing(path, () => {
+      rmSync(path, { force: true });
+    });
     fileRemoved(log, { path });
   }
 }
@@ -201,32 +209,39 @@ interface InstallRequest extends UninstallRequest {
 }
 
 /**
- * Resolves a pending plugin's file by what is on disk: a path holding the intended or the prior
- * digest stays recorded with it, and one that is gone or holds any other digest is dropped. A
- * listed directory that exists stays. Each folder keeps its intended files when they match, or its
- * prior files when something is at its path, including a prior path-only record.
+ * What a pending plugin's file resolves to by what is on disk, read without writing: a path holding
+ * the intended or the prior digest stays recorded with it, and one that is gone or holds any other
+ * digest is dropped. A listed directory that exists stays. Each folder keeps its intended files when
+ * they match, or its prior files when something is at its path, including a prior path-only record.
  * A pending startup line keeps the intended text or the prior one, whichever its file holds, or no
- * line. Leftover staging files, of targets and of startup files, and the staging and retired
- * folders beside each listed folder are removed, each recorded as removed, and the result is
- * written as committed.
+ * line.
  */
-function recover(path: string, pending: Pending, log: Log): Committed {
+function recoveredOf(pending: Pending): Committed {
+  return {
+    directories: pending.directories.filter((directory) => observe(directory).kind === 'directory'),
+    files: pending.files.flatMap(recoveredFile),
+    folders: pending.folders.flatMap(recoveredFolder),
+    lines: pending.lines.flatMap(heldLine),
+    registrations: pending.registrations.flatMap(recoveredRegistration),
+    state: 'committed',
+  };
+}
+
+/**
+ * Removes what a run a pending plugin's file records left behind: leftover staging files, of
+ * targets and of startup files, and the staging and retired folders beside each listed folder, each
+ * recorded as removed.
+ */
+function removeRecoveryLeftovers(pending: Pending, log: Log): void {
   for (const entry of pending.files) {
     recordLeftovers(log, removeStagingFiles(entry.path));
   }
   for (const folder of pending.folders) {
     recordLeftovers(log, removeFolderLeftovers(folder.path));
   }
-  const committed: Committed = {
-    directories: pending.directories.filter((directory) => observe(directory).kind === 'directory'),
-    files: pending.files.flatMap(recoveredFile),
-    folders: pending.folders.flatMap(recoveredFolder),
-    lines: pending.lines.flatMap((entry) => recoveredLine(entry, log)),
-    registrations: pending.registrations.flatMap(recoveredRegistration),
-    state: 'committed',
-  };
-  writeRecordFile(path, committed, log);
-  return committed;
+  for (const entry of pending.lines) {
+    removeLineLeftovers(entry, log);
+  }
 }
 
 /**
@@ -268,23 +283,54 @@ function readReachable(path: string): PluginFileRead {
 }
 
 /**
- * What the plugin's file records, a missing one recording nothing and a pending one recovered
- * first, or the refusal of a file the module cannot read. Leftover staging files of a plugin's file
- * it can read are removed.
+ * The plugin's file as a run found it, read without writing: its path, what it holds, a missing one
+ * holding nothing, and what it records, a pending one as recovery would resolve it.
  */
-function recorded(
-  path: string,
-  log: Log,
-): { readonly committed: Committed } | { readonly refused: Refusal<RecordRefusalReason> } {
+interface Found {
+  readonly path: string;
+  readonly read: Exclude<PluginFileRead, { readonly kind: 'refused' }>;
+  readonly committed: Committed;
+}
+
+/**
+ * Reads the plugin's file and every path it records without writing, or answers the refusal of a
+ * file the module cannot read. For a pending file, which every run that examines it recovers before
+ * it acts, it also checks that the run's user may empty each leftover staging and retired folder
+ * beside each folder the file names, so a leftover recovery could not remove fails the run naming
+ * the directory in it that refuses, before the run changes anything.
+ */
+function examine(path: string): Found | { readonly refused: Refusal<RecordRefusalReason> } {
   const read = readReachable(path);
   if (read.kind === 'refused') {
     return { refused: { path, reason: read.reason } };
   }
-  recordLeftovers(log, removeStagingFiles(path));
   if (read.kind === 'missing') {
-    return { committed: nothingRecorded };
+    return { committed: nothingRecorded, path, read };
   }
-  return { committed: read.file.state === 'pending' ? recover(path, read.file, log) : read.file };
+  if (read.file.state === 'pending') {
+    checkEmptiable(read.file.folders.flatMap((folder) => folderLeftovers(folder.path)));
+    return { committed: recoveredOf(read.file), path, read };
+  }
+  return { committed: read.file, path, read };
+}
+
+/**
+ * The changes a run makes to its plugin's file before it acts, once every read and check passed:
+ * the file's leftover staging files removed, and a pending file recovered, its stopped run's
+ * leftovers removed and the resolution `recoveredOf` read written as committed.
+ */
+function settle({ committed, path, read }: Found, log: Log): void {
+  recordLeftovers(log, removeStagingFiles(path));
+  if (read.kind === 'read' && read.file.state === 'pending') {
+    removeRecoveryLeftovers(read.file, log);
+    writeRecordFile(path, committed, log);
+  }
+}
+
+/** The plugin's file as `examine` found it when it is there and readable, and none otherwise. */
+function examineRecorded(path: string): Found | undefined {
+  const found = examine(path);
+  return 'refused' in found || found.read.kind === 'missing' ? undefined : found;
 }
 
 /** The refusal a target is, or none for an absent target or a recorded file with its digest unchanged. */
@@ -307,26 +353,66 @@ function refusalOf(path: string, seen: Observed, digests: ReadonlyMap<string, st
 }
 
 /**
- * Removes each recorded file whose digest is unchanged, recording each removal, and keeps each one
- * someone changed.
+ * What a run will do to the recorded files and folders it removes, read before it changes anything:
+ * the files and the folders it removes, those it keeps because someone changed them, and none of
+ * those already gone.
  */
-function removeRecorded(
+interface Removals {
+  readonly files: readonly string[];
+  readonly folders: readonly string[];
+  readonly kept: readonly string[];
+}
+
+/**
+ * Reads every recorded file and folder a run removes before it removes any, so a file the run
+ * cannot read fails the run with nothing removed: a file whose digest is unchanged and an unchanged
+ * folder that is there are removed, each one someone changed is kept, and one that is gone is
+ * passed over.
+ */
+function judgeRemovals(
   files: readonly CommittedFile[],
-  log: Log,
-): { removed: string[]; kept: string[] } {
-  const removed: string[] = [];
-  const kept: string[] = [];
-  for (const { digest, path } of files) {
-    const seen = observe(path);
-    if (seen.kind === 'file' && seen.digest === digest) {
+  folders: readonly RecordedFolder[],
+): Removals {
+  const seenFiles = files.map((file) => ({ ...file, seen: observe(file.path) }));
+  const changedFolders = folders.map((folder) => ({
+    changed: changedReferences(folder).length > EMPTY,
+    path: folder.path,
+  }));
+  return {
+    files: seenFiles
+      .filter(({ digest, seen }) => seen.kind === 'file' && seen.digest === digest)
+      .map(({ path }) => path),
+    folders: changedFolders
+      .filter(({ changed, path }) => !changed && exists(path))
+      .map(({ path }) => path),
+    kept: [
+      ...seenFiles
+        .filter(
+          ({ digest, seen }) =>
+            seen.kind !== 'absent' && !(seen.kind === 'file' && seen.digest === digest),
+        )
+        .map(({ path }) => path),
+      ...changedFolders.filter(({ changed }) => changed).map(({ path }) => path),
+    ],
+  };
+}
+
+/**
+ * Removes the files and folders `judgeRemovals` chose, files first, recording each removal as it is
+ * made. A removal its folder refuses fails naming the path.
+ */
+function applyRemovals(removals: Removals, log: Log): { removed: string[]; kept: string[] } {
+  for (const path of removals.files) {
+    writing(path, () => {
       rmSync(path);
-      fileRemoved(log, { path });
-      removed.push(path);
-    } else if (seen.kind !== 'absent') {
-      kept.push(path);
-    }
+    });
+    fileRemoved(log, { path });
   }
-  return { kept, removed };
+  for (const path of removals.folders) {
+    writing(path, () => removeWhole(path));
+    fileRemoved(log, { path });
+  }
+  return { kept: [...removals.kept], removed: [...removals.files, ...removals.folders] };
 }
 
 /** Each unrecorded listed folder, and each changed generated file in a listed recorded folder. */
@@ -467,31 +553,55 @@ interface Listed {
 }
 
 /**
- * Installs the plugin's files and folders. It recovers a pending plugin's file first, then checks
- * every target: a file target that is absent, or a regular file the plugin recorded with its digest
- * unchanged, may be written. An absent folder or a recorded folder with no changed references may
- * be replaced. An unrecorded or modified folder refuses the whole install unless force takes it
- * over. It reads the run signal before the pending write and, once it has begun, does not stop
- * between targets. Each file goes through a staging file and a rename, unless it is already there with the digest it
- * would be written with, each folder through a staging folder and renames, and each recorded file
- * the install no longer lists is removed when no one changed it, and each recorded folder it no
- * longer lists is removed whole unless its references changed, in which case it is kept. Each listed
- * startup line is added, recorded as held, or replaced where it stands. Each recorded line it no
- * longer lists is removed, and each released line is dropped, as Installed files states.
+ * Installs the plugin's files and folders. It reads the plugin's file and every target first: a
+ * file target that is absent, or a regular file the plugin recorded with its digest unchanged, may
+ * be written. An absent folder or a recorded folder with no changed references may be replaced. An
+ * unrecorded or modified folder refuses the whole install unless force takes it over. It reads
+ * every recorded file and folder it would remove, and checks that it may write the plugin's file
+ * and every target, remove every file it would remove, and empty every folder it would replace or
+ * remove and every leftover folder a write or recovery removes, so a path it cannot reach or write
+ * fails the run before it changes anything. Then it removes the plugin's file's leftover staging files and recovers a
+ * pending plugin's file. It reads the run signal before the pending write and, once it has begun,
+ * does not stop between targets. Each file goes through a staging file and a rename, unless it is
+ * already there with the digest it would be written with, each folder through a staging folder and
+ * renames, and each recorded file the install no longer lists is removed when no one changed it,
+ * and each recorded folder it no longer lists is removed whole unless its references changed, in
+ * which case it is kept. Each listed startup line is added, recorded as held, or replaced where it
+ * stands. Each recorded line it no longer lists is removed, and each released line is dropped, as
+ * Installed files states.
  */
 function install(request: InstallRequest): InstallOutcome {
   const listed = listedOf(request);
   const path = pluginFilePath(request.record, request.plugin);
-  const prepared = prepareInstall(path, listed, request.log);
+  const prepared = prepareInstall(path, listed);
   if ('refused' in prepared) {
+    if (prepared.found !== undefined) {
+      settle(prepared.found, request.log);
+    }
     return { refused: prepared.refused, status: 'refused' };
   }
+  settle(prepared.found, request.log);
   request.signal.throwIfAborted();
-  return carryOut(path, prepared.plan, { listed, log: request.log });
+  return carryOut(path, prepared.plan, {
+    listed,
+    log: request.log,
+    removals: prepared.removals,
+  });
+}
+
+/**
+ * Makes every read and check an install makes before it changes anything, and changes nothing: a
+ * plugin that installs into several targets checks each before it installs any, so a path one
+ * target cannot reach or write fails the run with no target changed. A refusal is left to the
+ * install, which reports it.
+ */
+function checkInstall(request: Omit<InstallRequest, 'log' | 'signal'>): void {
+  const listed = listedOf(request);
+  prepareInstall(pluginFilePath(request.record, request.plugin), listed);
 }
 
 /** What an install request lists, each list it leaves out empty, with its releases and update mark. */
-function listedOf(request: InstallRequest): Listed {
+function listedOf(request: Omit<InstallRequest, 'log' | 'signal'>): Listed {
   return {
     directoryMode: request.directoryMode,
     files: request.files,
@@ -550,25 +660,56 @@ function readTargets(listed: Listed, committed: Committed) {
 }
 
 /**
- * Everything an install reads before it writes: the plugin's file, recovered when pending, every
- * target, and every startup file it would change. It answers each path that refuses the install,
- * or the plan it carries out.
+ * Checks that an install may write the plugin's file at `path`, every target it writes, and every
+ * file and folder it removes, and may empty every folder it replaces or removes and every leftover
+ * staging and retired folder beside a folder it writes, which the write removes first.
+ */
+function checkInstallWrites(
+  path: string,
+  listed: Listed,
+  { removals, unchanged }: { readonly removals: Removals; readonly unchanged: ReadonlySet<string> },
+): void {
+  const folders = listed.folders.map((folder) => folder.path);
+  checkWritable([
+    path,
+    ...listed.files.map((file) => file.path).filter((target) => !unchanged.has(target)),
+    ...folders,
+    ...removals.files,
+    ...removals.folders,
+  ]);
+  checkEmptiable([...folders, ...removals.folders, ...folders.flatMap(folderLeftovers)]);
+}
+
+/**
+ * Everything an install reads and checks before it writes, without changing anything: the plugin's
+ * file, resolved as recovery would resolve it when pending, every target, every startup file it
+ * would change, and every recorded file and folder it would remove, and then whether it may write
+ * the plugin's file and every target, remove every file it would remove, and empty every folder it
+ * would replace or remove. It answers each path that refuses the install, with the plugin's file
+ * when it could read it, or the plan it carries out.
  */
 function prepareInstall(
   path: string,
   listed: Listed,
-  log: Log,
-): { readonly refused: readonly Refusal[] } | { readonly plan: InstallPlan } {
-  const found = recorded(path, log);
+):
+  | { readonly refused: readonly Refusal[]; readonly found?: Found }
+  | { readonly plan: InstallPlan; readonly removals: Removals; readonly found: Found } {
+  const found = examine(path);
   if ('refused' in found) {
     return { refused: [found.refused] };
   }
   const targets = readTargets(listed, found.committed);
   if (targets.refused.length !== EMPTY) {
-    return { refused: targets.refused };
+    return { found, refused: targets.refused };
   }
   const plan = planInstall(withPriors(targets.observed), listed.folders, found.committed);
-  return { plan: withLines({ ...plan, replaced: targets.replaced }, targets.lines) };
+  const removals = judgeRemovals(plan.removals, plan.folderRemovals);
+  checkInstallWrites(path, listed, { removals, unchanged: plan.unchanged });
+  return {
+    found,
+    plan: withLines({ ...plan, replaced: targets.replaced }, targets.lines),
+    removals,
+  };
 }
 
 /**
@@ -606,10 +747,14 @@ function applyLines(actions: readonly LineAction[], log: Log): void {
   }
 }
 
-/** What carrying out an install reads beside its plan: what it lists, and the run's log. */
+/**
+ * What carrying out an install reads beside its plan: what it lists, the run's log, and what it
+ * removes of the recorded files and folders it no longer lists.
+ */
 interface Carrying {
   readonly listed: Listed;
   readonly log: Log;
+  readonly removals: Removals;
 }
 
 /** The startup lines' outcome member, absent when no line was listed, recorded, or released. */
@@ -622,40 +767,16 @@ function carryOut(path: string, plan: InstallPlan, carrying: Carrying): InstallO
   const { listed, log } = carrying;
   writeRecordFile(path, plan.pending, log);
   writeTargets(plan, carrying);
-  const { kept, removed } = removeRecorded(plan.removals, log);
-  const removedFolders = removeFolders(plan.folderRemovals, log);
+  const { kept, removed } = applyRemovals(carrying.removals, log);
   writeRecordFile(path, plan.committed, log);
   return {
-    kept: [...kept, ...removedFolders.kept],
-    removed: [...removed, ...removedFolders.removed],
+    kept,
+    removed,
     status: 'installed',
     written: [...listed.files, ...listed.folders].map((target) => target.path),
     ...(plan.replaced.length === EMPTY ? {} : { replaced: plan.replaced }),
     ...linesMember(plan.lines),
   };
-}
-
-/**
- * Keeps folders with changed references, removes the others whole, and answers both. Each removal
- * is recorded as it is made, so a later removal that fails leaves the earlier ones recorded. A
- * folder already gone is no error and records nothing.
- */
-function removeFolders(
-  folders: readonly RecordedFolder[],
-  log: Log,
-): { removed: string[]; kept: string[] } {
-  const removed: string[] = [];
-  const kept: string[] = [];
-  for (const folder of folders) {
-    const { path } = folder;
-    if (changedReferences(folder).length > EMPTY) {
-      kept.push(path);
-    } else if (removeWhole(path)) {
-      fileRemoved(log, { path });
-      removed.push(path);
-    }
-  }
-  return { kept, removed };
 }
 
 /** Removes each recorded directory that is empty, deepest first, so a parent empties before its turn. */
@@ -669,26 +790,74 @@ function removeDirectories(directories: readonly string[]): void {
 }
 
 /**
- * Uninstalls the plugin's files and folders. It recovers a pending plugin's file first, removes each
- * recorded file whose digest is unchanged, keeps each one someone changed, removes each unchanged recorded
- * folder whole and keeps each changed one, removes each recorded startup line from its startup file, removes each recorded
+ * Uninstalls the plugin's files and folders. It reads the plugin's file, every recorded file and
+ * folder, and every recorded startup line's file first, and checks that it may remove every file,
+ * folder, and directory it would remove and the plugin's file and empty every folder it would
+ * remove, so a path it cannot reach, read, or remove fails the run before it removes anything.
+ * Then it removes the plugin's file's leftover
+ * staging files, recovers a pending plugin's file, removes each recorded file whose digest is
+ * unchanged, keeps each one someone changed, removes each unchanged recorded folder whole and keeps
+ * each changed one, removes each recorded startup line from its startup file, removes each recorded
  * directory that is then empty, deepest first, and deletes the plugin's file. A released line is
  * dropped without reading or writing its startup file, and a startup file that no longer holds its
  * line is reported. It reads the run signal before the first removal. A path already gone is no
  * error, and a startup file is never removed.
  */
 function uninstall(request: UninstallRequest): UninstallOutcome {
-  const release = new Set(request.release);
   const path = pluginFilePath(request.record, request.plugin);
-  const found = recorded(path, request.log);
-  if ('refused' in found) {
-    return { refused: [found.refused], status: 'refused' };
+  const prepared = prepareUninstall(path, new Set(request.release));
+  if ('refused' in prepared) {
+    return { refused: [prepared.refused], status: 'refused' };
   }
-  const lines = unlistedActions(found.committed.lines, release);
+  settle(prepared.found, request.log);
   request.signal.throwIfAborted();
-  const outcome = removeEverything(found.committed, lines, request.log);
+  const outcome = removeEverything(prepared, request.log);
   removeIfPresent(path, request.log);
   return outcome;
+}
+
+/**
+ * Makes every read and check an uninstall makes before it removes anything, and removes nothing: a
+ * plugin that uninstalls from several targets checks each before it uninstalls any, so a path one
+ * target cannot reach or remove fails the run with nothing removed. A refusal is left to the
+ * uninstall, which reports it.
+ */
+function checkUninstall(request: RecordRequest & { readonly release?: readonly string[] }): void {
+  prepareUninstall(pluginFilePath(request.record, request.plugin), new Set(request.release));
+}
+
+/** What an uninstall read before it removes anything: the plugin's file, its removals, and its lines. */
+interface UninstallPlan {
+  readonly found: Found;
+  readonly removals: Removals;
+  readonly lines: readonly LineAction[];
+}
+
+/**
+ * Everything an uninstall reads and checks before it removes anything, without changing anything:
+ * the plugin's file, every recorded file and folder, each recorded startup line's file it does not
+ * release, and whether it may remove each file, folder, and directory it removes and the plugin's
+ * file and empty each folder it removes. It answers the refusal of a plugin's file it cannot read, or what it removes.
+ */
+function prepareUninstall(
+  path: string,
+  release: ReadonlySet<string>,
+): UninstallPlan | { readonly refused: Refusal<RecordRefusalReason> } {
+  const found = examine(path);
+  if ('refused' in found) {
+    return found;
+  }
+  const { committed } = found;
+  const lines = unlistedActions(committed.lines, release);
+  const removals = judgeRemovals(committed.files, committed.folders);
+  checkWritable([
+    ...removals.files,
+    ...removals.folders,
+    ...committed.directories.filter((directory) => exists(directory)),
+    ...(found.read.kind === 'read' ? [path] : []),
+  ]);
+  checkEmptiable(removals.folders);
+  return { found, lines, removals };
 }
 
 /**
@@ -696,17 +865,15 @@ function uninstall(request: UninstallRequest): UninstallOutcome {
  * startup line as its action says, and each recorded directory that is then empty.
  */
 function removeEverything(
-  committed: Committed,
-  lines: readonly LineAction[],
+  { found, lines, removals }: UninstallPlan,
   log: Log,
 ): UninstallOutcome & { readonly status: 'uninstalled' } {
-  const { kept, removed } = removeRecorded(committed.files, log);
-  const removedFolders = removeFolders(committed.folders, log);
+  const { kept, removed } = applyRemovals(removals, log);
   applyLines(lines, log);
-  removeDirectories(committed.directories);
+  removeDirectories(found.committed.directories);
   return {
-    kept: [...kept, ...removedFolders.kept],
-    removed: [...removed, ...removedFolders.removed],
+    kept,
+    removed,
     status: 'uninstalled',
     ...uninstalledLinesMember(lines),
   };
@@ -792,16 +959,16 @@ function recordedDirectories(request: RecordRequest): readonly string[] {
 function adoptDirectories(
   request: RecordChange & { readonly directories: readonly string[] },
 ): boolean {
-  const { log } = request;
   const path = pluginFilePath(request.record, request.plugin);
-  const found = readReachable(path).kind === 'read' ? recorded(path, log) : undefined;
-  if (found === undefined || 'refused' in found) {
+  const found = examineRecorded(path);
+  if (found === undefined) {
     return false;
   }
+  settle(found, request.log);
   const { committed } = found;
   const directories = [...new Set([...committed.directories, ...request.directories])];
   if (directories.length !== committed.directories.length) {
-    writeRecordFile(path, { ...committed, directories }, log);
+    writeRecordFile(path, { ...committed, directories }, request.log);
   }
   return true;
 }
@@ -929,6 +1096,8 @@ export type { StartupEncoding, StartupFileState } from './startup.js';
 export { inspectStartupFile } from './startup.js';
 export {
   adoptDirectories,
+  checkInstall,
+  checkUninstall,
   deletePluginFile,
   folderRefusals,
   hasPendingRecord,

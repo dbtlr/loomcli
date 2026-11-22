@@ -171,3 +171,28 @@ describe('the paths a record names', () => {
     expect(existsSync(box.target)).toBe(false);
   });
 });
+
+describe('a pending record', () => {
+  it('stays pending when a target the install lists is below a file', () => {
+    const { file, root } = sandbox();
+    const record = join(root, 'record');
+    mkdirSync(record);
+    const recordPath = join(record, 'skill.json');
+    const written = join(root, 'written.md');
+    writeFileSync(written, '# Notes\n');
+    const bytes = `${JSON.stringify({ directories: [], files: [{ intended: null, path: written, prior: null }], format: 1, state: 'pending' })}\n`;
+    writeFileSync(recordPath, bytes);
+    const target = join(file, 'notes.md');
+
+    expect(() =>
+      install({
+        files: [{ content: '# Notes\n', path: target }],
+        log,
+        plugin: 'skill',
+        record,
+        signal: new AbortController().signal,
+      }),
+    ).toThrow(blocked(target));
+    expect(readFileSync(recordPath, 'utf8')).toBe(bytes);
+  });
+});

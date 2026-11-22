@@ -13,7 +13,7 @@
  * - `manpage generate` records each page it writes.
  * - The Commands print no line of their own at -vv.
  */
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -24,11 +24,19 @@ import { manpage } from '@loomcli/plugins/manpage';
 import { skills } from '@loomcli/plugins/skills';
 import { verbose } from '@loomcli/plugins/verbose';
 import { mockProcess } from '@loomcli/testing';
-import { afterEach, expect, test } from 'vite-plus/test';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
+
+import { lockFolder } from './fixtures/locked-folder.ts';
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<{ rmSync: typeof rmSync }>();
+  return { ...actual, rmSync: vi.fn(actual.rmSync) };
+});
 
 const roots: string[] = [];
 
 afterEach(() => {
+  vi.mocked(rmSync).mockReset();
   for (const root of roots.splice(0)) {
     rmSync(root, { force: true, recursive: true });
   }
@@ -204,35 +212,60 @@ test('a skill folder records one event under its path, globally and in a project
 
 // A superuser removes any folder, so the case needs an ordinary user.
 test.skipIf(process.getuid?.() === 0)(
-  'an uninstall that fails partway records each folder it had removed',
+  'an uninstall of a folder holding a subfolder it may not empty fails before it removes any',
   async () => {
     const box = sandbox();
     const skillNames = ['notes', 'other'];
-    const first = join(box.home, '.agents', 'skills', 'notes');
     const skillsFolder = join(box.home, '.agents', 'skills');
     const second = join(skillsFolder, 'other');
     const installed = await run(box, ['skills', 'install', '--agent', 'agents'], { skillNames });
     expect(installed.status).toBe(0);
-    // A folder that lets nothing be removed from it makes the second removal fail.
     const locked = join(second, 'locked');
     mkdirSync(locked);
     writeFileSync(join(locked, 'kept'), '');
-    chmodSync(locked, 0o555);
+    const unlock = lockFolder(box.root, locked, 0o555);
     try {
       const removed = await run(box, ['skills', 'uninstall', '--agent', 'agents'], {
         fails: true,
         skillNames,
       });
-      expect(removed.status).not.toBe(0);
-      expect(removed.changes).toEqual([['File removed.', first]]);
-      // The removal claimed the folder under a retired name before it failed inside it.
-      expect(readdirSync(skillsFolder)).toEqual([
-        expect.stringMatching(/^\.other\.[\da-f]{16}\.loom-retired$/u),
-      ]);
+      expect(removed.status).toBe(1);
+      expect(removed.stderr).toBe(
+        `Cannot write ${locked} because you do not have permission to write or search there. Make the location writable and searchable, then run the command again.\n`,
+      );
+      expect(removed.changes).toEqual([]);
+      expect(readdirSync(skillsFolder).toSorted()).toEqual(['notes', 'other']);
+      expect(readdirSync(locked)).toEqual(['kept']);
     } finally {
-      for (const entry of readdirSync(skillsFolder)) {
-        chmodSync(join(skillsFolder, entry, 'locked'), 0o755);
-      }
+      unlock();
     }
   },
 );
+
+test('an uninstall whose second removal fails records each folder it had removed', async () => {
+  const box = sandbox();
+  const skillNames = ['notes', 'other'];
+  const first = join(box.home, '.agents', 'skills', 'notes');
+  const skillsFolder = join(box.home, '.agents', 'skills');
+  const installed = await run(box, ['skills', 'install', '--agent', 'agents'], { skillNames });
+  expect(installed.status).toBe(0);
+  const actual = vi.mocked(rmSync).getMockImplementation();
+  vi.mocked(rmSync).mockImplementation((path, options) => {
+    // The removal of the second folder, claimed under its retired name, fails as a refused call does.
+    if (/\/\.other\.[\da-f]{16}\.loom-retired$/u.test(String(path))) {
+      throw Object.assign(new Error('refused'), { code: 'EACCES' });
+    }
+    actual?.(path, options);
+  });
+  const removed = await run(box, ['skills', 'uninstall', '--agent', 'agents'], {
+    fails: true,
+    skillNames,
+  });
+  vi.mocked(rmSync).mockReset();
+  expect(removed.status).toBe(1);
+  expect(removed.changes).toEqual([['File removed.', first]]);
+  // The removal claimed the folder under a retired name before it failed inside it.
+  expect(readdirSync(skillsFolder)).toEqual([
+    expect.stringMatching(/^\.other\.[\da-f]{16}\.loom-retired$/u),
+  ]);
+});

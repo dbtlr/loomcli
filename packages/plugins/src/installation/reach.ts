@@ -16,6 +16,16 @@ function blocked(path: string): FatalError {
   return new FatalError(installationPhrase('pathBlocked', path));
 }
 
+/** The failure that says one of the folders of `path` is a link to a folder that does not exist. */
+function dangling(path: string): FatalError {
+  return new FatalError(installationPhrase('pathDangling', path));
+}
+
+/** The failure that says another run took away or changed the folder `path` is written in. */
+function changedMeanwhile(path: string): FatalError {
+  return new FatalError(installationPhrase('folderChangedMeanwhile', path));
+}
+
 /**
  * Runs a read at `path` and turns the system error that says a file sits where one of its folders
  * is needed, or that the run's user may not reach or read it, into a failure that names the path
@@ -65,4 +75,4 @@ function writing<Result>(path: string, write: () => Result): Result {
   }
 }
 
-export { errorCode, readFailure, reading, writing };
+export { changedMeanwhile, dangling, errorCode, readFailure, reading, writing };

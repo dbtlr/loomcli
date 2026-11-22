@@ -11,6 +11,8 @@ import type { CommandGraph, Host, Log, Phrase } from '@loomcli/core';
 import { recordDirectory } from '../application-folders.js';
 import { realPath } from '../installation/disk.js';
 import {
+  checkInstall,
+  checkUninstall,
   folderRefusals,
   hasPendingRecord,
   install,
@@ -252,9 +254,20 @@ async function reportInstall(
   }
 }
 
+/** What the module's install of one target is asked to write, which its check reads too. */
+function installRequestOf(writing: Writing, entry: Wanted) {
+  return {
+    files: [],
+    folders: entry.wanted,
+    force: writing.force,
+    plugin: recordName(entry.place.target),
+    record: writing.record,
+  };
+}
+
 /** Writes the skills of one target through the module, or states that they are unchanged. */
 async function writeTarget(writing: Writing, entry: Wanted): Promise<void> {
-  const { record, run } = writing;
+  const { run } = writing;
   if (isUnchanged(entry)) {
     for (const { path } of entry.wanted) {
       await run.info(skillsPhrase('folderUnchanged', path));
@@ -265,12 +278,8 @@ async function writeTarget(writing: Writing, entry: Wanted): Promise<void> {
     entry.recorded.filter((held) => changedReferences(held).length > none).map(({ path }) => path),
   );
   const outcome = install({
-    files: [],
-    folders: entry.wanted,
-    force: writing.force,
+    ...installRequestOf(writing, entry),
     log: run.log,
-    plugin: recordName(entry.place.target),
-    record,
     signal: run.signal,
   });
   if (outcome.status === 'refused') {
@@ -321,10 +330,18 @@ async function refuseUnrecorded(
   }
 }
 
+/** The module's reads and checks of every target an install writes, before it writes any. */
+function checkTargets(writing: Writing, chosen: readonly Wanted[]): void {
+  for (const entry of chosen.filter((target) => !isUnchanged(target))) {
+    checkInstall(installRequestOf(writing, entry));
+  }
+}
+
 /**
- * `install` and `update` at global scope: the checks, the loaders, the record, and every refusal
- * before any write, then each target written or stated unchanged. `update` acts only on the targets
- * whose plugin's file lists a folder.
+ * `install` and `update` at global scope: the checks, the loaders, the record, every refusal, and
+ * the module's reads and checks of every target it writes, before any write, so a target it cannot
+ * reach or write fails the run with no target changed, then each target written or stated
+ * unchanged. `update` acts only on the targets whose plugin's file lists a folder.
  */
 async function installGlobal(run: ChildRun, request: InstallRequest): Promise<void> {
   const { places, ...where } = prepare(run, request.agent);
@@ -335,6 +352,7 @@ async function installGlobal(run: ChildRun, request: InstallRequest): Promise<vo
   }
   await refuseUnrecorded(run, request, chosen);
   const writing = { ...where, force: request.force, verb: request.verb };
+  checkTargets(writing, chosen);
   for (const entry of chosen) {
     await writeTarget(writing, entry);
   }
@@ -366,7 +384,11 @@ async function removeTarget(where: Where, entry: Recorded): Promise<void> {
   }
 }
 
-/** `uninstall`: the module removes each target's recorded folders, and the child states each. */
+/**
+ * `uninstall`: the module reads and checks every target first, so a folder one target cannot
+ * remove fails the run with nothing removed, then removes each target's recorded folders, and the
+ * child states each.
+ */
 async function uninstallGlobal(run: ChildRun, agent: Target | undefined): Promise<void> {
   const { places, ...where } = prepare(run, agent);
   const acting = await actingPlaces(run, places);
@@ -376,6 +398,9 @@ async function uninstallGlobal(run: ChildRun, agent: Target | undefined): Promis
   if (recording.length === none) {
     await run.success(skillsPhrase('noSkillsToRemove', run.name));
     return;
+  }
+  for (const entry of recording) {
+    checkUninstall({ plugin: recordName(entry.place.target), record: where.record });
   }
   for (const entry of recording) {
     await removeTarget(where, entry);

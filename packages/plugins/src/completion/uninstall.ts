@@ -12,6 +12,7 @@ import { recordDirectory } from '../application-folders.js';
 import { realPath } from '../installation/disk.js';
 import {
   adoptDirectories,
+  checkUninstall,
   readRecorded,
   recordedDirectories,
   uninstall,
@@ -65,14 +66,28 @@ async function reportScripts(
   }
 }
 
+/** What the module's uninstall of one shell is asked, which its check reads too. */
+function uninstallRequestOf(record: string, { recorded, released }: Planned) {
+  return {
+    plugin: recordName(recorded.shell),
+    record,
+    release: [...new Set(released.map(({ path }) => path))],
+  };
+}
+
+/** The module's reads and checks of every shell an uninstall removes, before it removes any. */
+function checkShells(record: string, planned: readonly Planned[]): void {
+  for (const entry of planned) {
+    checkUninstall(uninstallRequestOf(record, entry));
+  }
+}
+
 /** Removes one shell's recorded script and lines through the module, then states each. */
 async function removeShell(run: ChildRun, record: string, planned: Planned): Promise<void> {
   const { recorded, released } = planned;
   const outcome = uninstall({
+    ...uninstallRequestOf(record, planned),
     log: run.log,
-    plugin: recordName(recorded.shell),
-    record,
-    release: [...new Set(released.map(({ path }) => path))],
     signal: run.signal,
   });
   if (outcome.status === 'refused') {
@@ -155,7 +170,8 @@ function handOverFolders(log: Log, record: string, shell: Shell): void {
 
 /**
  * `uninstall`: the platform, then the record's directory and each selected shell's plugin's file
- * read before any is changed, then each shell whose plugin's file exists removed and stated, its
+ * read, and the module's reads and checks of each shell's removals made, before any is changed,
+ * then each shell whose plugin's file exists removed and stated, its
  * shared folders handed first to a shell that outlives it. With nothing recorded, it states there
  * was nothing to remove.
  */
@@ -164,6 +180,7 @@ async function uninstallShells(run: ChildRun, argument: Shell | undefined): Prom
   const record = recordDirectory(run.name, run.host);
   const selected = selectedShells(run, record, argument);
   const planned = selected.map((recorded) => planShell(run, recorded));
+  checkShells(record, planned);
   for (const entry of planned) {
     handOverFolders(run.log, record, entry.recorded.shell);
     await removeShell(run, record, entry);
