@@ -49,12 +49,12 @@
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "12.16.1",
+      "version": "12.21.0",
       "onFail": "error"
     }
   },
   "engines": {
-    "pnpm": ">=12.16.1"
+    "pnpm": ">=12.21.0"
   },
-  "packageManager": "pnpm@12.16.1"
+  "packageManager": "pnpm@12.21.0"
 }

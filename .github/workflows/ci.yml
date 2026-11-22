@@ -81,7 +81,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
-          version: 12.16.1
+          version: 12.21.0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -132,7 +132,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
-          version: 12.16.1
+          version: 12.21.0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -182,7 +182,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
-          version: 12.16.1
+          version: 12.21.0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -232,7 +232,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
-          version: 12.16.1
+          version: 12.21.0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -287,7 +287,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
-          version: 12.16.1
+          version: 12.21.0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
