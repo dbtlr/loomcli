@@ -96,6 +96,40 @@ export type AfterResult<State> = Exclude<State, 'result' | 'rows'>;
 /** Registering the action closes input, alias, child, and further action declarations. */
 export type AfterAction = never;
 
+// The alias is declared above CommandBuilder, and its emitted declaration keeps that order.
+// TypeScript 7.1 measures the variance of an alias in a cycle by declaration order (microsoft/TypeScript#64930).
+// Declared below its class, `Command` reads its globals as independent, so a Command attaches where its globals are missing.
+// With the alias below the class, `vp check` reports the rejected uses in tests/type-consumer as unused directives.
+/**
+ * The authoring surface of a Command in one type state. Every call returns a new declaration value,
+ * leaves its receiver unchanged, and publishes only the calls that are still valid after it. The
+ * declarations themselves stay private, so no consumer can reach them. `State` lists the authoring
+ * calls a value still offers. It defaults to the state after `action()`, which publishes the fewest
+ * calls, so `Command<A, O, G>` accepts a Command in any state, a finished one included.
+ *
+ * @public
+ * @sealed
+ */
+export type Command<
+  Args = {},
+  Options = {},
+  Globals = {},
+  State extends CommandMethod = AfterAction,
+  Result = unknown,
+  Stdin extends StdinContext = StdinContext,
+  Provided = {},
+  CommandName extends string = string,
+  Paths = unknown,
+> = Pick<
+  CommandBuilder<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>,
+  | typeof commandValue
+  | typeof declaredTypes
+  | typeof commandPaths
+  | 'extend'
+  | State
+  | ResultMethod<Result>
+>;
+
 export class CommandBuilder<
   Args,
   Options,
@@ -587,36 +621,6 @@ export class CommandBuilder<
     >(this.#name, state, { provided: this.#providedBind, stdin: this.#stdinBind });
   }
 }
-
-/**
- * The authoring surface of a Command in one type state. Every call returns a new declaration value,
- * leaves its receiver unchanged, and publishes only the calls that are still valid after it. The
- * declarations themselves stay private, so no consumer can reach them. `State` lists the authoring
- * calls a value still offers. It defaults to the state after `action()`, which publishes the fewest
- * calls, so `Command<A, O, G>` accepts a Command in any state, a finished one included.
- *
- * @public
- * @sealed
- */
-export type Command<
-  Args = {},
-  Options = {},
-  Globals = {},
-  State extends CommandMethod = AfterAction,
-  Result = unknown,
-  Stdin extends StdinContext = StdinContext,
-  Provided = {},
-  CommandName extends string = string,
-  Paths = unknown,
-> = Pick<
-  CommandBuilder<Args, Options, Globals, State, Result, Stdin, Provided, CommandName, Paths>,
-  | typeof commandValue
-  | typeof declaredTypes
-  | typeof commandPaths
-  | 'extend'
-  | State
-  | ResultMethod<Result>
->;
 
 /**
  * `views()` is published in every state on a declaration that carries a result, and on none that

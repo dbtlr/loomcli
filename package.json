@@ -42,8 +42,8 @@
     "signal-exit": "4.1.0",
     "source-map-js": "1.2.4",
     "typescript": "^7.0.2",
-    "vite-plus": "1.4.0",
-    "vitest": "5.0.5",
+    "vite-plus": "1.7.0",
+    "vitest": "5.1.0",
     "zod": "^4.6.7"
   },
   "devEngines": {
