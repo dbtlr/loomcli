@@ -248,11 +248,11 @@ const workspaceEntries = [
 /**
  * A repository whose history starts with the workspace at the git root, cuts, publishes, and
  * records 0.4.8 there as the full scenario does, and then moves the workspace into `typescript/`
- * with `git mv` in one commit. An ordinary pull request that writes `changes`, by their path from
- * the git root, lands between the release and the move when it names any. `before` is the commit
- * before the move and `move` the move itself.
+ * with `git mv` in one commit. Each of `pullRequests` is an ordinary pull request that writes its
+ * files, by their path from the git root, and lands, in order, between the release and the move.
+ * `before` is the commit before the move and `move` the move itself.
  */
-async function movedRepository(changes: Record<string, string> = {}) {
+async function movedRepository(...pullRequests: Record<string, string>[]) {
   const { root: top } = layoutRepository('');
   const { head } = await releasePullRequest(top, top);
   const output = temporaryRoot('loom-layout-plan-');
@@ -263,10 +263,13 @@ async function movedRepository(changes: Record<string, string> = {}) {
   });
   await expect(plan(top, output, published)).resolves.toMatchObject({ status: 0, stderr: '' });
   await expect(record(top, output, published)).resolves.toMatchObject({ status: 0, stderr: '' });
-  for (const [path, body] of Object.entries(changes)) {
-    put(top, path, body);
+  let before = head;
+  for (const changes of pullRequests) {
+    for (const [path, body] of Object.entries(changes)) {
+      put(top, path, body);
+    }
+    before = commit(top);
   }
-  const before = Object.keys(changes).length > 0 ? commit(top) : head;
   const root = join(top, 'typescript');
   mkdirSync(root);
   git(top, ['mv', ...workspaceEntries, 'typescript/']);
@@ -370,6 +373,31 @@ test('the first release after the workspace moved into typescript/ cuts, plans, 
     { body: { name: 'v0.4.9', tag_name: 'v0.4.9' }, method: 'POST' },
     { name: 'sample-core-0.4.9.tgz', size: 9 },
   ]);
+});
+
+test('a release cut from typescript/ lists the fragments the move carried in the order they landed before it', async () => {
+  // Zeta lands before Alpha, so landing order differs from file-name order.
+  const { root, top } = await movedRepository(
+    { '.changes/zeta.md': '- Zeta.\n' },
+    { '.changes/alpha.md': '- Alpha.\n' },
+  );
+  put(root, '.changes/mid.md', '- Mid.\n');
+  put(
+    root,
+    'packages/loom/skills/loom/SKILL.md',
+    "---\nname: loom\ndescription: The authoring skill.\nmetadata:\n  version: '0.4.9'\n---\n\n# Author\n",
+  );
+  const base = commit(top);
+  const fixes = '## v0.4.9 - 2026-09-14\n\n### Fixes\n\n- Zeta.\n\n- Alpha.\n\n- Mid.\n\n';
+  await expect(dryRunAfterMove(root)).resolves.toEqual({ status: 0, stderr: '', stdout: fixes });
+  const cut = await run(['release', 'cut', '--date', '2026-09-14'], { cwd: root });
+  expect(cut).toEqual({ status: 0, stderr: '', stdout: fixes });
+  commit(top);
+  await expect(prCheck(root, base, 'chore(release): Release v0.4.9 - Zeta')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
 });
 
 // Each change names a path in the workspace, or, with `top`, a path at the git root.

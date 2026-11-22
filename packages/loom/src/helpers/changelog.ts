@@ -16,7 +16,7 @@ import { conventionalChangelog, conventionalFragments } from './conventions.js';
 import type { FragmentKind } from './fragments.js';
 import { readFragments, requireSafeCharacters } from './fragments.js';
 import { headingText, locateRelease, requireClosedBlocks } from './markdown.js';
-import { git, gitLine, requireFullHistory, workspaceAt } from './repository.js';
+import { git, gitLine, readPlacement, requireFullHistory, workspaceAt } from './repository.js';
 import type { Checkout } from './repository.js';
 
 function compareNames(left: string, right: string) {
@@ -37,6 +37,61 @@ function blankLine(text: string) {
     return '\n';
   }
   return '\n\n';
+}
+
+/**
+ * The fragments in the folder in landing order, as `landedFragments` describes. `former` is the
+ * path from the root to the top of the work tree, where the workspace sat before it moved, or `''`
+ * to read each fragment only where the revision holds it.
+ */
+async function landedAt(
+  checkout: Checkout,
+  ref: string | undefined,
+  folder: string,
+  former: string,
+) {
+  await requireFullHistory(checkout);
+  const head = ref ?? (await gitLine(checkout, ['rev-parse', 'HEAD']));
+  const history = await git(checkout, ['rev-list', '--first-parent', head]);
+  const chain = history.split('\n').filter(Boolean);
+  const positions = new Map(chain.map((commit, index) => [commit, chain.length - index]));
+  const landed = [];
+  const location = await workspaceAt(checkout, ref);
+  for (const fragment of await readFragments(checkout, ref, folder)) {
+    const path = `${folder}/${fragment.name}`;
+    const places = new Set([`${location}${path}`, ...(former === '' ? [] : [`${former}${path}`])]);
+    const additions = [];
+    for (const place of places) {
+      const commit = await gitLine(checkout, [
+        'log',
+        '--first-parent',
+        '--diff-filter=A',
+        '-1',
+        '--format=%H',
+        head,
+        '--',
+        place,
+      ]);
+      const position = positions.get(commit);
+      if (position !== undefined) {
+        additions.push(position);
+      }
+    }
+    if (additions.length === 0) {
+      throw new Error(uncommittedFragment(path));
+    }
+    landed.push({
+      added: Math.min(...additions),
+      body: fragment.body,
+      kind: fragment.kind,
+      name: fragment.name,
+      source: fragment.source,
+    });
+  }
+  const fragments = landed.toSorted(
+    (left, right) => left.added - right.added || compareNames(left.name, right.name),
+  );
+  return { fragments, head };
 }
 
 /**
@@ -76,42 +131,18 @@ export async function landedFragments(
   ref?: string,
   folder = conventionalFragments,
 ) {
-  await requireFullHistory(checkout);
-  const head = ref ?? (await gitLine(checkout, ['rev-parse', 'HEAD']));
-  const history = await git(checkout, ['rev-list', '--first-parent', head]);
-  const chain = history.split('\n').filter(Boolean);
-  const positions = new Map(chain.map((commit, index) => [commit, chain.length - index]));
-  const landed = [];
-  const location = await workspaceAt(checkout, ref);
-  for (const fragment of await readFragments(checkout, ref, folder)) {
-    const path = `${folder}/${fragment.name}`;
-    // The path is the one the revision holds, so a fragment the workspace's move carried lands with the move.
-    const commit = await gitLine(checkout, [
-      'log',
-      '--first-parent',
-      '--diff-filter=A',
-      '-1',
-      '--format=%H',
-      head,
-      '--',
-      `${location}${path}`,
-    ]);
-    const added = positions.get(commit);
-    if (added === undefined) {
-      throw new Error(uncommittedFragment(path));
-    }
-    landed.push({
-      added,
-      body: fragment.body,
-      kind: fragment.kind,
-      name: fragment.name,
-      source: fragment.source,
-    });
-  }
-  const fragments = landed.toSorted(
-    (left, right) => left.added - right.added || compareNames(left.name, right.name),
-  );
-  return { fragments, head };
+  return await landedAt(checkout, ref, folder, '');
+}
+
+/**
+ * The workspace's own fragments in landing order, as `landedFragments` reads them. Below the top of
+ * the work tree, a fragment's adding commit is the earlier of the newest ones that added it where
+ * the workspace sits now and at the same path at the top, where the workspace sat before it moved,
+ * so a fragment the move carried keeps the position it landed at before the move.
+ */
+export async function landedWorkspaceFragments(checkout: Checkout, ref?: string) {
+  const { up } = await readPlacement(checkout);
+  return await landedAt(checkout, ref, conventionalFragments, up);
 }
 
 /** The highest kind present, which decides the bump, or undefined for an empty set. */
