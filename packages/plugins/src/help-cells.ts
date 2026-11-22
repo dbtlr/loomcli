@@ -311,6 +311,7 @@ interface CellWriter {
   readonly prose: (text: string) => string;
   readonly fact: (fact: Fact) => string;
   readonly mark: (text: string) => string;
+  readonly separator: string;
 }
 
 /** The text a right cell reads from its member: the description and the accepted-values sentence. */
@@ -320,15 +321,28 @@ interface CellText {
 }
 
 /**
+ * The mark between the facts of an option or an argument row, in help, the man page, and a command
+ * reference, and between a man page COMMANDS entry's facts.
+ */
+const factSeparator = ',';
+
+/**
+ * The mark between the facts of a Command row in help and in the generated skill index. A
+ * semicolon keeps a fact after several alias names from reading as one more name.
+ */
+const commandFactSeparator = ';';
+
+/**
  * The right cell of one row: the description when the member has one, on one line, then its
- * accepted-values sentence, then the facts that apply in one parenthesis. One space separates the description from
- * the sentence and two spaces separate the text from the parenthesis; a member with no text has the
+ * accepted-values sentence, then the facts that apply in one parenthesis, each pair of facts
+ * separated by the writer's `separator` and a space. One space separates the description from the
+ * sentence and two spaces separate the text from the parenthesis; a member with no text has the
  * parenthesis as its whole cell, and a member with none of the three has no right cell at all.
  */
 function rightCellWith(text: CellText, facts: readonly Fact[], writer: CellWriter): string {
   const parenthesis = isEmpty(facts)
     ? ''
-    : `${writer.mark('(')}${facts.map((fact) => writer.fact(fact)).join(`${writer.mark(',')} `)}${writer.mark(')')}`;
+    : `${writer.mark('(')}${facts.map((fact) => writer.fact(fact)).join(`${writer.mark(writer.separator)} `)}${writer.mark(')')}`;
   const written = [singleLineOf(text.description), text.accepts]
     .filter((part) => part !== undefined)
     .map((part) => writer.prose(part));
@@ -341,12 +355,23 @@ function rightCellWith(text: CellText, facts: readonly Fact[], writer: CellWrite
 
 /** The right cell of one row as help styles it, its facts said in the run's language. */
 function rightCell(text: CellText, facts: readonly Fact[], context: ViewContext): string {
+  return rightCellWith(text, facts, helpWriter(context, factSeparator));
+}
+
+/** The right cell of one Command row as help styles it, its facts separated by a semicolon. */
+function commandRightCell(text: CellText, facts: readonly Fact[], context: ViewContext): string {
+  return rightCellWith(text, facts, helpWriter(context, commandFactSeparator));
+}
+
+/** How help styles a right cell, its facts separated by `separator`. */
+function helpWriter(context: ViewContext, separator: string): CellWriter {
   const { style } = context;
-  return rightCellWith(text, facts, {
+  return {
     fact: (fact) => styledFact(fact, context),
     mark: (mark) => style.dim(mark),
     prose: (prose) => style.primary(style.escape(prose)),
-  });
+    separator,
+  };
 }
 
 /**
@@ -731,8 +756,11 @@ export {
   argumentFacts,
   argumentForm,
   column,
+  commandFactSeparator,
   commandFacts,
+  commandRightCell,
   delimiterLiteral,
+  factSeparator,
   splitNoun,
   isEmpty,
   oneLine,

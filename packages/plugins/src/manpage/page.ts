@@ -11,6 +11,7 @@ import { argumentAccepts, optionAccepts } from '../help-accepted.js';
 import {
   aliasLabels,
   aliasSeparator,
+  factSeparator,
   argumentFacts,
   commandFacts,
   delimiterLiteral,
@@ -58,6 +59,7 @@ const plainCell: CellWriter = {
   fact: (fact: Fact) => fact.text,
   mark: (mark) => mark,
   prose: (prose) => prose,
+  separator: factSeparator,
 };
 
 /** Help's right cell for a row, as the text of a page entry. */
