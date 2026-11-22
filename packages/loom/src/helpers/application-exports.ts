@@ -18,7 +18,14 @@ import {
   manyApplicationExports,
   noApplicationExport,
 } from '../commands/init/messages.js';
-import { loaderFailure, loadFailure, renderFailure, threw } from './application-load-failure.js';
+import {
+  loaderFailure,
+  loadFailure,
+  readerFailure,
+  renderFailure,
+  skillLoaderFailure,
+  threw,
+} from './application-load-failure.js';
 import { runReader } from './application-reader.js';
 import type { ReaderRequest } from './application-reader.js';
 import { parseOrThrow } from './parse-or-throw.js';
@@ -72,6 +79,8 @@ const projectionFailure = union([
   threw,
   strictObject({ failure: string(), loaded: boolean() }),
   strictObject({ loaderThrew: string() }),
+  strictObject({ loaderThrew: string(), skill: string() }),
+  strictObject({ readerThrew: string() }),
   strictObject({ rendererThrew: string() }),
 ]);
 
@@ -102,7 +111,8 @@ export async function readApplicationExports(
 /**
  * Runs a reader request under Bun and validates its successful answer against schema.
  * Throws a worded export-count or core-resolution failure, a DeclarationError's own diagnostic,
- * or the diagnostic for author code that threw. Projections share this bin-side reader boundary.
+ * the diagnostic for author code that threw, naming the skill whose loader threw when the reader
+ * told it, or the diagnostic for the plugin that threw. Projections share this bin-side reader boundary.
  */
 export async function readApplicationProjection<
   Schema extends BaseSchema<unknown, unknown, BaseIssue<unknown>>,
@@ -116,8 +126,14 @@ export async function readApplicationProjection<
   if ('threw' in result) {
     throw new Error(loadFailure(request.module, result.threw));
   }
+  if ('skill' in result) {
+    throw new Error(skillLoaderFailure(request.module, result.skill, result.loaderThrew));
+  }
   if ('loaderThrew' in result) {
     throw new Error(loaderFailure(request.module, result.loaderThrew));
+  }
+  if ('readerThrew' in result) {
+    throw new Error(readerFailure(request.module, result.readerThrew));
   }
   if ('rendererThrew' in result) {
     throw new Error(renderFailure(request.module, result.rendererThrew));

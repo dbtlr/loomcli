@@ -169,16 +169,18 @@ function skillsCommand(declared: Declared) {
 
 /**
  * The reader of one `skills()` call: every declared skill with every file an install writes,
- * read and generated as an install does. It reads no host fact, so a missing folder is named as
- * the setting names it, as an unbuilt run's is.
+ * read and generated as an install does, with each loader's start and finish told to `report`
+ * when one is given. It reads no host fact, so a missing folder is named as the setting names it,
+ * as an unbuilt run's is.
  */
 function readerOf(declared: Declared): SkillsReader {
-  return async (graph, options) => {
+  return async (graph, options, report) => {
     const { loadSkills } = await import('./load.js');
     const loaded = await loadSkills(declared, {
       build: 'source',
       graph,
       moduleDirectory: options.moduleDirectory,
+      report,
     });
     return loaded.skills;
   };

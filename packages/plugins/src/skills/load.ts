@@ -2,6 +2,7 @@ import type { CommandGraph, ReleaseFacts } from '@loomcli/core';
 
 import type { FolderFile } from '../installation/folders.js';
 import { carriedBase, carriedSkills } from './carried.js';
+import type { LoaderReport } from './graphs.js';
 import { judged } from './judge.js';
 import { renderReferences } from './references.js';
 import { referencesFolder } from './selection.js';
@@ -28,12 +29,16 @@ interface LoadedSkills {
   readonly leftOut: readonly LeftOut[];
 }
 
-/** What a load reads beside the declaration: the run's build and graph, and the module's directory. */
+/**
+ * What a load reads beside the declaration: the run's build and graph, the module's directory, and
+ * where each loader's start and finish are reported, when a reader asks for them.
+ */
 interface LoadRequest {
   readonly build: ReleaseFacts['build'];
   readonly graph: CommandGraph;
   /** The application module's directory, which a relative folder setting resolves against. */
   readonly moduleDirectory?: string | undefined;
+  readonly report?: LoaderReport | undefined;
 }
 
 /** The mode of an executable file. */
@@ -98,10 +103,12 @@ function withReferences(
 
 /**
  * Reads the skills folder, then calls each listed skill's loader once, in declaration order,
- * awaiting each, then judges every result before anything is written, then generates each
- * selecting skill's command references from the graph. The folder's skills come first, in name
- * order, then the listed skills. The first fault throws a `DeclarationError`, and a loader that
- * throws or rejects fails the run as it threw.
+ * awaiting and judging each result before the next loader is called, and before anything is
+ * written, then generates each selecting skill's command references from the graph. The folder's
+ * skills come first, in name order, then the listed skills. The first fault throws a
+ * `DeclarationError`, and a loader that throws or rejects fails the run as it threw. A request's
+ * `report` hears each loader start just before it is called and finish once its files are judged,
+ * so a loader that throws, or whose answer is a fault, never finishes.
  */
 async function loadSkills(declared: Declared, request: LoadRequest): Promise<LoadedSkills> {
   const fromFolder = folderSkills({
@@ -117,12 +124,11 @@ async function loadSkills(declared: Declared, request: LoadRequest): Promise<Loa
   });
   const answers: { name: string; files: readonly SkillFile[] }[] = [];
   for (const { files, name } of declared.skills) {
-    answers.push({ files: await files(), name });
+    request.report?.({ loader: 'started', skill: name });
+    answers.push({ files: judged(name, await files()), name });
+    request.report?.({ loader: 'finished', skill: name });
   }
-  const authored = [
-    ...fromFolder,
-    ...answers.map(({ files, name }) => ({ files: judged(name, files), name })),
-  ];
+  const authored = [...fromFolder, ...answers];
   const sets = authored.map((skill) =>
     withReferences(skill, {
       commands: declared.selections.find(({ name }) => name === skill.name)?.commands ?? [],

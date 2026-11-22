@@ -167,9 +167,56 @@ export const app = new Application('notes', { description: 'Notes.', plugins: [s
   );
   const result = await loom(root, ['skills', 'export', 'committed']);
   expect(result.status).toBe(1);
-  expect(result.stderr).toContain("A skill's files loader in ");
-  expect(result.stderr).toContain(' threw: ');
-  expect(result.stderr).toContain('Fix the skill files loader and run loom skills export again.');
+  expect(result.stderr).toContain(
+    'The files loader of skill "notes" in src/application.ts threw: ',
+  );
+  expect(result.stderr).toContain(
+    'Fix the files loader of skill "notes" and run loom skills export again.',
+  );
+  expect(existsSync(join(root, 'committed'))).toBe(false);
+});
+
+test.each([
+  ['nothing', '{ }'],
+  [
+    'one file and not a list',
+    '{ return { path: "SKILL.md", content: "# Notes", executable: false }; }',
+  ],
+])('a loader that answers %s is named, and its loader is the fix', async (_label, block) => {
+  const root = fixture();
+  put(
+    root,
+    'src/application.ts',
+    `import { Application } from '@loomcli/core';
+import { skills } from '@loomcli/plugins/skills';
+export const app = new Application('notes', { description: 'Notes.', plugins: [skills({ skills: [{ name: 'notes', files: async () => ${block} }] })] });`,
+  );
+  const result = await loom(root, ['skills', 'export', 'committed']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(
+    'The files loader of skill "notes" in src/application.ts threw: ',
+  );
+  expect(result.stderr).toContain(
+    'Fix the files loader of skill "notes" and run loom skills export again.',
+  );
+  expect(result.stderr).not.toContain('skills-read-failed');
+  expect(existsSync(join(root, 'committed'))).toBe(false);
+});
+
+test('a loader whose answer breaks a declaration rule still prints that rule', async () => {
+  const root = fixture();
+  put(
+    root,
+    'src/application.ts',
+    `import { Application } from '@loomcli/core';
+import { skills } from '@loomcli/plugins/skills';
+export const app = new Application('notes', { description: 'Notes.', plugins: [skills({ skills: [{ name: 'notes', files: async () => [] }] })] });`,
+  );
+  const result = await loom(root, ['skills', 'export', 'committed']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('@loomcli/plugins/skills/files');
+  expect(result.stderr).toContain('Skill "notes" lists no SKILL.md.');
+  expect(result.stderr).not.toContain('skill-loader-failed');
   expect(existsSync(join(root, 'committed'))).toBe(false);
 });
 
@@ -308,23 +355,107 @@ test('all destination checks finish before any skill is written', async () => {
   expect(snapshot(join(root, 'committed'))).toEqual(before);
 });
 
-test("a skill's files loader that throws fails with the loader diagnostic and writes nothing", async () => {
+/**
+ * An application whose second skill's files loader throws. `entry` rewrites what the skills plugin
+ * records for the graph, given the plugin's own record as `recorded`, so a test reads the graph
+ * through a reader another copy of the plugin could have recorded.
+ */
+function throwingReview(entry = 'recorded'): string {
+  return `import { Application } from '@loomcli/core';
+import { skills } from '@loomcli/plugins/skills';
+class Graphs extends WeakMap {
+  set(graph, recorded) { return super.set(graph, ${entry}); }
+}
+Reflect.set(globalThis, Symbol.for('@loomcli/plugins/skills/graphs'), new Graphs());
+const review = () => { throw new Error('The review skill broke.'); };
+export const app = new Application('notes', { description: 'Notes.', plugins: [skills({ skills: [{ name: 'notes', files: () => [{ content: '# Notes', path: 'SKILL.md' }] }, { name: 'review', files: review }] })] });`;
+}
+
+/** The diagnostic of a loader that threw where the bin cannot tell which skill's it was. */
+const unnamedLoader = [
+  '-- SKILL FILES LOADER FAILED ----------------- @loomcli/loom/skill-loader-failed',
+  '',
+  "A skill's files loader in src/application.ts threw: Error: The review skill broke.",
+  '',
+  'loom skills export loaded the application, but the author code that supplies the',
+  'files of a skill threw, so nothing was written.',
+  '',
+  'Fix the skill files loader and run loom skills export again.',
+  '',
+].join('\n');
+
+test("a skill's files loader that throws names its skill and writes nothing", async () => {
+  const root = fixture();
+  put(root, 'src/application.ts', throwingReview());
+  const result = await loom(root, ['skills', 'export', 'committed']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe(
+    [
+      '-- SKILL FILES LOADER FAILED ----------------- @loomcli/loom/skill-loader-failed',
+      '',
+      'The files loader of skill "review" in src/application.ts threw: Error: The review skill broke.',
+      '',
+      'loom skills export loaded the application, but the author code that supplies the',
+      'files of a skill threw, so nothing was written.',
+      '',
+      'Fix the files loader of skill "review" and run loom skills export again.',
+      '',
+    ].join('\n'),
+  );
+  expect(existsSync(join(root, 'committed'))).toBe(false);
+});
+
+test('a reader that throws while no loader runs reports a fault of @loomcli/plugins', async () => {
   const root = fixture();
   put(
     root,
     'src/application.ts',
-    `import { Application } from '@loomcli/core';
-import { skills } from '@loomcli/plugins/skills';
-export const app = new Application('notes', { description: 'Notes.', plugins: [skills({ skills: [{ name: 'notes', files: () => { throw new Error('The notes skill broke.'); } }] })] });`,
+    throwingReview("{ ...recorded, read: () => Promise.reject(new Error('The reader broke.')) }"),
   );
   const result = await loom(root, ['skills', 'export', 'committed']);
   expect(result.status).toBe(1);
-  expect(result.stderr).toContain('@loomcli/loom/skill-loader-failed');
-  expect(result.stderr).toContain(
-    "A skill's files loader in src/application.ts threw: Error: The notes skill broke.\n",
+  expect(result.stderr).toBe(
+    [
+      '-- SKILLS FAILED TO READ ---------------------- @loomcli/loom/skills-read-failed',
+      '',
+      "@loomcli/plugins threw outside every skill's files loader while it read the skills of src/application.ts: Error: The reader broke.",
+      '',
+      'loom skills export loaded the application, then asked the @loomcli/plugins the',
+      'package resolves for the files of its skills. The plugin threw while no files',
+      'loader ran, so nothing was written.',
+      '',
+      'Install @loomcli/plugins and @loomcli/core at one version, then run loom skills export again.',
+      '',
+    ].join('\n'),
   );
-  expect(result.stderr).toContain('Fix the skill files loader and run loom skills export again.');
   expect(existsSync(join(root, 'committed'))).toBe(false);
+});
+
+test("an earlier plugin's reader, which reports no loader, keeps the loader diagnostic that names no skill", async () => {
+  const root = fixture();
+  put(
+    root,
+    'src/application.ts',
+    throwingReview('{ format: 1, read: (graph, options) => recorded.read(graph, options) }'),
+  );
+  const result = await loom(root, ['skills', 'export', 'committed']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe(unnamedLoader);
+  expect(existsSync(join(root, 'committed'))).toBe(false);
+});
+
+test('a throw while two loaders run names neither skill', async () => {
+  const root = fixture();
+  put(
+    root,
+    'src/application.ts',
+    throwingReview(
+      "{ ...recorded, read: (graph, options, report) => { report({ loader: 'started', skill: 'other' }); return recorded.read(graph, options, report); } }",
+    ),
+  );
+  const result = await loom(root, ['skills', 'export', 'committed']);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toBe(unnamedLoader);
 });
 
 test.skipIf(process.getuid?.() === 0)(

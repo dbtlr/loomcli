@@ -421,3 +421,7 @@ A [Developer Diagnostic](declaration-faults.md#developer-diagnostics) ends its b
 ### @loomcli/loom/skill-loader-failed
 
 **Skill files loader failed.** loom skills export loaded the application, but the author code that supplies the files of a skill threw, so nothing was written.
+
+### @loomcli/loom/skills-read-failed
+
+**Skills failed to read.** loom skills export loaded the application, then asked the @loomcli/plugins the package resolves for the files of its skills. The plugin threw while no files loader ran, so nothing was written.
