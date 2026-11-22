@@ -19,7 +19,8 @@
  *   left out with its `-vv` line. `update` after a graph change rewrites the skill.
  * - Reading outside an install. `skillFolders` returns what an install writes, keeps two
  *   applications apart, returns `undefined` with no skills plugin, and refuses an entry of an
- *   unknown format.
+ *   unknown format. The recorded reader reports each loader's start, and its finish once its files
+ *   are judged, so a loader that rejects, or whose answer is judged a fault, is never reported finished.
  */
 import {
   chmodSync,
@@ -678,6 +679,60 @@ describe('reading skills outside an install', () => {
       sentence:
         "This @loomcli/plugins cannot read the skills the application's @loomcli/plugins recorded.",
     });
+  });
+
+  it("records a reader that reports each loader's start, and its finish once its files arrive", async () => {
+    const review: Skill = {
+      files: () => Promise.reject(new FatalError('The review loader failed.')),
+      name: 'review',
+    };
+    const graph = new Application('notes', {
+      plugins: [skills({ skills: [listedNotes, review] })],
+    }).inspect();
+    const recorded: unknown = Reflect.get(globalThis, Symbol.for('@loomcli/plugins/skills/graphs'));
+    const entry: unknown = recorded instanceof WeakMap ? recorded.get(graph) : undefined;
+    expect(entry).toMatchObject({ format: 1, reportsLoaders: true });
+    const read: unknown = Reflect.get(Object(entry), 'read');
+    if (typeof read !== 'function') {
+      throw new TypeError('The skills plugin recorded no reader.');
+    }
+    const reports: unknown[] = [];
+    const reading: unknown = Reflect.apply(read, undefined, [
+      graph,
+      {},
+      (report: unknown) => reports.push(report),
+    ]);
+    await expect(reading).rejects.toThrow('The review loader failed.');
+    expect(reports).toStrictEqual([
+      { loader: 'started', skill: 'notes' },
+      { loader: 'finished', skill: 'notes' },
+      { loader: 'started', skill: 'review' },
+    ]);
+  });
+
+  it('reports a skill finished only once its answer is judged, and never one that judging rejects', async () => {
+    const empty: Skill = { files: () => Promise.resolve([]), name: 'review' };
+    const graph = new Application('notes', {
+      plugins: [skills({ skills: [listedNotes, empty] })],
+    }).inspect();
+    const recorded: unknown = Reflect.get(globalThis, Symbol.for('@loomcli/plugins/skills/graphs'));
+    const entry: unknown = recorded instanceof WeakMap ? recorded.get(graph) : undefined;
+    const read: unknown = Reflect.get(Object(entry), 'read');
+    if (typeof read !== 'function') {
+      throw new TypeError('The skills plugin recorded no reader.');
+    }
+    const reports: unknown[] = [];
+    const reading: unknown = Reflect.apply(read, undefined, [
+      graph,
+      {},
+      (report: unknown) => reports.push(report),
+    ]);
+    await expect(reading).rejects.toBeInstanceOf(DeclarationError);
+    expect(reports).toStrictEqual([
+      { loader: 'started', skill: 'notes' },
+      { loader: 'finished', skill: 'notes' },
+      { loader: 'started', skill: 'review' },
+    ]);
   });
 });
 

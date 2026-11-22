@@ -1,4 +1,4 @@
-import { DeclarationError, diagnosticRule } from '@loomcli/core';
+import { DeclarationError, diagnosticRule, escapeControlCharacters } from '@loomcli/core';
 import { strictObject, string } from 'valibot';
 import type { InferOutput } from 'valibot';
 
@@ -20,6 +20,12 @@ const loaderFailed = diagnosticRule('@loomcli/loom/skill-loader-failed', {
   explanation:
     'loom skills export loaded the application, but the author code that supplies the files of a skill threw, so nothing was written.',
   headline: 'Skill files loader failed',
+});
+
+const readerFailed = diagnosticRule('@loomcli/loom/skills-read-failed', {
+  explanation:
+    'loom skills export loaded the application, then asked the @loomcli/plugins the package resolves for the files of its skills. The plugin threw while no files loader ran, so nothing was written.',
+  headline: 'Skills failed to read',
 });
 
 const rendererFailed = diagnosticRule('@loomcli/loom/command-references-failed', {
@@ -51,11 +57,37 @@ function loadFailure(module: string, reason: string): string {
   });
 }
 
-/** The Developer Diagnostic of a skill's files loader that threw, for the reason a reader wrote. */
+/**
+ * The Developer Diagnostic of a skill's files loader that threw, for the reason a reader wrote,
+ * when the reader could not tell which skill's loader it was, as a reader an earlier
+ * `@loomcli/plugins` recorded cannot.
+ */
 function loaderFailure(module: string, reason: string): string {
   return diagnostic(loaderFailed, {
     correction: 'Fix the skill files loader and run loom skills export again.',
     sentence: `A skill's files loader in ${module} threw: ${reason}`,
+  });
+}
+
+/** The Developer Diagnostic of the named skill's files loader that threw, for the reason a reader wrote. */
+function skillLoaderFailure(module: string, skill: string, reason: string): string {
+  const named = `skill "${escapeControlCharacters(skill)}"`;
+  return diagnostic(loaderFailed, {
+    correction: `Fix the files loader of ${named} and run loom skills export again.`,
+    sentence: `The files loader of ${named} in ${escapeControlCharacters(module)} threw: ${reason}`,
+  });
+}
+
+/**
+ * The Developer Diagnostic of the skills plugin's reader that threw while no skill's files loader
+ * ran, for the reason a reader wrote. The reader is the package's own `@loomcli/plugins`, so neither
+ * the module nor a loader is at fault.
+ */
+function readerFailure(module: string, reason: string): string {
+  return diagnostic(readerFailed, {
+    correction:
+      'Install @loomcli/plugins and @loomcli/core at one version, then run loom skills export again.',
+    sentence: `@loomcli/plugins threw outside every skill's files loader while it read the skills of ${escapeControlCharacters(module)}: ${reason}`,
   });
 }
 
@@ -73,4 +105,4 @@ function renderFailure(module: string, reason: string): string {
 }
 
 export type { Threw };
-export { loaderFailure, loadFailure, renderFailure, threw };
+export { loaderFailure, loadFailure, readerFailure, renderFailure, skillLoaderFailure, threw };

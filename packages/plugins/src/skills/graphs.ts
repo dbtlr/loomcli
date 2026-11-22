@@ -8,14 +8,22 @@
  * Each entry is:
  *
  *   { format: 1,
- *     read: (graph: CommandGraph, options: { moduleDirectory?: string })
+ *     reportsLoaders: true,
+ *     read: (graph: CommandGraph, options: { moduleDirectory?: string },
+ *            report?: (event: { skill: string, loader: 'started' | 'finished' }) => void)
  *       => Promise<{ name: string, files: { path, content, executable }[] }[]> }
  *
  * `read` is the reader of the `skills()` call that built the graph: it reads the skills folder and
  * calls the loaders as that copy's install does, and generates each selecting skill's command
- * references from the graph, so the copy that would install the skills reads and generates them. A
- * change to an entry's shape raises its format, and a copy that finds a format it does not know
- * fails. The hook adds nothing to the graph.
+ * references from the graph, so the copy that would install the skills reads and generates them.
+ * When given `report`, it reports each skill's loader as `started` just before it calls it, and as
+ * `finished` once the loader's files are judged, so a loader that throws or rejects, or whose answer
+ * is a fault, is never reported finished, and a throw that comes while a skill is started and not
+ * finished came from its loader or its answer.
+ * `reportsLoaders` marks a reader that reports; a reader an earlier copy recorded lacks it and
+ * ignores `report`. Both are additions to format 1, which copies that predate them read unchanged.
+ * A change to an entry's shape that such a copy could not read raises its format, and a copy that
+ * finds a format it does not know fails. The hook adds nothing to the graph.
  */
 import type { CommandGraph } from '@loomcli/core';
 
@@ -29,10 +37,23 @@ const graphsKey = Symbol.for('@loomcli/plugins/skills/graphs');
 /** The format of an entry this copy records and reads. */
 const graphsFormat = 1;
 
-/** The reader of one `skills()` call: every declared skill with every file an install writes. */
+/** One report of a skill's loader: called, or answered with its files. */
+interface LoaderEvent {
+  readonly skill: string;
+  readonly loader: 'started' | 'finished';
+}
+
+/** What a reader calls with each report of a skill's loader. */
+type LoaderReport = (event: LoaderEvent) => void;
+
+/**
+ * The reader of one `skills()` call: every declared skill with every file an install writes, and
+ * each loader's start and finish told to `report` when one is given.
+ */
 type SkillsReader = (
   graph: CommandGraph,
   options: SkillFoldersOptions,
+  report?: LoaderReport,
 ) => Promise<readonly SkillFolder[]>;
 
 /** The map every copy shares, created by the first copy that needs it. */
@@ -48,7 +69,7 @@ function graphs(): WeakMap<WeakKey, unknown> {
 
 /** Records the reader of the `skills()` call that built a graph. */
 function recordGraph(graph: CommandGraph, read: SkillsReader): void {
-  graphs().set(graph, { format: graphsFormat, read });
+  graphs().set(graph, { format: graphsFormat, read, reportsLoaders: true });
 }
 
 /** The fault of an entry, or what its reader answered, whose shape this copy does not know. */
@@ -106,5 +127,5 @@ async function recordedSkills(
   return answer;
 }
 
-export type { SkillsReader };
+export type { LoaderReport, SkillsReader };
 export { recordedSkills, recordGraph };

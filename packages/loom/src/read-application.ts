@@ -24,25 +24,93 @@ import { loadAndInspectApplication, loadApplication } from './helpers/inspect-ap
  * It bundles no message module, so it answers facts, and the `loom` process words each one.
  */
 
+/** The global symbol the skills plugin records the reader of each graph it built under. */
+const graphsKey = Symbol.for('@loomcli/plugins/skills/graphs');
+
+/** The format of a recorded reader this `loom` calls itself, which the plugin records. */
+const graphsFormat = 1;
+
+/**
+ * What a reader that reports its loaders told of them: whether the reader reports at all, and the
+ * skills whose loaders it reported started and not finished.
+ */
+interface Loaders {
+  reporting: boolean;
+  readonly running: Set<string>;
+}
+
+/**
+ * The reader the skills plugin recorded for the graph when it reports each loader, or `undefined`
+ * when the plugin recorded none, or one of an earlier copy, which reports nothing.
+ */
+function reportingReader(graph: CommandGraph): unknown {
+  const graphs: unknown = Reflect.get(globalThis, graphsKey);
+  const entry: unknown = graphs instanceof WeakMap ? graphs.get(graph) : undefined;
+  return member(entry, 'format') === graphsFormat && member(entry, 'reportsLoaders') === true
+    ? member(entry, 'read')
+    : undefined;
+}
+
+/** Notes one report of a skill's loader: started, or finished once its files are judged. */
+function noteLoader(loaders: Loaders, event: unknown): void {
+  const skill = member(event, 'skill');
+  const loader = member(event, 'loader');
+  if (typeof skill !== 'string') {
+    return;
+  }
+  if (loader === 'started') {
+    loaders.running.add(skill);
+  } else if (loader === 'finished') {
+    loaders.running.delete(skill);
+  }
+}
+
+/**
+ * The skills the application declares, read by the plugin's recorded reader with each loader
+ * reported to `loaders`, or, for a plugin whose reader reports nothing, by the package's
+ * `skillFolders`, or `null` when the package resolves neither.
+ */
+async function recordedFolders(
+  directory: string,
+  path: string,
+  graph: CommandGraph,
+  loaders: Loaders,
+): Promise<unknown> {
+  const options = { moduleDirectory: dirname(path) };
+  const reader = reportingReader(graph);
+  if (typeof reader === 'function') {
+    loaders.reporting = true;
+    return await Reflect.apply(reader, undefined, [
+      graph,
+      options,
+      (event: unknown) => {
+        noteLoader(loaders, event);
+      },
+    ]);
+  }
+  const address = packageAddress(directory, '@loomcli/plugins/skills');
+  if (address === undefined) {
+    return null;
+  }
+  const namespace: unknown = await import(address);
+  const readFolders = member(namespace, 'skillFolders');
+  if (typeof readFolders !== 'function') {
+    return null;
+  }
+  return await Reflect.apply(readFolders, undefined, [graph, options]);
+}
+
 /** The skill folders the application's skills plugin installs, or none when it records no skills. */
 async function skillFoldersResult(
   directory: string,
   path: string,
   graph: CommandGraph,
+  loaders: Loaders,
 ): Promise<{ folders: unknown; sources: string[] }> {
-  const address = packageAddress(directory, '@loomcli/plugins/skills');
-  if (address === undefined) {
-    return { folders: null, sources: [] };
+  const folders = await recordedFolders(directory, path, graph, loaders);
+  if (folders === null) {
+    return { folders, sources: [] };
   }
-  const namespace: unknown = await import(address);
-  const readFolders = member(namespace, 'skillFolders');
-  if (typeof readFolders !== 'function') {
-    return { folders: null, sources: [] };
-  }
-  const folders: unknown = await Reflect.apply(readFolders, undefined, [
-    graph,
-    { moduleDirectory: dirname(path) },
-  ]);
   const registry: unknown = Reflect.get(globalThis, Symbol.for('@loomcli/plugins/skills/registry'));
   const sources: string[] = [];
   if (Array.isArray(registry)) {
@@ -57,6 +125,26 @@ async function skillFoldersResult(
     }
   }
   return { folders: folders ?? null, sources };
+}
+
+/**
+ * What a throw while the skills were read, other than a `DeclarationError`, reads as: the skill
+ * whose loader was the one running, a loader the reader could not tell apart, as an earlier
+ * plugin's reader, which reports none, or two running loaders, or the reader itself, when it
+ * reports and no loader was running.
+ */
+function skillsThrow(
+  reason: string,
+  loaders: Loaders,
+): { loaderThrew: string } | { loaderThrew: string; skill: string } | { readerThrew: string } {
+  if (!loaders.reporting) {
+    return { loaderThrew: reason };
+  }
+  const [skill, second] = loaders.running;
+  if (skill === undefined) {
+    return { readerThrew: reason };
+  }
+  return second === undefined ? { loaderThrew: reason, skill } : { loaderThrew: reason };
 }
 
 /** The command reference files of the whole application, or none when the package has no renderer. */
@@ -94,7 +182,7 @@ async function read(
   | ApplicationRead
   | { files: unknown }
   | { folders: unknown; sources: string[] }
-  | { loaderThrew: string }
+  | ReturnType<typeof skillsThrow>
   | { rendererThrew: string }
 > {
   if (projection === 'skills' || projection === 'docs') {
@@ -102,9 +190,10 @@ async function read(
     if (!('graph' in inspected)) {
       return inspected;
     }
+    const loaders: Loaders = { reporting: false, running: new Set() };
     try {
       return projection === 'skills'
-        ? await skillFoldersResult(directory, path, inspected.graph)
+        ? await skillFoldersResult(directory, path, inspected.graph, loaders)
         : await commandReferencesResult(directory, inspected.graph);
     } catch (error) {
       const core: unknown = await import(coreAddress(directory) ?? '');
@@ -116,7 +205,7 @@ async function read(
       if ('threw' in thrown) {
         return projection === 'docs'
           ? { rendererThrew: thrown.threw }
-          : { loaderThrew: thrown.threw };
+          : skillsThrow(thrown.threw, loaders);
       }
       return { ...thrown, loaded: true };
     }
