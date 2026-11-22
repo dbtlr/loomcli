@@ -162,7 +162,7 @@ A version whose published bytes are defective stays on the registry with its tag
 
 The workflow depends on settings that live outside this repository's files.
 
-- Every PR merges with squash, and the squash title comes from the PR title. Branch protection on `main` stays required for administrators, and it requires a branch to be up to date with `main`, so a PR whose base moves rebases and passes CI again before it merges.
+- The repository allows squash merges and rebase merges, and no merge commits. An ordinary PR merges with squash, and the squash title is the PR title followed by ` (#NNN)`. A PR that lands several tasks as one commit per task merges with rebase, so each commit lands on `main` as its own. Branch protection on `main` stays required for administrators, and it requires a branch to be up to date with `main`, so a PR whose base moves rebases and passes CI again before it merges.
 - Branch protection requires three status checks: `Node LTS / verify`, `Bun / verify`, and `PR / fragment and version guards`. Each verify check reports once its slowest job finishes, and requires its macOS job on every change, so a merge waits for both.
 - The `release` environment exists, holds no secrets, has no reviewers, and its deployment branch policy allows `main` alone. That policy is the only control that pins publication, the tag, and the Release to `main`, because a dispatch can name any ref.
 - Each library has an npm trusted publisher configured on npmjs.com or through `npm trust` in npm 11.15.0 or newer. The publisher carries exactly these values:
