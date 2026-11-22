@@ -50,6 +50,10 @@
  *   refuses and writes nothing, and the force mode replaces each, removing a link without touching
  *   its target. A process killed between moving the old folder aside and renaming the new one into
  *   place leaves a `pending` file whose next install writes the folder and removes the leftovers.
+ *   When another run's cleanup or whole write takes a folder write's staging folder mid-fill or at
+ *   the swap, the write fails naming the folder and the folder holds the old files or the other
+ *   run's files, each whole; a crashed run's staging and retired folders go at the next install and
+ *   at recovery.
  * - Uninstalling. Uninstall removes unchanged files and the created directory, keeps and reports a
  *   changed file, passes over a file already gone, and deletes the plugin's file.
  * - Startup lines. Installing a line into a missing startup file creates it with mode `644` and
@@ -102,6 +106,7 @@ import { basename, dirname, join } from 'node:path';
 import { setTimeout as after } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { FatalError, nowrap } from '@loomcli/core';
 import type { Log } from '@loomcli/core';
 import { afterAll, afterEach, beforeAll, expect, test } from 'vite-plus/test';
 
@@ -126,7 +131,8 @@ import type {
   InstallRequest,
   StartupLinesOutcome,
 } from '../src/installation/files.js';
-import { fillFolder, writeFolder } from '../src/installation/folders.js';
+import { fillFolder, removeFolderLeftovers, writeFolder } from '../src/installation/folders.js';
+import { interleaved } from './fixtures/interleaved-files.ts';
 
 /** A log that keeps nothing: these cases read the files the module leaves, not its change events. */
 const log: Log = { debug() {}, error() {}, info() {}, trace() {}, warn() {}, with: () => log };
@@ -1517,6 +1523,99 @@ test('filling a staging folder that goes away between two files throws on the se
   ];
   expect(() => fillFolder(staging, files)).toThrow(/ENOENT/u);
   expect(existsSync(staging)).toBe(false);
+});
+
+// Two runs that write one folder at once
+
+/** The sentence of the run whose staging folder another run took. */
+const changedMeanwhile = (path: string) =>
+  new FatalError(
+    `Cannot write ${nowrap(path)} because another run changed the folder at the same time. Wait for that run to finish, then run the command again.`,
+  );
+
+const oldFiles = [
+  { content: 'old', path: 'SKILL.md' },
+  { content: 'old', path: 'references/a.md' },
+];
+const firstRun = [
+  { content: 'first', path: 'SKILL.md' },
+  { content: 'first', path: 'references/a.md' },
+  { content: 'first', path: 'references/b.md' },
+];
+const secondRun = [
+  { content: 'second', path: 'SKILL.md' },
+  { content: 'second', path: 'references/a.md' },
+];
+
+/** Every file below `folder` with its content. */
+function folderContents(folder: string): Record<string, string> {
+  return Object.fromEntries(
+    listing(folder)
+      .filter((entry) => !entry.endsWith('/'))
+      .map((entry) => [entry, readFileSync(join(folder, entry), 'utf8')]),
+  );
+}
+
+test.each([
+  ['mid-fill', 'cleanup', 1, oldFiles],
+  ['mid-fill', 'write', 1, secondRun],
+  ['at the swap', 'cleanup', firstRun.length, oldFiles],
+  ['at the swap', 'write', firstRun.length, secondRun],
+])(
+  'another run that takes a staging folder %s, by its %s, fails the run that owned it and the folder holds one whole content',
+  (_when, other, at, expected) => {
+    const box = sandbox();
+    writeFolder(box.directory, oldFiles);
+    const step =
+      other === 'cleanup'
+        ? () => {
+            removeFolderLeftovers(box.directory);
+          }
+        : () => {
+            writeFolder(box.directory, secondRun);
+          };
+    expect(() => writeFolder(box.directory, interleaved(firstRun, at, step))).toThrow(
+      changedMeanwhile(box.directory),
+    );
+    expect(folderContents(box.directory)).toEqual(
+      Object.fromEntries(expected.map((file) => [file.path, file.content])),
+    );
+    expect(readdirSync(box.skills)).toEqual(['notes']);
+  },
+);
+
+/** A crashed run's staging folder, half filled, and retired folder beside the folder. */
+function crashedLeftovers(box: Box): string[] {
+  const staging = join(box.skills, '.notes.0123456789abcdef.loom-staging');
+  const retired = join(box.skills, '.notes.fedcba9876543210.loom-retired');
+  mkdirSync(join(staging, 'references'), { recursive: true });
+  writeFileSync(join(staging, 'SKILL.md'), 'half');
+  mkdirSync(retired);
+  writeFileSync(join(retired, 'SKILL.md'), 'old');
+  return [staging, retired];
+}
+
+test("the next install removes a crashed run's staging and retired folders at once", () => {
+  const box = sandbox();
+  installedFolders(box, [folderOf(box.directory, { 'SKILL.md': 'test' })]);
+  crashedLeftovers(box);
+  expect(installedFolders(box, [folderOf(box.directory, { 'SKILL.md': 'new' })]).status).toBe(
+    'installed',
+  );
+  expect(readdirSync(box.skills)).toEqual(['notes']);
+  expect(folderContents(box.directory)).toEqual({ 'SKILL.md': 'new' });
+});
+
+test("recovery removes a crashed run's staging and retired folders at once", () => {
+  const box = sandbox();
+  mkdirSync(box.record, { recursive: true });
+  crashedLeftovers(box);
+  writeFileSync(
+    box.owner,
+    `${JSON.stringify({ format: 2, state: 'pending', directories: [], files: [], folders: [{ path: box.directory, prior: null, intended: [{ path: 'SKILL.md', digest: digests.test }] }] })}\n`,
+  );
+  expect(uninstalled(box)).toEqual({ kept: [], removed: [], status: 'uninstalled' });
+  expect(readdirSync(box.skills)).toEqual([]);
 });
 
 // Startup lines

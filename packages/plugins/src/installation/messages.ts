@@ -23,4 +23,12 @@ function writeUnwritable(path: string, readOnly: boolean): string {
   return `Cannot write ${shownPath(path)} because ${readOnly ? 'the file system is read-only' : 'you do not have permission to write there'}. Make the location writable, then run the command again.`;
 }
 
-export { pathBlocked, readUnreadable, writeUnwritable };
+/**
+ * A folder write that another run's cleanup or write overtook: it took the staging folder or moved
+ * the folder aside, or it put its own folder at the path first.
+ */
+function folderChangedMeanwhile(path: string): string {
+  return `Cannot write ${shownPath(path)} because another run changed the folder at the same time. Wait for that run to finish, then run the command again.`;
+}
+
+export { folderChangedMeanwhile, pathBlocked, readUnreadable, writeUnwritable };

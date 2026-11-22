@@ -405,6 +405,22 @@ describe('skills', () => {
   });
 
   it.skipIf(isRoot)(
+    'install names the skill folder whose leftover its skills folder cannot let it claim',
+    async () => {
+      const box = sandbox();
+      const leftover = join(claudeSkills(box), '.notes.0123456789abcdef.loom-staging');
+      mkdirSync(leftover, { recursive: true });
+
+      const result = await readOnly(claudeSkills(box), () =>
+        runSkillsIn(box, ['install', '--agent', 'claude']),
+      );
+
+      expect(result).toEqual(failure(unwritable(join(claudeSkills(box), 'notes'))));
+      expect(readdirSync(claudeSkills(box))).toEqual(['.notes.0123456789abcdef.loom-staging']);
+    },
+  );
+
+  it.skipIf(isRoot)(
     'install, status, and uninstall name a skills home they cannot search',
     async () => {
       const box = sandbox();

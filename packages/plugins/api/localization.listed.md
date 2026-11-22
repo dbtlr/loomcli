@@ -287,6 +287,8 @@ declare function usageHint(command: readonly string[]): string;
 
 declare function valuesNoun(arity: number): string;
 
+declare function folderChangedMeanwhile(path: string): string;
+
 declare function pathBlocked(path: string): string;
 
 declare function readUnreadable(path: string): string;
