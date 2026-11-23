@@ -8,7 +8,7 @@ description: Trigger, jobs, commands, recovery modes, and repository settings fo
 
 This reference documents this repository's own release, and the [toolchain reference](../toolchain/README.md) documents the public commands that act on one package directory.
 
-The Loom CLI, `@loomcli/loom` in `packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `packages/loom/src/commands/release/` holds `plan`, `record`, and the synchronized `cut`. It also holds `formula`, an author command in the same hidden `release` group that `loom release --help` lists. `packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share. The workflow runs a published, pinned copy of the CLI, the [release tool](#release-tool), not the one in the checkout.
+The Loom CLI, `@loomcli/loom` in `typescript/packages/loom`, carries the logic. It participates in the release set like the libraries, and its release commands are hidden, so no listing advertises them. `typescript/packages/loom/src/commands/release/` holds `plan`, `record`, and the synchronized `cut`. It also holds `formula`, an author command in the same hidden `release` group that `loom release --help` lists. `typescript/packages/loom/src/helpers/` holds the registry, GitHub, plan, and record helpers they share. The workflow runs a published, pinned copy of the CLI, the [release tool](#release-tool), not the one in the checkout.
 
 ## Trigger
 
@@ -27,15 +27,15 @@ Each job holds one permission, and the two writing jobs run under the `release` 
 | `publish` | Publication is missing   | `id-token: write` | `release`   |
 | `record`  | The plan asks to record  | `contents: write` | `release`   |
 
-`plan` checks out `main` with full history, installs the release tool, and runs `loom release plan`. It installs and builds nothing from the checkout. It reports `version`, `publish`, `record`, and `libraries` as job outputs. `libraries` is a compact JSON array of the participating directories. No job uploads the plan, because the `record` job derives it again from the same checkout.
+`plan` checks out `main` with full history, installs the release tool, and runs `loom release plan` from `typescript/`. Until the pin is restored, it builds and packs the release tool from the checkout instead, as [Until the next release](#until-the-next-release) describes. It reports `version`, `publish`, `record`, and `libraries` as job outputs. `libraries` is a compact JSON array of the participating directories. No job uploads the plan, because the `record` job derives it again from the same checkout.
 
 `build` checks out the commit the run attests, installs with a frozen lockfile, builds, and runs `pnpm check:packed`. It then packs each directory in `libraries` with `pnpm --dir <directory> pack`, so a private or non-participating package is never packed. It uploads the tarballs as the `release-tarballs` artifact.
 
-npm shows the README a version was published with, so each packed README links to the docs at its own version's tag. Each published package's `prepack` script runs `scripts/readme-links.mjs pin`, which rewrites every `blob/main/` link in its README to `blob/v<version>/`, taking the version from the package's `package.json`, and its `postpack` script runs `unpin`, which restores the source README. The source READMEs keep `blob/main/`, so they read correctly on GitHub between releases. A link is live once the release creates its tag. `pnpm check:packed` fails when a packed README links anywhere else in the repository or when packing leaves a source README changed, and `packages/core/tests/readme-links.test.ts` fails when a source README links into the repository other than through an absolute `blob/main/` URL, which also catches a README a failed pack left rewritten. A relative link counts as one of those, a Markdown link or an HTML `src` or `href` alike, because npm resolves it against the default branch, so a package README links to the repository's files only by absolute URL.
+npm shows the README a version was published with, so each packed README links to the docs at its own version's tag. Each published package's `prepack` script runs `typescript/scripts/readme-links.mjs pin`, which rewrites every `blob/main/` link in its README to `blob/v<version>/`, taking the version from the package's `package.json`, and its `postpack` script runs `unpin`, which restores the source README. The source READMEs keep `blob/main/`, so they read correctly on GitHub between releases. A link is live once the release creates its tag. `pnpm check:packed` fails when a packed README links anywhere else in the repository or when packing leaves a source README changed, and `typescript/packages/core/tests/readme-links.test.ts` fails when a source README links into the repository other than through an absolute `blob/main/` URL, which also catches a README a failed pack left rewritten. A relative link counts as one of those, a Markdown link or an HTML `src` or `href` alike, because npm resolves it against the default branch, so a package README links to the repository's files only by absolute URL.
 
 `publish` runs Node.js 24 for npm 11.5.1 or newer, which trusted publishing requires. It has no checkout, because the repository's `devEngines` setting makes npm refuse to run inside one. For each tarball it reads the registry first with `npm view <name>@<version> version`. A version the registry already carries is skipped. Every other version is published with `npm publish --access public --provenance --ignore-scripts`, and a failed publication fails the job.
 
-`record` checks out `main` with full history, installs the release tool, runs `loom release plan` again, and then runs `loom release record` with that plan. Like `plan`, it installs and builds nothing from the checkout. It runs after a successful publication, and also when `build` and `publish` were both skipped, which is the case for a version that is already on the registry.
+`record` checks out `main` with full history, installs the release tool, runs `loom release plan` again, and then runs `loom release record` with that plan, both from `typescript/`. It installs and builds nothing from the checkout. It runs after a successful publication, and also when `build` and `publish` were both skipped, which is the case for a version that is already on the registry.
 
 Every third-party action is pinned to a full commit SHA with its version tag in a comment. GitHub-owned `actions/*` stay on their major tags.
 
@@ -44,6 +44,15 @@ The packed consumer runs in CI under Node and Bun, each selected by `LOOM_TEST_R
 ## Release tool
 
 The `plan` and `record` jobs run the published `@loomcli/loom` that `.github/release-tool` pins. [ADR-0075](../decisions/0075-the-release-workflow-runs-a-pinned-published-loom-cli.md) records the design.
+
+### Until the next release
+
+The published 0.20.0 cannot plan from a workspace below the git root, and the workspace now sits in `typescript/`. Until a release publishes the release commands that can, the jobs run the CLI built from the checkout, as ADR-0075's consequences provide:
+
+- `plan`, which holds only `contents: read`, installs the workspace with a frozen lockfile, runs `pnpm build`, packs `typescript/packages/loom` with `pnpm --dir packages/loom pack`, and uploads the tarball as the `release-tool` artifact. It unpacks the tarball into `$RUNNER_TEMP/release-tool` and runs `node $RUNNER_TEMP/release-tool/package/dist/main.js`.
+- `record` downloads that artifact and unpacks it the same way. `@loomcli/loom` has no dependencies, so nothing is installed, and the job that holds `contents: write` still builds nothing from the checkout.
+
+`.github/release-tool` stays in the repository, unchanged. After the next release is published, a pull request moves the pin to it, as the next section describes, and returns both jobs to the pinned tool.
 
 An explicit `release cut --target VERSION` is recorded in the synchronized manifests and changelog before merge. The PR guard builds the checkout's tool to validate that target. The pinned `plan` and `record` commands read the committed version, so target selection requires no new workflow option or release-tool bootstrap.
 
@@ -153,7 +162,7 @@ Recovery has three modes. Take them in order.
 1. **Re-run the failed job.** A network failure, a registry timeout, or a cancelled runner needs nothing else. The run reads the current state and continues from it.
 2. **Fix the workflow on `main`, then dispatch it.** A defect in the workflow is fixed through an ordinary PR. Dispatch the workflow from `main` afterwards. It publishes only while the participating tree is unchanged since the cut commit.
 
-   A defect in the release commands lives in the pinned, published CLI, so a fix in `packages/loom` reaches the workflow only after a release publishes it. When an earlier published version works, a PR moves the pin back to it. When the defect blocks the release that would publish its fix, a PR switches the `plan` and `record` jobs to install the workspace and run `node packages/loom/dist/main.js` after `pnpm build` for that release, and a later PR restores the release tool and moves its pin to the fixed version.
+   A defect in the release commands lives in the pinned, published CLI, so a fix in `typescript/packages/loom` reaches the workflow only after a release publishes it. When an earlier published version works, a PR moves the pin back to it. When the defect blocks the release that would publish its fix, a PR switches the `plan` and `record` jobs to install the workspace and run `node packages/loom/dist/main.js` after `pnpm build` for that release, and a later PR restores the release tool and moves its pin to the fixed version.
 3. **Fix forward with a new cut.** Nothing is ever repaired in place. What the next cut says depends on whether bytes reached the registry.
 
 A version that never published is abandoned as unpublished. This happens when the plan refuses publication, for example after a tag landed at the wrong commit or a participating file changed after the cut. The version never reaches the registry, the material-change baseline stays the commit that set it, and the next cut supersedes it. Say so in the narrative of the next cut.

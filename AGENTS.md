@@ -21,15 +21,15 @@ A record that rejected an approach, such as ADR-0066's rejection of a configurat
 
 ## Pull requests
 
-Before opening or updating a PR, read [.changes/README.md](.changes/README.md). It defines when to add a fragment, when to apply `skip-changelog`, and how to document breaking changes or correct an earlier unreleased entry. Apply those rules to the final diff and state the fragment path or skip reason in the PR description.
+Before opening or updating a PR, read [typescript/.changes/README.md](typescript/.changes/README.md). It defines when to add a fragment, when to apply `skip-changelog`, and how to document breaking changes or correct an earlier unreleased entry. Apply those rules to the final diff and state the fragment path or skip reason in the PR description.
 
-During an upgrade, read the [changelog](CHANGELOG.md) breaking sections between the installed and target versions and follow their migration instructions.
+During an upgrade, read the [changelog](typescript/CHANGELOG.md) breaking sections between the installed and target versions and follow their migration instructions.
 
 ## Conventions
 
 ### Running tools
 
-Run a package's tool with `pnpm exec <tool>`. `devEngines` in `package.json` pins pnpm, so `npx <tool>` fails with `EBADDEVENGINES`. A script that rebuilds before it measures, such as a mutation run, keeps the rebuild's exit status, because a failed rebuild leaves stale `dist` that every later step reads as current.
+The TypeScript workspace sits in `typescript/`, and every `pnpm` command runs from that directory. The documentation, the GitHub workflows, and the agent skills stay at the repository root. Run a package's tool with `pnpm exec <tool>`. `devEngines` in `package.json` pins pnpm, so `npx <tool>` fails with `EBADDEVENGINES`. A script that rebuilds before it measures, such as a mutation run, keeps the rebuild's exit status, because a failed rebuild leaves stale `dist` that every later step reads as current.
 
 Tests read built `dist`. `pnpm test` and `pnpm verify` build first, but a single file run with `pnpm exec vp test` after a source change needs `pnpm run build` before it, and an example's launch tests need `pnpm run build:examples` as well. A `tsc` run that fails on `rootDir` still emits `.js` and `.d.ts` files into `src`; delete them before lint.
 
@@ -65,7 +65,7 @@ The bin's own sentences never quote a Node.js or engine reason. A sentence about
 
 ### Tests stay inside their sandbox
 
-A test that walks up from a temporary directory, looking for `.git` or a configuration file, sets a ceiling at its sandbox root. Without one, a stray marker above the sandbox, such as an empty `/tmp/.git` another tool left behind, ends the walk outside it: the test fails intermittently and can write outside its sandbox. `packages/plugins/tests/fixtures/skills-run.mjs` shows the pattern for a child process, and `packages/loom/tests/ceiling.ts` for an in-process run. `childEnvironment` in `scripts/test-process.ts` sets `GIT_CEILING_DIRECTORIES` at the temporary directory, so git's own search stays inside. To reproduce such a failure, point `TMPDIR` at a private directory that holds a `.git`. A fake `package.json` above it needs `"type": "module"`, or core's bundle tests read `.js` files as CommonJS.
+A test that walks up from a temporary directory, looking for `.git` or a configuration file, sets a ceiling at its sandbox root. Without one, a stray marker above the sandbox, such as an empty `/tmp/.git` another tool left behind, ends the walk outside it: the test fails intermittently and can write outside its sandbox. `typescript/packages/plugins/tests/fixtures/skills-run.mjs` shows the pattern for a child process, and `typescript/packages/loom/tests/ceiling.ts` for an in-process run. `childEnvironment` in `typescript/scripts/test-process.ts` sets `GIT_CEILING_DIRECTORIES` at the temporary directory, so git's own search stays inside. To reproduce such a failure, point `TMPDIR` at a private directory that holds a `.git`. A fake `package.json` above it needs `"type": "module"`, or core's bundle tests read `.js` files as CommonJS.
 
 ### Type assertions are a last resort
 
@@ -81,7 +81,7 @@ assertion without a lint directive, not a typed path.
   resort, that no typed path exists, and why the claim holds (`It holds because ...`).
 - An existing assertion is never justification for a new one.
 
-`packages/core/tests/assertions.test.ts` pins the surviving sites per file, rejects blanket disables
+`typescript/packages/core/tests/assertions.test.ts` pins the surviving sites per file, rejects blanket disables
 and compiler escapes, and checks each comment.
 
 ## Judging review findings

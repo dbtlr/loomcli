@@ -37,7 +37,7 @@ The result is that a feature cut on `0.x` ships as a patch. A `0.4.7` package th
 
 ## Consequences
 
-A feature-only cut from `0.4.7` takes `0.5.0`, and a fix-only cut takes `0.4.8`. A `--target` between the two, such as `0.4.9` with a feature pending, now fails and names `0.5.0`, and so does finalizing a `0.4.8-rc.1` prerelease with a feature pending. The change is breaking for that reason: a target or a prerelease an earlier release accepted is refused, and its fragment carries the migration. An application on `0.x` changes no code; its next cut with a feature fragment takes a minor. The [package changelog](../toolchain/changelog.md), the fragment guide `loom init` writes, this repository's [fragment guide](../../.changes/README.md), and the [changelog compiler](../maintaining/changelog-compiler.md) state the table.
+A feature-only cut from `0.4.7` takes `0.5.0`, and a fix-only cut takes `0.4.8`. A `--target` between the two, such as `0.4.9` with a feature pending, now fails and names `0.5.0`, and so does finalizing a `0.4.8-rc.1` prerelease with a feature pending. The change is breaking for that reason: a target or a prerelease an earlier release accepted is refused, and its fragment carries the migration. An application on `0.x` changes no code; its next cut with a feature fragment takes a minor. The [package changelog](../toolchain/changelog.md), the fragment guide `loom init` writes, this repository's [fragment guide](../../typescript/.changes/README.md), and the [changelog compiler](../maintaining/changelog-compiler.md) state the table.
 
 ## Status
 

@@ -234,7 +234,7 @@ ADR-0172 counts a line's own row as one row, also when the terminal wraps a long
 
   No export is added, and none is removed.
 
-The contract is in the [prompts reference](../libs/prompts.md#task-groups), its [progress view](../libs/prompts.md#progress-view), the authoring skill's [middleware and actions reference](../../packages/loom/skills/loom/references/middleware-and-actions.md), and the [glossary](../glossary.md#product-surface).
+The contract is in the [prompts reference](../libs/prompts.md#task-groups), its [progress view](../libs/prompts.md#progress-view), the authoring skill's [middleware and actions reference](../../typescript/packages/loom/skills/loom/references/middleware-and-actions.md), and the [glossary](../glossary.md#product-surface).
 
 ## Considered options
 
@@ -261,7 +261,7 @@ The contract is in the [prompts reference](../libs/prompts.md#task-groups), its 
 
 ## Consequences
 
-`Progress`, an output type, gains a method, which is not breaking. `ProgressSettings` and `ProgressLine` are input types, `@public` without `@sealed`, and each gains optional members alone, which the [change-fragment rules](../../.changes/README.md) class as not breaking, and `ProgressLine` reaches an override's `render` too, where a new member is not breaking either. `ProgressContext`, an input type, narrows: its `out` now requires `draw`, so a context a test or a helper builds by hand without `draw` no longer compiles where it is passed to `progress()`. The fragment is breaking for that one reason, and the type checker reports every such site. An application that never calls `task()` draws, writes, and reports the same bytes and events as before, and its progress view override receives two more members it may ignore. The prompts package's message module gains no sentence, and core changes no code and no rule.
+`Progress`, an output type, gains a method, which is not breaking. `ProgressSettings` and `ProgressLine` are input types, `@public` without `@sealed`, and each gains optional members alone, which the [change-fragment rules](../../typescript/.changes/README.md) class as not breaking, and `ProgressLine` reaches an override's `render` too, where a new member is not breaking either. `ProgressContext`, an input type, narrows: its `out` now requires `draw`, so a context a test or a helper builds by hand without `draw` no longer compiles where it is passed to `progress()`. The fragment is breaking for that one reason, and the type checker reports every such site. An application that never calls `task()` draws, writes, and reports the same bytes and events as before, and its progress view override receives two more members it may ignore. The prompts package's message module gains no sentence, and core changes no code and no rule.
 
 A tree's memory grows with the tasks its author opens, each finished task holding its end line and at most its `logLimit` kept lines until its group collapses or its root ends. A tree's frame stays within the terminal, except that roots and running tasks alone can still take more rows than the terminal has, and an application's own view that draws a row wider than the terminal is still counted as one row.
 

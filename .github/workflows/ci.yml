@@ -20,7 +20,7 @@ env:
 
 jobs:
   # A pull request that changes only documentation, a file under docs/ or a Markdown file at the
-  # root, runs the docs tests in place of the Linux test jobs.
+  # root or at the root of typescript/, runs the docs tests in place of the Linux test jobs.
   changes:
     name: changes
     runs-on: ubuntu-latest
@@ -56,6 +56,8 @@ jobs:
             case "$path" in
               '') ;;
               docs/*) ;;
+              typescript/*/*) code=true ;;
+              typescript/*.md) ;;
               */*) code=true ;;
               *.md) ;;
               *) code=true ;;
@@ -69,6 +71,9 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     name: node / ubuntu-latest
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
     env:
       LOOM_TEST_RUNTIME: node
       LOOM_REQUIRE_SHELLS: '1'
@@ -87,6 +92,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
           node-version: 22.23.2
 
       # The examples are bundled with loom build, which runs bun build, and their source runs under Bun.
@@ -120,6 +126,9 @@ jobs:
   node_macos:
     name: node / macos-latest
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: typescript
     env:
       LOOM_TEST_RUNTIME: node
       LOOM_REQUIRE_SHELLS: '1'
@@ -134,10 +143,11 @@ jobs:
         with:
           version: 12.21.0
 
+      # No pnpm cache here: the lockfile sits in typescript/, and Hugi accepts only node-version and
+      # cache as inputs to setup-node, so it cannot be given cache-dependency-path.
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          cache: pnpm
           node-version: 22.23.2
 
       # The examples are bundled with loom build, which runs bun build, and their source runs under Bun.
@@ -170,6 +180,9 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     name: bun / ubuntu-latest
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
     env:
       LOOM_TEST_RUNTIME: bun
       LOOM_REQUIRE_SHELLS: '1'
@@ -188,6 +201,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
           node-version: 22.23.2
 
       - name: Set up Bun
@@ -220,6 +234,9 @@ jobs:
   bun_macos:
     name: bun / macos-latest
     runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: typescript
     env:
       LOOM_TEST_RUNTIME: bun
       LOOM_REQUIRE_SHELLS: '1'
@@ -234,10 +251,11 @@ jobs:
         with:
           version: 12.21.0
 
+      # No pnpm cache here: the lockfile sits in typescript/, and Hugi accepts only node-version and
+      # cache as inputs to setup-node, so it cannot be given cache-dependency-path.
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          cache: pnpm
           node-version: 22.23.2
 
       - name: Set up Bun
@@ -276,6 +294,9 @@ jobs:
     if: needs.changes.outputs.code == 'false'
     name: docs / ubuntu-latest
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
     env:
       LOOM_TEST_RUNTIME: node
     steps:
@@ -293,6 +314,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
           node-version: 22.23.2
 
       # The installation tests run their fixtures under Node and Bun.

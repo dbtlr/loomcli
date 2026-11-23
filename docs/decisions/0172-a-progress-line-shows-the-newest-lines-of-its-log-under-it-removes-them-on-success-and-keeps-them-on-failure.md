@@ -179,7 +179,7 @@ The owner settled the shape on 2026-11-16 (LM-531): a `log()` method on the hand
 
   No export is added, and none is removed.
 
-The contract is in the [prompts reference](../libs/prompts.md#a-lines-log), its [progress view](../libs/prompts.md#progress-view), the authoring skill's [middleware and actions reference](../../packages/loom/skills/loom/references/middleware-and-actions.md), and the [glossary](../glossary.md#product-surface).
+The contract is in the [prompts reference](../libs/prompts.md#a-lines-log), its [progress view](../libs/prompts.md#progress-view), the authoring skill's [middleware and actions reference](../../typescript/packages/loom/skills/loom/references/middleware-and-actions.md), and the [glossary](../glossary.md#product-surface).
 
 ## Considered options
 
@@ -200,7 +200,7 @@ The contract is in the [prompts reference](../libs/prompts.md#a-lines-log), its 
 
 ## Consequences
 
-`Progress`, an output type, gains a method, which is not breaking. `ProgressSettings` and `ProgressLine` are input types, `@public` without `@sealed`, and each gains optional members alone, which the [change-fragment rules](../../.changes/README.md) class as not breaking. `ProgressLine` reaches an override's `render` too, where a new member is not breaking either. `ProgressContext`, an input type, gains an optional member, `host`, which is not breaking: an action's, a middleware's, and a configuration source's context each carry a `host` that satisfies it, and a context built by hand without one compiles and draws as before. The fragment is a feature. An application that never calls `log()` draws, writes, and reports the same bytes and events as before, and its progress view override receives one more member it may ignore. The prompts package's message module gains one sentence. Core changes no code.
+`Progress`, an output type, gains a method, which is not breaking. `ProgressSettings` and `ProgressLine` are input types, `@public` without `@sealed`, and each gains optional members alone, which the [change-fragment rules](../../typescript/.changes/README.md) class as not breaking. `ProgressLine` reaches an override's `render` too, where a new member is not breaking either. `ProgressContext`, an input type, gains an optional member, `host`, which is not breaking: an action's, a middleware's, and a configuration source's context each carry a `host` that satisfies it, and a context built by hand without one compiles and draws as before. The fragment is a feature. An application that never calls `log()` draws, writes, and reports the same bytes and events as before, and its progress view override receives one more member it may ignore. The prompts package's message module gains one sentence. Core changes no code.
 
 A line keeps at most the greater of `logLimit` and `logRows` lines of at most 4096 code points each, plus one unfinished line for each open iterable, so its memory is bounded by its settings, whatever a child program writes.
 

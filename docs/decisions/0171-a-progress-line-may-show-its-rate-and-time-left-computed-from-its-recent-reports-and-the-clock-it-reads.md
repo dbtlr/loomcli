@@ -107,7 +107,7 @@ The owner settled the shape on 2026-11-16 (LM-530): an opt-in `estimate` setting
 
   No export is added, and none is removed.
 
-The contract is in the [prompts reference](../libs/prompts.md#rate-and-time-left), its [progress view](../libs/prompts.md#progress-view), the authoring skill's [middleware and actions reference](../../packages/loom/skills/loom/references/middleware-and-actions.md), and the [glossary](../glossary.md#product-surface).
+The contract is in the [prompts reference](../libs/prompts.md#rate-and-time-left), its [progress view](../libs/prompts.md#progress-view), the authoring skill's [middleware and actions reference](../../typescript/packages/loom/skills/loom/references/middleware-and-actions.md), and the [glossary](../glossary.md#product-surface).
 
 ## Considered options
 
@@ -126,7 +126,7 @@ The contract is in the [prompts reference](../libs/prompts.md#rate-and-time-left
 
 ## Consequences
 
-`ProgressSettings` and `ProgressLine` are input types, `@public` without `@sealed`, and each gains optional members alone, which the [change-fragment rules](../../.changes/README.md) class as not breaking. `ProgressLine` reaches an override's `render` too, where a new member is not breaking either. The fragment is a feature. An application that sets neither `estimate` nor `unit` draws the same bytes as before, and its view override receives four more members it may ignore. Progress events, the plain lines, `ProgressUpdate`, `Progress`, `ProgressContext`, and `progressStyle()` are unchanged, and core changes no code.
+`ProgressSettings` and `ProgressLine` are input types, `@public` without `@sealed`, and each gains optional members alone, which the [change-fragment rules](../../typescript/.changes/README.md) class as not breaking. `ProgressLine` reaches an override's `render` too, where a new member is not breaking either. The fragment is a feature. An application that sets neither `estimate` nor `unit` draws the same bytes as before, and its view override receives four more members it may ignore. Progress events, the plain lines, `ProgressUpdate`, `Progress`, `ProgressContext`, and `progressStyle()` are unchanged, and core changes no code.
 
 The line keeps the samples of its last 10 seconds of reports and the one before them, and up to as many older ones again until it drops them. An author who reports thousands of times a second keeps that many samples for 10 seconds, which a line can do without a bound of its own.
 

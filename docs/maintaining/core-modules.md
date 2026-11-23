@@ -1,10 +1,10 @@
 ---
-description: The map of @loomcli/core's source modules. Which folder under packages/core/src holds each concept, and the conventions that place a new file.
+description: The map of @loomcli/core's source modules. Which folder under typescript/packages/core/src holds each concept, and the conventions that place a new file.
 ---
 
 # Core source modules
 
-`packages/core/src` groups core's source by concept. Each folder is one module, and the modules follow the sections of the [core reference](../core/README.md). This page tells a maintainer where a concept lives and where a new file goes. The modules do not form layers: a module imports from any other module it needs.
+`typescript/packages/core/src` groups core's source by concept. Each folder is one module, and the modules follow the sections of the [core reference](../core/README.md). This page tells a maintainer where a concept lives and where a new file goes. The modules do not form layers: a module imports from any other module it needs.
 
 ## Modules
 
