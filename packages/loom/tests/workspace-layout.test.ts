@@ -394,6 +394,27 @@ test('a release cut from typescript/ places a fragment that reuses a name consum
   });
 });
 
+test('a release cut from typescript/ keeps the landing order of fragments a later commit of a split move carried', async () => {
+  // Zeta lands before Alpha, and the move takes every entry but .changes first, then .changes.
+  const { root: top } = layoutRepository('');
+  put(top, '.changes/zeta.md', '- Zeta.\n');
+  commit(top);
+  put(top, '.changes/alpha.md', '- Alpha.\n');
+  commit(top);
+  const root = join(top, 'typescript');
+  mkdirSync(root);
+  git(top, ['mv', ...workspaceEntries.filter((entry) => entry !== '.changes'), 'typescript/']);
+  commit(top);
+  git(top, ['mv', '.changes', 'typescript/']);
+  commit(top);
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v0.4.8 - 2026-09-14\n\n### Fixes\n\n- Zeta.\n\n- Alpha.\n\nNo material changes: @sample/core.\n\n',
+  });
+});
+
 test('a release cut from typescript/ places a fragment the move adds under a name consumed before it at the move', async () => {
   const { root: top } = layoutRepository('');
   // The 0.4.8 cut consumes fix.md, and Zeta lands after that cut and before the move.

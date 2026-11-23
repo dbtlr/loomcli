@@ -64,22 +64,12 @@ async function addition(checkout: Checkout, chain: Chain, from: string, place: s
 /**
  * The position a fragment the move carried landed at before the move, or undefined when the commit
  * that added it where the workspace sits now did not carry it. That commit carried it when its
- * parent held the workspace at the top of the work tree, `former`, and the fragment there, at
- * `place`.
+ * parent held the fragment at the top of the work tree, at `place`, whether that commit moved the
+ * whole workspace or only its fragments folder.
  */
-async function carriedPosition(
-  checkout: Checkout,
-  chain: Chain,
-  added: string,
-  place: string,
-  former: string,
-) {
+async function carriedPosition(checkout: Checkout, chain: Chain, added: string, place: string) {
   const parent = chain.commits[chain.commits.indexOf(added) + 1];
-  if (
-    parent === undefined ||
-    (await workspaceAt(checkout, parent)) !== former ||
-    !(await git(checkout, ['ls-tree', parent, '--', place]))
-  ) {
+  if (parent === undefined || !(await git(checkout, ['ls-tree', parent, '--', place]))) {
     return undefined;
   }
   const before = await addition(checkout, chain, parent, place);
@@ -120,7 +110,7 @@ async function landedAt(
     const carried =
       former === '' || former === location
         ? undefined
-        : await carriedPosition(checkout, chain, here.commit, `${former}${path}`, former);
+        : await carriedPosition(checkout, chain, here.commit, `${former}${path}`);
     landed.push({
       added: carried ?? here.position,
       body: fragment.body,
