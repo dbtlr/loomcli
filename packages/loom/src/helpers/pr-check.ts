@@ -11,7 +11,7 @@ import {
 import { conventionalFragments } from './conventions.js';
 import { readFragments } from './fragments.js';
 import { parseManifest } from './manifest.js';
-import { isBuildAffectingPath } from './material.js';
+import { changedWithoutMove, isBuildAffectingPath } from './material.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import { checkRelease } from './release-check.js';
 import {
@@ -29,39 +29,6 @@ import type { Checkout } from './repository.js';
 /** A revision named for the check, resolved to the commit it names. */
 function commitOf(checkout: Checkout, revision: string) {
   return gitLine(checkout, ['rev-parse', '--verify', '--end-of-options', `${revision}^{commit}`]);
-}
-
-/** The mode, type, and object of a fragment at a revision, as `ls-tree` lists them, or `''` when it holds none. */
-async function fragmentEntry(checkout: Checkout, ref: string, location: string, name: string) {
-  const listing = await git(checkout, [
-    'ls-tree',
-    ref,
-    '--',
-    `${location}${conventionalFragments}/${name}`,
-  ]);
-  return listing.split('\t')[0] ?? '';
-}
-
-/**
- * Whether the head holds a fragment that the merge base lacks or holds with other content or mode,
- * each read where its revision held the workspace. A fragment the move of the workspace carried
- * unchanged is not one the pull request adds, and a renamed one is.
- */
-async function addsFragment(
-  checkout: Checkout,
-  fragments: { name: string }[],
-  revisions: { ancestor: string; head: string; location: string },
-) {
-  const before = await workspaceAt(checkout, revisions.ancestor);
-  for (const { name } of fragments) {
-    if (
-      (await fragmentEntry(checkout, revisions.head, revisions.location, name)) !==
-      (await fragmentEntry(checkout, revisions.ancestor, before, name))
-    ) {
-      return true;
-    }
-  }
-  return false;
 }
 
 export async function checkPullRequest(
@@ -126,9 +93,12 @@ export async function checkPullRequest(
   }
   if (
     changed.some((path) => isBuildAffectingPath(path, placement)) &&
-    !options.labels.includes('skip-changelog') &&
-    !(await addsFragment(checkout, fragments, { ancestor, head, location }))
+    !options.labels.includes('skip-changelog')
   ) {
-    throw new Error(fragmentRequired);
+    // A fragment the move of the workspace carried unchanged is not one the pull request adds or modifies.
+    const own = await changedWithoutMove(checkout, placement, ancestor, head);
+    if (!fragments.some((fragment) => own.includes(`${conventionalFragments}/${fragment.name}`))) {
+      throw new Error(fragmentRequired);
+    }
   }
 }

@@ -317,6 +317,18 @@ test('pr check from typescript/ asks the move for its own fragment when it only 
   });
 });
 
+test('pr check from typescript/ counts a pending fragment the move edits as it carries it', async () => {
+  const { root: top } = layoutRepository('');
+  put(top, '.changes/pending.md', '- Pending.\n');
+  const before = commit(top);
+  const { root } = moveWorkspace(top, { '.changes/pending.md': '- Pending, corrected.\n' });
+  await expect(prCheck(root, before, 'Move the workspace')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
+});
+
 test('pr check from typescript/ passes an ordinary pull request with a fragment after the move', async () => {
   const { move, root, top } = await movedRepository();
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
@@ -381,6 +393,37 @@ test('a release cut from typescript/ places a fragment that reuses a name consum
       '## v0.4.9 - 2026-09-14\n\n### Fixes\n\n- Zeta.\n\n- Fix again.\n\nNo material changes: @sample/core.\n\n',
   });
 });
+
+test('a release cut from typescript/ places a fragment the move adds under a name consumed before it at the move', async () => {
+  const { root: top } = layoutRepository('');
+  // The 0.4.8 cut consumes fix.md, and Zeta lands after that cut and before the move.
+  await releasePullRequest(top, top);
+  put(top, '.changes/zeta.md', '- Zeta.\n');
+  commit(top);
+  const { root } = moveWorkspace(top, { '.changes/fix.md': '- Move the workspace.\n' });
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v0.4.9 - 2026-09-14\n\n### Fixes\n\n- Zeta.\n\n- Move the workspace.\n\nNo material changes: @sample/core.\n\n',
+  });
+});
+
+test.each(layouts)(
+  'a release cut dry run $layout refuses an uncommitted fragment that reuses a name a cut consumed',
+  async ({ workspace }) => {
+    const { root, top } = layoutRepository(workspace);
+    await releasePullRequest(root, top);
+    put(root, '.changes/fix.md', '- Fix again.\n');
+    await expect(
+      run(['release', 'cut', '--dry-run', '--date', '2026-09-14'], { cwd: root }),
+    ).resolves.toEqual({
+      status: 1,
+      stderr: '.changes/fix.md: commit the fragment before preparing a release.\n',
+      stdout: '',
+    });
+  },
+);
 
 test('the first release after the workspace moved into typescript/ cuts, plans, publishes, and records from there', async () => {
   // The library changes before the move, so the material report reads across it to the last cut.

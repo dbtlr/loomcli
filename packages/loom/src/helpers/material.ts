@@ -112,6 +112,22 @@ function withoutMove(entries: DiffEntry[], location: string) {
 }
 
 /**
+ * The paths that changed from `base` to `head`, or to the working tree without one, relative to the
+ * checkout's root and without the moves of the workspace since, as `withoutMove` reads them.
+ */
+export async function changedWithoutMove(
+  checkout: Checkout,
+  placement: Placement,
+  base: string,
+  head?: string,
+) {
+  return withoutMove(
+    await rawDiff(checkout, placement, [base, ...(head === undefined ? [] : [head])]),
+    await workspaceAt(checkout, base),
+  );
+}
+
+/**
  * An abandoned version never receives a tag, so the baseline is the commit that set the current
  * version. The walk visits the first-parent commits that touched a participating manifest, newest
  * first, where the workspace sits now or, below the top of the work tree, at the top, where it sat
@@ -175,10 +191,7 @@ export async function unchangedLibraries(
   ]);
   await git(checkout, ['merge-base', '--is-ancestor', base, head ?? 'HEAD']);
   const placement = await readPlacement(checkout);
-  const paths = withoutMove(
-    await rawDiff(checkout, placement, [base, ...(head === undefined ? [] : [head])]),
-    await workspaceAt(checkout, base),
-  );
+  const paths = await changedWithoutMove(checkout, placement, base, head);
   // Untracked files anywhere in the work tree, as the diff reads it, printed from its top.
   const untracked =
     head === undefined

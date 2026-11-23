@@ -109,7 +109,11 @@ async function landedAt(
   const location = await workspaceAt(checkout, ref);
   for (const fragment of await readFragments(checkout, ref, folder)) {
     const path = `${folder}/${fragment.name}`;
-    const here = await addition(checkout, chain, head, `${location}${path}`);
+    const place = `${location}${path}`;
+    // A working-tree fragment the head does not hold is uncommitted, though an earlier one of its name landed.
+    const committed =
+      ref !== undefined || (await git(checkout, ['ls-tree', head, '--', place])) !== '';
+    const here = committed ? await addition(checkout, chain, head, place) : undefined;
     if (here === undefined) {
       throw new Error(uncommittedFragment(path));
     }
