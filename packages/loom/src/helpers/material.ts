@@ -83,8 +83,10 @@ async function rawDiff(checkout: Checkout, placement: Placement, revisions: stri
 /**
  * The changed paths of a diff from a revision whose workspace sat at `location`, without the moves
  * of the workspace since: a file deleted from that workspace and added, with the same mode and
- * content, at the same path in the workspace directory now has not changed for the workspace. With
- * the workspace where it was, at `''`, no file moved, and every path stays.
+ * content, at the same path in the workspace directory now has not changed for the workspace. Any
+ * other file deleted from that workspace, such as one the move edited as it moved it, is named by
+ * its path in the workspace, so the library that owned it counts it. With the workspace where it
+ * was, at `''`, no file moved, and every path stays.
  */
 function withoutMove(entries: DiffEntry[], location: string) {
   if (location === '') {
@@ -100,7 +102,29 @@ function withoutMove(entries: DiffEntry[], location: string) {
       moved.add(entry.path).add(origin);
     }
   }
-  return entries.map((entry) => entry.path).filter((path) => !moved.has(path));
+  return entries
+    .filter((entry) => !moved.has(entry.path))
+    .map((entry) =>
+      entry.status === 'D' && entry.path.startsWith(location)
+        ? entry.path.slice(location.length)
+        : entry.path,
+    );
+}
+
+/**
+ * The paths that changed from `base` to `head`, or to the working tree without one, relative to the
+ * checkout's root and without the moves of the workspace since, as `withoutMove` reads them.
+ */
+export async function changedWithoutMove(
+  checkout: Checkout,
+  placement: Placement,
+  base: string,
+  head?: string,
+) {
+  return withoutMove(
+    await rawDiff(checkout, placement, [base, ...(head === undefined ? [] : [head])]),
+    await workspaceAt(checkout, base),
+  );
 }
 
 /**
@@ -167,10 +191,7 @@ export async function unchangedLibraries(
   ]);
   await git(checkout, ['merge-base', '--is-ancestor', base, head ?? 'HEAD']);
   const placement = await readPlacement(checkout);
-  const paths = withoutMove(
-    await rawDiff(checkout, placement, [base, ...(head === undefined ? [] : [head])]),
-    await workspaceAt(checkout, base),
-  );
+  const paths = await changedWithoutMove(checkout, placement, base, head);
   // Untracked files anywhere in the work tree, as the diff reads it, printed from its top.
   const untracked =
     head === undefined

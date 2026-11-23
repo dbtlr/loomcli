@@ -1,0 +1,1 @@
+- Fix `loom changelog write`, `loom changelog notes`, and `loom release cut --dry-run` accepting an uncommitted fragment whose name an earlier, consumed fragment used. They placed it at that earlier fragment's landing position. Now they refuse it with `<path>: commit the fragment before preparing a release.`, as they refuse any other uncommitted fragment.

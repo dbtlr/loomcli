@@ -8,9 +8,10 @@ import {
   releaseBranchBehind,
   versionMustStay,
 } from '../commands/pr/messages.js';
+import { conventionalFragments } from './conventions.js';
 import { readFragments } from './fragments.js';
 import { parseManifest } from './manifest.js';
-import { isBuildAffectingPath } from './material.js';
+import { changedWithoutMove, isBuildAffectingPath } from './material.js';
 import { parseOrThrow } from './parse-or-throw.js';
 import { checkRelease } from './release-check.js';
 import {
@@ -92,9 +93,16 @@ export async function checkPullRequest(
   }
   if (
     changed.some((path) => isBuildAffectingPath(path, placement)) &&
-    !fragments.some((fragment) => changed.includes(`.changes/${fragment.name}`)) &&
     !options.labels.includes('skip-changelog')
   ) {
-    throw new Error(fragmentRequired);
+    /*
+     * A fragment counts when the head's own path changed, and not only because the move of the
+     * workspace carried it unchanged or a copy of it at the old path went away.
+     */
+    const own = await changedWithoutMove(checkout, placement, ancestor, head);
+    const counts = (path: string) => changed.includes(path) && own.includes(path);
+    if (!fragments.some((fragment) => counts(`${conventionalFragments}/${fragment.name}`))) {
+      throw new Error(fragmentRequired);
+    }
   }
 }

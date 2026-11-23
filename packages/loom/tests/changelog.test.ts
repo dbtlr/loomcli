@@ -1800,3 +1800,27 @@ test('notes reads the folder and the changelog loom.config.json names', async ()
     stdout: '### Fixes\n\n- Old.\n',
   });
 });
+
+test('write refuses an uncommitted fragment that reuses the name of one consumed before', async () => {
+  const root = packageRepository('1.4.7', { '.changes/fix.md': '- Fix output.\n' });
+  git(root, ['rm', '-q', '.changes/fix.md']);
+  commit(root);
+  put(root, '.changes/fix.md', '- Fix again.\n');
+  await expect(run(root, 'write', '--dry-run', '--date', '2026-10-07')).resolves.toEqual({
+    status: 1,
+    stderr: '.changes/fix.md: commit the fragment before preparing a release.\n',
+    stdout: '',
+  });
+});
+
+test('notes refuses an uncommitted fragment that reuses the name of one consumed before', async () => {
+  const root = packageRepository('1.5.0-rc.1', { '.changes/fix.md': '- Fix output.\n' });
+  git(root, ['rm', '-q', '.changes/fix.md']);
+  commit(root);
+  put(root, '.changes/fix.md', '- Fix again.\n');
+  await expect(run(root, 'notes', '1.5.0-rc.1')).resolves.toEqual({
+    status: 1,
+    stderr: '.changes/fix.md: commit the fragment before preparing a release.\n',
+    stdout: '',
+  });
+});

@@ -93,11 +93,11 @@ const layouts = [
 /**
  * A repository at 0.4.7 whose workspace directory sits at `workspace` below the git root. `top` is
  * the git root, `root` is the workspace directory the commands run in, and `base` is the first
- * commit.
+ * commit. `extra` holds more workspace files, by their path inside the workspace.
  */
-function layoutRepository(workspace: string) {
+function layoutRepository(workspace: string, extra: Record<string, string> = {}) {
   const files: Record<string, string> = { ...topFiles };
-  for (const [path, body] of Object.entries(workspaceFiles)) {
+  for (const [path, body] of Object.entries({ ...workspaceFiles, ...extra })) {
     files[workspace === '' ? path : `${workspace}/${path}`] = body;
   }
   const { base, root: top } = repository({ files, prefix: 'loom-layout-', tag: 'v0.4.7' });
@@ -270,11 +270,23 @@ async function movedRepository(...pullRequests: Record<string, string>[]) {
     }
     before = commit(top);
   }
+  return { before, ...moveWorkspace(top), top };
+}
+
+/**
+ * Moves the workspace at the git root `top` into `typescript/` with `git mv` in one commit, which
+ * also writes `edits`, by their path in the workspace, as a move that edits files as it moves them
+ * does. `root` is the moved workspace directory and `move` the move itself.
+ */
+function moveWorkspace(top: string, edits: Record<string, string> = {}) {
   const root = join(top, 'typescript');
   mkdirSync(root);
   git(top, ['mv', ...workspaceEntries, 'typescript/']);
+  for (const [path, body] of Object.entries(edits)) {
+    put(root, path, body);
+  }
   const move = commit(top);
-  return { before, move, root, top };
+  return { move, root };
 }
 
 test('pr check from typescript/ judges the pull request that moves the workspace there', async () => {
@@ -283,6 +295,52 @@ test('pr check from typescript/ judges the pull request that moves the workspace
     prCheck(root, before, 'Move the workspace', '--label', 'skip-changelog'),
   ).resolves.toEqual({ status: 0, stderr: '', stdout: 'PR checks passed.\n' });
   await expect(prCheck(root, before, 'Move the workspace')).resolves.toEqual({
+    status: 1,
+    stderr: fragmentRequired,
+    stdout: '',
+  });
+});
+
+test('pr check from typescript/ asks the move for its own fragment when it only carries pending ones', async () => {
+  const { before, root, top } = await movedRepository({ '.changes/pending.md': '- Pending.\n' });
+  await expect(prCheck(root, before, 'Move the workspace')).resolves.toEqual({
+    status: 1,
+    stderr: fragmentRequired,
+    stdout: '',
+  });
+  put(root, '.changes/move.md', '- Move the workspace.\n');
+  commit(top);
+  await expect(prCheck(root, before, 'Move the workspace')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
+});
+
+test('pr check from typescript/ counts a pending fragment the move edits as it carries it', async () => {
+  const { root: top } = layoutRepository('');
+  put(top, '.changes/pending.md', '- Pending.\n');
+  const before = commit(top);
+  const { root } = moveWorkspace(top, { '.changes/pending.md': '- Pending, corrected.\n' });
+  await expect(prCheck(root, before, 'Move the workspace')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
+});
+
+test('pr check from typescript/ does not count the deletion of a stray copy of a fragment the move leaves as it was', async () => {
+  // A stray typescript/.changes/pending.md sits below the git root before the move.
+  const { root: top } = layoutRepository('', {
+    '.changes/pending.md': '- Pending.\n',
+    'typescript/.changes/pending.md': '- Pending.\n',
+  });
+  const before = git(top, ['rev-parse', 'HEAD']);
+  git(top, ['rm', '-q', '.changes/pending.md']);
+  git(top, ['mv', ...workspaceEntries.filter((entry) => entry !== '.changes'), 'typescript/']);
+  git(top, ['mv', '.changes/README.md', 'typescript/.changes/README.md']);
+  commit(top);
+  await expect(prCheck(join(top, 'typescript'), before, 'Move the workspace')).resolves.toEqual({
     status: 1,
     stderr: fragmentRequired,
     stdout: '',
@@ -319,6 +377,92 @@ test('a release cut dry run from typescript/ reports a library the move left as 
   await expect(dryRunAfterMove(root)).resolves.toEqual({ status: 0, stderr: '', stdout: fixes });
   rmSync(join(root, 'packages/core/extra.js'));
 });
+
+test('a release cut dry run from typescript/ counts a file the move edited against its own library alone', async () => {
+  const { root: top } = layoutRepository('', {
+    'packages/extra/index.js': 'export const extra = 1;\n',
+    'packages/extra/package.json': `${JSON.stringify({ name: '@sample/extra', version: '0.4.7' })}\n`,
+  });
+  put(top, '.changes/value.md', '- Change the value.\n');
+  commit(top);
+  const { root } = moveWorkspace(top, { 'packages/core/index.js': 'export const value = 2;\n' });
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v0.4.8 - 2026-09-14\n\n### Fixes\n\n- Change the value.\n\nNo material changes: @sample/extra.\n\n',
+  });
+});
+
+test('a release cut from typescript/ places a fragment that reuses a name consumed before the move where it landed', async () => {
+  // The 0.4.8 cut consumed fix.md before the move, and Zeta lands after that cut and before the move.
+  const { root, top } = await movedRepository({ '.changes/zeta.md': '- Zeta.\n' });
+  put(root, '.changes/fix.md', '- Fix again.\n');
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 1,
+    stderr: '.changes/fix.md: commit the fragment before preparing a release.\n',
+    stdout: '',
+  });
+  commit(top);
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v0.4.9 - 2026-09-14\n\n### Fixes\n\n- Zeta.\n\n- Fix again.\n\nNo material changes: @sample/core.\n\n',
+  });
+});
+
+test('a release cut from typescript/ keeps the landing order of fragments a later commit of a split move carried', async () => {
+  // Zeta lands before Alpha, and the move takes every entry but .changes first, then .changes.
+  const { root: top } = layoutRepository('');
+  put(top, '.changes/zeta.md', '- Zeta.\n');
+  commit(top);
+  put(top, '.changes/alpha.md', '- Alpha.\n');
+  commit(top);
+  const root = join(top, 'typescript');
+  mkdirSync(root);
+  git(top, ['mv', ...workspaceEntries.filter((entry) => entry !== '.changes'), 'typescript/']);
+  commit(top);
+  git(top, ['mv', '.changes', 'typescript/']);
+  commit(top);
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v0.4.8 - 2026-09-14\n\n### Fixes\n\n- Zeta.\n\n- Alpha.\n\nNo material changes: @sample/core.\n\n',
+  });
+});
+
+test('a release cut from typescript/ places a fragment the move adds under a name consumed before it at the move', async () => {
+  const { root: top } = layoutRepository('');
+  // The 0.4.8 cut consumes fix.md, and Zeta lands after that cut and before the move.
+  await releasePullRequest(top, top);
+  put(top, '.changes/zeta.md', '- Zeta.\n');
+  commit(top);
+  const { root } = moveWorkspace(top, { '.changes/fix.md': '- Move the workspace.\n' });
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v0.4.9 - 2026-09-14\n\n### Fixes\n\n- Zeta.\n\n- Move the workspace.\n\nNo material changes: @sample/core.\n\n',
+  });
+});
+
+test.each(layouts)(
+  'a release cut dry run $layout refuses an uncommitted fragment that reuses a name a cut consumed',
+  async ({ workspace }) => {
+    const { root, top } = layoutRepository(workspace);
+    await releasePullRequest(root, top);
+    put(root, '.changes/fix.md', '- Fix again.\n');
+    await expect(
+      run(['release', 'cut', '--dry-run', '--date', '2026-09-14'], { cwd: root }),
+    ).resolves.toEqual({
+      status: 1,
+      stderr: '.changes/fix.md: commit the fragment before preparing a release.\n',
+      stdout: '',
+    });
+  },
+);
 
 test('the first release after the workspace moved into typescript/ cuts, plans, publishes, and records from there', async () => {
   // The library changes before the move, so the material report reads across it to the last cut.
