@@ -6,9 +6,9 @@ description: The router into the references for maintainers of the Loom reposito
 
 These pages document how this repository builds, checks, and releases Loom. An application author does not need them.
 
-- [Core source modules](core-modules.md): open it when you look for where a concept lives in `packages/core/src`, or add a file to core.
+- [Core source modules](core-modules.md): open it when you look for where a concept lives in `typescript/packages/core/src`, or add a file to core.
 - [Release workflow](release-workflow.md): open it when a release PR merges and the workflow publishes the packages, or a release run needs recovery.
 - [PR guards](pr-guards.md): open it when a PR's fragment, version, or release-cut check fails.
 - [Changelog compiler](changelog-compiler.md): open it when you prepare the synchronized release cut or its dry run.
 - [Marked-string wire contract](style-wire.md): open it when you change how core frames style spans, glyphs, padding, or no-wrap text inside a marked string.
-- [Glyph reference](glyphs.md): open it when you need a glyph's main or compatibility form. `scripts/check-glyph-catalog.py` generates the page.
+- [Glyph reference](glyphs.md): open it when you need a glyph's main or compatibility form. `typescript/scripts/check-glyph-catalog.py` generates the page.

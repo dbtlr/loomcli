@@ -48,7 +48,7 @@ The contract is in [Interaction](../core/interaction.md) and the [prompts refere
 
 ## Consequences
 
-- `UnmarkedStringOption`, `ScalarArgument`, and `VariadicArgument` accept `required: 'non-interactive'`, and the action types read a scalar as possibly `undefined` and a collected input as an array. `ArgumentNode` and the manifest's argument entry gain `requiredWhen`, a member added to a node core builds, which [the changelog rules](../../.changes/README.md) count as compatible.
+- `UnmarkedStringOption`, `ScalarArgument`, and `VariadicArgument` accept `required: 'non-interactive'`, and the action types read a scalar as possibly `undefined` and a collected input as an array. `ArgumentNode` and the manifest's argument entry gain `requiredWhen`, a member added to a node core builds, which [the changelog rules](../../typescript/.changes/README.md) count as compatible.
 - Core's `questionValidationOptions` gains `argument` in its second parameter, beside `message` and `option`, an addition the changelog rules count as compatible.
 - `TextSettings`, `SecretSettings`, and `SelectSettings` gain `argument`, and the question functions gain `Args` and `Argument` type parameters after their existing ones, so a call that passes type arguments explicitly keeps compiling.
 - The glossary's Conditional requiredness covers the new inputs, and Linked option becomes Linked input, whose two forms are a linked option and a linked argument.

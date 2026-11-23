@@ -13,11 +13,11 @@ Loom adds `success` as an alias of `tick` and `error` as an alias of `cross`.
 The upstream `info` and `warning` names already express those meanings.
 Aliases select the same forms as their targets and add no styling.
 
-Run `python3 scripts/check-glyph-catalog.py --check` to compare this file with the pinned upstream source.
+Run `python3 typescript/scripts/check-glyph-catalog.py --check` to compare this file with the pinned upstream source.
 Run the command without `--check` to regenerate it. Both commands need network access.
 The generator rejects an unrecognized source shape instead of silently omitting an entry.
 
-The source is MIT-licensed and derives from Sindre Sorhus's figures, which is MIT-licensed too. Both license notices, [Inquirer's](../../packages/core/licenses/inquirer-figures-LICENSE.txt) and [figures'](../../packages/core/licenses/figures-LICENSE.txt), accompany the catalog core ships.
+The source is MIT-licensed and derives from Sindre Sorhus's figures, which is MIT-licensed too. Both license notices, [Inquirer's](../../typescript/packages/core/licenses/inquirer-figures-LICENSE.txt) and [figures'](../../typescript/packages/core/licenses/figures-LICENSE.txt), accompany the catalog core ships.
 
 | Name | Main form | Compatibility form |
 | --- | --- | --- |

@@ -8,7 +8,7 @@ The Loom CLI, `@loomcli/loom`, validates committed PR content with the changelog
 
 This reference documents this repository's own release, and the [toolchain reference](../toolchain/README.md) documents the public commands that act on one package directory.
 
-The PR guard lives in `packages/loom/src/commands/pr/`, and the synchronized cut in `packages/loom/src/commands/release/cut.ts`. Both are hidden, so no listing advertises them. The public `loom changelog` commands live in `packages/loom/src/commands/changelog/`. All three use `packages/loom/src/helpers/` for shared release logic. Helpers do not import command code.
+The PR guard lives in `typescript/packages/loom/src/commands/pr/`, and the synchronized cut in `typescript/packages/loom/src/commands/release/cut.ts`. Both are hidden, so no listing advertises them. The public `loom changelog` commands live in `typescript/packages/loom/src/commands/changelog/`. All three use `typescript/packages/loom/src/helpers/` for shared release logic. Helpers do not import command code.
 
 ```sh
 pnpm build
@@ -34,7 +34,7 @@ The comparison starts at the merge base of the supplied base and head. Changes m
 - Participating libraries must retain the synchronized stable `0.x` version from the comparison base. New libraries join that version.
 - A previously participating manifest cannot change its version by becoming private. Removed libraries need no retained manifest. Private packages and the root package do not participate.
 
-The [fragment guide](../../.changes/README.md) governs consumer relevance and skip reasons. CI checks structure; review judges the content and migration instructions.
+The [fragment guide](../../typescript/.changes/README.md) governs consumer relevance and skip reasons. CI checks structure; review judges the content and migration instructions.
 
 ## Release PRs
 
@@ -50,7 +50,7 @@ A title beginning with `chore(release)` must match that form. Release PRs are ex
 - Every participating library carries the title version, with the same participation and all other manifest fields preserved.
 - The title version supplies the explicit target and meets or exceeds the compiler's minimum from the base fragments. The target must exceed the current version and remain a stable `0.x` version. The initial minimum is `0.1.0`. An initial cut that consumes no fragments carries a narrative, because a section without entries would leave the release without notes.
 - The corresponding local Git tag is absent, and no pending fragments remain.
-- The authoring skill at the head, `packages/loom/skills/loom/SKILL.md`, names the title version as its `metadata.version`. The release diff cannot change the skill, so its review and its version land in an ordinary PR before the cut, under [ADR-0149](../decisions/0149-init-manages-a-hand-written-authoring-skill-whose-version-a-release-cut-carries.md).
+- The authoring skill at the head, `typescript/packages/loom/skills/loom/SKILL.md`, names the title version as its `metadata.version`. The release diff cannot change the skill, so its review and its version land in an ordinary PR before the cut, under [ADR-0149](../decisions/0149-init-manages-a-hand-written-authoring-skill-whose-version-a-release-cut-carries.md).
 - The changelog preserves its introduction and earlier releases. The new section matches the compiler output, including fragment order and the material-change report. An optional narrative follows the compiler's Markdown rules and the [safe narrative rule](../toolchain/changelog.md) a `--narrative` file follows, read from the bytes of `CHANGELOG.md`, so a narrative edited after the cut cannot carry a terminal control, a carriage return, invalid UTF-8, or an invisible reordering onto `main`. The failure names `CHANGELOG.md`, the line within it, and the first such character by its code point, as in `CHANGELOG.md: line 6 holds the carriage return U+000D. Save the narrative with LF line endings.`
 - The diff contains only library version fields, `pnpm-lock.yaml`, the new changelog section, consumed-fragment deletions, and decision acceptances. Retained files keep their modes, and the lockfile remains a regular file.
 - A decision acceptance marks a proposed record in `docs/decisions/` at the git root accepted and changes nothing else in it: the frontmatter `status` reads `accepted`, `modified` reads the release date from the changelog heading, and the Status section reads exactly `Accepted in <version>.` with the version number and no `v`, such as `Accepted in 0.4.8.` for `Release v0.4.8`. The index `docs/decisions/README.md` changes only the status cell of each accepted record's row, from `proposed` to `accepted`. The guard admits an acceptance and never requires one. Any other change to a record or the index, such as a Context edit, a Changelog entry, another row, or a new or deleted record, fails with a diagnostic that names the file and needs an ordinary PR.

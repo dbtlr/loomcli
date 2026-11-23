@@ -47,31 +47,64 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
           node-version: ${{ env.NODE_VERSION }}
 
-      # Installs the published Loom CLI pinned by .github/release-tool outside the checkout, so the install leaves
-      # the working tree the plan reads untouched. Nothing from the checkout is installed or built.
-      - name: Install the release tool
+      # The build bundles the loom bin with loom build, which runs bun build.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # Until a release publishes the release commands that run from typescript/, the plan and record jobs run
+      # the Loom CLI built from this checkout in place of the published one .github/release-tool pins, as
+      # ADR-0075's Consequences provide. This job, which holds only contents: read, builds and packs it; the
+      # record job unpacks that package and builds nothing. Once the next release is published, a pull request
+      # moves the pin to it and restores the release tool.
+      - name: Build and pack the release tool from the checkout
+        working-directory: typescript
+        run: |
+          set -eu
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm --dir packages/loom pack --pack-destination "$RUNNER_TEMP/release-tool-package"
+
+      - name: Unpack the release tool
         working-directory: ${{ runner.temp }}
         run: |
           set -eu
           mkdir release-tool
-          cp "$GITHUB_WORKSPACE/.github/release-tool/package.json" "$GITHUB_WORKSPACE/.github/release-tool/package-lock.json" release-tool/
-          cd release-tool
-          npm ci --ignore-scripts --no-audit --no-fund
+          tar -xzf release-tool-package/*.tgz -C release-tool
 
       - name: Plan the reconciliation
         id: plan
+        working-directory: typescript
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          "$RUNNER_TEMP/release-tool/node_modules/.bin/loom" release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
+          node "$RUNNER_TEMP/release-tool/package/dist/main.js" release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
           jq -r '"version=\(.version)", "publish=\(.publish)", "record=\(.record)"' "$RUNNER_TEMP/plan.json" >> "$GITHUB_OUTPUT"
           echo "libraries=$(jq -c '[.libraries[].directory]' "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
+
+      # Uploaded after the plan, so a run whose plan failed leaves no artifact behind for a re-run to collide with.
+      - name: Upload the release tool
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-tool
+          path: ${{ runner.temp }}/release-tool-package/*.tgz
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
   build:
     name: Release / build
@@ -80,6 +113,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # The plan's library directories are relative to the workspace.
+    defaults:
+      run:
+        working-directory: typescript
     steps:
       - name: Check out the commit this run attests
         uses: actions/checkout@v7
@@ -95,6 +132,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up Bun
@@ -204,23 +242,28 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # Installs the published Loom CLI pinned by .github/release-tool outside the checkout, so the install leaves
-      # the working tree the plan reads untouched. Nothing from the checkout is installed or built.
-      - name: Install the release tool
+      # Unpacks the Loom CLI the plan job built and packed from this commit, outside the checkout. The package
+      # has no dependencies, so nothing is installed, and nothing from the checkout is built in this job.
+      - name: Download the release tool
+        uses: actions/download-artifact@v8
+        with:
+          name: release-tool
+          path: ${{ runner.temp }}/release-tool-package
+
+      - name: Unpack the release tool
         working-directory: ${{ runner.temp }}
         run: |
           set -eu
           mkdir release-tool
-          cp "$GITHUB_WORKSPACE/.github/release-tool/package.json" "$GITHUB_WORKSPACE/.github/release-tool/package-lock.json" release-tool/
-          cd release-tool
-          npm ci --ignore-scripts --no-audit --no-fund
+          tar -xzf release-tool-package/*.tgz -C release-tool
 
       # The plan is re-derived here rather than carried between jobs, so the record reads one source of truth.
       - name: Record the tag and the GitHub Release
+        working-directory: typescript
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -eu
-          "$RUNNER_TEMP/release-tool/node_modules/.bin/loom" release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
-          "$RUNNER_TEMP/release-tool/node_modules/.bin/loom" release record --repository "$REPOSITORY" --plan "$RUNNER_TEMP/plan.json"
+          node "$RUNNER_TEMP/release-tool/package/dist/main.js" release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
+          node "$RUNNER_TEMP/release-tool/package/dist/main.js" release record --repository "$REPOSITORY" --plan "$RUNNER_TEMP/plan.json"

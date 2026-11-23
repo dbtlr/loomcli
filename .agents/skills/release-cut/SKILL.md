@@ -11,7 +11,7 @@ This procedure prepares a cut. Merging the release PR is the only authorization 
 
 ## Establish the release inputs
 
-Read the repository's [fragment guide](../../../.changes/README.md), [compiler reference](../../../docs/maintaining/changelog-compiler.md), and [PR guard reference](../../../docs/maintaining/pr-guards.md). Resolve these paths from the repository root if the skill is installed elsewhere.
+Read the repository's [fragment guide](../../../typescript/.changes/README.md), [compiler reference](../../../docs/maintaining/changelog-compiler.md), and [PR guard reference](../../../docs/maintaining/pr-guards.md). Resolve these paths from the repository root if the skill is installed elsewhere.
 
 1. Resolve the repository root, configured Git remote, and its GitHub repository identity. Use the intended upstream repository for all external checks.
 2. Fetch the current `main` and tags without overwriting conflicting local tags. Record the exact upstream `main` SHA as the cut base.
@@ -42,16 +42,16 @@ Choose a short release description from the actual changes. Add an optional narr
 
 The compiled `### Breaking Changes` section lists entries in commit order, and the release guard holds it to that order. So the narrative names the breaks the type checker will not report first, because the author cannot find them by compiling.
 
-1. Read each pending `breaking.*.md` fragment's **Affected surface**. Its opening sentences state how the author finds each break, as the [fragment guide](../../../.changes/README.md) requires.
+1. Read each pending `breaking.*.md` fragment's **Affected surface**. Its opening sentences state how the author finds each break, as the [fragment guide](../../../typescript/.changes/README.md) requires.
 2. Mark a fragment as silent when any of its breaks has no compile error. A fragment that holds both kinds is silent.
 3. The compiler fixes the order of the entries, so do not edit the compiled section. When any pending breaking fragment is silent, the narrative is required: write it so its upgrade actions name each silent break first, in one line each, before it names any break the type checker reports.
 4. When that statement is missing or contradicts the change, fix the fragment in a preparatory PR before the cut. Judge the break from the code and the API report diff, not from the fragment's wording.
 
 ### Review the authoring skill
 
-The release guard fails a cut whose authoring skill, `packages/loom/skills/loom/SKILL.md`, names a `metadata.version` other than the release version, and it rejects any change to the skill in the cut itself. Review the skill before the cut, in an ordinary PR:
+The release guard fails a cut whose authoring skill, `typescript/packages/loom/skills/loom/SKILL.md`, names a `metadata.version` other than the release version, and it rejects any change to the skill in the cut itself. Review the skill before the cut, in an ordinary PR:
 
-1. Learn the target version. In a checkout of the cut base, install with the frozen lockfile and run `pnpm run build`, because `pnpm loom` runs the built `dist`. Then run `pnpm loom release cut --dry-run --date YYYY-MM-DD`, with the same `--target VERSION` when one is specified, and read the version it prints.
+1. Learn the target version. In the `typescript/` workspace directory of a checkout of the cut base, install with the frozen lockfile and run `pnpm run build`, because `pnpm loom` runs the built `dist`. Then run `pnpm loom release cut --dry-run --date YYYY-MM-DD`, with the same `--target VERSION` when one is specified, and read the version it prints.
 2. Read every pending feature and breaking fragment, and the cycle diff where a fragment is unclear, against what `SKILL.md` and each file in `references/` teach. Update each passage a change makes wrong or incomplete.
 3. Set `metadata.version` in `SKILL.md` to the target version, even when nothing else changes.
 4. Open the preparatory PR. A version-only change takes the `skip-changelog` label, with the reason that it records the skill's release review. A change to what the skill teaches takes a fragment that describes the change.
@@ -61,7 +61,7 @@ The release guard fails a cut whose authoring skill, `packages/loom/skills/loom/
 
 Create a dedicated worktree or checkout at the recorded base, with a release branch. Preserve existing worktrees and user changes. Install dependencies using the pinned package manager and frozen lockfile, then build the Loom CLI using the repository scripts.
 
-Run these commands from the isolated repository root:
+Run these commands from the `typescript/` workspace directory of the isolated checkout:
 
 ```sh
 pnpm loom changelog check

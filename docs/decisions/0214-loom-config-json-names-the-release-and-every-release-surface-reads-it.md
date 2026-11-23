@@ -47,7 +47,7 @@ An author whose release name differs from the bin sets `name` once, then runs `l
 
 The configuration's schema gains `name`, and [The configuration file](../toolchain/build.md#the-configuration-file) lists it. `loom release formula` now fails with code 2 on a `loom.config.json` that cannot be used, as `build` and `init` already do. The change adds a key and changes no default, so its fragment is a feature.
 
-The acceptance plans live beside the [build](../../packages/loom/tests/build.test.ts), [release formula](../../packages/loom/tests/release-formula.test.ts), and [init](../../packages/loom/tests/init.test.ts) tests.
+The acceptance plans live beside the [build](../../typescript/packages/loom/tests/build.test.ts), [release formula](../../typescript/packages/loom/tests/release-formula.test.ts), and [init](../../typescript/packages/loom/tests/init.test.ts) tests.
 
 ## Status
 

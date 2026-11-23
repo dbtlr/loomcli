@@ -10,7 +10,7 @@ node_modules
 
 build
 # The sources of the loom build command, which the rule above would otherwise ignore.
-!packages/loom/src/commands/build/
+!typescript/packages/loom/src/commands/build/
 
 dist
 

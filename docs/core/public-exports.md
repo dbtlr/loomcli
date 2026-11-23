@@ -24,7 +24,7 @@ In a covered library, a schema in a published type is a [Standard Schema](https:
 
 ## Which libraries carry the tags
 
-`check:api` covers every published library: `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, `@loomcli/prompts`, `@loomcli/testing`, and `@loomcli/eslint-plugin`, whose every export carries the tags below. Core's API report is committed at `packages/core/api/index.api.md`, each plugins subpath's report is under `packages/plugins/api/`, the validators report is at `packages/validators/api/index.api.md`, the prompts reports, one for the root export and one for `@loomcli/prompts/views`, are under `packages/prompts/api/`, the testing report is at `packages/testing/api/index.api.md`, and the lint plugin's report is at `packages/eslint-plugin/api/index.api.md`.
+`check:api` covers every published library: `@loomcli/core`, `@loomcli/plugins`, `@loomcli/validators`, `@loomcli/prompts`, `@loomcli/testing`, and `@loomcli/eslint-plugin`, whose every export carries the tags below. Core's API report is committed at `typescript/packages/core/api/index.api.md`, each plugins subpath's report is under `typescript/packages/plugins/api/`, the validators report is at `typescript/packages/validators/api/index.api.md`, the prompts reports, one for the root export and one for `@loomcli/prompts/views`, are under `typescript/packages/prompts/api/`, the testing report is at `typescript/packages/testing/api/index.api.md`, and the lint plugin's report is at `typescript/packages/eslint-plugin/api/index.api.md`.
 
 ## Each type is an input type or an output type
 
@@ -87,7 +87,7 @@ The tag and the position of the changed member decide.
 - A member you read, such as a callback's parameter, breaks when it widens or its string-literal union loses a member. A string-literal union core produces may gain a member, so handle a value you do not know; a union of object variants gaining a variant breaks. A member you supply, such as a callback's return value, breaks when it narrows.
 - A new or changed member on a class you may subclass breaks, because it can collide with your subclass's own.
 
-The [changelog guide](../../.changes/README.md#explain-a-breaking-change) holds the full table that each release's breaking changes follow.
+The [changelog guide](../../typescript/.changes/README.md#explain-a-breaking-change) holds the full table that each release's breaking changes follow.
 
 ## The check
 

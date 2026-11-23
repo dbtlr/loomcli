@@ -8,13 +8,13 @@ Loom CLI is a TypeScript framework for command applications. The current increme
 
 ## What Loom ships
 
-- [`@loomcli/core`](packages/core/README.md): declaring an application and running it. Core installs no plugin by itself.
-- [`@loomcli/plugins`](packages/plugins/README.md): every first-party plugin, each its own subpath export, such as help, version, shell completion, configuration, the manifest, and MCP.
-- [`@loomcli/validators`](packages/validators/README.md): Standard Schema validators for common input shapes.
-- [`@loomcli/prompts`](packages/prompts/README.md): questions and progress lines an action shows the operator.
-- [`@loomcli/testing`](packages/testing/README.md): the assembly check and test helpers.
-- [`@loomcli/eslint-plugin`](packages/eslint-plugin/README.md): lint rules for a Loom application.
-- [`@loomcli/loom`](packages/loom/README.md): the `loom` bin, which scaffolds, builds, and releases an application.
+- [`@loomcli/core`](typescript/packages/core/README.md): declaring an application and running it. Core installs no plugin by itself.
+- [`@loomcli/plugins`](typescript/packages/plugins/README.md): every first-party plugin, each its own subpath export, such as help, version, shell completion, configuration, the manifest, and MCP.
+- [`@loomcli/validators`](typescript/packages/validators/README.md): Standard Schema validators for common input shapes.
+- [`@loomcli/prompts`](typescript/packages/prompts/README.md): questions and progress lines an action shows the operator.
+- [`@loomcli/testing`](typescript/packages/testing/README.md): the assembly check and test helpers.
+- [`@loomcli/eslint-plugin`](typescript/packages/eslint-plugin/README.md): lint rules for a Loom application.
+- [`@loomcli/loom`](typescript/packages/loom/README.md): the `loom` bin, which scaffolds, builds, and releases an application.
 
 The [documentation map](docs/README.md) routes to each reference.
 
@@ -22,11 +22,14 @@ The [documentation map](docs/README.md) routes to each reference.
 
 Install dependencies, build the packages, and bundle the examples. The build needs [Bun](https://bun.sh), because the `loom` bin and each example are bundled with [`loom build --target node`](docs/toolchain/build.md#loom-build), which runs `bun build` and bakes the [release facts](docs/core/release-facts.md) of a distributed build into the bundle through the `__LOOM_RELEASE__` define:
 
+The TypeScript workspace sits in `typescript/`, and the commands below run from that directory.
+
 ```sh
+cd typescript
 pnpm install --frozen-lockfile
 pnpm build
 pnpm build:examples
-node examples/textstat/dist/main.js README.md
+node examples/textstat/dist/main.js ../README.md
 ```
 
 The output is one table: a `COUNT` and `SOURCE` header, then one line per source with a right-aligned count and the supplied file path. The example reads files in argument order. Bytes are the default metric.
@@ -34,8 +37,8 @@ The output is one table: a `COUNT` and `SOURCE` header, then one line per source
 To count words and add a combined total:
 
 ```sh
-node examples/textstat/dist/main.js --metric words --total README.md docs/glossary.md
-node examples/textstat/dist/main.js -tm words README.md docs/glossary.md
+node examples/textstat/dist/main.js --metric words --total ../README.md ../docs/glossary.md
+node examples/textstat/dist/main.js -tm words ../README.md ../docs/glossary.md
 ```
 
 `--metric` accepts `bytes`, `words`, or `lines`. Bytes count file bytes. Words are runs of non-whitespace characters after UTF-8 decoding, using JavaScript whitespace rules. Lines count LF characters; an unterminated final line adds no LF. Empty files count as zero for every metric.
@@ -45,7 +48,7 @@ node examples/textstat/dist/main.js -tm words README.md docs/glossary.md
 To keep only files with at least 100 bytes:
 
 ```sh
-node examples/textstat/dist/main.js --min-bytes 100 --total README.md docs/glossary.md
+node examples/textstat/dist/main.js --min-bytes 100 --total ../README.md ../docs/glossary.md
 ```
 
 `--min-bytes` uses a schema to transform decimal digits into a non-negative safe integer. Its declared default is `'0'`, which becomes numeric `0`. Filtered files do not contribute to the total. Invalid inputs report all schema issues before the action reads any files.
@@ -57,16 +60,16 @@ The words after the first bare `--` are file paths too, so `textstat -- -notes.t
 The same built application runs with Bun:
 
 ```sh
-bun examples/textstat/dist/main.js README.md
+bun examples/textstat/dist/main.js ../README.md
 ```
 
 The bundle is a distributed build, so a defect prints `textstat: Something went wrong.`. The source is a development build, because nothing baked release facts into it, so they read `{ build: 'source' }`, and a defect prints its Developer Diagnostic when the source runs under Bun:
 
 ```sh
-bun examples/textstat/src/main.ts README.md
+bun examples/textstat/src/main.ts ../README.md
 ```
 
-The [example declaration](examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It declares its options with validators from [`@loomcli/validators`](docs/libs/validators.md), ordinary Standard Schema values that core calls with no Loom adapter, and installs the [shared example plugin](examples/explain/src/plugin.ts) that contributes `--explain`. Its [separate action](examples/textstat/src/count-files.ts) derives argument and option types from that declaration, which declares its [table](examples/textstat/src/application.ts) as its result, and emits it through one `out.results` call.
+The [example declaration](typescript/examples/textstat/src/application.ts) imports the built `@loomcli/core` package. It declares its options with validators from [`@loomcli/validators`](docs/libs/validators.md), ordinary Standard Schema values that core calls with no Loom adapter, and installs the [shared example plugin](typescript/examples/explain/src/plugin.ts) that contributes `--explain`. Its [separate action](typescript/examples/textstat/src/count-files.ts) derives argument and option types from that declaration, which declares its [table](typescript/examples/textstat/src/application.ts) as its result, and emits it through one `out.results` call.
 
 ## Run jsonkit
 
@@ -96,11 +99,12 @@ The result prints as JSON text. Objects and arrays use two-space indentation, an
 
 `--explain` prints the routed command's name, its description, and the details its declaration carries, then ends the invocation without reading a document, so it needs no `--file`.
 
-The [Application](examples/jsonkit/src/application.ts) declares global options with `globalOption()` and registers their types once for all [command modules](examples/jsonkit/src/commands), and each [action](examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application installs the same [shared example plugin](examples/explain/src/plugin.ts) that `textstat` does, and the private [doctor plugin](examples/doctor/src/plugin.ts), whose `doctor` Command leads the root's Commands, and overrides one failure view, the literal `FatalError` view, in [views.ts](examples/jsonkit/src/views.ts); every other failure keeps core's text.
+The [Application](typescript/examples/jsonkit/src/application.ts) declares global options with `globalOption()` and registers their types once for all [command modules](typescript/examples/jsonkit/src/commands), and each [action](typescript/examples/jsonkit/src/actions) derives its argument and option types from its own declaration. The application installs the same [shared example plugin](typescript/examples/explain/src/plugin.ts) that `textstat` does, and the private [doctor plugin](typescript/examples/doctor/src/plugin.ts), whose `doctor` Command leads the root's Commands, and overrides one failure view, the literal `FatalError` view, in [views.ts](typescript/examples/jsonkit/src/views.ts); every other failure keeps core's text.
 
 ## Verify the package
 
 ```sh
+cd typescript
 pnpm verify
 ```
 
@@ -118,7 +122,7 @@ The [documentation map](docs/README.md) lists every reference and who it is for.
 
 ## Contribute a change
 
-Read the [change fragment guide](.changes/README.md) before opening a pull request. The [changelog](CHANGELOG.md) records library releases and migration instructions.
+Read the [change fragment guide](typescript/.changes/README.md) before opening a pull request. The [changelog](typescript/CHANGELOG.md) records library releases and migration instructions.
 
 The [changelog compiler reference](docs/maintaining/changelog-compiler.md) describes this repository's synchronized release cut, its dry run, and release-file preparation. The [toolchain reference](docs/toolchain/changelog.md) describes `loom changelog check`, which validates the fragments.
 

@@ -277,7 +277,7 @@ The document is *JSON*; see [the format](https://www.json.org/json-en.html).
 ```
 
 ```ts
-// examples/jsonkit/src/commands/get.ts
+// typescript/examples/jsonkit/src/commands/get.ts
 // get.md holds the text above.
 import details from './get.md' with { type: 'text' };
 import { helpCommand } from '@loomcli/plugins/help/extension';
@@ -288,7 +288,7 @@ helpCommand({
   section: ['Document commands', 'Read'],
 });
 
-// examples/jsonkit/src/text.d.ts
+// typescript/examples/jsonkit/src/text.d.ts
 declare module '*.md' {
   const text: string;
   export default text;
