@@ -1,2 +1,2 @@
 cd typescript
-vp staged
+./node_modules/.bin/vp staged

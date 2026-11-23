@@ -78,14 +78,6 @@ jobs:
           pnpm build
           pnpm --dir packages/loom pack --pack-destination "$RUNNER_TEMP/release-tool-package"
 
-      - name: Upload the release tool
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-tool
-          path: ${{ runner.temp }}/release-tool-package/*.tgz
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Unpack the release tool
         working-directory: ${{ runner.temp }}
         run: |
@@ -103,6 +95,16 @@ jobs:
           node "$RUNNER_TEMP/release-tool/package/dist/main.js" release plan --repository "$REPOSITORY" --output "$RUNNER_TEMP/plan.json"
           jq -r '"version=\(.version)", "publish=\(.publish)", "record=\(.record)"' "$RUNNER_TEMP/plan.json" >> "$GITHUB_OUTPUT"
           echo "libraries=$(jq -c '[.libraries[].directory]' "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
+
+      # Uploaded after the plan, so a run whose plan failed leaves no artifact behind for a re-run to collide with.
+      - name: Upload the release tool
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-tool
+          path: ${{ runner.temp }}/release-tool-package/*.tgz
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
   build:
     name: Release / build
