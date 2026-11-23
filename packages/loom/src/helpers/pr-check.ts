@@ -95,9 +95,13 @@ export async function checkPullRequest(
     changed.some((path) => isBuildAffectingPath(path, placement)) &&
     !options.labels.includes('skip-changelog')
   ) {
-    // A fragment the move of the workspace carried unchanged is not one the pull request adds or modifies.
+    /*
+     * A fragment counts when the head's own path changed, and not only because the move of the
+     * workspace carried it unchanged or a copy of it at the old path went away.
+     */
     const own = await changedWithoutMove(checkout, placement, ancestor, head);
-    if (!fragments.some((fragment) => own.includes(`${conventionalFragments}/${fragment.name}`))) {
+    const counts = (path: string) => changed.includes(path) && own.includes(path);
+    if (!fragments.some((fragment) => counts(`${conventionalFragments}/${fragment.name}`))) {
       throw new Error(fragmentRequired);
     }
   }

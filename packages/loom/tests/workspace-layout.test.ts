@@ -329,6 +329,24 @@ test('pr check from typescript/ counts a pending fragment the move edits as it c
   });
 });
 
+test('pr check from typescript/ does not count the deletion of a stray copy of a fragment the move leaves as it was', async () => {
+  // A stray typescript/.changes/pending.md sits below the git root before the move.
+  const { root: top } = layoutRepository('', {
+    '.changes/pending.md': '- Pending.\n',
+    'typescript/.changes/pending.md': '- Pending.\n',
+  });
+  const before = git(top, ['rev-parse', 'HEAD']);
+  git(top, ['rm', '-q', '.changes/pending.md']);
+  git(top, ['mv', ...workspaceEntries.filter((entry) => entry !== '.changes'), 'typescript/']);
+  git(top, ['mv', '.changes/README.md', 'typescript/.changes/README.md']);
+  commit(top);
+  await expect(prCheck(join(top, 'typescript'), before, 'Move the workspace')).resolves.toEqual({
+    status: 1,
+    stderr: fragmentRequired,
+    stdout: '',
+  });
+});
+
 test('pr check from typescript/ passes an ordinary pull request with a fragment after the move', async () => {
   const { move, root, top } = await movedRepository();
   put(root, 'packages/core/index.js', 'export const value = 2;\n');
