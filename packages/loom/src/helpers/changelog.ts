@@ -39,6 +39,53 @@ function blankLine(text: string) {
   return '\n\n';
 }
 
+/** A first-parent chain of commits, newest first, and each commit's position, oldest at 1. */
+interface Chain {
+  commits: string[];
+  positions: Map<string, number>;
+}
+
+/** The newest commit of the chain at or before `from` that added `place`, or undefined when none did. */
+async function addition(checkout: Checkout, chain: Chain, from: string, place: string) {
+  const commit = await gitLine(checkout, [
+    'log',
+    '--first-parent',
+    '--diff-filter=A',
+    '-1',
+    '--format=%H',
+    from,
+    '--',
+    place,
+  ]);
+  const position = chain.positions.get(commit);
+  return position === undefined ? undefined : { commit, position };
+}
+
+/**
+ * The position a fragment the move carried landed at before the move, or undefined when the commit
+ * that added it where the workspace sits now did not carry it. That commit carried it when its
+ * parent held the workspace at the top of the work tree, `former`, and the fragment there, at
+ * `place`.
+ */
+async function carriedPosition(
+  checkout: Checkout,
+  chain: Chain,
+  added: string,
+  place: string,
+  former: string,
+) {
+  const parent = chain.commits[chain.commits.indexOf(added) + 1];
+  if (
+    parent === undefined ||
+    (await workspaceAt(checkout, parent)) !== former ||
+    !(await git(checkout, ['ls-tree', parent, '--', place]))
+  ) {
+    return undefined;
+  }
+  const before = await addition(checkout, chain, parent, place);
+  return before?.position;
+}
+
 /**
  * The fragments in the folder in landing order, as `landedFragments` describes. `former` is the
  * path from the root to the top of the work tree, where the workspace sat before it moved, or `''`
@@ -53,35 +100,25 @@ async function landedAt(
   await requireFullHistory(checkout);
   const head = ref ?? (await gitLine(checkout, ['rev-parse', 'HEAD']));
   const history = await git(checkout, ['rev-list', '--first-parent', head]);
-  const chain = history.split('\n').filter(Boolean);
-  const positions = new Map(chain.map((commit, index) => [commit, chain.length - index]));
+  const commits = history.split('\n').filter(Boolean);
+  const chain = {
+    commits,
+    positions: new Map(commits.map((commit, index) => [commit, commits.length - index])),
+  };
   const landed = [];
   const location = await workspaceAt(checkout, ref);
   for (const fragment of await readFragments(checkout, ref, folder)) {
     const path = `${folder}/${fragment.name}`;
-    const places = new Set([`${location}${path}`, ...(former === '' ? [] : [`${former}${path}`])]);
-    const additions = [];
-    for (const place of places) {
-      const commit = await gitLine(checkout, [
-        'log',
-        '--first-parent',
-        '--diff-filter=A',
-        '-1',
-        '--format=%H',
-        head,
-        '--',
-        place,
-      ]);
-      const position = positions.get(commit);
-      if (position !== undefined) {
-        additions.push(position);
-      }
-    }
-    if (additions.length === 0) {
+    const here = await addition(checkout, chain, head, `${location}${path}`);
+    if (here === undefined) {
       throw new Error(uncommittedFragment(path));
     }
+    const carried =
+      former === '' || former === location
+        ? undefined
+        : await carriedPosition(checkout, chain, here.commit, `${former}${path}`, former);
     landed.push({
-      added: Math.min(...additions),
+      added: carried ?? here.position,
       body: fragment.body,
       kind: fragment.kind,
       name: fragment.name,
@@ -136,9 +173,10 @@ export async function landedFragments(
 
 /**
  * The workspace's own fragments in landing order, as `landedFragments` reads them. Below the top of
- * the work tree, a fragment's adding commit is the earlier of the newest ones that added it where
- * the workspace sits now and at the same path at the top, where the workspace sat before it moved,
- * so a fragment the move carried keeps the position it landed at before the move.
+ * the work tree, a fragment the move carried keeps the position it landed at before the move, at
+ * the same path at the top, where the workspace sat. Every other fragment takes its position from
+ * where the workspace sits now, so a fragment that reuses the name of one a cut consumed before the
+ * move lands where it was added, and an uncommitted one has no position.
  */
 export async function landedWorkspaceFragments(checkout: Checkout, ref?: string) {
   const { up } = await readPlacement(checkout);

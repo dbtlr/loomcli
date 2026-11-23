@@ -93,11 +93,11 @@ const layouts = [
 /**
  * A repository at 0.4.7 whose workspace directory sits at `workspace` below the git root. `top` is
  * the git root, `root` is the workspace directory the commands run in, and `base` is the first
- * commit.
+ * commit. `extra` holds more workspace files, by their path inside the workspace.
  */
-function layoutRepository(workspace: string) {
+function layoutRepository(workspace: string, extra: Record<string, string> = {}) {
   const files: Record<string, string> = { ...topFiles };
-  for (const [path, body] of Object.entries(workspaceFiles)) {
+  for (const [path, body] of Object.entries({ ...workspaceFiles, ...extra })) {
     files[workspace === '' ? path : `${workspace}/${path}`] = body;
   }
   const { base, root: top } = repository({ files, prefix: 'loom-layout-', tag: 'v0.4.7' });
@@ -270,11 +270,23 @@ async function movedRepository(...pullRequests: Record<string, string>[]) {
     }
     before = commit(top);
   }
+  return { before, ...moveWorkspace(top), top };
+}
+
+/**
+ * Moves the workspace at the git root `top` into `typescript/` with `git mv` in one commit, which
+ * also writes `edits`, by their path in the workspace, as a move that edits files as it moves them
+ * does. `root` is the moved workspace directory and `move` the move itself.
+ */
+function moveWorkspace(top: string, edits: Record<string, string> = {}) {
   const root = join(top, 'typescript');
   mkdirSync(root);
   git(top, ['mv', ...workspaceEntries, 'typescript/']);
+  for (const [path, body] of Object.entries(edits)) {
+    put(root, path, body);
+  }
   const move = commit(top);
-  return { before, move, root, top };
+  return { move, root };
 }
 
 test('pr check from typescript/ judges the pull request that moves the workspace there', async () => {
@@ -286,6 +298,22 @@ test('pr check from typescript/ judges the pull request that moves the workspace
     status: 1,
     stderr: fragmentRequired,
     stdout: '',
+  });
+});
+
+test('pr check from typescript/ asks the move for its own fragment when it only carries pending ones', async () => {
+  const { before, root, top } = await movedRepository({ '.changes/pending.md': '- Pending.\n' });
+  await expect(prCheck(root, before, 'Move the workspace')).resolves.toEqual({
+    status: 1,
+    stderr: fragmentRequired,
+    stdout: '',
+  });
+  put(root, '.changes/move.md', '- Move the workspace.\n');
+  commit(top);
+  await expect(prCheck(root, before, 'Move the workspace')).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
   });
 });
 
@@ -318,6 +346,40 @@ test('a release cut dry run from typescript/ reports a library the move left as 
   put(root, 'packages/core/extra.js', 'export const extra = 1;\n');
   await expect(dryRunAfterMove(root)).resolves.toEqual({ status: 0, stderr: '', stdout: fixes });
   rmSync(join(root, 'packages/core/extra.js'));
+});
+
+test('a release cut dry run from typescript/ counts a file the move edited against its own library alone', async () => {
+  const { root: top } = layoutRepository('', {
+    'packages/extra/index.js': 'export const extra = 1;\n',
+    'packages/extra/package.json': `${JSON.stringify({ name: '@sample/extra', version: '0.4.7' })}\n`,
+  });
+  put(top, '.changes/value.md', '- Change the value.\n');
+  commit(top);
+  const { root } = moveWorkspace(top, { 'packages/core/index.js': 'export const value = 2;\n' });
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v0.4.8 - 2026-09-14\n\n### Fixes\n\n- Change the value.\n\nNo material changes: @sample/extra.\n\n',
+  });
+});
+
+test('a release cut from typescript/ places a fragment that reuses a name consumed before the move where it landed', async () => {
+  // The 0.4.8 cut consumed fix.md before the move, and Zeta lands after that cut and before the move.
+  const { root, top } = await movedRepository({ '.changes/zeta.md': '- Zeta.\n' });
+  put(root, '.changes/fix.md', '- Fix again.\n');
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 1,
+    stderr: '.changes/fix.md: commit the fragment before preparing a release.\n',
+    stdout: '',
+  });
+  commit(top);
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v0.4.9 - 2026-09-14\n\n### Fixes\n\n- Zeta.\n\n- Fix again.\n\nNo material changes: @sample/core.\n\n',
+  });
 });
 
 test('the first release after the workspace moved into typescript/ cuts, plans, publishes, and records from there', async () => {
