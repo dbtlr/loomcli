@@ -1,0 +1,24 @@
+[package]
+name = "loomcli-prompts"
+description = "Questions and progress for Loom CLI actions: text, secret, editor, select, multiselect, and progress lines."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+loomcli-core = { path = "../loomcli-core" }
+regex = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+serde_json = { workspace = true }
+tokio-util = { workspace = true }
+
+[dev-dependencies]
+loomcli-testing = { path = "../loomcli-testing" }
+loomcli-validators = { path = "../loomcli-validators" }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "time", "test-util"] }

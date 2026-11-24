@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"The initialize request carries no protocol version or no capabilities. Send params.protocolVersion as a string and params.capabilities as an object."}}

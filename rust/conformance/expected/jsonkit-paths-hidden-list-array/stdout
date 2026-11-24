@@ -1,0 +1,22 @@
+kind  array with 3 items
+path  .
+
+kind  number
+path  0
+
+kind  number
+path  1
+
+kind  array with 2 items
+path  2
+
+kind  number
+path  2.0
+
+kind  array with 1 item
+path  2.1
+
+kind  number
+path  2.1.0
+
+7 records

@@ -1,0 +1,2 @@
+textstat: Option "--metric": Expected one of: bytes, words, lines.
+Run "textstat --help" to see the usage.

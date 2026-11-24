@@ -1,0 +1,32 @@
+{
+  "description": "FORCE_COLOR, NO_COLOR, and the color flags over a few outputs.",
+  "cases": [
+    {"id":"jsonkit-color-forced-help","app":"jsonkit","argv":["-h"],"env":{"FORCE_COLOR":"1"}},
+    {"id":"jsonkit-color-forced-level2","app":"jsonkit","argv":["-h"],"env":{"FORCE_COLOR":"2"}},
+    {"id":"jsonkit-color-forced-level3","app":"jsonkit","argv":["-h"],"env":{"FORCE_COLOR":"3"}},
+    {"id":"jsonkit-color-forced-summary","app":"jsonkit","argv":["-f","doc.json"],"env":{"FORCE_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-forced-records-format","app":"jsonkit","argv":["-f","doc.json","-o","records"],"env":{"FORCE_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-forced-json-stays-plain","app":"jsonkit","argv":["-f","doc.json","-o","json"],"env":{"FORCE_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-forced-paths-table","app":"jsonkit","argv":["paths","-f","doc.json","-o","table"],"env":{"FORCE_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-forced-usage-failure","app":"jsonkit","argv":["typo"],"env":{"FORCE_COLOR":"1"}},
+    {"id":"jsonkit-color-forced-fatal-failure","app":"jsonkit","argv":["get","nope","-f","doc.json"],"env":{"FORCE_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-forced-warning","app":"jsonkit","argv":["select","-F","zzz","-f","doc.json"],"env":{"FORCE_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-forced-verbose-line","app":"jsonkit","argv":["-v","get","name","-f","doc.json"],"env":{"FORCE_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-forced-control-chars-escaped","app":"jsonkit","argv":["keys","-f","control.json"],"env":{"FORCE_COLOR":"1"},"fixtures":["control.json"]},
+    {"id":"jsonkit-color-forced-incomplete","app":"jsonkit","argv":["paths","-f","boom.json"],"env":{"FORCE_COLOR":"1"},"fixtures":["boom.json"]},
+    {"id":"jsonkit-color-forced-explain","app":"jsonkit","argv":["--explain"],"env":{"FORCE_COLOR":"1"}},
+    {"id":"jsonkit-color-no-color-summary","app":"jsonkit","argv":["-f","doc.json"],"env":{"NO_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-force-beats-no-color","app":"jsonkit","argv":["-f","doc.json"],"env":{"NO_COLOR":"1","FORCE_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-flag-overrides-no-color-env","app":"jsonkit","argv":["-f","doc.json","--color"],"env":{"NO_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-flag-on","app":"jsonkit","argv":["-f","doc.json","--color"],"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-flag-off-beats-force","app":"jsonkit","argv":["-f","doc.json","--no-color"],"env":{"FORCE_COLOR":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-flag-on-usage-failure","app":"jsonkit","argv":["--color","typo"]},
+    {"id":"jsonkit-color-flag-with-value","app":"jsonkit","argv":["--color=always","-f","doc.json"],"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-force-color-zero","app":"jsonkit","argv":["-f","doc.json"],"env":{"FORCE_COLOR":"0"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-term-dumb-with-force","app":"jsonkit","argv":["-f","doc.json"],"env":{"FORCE_COLOR":"1","TERM":"dumb"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-clicolor-force","app":"jsonkit","argv":["-f","doc.json"],"env":{"CLICOLOR_FORCE":"1"},"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-flag-then-no-color-flag","app":"jsonkit","argv":["--color","--no-color","-f","doc.json"],"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-no-color-flag-then-color-flag","app":"jsonkit","argv":["--no-color","--color","-f","doc.json"],"fixtures":["doc.json"]},
+    {"id":"jsonkit-color-help-with-color-flag","app":"jsonkit","argv":["--help","--color"]}
+  ]
+}

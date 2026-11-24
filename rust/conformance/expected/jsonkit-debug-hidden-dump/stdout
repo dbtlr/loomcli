@@ -1,0 +1,33 @@
+{
+  "name": "loom",
+  "version": "1.2.0",
+  "private": true,
+  "count": 3,
+  "nothing": null,
+  "tags": [
+    "a",
+    "b",
+    "c"
+  ],
+  "user": {
+    "name": "Ada",
+    "email": "ada@example.com",
+    "address": {
+      "city": "London",
+      "geo": {
+        "lat": 51.5,
+        "lon": -0.12
+      }
+    }
+  },
+  "items": [
+    {
+      "id": 1,
+      "label": "one"
+    },
+    {
+      "id": 2,
+      "label": "two"
+    }
+  ]
+}

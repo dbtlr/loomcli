@@ -1,0 +1,13 @@
+{
+  "description": "Man page generation into the case sandbox; the produced files are captured.",
+  "cases": [
+    {"id":"jsonkit-manpage-generate","app":"jsonkit","argv":["manpage","generate","--out","{sandbox}/man"]},
+    {"id":"jsonkit-manpage-generate-short-flags","app":"jsonkit","argv":["manpage","generate","--out={sandbox}/pages"]},
+    {"id":"jsonkit-manpage-generate-quiet","app":"jsonkit","argv":["manpage","generate","-q","--out","{sandbox}/man"]},
+    {"id":"jsonkit-manpage-generate-missing-out","app":"jsonkit","argv":["manpage","generate"]},
+    {"id":"jsonkit-manpage-generate-out-without-value","app":"jsonkit","argv":["manpage","generate","--out"]},
+    {"id":"jsonkit-manpage-unknown-child","app":"jsonkit","argv":["manpage","gen"]},
+    {"id":"jsonkit-manpage-unknown-child-far","app":"jsonkit","argv":["manpage","xyz"]},
+    {"id":"jsonkit-manpage-generate-extra-argument","app":"jsonkit","argv":["manpage","generate","x","--out","{sandbox}/man"]}
+  ]
+}

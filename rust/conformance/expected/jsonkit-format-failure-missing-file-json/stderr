@@ -1,0 +1,1 @@
+{"error":{"code":"invalid-input","exitCode":2,"message":"Option \"--file\": Expected a readable file that exists.","hints":["Run \"jsonkit --help\" to see the usage."]}}

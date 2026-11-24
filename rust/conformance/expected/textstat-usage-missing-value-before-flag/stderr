@@ -1,0 +1,2 @@
+textstat: Option "--metric" requires a value. Supply a value after "--metric", or attach one that starts with a hyphen as "--metric=<value>".
+Run "textstat --help" to see the usage.

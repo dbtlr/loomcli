@@ -1,0 +1,4 @@
+install	Register this application's MCP server with your coding agents.
+uninstall	Remove this application's MCP server from your coding agents.
+config	Print a client configuration that starts this application's MCP server.
+:4

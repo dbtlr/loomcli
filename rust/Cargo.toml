@@ -1,0 +1,40 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "examples/*", "conformance/harness", "docs/check"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+must_use_candidate = "warn"
+
+# One version of each dependency for the whole workspace. A crate names a dependency with
+# `workspace = true`; a new dependency is added here first, with the reason in the commit message.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", default-features = false }
+tokio-util = { version = "0.7", default-features = false }
+futures-core = { version = "0.3", default-features = false, features = ["std"] }
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-bundle-platform"] }
+url = "2"
+rustix = { version = "1", default-features = false, features = ["std", "termios", "process"] }
+signal-hook = { version = "0.3", default-features = false }
+regex = { version = "1", default-features = false, features = ["std", "unicode"] }
+sha2 = { version = "0.10", default-features = false }
+unicode-normalization = { version = "0.1", default-features = false, features = ["std"] }
+toml = { version = "1", default-features = false, features = ["std", "parse", "preserve_order"] }
+saphyr-parser = { version = "0.3", default-features = false }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }

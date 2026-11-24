@@ -1,0 +1,16 @@
+jsonkit mcp uninstall · Remove this application's MCP server from your coding agents.
+
+USAGE
+  jsonkit mcp uninstall [options]
+
+OPTIONS
+      --agent <agent>  The agent to remove it from: claude or codex. Every agent it is registered with when left out. One of: claude, codex.
+
+GLOBAL OPTIONS
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+      --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet       Hide info and success messages.

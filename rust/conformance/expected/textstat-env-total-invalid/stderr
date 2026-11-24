@@ -1,0 +1,2 @@
+textstat: Option "--total" (from TEXTSTAT_TOTAL): Use true, false, yes, no, y, n, on, off, 1, or 0.
+Run "textstat --help" to see the usage.

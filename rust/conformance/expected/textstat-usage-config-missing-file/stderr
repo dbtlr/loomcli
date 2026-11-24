@@ -1,0 +1,2 @@
+textstat: Option "--config": File "nope.json" does not exist. Supply the path of an existing file.
+Run "textstat --help" to see the usage.

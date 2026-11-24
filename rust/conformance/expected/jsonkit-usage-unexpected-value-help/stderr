@@ -1,0 +1,2 @@
+jsonkit: Boolean option "--help" does not accept a value. Supply the flag alone.
+Run "jsonkit --help" to see the usage.

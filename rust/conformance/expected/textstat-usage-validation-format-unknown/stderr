@@ -1,0 +1,2 @@
+textstat: Option "--format": Supply one of table, json, jsonl.
+Run "textstat --help" to see the usage.

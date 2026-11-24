@@ -1,0 +1,2 @@
+jsonkit: Counted option "--verbose" does not accept a value. Repeat "--verbose" to raise its count.
+Run "jsonkit --help" to see the usage.

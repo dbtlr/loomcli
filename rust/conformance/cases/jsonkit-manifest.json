@@ -1,0 +1,30 @@
+{
+  "description": "Manifest JSON at the root and at commands.",
+  "cases": [
+    {"id":"jsonkit-manifest-root","app":"jsonkit","argv":["--manifest"]},
+    {"id":"jsonkit-manifest-root-short","app":"jsonkit","argv":["-M"]},
+    {"id":"jsonkit-manifest-get","app":"jsonkit","argv":["get","--manifest"]},
+    {"id":"jsonkit-manifest-get-short","app":"jsonkit","argv":["get","-M"]},
+    {"id":"jsonkit-manifest-keys","app":"jsonkit","argv":["keys","--manifest"]},
+    {"id":"jsonkit-manifest-select","app":"jsonkit","argv":["select","--manifest"]},
+    {"id":"jsonkit-manifest-stats","app":"jsonkit","argv":["stats","--manifest"]},
+    {"id":"jsonkit-manifest-stats-depth","app":"jsonkit","argv":["stats","depth","--manifest"]},
+    {"id":"jsonkit-manifest-stats-depth-max","app":"jsonkit","argv":["stats","depth","max","--manifest"]},
+    {"id":"jsonkit-manifest-fetch-deprecated","app":"jsonkit","argv":["fetch","--manifest"]},
+    {"id":"jsonkit-manifest-debug-hidden","app":"jsonkit","argv":["debug","--manifest"]},
+    {"id":"jsonkit-manifest-paths-hidden","app":"jsonkit","argv":["paths","--manifest"]},
+    {"id":"jsonkit-manifest-doctor","app":"jsonkit","argv":["doctor","--manifest"]},
+    {"id":"jsonkit-manifest-completion","app":"jsonkit","argv":["completion","--manifest"]},
+    {"id":"jsonkit-manifest-completion-bash","app":"jsonkit","argv":["completion","bash","--manifest"]},
+    {"id":"jsonkit-manifest-mcp","app":"jsonkit","argv":["mcp","--manifest"]},
+    {"id":"jsonkit-manifest-manpage-generate","app":"jsonkit","argv":["manpage","generate","--manifest"]},
+    {"id":"jsonkit-manifest-help-command","app":"jsonkit","argv":["help","--manifest"]},
+    {"id":"jsonkit-manifest-alias-ls","app":"jsonkit","argv":["ls","--manifest"]},
+    {"id":"jsonkit-manifest-held-fault","app":"jsonkit","argv":["get","--bogus","--manifest"]},
+    {"id":"jsonkit-manifest-missing-argument","app":"jsonkit","argv":["get","--manifest","-f","doc.json"]},
+    {"id":"jsonkit-manifest-root-no-color","app":"jsonkit","argv":["--manifest"],"env":{"NO_COLOR":"1"}},
+    {"id":"jsonkit-manifest-root-color-forced","app":"jsonkit","argv":["--manifest"],"env":{"FORCE_COLOR":"1"}},
+    {"id":"jsonkit-manifest-with-format-json","app":"jsonkit","argv":["get","--manifest","-o","json"]},
+    {"id":"jsonkit-manifest-unknown-command","app":"jsonkit","argv":["typo","--manifest"]}
+  ]
+}

@@ -1,0 +1,2 @@
+jsonkit: Command "manpage" requires a subcommand. Use one of: generate, install, update, uninstall.
+Run "jsonkit manpage --help" to see the usage.

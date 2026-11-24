@@ -1,0 +1,2 @@
+jsonkit: Option "--agent": Expected one of: claude, codex.
+Run "jsonkit mcp install --help" to see the usage.

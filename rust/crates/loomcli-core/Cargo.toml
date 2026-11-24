@@ -1,0 +1,42 @@
+[package]
+name = "loomcli-core"
+description = "Declarations, the command graph, the parser, input sources, validation, output, views, failures, the plugin contract, the host, signals, run and invoke."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+futures-core = { workspace = true }
+jiff = { workspace = true, features = ["tzdb-zoneinfo"] }
+loomcli-derive = { path = "../loomcli-derive" }
+loomcli-style = { path = "../loomcli-style" }
+serde = { workspace = true, features = ["rc"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-std", "io-util", "process", "rt", "signal", "sync", "time"] }
+tokio-util = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, features = ["fs"] }
+signal-hook = { workspace = true }
+
+[build-dependencies]
+loomcli-style = { path = "../loomcli-style" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+loomcli-testing = { path = "../loomcli-testing" }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+tokio-util = { workspace = true }
+
+[target.'cfg(unix)'.dev-dependencies]
+rustix = { workspace = true, features = ["fs"] }
+
+# The real-process shutdown test runs itself again as the probe it signals, so it has its own main.
+[[test]]
+name = "shutdown_process"
+harness = false

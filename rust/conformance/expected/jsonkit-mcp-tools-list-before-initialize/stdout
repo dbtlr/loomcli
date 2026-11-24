@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"The request's params._meta carries no \"io.modelcontextprotocol/protocolVersion\". Send \"io.modelcontextprotocol/protocolVersion\" and \"io.modelcontextprotocol/clientCapabilities\" with every request, or open the connection with initialize."}}

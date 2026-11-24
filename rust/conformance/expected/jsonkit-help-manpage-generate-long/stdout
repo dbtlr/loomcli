@@ -1,0 +1,16 @@
+jsonkit manpage generate · Write the man pages to a folder.
+
+USAGE
+  jsonkit manpage generate --out <folder> [options]
+
+OPTIONS
+      --out <folder>  The folder to write the man pages in. It is created when missing.  (required)
+
+GLOBAL OPTIONS
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+      --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet       Hide info and success messages.

@@ -1,0 +1,17 @@
+jsonkit mcp install · Register this application's MCP server with your coding agents.
+
+USAGE
+  jsonkit mcp install [options]
+
+OPTIONS
+      --agent <agent>  The agent to register with: claude or codex. Every agent that starts when left out. One of: claude, codex.
+      --force          Replace a registration of this name that mcp install did not make.
+
+GLOBAL OPTIONS
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+      --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet       Hide info and success messages.

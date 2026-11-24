@@ -1,0 +1,2 @@
+jsonkit: Option "--file" belongs to command "stats depth max". Supply it after "stats depth max".
+Run "jsonkit stats --help" to see the usage.

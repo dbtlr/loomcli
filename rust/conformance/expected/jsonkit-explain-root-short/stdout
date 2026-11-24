@@ -1,0 +1,5 @@
+jsonkit
+Read and reshape one JSON document.
+With no subcommand, jsonkit summarizes the document and its top-level keys.
+  jsonkit -f doc.json
+  jsonkit get user.name -f doc.json

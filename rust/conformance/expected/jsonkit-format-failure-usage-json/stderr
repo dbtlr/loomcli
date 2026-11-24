@@ -1,0 +1,1 @@
+{"error":{"code":"unknown-option","exitCode":2,"message":"Unknown option \"--bogus\". Supply a declared option; prefix a hyphenated path with \"./\".","hints":["Run \"jsonkit --help\" to see the usage.","Run \"jsonkit --explain\" to explain this command."]}}

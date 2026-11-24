@@ -1,0 +1,2 @@
+jsonkit: Option "--color" can be supplied only once. Remove the repeated option.
+Run "jsonkit --help" to see the usage.

@@ -1,0 +1,2 @@
+jsonkit stats depth max
+Print the deepest nesting level under a path.

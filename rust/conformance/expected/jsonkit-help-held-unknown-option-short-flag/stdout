@@ -1,0 +1,21 @@
+jsonkit get · Read one value at a path.
+
+USAGE
+  jsonkit get <path> [options]
+
+ARGUMENTS
+  path  Dot path to read.
+
+OPTIONS
+  -f, --file <path>  The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
+
+GLOBAL OPTIONS
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+      --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet       Hide info and success messages.
+
+Run jsonkit get --help for details and examples.

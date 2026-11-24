@@ -1,0 +1,2 @@
+jsonkit: Option "--format": Supply one of list, table, json, jsonl.
+Run "jsonkit paths --help" to see the usage.

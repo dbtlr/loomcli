@@ -1,0 +1,5 @@
+textstat
+Count bytes, words, or lines across text sources.
+Textstat counts files and piped text in order. Use - to place stdin among the files.
+  textstat one.txt two.txt
+  textstat --metric words --total *.md

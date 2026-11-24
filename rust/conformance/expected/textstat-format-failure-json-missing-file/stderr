@@ -1,0 +1,1 @@
+{"error":{"code":"invalid-input","exitCode":2,"message":"Argument \"files\" at 0: Expected a readable file that exists.","hints":["Run \"textstat --help\" to see the usage."]}}

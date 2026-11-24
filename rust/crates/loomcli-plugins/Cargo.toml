@@ -1,0 +1,101 @@
+[package]
+name = "loomcli-plugins"
+description = "Every first-party Loom CLI plugin and the pack views, one Cargo feature each. Depending on the crate installs nothing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# The completion plugin's scripts are ported from Cobra (Apache-2.0); see src/completion/licenses/NOTICE.
+license = "MIT AND Apache-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+loomcli-core = { path = "../loomcli-core" }
+loomcli-validators = { path = "../loomcli-validators", optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+regex = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+unicode-normalization = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
+saphyr-parser = { workspace = true, optional = true }
+# The MCP plugin serves its tools through the protocol server, over the host streams as tokio I/O.
+loomcli-mcp = { path = "../loomcli-mcp", optional = true }
+# The self-update plugin requests GitHub over HTTPS through reqwest on rustls, resolves redirects
+# with url, and writes the update cache's time with jiff.
+reqwest = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+jiff = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["io-util", "time"] }
+
+# One feature per plugin, and no default features: an application compiles the plugins it names.
+# A plugin's extension descriptors and its declared views sit behind their own features, so a
+# plugin that supplies a value to a sibling's extension compiles the descriptors without the sibling.
+[features]
+default = []
+# Plugins.
+background = []
+color = []
+completion = ["installation", "dep:rustix"]
+# The configuration plugin reads TOML through toml and YAML 1.2 through saphyr-parser.
+config = ["config-extension", "dep:toml", "dep:saphyr-parser"]
+dotenv = []
+format = ["format-views"]
+# Help supplies its details and examples to the manifest's collecting extension.
+help = ["help-extension", "help-views", "manifest-extension"]
+interaction = []
+logging = []
+manifest = ["manifest-extension"]
+manpage = ["markdown", "installation", "help-views"]
+mcp = ["mcp-extension", "installation", "dep:loomcli-mcp", "dep:tokio", "dep:loomcli-validators"]
+self-update = ["installation", "dep:loomcli-validators", "dep:reqwest", "dep:url", "dep:jiff", "dep:rustix"]
+# The service plugin declares status's json view from the formatter's views, and times its reads and its unload wait with tokio.
+service = ["installation", "format-views", "dep:tokio"]
+skills = ["installation", "dep:loomcli-validators"]
+suggestions = ["dep:unicode-normalization"]
+theme = []
+verbose = []
+version = ["version-views"]
+# Internal, not a plugin: the Markdown subset parser that the help and manpage features share. It
+# reads \p{L} and \p{N} through regex, which only this feature compiles.
+markdown = ["dep:regex"]
+# Internal, not a plugin: the installation record writer that completion, manpage, skills, mcp,
+# self-update, and service share. It digests what it installs with SHA-256 through sha2.
+installation = ["dep:sha2"]
+# Extension descriptor modules.
+config-extension = []
+# Help's examples are the manifest's CommandExample, the one type both descriptors take.
+help-extension = ["manifest-extension"]
+manifest-extension = []
+mcp-extension = []
+# Declared-view modules.
+format-views = []
+# The page renders Details through the Markdown parser and prints an option's configuration path.
+help-views = ["help-extension", "config-extension", "markdown"]
+version-views = []
+# Pack views.
+box = []
+heading = []
+list = []
+prose = []
+records = []
+rule = []
+table = []
+
+# The completion plugin asks the system whether the process may write or run a path, as access(2) does.
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, features = ["fs"], optional = true }
+
+[dev-dependencies]
+futures-core = { workspace = true }
+# The completion tests read the printed scripts with the reference's regular expressions.
+regex = { workspace = true }
+loomcli-testing = { path = "../loomcli-testing" }
+# The MCP progress tests report through progress lines.
+loomcli-prompts = { path = "../loomcli-prompts" }
+tokio = { workspace = true, features = ["macros", "rt"] }
+tokio-util = { workspace = true }
+
+[target.'cfg(unix)'.dev-dependencies]
+rustix = { workspace = true, features = ["fs", "process"] }

@@ -1,0 +1,6 @@
+# The toolchain every check runs on, locally and in CI. rustup installs it with these components
+# when cargo first runs in this directory.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

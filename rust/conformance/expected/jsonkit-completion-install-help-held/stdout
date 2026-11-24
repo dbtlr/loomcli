@@ -1,0 +1,16 @@
+jsonkit completion install · Install completion for your shell.
+
+USAGE
+  jsonkit completion install [shell] [options]
+
+ARGUMENTS
+  shell  The shell: bash, zsh, fish, or pwsh. Your login shell when left out. One of: bash, zsh, fish, pwsh.
+
+GLOBAL OPTIONS
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+      --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet       Hide info and success messages.

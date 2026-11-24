@@ -1,0 +1,10 @@
+kind  object with 1 key
+path  .
+
+kind  array with 1 item
+path  a
+
+kind  number
+path  a.0
+
+3 records

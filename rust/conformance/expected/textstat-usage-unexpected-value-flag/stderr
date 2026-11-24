@@ -1,0 +1,2 @@
+textstat: Boolean option "--total" does not accept a value. Supply the flag alone.
+Run "textstat --help" to see the usage.

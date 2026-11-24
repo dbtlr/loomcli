@@ -1,0 +1,2 @@
+textstat: Option "--config": File "config/bad.toml" is not valid TOML at line 1, column 9. Correct its syntax, or supply another file.
+Run "textstat --help" to see the usage.

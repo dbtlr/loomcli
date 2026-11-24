@@ -1,0 +1,3 @@
+--version	Print the version.
+--verbose	Show more detail. Repeat it for more.
+:4
