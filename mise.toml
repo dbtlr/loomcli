@@ -1,2 +1,6 @@
+# CI installs these tools with jdx/mise-action, and Hugi reads this file to run the macOS jobs.
+# pnpm stays equal to the version pnpm/action-setup installs in .github/workflows, because Hugi
+# fails a job whose workflow pin and this file disagree.
 [tools]
+nushell = "0.117.0"
 pnpm = "12.21.0"
