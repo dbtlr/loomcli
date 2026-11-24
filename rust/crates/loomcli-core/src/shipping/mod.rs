@@ -581,8 +581,15 @@ mod tests {
             .join("installation")
             .join("install.json");
         std::fs::remove_file(&record).expect("the record is removed");
-        rustix::fs::mkfifoat(rustix::fs::CWD, &record, rustix::fs::Mode::from(0o600))
-            .expect("the FIFO is made");
+        // The mkfifo program, because rustix offers no mkfifo on Apple targets.
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&record)
+                .status()
+                .expect("mkfifo runs")
+                .success(),
+            "the FIFO is made"
+        );
         let (done, finished) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let _ = done.send(read_installation("notes", &facts, &binary));

@@ -20,7 +20,7 @@ use rustix::fs::Mode;
 use rustix::process::umask;
 
 /// What `run` answers when the process runs it under the umask `mask`, which is restored after.
-fn under_umask<T>(mask: u32, run: impl FnOnce() -> T) -> T {
+fn under_umask<T>(mask: rustix::fs::RawMode, run: impl FnOnce() -> T) -> T {
     let previous = umask(Mode::from_raw_mode(mask));
     let answer = run();
     umask(previous);

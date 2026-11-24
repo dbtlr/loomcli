@@ -18,7 +18,7 @@ use rustix::fs::Mode;
 use rustix::process::umask;
 use serde_json::json;
 
-async fn bash_under(mask: u32) {
+async fn bash_under(mask: rustix::fs::RawMode) {
     let b = Sandbox::new();
     let script = b.script("bash");
     let startup = b.home.join(".bashrc");
@@ -72,7 +72,7 @@ async fn bash_under(mask: u32) {
     umask(previous);
 }
 
-async fn zsh_under(mask: u32) {
+async fn zsh_under(mask: rustix::fs::RawMode) {
     let b = Sandbox::new();
     let script = b.script("zsh");
     let startup = b.home.join(".zshrc");

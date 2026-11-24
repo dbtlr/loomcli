@@ -278,10 +278,13 @@ fn aliases_process_stdin(metadata: &std::fs::Metadata) -> bool {
     use std::os::fd::AsFd;
     use std::os::unix::fs::MetadataExt;
     let stdin = io::stdin();
-    let descriptor = match rustix::fs::fstat(stdin.as_fd()) {
-        Ok(own) => own.st_dev == metadata.dev() && own.st_ino == metadata.ino(),
-        Err(_) => false,
-    };
+    // Std's metadata, read through a duplicate of descriptor 0, because the raw `st_dev` differs
+    // in type between platforms (`i32` on Darwin) while `MetadataExt::dev` is `u64` on every Unix.
+    let descriptor = stdin
+        .as_fd()
+        .try_clone_to_owned()
+        .and_then(|own| std::fs::File::from(own).metadata())
+        .is_ok_and(|own| own.dev() == metadata.dev() && own.ino() == metadata.ino());
     // Darwin's file-descriptor path can report a pipe's inode apart from the descriptor's own.
     let darwin = cfg!(target_os = "macos")
         && std::fs::metadata("/dev/fd/0")

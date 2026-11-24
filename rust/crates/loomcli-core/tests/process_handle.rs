@@ -290,7 +290,14 @@ fn promptly<T: Send + 'static>(read: impl FnOnce() -> T + Send + 'static) -> T {
 fn the_captured_reader_answers_none_for_a_fifo_at_once_with_no_writer() {
     let cwd = scratch("reader-fifo");
     let fifo = cwd.join("excerpt.rs");
-    rustix::fs::mkfifoat(rustix::fs::CWD, &fifo, rustix::fs::Mode::from(0o600)).unwrap();
+    // The mkfifo program, because rustix offers no mkfifo on Apple targets.
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
     let handle = process_handle(ProcessFields::new());
     let (path, root) = (
         fifo.to_string_lossy().into_owned(),

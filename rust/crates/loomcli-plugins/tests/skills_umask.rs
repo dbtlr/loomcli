@@ -16,7 +16,7 @@ use skills_support::{
     sandbox, tree, written,
 };
 
-async fn under_umask(mask: u32) -> skills_support::Ran {
+async fn under_umask(mask: rustix::fs::RawMode) -> skills_support::Ran {
     let box_ = sandbox();
     let previous = umask(Mode::from_raw_mode(mask));
     let result = run(&box_, &["skills", "install"], &Scenario::default()).await;
