@@ -245,3 +245,4 @@ cargo run -p conformance-harness
 - [Coming from TypeScript](docs/guide/from-typescript.md): how each concept of the TypeScript Loom maps to Rust, and the deviations in summary.
 
 The [core API design](docs/design/core-api.md) states the authoring contract concept by concept, and the [decision records](docs/decisions/README.md) record why the port is shaped as it is. The rustdoc holds every signature: `cargo doc --workspace --all-features --open`. [AGENTS.md](AGENTS.md) states the conventions for changes to the Rust implementation.
+
