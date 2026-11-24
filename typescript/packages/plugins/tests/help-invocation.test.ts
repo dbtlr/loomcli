@@ -71,7 +71,7 @@ const job = [
   '',
   'OPTIONS',
   '  -o, --out <out>    The output path.  (required)',
-  '      --tag <tag>    A tag to apply.  (required, repeatable)',
+  '      --tag <tag>    A tag to apply.  (required; repeatable)',
   '      --mode <mode>  How to run.',
   '',
   'GLOBAL OPTIONS',

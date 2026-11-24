@@ -23,11 +23,11 @@ The page is a sequence of blocks separated by one blank line, and no block holds
 11. **Hints.** One block of up to two lines, each at the left margin. When the page printed any child Command row, the first line is `Run <path> <command> --help for command details.` on the extended page and `Run <path> <command> -h for command details.` on the compact page. On the compact page alone, when the extended page of the same node would print Details or EXAMPLES, the last line is `Run <path> --help for details and examples.`
 12. **Epilogs.** One block for each Command on the routed node's path that carries an [`epilog`](#epilogs): the routed node's own first, then its parent's, and so on out to the Application's, last. Each renders under [Markdown details](#markdown-details), each line indented two spaces, as Details does.
 
-The right-cell rule: the description when the member has one, on one line, then, for an option or an argument that has them, its [accepted values](help.md#accepted-values) as one sentence, then, when any fact applies, one parenthesis holding the facts that apply, in this order, separated by a comma and a space, except that a Command row separates them by a semicolon and a space: for a Command or an option with a [visible alias](../core/commands.md#visible-aliases), the alias fact, `alias: <name>` for one and `aliases: <names>` for several, the names in the order `visibleAliases` holds them and joined with a comma and a space, where a Command's fact names each alias, `alias: ls`, and an option's names each alias's positive long spelling, `alias: --minimum`, so a `both` option's alias reads `--colour` and not `--[no-]colour`, and a `negative` Boolean option, whose only long spellings are negative, names `--no-<alias>`; for a [content input](../core/validation.md#content-inputs), its source routing, `file or piped stdin; - selects stdin` for one source that accepts stdin, `files and piped stdin; - places stdin` for a multiple option or a variadic argument that accepts it, and `file path` for one that does not, then `min: <n> sources` and `max: <n> sources` when declared, with `source` for a count of 1; `required`, or `required when not interactive` for an option or an argument that declares `required: 'non-interactive'`, `repeatable` for a multiple option, `default: <value>`, `implied: <value>` for an option with an [implied value](../core/options.md#implied-values), `env: <names>` for an option with an [environment binding](../core/input-sources.md), its variables in declaration order separated by a space, followed, for a multiple option whose binding declares an `envDelimiter`, by ` as a list separated by <delimiter>`, the delimiter written as a JSON string literal as the [man page](manpage.md) writes it, so `","`, `" "`, or `"\t"`, `config: <path>` for an option that carries a [`configInput`](config.md#linking-an-option) value, its dotted path as declared, and `deprecated: <message>`. An option whose `helpInput` holds `hideBindings: true` has neither `env` nor `config`, and help prints a name alone, never the value a variable or a configuration file holds. One space separates the description from the accepted-values sentence, and help prints both as written, adding no punctuation between them; two spaces separate the text before the parenthesis from it; a member with neither description nor accepted values has the parenthesis as its whole right cell, with no leading spaces; and a member with none of the three has no right cell. The parenthesis begins at the first `  (` that is followed by `alias: `, `aliases: `, `file path`, `file or piped stdin`, `files and piped stdin`, `min: `, `max: `, `required`, `repeatable`, `default: `, `implied: `, `env: `, `config: `, or `deprecated: `, and it ends at the closing `)` that ends the row's unwrapped text. The alias fact is always the first fact and `deprecated` always the last, so a reader takes the alias names up to the next fact's opening word, splits the facts between on the comma, or on the semicolon in a Command row, and reads the text between `deprecated: ` and that closing parenthesis as the message, as in `(alias: --minimum, required)` for an option and `(alias: ls; deprecated: Use get instead.)` for a Command. The page is a rendering for a reader; a consumer that needs a fact exactly, whatever a description, an accepted-values sentence, or a default holds, reads it from `inspect()`, which is the machine surface, and that includes a deprecated message, which may itself hold a comma, a semicolon, or a parenthesis. An implied value prints, and is escaped, exactly as a default that is a string does. A default value prints as it is when it is a string, as its elements separated by a space when it is an array of strings, as `JSON.stringify` renders it for any other value JSON can represent, and as `String(value)` renders it otherwise, or as Object's own spelling, such as `[object Array]`, where `String` throws; an explicit `undefined` default prints no default fact, and a line terminator inside a rendered default prints as its JSON escape, so a rendered default adds no line break of its own.
+The right-cell rule: the description when the member has one, on one line, then, for an option or an argument that has them, its [accepted values](help.md#accepted-values) as one sentence, then, when any fact applies, one parenthesis holding the facts that apply, in this order, separated by a semicolon and a space: for a Command or an option with a [visible alias](../core/commands.md#visible-aliases), the alias fact, `alias: <name>` for one and `aliases: <names>` for several, the names in the order `visibleAliases` holds them and joined with a comma and a space, where a Command's fact names each alias, `alias: ls`, and an option's names each alias's positive long spelling, `alias: --minimum`, so a `both` option's alias reads `--colour` and not `--[no-]colour`, and a `negative` Boolean option, whose only long spellings are negative, names `--no-<alias>`; for a [content input](../core/validation.md#content-inputs), its source routing, `file or piped stdin, - selects stdin` for one source that accepts stdin, `files and piped stdin, - places stdin` for a multiple option or a variadic argument that accepts it, and `file path` for one that does not, then `min: <n> sources` and `max: <n> sources` when declared, with `source` for a count of 1; `required`, or `required when not interactive` for an option or an argument that declares `required: 'non-interactive'`, `repeatable` for a multiple option, `default: <value>`, `implied: <value>` for an option with an [implied value](../core/options.md#implied-values), `env: <names>` for an option with an [environment binding](../core/input-sources.md), its variables in declaration order separated by a space, followed, for a multiple option whose binding declares an `envDelimiter`, by ` as a list separated by <delimiter>`, the delimiter written as a JSON string literal as the [man page](manpage.md) writes it, so `","`, `" "`, or `"\t"`, `config: <path>` for an option that carries a [`configInput`](config.md#linking-an-option) value, its dotted path as declared, and `deprecated: <message>`. An option whose `helpInput` holds `hideBindings: true` has neither `env` nor `config`, and help prints a name alone, never the value a variable or a configuration file holds. One space separates the description from the accepted-values sentence, and help prints both as written, adding no punctuation between them; two spaces separate the text before the parenthesis from it; a member with neither description nor accepted values has the parenthesis as its whole right cell, with no leading spaces; and a member with none of the three has no right cell. The parenthesis begins at the first `  (` that is followed by `alias: `, `aliases: `, `file path`, `file or piped stdin`, `files and piped stdin`, `min: `, `max: `, `required`, `repeatable`, `default: `, `implied: `, `env: `, `config: `, or `deprecated: `, and it ends at the closing `)` that ends the row's unwrapped text. The alias fact is always the first fact and `deprecated` always the last, so a reader takes the alias names up to the next fact's opening word, splits the facts between on the semicolon, and reads the text between `deprecated: ` and that closing parenthesis as the message, as in `(alias: --minimum; required)` for an option and `(alias: ls; deprecated: Use get instead.)` for a Command. The page is a rendering for a reader; a consumer that needs a fact exactly, whatever a description, an accepted-values sentence, or a default holds, reads it from `inspect()`, which is the machine surface, and that includes a deprecated message, which may itself hold a comma, a semicolon, or a parenthesis. An implied value prints, and is escaped, exactly as a default that is a string does. A default value prints as it is when it is a string, as its elements separated by a space when it is an array of strings, as `JSON.stringify` renders it for any other value JSON can represent, and as `String(value)` renders it otherwise, or as Object's own spelling, such as `[object Array]`, where `String` throws; an explicit `undefined` default prints no default fact, and a line terminator inside a rendered default prints as its JSON escape, so a rendered default adds no line break of its own.
 
 Within a section the rows are two columns: the left cell is padded to the longest left cell in that section plus two spaces, and a row with no right cell has no trailing padding. The view measures terminal columns with `context.width` and pads to the widest cell with core's `pad` from [Width, padding, and multiline lanes](../core/styles.md#width-padding-and-multiline-lanes). Markup contributes no width, and Unicode follows core's existing measurement rules. Off a terminal nothing wraps, so a long row is one line however long it is. On a terminal a right cell wraps under its column, and a row set that cannot fit stacks, under [Help wraps to the destination's columns](#help-wraps-to-the-destinations-columns).
 
-The root of jsonkit has an action and twelve children: the [help Command](help.md#the-help-command) the help plugin attaches, the `doctor` Command the private `@loom/doctor` plugin attaches, the `completion` group the [completion](completion.md) plugin attaches, the `mcp` Command the [MCP](mcp.md) plugin attaches, and the `manpage` group the [manpage](manpage.md) plugin attaches, ahead of jsonkit's own in installation order, then seven of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares two local options: `--file`, the [content input](../core/validation.md#content-inputs) every jsonkit Command that reads the document declares, and `--format`, which the [formatter](format.md) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
+The root of jsonkit has an action and twelve children: the [help Command](help.md#the-help-command) the help plugin attaches, the `doctor` Command the private `@loom/doctor` plugin attaches, the `completion` group the [completion](completion.md) plugin attaches, the `mcp` Command the [MCP](mcp.md) plugin attaches, and the `manpage` group the [manpage](manpage.md) plugin attaches, ahead of jsonkit's own in installation order, then seven of its own, of which `fetch` is deprecated and `debug` and `paths` are hidden. It declares three local options: `--file`, the [content input](../core/validation.md#content-inputs) every jsonkit Command that reads the document declares, and `--format` and `--fields`, which the [formatter](format.md) declared on it because it declares a result, so the restyled `jsonkit --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit · Read and reshape one JSON document.
@@ -55,8 +55,9 @@ COMMANDS
   manpage <command>     Write or install the man pages.
 
 OPTIONS
-  -f, --file <path>      The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
+  -f, --file <path>      The document to read. Omit it to read piped text.  (file or piped stdin, - selects stdin; required)
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
+      --fields <fields>  Select top-level fields of json and jsonl output, as a comma list.  (repeatable)
 
 GLOBAL OPTIONS
   -h, --help        Show this help.
@@ -74,7 +75,7 @@ EXAMPLES
 Run jsonkit <command> --help for command details.
 ```
 
-`select` is a leaf with the `--file` content input, one required multiple option, and no `details` or `examples`, so the restyled `jsonkit select --help` has this text with color and modifiers disabled:
+`select` is a leaf with the `--file` content input, one required multiple option, the `--compact` and `--indent` pair it allows one of, and no `details` or `examples`, so the restyled `jsonkit select --help` has this text with color and modifiers disabled:
 
 ```text
 jsonkit select · Keep the named fields of the document.
@@ -83,8 +84,10 @@ USAGE
   jsonkit select --field <field>... [options]
 
 OPTIONS
-  -f, --file <path>    The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
-  -F, --field <field>  A field to keep. Repeat it for several.  (required, repeatable)
+  -f, --file <path>      The document to read. Omit it to read piped text.  (file or piped stdin, - selects stdin; required)
+  -F, --field <field>    A field to keep. Repeat it for several.  (required; repeatable)
+      --compact          Print the JSON on one line.
+      --indent <spaces>  Indent nested JSON by this many spaces, from 0 to 8.  (default: 2)
 
 GLOBAL OPTIONS
   -h, --help        Show this help.
@@ -94,9 +97,11 @@ GLOBAL OPTIONS
       --[no-]color  Turn color on or off, overriding NO_COLOR.
   -v, --verbose...  Show more detail. Repeat it for more.
   -q, --quiet       Hide info and success messages.
+
+  Use at most one of --compact and --indent.
 ```
 
-textstat is one root Command with a variadic argument, four local options, of which `--timing` is hidden and `--min-bytes` carries the [alias](../core/options.md#option-aliases) `--minimum` that no page lists, `--min-bytes` and `--total` each bind a variable and a configuration key, a fifth local option `--format` that the [formatter](format.md) declared on it because it declares a result, and one child group, `completion`, which the completion plugin attaches, so its page lists the globals under GLOBAL OPTIONS and ends the ARGUMENTS block with the `--` row. The restyled `textstat --help` has this text with color and modifiers disabled:
+textstat is one root Command with a variadic argument, four local options, of which `--timing` is hidden and `--min-bytes` carries the [alias](../core/options.md#option-aliases) `--minimum` that no page lists, `--min-bytes` and `--total` each bind a variable and a configuration key, a fifth and sixth local option, `--format` and `--fields`, that the [formatter](format.md) declared on it because it declares a result, and one child group, `completion`, which the completion plugin attaches, so its page lists the globals under GLOBAL OPTIONS and ends the ARGUMENTS block with the `--` row. The restyled `textstat --help` has this text with color and modifiers disabled:
 
 ```text
 textstat · Count bytes, words, or lines across text sources.
@@ -111,19 +116,20 @@ COMMANDS
   completion <command>  Print or install a shell completion script.
 
 ARGUMENTS
-  files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)
+  files  The files and piped text to count. Use - to place stdin.  (files and piped stdin, - places stdin)
   --     Read every later word as an argument, even a command name.
 
 COUNTING
   MEASURE
     -m, --metric <metric>  What each row counts. One of: bytes, words, lines.  (default: bytes)
   FILTER
-    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0, env: TEXTSTAT_MIN_BYTES, config: minBytes)
+    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0; env: TEXTSTAT_MIN_BYTES; config: minBytes)
   SUMMARY
-    -t, --total  Add a total row.  (env: TEXTSTAT_TOTAL, config: total)
+    -t, --total  Add a total row.  (env: TEXTSTAT_TOTAL; config: total)
 
 OPTIONS
   -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.
+      --fields <fields>  Select top-level fields of json and jsonl output, as a comma list.  (repeatable)
 
 GLOBAL OPTIONS
   -h, --help             Show this help.
@@ -153,19 +159,20 @@ COMMANDS
   completion <command>  Print or install a shell completion script.
 
 ARGUMENTS
-  files  The files and piped text to count. Use - to place stdin.  (files and piped stdin; - places stdin)
+  files  The files and piped text to count. Use - to place stdin.  (files and piped stdin, - places stdin)
   --     Read every later word as an argument, even a command name.
 
 COUNTING
   MEASURE
     -m, --metric <metric>  What each row counts. One of: bytes, words, lines.  (default: bytes)
   FILTER
-    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0, env: TEXTSTAT_MIN_BYTES, config: minBytes)
+    -b, --min-bytes <min-bytes>  Drop a source smaller than this many bytes.  (default: 0; env: TEXTSTAT_MIN_BYTES; config: minBytes)
   SUMMARY
-    -t, --total  Add a total row.  (env: TEXTSTAT_TOTAL, config: total)
+    -t, --total  Add a total row.  (env: TEXTSTAT_TOTAL; config: total)
 
 OPTIONS
   -f, --format <format>  Select the output format, table by default. One of: table, json, jsonl.
+      --fields <fields>  Select top-level fields of json and jsonl output, as a comma list.  (repeatable)
 
 GLOBAL OPTIONS
   -h, --help             Show this help.
@@ -205,8 +212,9 @@ COMMANDS
   manpage <command>     Write or install the man pages.
 
 OPTIONS
-  -f, --file <path>      The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
+  -f, --file <path>      The document to read. Omit it to read piped text.  (file or piped stdin, - selects stdin; required)
   -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
+      --fields <fields>  Select top-level fields of json and jsonl output, as a comma list.  (repeatable)
 
 GLOBAL OPTIONS
   -h, --help        Show this help.
@@ -314,7 +322,9 @@ ARGUMENTS
   path  Dot path to read.
 
 OPTIONS
-  -f, --file <path>  The document to read. Omit it to read piped text.  (file or piped stdin; - selects stdin, required)
+  -f, --file <path>      The document to read. Omit it to read piped text.  (file or piped stdin, - selects stdin; required)
+      --compact          Print the JSON on one line.
+      --indent <spaces>  Indent nested JSON by this many spaces, from 0 to 8.  (default: 2)
 
 GLOBAL OPTIONS
   -h, --help        Show this help.
@@ -324,6 +334,8 @@ GLOBAL OPTIONS
       --[no-]color  Turn color on or off, overriding NO_COLOR.
   -v, --verbose...  Show more detail. Repeat it for more.
   -q, --quiet       Hide info and success messages.
+
+  Use at most one of --compact and --indent.
 
 EXAMPLES
   $ jsonkit get name -f doc.json
@@ -416,29 +428,36 @@ USAGE
 
 DOCUMENT COMMANDS
   READ
-    get    Read one value at a path.
-    keys   List the keys at a path.
-    fetch  Read one value at a path.  (deprecated: Use get
-           instead.)
+    get              Read one value at a path.
+    keys             List the keys at a path.
+    stats <command>  Report facts about the document's
+                     shape.
+    fetch            Read one value at a path.  (deprecated:
+                     Use get instead.)
   RESHAPE
     select  Keep the named fields of the document.
 
 COMMANDS
+  help                  Show help for a command.
   doctor                Check the host this application runs
                         on.
   completion <command>  Print or install a shell completion
                         script.
-  mcp                   Serve this application's tools to an
-                        MCP client over stdin and stdout.
+  mcp [command]         Serve this application's tools to an
+                        MCP client, over stdin and stdout
+                        or, with --http, over HTTP.
   manpage <command>     Write or install the man pages.
 
 OPTIONS
   -f, --file <path>      The document to read. Omit it to
                          read piped text.  (file or piped
-                         stdin; - selects stdin, required)
+                         stdin, - selects stdin; required)
   -o, --format <format>  Select the output format, records
                          by default. One of: records, json,
                          jsonl.
+      --fields <fields>  Select top-level fields of json and
+                         jsonl output, as a comma list.
+                         (repeatable)
 
 GLOBAL OPTIONS
   -h, --help        Show this help.

@@ -11,7 +11,6 @@ import { optionAccepts } from '../help-accepted.js';
 import {
   aliasLabels,
   aliasSeparator,
-  commandFactSeparator,
   factSeparator,
   isEmpty,
   optionLabel,
@@ -254,7 +253,7 @@ function indexEntry(graph: CommandGraph, command: CommandNode): string {
   return [
     `- ${link}`,
     description === undefined ? '' : `: ${shownText(description, { paragraph: false })}`,
-    isEmpty(facts) ? '' : ` (${facts.join(`${commandFactSeparator} `)})`,
+    isEmpty(facts) ? '' : ` (${facts.join(`${factSeparator} `)})`,
   ].join('');
 }
 

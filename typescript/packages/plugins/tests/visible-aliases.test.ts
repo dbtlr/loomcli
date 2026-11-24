@@ -126,7 +126,7 @@ test("an option row names each visible alias by its positive long spelling, a ne
       'OPTIONS',
       '      --min-bytes <min-bytes>  The smallest size.  (alias: --minimum)',
       '      --[no-]color             Color the rows.  (alias: --colour)',
-      '      --no-quiet               (alias: --no-silent, default: true)',
+      '      --no-quiet               (alias: --no-silent; default: true)',
       '      --verbose...             (aliases: --loud, --chatty)',
       '',
       'GLOBAL OPTIONS',
@@ -215,7 +215,7 @@ test("a man page entry carries help's alias fact, and an alias has no page of it
       'Remove an entry.  (aliases: rm, delete)',
       '.TP',
       String.raw`\fBold\fR`,
-      'List it.  (alias: ol, deprecated: Use list instead.)',
+      'List it.  (alias: ol; deprecated: Use list instead.)',
     ].join('\n'),
   );
   expect(manPage('store-cache-list.1')).toContain(
@@ -228,7 +228,7 @@ test("a man page entry carries help's alias fact, and an alias has no page of it
       String.raw`Color the rows.  (alias: \-\-colour)`,
       '.TP',
       String.raw`\fB\-\-no\-quiet\fR`,
-      String.raw`(alias: \-\-no\-silent, default: true)`,
+      String.raw`(alias: \-\-no\-silent; default: true)`,
       '.TP',
       String.raw`\fB\-\-verbose\fR...`,
       String.raw`(aliases: \-\-loud, \-\-chatty)`,
@@ -401,9 +401,24 @@ function editor() {
   );
 }
 
-test("help separates a Command row's facts with a semicolon and keeps a comma between names, and the man page keeps its comma", async () => {
+test("help separates a Command row's facts with a semicolon and keeps a comma between names, in the man page as well", async () => {
   const { stdout } = await runOnMock(editor(), { argv: ['--help'] });
   expect(stdout).toContain('  edit  Edit a note.  (aliases: e, ed; deprecated: Use open instead.)');
   const page = manPages(editor().inspect()).find(({ file }) => file === 'notes.1');
-  expect(page?.text).toContain('Edit a note.  (aliases: e, ed, deprecated: Use open instead.)');
+  expect(page?.text).toContain('Edit a note.  (aliases: e, ed; deprecated: Use open instead.)');
+});
+
+function finder() {
+  return new Application('notes', { plugins: [help()], version: '1.0.0' }).command(
+    new Command('find', { description: 'Find notes.' })
+      .option('name', { required: true, type: 'string', visibleAliases: ['nm', 'nme'] })
+      .action(() => {}),
+  );
+}
+
+test('an option row with two visible aliases separates the alias fact from `required` with a semicolon, in help and the man page', async () => {
+  const { stdout } = await runOnMock(finder(), { argv: ['find', '--help'] });
+  expect(stdout).toContain('--name <name>  (aliases: --nm, --nme; required)');
+  const page = manPages(finder().inspect()).find(({ file }) => file === 'notes-find.1');
+  expect(page?.text).toContain(String.raw`(aliases: \-\-nm, \-\-nme; required)`);
 });

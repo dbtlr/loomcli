@@ -118,10 +118,10 @@ function deprecatedFact(message: string): string {
 const filePathFact = 'file path';
 
 /** The fact of a collected content input that reads files and stdin. */
-const filesAndStdinFact = 'files and piped stdin; - places stdin';
+const filesAndStdinFact = 'files and piped stdin, - places stdin';
 
 /** The fact of a content input that reads one file or stdin. */
-const fileOrStdinFact = 'file or piped stdin; - selects stdin';
+const fileOrStdinFact = 'file or piped stdin, - selects stdin';
 
 const singleSource = 1;
 

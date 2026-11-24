@@ -12,7 +12,6 @@ import { argumentAcceptsSaid, optionAcceptsSaid } from './help-accepted.js';
 import {
   aliasLabelPhrases,
   aliasSeparator,
-  commandRightCell,
   argumentFacts,
   argumentForm,
   column,
@@ -277,7 +276,7 @@ function childRow(child: CommandNode, context: ViewContext): Row {
   // The alias fact and `deprecated` are this row's possible facts.
   return {
     left: `${style.highlight(style.escape(child.name ?? ''))}${suffix === undefined ? '' : ` ${style.dim.italic(suffix)}`}`,
-    right: commandRightCell({ description: child.description }, commandFacts(child), context),
+    right: rightCell({ description: child.description }, commandFacts(child), context),
   };
 }
 
