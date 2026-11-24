@@ -1,7 +1,15 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, test } from 'vite-plus/test';
@@ -32,9 +40,32 @@ try { await assertSkillsMatch(application, '.'); process.exitCode = 2; }
 catch (error) { console.error(error); process.exitCode = 1; }
 `;
 
+/*
+ * Module resolution has no ceiling, so a sandbox whose `TMPDIR` sits inside a checkout lets the
+ * lookup for `@loomcli/plugins` climb to the checkout's own `node_modules`, and the missing-plugins
+ * case would find a plugins package. Node and Bun share no resolution hook, and Node's
+ * `import.meta.resolve` does not check that a mapped file exists, so no stand-in can read as
+ * missing. The sandbox goes under the first base whose ancestors hold no plugins package instead.
+ */
+function holdsPlugins(directory: string): boolean {
+  const parent = dirname(directory);
+  return (
+    existsSync(join(directory, 'node_modules/@loomcli/plugins')) ||
+    (parent !== directory && holdsPlugins(parent))
+  );
+}
+
+function sandboxBase(): string {
+  const base = [tmpdir(), '/tmp', homedir()].find((candidate) => !holdsPlugins(candidate));
+  if (base === undefined) {
+    throw new Error('No directory outside every @loomcli/plugins installation can hold a sandbox');
+  }
+  return base;
+}
+
 /** A project that installs the testing package and core, and the plugins stand-in when one is given. */
 function project(plugins: string | undefined): string {
-  const root = mkdtempSync(join(tmpdir(), 'loom-testing-companion-'));
+  const root = mkdtempSync(join(sandboxBase(), 'loom-testing-companion-'));
   roots.push(root);
   const scope = join(root, 'node_modules/@loomcli');
   mkdirSync(join(scope, 'testing'), { recursive: true });
