@@ -1,12 +1,12 @@
-//! The conformance harness: runs every corpus case against the Rust example binaries and
+//! The conformance harness: runs every shared case against the Rust example binaries and
 //! compares stdout, stderr, the exit code, and produced files with the captured reference results.
 //!
-//! The rules the harness follows are the rules of `conformance/capture.mjs` and
-//! `conformance/README.md`; each module names the part it reproduces.
+//! The case rules are documented in the repository's `conformance/README.md`.
 
 #![allow(clippy::must_use_candidate)]
 
 pub mod accepted;
+pub mod behind;
 pub mod cases;
 pub mod compare;
 pub mod diff;

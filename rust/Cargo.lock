@@ -722,6 +722,7 @@ dependencies = [
 name = "jsonkit"
 version = "0.0.0"
 dependencies = [
+ "conformance-harness",
  "doctor",
  "explain",
  "loomcli-core",
@@ -801,6 +802,7 @@ dependencies = [
 name = "loomcli-plugins"
 version = "0.0.0"
 dependencies = [
+ "conformance-harness",
  "futures-core",
  "jiff",
  "loomcli-core",
@@ -1481,6 +1483,7 @@ dependencies = [
 name = "textstat"
 version = "0.0.0"
 dependencies = [
+ "conformance-harness",
  "explain",
  "loomcli-core",
  "loomcli-plugins",

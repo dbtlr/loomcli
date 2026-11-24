@@ -1,6 +1,6 @@
 [package]
 name = "conformance-harness"
-description = "Runs the conformance corpus against the Rust example binaries and compares byte for byte."
+description = "Checks the Rust example binaries against the shared conformance expectations."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

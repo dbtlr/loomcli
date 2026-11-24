@@ -1,16 +1,18 @@
 //! Ports the reference's `jsonkit.test.ts`: one case for each capability the example's README
 //! lists, which shows how the declaration assembles Loom's parts, each asserting exact bytes
-//! through the mock process. A page the operator reads whole (help, the manifest, a completion
-//! answer, an MCP listing, the man pages) is compared with the corpus's capture of the same
-//! invocation. Then each action is tested on its own with the testing crate's context builders.
+//! through the mock process. Whole output is compared with the shared expectations outside
+//! listed differences. Each action also runs with the testing crate's context builders.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod support;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use conformance_harness::compare::Part;
+use conformance_harness::runner::assert_part;
 use jsonkit::actions::get_value::{GetInputs, get_value};
 use jsonkit::actions::list_keys::{KeysInputs, list_keys};
 use jsonkit::actions::max_depth::{MaxInputs, max_depth};
@@ -21,7 +23,7 @@ use loomcli_testing::{
     ActionValues, MockFields, action_context, assert_assembles, assert_described, file_content,
     mock_process, piped_content,
 };
-use support::{Ran, captured, failed, printed, run_from};
+use support::{Ran, captured, failed, files_under, printed, run_from};
 
 /// A folder of its own for one test, holding the reference test's `doc.json` and the malformed
 /// `broken.json`.
@@ -43,9 +45,11 @@ async fn run_in(directory: &Path, argv: &[&str], stdin: &str) -> Ran {
     run_from(directory, directory, argv, stdin, &[]).await
 }
 
-/// What the reference wrote for a corpus case that runs the same words with no document.
-fn reference(id: &str) -> Ran {
-    captured(id).expected
+fn assert_reference(id: &str, actual: Ran) {
+    let expected = captured(id).expected;
+    assert_part(id, Part::Stdout, &actual.stdout, &expected.stdout);
+    assert_part(id, Part::Stderr, &actual.stderr, &expected.stderr);
+    assert_part(id, Part::Exit, &actual.status, &expected.status);
 }
 
 #[test]
@@ -251,7 +255,7 @@ async fn help_prints_the_details_get_md_carries_and_version_the_declared_version
         help.stdout
             .contains("A path is a dot-separated walk from the root of the document.")
     );
-    assert_eq!(help, reference("jsonkit-help-get-long"));
+    assert_reference("jsonkit-help-get-long", help);
     assert_eq!(
         run_in(&directory, &["--version"], "").await,
         printed("jsonkit v0.0.0\n")
@@ -263,10 +267,10 @@ async fn the_color_plugin_forces_the_themes_colors_onto_a_piped_help_page() {
     let directory = folder("color");
     let plain = run_in(&directory, &["--help"], "").await;
     assert!(!plain.stdout.contains('\u{1b}'));
-    assert_eq!(plain, reference("jsonkit-help-root-long"));
+    assert_reference("jsonkit-help-root-long", plain);
     let colored = run_in(&directory, &["--help", "--color"], "").await;
     assert!(colored.stdout.contains("\u{1b}["));
-    assert_eq!(colored, reference("jsonkit-color-help-with-color-flag"));
+    assert_reference("jsonkit-color-help-with-color-flag", colored);
 }
 
 #[tokio::test]
@@ -301,14 +305,14 @@ async fn the_manifest_and_inspect_describe_the_graph_without_the_hidden_commands
 
 #[tokio::test]
 async fn completion_answers_a_word_three_levels_below_the_root() {
-    assert_eq!(
+    assert_reference(
+        "jsonkit-completion-protocol-nested-prefix-max",
         run_in(
             &folder("completion"),
             &["completion", "__complete", "--", "stats", "depth", "m"],
-            ""
+            "",
         )
         .await,
-        reference("jsonkit-completion-protocol-nested-prefix-max")
     );
 }
 
@@ -322,7 +326,7 @@ async fn the_mcp_server_lists_the_document_commands_as_tools() {
     let stdin: String = requests.iter().map(|line| format!("{line}\n")).collect();
     let listed = run_in(&folder("mcp"), &["mcp"], &stdin).await;
     assert!(listed.stdout.contains("\"stats_depth_max\""));
-    assert_eq!(listed, reference("jsonkit-mcp-tools-list-2025-06-18"));
+    assert_reference("jsonkit-mcp-tools-list-2025-06-18", listed);
 }
 
 #[tokio::test]
@@ -336,26 +340,12 @@ async fn manpage_writes_a_page_for_each_visible_command_three_levels_deep_includ
     )
     .await;
     assert_eq!(ran.status, 0);
-    let case = captured("jsonkit-manpage-generate");
-    let mut written: Vec<String> = std::fs::read_dir(&out)
-        .unwrap()
-        .map(|entry| format!("man/{}", entry.unwrap().file_name().to_string_lossy()))
-        .collect();
-    written.sort();
-    assert!(written.contains(&"man/jsonkit-get.1".to_owned()));
-    assert!(written.contains(&"man/jsonkit-stats-depth-max.1".to_owned()));
-    assert_eq!(
-        written,
-        case.files.keys().cloned().collect::<Vec<_>>(),
-        "the pages the reference wrote"
-    );
-    for (name, text) in &case.files {
-        assert_eq!(
-            &std::fs::read_to_string(directory.join(name)).unwrap(),
-            text,
-            "{name}"
-        );
-    }
+    let mut written = BTreeMap::new();
+    files_under(&directory, &out, &mut written);
+    assert!(written.contains_key("man/jsonkit-get.1"));
+    assert!(written.contains_key("man/jsonkit-stats-depth-max.1"));
+    let id = "jsonkit-manpage-generate";
+    assert_part(id, Part::Files, &written, &captured(id).files);
 }
 
 fn get_inputs(file: loomcli_core::Content, path: &str) -> GetInputs {

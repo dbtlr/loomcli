@@ -1,0 +1,512 @@
+# Bash completion script, printed by the Loom completion plugin.
+# Ported from Cobra's bash_completionsV2.go, Copyright 2013-2023 The Cobra Authors,
+# under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
+# The changes from Cobra are stated in the NOTICE file of @loomcli/plugins.
+
+__textstat_debug()
+{
+    if [[ -n ${BASH_COMP_DEBUG_FILE-} ]]; then
+        echo "$*" >> "${BASH_COMP_DEBUG_FILE}"
+    fi
+}
+
+# Macs have bash3 for which the bash-completion package doesn't include
+# _init_completion. This is a minimal version of that function.
+__textstat_init_completion()
+{
+    COMPREPLY=()
+    _get_comp_words_by_ref "$@" cur prev words cword
+}
+
+# Bash without the bash-completion package: build words, cword, and cur from
+# COMP_WORDS the way _get_comp_words_by_ref -n =: does. A word that is exactly
+# = or : glues to the word before it, and the word after such a glue joins too
+# when no whitespace separates them. The current word is cut at the cursor.
+__textstat_comp_words()
+{
+    local line=${COMP_LINE:0:COMP_POINT} word i last=0 glued=0 spaced
+
+    words=()
+    for (( i = 0; i < ${#COMP_WORDS[@]} && i <= COMP_CWORD; i++ )); do
+        word=${COMP_WORDS[i]}
+        spaced=0
+        while [[ -n $line && ${line:0:1} == [[:space:]] ]]; do
+            line=${line:1}
+            spaced=1
+        done
+        if (( i == COMP_CWORD )); then
+            word=$line
+        fi
+        line=${line:${#word}}
+        if (( i > 0 && !spaced )) && [[ $word == = || $word == : || $glued == 1 ]]; then
+            words[last]+=$word
+        else
+            words+=("$word")
+            last=$(( ${#words[@]} - 1 ))
+        fi
+        if [[ $word == = || $word == : ]]; then
+            glued=1
+        else
+            glued=0
+        fi
+    done
+    cword=$last
+    cur=${words[last]}
+}
+
+# Removes the quoting from one word the way the shell would, without evaluating
+# it: single quotes are literal, double quotes honor \" \\ \` \$, a backslash
+# outside quotes escapes the next character, and everything else is literal, so
+# $HOME, ~, and $(...) stay as typed. The result lands in the caller's
+# dequoted variable. An unclosed quote returns 1.
+__textstat_dequote()
+{
+    local word=$1 result='' quote='' char next i=0 length=${#1}
+
+    while (( i < length )); do
+        char=${word:i:1}
+        if [[ $quote == "'" ]]; then
+            if [[ $char == "'" ]]; then
+                quote=''
+            else
+                result+=$char
+            fi
+        elif [[ $quote == '"' ]]; then
+            if [[ $char == '"' ]]; then
+                quote=''
+            elif [[ $char == '\' ]]; then
+                next=${word:i+1:1}
+                case $next in
+                    '"'|'\'|'`'|'$')
+                        result+=$next
+                        i=$(( i + 1 ))
+                        ;;
+                    *)
+                        result+=$char
+                        ;;
+                esac
+            else
+                result+=$char
+            fi
+        else
+            case $char in
+                "'"|'"')
+                    quote=$char
+                    ;;
+                '\')
+                    i=$(( i + 1 ))
+                    result+=${word:i:1}
+                    ;;
+                *)
+                    result+=$char
+                    ;;
+            esac
+        fi
+        i=$(( i + 1 ))
+    done
+    if [[ -n $quote ]]; then
+        return 1
+    fi
+    dequoted=$result
+}
+
+# This function calls the program to obtain the completion results and the
+# directive. It fills the 'out' and 'directive' vars, and returns 1 when the
+# program cannot be called or does not answer.
+__textstat_get_completion_results() {
+    local args=() dequoted program lastLine i
+
+    # Each word reaches the program as its characters, in an argument array.
+    # Calling ${words[0]} instead of the name itself allows handling aliases.
+    __textstat_dequote "${words[0]}" || return 1
+    program=$dequoted
+    for (( i = 1; i < ${#words[@]} - 1; i++ )); do
+        __textstat_dequote "${words[i]}" || return 1
+        args+=("$dequoted")
+    done
+    # The word under the cursor is cut at the cursor, and empty on a new word.
+    if ! __textstat_dequote "${cur}"; then
+        __textstat_debug "The word under the cursor holds an unclosed quote"
+        return 1
+    fi
+    args+=("$dequoted")
+
+    __textstat_debug "Calling ${program} completion __complete -- ${args[*]}"
+    out=$("$program" completion __complete -- "${args[@]}" 2>/dev/null) || return 1
+
+    # The last line is a colon and the directive's decimal digits.
+    lastLine=${out##*$'\n'}
+    if [[ ${lastLine:0:1} != : || -z ${lastLine:1} || ${lastLine:1} == *[!0-9]* ]]; then
+        __textstat_debug "The answer holds no directive line"
+        return 1
+    fi
+    directive=$(( 10#${lastLine:1} ))
+    out=${out%"$lastLine"}
+    __textstat_debug "The completion directive is: ${directive}"
+    __textstat_debug "The completions are: ${out}"
+}
+
+# Offers nothing: the compspec's default file completion is turned off too.
+__textstat_offer_nothing() {
+    COMPREPLY=()
+    if [[ $(type -t compopt) == builtin ]]; then
+        compopt +o default
+    fi
+}
+
+__textstat_process_completion_results() {
+    local shellCompDirectiveError=1
+    local shellCompDirectiveNoSpace=2
+    local shellCompDirectiveNoFileComp=4
+    local shellCompDirectiveFilterFileExt=8
+    local shellCompDirectiveFilterDirs=16
+    local shellCompDirectiveKeepOrder=32
+
+    if (((directive & shellCompDirectiveError) != 0)); then
+        # Error code.  No completion.
+        __textstat_debug "Received error from the completion answer"
+        __textstat_offer_nothing
+        return
+    else
+        if (((directive & shellCompDirectiveNoSpace) != 0)); then
+            if [[ $(type -t compopt) == builtin ]]; then
+                __textstat_debug "Activating no space"
+                compopt -o nospace
+            else
+                __textstat_debug "No space directive not supported in this version of bash"
+            fi
+        fi
+        if (((directive & shellCompDirectiveKeepOrder) != 0)); then
+            if [[ $(type -t compopt) == builtin ]]; then
+                # no sort isn't supported for bash less than < 4.4
+                if [[ ${BASH_VERSINFO[0]} -lt 4 || ( ${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -lt 4 ) ]]; then
+                    __textstat_debug "No sort directive not supported in this version of bash"
+                else
+                    __textstat_debug "Activating keep order"
+                    compopt -o nosort
+                fi
+            else
+                __textstat_debug "No sort directive not supported in this version of bash"
+            fi
+        fi
+        if (((directive & shellCompDirectiveNoFileComp) != 0)); then
+            if [[ $(type -t compopt) == builtin ]]; then
+                __textstat_debug "Activating no file completion"
+                compopt +o default
+            else
+                __textstat_debug "No file completion directive not supported in this version of bash"
+            fi
+        fi
+    fi
+
+    local completions=() comp
+    while IFS='' read -r comp; do
+        [[ -z $comp ]] && continue
+        completions+=("$comp")
+    done <<<"${out}"
+
+    if (((directive & shellCompDirectiveFilterFileExt) != 0)); then
+        __textstat_offer_filtered_files extensions
+    elif (((directive & shellCompDirectiveFilterDirs) != 0)); then
+        __textstat_offer_filtered_files dirs
+    elif (((directive & shellCompDirectiveNoFileComp) == 0)) && [[ ${completions[0]-} == -* ]]; then
+        # No Command name starts with -, so the first word is the lead of a
+        # value attached to its option, and every file name is listed.
+        __textstat_offer_filtered_files any
+    else
+        __textstat_handle_completion_types
+        # Without compopt the compspec carries no default file completion, so
+        # an error cannot fall through to file names. The script completes file
+        # names itself when the directive allows them and no word was offered.
+        if [[ $(type -t compopt) != builtin ]] && ((${#COMPREPLY[@]} == 0 && (directive & shellCompDirectiveNoFileComp) == 0)); then
+            __textstat_offer_files any
+        fi
+    fi
+
+    __textstat_handle_special_char "$cur" :
+    __textstat_handle_special_char "$cur" =
+}
+
+# Escapes one word into the caller's quoted variable the way printf %q does,
+# and every ~ as \~, so the inserted text never expands. The printf of Bash 3.2
+# leaves every ~ bare, and Bash expands one at the start of a word or after
+# = or : in a word shaped like an assignment. Each part between two ~ goes
+# through printf alone, so no ~ is escaped twice where printf escapes it.
+__textstat_quote() {
+    local rest=$1 tilde='~' part
+    quoted=''
+    while :; do
+        part=${rest%%"$tilde"*}
+        if [[ -n $part ]]; then
+            printf -v part "%q" "$part" &>/dev/null || part=$(printf "%q" "$part")
+            quoted+=$part
+        fi
+        [[ $rest == *"$tilde"* ]] || break
+        quoted+='\~'
+        rest=${rest#*"$tilde"}
+    done
+}
+
+# Lists the file names that start with the word under the cursor into the
+# caller's names array; a directory ends in /. A word that starts with the lead
+# given as the first argument, such as -c, lists the names for the rest of it,
+# and any other word lists nothing. Without a lead, like readline's own, it
+# reads the part of the word after the last = or : that is a word break. The
+# dequoted word is expanded as a quoted pattern with only a trailing * unquoted,
+# so nothing in it is expanded or run and no $HOME or ~ in it is rewritten.
+__textstat_file_names() {
+    local lead=$1 word=$cur dequoted candidate failglob=0
+
+    names=()
+    if [[ -n $lead ]]; then
+        [[ $word == "$lead"* ]] || return 1
+        word=${word#"$lead"}
+    else
+        if [[ $COMP_WORDBREAKS == *=* ]]; then
+            word=${word##*=}
+        fi
+        if [[ $COMP_WORDBREAKS == *:* ]]; then
+            word=${word##*:}
+        fi
+    fi
+    __textstat_dequote "$word" || return 1
+    if shopt -q failglob; then
+        failglob=1
+        shopt -u failglob
+    fi
+    for candidate in "$dequoted"*; do
+        [[ -e $candidate || -L $candidate ]] || continue
+        [[ -d $candidate ]] && candidate+=/
+        names+=("$candidate")
+    done
+    if ((failglob)); then
+        shopt -s failglob
+    fi
+    return 0
+}
+
+# Offers the file names __textstat_file_names lists: all of them (any), only the
+# directories (dirs), or the directories and the names that end in an offered
+# extension, compared as strings (extensions). Each is offered behind the lead
+# given as the second argument, if any, and escaped by __textstat_quote, because
+# the compspec has no filenames option to quote it. A sole directory takes no
+# space after it.
+__textstat_offer_files() {
+    local kind=$1 lead=$2 names=() name filter keep quoted
+
+    __textstat_file_names "$lead" || return 1
+    for name in "${names[@]}"; do
+        keep=1
+        if [[ $name != */ && $kind != any ]]; then
+            keep=0
+            if [[ $kind == extensions ]]; then
+                for filter in "${completions[@]}"; do
+                    [[ $name == *."$filter" ]] && keep=1
+                done
+            fi
+        fi
+        if ((keep)); then
+            __textstat_quote "$lead$name"
+            COMPREPLY+=("$quoted")
+        fi
+    done
+    if ((${#COMPREPLY[@]} == 1)) && [[ ${COMPREPLY[0]} == */ && $(type -t compopt) == builtin ]]; then
+        compopt -o nospace
+    fi
+    return 0
+}
+
+# Under directive 8 or 16, or under 0 after the lead of an attached value, the
+# script lists the file names itself, so the compspec's default file completion
+# is turned off, and nothing else is listed when no name qualifies. A first word
+# that starts with - is the lead of a value attached to its option, such as
+# --config= or -c, and the rest are extensions.
+__textstat_offer_filtered_files() {
+    local lead=''
+
+    if [[ $(type -t compopt) == builtin ]]; then
+        compopt +o default
+    fi
+    if [[ ${completions[0]-} == -* ]]; then
+        lead=${completions[0]}
+        completions=("${completions[@]:1}")
+    fi
+    __textstat_debug "Listing the files for the lead '$lead' and the extensions ${completions[*]}"
+    __textstat_offer_files "$1" "$lead"
+}
+
+__textstat_handle_completion_types() {
+    __textstat_debug "__textstat_handle_completion_types: COMP_TYPE is $COMP_TYPE"
+
+    case $COMP_TYPE in
+    37|42)
+        # Type: menu-complete/menu-complete-backward and insert-completions
+        # If the user requested inserting one completion at a time, or all
+        # completions at once on the command-line we must remove the descriptions.
+        # https://github.com/spf13/cobra/issues/1508
+
+        # If there are no completions, we don't need to do anything
+        (( ${#completions[@]} == 0 )) && return 0
+
+        local tab=$'\t' compline quoted
+
+        # Strip any description, escape the completion to handle special
+        # characters, and keep only the completions that match
+        for compline in "${completions[@]}"; do
+            __textstat_quote "${compline%%$tab*}"
+            [[ $quoted == "$cur"* ]] && COMPREPLY+=("$quoted")
+        done
+        ;;
+
+    *)
+        # Type: complete (normal completion)
+        __textstat_handle_standard_completion_case
+        ;;
+    esac
+}
+
+__textstat_handle_standard_completion_case() {
+    local tab=$'\t'
+
+    # If there are no completions, we don't need to do anything
+    (( ${#completions[@]} == 0 )) && return 0
+
+    local longest=0
+    local compline quoted
+    # Look for the longest completion so that we can format things nicely
+    for compline in "${completions[@]}"; do
+        [[ -z $compline ]] && continue
+
+        # Before checking if the completion matches what the user typed,
+        # we need to strip any description and escape the completion to handle special
+        # characters because those escape characters are part of what the user typed.
+        __textstat_quote "${compline%%$tab*}"
+
+        # Only consider the completions that match
+        [[ $quoted == "$cur"* ]] || continue
+
+        # The completion matches. Add it escaped, with its description after the
+        # tab, so the common prefix readline inserts for several matches is
+        # escaped text too. The list shows the escaped words.
+        if [[ $compline == *$tab* ]]; then
+            COMPREPLY+=("$quoted$tab${compline#*$tab}")
+        else
+            COMPREPLY+=("$quoted")
+        fi
+
+        if ((${#quoted}>longest)); then
+            longest=${#quoted}
+        fi
+    done
+
+    # If there is a single completion left, remove the description text
+    if ((${#COMPREPLY[*]} == 1)); then
+        __textstat_debug "COMPREPLY[0]: ${COMPREPLY[0]}"
+        COMPREPLY[0]=${COMPREPLY[0]%%$tab*}
+        __textstat_debug "Removed description from single completion, which is now: ${COMPREPLY[0]}"
+    else
+        # Format the descriptions
+        __textstat_format_comp_descriptions $longest
+    fi
+}
+
+__textstat_handle_special_char()
+{
+    local comp="$1"
+    local char=$2
+    if [[ "$comp" == *${char}* && "$COMP_WORDBREAKS" == *${char}* ]]; then
+        local word=${comp%"${comp##*${char}}"}
+        local idx=${#COMPREPLY[*]}
+        while ((--idx >= 0)); do
+            COMPREPLY[idx]=${COMPREPLY[idx]#"$word"}
+        done
+    fi
+}
+
+__textstat_format_comp_descriptions()
+{
+    local tab=$'\t'
+    local comp desc maxdesclength
+    local longest=$1
+
+    local i ci
+    for ci in ${!COMPREPLY[*]}; do
+        comp=${COMPREPLY[ci]}
+        # Properly format the description string which follows a tab character if there is one
+        if [[ "$comp" == *$tab* ]]; then
+            __textstat_debug "Original comp: $comp"
+            desc=${comp#*$tab}
+            comp=${comp%%$tab*}
+
+            # $COLUMNS stores the current shell width.
+            # Remove an extra 4 because we add 2 spaces and 2 parentheses.
+            maxdesclength=$(( COLUMNS - longest - 4 ))
+
+            # Make sure we can fit a description of at least 8 characters
+            # if we are to align the descriptions.
+            if ((maxdesclength > 8)); then
+                # Add the proper number of spaces to align the descriptions
+                for ((i = ${#comp} ; i < longest ; i++)); do
+                    comp+=" "
+                done
+            else
+                # Don't pad the descriptions so we can fit more text after the completion
+                maxdesclength=$(( COLUMNS - ${#comp} - 4 ))
+            fi
+
+            # If there is enough space for any description text,
+            # truncate the descriptions that are too long for the shell width
+            if ((maxdesclength > 0)); then
+                if ((${#desc} > maxdesclength)); then
+                    desc=${desc:0:$(( maxdesclength - 1 ))}
+                    desc+="…"
+                fi
+                comp+="  ($desc)"
+            fi
+            COMPREPLY[ci]=$comp
+            __textstat_debug "Final comp: $comp"
+        fi
+    done
+}
+
+__start_textstat()
+{
+    local cur prev words cword split
+
+    COMPREPLY=()
+
+    # Call _init_completion from the bash-completion package
+    # to prepare the arguments properly
+    if declare -F _init_completion >/dev/null 2>&1; then
+        _init_completion -n =: || return
+    elif declare -F _get_comp_words_by_ref >/dev/null 2>&1; then
+        __textstat_init_completion -n =: || return
+    else
+        __textstat_comp_words
+    fi
+
+    __textstat_debug
+    __textstat_debug "========= starting completion logic =========="
+    __textstat_debug "cur is ${cur}, words[*] is ${words[*]}, #words[@] is ${#words[@]}, cword is $cword"
+
+    # The user could have moved the cursor backwards on the command-line.
+    # We need to trigger completion from the $cword location, so we need
+    # to truncate the command-line ($words) up to the $cword location.
+    words=("${words[@]:0:$cword+1}")
+    __textstat_debug "Truncated words[*]: ${words[*]},"
+
+    local out directive
+    if ! __textstat_get_completion_results; then
+        __textstat_offer_nothing
+        return 0
+    fi
+    __textstat_process_completion_results
+}
+
+if [[ $(type -t compopt) = "builtin" ]]; then
+    complete -o default -F __start_textstat 'textstat'
+else
+    complete -o nospace -F __start_textstat 'textstat'
+fi
+
+# ex: ts=4 sw=4 et filetype=sh

@@ -1,0 +1,24 @@
+.TH "JSONKIT\-SELECT" "1" "" "jsonkit 0.0.0" ""
+.SH "NAME"
+jsonkit\-select \- Keep the named fields of the document.
+.SH "SYNOPSIS"
+.nf
+\fBjsonkit select\fR \-\-field <field>... [options]
+.fi
+.SH "OPTIONS"
+.TP
+\fB\-f\fR, \fB\-\-file\fR <\fIpath\fR>
+The document to read. Omit it to read piped text.  (file or piped stdin, \- selects stdin; required)
+.TP
+\fB\-F\fR, \fB\-\-field\fR <\fIfield\fR>
+A field to keep. Repeat it for several.  (required; repeatable)
+.TP
+\fB\-\-compact\fR
+Print the JSON on one line.
+.TP
+\fB\-\-indent\fR <\fIspaces\fR>
+Indent nested JSON by this many spaces, from 0 to 8.  (default: 2)
+.PP
+Use at most one of \-\-compact and \-\-indent.
+.SH "SEE ALSO"
+\fBjsonkit\fR(1)

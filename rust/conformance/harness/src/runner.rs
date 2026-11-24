@@ -1,12 +1,14 @@
 //! Running cases: one sandbox per case, the process, the comparison, and the verdict.
 
+use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 
-use crate::accepted::Accepted;
+use crate::accepted::{self, Accepted};
+use crate::behind::{self, Behind};
 use crate::cases::{Case, session_steps};
 use crate::compare::{Observed, Part, differing_parts, list_files, load_expected};
 use crate::exec::{Input, Spec, TIMEOUT, run_process};
@@ -15,17 +17,26 @@ use crate::sandbox::{Layout, normalize, scrubbed_env, work_spellings};
 /// The applications the corpus runs.
 pub const APPS: [&str; 2] = ["jsonkit", "textstat"];
 
+/// The Rust workspace that contains the harness.
+pub fn rust_workspace() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
 /// The verdict on one case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     /// Every part matches.
     Passed,
-    /// Something differs and is not accepted, or the case could not run.
+    /// Something differs outside the listed parts, or the case could not run.
     Failed,
     /// Differs only in parts `accepted.json` allows.
     Accepted,
+    /// Differs in exactly the parts listed in `behind.json`.
+    Behind,
     /// Listed as accepted but now matches.
-    Stale,
+    StaleAccepted,
+    /// Listed as behind and at least one listed part now matches.
+    StaleBehind,
 }
 
 /// Everything known about one run case.
@@ -56,28 +67,87 @@ pub struct Context {
     pub scratch_dir: PathBuf,
     /// Where the example binaries are.
     pub bin_dir: PathBuf,
-    /// The accepted differences.
-    pub accepted: Vec<Accepted>,
+    /// The listed differences.
+    pub differences: KnownDifferences,
     /// The `PATH` value handed to every child.
     pub path_var: String,
     /// Worker threads.
     pub jobs: usize,
 }
 
-/// Decides the verdict from the differing parts and the case's accepted entry.
-pub fn classify(parts: &[Part], accepted: Option<&Accepted>) -> Status {
-    match (parts.is_empty(), accepted) {
-        (true, None) => Status::Passed,
-        (true, Some(_)) => Status::Stale,
-        (false, None) => Status::Failed,
-        (false, Some(entry)) => {
-            let allowed = entry.part_set();
-            if parts.iter().all(|p| allowed.contains(p)) {
-                Status::Accepted
-            } else {
-                Status::Failed
-            }
+/// The two Rust conformance lists, shared by the harness and crate tests.
+#[derive(Debug, Clone)]
+pub struct KnownDifferences {
+    /// Differences documented as intentional.
+    pub accepted: Vec<Accepted>,
+    /// Differences Rust has yet to catch up on.
+    pub behind: Behind,
+}
+
+impl KnownDifferences {
+    /// Reads the lists from the Rust workspace.
+    pub fn load() -> Result<Self, String> {
+        let workspace = rust_workspace();
+        let directory = workspace.join("conformance");
+        Ok(Self {
+            accepted: accepted::load(&directory, &workspace.join("docs/deviations.md"))?,
+            behind: behind::load(&directory.join("behind.json"))?,
+        })
+    }
+
+    /// Decides the verdict on the observed differences.
+    pub fn classify(&self, id: &str, parts: &[Part]) -> Status {
+        let accepted = self.accepted.iter().find(|entry| entry.id == id);
+        let behind = self.behind.get(id).map(Vec::as_slice);
+        classify(parts, accepted, behind)
+    }
+
+    fn allows(&self, id: &str, part: Part) -> bool {
+        if let Some(entry) = self.accepted.iter().find(|entry| entry.id == id) {
+            entry.part_set().contains(&part)
+        } else {
+            self.behind
+                .get(id)
+                .is_some_and(|parts| parts.contains(&part))
         }
+    }
+}
+
+/// Asserts that a part matches unless a conformance list allows it to differ in a focused test.
+#[track_caller]
+#[allow(clippy::expect_used)]
+pub fn assert_part<T: Debug + PartialEq + ?Sized>(id: &str, part: Part, actual: &T, expected: &T) {
+    static DIFFERENCES: OnceLock<KnownDifferences> = OnceLock::new();
+    let differences =
+        DIFFERENCES.get_or_init(|| KnownDifferences::load().expect("load the conformance lists"));
+    if !differences.allows(id, part) {
+        assert_eq!(actual, expected, "{id}: {}", part.name());
+    }
+}
+
+/// Decides the verdict from the differing parts and the case's list entries.
+pub fn classify(parts: &[Part], accepted: Option<&Accepted>, behind: Option<&[Part]>) -> Status {
+    if let Some(entry) = accepted {
+        let allowed = entry.part_set();
+        if parts.is_empty() {
+            Status::StaleAccepted
+        } else if parts.iter().all(|part| allowed.contains(part)) {
+            Status::Accepted
+        } else {
+            Status::Failed
+        }
+    } else if let Some(allowed) = behind {
+        if parts.iter().any(|part| !allowed.contains(part)) {
+            Status::Failed
+        } else if parts.is_empty() || allowed.iter().any(|part| !parts.contains(part)) {
+            Status::StaleBehind
+        } else {
+            Status::Behind
+        }
+    } else if parts.is_empty() {
+        Status::Passed
+    } else {
+        Status::Failed
     }
 }
 
@@ -162,9 +232,8 @@ fn run_one(ctx: &Context, case: &Case, fixtures_source: &[(String, Vec<u8>)]) ->
     }
     // A sandbox that cannot be removed is left for the next run, which clears it first.
     let _ = fs::remove_dir_all(&layout.root);
-    let accepted = ctx.accepted.iter().find(|a| a.id == case.id);
-    let status = if notes.is_empty() || !parts.is_empty() {
-        classify(&parts, accepted)
+    let status = if notes.is_empty() {
+        ctx.differences.classify(&case.id, &parts)
     } else {
         Status::Failed
     };
@@ -222,21 +291,102 @@ mod tests {
 
     #[test]
     fn verdicts() {
-        assert_eq!(classify(&[], None), Status::Passed);
-        assert_eq!(classify(&[Part::Stdout], None), Status::Failed);
+        assert_eq!(classify(&[], None, None), Status::Passed);
+        assert_eq!(classify(&[Part::Stdout], None, None), Status::Failed);
         assert_eq!(
-            classify(&[Part::Stdout], Some(&entry(&["stdout", "exit"]))),
+            classify(&[Part::Stdout], Some(&entry(&["stdout", "exit"])), None),
             Status::Accepted
         );
         assert_eq!(
-            classify(&[Part::Stdout, Part::Stderr], Some(&entry(&["stdout"]))),
+            classify(
+                &[Part::Stdout, Part::Stderr],
+                Some(&entry(&["stdout"])),
+                None
+            ),
             Status::Failed
         );
-        assert_eq!(classify(&[], Some(&entry(&["stdout"]))), Status::Stale);
         assert_eq!(
-            classify(&[Part::Fixtures], Some(&entry(&["stdout"]))),
+            classify(&[], Some(&entry(&["stdout"])), None),
+            Status::StaleAccepted
+        );
+        assert_eq!(
+            classify(&[Part::Fixtures], Some(&entry(&["stdout"])), None),
             Status::Failed
         );
+    }
+
+    #[test]
+    fn a_listed_case_that_matches_fails_as_stale() {
+        let differences = sample_differences();
+        let status = differences.classify("jsonkit-example", &[]);
+        assert_eq!(status, Status::StaleBehind);
+        assert!(!crate::report::succeeded(&[case_result(status)]));
+    }
+
+    #[test]
+    fn a_behind_case_with_a_part_that_now_matches_fails_as_stale() {
+        let mut differences = sample_differences();
+        differences
+            .behind
+            .insert("jsonkit-example".into(), vec![Part::Stdout, Part::Exit]);
+        let status = differences.classify("jsonkit-example", &[Part::Stdout]);
+        assert_eq!(status, Status::StaleBehind);
+        let mut result = case_result(status);
+        result.parts.push(Part::Stdout);
+        let results = [result];
+        assert!(!crate::report::succeeded(&results));
+        assert!(
+            crate::report::render(&results, &differences.behind)
+                .contains("remove exit from behind.json")
+        );
+    }
+
+    #[test]
+    fn a_case_removed_from_behind_still_fails_if_it_differs() {
+        let mut differences = sample_differences();
+        let parts = [Part::Stdout];
+        assert_eq!(
+            differences.classify("jsonkit-example", &parts),
+            Status::Behind
+        );
+        differences.behind.remove("jsonkit-example");
+        let status = differences.classify("jsonkit-example", &parts);
+        assert_eq!(status, Status::Failed);
+        assert!(!crate::report::succeeded(&[case_result(status)]));
+    }
+
+    #[test]
+    fn a_list_entry_allows_only_the_parts_it_names() {
+        let mut differences = sample_differences();
+        assert!(differences.allows("jsonkit-example", Part::Stdout));
+        assert!(!differences.allows("jsonkit-example", Part::Stderr));
+        assert!(!differences.allows("jsonkit-other", Part::Stdout));
+        differences.behind.clear();
+        differences.accepted.push(Accepted {
+            id: "jsonkit-example".into(),
+            ..entry(&["stdout"])
+        });
+        assert!(differences.allows("jsonkit-example", Part::Stdout));
+        assert!(!differences.allows("jsonkit-example", Part::Exit));
+    }
+
+    fn sample_differences() -> KnownDifferences {
+        KnownDifferences {
+            accepted: Vec::new(),
+            behind: Behind::from([("jsonkit-example".into(), vec![Part::Stdout])]),
+        }
+    }
+
+    fn case_result(status: Status) -> CaseResult {
+        CaseResult {
+            id: "jsonkit-example".into(),
+            group: "jsonkit".into(),
+            status,
+            parts: Vec::new(),
+            expected: Observed::default(),
+            actual: Observed::default(),
+            notes: Vec::new(),
+        }
     }
 
     #[test]

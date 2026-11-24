@@ -2,6 +2,7 @@
 
 #![allow(dead_code, clippy::expect_used, clippy::panic)]
 
+use conformance_harness::sandbox::Layout;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -65,7 +66,7 @@ pub fn failed(status: u8, stderr: &str) -> Ran {
 
 /// The corpus folder.
 fn corpus() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../conformance")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../conformance")
 }
 
 /// The conformance fixtures every case reads.
@@ -100,7 +101,7 @@ fn strings(value: &serde_json::Value) -> Vec<String> {
 }
 
 /// The files under `folder`, by `/`-joined path relative to `root`.
-fn files_under(root: &Path, folder: &Path, files: &mut BTreeMap<String, String>) {
+pub fn files_under(root: &Path, folder: &Path, files: &mut BTreeMap<String, String>) {
     let Ok(entries) = std::fs::read_dir(folder) else {
         return;
     };
@@ -179,20 +180,14 @@ pub struct CaseRun {
     pub files: BTreeMap<String, String>,
 }
 
-/// Runs a corpus case on the mock process as the corpus README states: a fresh sandbox holding a
-/// home folder and a work folder that stands for `{sandbox}`, the fixtures as the working
-/// directory, and only the case's variables beside `HOME`. The work folder's path reads back as
-/// `{sandbox}`.
+/// Runs a shared case on the mock process with a fresh home, work directory, and copied fixtures.
 pub async fn run_case(case: &Case) -> CaseRun {
     let sandbox = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
         .join("jsonkit-corpus")
         .join(&case.id);
-    let _ = std::fs::remove_dir_all(&sandbox);
-    let home = sandbox.join("home");
-    let work = sandbox.join("work");
-    std::fs::create_dir_all(&home).expect("a home folder");
-    std::fs::create_dir_all(&work).expect("a work folder");
-    let work_text = work.to_string_lossy().into_owned();
+    let layout = Layout::new(&sandbox, None);
+    layout.create(&fixtures()).expect("create the case sandbox");
+    let work_text = layout.work.to_string_lossy().into_owned();
     let substitute = |text: &str| text.replace("{sandbox}", &work_text);
     let argv: Vec<String> = case.argv.iter().map(|word| substitute(word)).collect();
     let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
@@ -206,8 +201,8 @@ pub async fn run_case(case: &Case) -> CaseRun {
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect();
     let ran = run_from(
-        &fixtures(),
-        &home,
+        &layout.cwd,
+        &layout.home,
         &argv,
         case.stdin.as_deref().unwrap_or_default(),
         &env,
@@ -215,7 +210,7 @@ pub async fn run_case(case: &Case) -> CaseRun {
     .await;
     let unsubstitute = |text: String| text.replace(&work_text, "{sandbox}");
     let mut files = BTreeMap::new();
-    files_under(&work, &work, &mut files);
+    files_under(&layout.work, &layout.work, &mut files);
     let files = files
         .into_iter()
         .map(|(name, text)| (name, unsubstitute(text)))

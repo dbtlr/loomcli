@@ -4,7 +4,7 @@ description: What Loom CLI for Rust is, a complete small application, what an op
 
 # Loom CLI for Rust
 
-Loom CLI for Rust is a framework for command-line applications that serve people, agents, and automation from one declaration. An author declares an Application and its Commands once, with typed inputs and declared results, and installs plugins that project that one command graph as help pages, a machine-readable manifest, structured output, MCP tools, and shell completion. It is the Rust implementation of [Loom CLI](../README.md), beside the TypeScript reference implementation in [typescript](../typescript): what an operator or an agent reads matches the TypeScript reference byte for byte, except at a limit of the programming language ([ADR-0217](../docs/decisions/0217-parity-between-looms-implementations-is-the-operators-experience.md)), and [docs/deviations.md](docs/deviations.md) lists every difference.
+Loom CLI for Rust is a framework for command-line applications that serve people, agents, and automation from one declaration. An author declares an Application and its Commands once, with typed inputs and declared results, and installs plugins that project that one command graph as help pages, a machine-readable manifest, structured output, MCP tools, and shell completion. It is the Rust implementation of [Loom CLI](../README.md), beside the TypeScript reference implementation in [typescript](../typescript): what an operator or an agent reads matches the TypeScript reference byte for byte, except at a limit of the programming language ([ADR-0217](../docs/decisions/0217-parity-between-looms-implementations-is-the-operators-experience.md)), and [docs/deviations.md](docs/deviations.md) lists every difference the port chooses. The shared conformance cases Rust has yet to match are listed apart, in [conformance/behind.json](conformance/behind.json) ([ADR-0006](docs/decisions/0006-rust-tracks-the-shared-conformance-cases-it-is-behind-on-in-a-list-apart-from-deviations.md)).
 
 ## A small application
 
@@ -226,14 +226,14 @@ cargo test --workspace --all-features
 
 `cargo test --workspace --all-features --doc` runs the doctests alone, the examples of this README and the guides among them.
 
-The conformance harness runs the corpus of invocations captured from the TypeScript reference examples against the Rust `jsonkit` and `textstat`, and compares stdout, stderr, the exit code, and written files byte for byte:
+The conformance harness runs the shared cases against the Rust `jsonkit` and `textstat` examples. It compares stdout, stderr, the exit code, and written files byte for byte.
 
 ```sh
 cargo build -p jsonkit -p textstat
 cargo run -p conformance-harness
 ```
 
-[conformance/README.md](conformance/README.md) describes the corpus, its options, and how to capture it again.
+The [shared conformance cases](../conformance/README.md) document both runners and how to refresh the expectations.
 
 ## Guides
 

@@ -1,0 +1,585 @@
+{
+  "name": "textstat",
+  "version": "0.0.0",
+  "description": "Count bytes, words, or lines across text sources.",
+  "tokens": "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument, and each word of an arity option, satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.",
+  "exitCodes": {
+    "0": "Successful execution and core output",
+    "1": "Expected action failure, internal failure, or invalid declarations",
+    "2": "Invalid invocation inputs",
+    "129": "Cancelled by SIGHUP",
+    "130": "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
+    "131": "Cancelled by SIGQUIT",
+    "141": "Stopped because the reader of stdout closed the pipe",
+    "143": "Cancelled by SIGTERM"
+  },
+  "encodings": {
+    "json": "The output is one JSON document. Unless the Command's view reshapes it, a value result is the value and a rows result is the array of its rows.",
+    "jsonl": "Each line is one JSON document: one line per element when the printed value is an array, nothing for an empty array, and one line otherwise. Unless the view reshapes it, a rows result prints one line per row."
+  },
+  "globals": [
+    {
+      "type": "boolean",
+      "name": "help",
+      "description": "Show this help.",
+      "deprecated": null,
+      "control": true,
+      "long": "--help",
+      "short": "-h",
+      "negative": null,
+      "aliases": [],
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "plain": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "version",
+      "description": "Print the version.",
+      "deprecated": null,
+      "control": true,
+      "long": "--version",
+      "short": "-V",
+      "negative": null,
+      "aliases": [],
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "plain": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "manifest",
+      "description": "Print this command's manifest as JSON.",
+      "deprecated": null,
+      "control": true,
+      "long": "--manifest",
+      "short": "-M",
+      "negative": null,
+      "aliases": [],
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "plain": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "string",
+      "name": "config",
+      "description": "Read configuration from this file alone.",
+      "deprecated": null,
+      "control": true,
+      "long": "--config",
+      "short": "-c",
+      "aliases": [],
+      "required": false,
+      "requiredWhen": null,
+      "multiple": false,
+      "arity": null,
+      "lastWins": false,
+      "schema": null,
+      "env": [],
+      "envDelimiter": null,
+      "envAllowEmpty": false,
+      "default": null,
+      "implied": null,
+      "background": false
+    },
+    {
+      "type": "boolean",
+      "name": "no-config",
+      "description": "Read no configuration file.",
+      "deprecated": null,
+      "control": true,
+      "long": "--no-config",
+      "short": null,
+      "negative": null,
+      "aliases": [],
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "plain": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "explain",
+      "description": "Explain the selected command and exit.",
+      "deprecated": null,
+      "control": true,
+      "long": "--explain",
+      "short": "-e",
+      "negative": null,
+      "aliases": [],
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "plain": false,
+      "schema": null,
+      "env": []
+    }
+  ],
+  "configuration": {
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "minBytes": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "total": {
+          "type": "boolean"
+        },
+        "$schema": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "command": {
+    "stdin": null,
+    "passthrough": null,
+    "name": null,
+    "aliases": [],
+    "path": [],
+    "description": "Count bytes, words, or lines across text sources.",
+    "details": [
+      "Textstat counts files and piped text in order. Use - to place stdin among the files."
+    ],
+    "examples": [
+      {
+        "command": "one.txt two.txt",
+        "note": null
+      },
+      {
+        "command": "--metric words --total *.md",
+        "note": null
+      }
+    ],
+    "deprecated": null,
+    "hasAction": true,
+    "needsTerminal": false,
+    "result": {
+      "kind": "rows",
+      "views": [
+        "table",
+        "json",
+        "jsonl"
+      ],
+      "default": "table",
+      "mediaTypes": {
+        "table": null,
+        "json": "application/json",
+        "jsonl": "application/jsonl"
+      }
+    },
+    "failures": [],
+    "arguments": [
+      {
+        "type": "content",
+        "stdin": true,
+        "min": null,
+        "max": null,
+        "name": "files",
+        "description": "The files and piped text to count. Use - to place stdin.",
+        "required": true,
+        "requiredWhen": null,
+        "variadic": true,
+        "schema": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "default": null
+      }
+    ],
+    "optionGroups": [],
+    "options": [
+      {
+        "type": "string",
+        "name": "metric",
+        "description": "What each row counts.",
+        "deprecated": null,
+        "control": false,
+        "long": "--metric",
+        "short": "-m",
+        "aliases": [],
+        "required": false,
+        "requiredWhen": null,
+        "multiple": false,
+        "arity": null,
+        "lastWins": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "string",
+          "enum": [
+            "bytes",
+            "words",
+            "lines"
+          ]
+        },
+        "env": [],
+        "envDelimiter": null,
+        "envAllowEmpty": false,
+        "default": {
+          "value": "bytes"
+        },
+        "implied": null,
+        "background": false
+      },
+      {
+        "type": "string",
+        "name": "min-bytes",
+        "description": "Drop a source smaller than this many bytes.",
+        "deprecated": null,
+        "control": false,
+        "long": "--min-bytes",
+        "short": "-b",
+        "aliases": [],
+        "required": false,
+        "requiredWhen": null,
+        "multiple": false,
+        "arity": null,
+        "lastWins": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "integer",
+          "minimum": 0
+        },
+        "env": [
+          "TEXTSTAT_MIN_BYTES"
+        ],
+        "envDelimiter": null,
+        "envAllowEmpty": false,
+        "default": {
+          "value": "0"
+        },
+        "implied": null,
+        "background": false
+      },
+      {
+        "type": "boolean",
+        "name": "total",
+        "description": "Add a total row.",
+        "deprecated": null,
+        "control": false,
+        "long": "--total",
+        "short": "-t",
+        "negative": null,
+        "aliases": [],
+        "polarity": "positive",
+        "interaction": false,
+        "color": false,
+        "plain": false,
+        "schema": null,
+        "env": [
+          "TEXTSTAT_TOTAL"
+        ]
+      },
+      {
+        "type": "string",
+        "name": "format",
+        "description": "Select the output format, table by default.",
+        "deprecated": null,
+        "control": true,
+        "long": "--format",
+        "short": "-f",
+        "aliases": [],
+        "required": false,
+        "requiredWhen": null,
+        "multiple": false,
+        "arity": null,
+        "lastWins": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "string",
+          "enum": [
+            "table",
+            "json",
+            "jsonl"
+          ]
+        },
+        "env": [],
+        "envDelimiter": null,
+        "envAllowEmpty": false,
+        "default": null,
+        "implied": null,
+        "background": false
+      },
+      {
+        "type": "string",
+        "name": "fields",
+        "description": "Select top-level fields of json and jsonl output, as a comma list.",
+        "deprecated": null,
+        "control": true,
+        "long": "--fields",
+        "short": null,
+        "aliases": [],
+        "required": false,
+        "requiredWhen": null,
+        "multiple": true,
+        "arity": null,
+        "lastWins": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "string"
+        },
+        "env": [],
+        "envDelimiter": null,
+        "envAllowEmpty": false,
+        "default": null,
+        "implied": null,
+        "background": false
+      }
+    ],
+    "children": [
+      {
+        "stdin": null,
+        "passthrough": null,
+        "name": "completion",
+        "aliases": [],
+        "path": [
+          "completion"
+        ],
+        "description": "Print or install a shell completion script.",
+        "details": [],
+        "examples": [],
+        "deprecated": null,
+        "hasAction": false,
+        "needsTerminal": false,
+        "result": null,
+        "failures": [],
+        "arguments": [],
+        "optionGroups": [],
+        "options": [],
+        "children": [
+          {
+            "stdin": null,
+            "passthrough": null,
+            "name": "bash",
+            "aliases": [],
+            "path": [
+              "completion",
+              "bash"
+            ],
+            "description": "Print the Bash completion script.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "needsTerminal": false,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "stdin": null,
+            "passthrough": null,
+            "name": "zsh",
+            "aliases": [],
+            "path": [
+              "completion",
+              "zsh"
+            ],
+            "description": "Print the Zsh completion script.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "needsTerminal": false,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "stdin": null,
+            "passthrough": null,
+            "name": "fish",
+            "aliases": [],
+            "path": [
+              "completion",
+              "fish"
+            ],
+            "description": "Print the Fish completion script.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "needsTerminal": false,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "stdin": null,
+            "passthrough": null,
+            "name": "nu",
+            "aliases": [],
+            "path": [
+              "completion",
+              "nu"
+            ],
+            "description": "Print the Nushell completion script.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "needsTerminal": false,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "stdin": null,
+            "passthrough": null,
+            "name": "powershell",
+            "aliases": [],
+            "path": [
+              "completion",
+              "powershell"
+            ],
+            "description": "Print the PowerShell completion script.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "needsTerminal": false,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "stdin": null,
+            "passthrough": null,
+            "name": "install",
+            "aliases": [],
+            "path": [
+              "completion",
+              "install"
+            ],
+            "description": "Install completion for your shell.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "needsTerminal": false,
+            "result": null,
+            "failures": [],
+            "arguments": [
+              {
+                "name": "shell",
+                "description": "The shell: bash, zsh, fish, pwsh, or nu. Your login shell when left out.",
+                "required": false,
+                "requiredWhen": null,
+                "variadic": false,
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "enum": [
+                    "bash",
+                    "zsh",
+                    "fish",
+                    "pwsh",
+                    "nu"
+                  ]
+                },
+                "default": null
+              }
+            ],
+            "optionGroups": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "stdin": null,
+            "passthrough": null,
+            "name": "update",
+            "aliases": [],
+            "path": [
+              "completion",
+              "update"
+            ],
+            "description": "Bring installed completion up to date with this version.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "needsTerminal": false,
+            "result": null,
+            "failures": [],
+            "arguments": [],
+            "optionGroups": [],
+            "options": [],
+            "children": []
+          },
+          {
+            "stdin": null,
+            "passthrough": null,
+            "name": "uninstall",
+            "aliases": [],
+            "path": [
+              "completion",
+              "uninstall"
+            ],
+            "description": "Remove completion from your shell.",
+            "details": [],
+            "examples": [],
+            "deprecated": null,
+            "hasAction": true,
+            "needsTerminal": false,
+            "result": null,
+            "failures": [],
+            "arguments": [
+              {
+                "name": "shell",
+                "description": "The shell: bash, zsh, fish, pwsh, or nu. Every installed shell when left out.",
+                "required": false,
+                "requiredWhen": null,
+                "variadic": false,
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "string",
+                  "enum": [
+                    "bash",
+                    "zsh",
+                    "fish",
+                    "pwsh",
+                    "nu"
+                  ]
+                },
+                "default": null
+              }
+            ],
+            "optionGroups": [],
+            "options": [],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

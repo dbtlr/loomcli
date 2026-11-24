@@ -88,6 +88,7 @@ table = []
 rustix = { workspace = true, features = ["fs"], optional = true }
 
 [dev-dependencies]
+conformance-harness = { workspace = true }
 futures-core = { workspace = true }
 # The completion tests read the printed scripts with the reference's regular expressions.
 regex = { workspace = true }

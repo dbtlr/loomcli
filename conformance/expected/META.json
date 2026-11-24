@@ -1,0 +1,8 @@
+{
+  "cases": 687,
+  "node_version": "v22.23.2",
+  "platform": "linux",
+  "reference_build": "workspace dist",
+  "reference_had_uncommitted_changes": false,
+  "reference_revision": "8e742e0bdc694a37a57f7c9bd160952d80b8c835"
+}

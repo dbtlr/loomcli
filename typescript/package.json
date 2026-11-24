@@ -14,6 +14,7 @@
   "type": "module",
   "scripts": {
     "check": "pnpm run build && pnpm run build:examples && vp check && node scripts/check-links.mjs && pnpm run check:types && pnpm run check:api && node scripts/generate-unicode-tables.mjs --check && node scripts/generate-diagnostics.mjs --check && pnpm run loom changelog check",
+    "check:conformance": "node scripts/check-conformance.mjs",
     "check:fix": "vp check --fix",
     "prepare": "vp config",
     "test": "pnpm run build && pnpm run build:examples && vp test --run",

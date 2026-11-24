@@ -1,4 +1,4 @@
-//! `conformance/accepted.json`: differences recorded on purpose, each tied to a row of `docs/deviations.md`.
+//! `rust/conformance/accepted.json`: differences recorded on purpose, each tied to a row of `docs/deviations.md`.
 
 use std::fs;
 use std::path::Path;

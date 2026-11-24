@@ -1,0 +1,24 @@
+.TH "JSONKIT\-MCP" "1" "" "jsonkit 0.0.0" ""
+.SH "NAME"
+jsonkit\-mcp \- Serve this application\(aqs tools to an MCP client, over stdin and stdout or, with \-\-http, over HTTP.
+.SH "SYNOPSIS"
+.nf
+\fBjsonkit mcp\fR [options]
+\fBjsonkit mcp\fR <command> [options]
+.fi
+.SH "COMMANDS"
+.TP
+\fBinstall\fR
+Register this application\(aqs MCP server with your coding agents.
+.TP
+\fBuninstall\fR
+Remove this application\(aqs MCP server from your coding agents.
+.TP
+\fBconfig\fR
+Print a client configuration that starts this application\(aqs MCP server.
+.SH "OPTIONS"
+.TP
+\fB\-\-http\fR <\fIhttp\fR>
+Serve over HTTP at this address instead of stdin and stdout: a port, or host:port. A port alone listens on 127.0.0.1, and port 0 takes any free port.
+.SH "SEE ALSO"
+\fBjsonkit\fR(1), \fBjsonkit\-mcp\-install\fR(1), \fBjsonkit\-mcp\-uninstall\fR(1), \fBjsonkit\-mcp\-config\fR(1)

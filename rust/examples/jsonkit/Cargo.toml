@@ -34,5 +34,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+conformance-harness = { workspace = true }
 loomcli-testing = { path = "../../crates/loomcli-testing" }
 tokio = { workspace = true, features = ["macros", "rt"] }

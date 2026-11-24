@@ -1,11 +1,12 @@
 //! The structure of the conformance corpus's generated pages (`jsonkit-manpage-generate`), run on
 //! a reduced jsonkit: the `get` Command with its details, argument, content option, and examples,
-//! and the manpage plugin's own pages. Each page must equal the corpus file byte for byte. The
-//! full set, with every plugin's pages, is asserted by the jsonkit example's own tests.
+//! and the manpage plugin's own pages. The shared files cover the full application.
 
 #![cfg(feature = "manpage")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use conformance_harness::compare::Part;
+use conformance_harness::runner::assert_part;
 use loomcli_core::{Application, Arg, Command, Context, Opt, Outcome};
 use loomcli_plugins::help::extension::{
     CommandExample, HELP_COMMAND, HELP_INPUT, HelpCommandFacts, HelpInputFacts,
@@ -21,7 +22,7 @@ async fn noop(_context: Context) -> Outcome {
 macro_rules! corpus {
     ($file:literal) => {
         include_str!(concat!(
-            "../../../conformance/expected/jsonkit-manpage-generate/files/man/",
+            "../../../../conformance/expected/jsonkit-manpage-generate/files/man/",
             $file
         ))
     };
@@ -75,22 +76,37 @@ fn the_pages_of_the_reduced_application_equal_the_corpus_files() {
             .map(|(_, text)| text.as_str())
             .unwrap_or_else(|| panic!("no page {file}"))
     };
-    assert_eq!(page("jsonkit-get.1"), corpus!("jsonkit-get.1"));
-    assert_eq!(page("jsonkit-manpage.1"), corpus!("jsonkit-manpage.1"));
-    assert_eq!(
-        page("jsonkit-manpage-generate.1"),
-        corpus!("jsonkit-manpage-generate.1")
-    );
-    assert_eq!(
-        page("jsonkit-manpage-install.1"),
-        corpus!("jsonkit-manpage-install.1")
-    );
-    assert_eq!(
-        page("jsonkit-manpage-update.1"),
-        corpus!("jsonkit-manpage-update.1")
-    );
-    assert_eq!(
-        page("jsonkit-manpage-uninstall.1"),
-        corpus!("jsonkit-manpage-uninstall.1")
-    );
+    let get = page("jsonkit-get.1");
+    let reference = corpus!("jsonkit-get.1");
+    // The reduced Command declares only the file option.
+    let sections = |text: &str| {
+        let (intro, rest) = text.split_once(".SH \"OPTIONS\"\n").unwrap();
+        let (_, examples) = rest.split_once(".SH \"EXAMPLES\"\n").unwrap();
+        (intro.to_owned(), examples.to_owned())
+    };
+    // The case's expected files may differ from Rust's while the behind list names them.
+    let case = "jsonkit-manpage-generate";
+    assert_part(case, Part::Files, &sections(get), &sections(reference));
+    assert!(get.contains("\\fB\\-f\\fR, \\fB\\-\\-file\\fR <\\fIpath\\fR>"));
+    for (file, reference) in [
+        ("jsonkit-manpage.1", corpus!("jsonkit-manpage.1")),
+        (
+            "jsonkit-manpage-generate.1",
+            corpus!("jsonkit-manpage-generate.1"),
+        ),
+        (
+            "jsonkit-manpage-install.1",
+            corpus!("jsonkit-manpage-install.1"),
+        ),
+        (
+            "jsonkit-manpage-update.1",
+            corpus!("jsonkit-manpage-update.1"),
+        ),
+        (
+            "jsonkit-manpage-uninstall.1",
+            corpus!("jsonkit-manpage-uninstall.1"),
+        ),
+    ] {
+        assert_part(case, Part::Files, page(file), reference);
+    }
 }

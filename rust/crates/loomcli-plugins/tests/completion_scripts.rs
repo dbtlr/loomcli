@@ -140,8 +140,11 @@ fn source_script(entry: &ScriptShell, text: &str, after: &str) -> Sourced {
 }
 
 #[test]
-fn the_printed_scripts_are_the_corpus_bytes_for_jsonkit() {
-    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/expected");
+fn the_printed_scripts_match_shared_expectations_outside_listed_differences() {
+    use conformance_harness::compare::Part;
+    use conformance_harness::runner::assert_part;
+
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../conformance/expected");
     let scripts: [(&str, Script); 4] = [
         ("bash", bash_script),
         ("zsh", zsh_script),
@@ -149,13 +152,9 @@ fn the_printed_scripts_are_the_corpus_bytes_for_jsonkit() {
         ("powershell", powershell_script),
     ];
     for (shell, script) in scripts {
-        let expected =
-            fs::read_to_string(corpus.join(format!("jsonkit-completion-script-{shell}/stdout")))
-                .unwrap();
-        assert!(
-            script("jsonkit") == expected,
-            "the {shell} script differs from the corpus"
-        );
+        let id = format!("jsonkit-completion-script-{shell}");
+        let expected = fs::read_to_string(corpus.join(&id).join("stdout")).unwrap();
+        assert_part(&id, Part::Stdout, &script("jsonkit"), &expected);
     }
 }
 

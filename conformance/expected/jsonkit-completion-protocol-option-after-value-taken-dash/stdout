@@ -1,0 +1,17 @@
+--help	Show this help.
+-h	Show this help.
+--version	Print the version.
+-V	Print the version.
+--manifest	Print this command's manifest as JSON.
+-M	Print this command's manifest as JSON.
+--explain	Explain the selected command and exit.
+-e	Explain the selected command and exit.
+--color	Turn color on or off, overriding NO_COLOR.
+--no-color	Turn color on or off, overriding NO_COLOR.
+--verbose	Show more detail. Repeat it for more.
+-v	Show more detail. Repeat it for more.
+--quiet	Hide info and success messages.
+-q	Hide info and success messages.
+--compact	Print the JSON on one line.
+--indent	Indent nested JSON by this many spaces, from 0 to 8.
+:4

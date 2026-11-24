@@ -1,0 +1,328 @@
+{
+  "name": "jsonkit",
+  "version": "0.0.0",
+  "description": "Read and reshape one JSON document.",
+  "tokens": "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument, and each word of an arity option, satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.",
+  "exitCodes": {
+    "0": "Successful execution and core output",
+    "1": "Expected action failure, internal failure, or invalid declarations",
+    "2": "Invalid invocation inputs",
+    "65": "Declared failures: invalid-json, path-not-found",
+    "129": "Cancelled by SIGHUP",
+    "130": "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
+    "131": "Cancelled by SIGQUIT",
+    "141": "Stopped because the reader of stdout closed the pipe",
+    "143": "Cancelled by SIGTERM"
+  },
+  "encodings": {
+    "json": "The output is one JSON document. Unless the Command's view reshapes it, a value result is the value and a rows result is the array of its rows.",
+    "jsonl": "Each line is one JSON document: one line per element when the printed value is an array, nothing for an empty array, and one line otherwise. Unless the view reshapes it, a rows result prints one line per row."
+  },
+  "globals": [
+    {
+      "type": "boolean",
+      "name": "help",
+      "description": "Show this help.",
+      "deprecated": null,
+      "control": true,
+      "long": "--help",
+      "short": "-h",
+      "negative": null,
+      "aliases": [],
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "plain": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "version",
+      "description": "Print the version.",
+      "deprecated": null,
+      "control": true,
+      "long": "--version",
+      "short": "-V",
+      "negative": null,
+      "aliases": [],
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "plain": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "manifest",
+      "description": "Print this command's manifest as JSON.",
+      "deprecated": null,
+      "control": true,
+      "long": "--manifest",
+      "short": "-M",
+      "negative": null,
+      "aliases": [],
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "plain": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "explain",
+      "description": "Explain the selected command and exit.",
+      "deprecated": null,
+      "control": true,
+      "long": "--explain",
+      "short": "-e",
+      "negative": null,
+      "aliases": [],
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "plain": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "color",
+      "description": "Turn color on or off, overriding NO_COLOR.",
+      "deprecated": null,
+      "control": true,
+      "long": "--color",
+      "short": null,
+      "negative": "--no-color",
+      "aliases": [],
+      "polarity": "both",
+      "interaction": false,
+      "color": true,
+      "plain": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "count",
+      "name": "verbose",
+      "description": "Show more detail. Repeat it for more.",
+      "deprecated": null,
+      "control": true,
+      "long": "--verbose",
+      "short": "-v",
+      "aliases": [],
+      "verbose": true,
+      "quiet": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "count",
+      "name": "quiet",
+      "description": "Hide info and success messages.",
+      "deprecated": null,
+      "control": true,
+      "long": "--quiet",
+      "short": "-q",
+      "aliases": [],
+      "verbose": false,
+      "quiet": true,
+      "schema": null,
+      "env": []
+    }
+  ],
+  "configuration": null,
+  "command": {
+    "stdin": null,
+    "passthrough": null,
+    "name": "mcp",
+    "aliases": [],
+    "path": [
+      "mcp"
+    ],
+    "description": "Serve this application's tools to an MCP client, over stdin and stdout or, with --http, over HTTP.",
+    "details": [],
+    "examples": [],
+    "deprecated": null,
+    "hasAction": true,
+    "needsTerminal": false,
+    "result": null,
+    "failures": [],
+    "arguments": [],
+    "optionGroups": [],
+    "options": [
+      {
+        "type": "string",
+        "name": "http",
+        "description": "Serve over HTTP at this address instead of stdin and stdout: a port, or host:port. A port alone listens on 127.0.0.1, and port 0 takes any free port.",
+        "deprecated": null,
+        "control": true,
+        "long": "--http",
+        "short": null,
+        "aliases": [],
+        "required": false,
+        "requiredWhen": null,
+        "multiple": false,
+        "arity": null,
+        "lastWins": false,
+        "schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "string"
+        },
+        "env": [],
+        "envDelimiter": null,
+        "envAllowEmpty": false,
+        "default": null,
+        "implied": null,
+        "background": false
+      }
+    ],
+    "children": [
+      {
+        "stdin": null,
+        "passthrough": null,
+        "name": "install",
+        "aliases": [],
+        "path": [
+          "mcp",
+          "install"
+        ],
+        "description": "Register this application's MCP server with your coding agents.",
+        "details": [],
+        "examples": [],
+        "deprecated": null,
+        "hasAction": true,
+        "needsTerminal": false,
+        "result": null,
+        "failures": [],
+        "arguments": [],
+        "optionGroups": [],
+        "options": [
+          {
+            "type": "string",
+            "name": "agent",
+            "description": "The agent to register with: claude or codex. Every agent that starts when left out.",
+            "deprecated": null,
+            "control": false,
+            "long": "--agent",
+            "short": null,
+            "aliases": [],
+            "required": false,
+            "requiredWhen": null,
+            "multiple": false,
+            "arity": null,
+            "lastWins": false,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "enum": [
+                "claude",
+                "codex"
+              ]
+            },
+            "env": [],
+            "envDelimiter": null,
+            "envAllowEmpty": false,
+            "default": null,
+            "implied": null,
+            "background": false
+          },
+          {
+            "type": "boolean",
+            "name": "force",
+            "description": "Replace a registration of this name that mcp install did not make.",
+            "deprecated": null,
+            "control": false,
+            "long": "--force",
+            "short": null,
+            "negative": null,
+            "aliases": [],
+            "polarity": "positive",
+            "interaction": false,
+            "color": false,
+            "plain": false,
+            "schema": null,
+            "env": []
+          }
+        ],
+        "children": []
+      },
+      {
+        "stdin": null,
+        "passthrough": null,
+        "name": "uninstall",
+        "aliases": [],
+        "path": [
+          "mcp",
+          "uninstall"
+        ],
+        "description": "Remove this application's MCP server from your coding agents.",
+        "details": [],
+        "examples": [],
+        "deprecated": null,
+        "hasAction": true,
+        "needsTerminal": false,
+        "result": null,
+        "failures": [],
+        "arguments": [],
+        "optionGroups": [],
+        "options": [
+          {
+            "type": "string",
+            "name": "agent",
+            "description": "The agent to remove it from: claude or codex. Every agent it is registered with when left out.",
+            "deprecated": null,
+            "control": false,
+            "long": "--agent",
+            "short": null,
+            "aliases": [],
+            "required": false,
+            "requiredWhen": null,
+            "multiple": false,
+            "arity": null,
+            "lastWins": false,
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "string",
+              "enum": [
+                "claude",
+                "codex"
+              ]
+            },
+            "env": [],
+            "envDelimiter": null,
+            "envAllowEmpty": false,
+            "default": null,
+            "implied": null,
+            "background": false
+          }
+        ],
+        "children": []
+      },
+      {
+        "stdin": null,
+        "passthrough": null,
+        "name": "config",
+        "aliases": [],
+        "path": [
+          "mcp",
+          "config"
+        ],
+        "description": "Print a client configuration that starts this application's MCP server.",
+        "details": [],
+        "examples": [],
+        "deprecated": null,
+        "hasAction": true,
+        "needsTerminal": false,
+        "result": null,
+        "failures": [],
+        "arguments": [],
+        "optionGroups": [],
+        "options": [],
+        "children": []
+      }
+    ]
+  }
+}

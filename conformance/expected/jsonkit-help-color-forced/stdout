@@ -1,0 +1,43 @@
+[33;1mjsonkit[39;22m [90m·[39m Read and reshape one JSON document.
+
+  With no subcommand, jsonkit summarizes the document and its top-level keys.
+
+[90mUSAGE[39m
+  [33mjsonkit[39m [90;3m[options][39;23m
+  [33mjsonkit[39m [90;3m<command>[39;23m [90;3m[options][39;23m
+
+[90mDOCUMENT COMMANDS[39m
+  [90mREAD[39m
+    [33mget[39m              Read one value at a path.
+    [33mkeys[39m             List the keys at a path.
+    [33mstats[39m [90;3m<command>[39;23m  Report facts about the document's shape.
+    [33mfetch[39m            Read one value at a path.  [90m([93mdeprecated: Use get instead.[90m)[39m
+  [90mRESHAPE[39m
+    [33mselect[39m  Keep the named fields of the document.
+
+[90mCOMMANDS[39m
+  [33mhelp[39m                  Show help for a command.
+  [33mdoctor[39m                Check the host this application runs on.
+  [33mcompletion[39m [90;3m<command>[39;23m  Print or install a shell completion script.
+  [33mmcp[39m [90;3m[command][39;23m         Serve this application's tools to an MCP client, over stdin and stdout or, with --http, over HTTP.
+  [33mmanpage[39m [90;3m<command>[39;23m     Write or install the man pages.
+
+[90mOPTIONS[39m
+  [33m-f[90m,[39m [33m--file[39m [90;3m<path>[39;23m      The document to read. Omit it to read piped text.  [90m(file or piped stdin, - selects stdin;[39m [90mrequired)[39m
+  [33m-o[90m,[39m [33m--format[39m [90;3m<format>[39;23m  Select the output format, records by default. One of: records, json, jsonl.
+      [33m--fields[39m [90;3m<fields>[39;23m  Select top-level fields of json and jsonl output, as a comma list.  [90m(repeatable)[39m
+
+[90mGLOBAL OPTIONS[39m
+  [33m-h[90m,[39m [33m--help[39m        Show this help.
+  [33m-V[90m,[39m [33m--version[39m     Print the version.
+  [33m-M[90m,[39m [33m--manifest[39m    Print this command's manifest as JSON.
+  [33m-e[90m,[39m [33m--explain[39m     Explain the selected command and exit.
+      [33m--[no-]color[39m  Turn color on or off, overriding NO_COLOR.
+  [33m-v[90m,[39m [33m--verbose[90;3m...[39;23m  Show more detail. Repeat it for more.
+  [33m-q[90m,[39m [33m--quiet[39m       Hide info and success messages.
+
+[90mEXAMPLES[39m
+  [90m$[39m [33mjsonkit[39m -f doc.json
+  [90m$[39m [33mjsonkit[39m get user.name -f doc.json
+
+[90mRun[39m [33mjsonkit[39m [90;3m<command>[39;23m [33m--help[39m [90mfor command details.[39m

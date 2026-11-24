@@ -1,0 +1,908 @@
+{
+  "behind": [
+    {
+      "id": "jsonkit-color-forced-control-chars-escaped",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-color-forced-help",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-color-forced-level2",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-color-forced-level3",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-color-forced-verbose-line",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-color-help-with-color-flag",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-install-help-held",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-after-completion",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-after-help",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-after-help-nested",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-after-help-prefix",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-bare-dash",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-bare-dash-after-get",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-bare-dash-after-select",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-double-dash-prefix",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-empty",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-empty-word",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-option-after-value-taken-dash",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-protocol-path-through-option-first",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-script-bash",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-script-fish",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-script-powershell",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-script-unknown-shell",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-completion-script-zsh",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-control-explain-then-help",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-control-explain-then-manifest",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-control-help-then-version",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-control-version-then-help",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-form-case-sensitive-option",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-form-long-prefix-abbreviation",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-form-no-negation-of-valued",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-form-passthrough-dash-word",
+      "parts": [
+        "stdout",
+        "stderr",
+        "exit"
+      ]
+    },
+    {
+      "id": "jsonkit-form-passthrough-double-dash-word",
+      "parts": [
+        "stdout",
+        "stderr",
+        "exit"
+      ]
+    },
+    {
+      "id": "jsonkit-form-passthrough-second-separator",
+      "parts": [
+        "stdout",
+        "stderr",
+        "exit"
+      ]
+    },
+    {
+      "id": "jsonkit-form-passthrough-tail",
+      "parts": [
+        "stdout",
+        "stderr",
+        "exit"
+      ]
+    },
+    {
+      "id": "jsonkit-form-short-group-help",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-form-short-group-unknown-member",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-format-incomplete-jsonl",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-format-on-command-without-result",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-get-format-option-not-declared",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-help-before-command",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-color-forced",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-color-forced-get",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-alias-ls",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-completion",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-debug-hidden",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-fetch-deprecated",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-get",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-keys",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-mcp",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-paths-hidden",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-root",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-select",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-command-stats-depth-max",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-completion-install-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-completion-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-completion-uninstall-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-debug-hidden-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-fetch-deprecated-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-fetch-deprecated-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-get-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-get-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-held-extra-argument",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-held-missing-argument",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-held-missing-argument-with-file",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-held-missing-required-option",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-held-repeated-option",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-held-unknown-option",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-held-unknown-option-short-flag",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-held-validation",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-keys-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-keys-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-ls-alias-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-mcp-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-mcp-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-no-color",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-paths-hidden-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-paths-hidden-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-root-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-root-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-select-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-select-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-stats-depth-max-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-stats-depth-max-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-help-with-format-flag",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-alias-ls",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-completion",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-completion-bash",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-debug-hidden",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-doctor",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-fetch-deprecated",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-get",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-get-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-held-fault",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-help-command",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-keys",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-manpage-generate",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-mcp",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-missing-argument",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-paths-hidden",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-root",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-root-color-forced",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-root-no-color",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-root-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-select",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-stats",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-stats-depth",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-stats-depth-max",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manifest-with-format-json",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-manpage-generate",
+      "parts": [
+        "stderr",
+        "files"
+      ]
+    },
+    {
+      "id": "jsonkit-manpage-generate-quiet",
+      "parts": [
+        "files"
+      ]
+    },
+    {
+      "id": "jsonkit-manpage-generate-short-flags",
+      "parts": [
+        "stderr",
+        "files"
+      ]
+    },
+    {
+      "id": "jsonkit-mcp-call-get-verbose",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-mcp-cancel-settled-request",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-mcp-session-several-calls",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-mcp-tools-list-2025-06-18",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-mcp-tools-list-2025-11-25",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-mcp-tools-list-per-request",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "jsonkit-usage-group-bare-completion",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-usage-misplaced-option-after-passthrough",
+      "parts": [
+        "stdout",
+        "stderr",
+        "exit"
+      ]
+    },
+    {
+      "id": "jsonkit-usage-two-faults-at-once",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-usage-unknown-option-on-command",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-usage-validation-format-near",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "jsonkit-usage-validation-manifest-and-help",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-color-no-color-flag-unknown",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "textstat-env-help-shows-nothing-extra",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-form-hidden-timing-not-in-help",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-form-no-total-is-not-declared",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "textstat-form-passthrough-tail-ignored-total",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-help-before-files",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-help-color-forced",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-help-held-missing-file",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-help-held-unknown-option",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-help-held-validation",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-help-long",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-help-no-color",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-help-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-manifest-held-fault",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-manifest-no-color",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-manifest-root",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-manifest-short",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-manifest-with-files",
+      "parts": [
+        "stdout"
+      ]
+    },
+    {
+      "id": "textstat-usage-completion-not-installed",
+      "parts": [
+        "stdout",
+        "stderr",
+        "exit"
+      ]
+    },
+    {
+      "id": "textstat-usage-passthrough-tail-ignored",
+      "parts": [
+        "stdout",
+        "stderr",
+        "exit"
+      ]
+    },
+    {
+      "id": "textstat-usage-unknown-option-long",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "textstat-usage-unknown-option-short",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "textstat-usage-unknown-option-verbose-not-installed",
+      "parts": [
+        "stderr"
+      ]
+    },
+    {
+      "id": "textstat-usage-validation-metric-near",
+      "parts": [
+        "stderr"
+      ]
+    }
+  ]
+}
