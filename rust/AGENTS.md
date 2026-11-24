@@ -8,23 +8,22 @@ This workspace is the Rust implementation of [Loom CLI](../README.md), a framewo
 
 ## The contract is the TypeScript reference
 
-The reference is the TypeScript workspace at [`../typescript`](../typescript) and the repository's shared documents at [`../docs`](../docs). They bind this port, and the repository's [AGENTS.md](../AGENTS.md) holds the conventions they share. [ADR-0217](../docs/decisions/0217-parity-between-looms-implementations-is-the-operators-experience.md) states what parity between the two implementations covers.
+The reference is the TypeScript workspace at [`../typescript`](../typescript) and the repository's shared documents at [`../docs`](../docs). They bind this port, and the repository's [AGENTS.md](../AGENTS.md) holds the rules every language follows. [ADR-0217](../docs/decisions/0217-parity-between-looms-implementations-is-the-operators-experience.md) states what parity between the two implementations covers.
 
-- [`../docs/principles.md`](../docs/principles.md) ranks above everything. Read it before designing, testing, or judging a review finding. "Node and Bun underneath" reads as "std and tokio underneath"; "types, then lint, then diagnostics" reads as "types, then `#[must_use]` and clippy, then diagnostics".
-- [`../docs/glossary.md`](../docs/glossary.md) is the domain model. Use its terms in code, rustdoc, messages, and reviews.
+- In the [principles](../docs/principles.md), "Node and Bun underneath" reads as "std and tokio underneath", and "types, then lint, then diagnostics" reads as "types, then `#[must_use]` and clippy, then diagnostics".
 - `../docs/core`, `../docs/plugins`, `../docs/libs`, and `../docs/toolchain` state behavior. Open the page for the area under change, and the decision records it cites, before writing code.
 - `../typescript/packages/*/tests` are the behavioral oracle. Port a behavior's test cases with the behavior.
 
-What an operator sees or a machine reads matches the reference byte for byte, except at a limit of the programming language, which ADR-0217 puts outside parity: messages, help pages, tables, manifest and MCP JSON, completion output, exit codes. The authoring API is Rust-native and follows this repository's [decision records](docs/decisions/README.md) and [core API design](docs/design/core-api.md).
+What an operator sees or a machine reads matches the reference byte for byte, except at a limit of the programming language, which ADR-0217 puts outside parity: messages, help pages, tables, manifest and MCP JSON, completion output, exit codes. The authoring API is Rust-native and follows the port's own [decision records](docs/decisions/README.md) and [core API design](docs/design/core-api.md).
 
-A difference from the reference contract is a **deviation**. Record each one in `docs/deviations.md` with its reason in the change that introduces it. An unrecorded difference is a defect.
+A difference from the reference contract that the port chooses is a **deviation**. Record each one in `docs/deviations.md` with its reason, and list the cases it changes in [conformance/accepted.json](conformance/accepted.json), in the change that introduces it. Any other difference is a defect. One the shared cases show and [conformance/behind.json](conformance/behind.json) lists is known and owed to the catch-up, as [ADR-0006](docs/decisions/0006-rust-tracks-the-shared-conformance-cases-it-is-behind-on-in-a-list-apart-from-deviations.md) records.
 
 ## Where things are
 
 - [README.md](README.md): the crate map, the checks, and the conformance harness; the guides under [docs/guide](docs/guide/application.md) document the framework for authors and agents. Every Rust example in them compiles as a doctest of `docs/check`, so a change that breaks one fails `cargo test --workspace --all-features --doc`.
 - [docs/design/core-api.md](docs/design/core-api.md): the authoring contract, concept by concept, and where each rule is enforced.
-- [docs/decisions/README.md](docs/decisions/README.md): the decisions that shape the port. An `accepted` record is load-bearing; change it by superseding it.
-- `conformance/`: invocations of the reference examples with their captured stdout, stderr, and exit code. The Rust examples reproduce them.
+- [docs/decisions/README.md](docs/decisions/README.md): the decisions that shape the port, held to the same rules as the repository's records.
+- `../conformance/`: the conformance cases both languages share, invocations of the examples with the stdout, stderr, exit code, and files the TypeScript reference produces. The Rust examples reproduce them, except the cases [conformance/accepted.json](conformance/accepted.json) and [conformance/behind.json](conformance/behind.json), under `rust/`, list; Rust work only shrinks the second.
 - The toolchain, the `cargo-loom` crate, is not in this tree; [Shipping](docs/guide/shipping.md#the-toolchain-is-not-in-this-tree) says what that leaves out.
 
 ## Checks
@@ -37,7 +36,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 ```
 
-A change to an example or to the operator surface also passes the conformance harness, which [conformance/README.md](conformance/README.md#running-the-harness) describes:
+A change to an example or to the operator surface also passes the conformance harness, which [../conformance/README.md](../conformance/README.md#running-the-harness) describes:
 
 ```sh
 cargo build -p jsonkit -p textstat
@@ -54,6 +53,10 @@ cargo run -p conformance-harness
 - **Public items carry rustdoc** that states the contract. Types Loom builds and the author reads are `#[non_exhaustive]`; types the author builds use builders.
 - **JSON keeps declaration order.** `serde_json` runs with `preserve_order`, and number and escape formatting match `JSON.stringify` where a document is operator output.
 - **Paths are configurable.** Code and tests name no machine-specific path.
-- **The reference is read, not loaded.** Nothing under `rust/` reads a file under `../typescript` at build or test time; a fact the port takes from the reference, such as the conformance corpus or a copied rule table, is captured into `rust/` and names the revision it came from.
+- **The reference is read, not loaded.** Nothing under `rust/` reads a file under `../typescript` at build or test time. The shared conformance cases are captured from the reference into `../conformance/`; any other fact the port takes from the reference, such as a copied rule table, is captured into `rust/` and names the revision it came from.
 - **Scratch lives in `.scratch/`.** When several agents build at once, each sets `CARGO_TARGET_DIR=.scratch/target-<name>`.
 - **Commits** use `type(scope): summary`, such as `feat(core): route an invocation on global options`. When others are working in the same checkout, commit with an explicit pathspec: `git add <paths> && git commit -m "<message>" -- <paths>`.
+
+## Judging review findings here
+
+Under the repository's [two tests](../AGENTS.md#judging-review-findings), what this implementation ships is the library crates under `crates/` and the files they write. The examples and the conformance harness exercise it and ship nothing. The toolchain is not in this tree, so no layout case applies yet.
