@@ -4,9 +4,6 @@
  */
 import { escapeControlCharacters } from '@loomcli/core';
 
-/** The length of a view list with no formatter-appended view. */
-const EMPTY = 0;
-
 const shownNames = (names: readonly string[]): string =>
   names.map(escapeControlCharacters).join(', ');
 
@@ -42,14 +39,12 @@ function viewsOr(views: readonly string[]): string {
 
 /**
  * `--fields` under a view the formatter did not append. The sentence names the formatter's views
- * this Command has, `views`, and corrects with them alone, so it never offers a view the Command
- * lacks; with none, it says only to remove the option. `format` names the option that selects a
- * view, by spelling or by declared name as `spelling` names `--fields`.
+ * this Command has, `views`, at least one, because the formatter declares `--fields` only where it
+ * appended one, and corrects with them alone, so it never offers a view the Command lacks.
+ * `format` names the option that selects a view, by spelling or by declared name as `spelling`
+ * names `--fields`.
  */
 function fieldsNeedEncoding(spelling: string, format: string, views: readonly string[]): string {
-  if (views.length === EMPTY) {
-    return `Option ${shownOption(spelling)} applies only to output the formatter provides, and the formatter provides none here. Remove the option.`;
-  }
   return `Option ${shownOption(spelling)} applies only to the ${viewsAnd(views)} output the formatter provides. Remove the option, or select ${viewsOr(views)} with ${shownOption(format)}.`;
 }
 
