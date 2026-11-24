@@ -8,11 +8,10 @@ import { logging } from '@loomcli/plugins/logging';
 import type { OpenTelemetryLogger, OpenTelemetryLogRecord } from '@loomcli/plugins/logging';
 import { mockProcess } from '@loomcli/testing';
 import { logs } from '@opentelemetry/api-logs';
-import type { LogRecord } from '@opentelemetry/api-logs';
 import { expect, test } from 'vite-plus/test';
 
 test('an OpenTelemetry destination emits the template and redacted fields with run facts', async () => {
-  const records: LogRecord[] = [];
+  const records: OpenTelemetryLogRecord[] = [];
   const events: LogEvent[] = [];
   const app = new Application('notes', {
     log: { redact: ['session.token'] },
@@ -73,7 +72,7 @@ test('an OpenTelemetry destination emits the template and redacted fields with r
 });
 
 test('a failure event carries its form and defect using exception semantic attributes', async () => {
-  const records: LogRecord[] = [];
+  const records: OpenTelemetryLogRecord[] = [];
   const events: LogEvent[] = [];
   const app = new Application('notes', {
     plugins: [
@@ -239,7 +238,7 @@ test('a logger may mutate its copies without changing later OpenTelemetry or fil
 });
 
 test('destinations filter independently and emit in declaration order at the OTel severities', async () => {
-  const records: LogRecord[] = [];
+  const records: OpenTelemetryLogRecord[] = [];
   const order: string[] = [];
   const app = new Application('notes', {
     plugins: [
@@ -296,7 +295,7 @@ test('destinations filter independently and emit in declaration order at the OTe
 });
 
 test('an author emit that throws follows the ordinary hook failure path', async () => {
-  const later: LogRecord[] = [];
+  const later: OpenTelemetryLogRecord[] = [];
   const app = new Application('notes', {
     plugins: [
       logging({

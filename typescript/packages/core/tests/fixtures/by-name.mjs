@@ -362,10 +362,8 @@ async function runFixture(fixtureWords, fixtureOptions = {}) {
               process: createProcess({ release }),
             },
           )
-          .then(
-            () => 'resolved',
-            (error) => error === thrown,
-          ),
+          .then(() => 'resolved')
+          .catch((error) => error === thrown),
       });
     } else if (scenario === 'view') {
       const later = plugin('@fixture/later', {

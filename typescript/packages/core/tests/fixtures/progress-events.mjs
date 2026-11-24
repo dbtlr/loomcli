@@ -166,10 +166,8 @@ async function runFixture(words, fixtureOptions = {}) {
             process: createProcess(),
           },
         )
-        .then(
-          () => 'resolved',
-          (error) => error === thrown,
-        );
+        .then(() => 'resolved')
+        .catch((error) => error === thrown);
       print(notes);
     }
   } catch (error) {
