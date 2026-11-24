@@ -36,6 +36,8 @@ class Handed<Value> extends Promise<Value> {
     onRejected?: ((reason: unknown) => Rejected | PromiseLike<Rejected>) | null,
   ): Promise<Fulfilled | Rejected> {
     this.#observed = true;
+    // A Promise subclass forwards both handlers to its parent, and a catch() would wrap them in a second promise.
+    // oxlint-disable-next-line promise/prefer-catch
     return super.then(onFulfilled, onRejected);
   }
 }

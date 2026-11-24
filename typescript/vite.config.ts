@@ -535,15 +535,6 @@ export default defineConfig({
     rules: {
       'eslint/no-duplicate-imports': ['warn', { allowSeparateTypeImports: true }],
       'node/no-sync': 'off',
-      // A rule a linter upgrade turns on is a contract change, proposed before it is enabled.
-      // The promise plugin's prefer-catch now reports a two-argument then() in every position, a super.then() included.
-      'promise/prefer-catch': 'off',
-      // The typescript plugin's no-non-null-asserted-nullish-coalescing moved from restriction to suspicious.
-      'typescript/no-non-null-asserted-nullish-coalescing': 'off',
-      // The typescript plugin's no-unsafe-enum-assignment is new, a type-aware rule in suspicious.
-      'typescript/no-unsafe-enum-assignment': 'off',
-      // The unicorn plugin's no-useless-error-capture-stack-trace moved from restriction to suspicious.
-      'unicorn/no-useless-error-capture-stack-trace': 'off',
       // The formatter writes hexadecimal digits in lowercase, which this rule would reverse.
       'unicorn/number-literal-case': 'off',
       'vite-plus/prefer-vite-plus-imports': 'error',

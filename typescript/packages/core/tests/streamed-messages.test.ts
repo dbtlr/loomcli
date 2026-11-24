@@ -262,7 +262,7 @@ test('an action that fails while its stream is open ends the message ahead of it
   const settled = vi.fn();
   const run = await piped(async (out) => {
     void out.print(chunks('Working\nPartial ', 'answer'));
-    void out.info(iterable).then(settled, settled);
+    void out.info(iterable).then(settled).catch(settled);
     await new Promise((resolve) => setTimeout(resolve, 10));
     throw new Error('The action broke.');
   });
@@ -1198,7 +1198,7 @@ test('an action that fails while its streamed print line is unfinished writes it
   const settled = vi.fn();
   const code = await marked('stopped')
     .action(async ({ out }) => {
-      void out.print(iterable).then(settled, settled);
+      void out.print(iterable).then(settled).catch(settled);
       await new Promise((resolve) => setTimeout(resolve, 10));
       throw new Error('The action broke.');
     })

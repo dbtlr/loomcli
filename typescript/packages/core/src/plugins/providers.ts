@@ -496,16 +496,15 @@ class PersistentValues {
     if (building !== undefined) {
       return building;
     }
-    const opening = openValue(needed, this.#scope, values).then(
-      (value) => {
+    const opening = openValue(needed, this.#scope, values)
+      .then((value) => {
         this.#built.push({ provider: needed, value });
         return value;
-      },
-      (error: unknown) => {
+      })
+      .catch((error: unknown) => {
         this.#building.delete(needed);
         throw error;
-      },
-    );
+      });
     this.#building.set(needed, opening);
     return opening;
   }
