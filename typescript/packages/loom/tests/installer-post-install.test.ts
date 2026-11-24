@@ -91,8 +91,8 @@ function installLines(box: Sandbox) {
 }
 
 test('an Application with no post-install declaration gets the script with no post-install step, byte for byte', () => {
-  // The digest of the script after --unmanaged joined it with its own path check; the post-install step adds nothing to it.
-  const earlier = 'd9eec7df1e7df5f23318e065e97204186a2dbd52cc20cd4666ee70df44d0a059';
+  // The digest of the script after --unmanaged refused the recorded binary's physical directory; the post-install step adds nothing to it.
+  const earlier = '0293bcfa44db143baf35d73ac4cb4e8ea24e2b87bca881976ba6fedc30cca61c';
   expect(sha256(renderManaged(installerScript('notes', 'me/notes')))).toBe(earlier);
   expect(sha256(renderManaged(installerScript('notes', 'me/notes', undefined)))).toBe(earlier);
 });

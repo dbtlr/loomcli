@@ -4,7 +4,7 @@ title: ADR-0168 - A Command or an option may declare a visible alias, which ever
 description: "visibleAlias(...names) on a named Command and visibleAliases on an option config declare an alias that is visible, beside alias() and aliases, which stay unadvertised and unchanged. A visible alias is an alias in every other respect, with one namespace, the same routing, the same name rules, and the same declaration faults, and a name declared both ways is one visible alias. Inspection keeps aliases as every alias and gains visibleAliases on CommandNode and OptionNode. Help prints it as the first fact of a row, (alias: ls) or (alias: --minimum), and a Command's own page prints Alias: ls in its masthead before its deprecation line, while usage lines and failure sentences keep the canonical name; the man page follows help. Completion offers a visible alias only where the canonical name does not match what was typed. The manifest lists visible aliases in an aliases field on the Command entry and the option entry, never as an entry of their own. MCP, suggestions, and routing-error candidates are unchanged, and an alias carries no migration message. It supersedes in part ADR-0002's rejection of advertised aliases and its rule that a report showing an alias is a bug, ADR-0056's rule that no listing shows an option alias, and ADR-0043's rule that completion never offers an alias, each for a visible alias."
 status: accepted
 created: 2026-11-16
-modified: 2026-11-18
+modified: 2026-11-24
 ---
 
 # ADR-0168 - A Command or an option may declare a visible alias, which every listing shows beside its canonical name
