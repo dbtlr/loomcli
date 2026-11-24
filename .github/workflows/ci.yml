@@ -213,11 +213,11 @@ jobs:
         with:
           version: 12.21.0
 
-      # No pnpm cache here: the lockfile sits in typescript/, and Hugi accepts only node-version and
-      # cache as inputs to setup-node, so it cannot be given cache-dependency-path.
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
           node-version: 22.23.2
 
       # The examples are bundled with loom build, which runs bun build, and their source runs under Bun.
@@ -321,11 +321,11 @@ jobs:
         with:
           version: 12.21.0
 
-      # No pnpm cache here: the lockfile sits in typescript/, and Hugi accepts only node-version and
-      # cache as inputs to setup-node, so it cannot be given cache-dependency-path.
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
           node-version: 22.23.2
 
       - name: Set up Bun
