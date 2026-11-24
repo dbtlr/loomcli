@@ -6,7 +6,7 @@ description: The agent-first features of a Loom application end to end. The mani
 
 A Loom application serves an agent from the same declaration it serves a person from. An agent reads what the application offers from the manifest, asks for structured output with `--format`, reads failures as structured data with stable codes, runs without being asked questions, calls the Commands as MCP tools, and installs the skills the application ships. Each of these is a plugin over the command graph, so the facts never drift from what the application does. The [plugins guide](plugins.md) lists the features that compile each one.
 
-The output on this page is captured from the jsonkit example, run in `conformance/fixtures` (`cargo build -p jsonkit`, then `../../target/debug/jsonkit`), and from the doctests below, which assert it.
+The output on this page is captured from the jsonkit example, run from the repository’s [shared fixtures](../../../conformance/fixtures/) (`cargo build -p jsonkit` from `rust/`, then `../../rust/target/debug/jsonkit` from the fixtures directory), and from the doctests below, which assert it.
 
 ## The manifest
 

@@ -1,0 +1,41 @@
+.TH "JSONKIT\-GET" "1" "" "jsonkit 0.0.0" ""
+.SH "NAME"
+jsonkit\-get \- Read one value at a path.
+.SH "SYNOPSIS"
+.nf
+\fBjsonkit get\fR <path> [options]
+.fi
+.SH "DESCRIPTION"
+A path is a dot\-separated walk from the root of the document.
+.IP \(bu 2
+A \fBkey\fR reads an object\(aqs member, such as \fBuser.name\fR.
+.IP \(bu 2
+A \fBwhole number\fR reads an array\(aqs item, such as \fBitems.0\fR.
+.PP
+The document is \fIJSON\fR; see the format <https://www.json.org/json\-en.html>.
+.SH "ARGUMENTS"
+.TP
+\fIpath\fR
+Dot path to read.
+.SH "OPTIONS"
+.TP
+\fB\-f\fR, \fB\-\-file\fR <\fIpath\fR>
+The document to read. Omit it to read piped text.  (file or piped stdin, \- selects stdin; required)
+.TP
+\fB\-\-compact\fR
+Print the JSON on one line.
+.TP
+\fB\-\-indent\fR <\fIspaces\fR>
+Indent nested JSON by this many spaces, from 0 to 8.  (default: 2)
+.PP
+Use at most one of \-\-compact and \-\-indent.
+.SH "EXAMPLES"
+.nf
+\fB$ jsonkit get name \-f doc.json\fR
+.fi
+.PP
+.nf
+\fB$ jsonkit get nested.deep.value \-f doc.json\fR
+.fi
+.SH "SEE ALSO"
+\fBjsonkit\fR(1)

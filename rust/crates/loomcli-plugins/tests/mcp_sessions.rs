@@ -14,6 +14,8 @@ mod mcp_support;
 
 use std::path::PathBuf;
 
+use conformance_harness::compare::Part;
+use conformance_harness::runner::assert_part;
 use loomcli_core::{
     Application, Arg, Command, Content, ContentOpt, Context, Done, EX_DATAERR, Error, Failure,
     FatalError, NoInputs, NoResult, Opt,
@@ -190,7 +192,7 @@ fn jsonkit() -> App {
 }
 
 fn corpus() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../conformance")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../conformance")
 }
 
 /// Whether the harness waits for an answer after sending this line: a raw line that is not blank,
@@ -232,9 +234,14 @@ async fn replay(id: &str) {
     for message in ending.messages {
         stdout.push_str(&format!("{}\n", serde_json::to_string(&message).unwrap()));
     }
-    assert_eq!(stdout, read("stdout"), "{id}");
-    assert_eq!(ending.stderr, read("stderr"), "{id}");
-    assert_eq!(format!("{}\n", ending.status), read("exit"), "{id}");
+    assert_part(id, Part::Stdout, &stdout, &read("stdout"));
+    assert_part(id, Part::Stderr, &ending.stderr, &read("stderr"));
+    assert_part(
+        id,
+        Part::Exit,
+        &format!("{}\n", ending.status),
+        &read("exit"),
+    );
 }
 
 macro_rules! sessions {
@@ -350,9 +357,9 @@ async fn run_argv(id: &str) {
         .action(|_: Context| async { Ok(()) })
         .run(RunOptions::new().process(Arc::clone(&process) as Arc<dyn ProcessHandle>))
         .await;
-    assert_eq!(process.stdout_text(), read("stdout"), "{id}");
-    assert_eq!(process.stderr_text(), read("stderr"), "{id}");
-    assert_eq!(format!("{}\n", code.get()), read("exit"), "{id}");
+    assert_part(id, Part::Stdout, &process.stdout_text(), &read("stdout"));
+    assert_part(id, Part::Stderr, &process.stderr_text(), &read("stderr"));
+    assert_part(id, Part::Exit, &format!("{}\n", code.get()), &read("exit"));
 }
 
 macro_rules! runs {

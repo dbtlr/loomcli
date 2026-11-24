@@ -1,3 +1,0 @@
-textstat: Argument "files" at 0: Expected a readable file that exists.
-textstat: Argument "files" at 1: Expected a readable file that exists.
-Run "textstat --help" to see the usage.

@@ -1,13 +1,15 @@
-//! `cargo run -p conformance-harness -- [--only <id prefix or group>] [--show <id>] [--bin-dir <dir>] [--json <file>] [--jobs <n>]`
+//! The command-line runner for the Rust conformance harness.
 
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use conformance_harness::runner::{APPS, Context, check_binaries, run_cases};
-use conformance_harness::{accepted, cases, report};
+use conformance_harness::runner::{
+    APPS, Context, KnownDifferences, check_binaries, run_cases, rust_workspace,
+};
+use conformance_harness::{behind, cases, report};
 
-const USAGE: &str = "usage: conformance-harness [--only <id prefix or group>] [--show <id>] [--bin-dir <dir>] [--json <file>] [--jobs <n>]";
+const USAGE: &str = "usage: conformance-harness [--only <id prefix or group>] [--show <id>] [--bin-dir <dir>] [--json <file>] [--jobs <n>] [--write-behind <file>]";
 
 #[derive(Default)]
 struct Args {
@@ -16,6 +18,7 @@ struct Args {
     bin_dir: Option<PathBuf>,
     json: Option<PathBuf>,
     jobs: Option<usize>,
+    write_behind: Option<PathBuf>,
 }
 
 fn parse_args(mut raw: impl Iterator<Item = String>) -> Result<Args, String> {
@@ -30,6 +33,7 @@ fn parse_args(mut raw: impl Iterator<Item = String>) -> Result<Args, String> {
             "--show" => args.show = Some(value("--show")?),
             "--bin-dir" => args.bin_dir = Some(PathBuf::from(value("--bin-dir")?)),
             "--json" => args.json = Some(PathBuf::from(value("--json")?)),
+            "--write-behind" => args.write_behind = Some(PathBuf::from(value("--write-behind")?)),
             "--jobs" => {
                 args.jobs = Some(
                     value("--jobs")?
@@ -40,17 +44,10 @@ fn parse_args(mut raw: impl Iterator<Item = String>) -> Result<Args, String> {
             other => return Err(format!("unknown argument {other}\n{USAGE}")),
         }
     }
+    if args.write_behind.is_some() && (args.only.is_some() || args.show.is_some()) {
+        return Err("omit --only and --show when writing a behind list".into());
+    }
     Ok(args)
-}
-
-/// The workspace root: the nearest ancestor of the working directory that holds `conformance/cases`.
-fn find_root() -> Result<PathBuf, String> {
-    let start = env::current_dir().map_err(|e| e.to_string())?;
-    start
-        .ancestors()
-        .find(|dir| dir.join("conformance").join("cases").is_dir())
-        .map(Path::to_path_buf)
-        .ok_or_else(|| "run from inside the repository: no conformance/cases folder above the working directory".to_owned())
 }
 
 fn default_bin_dir(root: &Path) -> PathBuf {
@@ -65,9 +62,27 @@ fn default_bin_dir(root: &Path) -> PathBuf {
 
 fn run() -> Result<bool, String> {
     let args = parse_args(env::args().skip(1))?;
-    let root = find_root()?;
-    let conformance_dir = root.join("conformance");
+    let rust_dir = rust_workspace()
+        .canonicalize()
+        .map_err(|e| format!("cannot find the Rust workspace: {e}"))?;
+    let conformance_dir = rust_dir.join("../conformance");
     let all = cases::load_cases(&conformance_dir)?;
+    let differences = KnownDifferences::load()?;
+    for entry in &differences.accepted {
+        if !all.iter().any(|case| case.id == entry.id) {
+            return Err(format!("accepted.json: unknown case {}", entry.id));
+        }
+    }
+    for id in differences.behind.keys() {
+        if !all.iter().any(|case| &case.id == id) {
+            return Err(format!("behind.json: unknown case {id}"));
+        }
+        if differences.accepted.iter().any(|entry| &entry.id == id) {
+            return Err(format!(
+                "behind.json: {id} is already listed in accepted.json"
+            ));
+        }
+    }
     let selected: Vec<&cases::Case> = match (&args.show, &args.only) {
         (Some(id), _) => all.iter().filter(|c| &c.id == id).collect(),
         (None, Some(only)) => all
@@ -76,6 +91,8 @@ fn run() -> Result<bool, String> {
             .collect(),
         (None, None) => all.iter().collect(),
     };
+    let full = args.only.is_none() && args.show.is_none();
+    cases::check_expected_entries(&conformance_dir, &selected, full)?;
     if selected.is_empty() {
         return Err("no case matches the selection".into());
     }
@@ -83,7 +100,7 @@ fn run() -> Result<bool, String> {
     let bin_dir = match args.bin_dir.clone() {
         Some(dir) => std::path::absolute(&dir)
             .map_err(|e| format!("cannot resolve --bin-dir {}: {e}", dir.display()))?,
-        None => default_bin_dir(&root),
+        None => default_bin_dir(&rust_dir),
     };
     let mut needed: Vec<&str> = APPS
         .into_iter()
@@ -92,8 +109,8 @@ fn run() -> Result<bool, String> {
     needed.dedup();
     check_binaries(&bin_dir, &needed)?;
     let ctx = Context {
-        accepted: accepted::load(&conformance_dir, &root.join("docs").join("deviations.md"))?,
-        scratch_dir: root.join(".scratch").join("conformance-harness"),
+        differences,
+        scratch_dir: rust_dir.join(".scratch").join("conformance-harness"),
         bin_dir,
         path_var: env::var("PATH").unwrap_or_default(),
         jobs: args.jobs.unwrap_or_else(|| {
@@ -109,12 +126,15 @@ fn run() -> Result<bool, String> {
             print!("{}", report::show(r));
         }
     }
-    print!("{}", report::render(&results));
+    print!("{}", report::render(&results, &ctx.differences.behind));
     if let Some(path) = &args.json {
         let text = serde_json::to_string_pretty(&report::json_summary(&results))
             .map_err(|e| e.to_string())?;
         std::fs::write(path, format!("{text}\n"))
             .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    }
+    if let Some(path) = &args.write_behind {
+        behind::write_candidate(path, &results, &ctx.differences.accepted)?;
     }
     Ok(report::succeeded(&results))
 }

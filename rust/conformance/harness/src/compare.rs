@@ -19,7 +19,7 @@ pub enum Part {
 }
 
 impl Part {
-    /// The name used in reports and in `accepted.json`.
+    /// The name used in reports and the conformance lists.
     pub fn name(self) -> &'static str {
         match self {
             Self::Stdout => "stdout",
@@ -30,7 +30,7 @@ impl Part {
         }
     }
 
-    /// Parses a name that `accepted.json` may use (`fixtures` cannot be accepted).
+    /// Parses a name that a conformance list may use.
     pub fn parse(name: &str) -> Option<Self> {
         [Self::Stdout, Self::Stderr, Self::Exit, Self::Files]
             .into_iter()

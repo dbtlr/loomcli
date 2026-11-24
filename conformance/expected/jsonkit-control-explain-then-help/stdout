@@ -1,0 +1,43 @@
+jsonkit · Read and reshape one JSON document.
+
+  With no subcommand, jsonkit summarizes the document and its top-level keys.
+
+USAGE
+  jsonkit [options]
+  jsonkit <command> [options]
+
+DOCUMENT COMMANDS
+  READ
+    get              Read one value at a path.
+    keys             List the keys at a path.
+    stats <command>  Report facts about the document's shape.
+    fetch            Read one value at a path.  (deprecated: Use get instead.)
+  RESHAPE
+    select  Keep the named fields of the document.
+
+COMMANDS
+  help                  Show help for a command.
+  doctor                Check the host this application runs on.
+  completion <command>  Print or install a shell completion script.
+  mcp [command]         Serve this application's tools to an MCP client, over stdin and stdout or, with --http, over HTTP.
+  manpage <command>     Write or install the man pages.
+
+OPTIONS
+  -f, --file <path>      The document to read. Omit it to read piped text.  (file or piped stdin, - selects stdin; required)
+  -o, --format <format>  Select the output format, records by default. One of: records, json, jsonl.
+      --fields <fields>  Select top-level fields of json and jsonl output, as a comma list.  (repeatable)
+
+GLOBAL OPTIONS
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+      --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet       Hide info and success messages.
+
+EXAMPLES
+  $ jsonkit -f doc.json
+  $ jsonkit get user.name -f doc.json
+
+Run jsonkit <command> --help for command details.

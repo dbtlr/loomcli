@@ -1,13 +1,13 @@
-//! Help pages of the conformance corpus, reproduced byte for byte by small applications shaped like
-//! the reference's jsonkit and textstat examples. The other plugins those examples install are
-//! stood in for by plugins that declare the same options and Commands, so the help page, which
-//! reads the graph alone, prints what the reference's examples print.
+//! Help pages from small applications shaped like jsonkit and textstat.
+//! Stand-in plugins declare the options and Commands that shape those pages.
 
 #![cfg(feature = "help")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod help_support;
 
+use conformance_harness::compare::Part;
+use conformance_harness::runner::assert_part;
 use help_support::{Outcome, noop, run, verbose_stand_in, version_stand_in};
 use loomcli_core::{
     AnyPlugin, Application, Arg, Command, Done, InputSchema, Issue, NoInputs, NoResult, Opt,
@@ -342,7 +342,7 @@ fn textstat() -> App {
 /// The captured stdout, stderr, and exit code of one conformance case.
 fn expected(id: &str) -> Outcome {
     let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../conformance/expected")
+        .join("../../../conformance/expected")
         .join(id);
     let read = |name: &str| std::fs::read_to_string(folder.join(name)).unwrap();
     Outcome {
@@ -350,6 +350,13 @@ fn expected(id: &str) -> Outcome {
         stdout: read("stdout"),
         stderr: read("stderr"),
     }
+}
+
+fn assert_help(id: &str, actual: Outcome) {
+    let expected = expected(id);
+    assert_part(id, Part::Stdout, &actual.stdout, &expected.stdout);
+    assert_part(id, Part::Stderr, &actual.stderr, &expected.stderr);
+    assert_part(id, Part::Exit, &actual.status, &expected.status);
 }
 
 #[tokio::test]
@@ -388,7 +395,7 @@ async fn jsonkit_help_pages_match_the_conformance_corpus() {
         ),
     ];
     for (id, argv) in cases {
-        assert_eq!(run(&application, argv).await, expected(id), "{id}");
+        assert_help(id, run(&application, argv).await);
     }
 }
 
@@ -403,6 +410,6 @@ async fn textstat_help_pages_match_the_conformance_corpus() {
             &["--bogus", "--help"][..],
         ),
     ] {
-        assert_eq!(run(&application, argv).await, expected(id), "{id}");
+        assert_help(id, run(&application, argv).await);
     }
 }

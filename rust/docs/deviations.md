@@ -1,5 +1,5 @@
 ---
-description: The register of every difference between Loom CLI for Rust and the TypeScript reference contract, one row each, with its reason. An unrecorded difference is a defect.
+description: The register of every difference Loom CLI for Rust chooses from the TypeScript reference contract, one row each, with its reason. The shared conformance cases the port has yet to match are listed in conformance/behind.json instead, and any other difference is a defect.
 ---
 
 # Deviations

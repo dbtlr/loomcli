@@ -64,6 +64,59 @@ pub fn load_cases(conformance_dir: &Path) -> Result<Vec<Case>, String> {
     Ok(cases)
 }
 
+/// Checks the entries inside each selected case's expected folder and, on a full run, its parent.
+pub fn check_expected_entries(
+    conformance_dir: &Path,
+    cases: &[&Case],
+    full: bool,
+) -> Result<(), String> {
+    let root = conformance_dir.join("expected");
+    let mut unexpected = Vec::new();
+    if full {
+        let read_error = |e| format!("cannot read {}: {e}", root.display());
+        for entry in fs::read_dir(&root).map_err(read_error)? {
+            let name = entry.map_err(read_error)?.file_name();
+            if name != "META.json" && !cases.iter().any(|case| name == case.id.as_str()) {
+                unexpected.push(format!(
+                    "expected/{}: no case owns this entry",
+                    name.to_string_lossy()
+                ));
+            }
+        }
+    }
+    for case in cases {
+        let dir = root.join(&case.id);
+        if !dir.exists() {
+            continue;
+        }
+        let read_error = |e| format!("cannot read {}: {e}", dir.display());
+        for entry in fs::read_dir(&dir).map_err(read_error)? {
+            let entry = entry.map_err(read_error)?;
+            let name = entry.file_name();
+            let kind = entry.file_type().map_err(read_error)?;
+            let allowed = match name.to_str() {
+                Some("exit" | "stdout" | "stderr") => kind.is_file(),
+                Some("stdin") => kind.is_file() && (case.stdin.is_some() || case.session.is_some()),
+                Some("files") => kind.is_dir(),
+                _ => false,
+            };
+            if !allowed {
+                unexpected.push(format!(
+                    "expected/{}/{}: unexpected entry",
+                    case.id,
+                    name.to_string_lossy()
+                ));
+            }
+        }
+    }
+    if unexpected.is_empty() {
+        Ok(())
+    } else {
+        unexpected.sort_unstable();
+        Err(unexpected.join("\n"))
+    }
+}
+
 /// The line one session item sends: a string is a raw line, any other value is compact JSON.
 pub fn session_line(item: &Value) -> String {
     match item {

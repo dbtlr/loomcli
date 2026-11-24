@@ -1,8 +1,0 @@
-bash	Print the Bash completion script.
-zsh	Print the Zsh completion script.
-fish	Print the Fish completion script.
-powershell	Print the PowerShell completion script.
-install	Install completion for your shell.
-update	Bring installed completion up to date with this version.
-uninstall	Remove completion from your shell.
-:4

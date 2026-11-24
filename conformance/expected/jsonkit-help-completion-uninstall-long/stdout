@@ -1,0 +1,16 @@
+jsonkit completion uninstall · Remove completion from your shell.
+
+USAGE
+  jsonkit completion uninstall [shell] [options]
+
+ARGUMENTS
+  shell  The shell: bash, zsh, fish, pwsh, or nu. Every installed shell when left out. One of: bash, zsh, fish, pwsh, nu.
+
+GLOBAL OPTIONS
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+      --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet       Hide info and success messages.

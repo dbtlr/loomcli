@@ -1,4 +1,4 @@
-//! The per-case sandbox, the scrubbed environment, and `{sandbox}` substitution (capture.mjs `runCase`).
+//! The per-case sandbox, the scrubbed environment, and `{sandbox}` substitution.
 
 use std::collections::BTreeMap;
 use std::fs;

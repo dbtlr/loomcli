@@ -1,0 +1,24 @@
+jsonkit mcp · Serve this application's tools to an MCP client, over stdin and stdout or, with --http, over HTTP.
+
+USAGE
+  jsonkit mcp [options]
+  jsonkit mcp <command> [options]
+
+COMMANDS
+  install    Register this application's MCP server with your coding agents.
+  uninstall  Remove this application's MCP server from your coding agents.
+  config     Print a client configuration that starts this application's MCP server.
+
+OPTIONS
+      --http <http>  Serve over HTTP at this address instead of stdin and stdout: a port, or host:port. A port alone listens on 127.0.0.1, and port 0 takes any free port.
+
+GLOBAL OPTIONS
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+      --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet       Hide info and success messages.
+
+Run jsonkit mcp <command> -h for command details.

@@ -5,6 +5,7 @@ use std::fmt::Write as _;
 
 use serde_json::{Value, json};
 
+use crate::behind::Behind;
 use crate::compare::Part;
 use crate::diff::unified_diff;
 use crate::runner::{CaseResult, Status};
@@ -14,11 +15,13 @@ use crate::runner::{CaseResult, Status};
 pub struct GroupSummary {
     /// Cases that matched.
     pub passed: usize,
-    /// Cases that differed without being accepted.
+    /// Cases that differ outside listed parts or could not run.
     pub failed: usize,
     /// Cases accepted.
     pub accepted: usize,
-    /// Accepted cases that now match.
+    /// Cases behind the shared expectations.
+    pub behind: usize,
+    /// Listed cases that now match in full or have fewer differences than listed in `behind.json`.
     pub stale: usize,
     /// Ids of failing cases with their differing parts.
     pub failing: Vec<(String, Vec<String>)>,
@@ -38,7 +41,8 @@ pub fn summarize(results: &[CaseResult]) -> BTreeMap<String, GroupSummary> {
                 g.failing.push((r.id.clone(), failure_parts(r)));
             }
             Status::Accepted => g.accepted += 1,
-            Status::Stale => {
+            Status::Behind => g.behind += 1,
+            Status::StaleAccepted | Status::StaleBehind => {
                 g.stale += 1;
                 g.stale_ids.push(r.id.clone());
             }
@@ -59,11 +63,11 @@ fn failure_parts(r: &CaseResult) -> Vec<String> {
 pub fn succeeded(results: &[CaseResult]) -> bool {
     results
         .iter()
-        .all(|r| matches!(r.status, Status::Passed | Status::Accepted))
+        .all(|r| matches!(r.status, Status::Passed | Status::Accepted | Status::Behind))
 }
 
 /// One line per failing or stale case, then the group table and totals.
-pub fn render(results: &[CaseResult]) -> String {
+pub fn render(results: &[CaseResult], behind: &Behind) -> String {
     let mut out = String::new();
     for r in results {
         match r.status {
@@ -73,12 +77,28 @@ pub fn render(results: &[CaseResult]) -> String {
                     let _ = writeln!(out, "     {note}");
                 }
             }
-            Status::Stale => {
+            Status::StaleBehind if !r.parts.is_empty() => {
+                let matched: Vec<_> = behind
+                    .get(&r.id)
+                    .into_iter()
+                    .flatten()
+                    .filter(|part| !r.parts.contains(part))
+                    .map(|part| part.name())
+                    .collect();
                 let _ = writeln!(
                     out,
-                    "STALE {}: listed in accepted.json but now matches",
-                    r.id
+                    "STALE {}: remove {} from behind.json because each now matches",
+                    r.id,
+                    matched.join(", ")
                 );
+            }
+            Status::StaleAccepted | Status::StaleBehind => {
+                let list = if r.status == Status::StaleAccepted {
+                    "accepted.json"
+                } else {
+                    "behind.json"
+                };
+                let _ = writeln!(out, "STALE {}: listed in {list} but now matches", r.id);
             }
             _ => {}
         }
@@ -87,25 +107,26 @@ pub fn render(results: &[CaseResult]) -> String {
     let width = groups.keys().map(String::len).max().unwrap_or(5).max(5);
     let _ = writeln!(
         out,
-        "\n{:<width$}  passed  failed  accepted  stale",
+        "\n{:<width$}  passed  failed  accepted  behind  stale",
         "group"
     );
     let mut total = GroupSummary::default();
     for (name, g) in &groups {
         let _ = writeln!(
             out,
-            "{name:<width$}  {:>6}  {:>6}  {:>8}  {:>5}",
-            g.passed, g.failed, g.accepted, g.stale
+            "{name:<width$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>5}",
+            g.passed, g.failed, g.accepted, g.behind, g.stale
         );
         total.passed += g.passed;
         total.failed += g.failed;
         total.accepted += g.accepted;
+        total.behind += g.behind;
         total.stale += g.stale;
     }
     let _ = writeln!(
         out,
-        "{:<width$}  {:>6}  {:>6}  {:>8}  {:>5}",
-        "total", total.passed, total.failed, total.accepted, total.stale
+        "{:<width$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>5}",
+        "total", total.passed, total.failed, total.accepted, total.behind, total.stale
     );
     out
 }
@@ -114,11 +135,12 @@ pub fn render(results: &[CaseResult]) -> String {
 pub fn json_summary(results: &[CaseResult]) -> Value {
     let groups = summarize(results);
     let mut by_group = serde_json::Map::new();
-    let (mut passed, mut failed, mut accepted, mut stale) = (0, 0, 0, 0);
+    let (mut passed, mut failed, mut accepted, mut behind, mut stale) = (0, 0, 0, 0, 0);
     for (name, g) in &groups {
         passed += g.passed;
         failed += g.failed;
         accepted += g.accepted;
+        behind += g.behind;
         stale += g.stale;
         by_group.insert(
             name.clone(),
@@ -126,6 +148,7 @@ pub fn json_summary(results: &[CaseResult]) -> Value {
                 "passed": g.passed,
                 "failed": g.failed,
                 "accepted": g.accepted,
+                "behind": g.behind,
                 "stale": g.stale,
                 "failing": g.failing.iter().map(|(id, parts)| json!({"id": id, "parts": parts})).collect::<Vec<_>>(),
                 "stale_ids": g.stale_ids,
@@ -137,6 +160,7 @@ pub fn json_summary(results: &[CaseResult]) -> Value {
         "passed": passed,
         "failed": failed,
         "accepted": accepted,
+        "behind": behind,
         "stale": stale,
         "groups": by_group,
     })
@@ -229,7 +253,7 @@ mod tests {
             result("a-1", "a", Status::Passed, vec![]),
             result("a-2", "a", Status::Failed, vec![Part::Stdout, Part::Exit]),
             result("b-1", "b", Status::Accepted, vec![Part::Stderr]),
-            result("b-2", "b", Status::Stale, vec![]),
+            result("b-2", "b", Status::StaleAccepted, vec![]),
         ];
         let v = json_summary(&rs);
         assert_eq!(v["total"], 4);
@@ -237,7 +261,7 @@ mod tests {
         assert_eq!(v["groups"]["a"]["failing"][0]["parts"][1], "exit");
         assert_eq!(v["groups"]["b"]["stale_ids"][0], "b-2");
         assert!(!succeeded(&rs));
-        let text = render(&rs);
+        let text = render(&rs, &Behind::new());
         assert!(text.contains("FAIL a-2: stdout, exit"), "{text}");
         assert!(text.contains("STALE b-2"), "{text}");
     }
