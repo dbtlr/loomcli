@@ -1,0 +1,2 @@
+jsonkit: Option "-f" can be supplied only once. Remove the repeated option.
+Run "jsonkit get --help" to see the usage.

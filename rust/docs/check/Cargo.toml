@@ -1,0 +1,52 @@
+[package]
+name = "docs-check"
+description = "Compiles every Rust example in README.md and the guides under docs/guide, as doctests and as the README's example application."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# The guides' examples use these crates, so the doctests and the example application depend on them.
+[dev-dependencies]
+doctor = { path = "../../examples/doctor" }
+explain = { path = "../../examples/explain" }
+loomcli-core = { path = "../../crates/loomcli-core" }
+loomcli-mcp = { path = "../../crates/loomcli-mcp" }
+loomcli-plugins = { path = "../../crates/loomcli-plugins", features = [
+    "background",
+    "box",
+    "color",
+    "completion",
+    "config",
+    "dotenv",
+    "format",
+    "heading",
+    "help",
+    "interaction",
+    "list",
+    "logging",
+    "manifest",
+    "manpage",
+    "mcp",
+    "prose",
+    "records",
+    "rule",
+    "self-update",
+    "service",
+    "skills",
+    "suggestions",
+    "table",
+    "theme",
+    "verbose",
+    "version",
+] }
+loomcli-prompts = { path = "../../crates/loomcli-prompts" }
+loomcli-testing = { path = "../../crates/loomcli-testing" }
+loomcli-validators = { path = "../../crates/loomcli-validators" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

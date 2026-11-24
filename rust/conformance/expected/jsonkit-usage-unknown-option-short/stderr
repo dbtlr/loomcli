@@ -1,0 +1,3 @@
+jsonkit: Unknown option "-x". Supply a declared option; prefix a hyphenated path with "./".
+Run "jsonkit --help" to see the usage.
+Run "jsonkit --explain" to explain this command.

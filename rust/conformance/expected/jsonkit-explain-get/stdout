@@ -1,0 +1,5 @@
+jsonkit get
+Read one value at a path.
+A path is a dot-separated walk from the root of the document.
+  jsonkit get name -f doc.json
+  jsonkit get nested.deep.value -f doc.json

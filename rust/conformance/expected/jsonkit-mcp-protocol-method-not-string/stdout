@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"The message is not a JSON-RPC 2.0 request or notification. Send an object with \"jsonrpc\": \"2.0\", a \"method\", and an \"id\" for a request."}}

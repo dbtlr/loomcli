@@ -1,0 +1,2 @@
+jsonkit: Command "doctor" accepts no arguments. Remove the supplied values.
+Run "jsonkit doctor --help" to see the usage.

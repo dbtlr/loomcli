@@ -1,0 +1,2 @@
+textstat: Option "--minimum" can be supplied only once. Remove the repeated option.
+Run "textstat --help" to see the usage.

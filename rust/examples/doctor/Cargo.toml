@@ -1,0 +1,24 @@
+[package]
+name = "doctor"
+description = "A private example plugin crate: attaches one ordinary Command, doctor, to the root of the application that installs it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+loomcli-core = { path = "../../crates/loomcli-core" }
+loomcli-plugins = { path = "../../crates/loomcli-plugins", features = [
+    "box",
+    "heading",
+    "list",
+    "rule",
+] }
+
+[dev-dependencies]
+loomcli-testing = { path = "../../crates/loomcli-testing" }
+tokio = { workspace = true, features = ["macros", "rt"] }

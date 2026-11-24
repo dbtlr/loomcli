@@ -1,0 +1,59 @@
+---
+description: What the Rust implementation ports, where its behavioral contract lives in this repository, and the conventions every change under rust/ follows.
+---
+
+# Loom CLI for Rust
+
+This workspace is the Rust implementation of [Loom CLI](../README.md), a framework for agent-first command-line applications whose reference implementation is the TypeScript workspace beside it. An author declares one command graph, and people, agents, and automation are all served from it: help, a machine-readable manifest, MCP tools, shell completion, structured output, and structured failures.
+
+## The contract is the TypeScript reference
+
+The reference is the TypeScript workspace at [`../typescript`](../typescript) and the repository's shared documents at [`../docs`](../docs). They bind this port, and the repository's [AGENTS.md](../AGENTS.md) holds the conventions they share. [ADR-0217](../docs/decisions/0217-parity-between-looms-implementations-is-the-operators-experience.md) states what parity between the two implementations covers.
+
+- [`../docs/principles.md`](../docs/principles.md) ranks above everything. Read it before designing, testing, or judging a review finding. "Node and Bun underneath" reads as "std and tokio underneath"; "types, then lint, then diagnostics" reads as "types, then `#[must_use]` and clippy, then diagnostics".
+- [`../docs/glossary.md`](../docs/glossary.md) is the domain model. Use its terms in code, rustdoc, messages, and reviews.
+- `../docs/core`, `../docs/plugins`, `../docs/libs`, and `../docs/toolchain` state behavior. Open the page for the area under change, and the decision records it cites, before writing code.
+- `../typescript/packages/*/tests` are the behavioral oracle. Port a behavior's test cases with the behavior.
+
+What an operator sees or a machine reads matches the reference byte for byte, except at a limit of the programming language, which ADR-0217 puts outside parity: messages, help pages, tables, manifest and MCP JSON, completion output, exit codes. The authoring API is Rust-native and follows this repository's [decision records](docs/decisions/README.md) and [core API design](docs/design/core-api.md).
+
+A difference from the reference contract is a **deviation**. Record each one in `docs/deviations.md` with its reason in the change that introduces it. An unrecorded difference is a defect.
+
+## Where things are
+
+- [README.md](README.md): the crate map, the checks, and the conformance harness; the guides under [docs/guide](docs/guide/application.md) document the framework for authors and agents. Every Rust example in them compiles as a doctest of `docs/check`, so a change that breaks one fails `cargo test --workspace --all-features --doc`.
+- [docs/design/core-api.md](docs/design/core-api.md): the authoring contract, concept by concept, and where each rule is enforced.
+- [docs/decisions/README.md](docs/decisions/README.md): the decisions that shape the port. An `accepted` record is load-bearing; change it by superseding it.
+- `conformance/`: invocations of the reference examples with their captured stdout, stderr, and exit code. The Rust examples reproduce them.
+- The toolchain, the `cargo-loom` crate, is not in this tree; [Shipping](docs/guide/shipping.md#the-toolchain-is-not-in-this-tree) says what that leaves out.
+
+## Checks
+
+Every command here runs from `rust/`, on the toolchain `rust-toolchain.toml` pins. A change is done when these pass for the crates it touches, and the whole workspace still builds:
+
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+```
+
+A change to an example or to the operator surface also passes the conformance harness, which [conformance/README.md](conformance/README.md#running-the-harness) describes:
+
+```sh
+cargo build -p jsonkit -p textstat
+cargo run -p conformance-harness
+```
+
+## Conventions
+
+- **Operator-reachable code returns failures.** A panic, `unwrap`, or `expect` is for tests and for invariants a comment proves. Everything an operator can trigger ends in a failure class with a message that says what went wrong and what to do instead.
+- **Bytes are the product.** Tests assert exact stdout, stderr, and exit code for operator output, through the public surface with a mock process handle. Tests never read the real environment, terminal, clock, or home folder.
+- **A message never repeats an input value.** It may be a secret. Quoted names pass through the control-character escape.
+- **`unsafe` is forbidden** workspace-wide. Reach terminal and signal facilities through a dependency.
+- **Dependencies are few.** Add one to `[workspace.dependencies]` in `rust/Cargo.toml`, and state why in the commit message. Hand-written protocol code (MCP, the markdown subset, roff, completion scripts) stays hand-written, as in the reference.
+- **Public items carry rustdoc** that states the contract. Types Loom builds and the author reads are `#[non_exhaustive]`; types the author builds use builders.
+- **JSON keeps declaration order.** `serde_json` runs with `preserve_order`, and number and escape formatting match `JSON.stringify` where a document is operator output.
+- **Paths are configurable.** Code and tests name no machine-specific path.
+- **The reference is read, not loaded.** Nothing under `rust/` reads a file under `../typescript` at build or test time; a fact the port takes from the reference, such as the conformance corpus or a copied rule table, is captured into `rust/` and names the revision it came from.
+- **Scratch lives in `.scratch/`.** When several agents build at once, each sets `CARGO_TARGET_DIR=.scratch/target-<name>`.
+- **Commits** use `type(scope): summary`, such as `feat(core): route an invocation on global options`. When others are working in the same checkout, commit with an explicit pathspec: `git add <paths> && git commit -m "<message>" -- <paths>`.

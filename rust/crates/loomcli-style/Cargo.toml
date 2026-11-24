@@ -1,0 +1,13 @@
+[package]
+name = "loomcli-style"
+description = "Marked strings, color resolution, glyphs, and text measurement for Loom CLI applications."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# The width tables derive from the Unicode Character Database; see licenses/.
+license = "MIT AND Unicode-3.0"
+
+[lints]
+workspace = true
+
+[dependencies]

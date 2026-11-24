@@ -1,0 +1,21 @@
+jsonkit manpage · Write or install the man pages.
+
+USAGE
+  jsonkit manpage <command> [options]
+
+COMMANDS
+  generate   Write the man pages to a folder.
+  install    Install the man pages in your home folder.
+  update     Bring installed man pages up to date with this version.
+  uninstall  Remove the installed man pages.
+
+GLOBAL OPTIONS
+  -h, --help        Show this help.
+  -V, --version     Print the version.
+  -M, --manifest    Print this command's manifest as JSON.
+  -e, --explain     Explain the selected command and exit.
+      --[no-]color  Turn color on or off, overriding NO_COLOR.
+  -v, --verbose...  Show more detail. Repeat it for more.
+  -q, --quiet       Hide info and success messages.
+
+Run jsonkit manpage <command> --help for command details.

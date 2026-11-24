@@ -1,0 +1,26 @@
+[90mpath[39m                  [90mkind[39m
+.                     object with 8 keys
+name                  string
+version               string
+private               boolean
+count                 number
+nothing               null
+tags                  array with 3 items
+tags.0                string
+tags.1                string
+tags.2                string
+user                  object with 3 keys
+user.name             string
+user.email            string
+user.address          object with 2 keys
+user.address.city     string
+user.address.geo      object with 2 keys
+user.address.geo.lat  number
+user.address.geo.lon  number
+items                 array with 2 items
+items.0               object with 2 keys
+items.0.id            number
+items.0.label         string
+items.1               object with 2 keys
+items.1.id            number
+items.1.label         string

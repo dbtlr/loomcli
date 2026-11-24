@@ -1,0 +1,1488 @@
+//! The run's output: its two destinations and their order, the lanes' verbosity, rendering under
+//! each destination's policy, sequences, results, and the incomplete-result lines a run holds until
+//! it settles.
+//!
+//! Every write to one destination takes that destination's turn, so writes keep the order their
+//! calls were made in. A sequence holds the turn from its first piece to its last, so a later write
+//! to the same destination lands after it, and a write to the other destination, one its source
+//! makes included, does not wait. A stdout write that fails because its reader closed the pipe
+//! cancels the run with `ClosedPipe`; any other failed write leaves a broken destination, which the
+//! run reports and which forces exit 1.
+//!
+//! On a terminal stderr every text write passes the live regions: core erases the stack before it
+//! and draws it again after it. When stdout is a second terminal stream, a stdout write issued
+//! while a region is open joins stderr's order, and the two streams take one turn to send, so the
+//! screen sees one order. Writes a caller cannot await, such as a region's close or a log hook's
+//! record, take their place in stderr's order at the call: behind every write already waiting for
+//! stderr's turn and ahead of every write called after them. The first caller to take stderr's turn
+//! from a later place sends them, or a task core spawns does.
+
+use std::collections::VecDeque;
+use std::future::Future;
+use std::io;
+use std::sync::atomic::{AtomicBool, AtomicI8, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+use serde::Serialize;
+
+use crate::commands::declaration::DeclaredResult;
+use crate::failures::{Error, ResultError, ResultFault};
+use crate::host::{Host, OutputStream};
+use crate::signals::{CancellationSource, RunSignal};
+use crate::style::{
+    Capabilities, Palette, Renderer, RenderingPolicy, Style, capabilities, effective_columns,
+    under_ci,
+};
+
+use super::region::{CloseWork, ProgressEvent, RegionCloser, Regions, ScreenOp};
+use super::registry::ViewRegistry;
+use super::results::{ResultView, RowSource, RowViewEntry};
+use super::screen::{Frame, Measure, Screen};
+use super::view::{IncompleteResult, incomplete_result, lanes};
+use super::{DeclaredView, RowView, View, ViewContext};
+
+/// Whoever observes a run's progress events.
+pub(crate) type ProgressObserver = Arc<dyn Fn(&ProgressEvent) + Send + Sync>;
+
+/// The two streams every write site names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Stream {
+    Stdout,
+    Stderr,
+}
+
+/// The seven semantic methods, each rendering through its lane view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Lane {
+    Print,
+    Info,
+    Success,
+    Warn,
+    Error,
+    Debug,
+    Trace,
+}
+
+impl Lane {
+    /// The lowest verbosity the lane writes at: `info` and `success` from the default, so one quiet
+    /// step hides them, `debug` from `-v`, `trace` from `-vv`, and the rest at every verbosity.
+    fn shown_from(self) -> i8 {
+        match self {
+            Lane::Print | Lane::Warn | Lane::Error => i8::MIN,
+            Lane::Info | Lane::Success => 0,
+            Lane::Debug => 1,
+            Lane::Trace => 2,
+        }
+    }
+
+    /// The lane's declared view.
+    fn view(self) -> DeclaredView<str> {
+        match self {
+            Lane::Print => lanes::print(),
+            Lane::Info => lanes::info(),
+            Lane::Success => lanes::success(),
+            Lane::Warn => lanes::warn(),
+            Lane::Error => lanes::error(),
+            Lane::Debug => lanes::debug(),
+            Lane::Trace => lanes::trace(),
+        }
+    }
+}
+
+/// What a write rejects with once a closed reader on stdout cancelled the run: the cancellation
+/// echo, which ends the action silently when it lets it propagate.
+#[derive(Debug)]
+pub(crate) struct CancellationEcho;
+
+impl std::fmt::Display for CancellationEcho {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("The run was cancelled.")
+    }
+}
+
+impl std::error::Error for CancellationEcho {}
+
+/// Whether `error` is the cancellation echo a refused write returned.
+pub(crate) fn is_echo(error: &Error) -> bool {
+    error
+        .foreign()
+        .is_some_and(|foreign| foreign.is::<CancellationEcho>())
+}
+
+fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// What one destination's writes meet: nothing refused yet, a failed write the run reports as a
+/// broken destination, or a reader that closed the run's stdout, which cancelled the run.
+#[derive(Clone)]
+enum WriteState {
+    Ok,
+    Failed {
+        kind: io::ErrorKind,
+        message: String,
+    },
+    Closed,
+}
+
+/// One stream's queue: its turn, which orders every write to it, and what its writes met.
+struct Destination {
+    stream: Arc<dyn OutputStream>,
+    turn: tokio::sync::Mutex<()>,
+    state: Mutex<WriteState>,
+    /// Whether a closed reader ends the run: the run's own stdout alone.
+    ends_run: bool,
+}
+
+impl Destination {
+    fn new(stream: Arc<dyn OutputStream>, ends_run: bool) -> Self {
+        Self {
+            stream,
+            turn: tokio::sync::Mutex::new(()),
+            state: Mutex::new(WriteState::Ok),
+            ends_run,
+        }
+    }
+
+    /// What a write to a destination that refused one before rejects with.
+    fn refusal(&self) -> Option<Error> {
+        match &*locked(&self.state) {
+            WriteState::Ok => None,
+            WriteState::Closed => Some(CancellationEcho.into()),
+            WriteState::Failed { kind, message } => Some(Error::destination_write(io::Error::new(
+                *kind,
+                message.clone(),
+            ))),
+        }
+    }
+
+    fn failed(&self) -> Option<(io::ErrorKind, String)> {
+        match &*locked(&self.state) {
+            WriteState::Failed { kind, message } => Some((*kind, message.clone())),
+            WriteState::Ok | WriteState::Closed => None,
+        }
+    }
+}
+
+/// How many rows a sequence's source produced, and how many of them core wrote.
+#[derive(Clone, Copy, Default)]
+struct Counts {
+    yielded: usize,
+    written: usize,
+}
+
+/// The view one sequence writes through: a row view writes each row as the source yields it; a
+/// whole view collects every row and renders once at the end of the source.
+pub(crate) enum SequenceView<R> {
+    Rows(RowView<R>),
+    Whole(View<[R]>),
+    /// A whole view that takes the collected rows by value, so a view over one JSON array reads
+    /// the rows it was handed without copying them.
+    WholeOwned(OwnedRender<R>),
+}
+
+/// A whole view's render function over rows it owns.
+pub(crate) type OwnedRender<R> =
+    Arc<dyn Fn(Vec<R>, &ViewContext) -> Result<String, Error> + Send + Sync>;
+
+/// The result one action's channel promises, and the view a run selected for it.
+pub(crate) struct ResultBinding {
+    pub(crate) declared: DeclaredResult,
+    pub(crate) path: Vec<String>,
+    /// The view a middleware selected, or `None` for the declaration's default.
+    pub(crate) selected: Option<String>,
+}
+
+/// One caller's output channel: where its `print`, `render`, and `text` go, and, for the action of
+/// a Command that declares a result, that result and how many times the action emitted it.
+pub(crate) struct Channel {
+    pub(crate) destination: Stream,
+    pub(crate) result: Option<ResultBinding>,
+    calls: AtomicUsize,
+    /// The regions this caller opened, which close when it settles.
+    pub(crate) regions: Mutex<Vec<u64>>,
+}
+
+impl Channel {
+    /// The channel of a writer that is not an action, which keeps stdout on every Command: an
+    /// environment hook's, a source's, and a middleware's or a provider's `out`.
+    pub(crate) fn plain() -> Self {
+        Self {
+            destination: Stream::Stdout,
+            result: None,
+            calls: AtomicUsize::new(0),
+            regions: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The channel of an action. On a Command that declares a result nothing the action writes but
+    /// the result reaches stdout, so `print` and `render` move to stderr with their view context.
+    pub(crate) fn action(result: Option<ResultBinding>) -> Self {
+        Self {
+            destination: if result.is_some() {
+                Stream::Stderr
+            } else {
+                Stream::Stdout
+            },
+            result,
+            calls: AtomicUsize::new(0),
+            regions: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The regions this caller opened.
+    pub(crate) fn regions(&self) -> Vec<u64> {
+        locked(&self.regions).clone()
+    }
+
+    /// Whether the action emitted its result.
+    pub(crate) fn emitted(&self) -> bool {
+        self.calls.load(Ordering::SeqCst) > 0
+    }
+}
+
+/// The run's output: everything every `out` of one run writes through.
+pub(crate) struct Output {
+    host: Arc<Host>,
+    policy: RenderingPolicy,
+    palette: Palette,
+    style: Style,
+    /// The views declared views resolve through: the application's overrides until the graph has
+    /// built, then every contributor's.
+    registry: Mutex<Arc<ViewRegistry>>,
+    /// The environment output capabilities read on each emission: the captured one, with each
+    /// environment hook's additions merged once preparation has run.
+    env: Mutex<Arc<crate::host::Env>>,
+    verbosity: AtomicI8,
+    signal: RunSignal,
+    stdout: Destination,
+    stderr: Destination,
+    held: Mutex<Vec<IncompleteResult>>,
+    route: Mutex<Vec<String>>,
+    pipe_closed: AtomicBool,
+    /// Whether stdout and stderr are one stream, whose writes share one order.
+    shared: bool,
+    /// Whether stderr is a terminal, which holds the live regions.
+    stderr_tty: bool,
+    /// Whether stdout is a second terminal stream beside stderr, so both show on one screen.
+    coordinated: bool,
+    /// The turn the two terminal streams take to send, when they are coordinated.
+    send_turn: tokio::sync::Mutex<()>,
+    /// How many sequences hold a place in stdout's order.
+    stdout_sequences: AtomicUsize,
+    /// The stack of open live regions as stderr shows it.
+    screen: Mutex<Screen>,
+    /// The writes queued on stderr at their call, each with the place in stderr's order it took
+    /// then, in that order.
+    queued: Mutex<VecDeque<(u64, Queued)>>,
+    /// The next place in stderr's order: a queued write takes one at its call, and a caller of
+    /// stderr's turn takes one as it starts to wait.
+    places: AtomicU64,
+    /// The live regions this run opened.
+    regions: Mutex<Regions>,
+    /// How many lends of the terminal have not settled.
+    lends: Mutex<usize>,
+    lends_settled: tokio::sync::Notify,
+    progress: Option<ProgressObserver>,
+    /// The run's place in its signal source's lane, which the live regions hold their suspend and
+    /// resume handlers through.
+    place: Mutex<Option<crate::signals::lane::Place>>,
+    /// How many live regions are open, and the suspend and resume handlers they hold while any is.
+    live: Mutex<LiveHold>,
+}
+
+/// The live regions' hold on suspend and resume: how many are open, and the handlers the first one
+/// registered, which go when the last one closes.
+#[derive(Default)]
+struct LiveHold {
+    open: usize,
+    held: Vec<crate::signals::Registration>,
+}
+
+/// The bytes that show the cursor again.
+const SHOW_CURSOR: &str = "\u{1b}[?25h";
+
+/// A write queued on stderr at its call.
+enum Queued {
+    /// Text written above the stack, as every text write to stderr is.
+    Text(String),
+    /// Screen work, whose bytes are composed when it reaches stderr, and the regions whose draws
+    /// resolve once it is written.
+    Screen(CloseWork),
+    /// A lend whose caller dropped it before it ended: the stack it held is drawn again.
+    Reclaim,
+}
+
+/// The bytes a run of screen operations writes, applied to the screen in order.
+fn apply_ops(screen: &mut Screen, measure: &dyn Measure, ops: Vec<ScreenOp>) -> String {
+    let mut text = String::new();
+    for op in ops {
+        match op {
+            ScreenOp::Open(id, input) => screen.open(id, input),
+            ScreenOp::Draw(id, frame) => text.push_str(&screen.draw(measure, id, frame)),
+            ScreenOp::Close(id) => text.push_str(&screen.close(measure, id)),
+            ScreenOp::Resume => text.push_str(&screen.resume(measure)),
+        }
+    }
+    text
+}
+
+/// How the screen measures at stderr's current width: rows as a drawn frame counts them, with its
+/// control sequences kept, and the column visible text leaves.
+struct StderrMeasure {
+    renderer: Renderer,
+    columns: Option<usize>,
+}
+
+impl Measure for StderrMeasure {
+    fn rows(&self, marked: &str) -> usize {
+        self.renderer.drawn_rows(marked, self.columns)
+    }
+
+    fn column(&self, shown: &str, column: usize) -> usize {
+        crate::style::next_column(shown, self.columns, column)
+    }
+}
+
+/// Counts one place a stdout sequence holds while it lasts.
+struct SequencePlace<'a>(Option<&'a AtomicUsize>);
+
+impl Drop for SequencePlace<'_> {
+    fn drop(&mut self) {
+        if let Some(count) = self.0 {
+            count.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+}
+
+/// One lend of the terminal, counted from its call until it settles or is dropped. A lend dropped
+/// after it began draws the stack it held again.
+struct LendPlace {
+    output: Arc<Output>,
+    begun: bool,
+    ended: bool,
+}
+
+impl Drop for LendPlace {
+    fn drop(&mut self) {
+        if self.begun && !self.ended {
+            self.output.enqueue(Queued::Reclaim);
+            self.output.wake_drainer();
+        }
+        let mut lends = locked(&self.output.lends);
+        *lends = lends.saturating_sub(1);
+        if *lends == 0 {
+            self.output.lends_settled.notify_waiters();
+        }
+    }
+}
+
+impl Output {
+    /// The output of a run over `host`, under its settled policy and the theme's palette, resolving
+    /// declared views through `registry`. Verbosity starts at 0 and settles after graph build.
+    pub(crate) fn new(
+        host: Arc<Host>,
+        signal: RunSignal,
+        policy: RenderingPolicy,
+        palette: Palette,
+        registry: ViewRegistry,
+        progress: Option<ProgressObserver>,
+    ) -> Self {
+        let stdout = host.stdout();
+        let stderr = host.stderr();
+        let env = host.env.clone();
+        let shared = std::ptr::addr_eq(Arc::as_ptr(&stdout), Arc::as_ptr(&stderr));
+        let stderr_tty = host.terminal.stderr().is_tty;
+        let coordinated = stderr_tty && host.terminal.stdout().is_tty && !shared;
+        Self {
+            stdout: Destination::new(stdout, !shared),
+            stderr: Destination::new(stderr, false),
+            host,
+            policy,
+            palette,
+            style: crate::style::style(),
+            registry: Mutex::new(Arc::new(registry)),
+            env: Mutex::new(Arc::new(env)),
+            verbosity: AtomicI8::new(0),
+            signal,
+            held: Mutex::new(Vec::new()),
+            route: Mutex::new(Vec::new()),
+            pipe_closed: AtomicBool::new(false),
+            shared,
+            stderr_tty,
+            coordinated,
+            send_turn: tokio::sync::Mutex::new(()),
+            stdout_sequences: AtomicUsize::new(0),
+            screen: Mutex::new(Screen::default()),
+            queued: Mutex::new(VecDeque::new()),
+            places: AtomicU64::new(0),
+            regions: Mutex::new(Regions::default()),
+            lends: Mutex::new(0),
+            lends_settled: tokio::sync::Notify::new(),
+            progress,
+            place: Mutex::new(None),
+            live: Mutex::new(LiveHold::default()),
+        }
+    }
+
+    /// The run's place in its lane, which a live region's suspend and resume handlers join.
+    pub(crate) fn use_place(&self, place: crate::signals::lane::Place) {
+        *locked(&self.place) = Some(place);
+    }
+
+    /// A live region opened: the first one makes a suspend erase the regions and the resume draw
+    /// them again, through handlers on the run's place whose failures are dropped.
+    pub(crate) fn enter_live(self: &Arc<Self>) {
+        let place = locked(&self.place).clone();
+        let mut live = locked(&self.live);
+        live.open += 1;
+        if live.open > 1 {
+            return;
+        }
+        let Some(place) = place else {
+            return;
+        };
+        let suspending = Arc::downgrade(self);
+        let resuming = Arc::downgrade(self);
+        live.held = vec![
+            place.on_suspend(
+                Arc::new(move || {
+                    if let Some(output) = suspending.upgrade() {
+                        output.suspend_regions();
+                    }
+                }),
+                None,
+            ),
+            place.on_resume(
+                Arc::new(move || {
+                    if let Some(output) = resuming.upgrade() {
+                        output.resume_regions();
+                    }
+                }),
+                None,
+            ),
+        ];
+    }
+
+    /// A live region closed: once none is open, a suspend has nothing to erase.
+    pub(crate) fn leave_live(&self) {
+        let held = {
+            let mut live = locked(&self.live);
+            live.open = live.open.saturating_sub(1);
+            if live.open > 0 {
+                return;
+            }
+            std::mem::take(&mut live.held)
+        };
+        for registration in held {
+            registration.remove();
+        }
+    }
+
+    /// A suspend: every region frame still queued, then the erase of the open regions and the
+    /// cursor shown, straight to the terminal, because the process stops as the suspend handlers
+    /// return. A lent terminal is the child's, so nothing is erased while one is lent.
+    fn suspend_regions(&self) {
+        self.flush_composed(|screen, measure| {
+            if screen.lending() > 0 {
+                String::new()
+            } else {
+                format!("{}{}", screen.suspend(measure), self.cursor_shown())
+            }
+        });
+    }
+
+    /// A resume: the regions are drawn again in stderr's order, after every write queued before
+    /// it, starting at the start of a row.
+    fn resume_regions(self: &Arc<Self>) {
+        self.enqueue(Queued::Screen(CloseWork {
+            ops: vec![ScreenOp::Resume],
+            ..CloseWork::default()
+        }));
+        self.wake_drainer();
+    }
+
+    /// Writes every region frame still in stderr's write queue straight to the terminal and shows
+    /// the cursor, synchronously, which a shutdown does at its end. Only a terminal stderr holds
+    /// regions.
+    pub(crate) fn flush_terminal(&self) {
+        if self.stderr_tty {
+            self.flush_composed(|screen, measure| {
+                format!("{}{}", screen.finish_lends(measure), self.cursor_shown())
+            });
+        }
+    }
+
+    /// The bytes that show the cursor again, on a terminal that redraws in place or when the
+    /// policy preserves terminal controls; otherwise nothing hid it.
+    fn cursor_shown(&self) -> &'static str {
+        let preserved = self.policy.terminal_controls_setting()
+            == Some(crate::style::TerminalControls::Preserve);
+        if self.redraws() || preserved {
+            SHOW_CURSOR
+        } else {
+            ""
+        }
+    }
+
+    /// Writes every screen composition still queued straight to stderr, in the order it was
+    /// queued, then what `after` composes, synchronously. Each draw the compositions held resolves.
+    /// The write is best effort: a stream that refused one before, or is not ready at once, drops
+    /// it, as a terminal that has hung up does.
+    fn flush_composed(&self, after: impl FnOnce(&mut Screen, &dyn Measure) -> String) {
+        let works: Vec<Queued> = {
+            let mut queued = locked(&self.queued);
+            let (works, kept): (VecDeque<_>, VecDeque<_>) = std::mem::take(&mut *queued)
+                .into_iter()
+                .partition(|(_, write)| !matches!(write, Queued::Text(_)));
+            *queued = kept;
+            works.into_iter().map(|(_, write)| write).collect()
+        };
+        let mut wakes = Vec::new();
+        let text = {
+            let measure = self.measure();
+            let mut screen = locked(&self.screen);
+            let mut text = String::new();
+            for work in works {
+                match work {
+                    Queued::Screen(work) => {
+                        text.push_str(&apply_ops(&mut screen, &measure, work.ops));
+                        wakes.push((work.wake, work.written));
+                    }
+                    Queued::Reclaim => text.push_str(&screen.reclaim(&measure)),
+                    Queued::Text(_) => {}
+                }
+            }
+            text.push_str(&after(&mut screen, &measure));
+            text
+        };
+        for (wake, written) in wakes {
+            for cell in &wake {
+                cell.wake();
+            }
+            if let Some(written) = written {
+                let _ = written.send(Ok(()));
+            }
+        }
+        if text.is_empty() || self.stderr.refusal().is_some() {
+            return;
+        }
+        let _ = crate::support::poll_once(self.stderr.stream.write(text.as_bytes()));
+    }
+
+    /// The registry declared views resolve through now.
+    pub(crate) fn views(&self) -> Arc<ViewRegistry> {
+        Arc::clone(&locked(&self.registry))
+    }
+
+    /// Resolves declared views through `registry` from here on: every contributor's, once the
+    /// graph has built.
+    pub(crate) fn use_views(&self, registry: ViewRegistry) {
+        *locked(&self.registry) = Arc::new(registry);
+    }
+
+    /// The environment output reads now.
+    fn env(&self) -> Arc<crate::host::Env> {
+        Arc::clone(&locked(&self.env))
+    }
+
+    /// Reads `env` from here on: the environment with every hook's additions merged.
+    pub(crate) fn set_env(&self, env: crate::host::Env) {
+        *locked(&self.env) = Arc::new(env);
+    }
+
+    /// The run's verbosity, which decides which lanes write from here on.
+    pub(crate) fn set_verbosity(&self, verbosity: i8) {
+        self.verbosity.store(verbosity, Ordering::SeqCst);
+    }
+
+    /// The path routing walked, which an incomplete sequence names.
+    pub(crate) fn set_route(&self, path: Vec<String>) {
+        *locked(&self.route) = path;
+    }
+
+    /// The path routing walked so far: empty before routing, the partial path before an unknown
+    /// Command, and the routed path after.
+    pub(crate) fn route(&self) -> Vec<String> {
+        locked(&self.route).clone()
+    }
+
+    /// Marked text resolved as plain text for stderr, as an invocation by name resolves its captured
+    /// text: no color, modifier, or hyperlink, whatever the policy or `FORCE_COLOR` says, and the
+    /// policy's own terminal controls. A failure form reads its message and hints through it.
+    pub(crate) fn plain(&self, text: &str) -> String {
+        let capabilities = Capabilities {
+            color: false,
+            modifiers: false,
+            hyperlinks: false,
+            ..self.capabilities(Stream::Stderr)
+        };
+        Renderer::new(capabilities, self.palette.clone()).resolve(text)
+    }
+
+    /// The order a write to `stream` takes: stderr's for stdout too when the two are one stream.
+    fn lane(&self, stream: Stream) -> Stream {
+        if self.shared { Stream::Stderr } else { stream }
+    }
+
+    /// Whether the run's signal has been cancelled.
+    pub(crate) fn cancelled(&self) -> bool {
+        self.signal.is_cancelled()
+    }
+
+    /// Whether a terminal stderr redraws a region in place: not under `TERM=dumb`, which cannot
+    /// move the cursor, and not under CI, where the terminal feeds a build log.
+    fn redraws(&self) -> bool {
+        let env = self.env();
+        env.get("TERM").map(String::as_str) != Some("dumb") && !under_ci(&*env)
+    }
+
+    /// Whether a region opened now is live: stderr is a terminal, and the region takes input or the
+    /// run is not quiet and the terminal redraws in place.
+    pub(crate) fn region_live(&self, input: bool) -> bool {
+        self.stderr_tty && (input || (self.verbosity.load(Ordering::SeqCst) >= 0 && self.redraws()))
+    }
+
+    /// The run's regions.
+    pub(crate) fn regions(&self) -> MutexGuard<'_, Regions> {
+        locked(&self.regions)
+    }
+
+    /// A region that opened, which takes no rows until it draws.
+    pub(crate) fn screen_open(&self, id: u64, input: bool) {
+        locked(&self.screen).open(id, input);
+    }
+
+    /// Hands one progress event to whoever observes the run.
+    pub(crate) fn deliver_progress(&self, event: &ProgressEvent) {
+        if let Some(observer) = &self.progress {
+            observer(event);
+        }
+    }
+
+    /// The capabilities a drawn frame resolves under: stderr's, with its control sequences kept
+    /// when `controls` is true.
+    fn draw_caps(&self, controls: bool) -> Capabilities {
+        let mut caps = self.capabilities(Stream::Stderr);
+        caps.terminal_controls |= controls;
+        caps
+    }
+
+    /// How the screen measures now: at stderr's real width, with a frame's controls kept.
+    fn measure(&self) -> StderrMeasure {
+        StderrMeasure {
+            renderer: Renderer::new(self.draw_caps(self.stderr_tty), self.palette.clone()),
+            columns: self.host.terminal.stderr().columns.map(usize::from),
+        }
+    }
+
+    /// One frame of a region: the view the registry resolves, called now with stderr's context,
+    /// its marked text kept so the screen counts its rows at the width of each later erase, and its
+    /// control sequences kept on a terminal.
+    pub(crate) fn frame<D: ?Sized + 'static>(
+        &self,
+        identity: Option<&str>,
+        view: &View<D>,
+        data: &D,
+    ) -> Result<Frame, Error> {
+        let view = self.views().whole(identity, view);
+        let marked = (view.render)(data, &self.context(Stream::Stderr))?;
+        let text =
+            Renderer::new(self.draw_caps(self.stderr_tty), self.palette.clone()).resolve(&marked);
+        Ok(Frame::new(marked, text))
+    }
+
+    /// Queues a region's screen work on stderr. A close with nothing to write wakes its waiting
+    /// draws at once.
+    pub(crate) fn queue_screen(&self, work: CloseWork) {
+        if work.ops.is_empty() {
+            for cell in &work.wake {
+                cell.wake();
+            }
+            if let Some(written) = work.written {
+                let _ = written.send(Ok(()));
+            }
+            return;
+        }
+        self.enqueue(Queued::Screen(work));
+    }
+
+    /// Queues one write on stderr at the place in stderr's order it takes now.
+    fn enqueue(&self, write: Queued) {
+        let mut queued = locked(&self.queued);
+        let place = self.places.fetch_add(1, Ordering::SeqCst);
+        queued.push_back((place, write));
+    }
+
+    /// Text a log hook wrote to its destination's stderr: queued in stderr's order at the call, so
+    /// records a hook writes together stay together, ahead of any write core queues after them.
+    pub(crate) fn carry(self: &Arc<Self>, text: String) {
+        if text.is_empty() {
+            return;
+        }
+        self.enqueue(Queued::Text(text));
+        self.wake_drainer();
+    }
+
+    /// Sends what is queued on stderr soon, even when no other write follows: a task takes stderr's
+    /// turn when the runtime has room for one.
+    pub(crate) fn wake_drainer(self: &Arc<Self>) {
+        if locked(&self.queued).is_empty() {
+            return;
+        }
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            let output = Arc::clone(self);
+            drop(runtime.spawn(async move { output.flush().await }));
+        }
+    }
+
+    /// Sends everything queued on stderr, in its turn.
+    pub(crate) async fn flush(&self) {
+        let _turn = self.stderr_turn().await;
+    }
+
+    /// Takes stderr's turn, and first sends every write queued on stderr at a place ahead of the
+    /// caller's, which it takes as it starts to wait. A write queued after that waits for a later
+    /// caller, so it never overtakes a write called before it.
+    async fn stderr_turn(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        let place = self.places.fetch_add(1, Ordering::SeqCst);
+        let turn = self.stderr.turn.lock().await;
+        loop {
+            let next = {
+                let mut queued = locked(&self.queued);
+                if queued.front().is_some_and(|(at, _)| *at < place) {
+                    queued.pop_front().map(|(_, write)| write)
+                } else {
+                    None
+                }
+            };
+            let Some(next) = next else {
+                break;
+            };
+            match next {
+                Queued::Text(text) => {
+                    let _ = self.pass_stderr(&text).await;
+                }
+                Queued::Screen(work) => {
+                    let sent = self
+                        .compose(|screen, measure| apply_ops(screen, measure, work.ops))
+                        .await;
+                    for cell in &work.wake {
+                        cell.wake();
+                    }
+                    if let Some(written) = work.written {
+                        let _ = written.send(sent);
+                    }
+                }
+                Queued::Reclaim => {
+                    let _ = self
+                        .compose(|screen, measure| screen.reclaim(measure))
+                        .await;
+                }
+            }
+        }
+        turn
+    }
+
+    /// The turn both terminal streams take to send, when they show on one screen.
+    async fn send_turn(&self) -> Option<tokio::sync::MutexGuard<'_, ()>> {
+        if self.coordinated {
+            Some(self.send_turn.lock().await)
+        } else {
+            None
+        }
+    }
+
+    /// Text composed from the screen when it reaches stderr, sent as it is, outside the passage.
+    /// The caller holds stderr's turn.
+    async fn compose(
+        &self,
+        produce: impl FnOnce(&mut Screen, &dyn Measure) -> String,
+    ) -> Result<(), Error> {
+        let _send = self.send_turn().await;
+        if let Some(refusal) = self.stderr.refusal() {
+            return Err(refusal);
+        }
+        let text = {
+            let measure = self.measure();
+            produce(&mut locked(&self.screen), &measure)
+        };
+        self.send(&self.stderr, &text).await
+    }
+
+    /// One text write to stderr, inside stderr's turn: on a terminal the live regions are erased
+    /// before it and drawn again after it.
+    async fn pass_stderr(&self, text: &str) -> Result<(), Error> {
+        let _send = self.send_turn().await;
+        if !self.stderr_tty || text.is_empty() {
+            return self.send(&self.stderr, text).await;
+        }
+        let (before, after) = {
+            let measure = self.measure();
+            locked(&self.screen).around(&measure, text)
+        };
+        self.send(&self.stderr, &format!("{before}{text}{after}"))
+            .await
+    }
+
+    /// One text write to stdout, inside stdout's turn. On a terminal beside a terminal stderr, a
+    /// write while a region is open erases the regions before it and draws them after it, and one
+    /// with no region open still moves the row the next stack starts on.
+    async fn pass_stdout(&self, text: &str) -> Result<(), Error> {
+        if !self.coordinated || text.is_empty() {
+            return self.send(&self.stdout, text).await;
+        }
+        let _send = self.send_turn.lock().await;
+        let around = {
+            let measure = self.measure();
+            let mut screen = locked(&self.screen);
+            if screen.holding() {
+                Some(screen.around(&measure, text))
+            } else {
+                screen.note(&measure, text);
+                None
+            }
+        };
+        let Some((before, after)) = around else {
+            return self.send(&self.stdout, text).await;
+        };
+        self.send_quietly(&before).await;
+        let sent = self.send(&self.stdout, text).await;
+        self.send_quietly(&after).await;
+        sent
+    }
+
+    /// Sends text to stderr now, inside an operation core is running, recording any failure.
+    async fn send_quietly(&self, text: &str) {
+        let _ = self.send(&self.stderr, text).await;
+    }
+
+    /// One text write through the passage of its stream, inside that stream's turn.
+    async fn pass(&self, stream: Stream, text: &str) -> Result<(), Error> {
+        match self.lane(stream) {
+            Stream::Stderr => self.pass_stderr(text).await,
+            Stream::Stdout => self.pass_stdout(text).await,
+        }
+    }
+
+    /// One region frame, written in stderr's order.
+    pub(crate) async fn draw_region(&self, id: u64, frame: Frame) -> Result<(), Error> {
+        let _turn = self.stderr_turn().await;
+        self.compose(|screen, measure| screen.draw(measure, id, frame))
+            .await
+    }
+
+    /// Lends the terminal to `work`. The lend counts from the call, so a report waits for it even
+    /// when its caller has not polled it yet. Once every write queued before it has reached the
+    /// terminal, core ends the row the last write left the cursor on; once `work` settles, core
+    /// writes a line break and draws the held stack below what the work wrote.
+    pub(crate) fn lend<'w, T, Fut>(
+        self: &Arc<Self>,
+        work: impl FnOnce() -> Fut + Send + 'w,
+    ) -> impl Future<Output = T> + Send + 'w
+    where
+        Fut: Future<Output = T> + Send + 'w,
+        T: Send + 'w,
+    {
+        *locked(&self.lends) += 1;
+        let mut place = LendPlace {
+            output: Arc::clone(self),
+            begun: false,
+            ended: false,
+        };
+        async move {
+            let output = Arc::clone(&place.output);
+            if output.stderr_tty {
+                let _turn = output.stderr_turn().await;
+                place.begun = true;
+                let _ = output.compose(|screen, _| screen.lend()).await;
+            }
+            let value = work().await;
+            if output.stderr_tty {
+                let _turn = output.stderr_turn().await;
+                place.ended = true;
+                let _ = output
+                    .compose(|screen, measure| screen.reclaim(measure))
+                    .await;
+            }
+            drop(place);
+            value
+        }
+    }
+
+    /// Waits until every lend of the terminal has settled.
+    pub(crate) async fn wait_for_lends(&self) {
+        loop {
+            let settled = self.lends_settled.notified();
+            if *locked(&self.lends) == 0 {
+                return;
+            }
+            settled.await;
+        }
+    }
+
+    /// Closes the regions `channel`'s caller opened that are still open, and sends their last
+    /// frames.
+    pub(crate) async fn close_channel(self: &Arc<Self>, channel: &Channel, closer: RegionCloser) {
+        let opened = channel.regions();
+        self.close_regions(closer, Some(&opened));
+        self.flush().await;
+    }
+
+    fn is_tty(&self, stream: Stream) -> bool {
+        match stream {
+            Stream::Stdout => self.host.terminal.stdout().is_tty,
+            Stream::Stderr => self.host.terminal.stderr().is_tty,
+        }
+    }
+
+    /// What `stream` renders under the run's policy, read from the run's environment now.
+    fn capabilities(&self, stream: Stream) -> Capabilities {
+        capabilities(&*self.env(), self.is_tty(stream), &self.policy)
+    }
+
+    fn renderer(&self, stream: Stream) -> Renderer {
+        Renderer::new(self.capabilities(stream), self.palette.clone())
+    }
+
+    /// A fresh context for one render call, holding the destination's width read now.
+    pub(crate) fn context(&self, stream: Stream) -> ViewContext {
+        self.context_over(stream, self.renderer(stream))
+    }
+
+    /// A fresh context for one render call of a sequence, over the renderer the sequence resolves
+    /// through, holding the destination's width read now.
+    fn context_over(&self, stream: Stream, renderer: Renderer) -> ViewContext {
+        let terminal = match stream {
+            Stream::Stdout => self.host.terminal.stdout(),
+            Stream::Stderr => self.host.terminal.stderr(),
+        };
+        // Off a terminal there is no width, so the environment is not read.
+        let columns = if terminal.is_tty {
+            effective_columns(&*self.env(), true, terminal.columns.map(u64::from))
+                .map(|columns| u16::try_from(columns).unwrap_or(u16::MAX))
+        } else {
+            None
+        };
+        ViewContext::new(
+            self.host.terminal.background,
+            columns,
+            self.style.clone(),
+            renderer,
+        )
+    }
+
+    /// The bytes `stream` receives for marked text.
+    fn resolve(&self, stream: Stream, marked: &str) -> String {
+        self.renderer(stream).resolve(marked)
+    }
+
+    /// The bytes one whole view renders for `stream`: the view the registry resolves `identity` to,
+    /// called now with a fresh context, its marked text resolved for the destination.
+    pub(crate) fn render_whole<D: ?Sized + 'static>(
+        &self,
+        stream: Stream,
+        identity: Option<&str>,
+        view: &View<D>,
+        data: &D,
+    ) -> Result<String, Error> {
+        let view = self.views().whole(identity, view);
+        let marked = (view.render)(data, &self.context(stream))?;
+        Ok(self.resolve(stream, &marked))
+    }
+
+    /// The row view `view` resolves to through the registry.
+    pub(crate) fn resolve_rows<R: 'static>(
+        &self,
+        identity: Option<&str>,
+        view: &RowView<R>,
+    ) -> RowView<R> {
+        self.views().rows(identity, view)
+    }
+
+    /// One semantic message, one line on its destination. The lane view returns no line break and
+    /// this call appends one, so an override that returns the empty string still writes one. A call
+    /// the run's verbosity hides calls no lane view and writes nothing.
+    pub(crate) async fn emit(
+        &self,
+        lane: Lane,
+        message: &str,
+        stream: Stream,
+    ) -> Result<(), Error> {
+        if self.verbosity.load(Ordering::SeqCst) < lane.shown_from() {
+            return Ok(());
+        }
+        let declared = lane.view();
+        let view = self
+            .views()
+            .whole(Some(declared.identity()), &declared.view);
+        let marked = (view.render)(message, &self.context(stream))?;
+        let text = self.resolve(stream, &format!("{marked}\n"));
+        self.write(stream, &text).await
+    }
+
+    /// One `out.draw` call: rendered with stderr's context, its control sequences kept when stderr
+    /// is a terminal that redraws in place, written in stderr's order, and answering the terminal
+    /// rows it took at stderr's real width.
+    pub(crate) async fn draw<D: ?Sized + 'static>(
+        &self,
+        identity: Option<&str>,
+        view: &View<D>,
+        data: &D,
+    ) -> Result<usize, Error> {
+        let (text, rows) = {
+            let view = self.views().whole(identity, view);
+            let marked = (view.render)(data, &self.context(Stream::Stderr))?;
+            let terminal = self.host.terminal.stderr();
+            // A terminal that does not redraw keeps the Application's setting, as a pipe does.
+            let renderer = Renderer::new(
+                self.draw_caps(terminal.is_tty && self.redraws()),
+                self.palette.clone(),
+            );
+            (
+                renderer.resolve(&marked),
+                renderer.drawn_rows(&marked, terminal.columns.map(usize::from)),
+            )
+        };
+        self.write(Stream::Stderr, &text).await?;
+        Ok(rows)
+    }
+
+    /// One text write, queued in `stream`'s order. A stdout write issued while a region is open on
+    /// the same screen joins stderr's order too, unless a sequence holds a place in stdout's order,
+    /// which a stdout write then waits behind alone.
+    pub(crate) async fn write(&self, stream: Stream, text: &str) -> Result<(), Error> {
+        match self.lane(stream) {
+            Stream::Stderr => {
+                let _turn = self.stderr_turn().await;
+                self.pass_stderr(text).await
+            }
+            Stream::Stdout => {
+                let joins = self.coordinated
+                    && self.stdout_sequences.load(Ordering::SeqCst) == 0
+                    && locked(&self.screen).holding();
+                let _turn = self.stdout.turn.lock().await;
+                let _joined = if joins {
+                    Some(self.stderr_turn().await)
+                } else {
+                    None
+                };
+                self.pass_stdout(text).await
+            }
+        }
+    }
+
+    /// Sends text inside a turn this caller holds, recording any failure.
+    async fn send(&self, destination: &Destination, text: &str) -> Result<(), Error> {
+        if let Some(refusal) = destination.refusal() {
+            return Err(refusal);
+        }
+        if text.is_empty() {
+            return Ok(());
+        }
+        match destination.stream.write(text.as_bytes()).await {
+            Ok(()) => Ok(()),
+            Err(error) => Err(self.refused(destination, error)),
+        }
+    }
+
+    /// What one failed write rejects with, once the failure is recorded. A closed reader on the
+    /// run's stdout cancels the run with `ClosedPipe`, and that write and every later one to it
+    /// reject with the cancellation echo; any other failure leaves a broken destination.
+    fn refused(&self, destination: &Destination, error: io::Error) -> Error {
+        let closed = matches!(
+            error.kind(),
+            io::ErrorKind::BrokenPipe | io::ErrorKind::NotConnected
+        );
+        let mut state = locked(&destination.state);
+        if destination.ends_run && closed {
+            self.signal.abort(
+                CancellationSource::ClosedPipe,
+                Some(Arc::from(error.to_string())),
+            );
+            self.pipe_closed.store(true, Ordering::SeqCst);
+            *state = WriteState::Closed;
+            return CancellationEcho.into();
+        }
+        if matches!(*state, WriteState::Ok) {
+            *state = WriteState::Failed {
+                kind: error.kind(),
+                message: error.to_string(),
+            };
+        }
+        Error::destination_write(error)
+    }
+
+    /// The first destination that failed a write, with what it failed with, if any did.
+    pub(crate) fn failed(&self) -> Option<io::Error> {
+        self.stdout
+            .failed()
+            .or_else(|| self.stderr.failed())
+            .map(|(kind, message)| io::Error::new(kind, message))
+    }
+
+    /// A failure report: core's text or a view's, resolved for stderr and queued in its order. Its
+    /// own failure is recorded on the destination.
+    pub(crate) async fn report(&self, text: &str) {
+        let resolved = self.resolve(Stream::Stderr, text);
+        let _ = self.write(Stream::Stderr, &resolved).await;
+    }
+
+    /// A failure encoder's text, written to stderr in its order as it is: no markup is resolved and
+    /// nothing is escaped or appended. Its own failure is recorded on the destination.
+    pub(crate) async fn encoded(&self, text: &str) {
+        let _ = self.write(Stream::Stderr, text).await;
+    }
+
+    /// Drops the incomplete-result lines the run holds: a failure an encoder wrote is the only
+    /// failure text the run writes.
+    pub(crate) fn drop_incomplete(&self) {
+        locked(&self.held).clear();
+    }
+
+    /// The plain fallback path: one write straight to stderr, outside its order and every override,
+    /// as plain text. A failed write ends reporting.
+    pub(crate) async fn report_plainly(&self, text: &str) {
+        let plain = self.renderer(Stream::Stderr).plain(text);
+        if !plain.is_empty() {
+            let _ = self.host.stderr().write(plain.as_bytes()).await;
+        }
+    }
+
+    /// Writes each incomplete-result line the run holds, in the order its sequences stopped, ahead
+    /// of whatever the run reports next, through the registry like any other rendered output. A
+    /// reader that closed stdout stopped reading on purpose, so then no line is written. A stderr
+    /// that failed already takes each line through the plain fallback path. Answers what the first
+    /// line whose view failed raised, which no code can catch.
+    pub(crate) async fn write_incomplete(&self) -> Option<Error> {
+        // The line waits until every lend of the terminal has settled.
+        self.wait_for_lends().await;
+        let held = std::mem::take(&mut *locked(&self.held));
+        if self.pipe_closed.load(Ordering::SeqCst) {
+            return None;
+        }
+        let declared = incomplete_result();
+        let mut fault = None;
+        for facts in held {
+            if self.stderr.failed().is_some() {
+                let context = self.context(Stream::Stderr);
+                if let Ok(text) = (declared.view.render)(&facts, &context) {
+                    let _ = self.host.stderr().write(text.as_bytes()).await;
+                }
+                continue;
+            }
+            match self.render_whole(
+                Stream::Stderr,
+                Some(declared.identity()),
+                &declared.view,
+                &facts,
+            ) {
+                Ok(text) => {
+                    let _ = self.write(Stream::Stderr, &text).await;
+                }
+                Err(error) => {
+                    fault.get_or_insert(error);
+                }
+            }
+        }
+        fault
+    }
+
+    /// Whether the run stopped wanting rows: its signal was cancelled.
+    fn halted(&self) -> bool {
+        self.signal.is_cancelled()
+    }
+
+    /// One sequence, which holds its place in `stream`'s order from its first piece until its
+    /// last. A stop before the end retracts nothing, writes no closing piece, and holds one
+    /// incomplete-result line for the run to write before its report. A cancelled run stops the
+    /// sequence quietly; a source, view, or write failure stops it and is the call's failure.
+    pub(crate) async fn sequence<R: Send + 'static>(
+        &self,
+        stream: Stream,
+        mut source: RowSource<R>,
+        view: SequenceView<R>,
+    ) -> Result<(), Error> {
+        let lane = self.lane(stream);
+        let place = SequencePlace((lane == Stream::Stdout).then(|| {
+            self.stdout_sequences.fetch_add(1, Ordering::SeqCst);
+            &self.stdout_sequences
+        }));
+        let turn = match lane {
+            Stream::Stderr => self.stderr_turn().await,
+            Stream::Stdout => self.stdout.turn.lock().await,
+        };
+        let mut counts = Counts::default();
+        let outcome = self.pieces(stream, &mut source, view, &mut counts).await;
+        // The source is told the writer wants no more rows: dropping it runs its own cleanup.
+        drop(source);
+        drop(turn);
+        drop(place);
+        if !matches!(outcome, Ok(true)) {
+            let path = locked(&self.route).clone();
+            locked(&self.held).push(IncompleteResult {
+                path,
+                yielded: counts.yielded,
+                written: counts.written,
+            });
+        }
+        outcome.map(|_| ())
+    }
+
+    /// Every piece of one sequence, each written before the next row is requested, so a slow
+    /// destination applies back-pressure to the source. Answers whether the sequence completed.
+    async fn pieces<R: Send>(
+        &self,
+        stream: Stream,
+        source: &mut RowSource<R>,
+        view: SequenceView<R>,
+        counts: &mut Counts,
+    ) -> Result<bool, Error> {
+        if self.halted() {
+            return Ok(false);
+        }
+        // One sequence is one emission: its capabilities are read once, at its start, and each
+        // render call still gets a fresh context with the width read at that call.
+        let renderer = self.renderer(stream);
+        let context = || self.context_over(stream, renderer.clone());
+        match view {
+            SequenceView::Rows(view) => {
+                if let Some(head) = &view.head {
+                    let marked = head(&context());
+                    self.piece(&renderer, stream, marked).await?;
+                }
+                loop {
+                    if self.halted() {
+                        return Ok(false);
+                    }
+                    let Some(next) = pull(source).await else {
+                        break;
+                    };
+                    let row = next?;
+                    counts.yielded += 1;
+                    // A row an in-flight request delivered after the stop counts, and is not written.
+                    if self.halted() {
+                        return Ok(false);
+                    }
+                    let marked = (view.row)(&row, counts.yielded - 1, &context());
+                    self.piece(&renderer, stream, marked).await?;
+                    counts.written += 1;
+                }
+                if self.halted() {
+                    return Ok(false);
+                }
+                if let Some(tail) = &view.tail {
+                    let marked = tail(counts.written, &context());
+                    self.piece(&renderer, stream, marked).await?;
+                }
+            }
+            SequenceView::Whole(view) => {
+                let Some(rows) = self.collect(source, counts).await? else {
+                    return Ok(false);
+                };
+                let marked = (view.render)(rows.as_slice(), &context());
+                self.piece(&renderer, stream, marked).await?;
+            }
+            SequenceView::WholeOwned(render) => {
+                let Some(rows) = self.collect(source, counts).await? else {
+                    return Ok(false);
+                };
+                let marked = render(rows, &context());
+                self.piece(&renderer, stream, marked).await?;
+            }
+        }
+        Ok(true)
+    }
+
+    /// Every row of a source, for a whole view, or `None` when the run stopped before the source
+    /// ended: a run cancelled once the source ended never writes the closing piece either.
+    async fn collect<R: Send>(
+        &self,
+        source: &mut RowSource<R>,
+        counts: &mut Counts,
+    ) -> Result<Option<Vec<R>>, Error> {
+        let mut rows = Vec::new();
+        loop {
+            if self.halted() {
+                return Ok(None);
+            }
+            let Some(next) = pull(source).await else {
+                break;
+            };
+            rows.push(next?);
+            counts.yielded += 1;
+            if self.halted() {
+                return Ok(None);
+            }
+        }
+        if self.halted() {
+            return Ok(None);
+        }
+        Ok(Some(rows))
+    }
+
+    /// One piece: the marked text a view function returned, resolved through the sequence's
+    /// renderer and sent in the sequence's turn.
+    async fn piece(
+        &self,
+        renderer: &Renderer,
+        stream: Stream,
+        marked: Result<String, Error>,
+    ) -> Result<(), Error> {
+        let text = renderer.resolve(&marked?);
+        self.pass(stream, &text).await
+    }
+
+    /// The view an emission renders through: the one a middleware selected, else the declaration's
+    /// default. A second call writes nothing and rejects with `ResultError`; a selection no view
+    /// answers fails as a broken view does.
+    fn selected<'b>(&self, channel: &'b Channel) -> Result<&'b ViewEntryRef, Error> {
+        let Some(binding) = &channel.result else {
+            return Err(Error::from_foreign(
+                "Only the action of a Command that declares a result calls out.results().".into(),
+            ));
+        };
+        if channel.calls.fetch_add(1, Ordering::SeqCst) > 0 {
+            return Err(ResultError::new(ResultFault::Repeated, binding.path.clone()).into());
+        }
+        let name = binding
+            .selected
+            .as_deref()
+            .unwrap_or(&binding.declared.default);
+        binding
+            .declared
+            .views
+            .iter()
+            .find(|entry| entry.key == name)
+            .map(|entry| &entry.view)
+            .ok_or_else(|| {
+                Error::from_foreign(format!("The view \"{name}\" is not declared.").into())
+            })
+    }
+
+    /// One `out.results` call under a value result: the selected view over the value, written to
+    /// stdout with no line break added. A result's views carry no identity, so no override reaches
+    /// them.
+    pub(crate) async fn results_value<V: Serialize + Send + Sync + 'static>(
+        &self,
+        channel: &Channel,
+        value: V,
+    ) -> Result<(), Error> {
+        let text = {
+            let view = self.selected(channel)?;
+            if let Some(view) = view.downcast_ref::<View<V>>() {
+                self.render_whole(Stream::Stdout, None, view, &value)?
+            } else {
+                match view.downcast_ref::<ResultView>() {
+                    Some(ResultView::Whole(view)) => {
+                        let data = to_json_data(&value)?;
+                        self.render_whole(Stream::Stdout, None, view, &data)?
+                    }
+                    _ => {
+                        return Err(Error::from_foreign(
+                            "The selected view renders rows, not a value.".into(),
+                        ));
+                    }
+                }
+            }
+        };
+        self.write(Stream::Stdout, &text).await
+    }
+
+    /// One `out.results` call under a rows result: a sequence on stdout through the selected view,
+    /// row by row under a row view and once at the end of the source under a whole view.
+    pub(crate) async fn results_rows<R: Serialize + Send + Sync + 'static>(
+        &self,
+        channel: &Channel,
+        source: RowSource<R>,
+    ) -> Result<(), Error> {
+        let view = self.selected(channel)?;
+        if let Some(entry) = view.downcast_ref::<RowViewEntry<R>>() {
+            let view = match entry {
+                RowViewEntry::Whole(view) => SequenceView::Whole(view.clone()),
+                RowViewEntry::Row(view) => SequenceView::Rows(view.clone()),
+            };
+            return self.sequence(Stream::Stdout, source, view).await;
+        }
+        let view = match view.downcast_ref::<ResultView>() {
+            Some(ResultView::Row(view)) => SequenceView::Rows(view.clone()),
+            Some(ResultView::Whole(view)) => SequenceView::WholeOwned(json_rows_view(view)),
+            None => {
+                return Err(Error::from_foreign(
+                    "The selected view renders a value, not rows.".into(),
+                ));
+            }
+        };
+        self.sequence(Stream::Stdout, json_rows(source), view).await
+    }
+}
+
+/// A result view stored type-erased: a `View<V>`, a `RowViewEntry<R>`, or a hook's `ResultView`.
+type ViewEntryRef = Arc<dyn std::any::Any + Send + Sync>;
+
+/// A whole view over JSON data, read as a whole view over the JSON rows of a sequence.
+fn json_rows_view(view: &View<serde_json::Value>) -> OwnedRender<serde_json::Value> {
+    let render = Arc::clone(&view.render);
+    Arc::new(move |rows: Vec<serde_json::Value>, context: &ViewContext| {
+        render(&serde_json::Value::Array(rows), context)
+    })
+}
+
+/// The failure of a result whose data cannot be read as JSON for a hook's view. The message is
+/// fixed; the serializer's reason, which can hold data, stays on the source.
+#[derive(Debug)]
+struct JsonDataError(serde_json::Error);
+
+impl std::fmt::Display for JsonDataError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .write_str("The value cannot be encoded as JSON. Emit plain JSON data from the action.")
+    }
+}
+
+impl std::error::Error for JsonDataError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
+/// A result's data as JSON data, or the fixed encode failure.
+fn to_json_data<T: Serialize + ?Sized>(data: &T) -> Result<serde_json::Value, Error> {
+    serde_json::to_value(data)
+        .map_err(|source| Error::from_foreign(Box::new(JsonDataError(source))))
+}
+
+/// A row source read as JSON rows, so a hook's view over JSON data renders any result's rows.
+fn json_rows<R: Serialize + Send + 'static>(source: RowSource<R>) -> RowSource<serde_json::Value> {
+    RowSource::stream(JsonRows { source })
+}
+
+/// The rows of a source, each as its JSON data.
+struct JsonRows<R> {
+    source: RowSource<R>,
+}
+
+impl<R: Serialize> futures_core::Stream for JsonRows<R> {
+    type Item = Result<serde_json::Value, Error>;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let next = match &mut self.get_mut().source {
+            RowSource::Iter(rows) => std::task::Poll::Ready(rows.next().map(Ok)),
+            RowSource::Stream(rows) => rows.as_mut().poll_next(context),
+        };
+        next.map(|row| row.map(|row| row.and_then(|row| to_json_data(&row))))
+    }
+}
+
+/// The next row of a source: an iterator's at once, a stream's when it yields.
+async fn pull<R>(source: &mut RowSource<R>) -> Option<Result<R, Error>> {
+    match source {
+        RowSource::Iter(rows) => rows.next().map(Ok),
+        RowSource::Stream(rows) => {
+            std::future::poll_fn(|context| rows.as_mut().poll_next(context)).await
+        }
+    }
+}

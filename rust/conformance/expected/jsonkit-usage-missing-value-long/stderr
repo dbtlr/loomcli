@@ -1,0 +1,2 @@
+jsonkit: Option "--file" requires a value. Supply a value after "--file".
+Run "jsonkit get --help" to see the usage.

@@ -1,0 +1,2 @@
+jsonkit: Command "depth" requires a subcommand. Use one of: max.
+Run "jsonkit stats depth --help" to see the usage.

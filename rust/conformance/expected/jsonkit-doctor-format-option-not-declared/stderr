@@ -1,0 +1,3 @@
+jsonkit: Unknown option "-o". Supply a declared option; prefix a hyphenated path with "./".
+Run "jsonkit doctor --help" to see the usage.
+Run "jsonkit doctor --explain" to explain this command.

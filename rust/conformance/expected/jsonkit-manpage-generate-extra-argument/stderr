@@ -1,0 +1,2 @@
+jsonkit: Command "generate" accepts no arguments. Remove the supplied values.
+Run "jsonkit manpage generate --help" to see the usage.

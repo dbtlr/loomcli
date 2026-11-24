@@ -1,0 +1,19 @@
+.TH "JSONKIT\-FETCH" "1" "" "jsonkit 0.0.0" ""
+.SH "NAME"
+jsonkit\-fetch \- Read one value at a path.
+.SH "SYNOPSIS"
+.nf
+\fBjsonkit fetch\fR <path> [options]
+.fi
+.SH "DESCRIPTION"
+Deprecated: Use get instead.
+.SH "ARGUMENTS"
+.TP
+\fIpath\fR
+Dot path to read.
+.SH "OPTIONS"
+.TP
+\fB\-f\fR, \fB\-\-file\fR <\fIpath\fR>
+The document to read. Omit it to read piped text.  (file or piped stdin; \- selects stdin, required)
+.SH "SEE ALSO"
+\fBjsonkit\fR(1)

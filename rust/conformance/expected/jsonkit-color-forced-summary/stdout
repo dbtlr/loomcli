@@ -1,0 +1,25 @@
+[90mkey [39m  [33mname[39m
+[90mkind[39m  string
+
+[90mkey [39m  [33mversion[39m
+[90mkind[39m  string
+
+[90mkey [39m  [33mprivate[39m
+[90mkind[39m  boolean
+
+[90mkey [39m  [33mcount[39m
+[90mkind[39m  number
+
+[90mkey [39m  [33mnothing[39m
+[90mkind[39m  null
+
+[90mkey [39m  [33mtags[39m
+[90mkind[39m  array with 3 items
+
+[90mkey [39m  [33muser[39m
+[90mkind[39m  object with 3 keys
+
+[90mkey [39m  [33mitems[39m
+[90mkind[39m  array with 2 items
+
+[90m8 records[39m

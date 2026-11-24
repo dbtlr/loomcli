@@ -1,0 +1,8 @@
+{
+  "reference_revision": "5e10fd077df02d58d5348f01f254df5277e9f087",
+  "reference_had_uncommitted_changes": false,
+  "reference_build": "reference checkout dist",
+  "node_version": "v24.22.2",
+  "platform": "linux",
+  "cases": 687
+}

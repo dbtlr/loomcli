@@ -1,0 +1,1 @@
+{"error":{"code":"invalid-input","exitCode":2,"message":"Option \"--min-bytes\": Expected a whole number of at least 0.","hints":["Run \"textstat --help\" to see the usage."]}}

@@ -1,0 +1,2 @@
+jsonkit: Unknown command "tcsh". Use one of: bash, zsh, fish, powershell, install, update, uninstall.
+Run "jsonkit completion --help" to see the usage.

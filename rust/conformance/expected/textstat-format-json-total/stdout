@@ -1,0 +1,18 @@
+[
+  {
+    "count": 4,
+    "source": "one.txt"
+  },
+  {
+    "count": 37,
+    "source": "three.txt"
+  },
+  {
+    "count": 0,
+    "source": "stdin"
+  },
+  {
+    "count": 41,
+    "source": "total"
+  }
+]

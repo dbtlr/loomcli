@@ -1,0 +1,22 @@
+[
+  {
+    "key": "1",
+    "kind": "string"
+  },
+  {
+    "key": "2",
+    "kind": "string"
+  },
+  {
+    "key": "z",
+    "kind": "number"
+  },
+  {
+    "key": "a.b",
+    "kind": "number"
+  },
+  {
+    "key": "x",
+    "kind": "object with 1 key"
+  }
+]

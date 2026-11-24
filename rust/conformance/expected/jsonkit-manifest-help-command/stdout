@@ -1,0 +1,153 @@
+{
+  "name": "jsonkit",
+  "version": "0.0.0",
+  "description": "Read and reshape one JSON document.",
+  "tokens": "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.",
+  "exitCodes": {
+    "0": "Successful execution and core output",
+    "1": "Expected action failure, internal failure, or invalid declarations",
+    "2": "Invalid invocation inputs",
+    "65": "Declared failures: invalid-json, path-not-found",
+    "129": "Cancelled by SIGHUP",
+    "130": "Cancelled by SIGINT, a caller-supplied abort, or the action's cancel()",
+    "131": "Cancelled by SIGQUIT",
+    "141": "Stopped because the reader of stdout closed the pipe",
+    "143": "Cancelled by SIGTERM"
+  },
+  "encodings": {
+    "json": "The output is one JSON document. Unless the Command's view reshapes it, a value result is the value and a rows result is the array of its rows.",
+    "jsonl": "Each line is one JSON document: one line per element when the printed value is an array, nothing for an empty array, and one line otherwise. Unless the view reshapes it, a rows result prints one line per row."
+  },
+  "globals": [
+    {
+      "type": "boolean",
+      "name": "help",
+      "description": "Show this help.",
+      "deprecated": null,
+      "control": true,
+      "long": "--help",
+      "short": "-h",
+      "negative": null,
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "version",
+      "description": "Print the version.",
+      "deprecated": null,
+      "control": true,
+      "long": "--version",
+      "short": "-V",
+      "negative": null,
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "manifest",
+      "description": "Print this command's manifest as JSON.",
+      "deprecated": null,
+      "control": true,
+      "long": "--manifest",
+      "short": "-M",
+      "negative": null,
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "explain",
+      "description": "Explain the selected command and exit.",
+      "deprecated": null,
+      "control": true,
+      "long": "--explain",
+      "short": "-e",
+      "negative": null,
+      "polarity": "positive",
+      "interaction": false,
+      "color": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "boolean",
+      "name": "color",
+      "description": "Turn color on or off, overriding NO_COLOR.",
+      "deprecated": null,
+      "control": true,
+      "long": "--color",
+      "short": null,
+      "negative": "--no-color",
+      "polarity": "both",
+      "interaction": false,
+      "color": true,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "count",
+      "name": "verbose",
+      "description": "Show more detail. Repeat it for more.",
+      "deprecated": null,
+      "control": true,
+      "long": "--verbose",
+      "short": "-v",
+      "verbose": true,
+      "quiet": false,
+      "schema": null,
+      "env": []
+    },
+    {
+      "type": "count",
+      "name": "quiet",
+      "description": "Hide info and success messages.",
+      "deprecated": null,
+      "control": true,
+      "long": "--quiet",
+      "short": "-q",
+      "verbose": false,
+      "quiet": true,
+      "schema": null,
+      "env": []
+    }
+  ],
+  "configuration": null,
+  "command": {
+    "stdin": null,
+    "name": "help",
+    "path": [
+      "help"
+    ],
+    "description": "Show help for a command.",
+    "details": [],
+    "examples": [],
+    "deprecated": null,
+    "hasAction": true,
+    "result": null,
+    "failures": [],
+    "arguments": [
+      {
+        "name": "command",
+        "description": "The command to show help for, as you would type it. The application itself when left out.",
+        "required": false,
+        "requiredWhen": null,
+        "variadic": true,
+        "schema": null,
+        "default": null
+      }
+    ],
+    "optionGroups": [],
+    "options": [],
+    "children": []
+  }
+}

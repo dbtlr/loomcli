@@ -1,0 +1,10 @@
+help	Show help for a command.
+doctor	Check the host this application runs on.
+completion	Print or install a shell completion script.
+mcp	Serve this application's tools to an MCP client over stdin and stdout.
+manpage	Write or install the man pages.
+get	Read one value at a path.
+keys	List the keys at a path.
+select	Keep the named fields of the document.
+stats	Report facts about the document's shape.
+:4

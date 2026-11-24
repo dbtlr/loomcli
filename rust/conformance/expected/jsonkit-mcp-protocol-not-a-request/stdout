@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"A batch is not a message this server reads. Send each JSON-RPC message as its own line."}}

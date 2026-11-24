@@ -1,0 +1,26 @@
+{
+  "description": "textstat help, version, explain.",
+  "cases": [
+    {"id":"textstat-help-long","app":"textstat","argv":["--help"]},
+    {"id":"textstat-help-short","app":"textstat","argv":["-h"]},
+    {"id":"textstat-help-before-files","app":"textstat","argv":["--help","one.txt"]},
+    {"id":"textstat-help-held-missing-file","app":"textstat","argv":["--help","nope.txt"]},
+    {"id":"textstat-help-held-unknown-option","app":"textstat","argv":["--bogus","--help"]},
+    {"id":"textstat-help-held-validation","app":"textstat","argv":["--metric","chars","--help"]},
+    {"id":"textstat-help-no-help-command","app":"textstat","argv":["help"]},
+    {"id":"textstat-help-color-forced","app":"textstat","argv":["--help"],"env":{"FORCE_COLOR":"1"}},
+    {"id":"textstat-help-no-color","app":"textstat","argv":["--help"],"env":{"NO_COLOR":"1"}},
+    {"id":"textstat-version-long","app":"textstat","argv":["--version"]},
+    {"id":"textstat-version-short","app":"textstat","argv":["-V"]},
+    {"id":"textstat-version-held-fault","app":"textstat","argv":["--bogus","-V"]},
+    {"id":"textstat-explain-long","app":"textstat","argv":["--explain"]},
+    {"id":"textstat-explain-short","app":"textstat","argv":["-e"]},
+    {"id":"textstat-explain-with-files","app":"textstat","argv":["one.txt","--explain"],"fixtures":["one.txt"]},
+    {"id":"textstat-explain-held-fault","app":"textstat","argv":["--bogus","--explain"]},
+    {"id":"textstat-manifest-root","app":"textstat","argv":["--manifest"]},
+    {"id":"textstat-manifest-short","app":"textstat","argv":["-M"]},
+    {"id":"textstat-manifest-with-files","app":"textstat","argv":["one.txt","-M"],"fixtures":["one.txt"]},
+    {"id":"textstat-manifest-held-fault","app":"textstat","argv":["--bogus","--manifest"]},
+    {"id":"textstat-manifest-no-color","app":"textstat","argv":["-M"],"env":{"NO_COLOR":"1"}}
+  ]
+}

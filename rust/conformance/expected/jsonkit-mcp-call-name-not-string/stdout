@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"The tools/call request names no tool. Send the tool's name as params.name."}}

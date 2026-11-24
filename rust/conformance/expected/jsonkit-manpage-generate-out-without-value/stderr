@@ -1,0 +1,2 @@
+jsonkit: Option "--out" requires a value. Supply a value after "--out".
+Run "jsonkit manpage generate --help" to see the usage.

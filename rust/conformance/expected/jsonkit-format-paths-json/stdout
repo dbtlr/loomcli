@@ -1,0 +1,102 @@
+[
+  {
+    "kind": "object with 8 keys",
+    "path": "."
+  },
+  {
+    "kind": "string",
+    "path": "name"
+  },
+  {
+    "kind": "string",
+    "path": "version"
+  },
+  {
+    "kind": "boolean",
+    "path": "private"
+  },
+  {
+    "kind": "number",
+    "path": "count"
+  },
+  {
+    "kind": "null",
+    "path": "nothing"
+  },
+  {
+    "kind": "array with 3 items",
+    "path": "tags"
+  },
+  {
+    "kind": "string",
+    "path": "tags.0"
+  },
+  {
+    "kind": "string",
+    "path": "tags.1"
+  },
+  {
+    "kind": "string",
+    "path": "tags.2"
+  },
+  {
+    "kind": "object with 3 keys",
+    "path": "user"
+  },
+  {
+    "kind": "string",
+    "path": "user.name"
+  },
+  {
+    "kind": "string",
+    "path": "user.email"
+  },
+  {
+    "kind": "object with 2 keys",
+    "path": "user.address"
+  },
+  {
+    "kind": "string",
+    "path": "user.address.city"
+  },
+  {
+    "kind": "object with 2 keys",
+    "path": "user.address.geo"
+  },
+  {
+    "kind": "number",
+    "path": "user.address.geo.lat"
+  },
+  {
+    "kind": "number",
+    "path": "user.address.geo.lon"
+  },
+  {
+    "kind": "array with 2 items",
+    "path": "items"
+  },
+  {
+    "kind": "object with 2 keys",
+    "path": "items.0"
+  },
+  {
+    "kind": "number",
+    "path": "items.0.id"
+  },
+  {
+    "kind": "string",
+    "path": "items.0.label"
+  },
+  {
+    "kind": "object with 2 keys",
+    "path": "items.1"
+  },
+  {
+    "kind": "number",
+    "path": "items.1.id"
+  },
+  {
+    "kind": "string",
+    "path": "items.1.label"
+  }
+]

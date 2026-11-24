@@ -1,0 +1,2 @@
+textstat: Options "--config" and "--no-config" cannot be used together. Supply only one of them.
+Run "textstat --help" to see the usage.

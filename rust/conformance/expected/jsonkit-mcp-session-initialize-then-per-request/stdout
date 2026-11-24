@@ -1,0 +1,2 @@
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"jsonkit","version":"0.0.0"}}}
+{"jsonrpc":"2.0","id":2,"result":{"resultType":"complete","content":[{"type":"text","text":"\"loom\"\n"}],"isError":false,"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"jsonkit","version":"0.0.0","description":"Read and reshape one JSON document."}}}}

@@ -1,0 +1,2 @@
+jsonkit select
+Keep the named fields of the document.

@@ -1,0 +1,3 @@
+jsonkit: Unknown option "--no-file". Supply a declared option; prefix a hyphenated path with "./".
+Run "jsonkit get --help" to see the usage.
+Run "jsonkit get --explain" to explain this command.

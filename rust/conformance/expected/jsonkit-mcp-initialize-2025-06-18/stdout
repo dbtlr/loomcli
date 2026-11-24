@@ -1,0 +1,2 @@
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"jsonkit","version":"0.0.0"}}}
+{"jsonrpc":"2.0","id":2,"result":{}}

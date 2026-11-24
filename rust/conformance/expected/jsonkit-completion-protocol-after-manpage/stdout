@@ -1,0 +1,5 @@
+generate	Write the man pages to a folder.
+install	Install the man pages in your home folder.
+update	Bring installed man pages up to date with this version.
+uninstall	Remove the installed man pages.
+:4

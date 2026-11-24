@@ -1,0 +1,28 @@
+{
+  "description": "Version, explain, doctor.",
+  "cases": [
+    {"id":"jsonkit-version-long","app":"jsonkit","argv":["--version"]},
+    {"id":"jsonkit-version-short","app":"jsonkit","argv":["-V"]},
+    {"id":"jsonkit-version-on-command","app":"jsonkit","argv":["get","--version"]},
+    {"id":"jsonkit-version-on-nested","app":"jsonkit","argv":["stats","depth","max","-V"]},
+    {"id":"jsonkit-version-held-fault","app":"jsonkit","argv":["get","--bogus","--version"]},
+    {"id":"jsonkit-explain-root","app":"jsonkit","argv":["--explain"]},
+    {"id":"jsonkit-explain-root-short","app":"jsonkit","argv":["-e"]},
+    {"id":"jsonkit-explain-get","app":"jsonkit","argv":["get","--explain"]},
+    {"id":"jsonkit-explain-keys","app":"jsonkit","argv":["keys","-e"]},
+    {"id":"jsonkit-explain-select","app":"jsonkit","argv":["select","--explain"]},
+    {"id":"jsonkit-explain-stats-depth-max","app":"jsonkit","argv":["stats","depth","max","--explain"]},
+    {"id":"jsonkit-explain-fetch-deprecated","app":"jsonkit","argv":["fetch","--explain"]},
+    {"id":"jsonkit-explain-doctor","app":"jsonkit","argv":["doctor","--explain"]},
+    {"id":"jsonkit-explain-with-held-fault","app":"jsonkit","argv":["get","--bogus","--explain"]},
+    {"id":"jsonkit-explain-no-document-needed","app":"jsonkit","argv":["get","name","--explain"]},
+    {"id":"jsonkit-doctor-run","app":"jsonkit","argv":["doctor"],"note":"Reports the platform, so the expected output is the Linux capture."},
+    {"id":"jsonkit-doctor-format-option-not-declared","app":"jsonkit","argv":["doctor","-o","json"]},
+    {"id":"jsonkit-doctor-no-color","app":"jsonkit","argv":["doctor"],"env":{"NO_COLOR":"1"}},
+    {"id":"jsonkit-doctor-color-forced","app":"jsonkit","argv":["doctor"],"env":{"FORCE_COLOR":"1"}},
+    {"id":"jsonkit-control-version-then-help","app":"jsonkit","argv":["--version","--help"]},
+    {"id":"jsonkit-control-help-then-version","app":"jsonkit","argv":["--help","--version"]},
+    {"id":"jsonkit-control-explain-then-manifest","app":"jsonkit","argv":["--explain","--manifest"]},
+    {"id":"jsonkit-control-explain-then-help","app":"jsonkit","argv":["--explain","--help"]}
+  ]
+}

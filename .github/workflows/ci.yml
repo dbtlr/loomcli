@@ -19,8 +19,18 @@ env:
   NODE_COMPILE_CACHE: ${{ github.workspace }}/../node-compile-cache
 
 jobs:
-  # A pull request that changes only documentation, a file under docs/ or a Markdown file at the
-  # root or at the root of typescript/, runs the docs tests in place of the Linux test jobs.
+  # The changes job sorts a pull request's paths by the implementation that reads them.
+  # - typescript is code, docs, or none. A path under typescript/ other than a Markdown file at its
+  #   root is code. A file under docs/ or a Markdown file at the root or at the root of typescript/
+  #   is docs, and a pull request whose TypeScript paths are all docs runs the docs tests in place of
+  #   the Linux test jobs. A pull request with no TypeScript path at all, such as one that changes
+  #   only rust/, is none and runs no Linux TypeScript job.
+  # - rust is true when a path is under rust/.
+  # - A path under .github/, and any other path outside rust/, typescript/, and docs/ that is not a
+  #   Markdown file at the root, is TypeScript code and sets rust too, because it may change how
+  #   either is checked.
+  # Nothing under rust/ reads docs/ at build or test time, so docs/ runs only the TypeScript docs
+  # tests. A push to main, or a pull request too large to list, runs everything.
   changes:
     name: changes
     runs-on: ubuntu-latest
@@ -28,9 +38,10 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      code: ${{ steps.paths.outputs.code }}
+      rust: ${{ steps.paths.outputs.rust }}
+      typescript: ${{ steps.paths.outputs.typescript }}
     steps:
-      - name: Decide whether the change touches code
+      - name: Sort the changed paths by implementation
         id: paths
         env:
           CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
@@ -41,34 +52,48 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # GitHub lists at most 3,000 files of a pull request, so a larger one counts as code.
+          # GitHub lists at most 3,000 files of a pull request, so a larger one runs everything.
           if [ "$EVENT" != pull_request ] || [ "$CHANGED_FILES" -gt 3000 ]; then
-            echo code=true >> "$GITHUB_OUTPUT"
+            echo typescript=code >> "$GITHUB_OUTPUT"
+            echo rust=true >> "$GITHUB_OUTPUT"
             exit 0
           fi
           paths=$(gh api --paginate "repos/$REPOSITORY/pulls/$PULL_REQUEST/files" \
             --jq '.[] | .filename, (.previous_filename // empty)')
-          code=false
+          typescript_code=false
+          typescript_docs=false
+          rust=false
           if [ -z "$paths" ]; then
-            code=true
+            typescript_code=true
+            rust=true
           fi
           while IFS= read -r path; do
             case "$path" in
               '') ;;
-              docs/*) ;;
-              typescript/*/*) code=true ;;
-              typescript/*.md) ;;
-              */*) code=true ;;
-              *.md) ;;
-              *) code=true ;;
+              rust/*) rust=true ;;
+              docs/*) typescript_docs=true ;;
+              typescript/*/*) typescript_code=true ;;
+              typescript/*.md) typescript_docs=true ;;
+              typescript/*) typescript_code=true ;;
+              */*) typescript_code=true; rust=true ;;
+              *.md) typescript_docs=true ;;
+              *) typescript_code=true; rust=true ;;
             esac
           done <<< "$paths"
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "Changed paths touch code: $code"
+          if [ "$typescript_code" = true ]; then
+            typescript=code
+          elif [ "$typescript_docs" = true ]; then
+            typescript=docs
+          else
+            typescript=none
+          fi
+          echo "typescript=$typescript" >> "$GITHUB_OUTPUT"
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+          echo "Changed paths: TypeScript $typescript, Rust $rust"
 
   node_linux:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.typescript == 'code'
     name: node / ubuntu-latest
     runs-on: ubuntu-latest
     defaults:
@@ -120,9 +145,9 @@ jobs:
       - name: Run the packed consumer
         run: pnpm check:packed
 
-  # The macOS jobs declare no needs, so Hugi, which runs a job only when it has none, can run them
-  # as declared in .github/hugi.yaml. They cannot read the changes job, so they run for every
-  # change, a documentation-only one included.
+  # The TypeScript macOS jobs declare no needs, so Hugi, which runs a job only when it has none, can
+  # run them as declared in .github/hugi.yaml. They cannot read the changes job, so they run for
+  # every change, a documentation-only one and one that changes only rust/ included.
   node_macos:
     name: node / macos-latest
     runs-on: macos-latest
@@ -177,7 +202,7 @@ jobs:
 
   bun_linux:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.typescript == 'code'
     name: bun / ubuntu-latest
     runs-on: ubuntu-latest
     defaults:
@@ -291,7 +316,7 @@ jobs:
   # a change that gates the macOS jobs must move that check here.
   docs:
     needs: changes
-    if: needs.changes.outputs.code == 'false'
+    if: needs.changes.outputs.typescript == 'docs'
     name: docs / ubuntu-latest
     runs-on: ubuntu-latest
     defaults:
@@ -335,29 +360,146 @@ jobs:
       - name: Build and run the tests that read docs
         run: pnpm run build && pnpm exec vp test --run --tagsFilter docs
 
+  # The Rust jobs run from rust/, on the toolchain rust/rust-toolchain.toml pins, when the changes
+  # job sorts a path to Rust. They declare needs, so Hugi does not run them, and the macOS one runs
+  # on GitHub's runner.
+  rust_lint:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    name: rust / lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # rustup reads rust/rust-toolchain.toml from the working directory and installs the toolchain
+      # and the components it pins.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # The link checker reads every Markdown file in the repository, rust/ included, and a change
+      # that touches only rust/ runs no TypeScript job. It needs Node and nothing installed.
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.2
+
+      - name: Check that every Markdown link resolves
+        working-directory: .
+        run: node typescript/scripts/check-links.mjs
+
+  rust_linux:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    name: rust / ubuntu-latest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # rustup reads rust/rust-toolchain.toml from the working directory and installs the toolchain
+      # and the components it pins.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      - name: Run the tests
+        run: cargo test --workspace --all-features
+
+      # The corpus's expected files are a Linux capture, because jsonkit doctor prints the platform,
+      # so the harness runs on Linux alone. It builds nothing itself.
+      - name: Build the examples the conformance harness runs
+        run: cargo build -p jsonkit -p textstat
+
+      - name: Run the conformance harness
+        run: cargo run -p conformance-harness
+
+  rust_macos:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    name: rust / macos-latest
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # rustup reads rust/rust-toolchain.toml from the working directory and installs the toolchain
+      # and the components it pins.
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rust
+
+      - name: Run the tests
+        run: cargo test --workspace --all-features
+
   node:
     name: Node LTS / verify
     if: always()
     needs: [changes, node_linux, node_macos, docs]
     runs-on: ubuntu-latest
     steps:
-      - name: Require macOS, and Linux or the docs tests for a documentation-only change
+      - name: Require macOS, and Linux or the docs tests as the change's TypeScript paths ask
         env:
           CHANGES: ${{ needs.changes.result }}
-          CODE: ${{ needs.changes.outputs.code }}
           DOCS: ${{ needs.docs.result }}
           LINUX: ${{ needs.node_linux.result }}
           MACOS: ${{ needs.node_macos.result }}
+          TYPESCRIPT: ${{ needs.changes.outputs.typescript }}
         run: |
-          printf 'changes=%s code=%s docs=%s node_linux=%s node_macos=%s\n' "$CHANGES" "$CODE" "$DOCS" "$LINUX" "$MACOS"
+          printf 'changes=%s typescript=%s docs=%s node_linux=%s node_macos=%s\n' "$CHANGES" "$TYPESCRIPT" "$DOCS" "$LINUX" "$MACOS"
           test "$CHANGES" = success
           test "$MACOS" = success
-          if [ "$CODE" = false ]; then
-            echo "The change touches only documentation, so only the docs tests ran on Linux."
-            test "$LINUX" = skipped && test "$DOCS" = success
-          else
-            test "$LINUX" = success
-          fi
+          case "$TYPESCRIPT" in
+            code)
+              test "$LINUX" = success
+              ;;
+            docs)
+              echo "The change touches only TypeScript documentation, so only the docs tests ran on Linux."
+              test "$LINUX" = skipped && test "$DOCS" = success
+              ;;
+            none)
+              echo "The change touches no TypeScript path, so no Linux TypeScript job ran."
+              test "$LINUX" = skipped && test "$DOCS" = skipped
+              ;;
+            *)
+              echo "The changes job reported an unknown TypeScript sort: $TYPESCRIPT"
+              exit 1
+              ;;
+          esac
 
   bun:
     name: Bun / verify
@@ -365,20 +507,54 @@ jobs:
     needs: [changes, bun_linux, bun_macos, docs]
     runs-on: ubuntu-latest
     steps:
-      - name: Require macOS, and Linux or the docs tests for a documentation-only change
+      - name: Require macOS, and Linux or the docs tests as the change's TypeScript paths ask
         env:
           CHANGES: ${{ needs.changes.result }}
-          CODE: ${{ needs.changes.outputs.code }}
           DOCS: ${{ needs.docs.result }}
           LINUX: ${{ needs.bun_linux.result }}
           MACOS: ${{ needs.bun_macos.result }}
+          TYPESCRIPT: ${{ needs.changes.outputs.typescript }}
         run: |
-          printf 'changes=%s code=%s docs=%s bun_linux=%s bun_macos=%s\n' "$CHANGES" "$CODE" "$DOCS" "$LINUX" "$MACOS"
+          printf 'changes=%s typescript=%s docs=%s bun_linux=%s bun_macos=%s\n' "$CHANGES" "$TYPESCRIPT" "$DOCS" "$LINUX" "$MACOS"
           test "$CHANGES" = success
           test "$MACOS" = success
-          if [ "$CODE" = false ]; then
-            echo "The change touches only documentation, so only the docs tests ran on Linux."
-            test "$LINUX" = skipped && test "$DOCS" = success
+          case "$TYPESCRIPT" in
+            code)
+              test "$LINUX" = success
+              ;;
+            docs)
+              echo "The change touches only TypeScript documentation, so only the docs tests ran on Linux."
+              test "$LINUX" = skipped && test "$DOCS" = success
+              ;;
+            none)
+              echo "The change touches no TypeScript path, so no Linux TypeScript job ran."
+              test "$LINUX" = skipped && test "$DOCS" = skipped
+              ;;
+            *)
+              echo "The changes job reported an unknown TypeScript sort: $TYPESCRIPT"
+              exit 1
+              ;;
+          esac
+
+  rust:
+    name: Rust / verify
+    if: always()
+    needs: [changes, rust_lint, rust_linux, rust_macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Rust job when the change touches Rust, and none otherwise
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          LINT: ${{ needs.rust_lint.result }}
+          LINUX: ${{ needs.rust_linux.result }}
+          MACOS: ${{ needs.rust_macos.result }}
+          RUST: ${{ needs.changes.outputs.rust }}
+        run: |
+          printf 'changes=%s rust=%s rust_lint=%s rust_linux=%s rust_macos=%s\n' "$CHANGES" "$RUST" "$LINT" "$LINUX" "$MACOS"
+          test "$CHANGES" = success
+          if [ "$RUST" = true ]; then
+            test "$LINT" = success && test "$LINUX" = success && test "$MACOS" = success
           else
-            test "$LINUX" = success
+            echo "The change touches no Rust path, so no Rust job ran."
+            test "$LINT" = skipped && test "$LINUX" = skipped && test "$MACOS" = skipped
           fi

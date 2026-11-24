@@ -13,6 +13,17 @@ updates:
         patterns:
           - '*'
 
+  # The Rust workspace. Its crates name each dependency through [workspace.dependencies] in
+  # rust/Cargo.toml, so one group update covers the workspace.
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: weekly
+    groups:
+      cargo-dependencies:
+        patterns:
+          - '*'
+
   # The published Loom CLI the release workflow's plan and record jobs run.
   - package-ecosystem: npm
     directory: /.github/release-tool

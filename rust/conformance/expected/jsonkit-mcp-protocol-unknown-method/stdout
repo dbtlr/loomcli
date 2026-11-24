@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"The method is not one this server serves. This server speaks MCP 2026-07-28; call server/discover, tools/list, tools/call, or subscriptions/listen."}}

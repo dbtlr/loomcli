@@ -1,0 +1,3 @@
+jsonkit: Unknown option "--fiel". Did you mean "--file"?
+Run "jsonkit get --help" to see the usage.
+Run "jsonkit get --explain" to explain this command.

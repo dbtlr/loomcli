@@ -1,0 +1,19 @@
+{
+  "name": "loom",
+  "user": {
+    "name": "Ada",
+    "email": "ada@example.com",
+    "address": {
+      "city": "London",
+      "geo": {
+        "lat": 51.5,
+        "lon": -0.12
+      }
+    }
+  },
+  "tags": [
+    "a",
+    "b",
+    "c"
+  ]
+}

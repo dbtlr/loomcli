@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"The line is not JSON. Send one JSON-RPC message as one line of JSON."}}

@@ -1,0 +1,2 @@
+textstat: Option "--config": File "config/bad.json" is not valid JSON at line 1, column 3. Correct its syntax, or supply another file.
+Run "textstat --help" to see the usage.
