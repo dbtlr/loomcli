@@ -1,5 +1,6 @@
 import { Application, Command, InputError } from '@loomcli/core';
 import { format, json, jsonl } from '@loomcli/plugins/format';
+import { help } from '@loomcli/plugins/help';
 import { mockProcess } from '@loomcli/testing';
 import { expect, test } from 'vite-plus/test';
 
@@ -20,6 +21,9 @@ import { runOnMock } from './fixtures/in-process.ts';
  *   as the provider of the json and jsonl output it accepts. An empty field name fails at validation.
  * - `--fields` is a control option on the help page and in the graph, hidden on a group, and a
  *   Command's own `fields` option is the hook-collision fault.
+ * - A Command whose json and jsonl views the author declares both gets no `--fields`, so its help
+ *   and graph list none and a `fields` option of its own is its author's; one with a single
+ *   author-declared view keeps it.
  */
 
 const done = (stdout: string) => ({ status: 0, stderr: '', stdout });
@@ -266,12 +270,32 @@ test.each(['mapped', 'unmapped', 'jsonl'])(
   },
 );
 
-test('--fields with no formatter-appended view says only to remove the option', async () => {
-  const app = new Application('app', { plugins: [format()] }).command(
+/** The JSON views the author declares on `declaring`'s `get`. */
+type Declared = 'both' | 'json' | 'jsonl';
+
+/** An application, with help and the formatter, whose `get` declares the JSON views `declared` names. */
+function declaring(declared: Declared) {
+  const views = {
+    text: { render: () => 'text\n' },
+    ...(declared === 'jsonl' ? {} : { json: json() }),
+    ...(declared === 'json' ? {} : { jsonl: jsonl() }),
+  };
+  return new Application('app', { plugins: [help(), format()] }).command(
     new Command('get')
-      .result<{ id: number }>({ views: { json: json(), jsonl: jsonl() } })
+      .result<{ id: number }>({ views })
       .action(({ out }) => out.results({ id: 1 })),
   );
+}
+
+test('a Command whose json and jsonl views the author declares has no --fields', async () => {
+  const app = declaring('both');
+  const get = app.inspect().root.children.find((child) => child.name === 'get');
+  const names = get?.options.map((option) => option.name);
+  expect(names).toContain('format');
+  expect(names).not.toContain('fields');
+  const page = await runOnMock(app, { argv: ['get', '--help'], release: { build: 'distributed' } });
+  expect(page.stdout).toContain('--format <format>');
+  expect(page.stdout).not.toContain('--fields');
   for (const view of ['json', 'jsonl']) {
     await expect(
       runOnMock(app, {
@@ -280,10 +304,47 @@ test('--fields with no formatter-appended view says only to remove the option', 
       }),
     ).resolves.toEqual({
       status: 2,
-      stderr: `{"error":{"code":"invalid-input","exitCode":2,"message":${JSON.stringify('Option "--fields" applies only to output the formatter provides, and the formatter provides none here. Remove the option.')},"hints":[]}}\n`,
+      stderr: `{"error":{"code":"unknown-option","exitCode":2,"message":${JSON.stringify('Unknown option "--fields". Supply a declared option; prefix a hyphenated path with "./".')},"hints":[${JSON.stringify('Run "app get --help" to see the usage.')}]}}\n`,
       stdout: '',
     });
   }
+});
+
+test.each(['json', 'jsonl'] as const)(
+  'a Command whose %s view alone the author declares keeps --fields',
+  async (declared) => {
+    const app = declaring(declared);
+    const get = app.inspect().root.children.find((child) => child.name === 'get');
+    expect(get?.options.find((option) => option.name === 'fields')).toMatchObject({
+      control: true,
+      hidden: false,
+    });
+    const page = await runOnMock(app, {
+      argv: ['get', '--help'],
+      release: { build: 'distributed' },
+    });
+    expect(page.stdout).toContain('--fields <fields>');
+  },
+);
+
+test('the formatter leaves alone a fields option of a Command whose json and jsonl the author declares', async () => {
+  const supplied: unknown[] = [];
+  const app = new Application('app', { plugins: [format()] }).command(
+    new Command('get')
+      .option('fields', { type: 'string' })
+      .result<{ id: number }>({ views: { json: json(), jsonl: jsonl() } })
+      .action(({ options, out }) => {
+        supplied.push(options.fields);
+        return out.results({ id: 1 });
+      }),
+  );
+  await expect(
+    runOnMock(app, {
+      argv: ['get', '--format', 'jsonl', '--fields', 'name'],
+      release: { build: 'distributed' },
+    }),
+  ).resolves.toEqual(done('{"id":1}\n'));
+  expect(supplied).toEqual(['name']);
 });
 
 test('a held missing required option ranks ahead of --fields under the default text view', async () => {

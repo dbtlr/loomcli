@@ -865,7 +865,7 @@ The connection the MCP plugin's HTTP server keeps for one client that opened wit
 _Avoid_: HTTP connection (for the session), run, login
 
 **Formatter**:
-The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, `jsonlRows()` as the row view of `jsonl` that the hook declares under `rows()` so each line prints as the row arrives, failure encoders for their two media types, and `--fields`, which keeps the named top-level keys of its own json and jsonl output through a result transform and applies to no view an author declared. A result has no encoding outside the view model: a machine view is a view like a table is.
+The first-party plugin, `@loomcli/plugins/format`, that puts `--format` on every Command that declares a result, so a run selects a view by name, and that ships `json()` and `jsonl()` as whole views whose map reshapes the value under `result()` and the collected rows under `rows()`, `jsonlRows()` as the row view of `jsonl` that the hook declares under `rows()` so each line prints as the row arrives, failure encoders for their two media types, and `--fields`, which keeps the named top-level keys of its own json and jsonl output through a result transform, applies to no view an author declared, and is absent from a Command whose author declares both json and jsonl. A result has no encoding outside the view model: a machine view is a view like a table is.
 _Avoid_: Format plugin, encoder (for the plugin), serializer, format (for the view), output mode
 
 **Theme**:

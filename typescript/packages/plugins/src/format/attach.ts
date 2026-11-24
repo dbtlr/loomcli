@@ -11,6 +11,9 @@ import { json, jsonl, jsonlRows } from './views.js';
  */
 const groupNames = ['json', 'jsonl'];
 
+/** The length of a list that holds nothing. */
+const EMPTY = 0;
+
 /** What `--fields` says on a help page. */
 const fieldsDescription = 'Select top-level fields of json and jsonl output, as a comma list.';
 
@@ -51,9 +54,10 @@ function attachToGroup(command: AttachedCommand, short: FormatSettings['short'])
 /**
  * The hook that appends `json` and `jsonl`, `jsonl` as a row view under a rows result, to a
  * Command's result where its record lacks the key, then declares `--format` over the resulting
- * names, with `short` as its short spelling or none when it is undefined, and `--fields`, and
- * that declares a hidden `--format` and `--fields` on a group. `format()` has already judged that
- * spelling at its call. A Command with an action and no result is returned unchanged.
+ * names, with `short` as its short spelling or none when it is undefined, and `--fields` when it
+ * appended either view, because `--fields` applies to no view an author declared. On a group it
+ * declares a hidden `--format` and `--fields`. `format()` has already judged that spelling at its
+ * call. A Command with an action and no result is returned unchanged.
  */
 export function attachFormat(short: FormatSettings['short']): CommandAttachHook {
   return (command) => {
@@ -80,6 +84,6 @@ export function attachFormat(short: FormatSettings['short']): CommandAttachHook 
       type: 'string',
       validate: formatName(names),
     });
-    return withFields(formatted, false);
+    return added.length === EMPTY ? formatted : withFields(formatted, false);
   };
 }
