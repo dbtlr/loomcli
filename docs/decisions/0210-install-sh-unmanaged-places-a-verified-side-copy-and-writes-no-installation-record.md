@@ -4,7 +4,7 @@ title: ADR-0210 - install.sh --unmanaged places a verified side copy and writes 
 description: The installer script takes an explicit --unmanaged flag. It verifies and places the binary as before, then writes no install.json, prints no PATH advice, and runs no post-install command, printing the skipped command line where one is declared. A binary with no record keeps today's behavior, so self-update refuses it. It amends ADR-0072's verify, place, then record rule and its advice-never-edits PATH clause, and ADR-0113's message-last and same-script clauses.
 status: accepted
 created: 2026-11-19
-modified: 2026-11-21
+modified: 2026-11-24
 ---
 
 # ADR-0210 - install.sh --unmanaged places a verified side copy and writes no installation record
@@ -46,3 +46,4 @@ Accepted in 0.20.0.
 - 2026-11-19: `--unmanaged` requires `--dir`, and a skipped command under it prints its own sentence.
 - 2026-11-19: Qualified after the milestone review (LM-550). A side copy placed under a Homebrew Cellar or a package manager's global root reads as that package manager's installation through ADR-0211's path rules, so it gets that package manager's refusal, and its notice and command when the release facts give one. A side copy without package-manager advice takes a `--dir` outside those roots.
 - 2026-11-19: `--unmanaged` runs the recipe's path-character check, because GNU `sha256sum` escapes a file name that holds a backslash or a newline, and the authentic download then failed its digest check.
+- 2026-11-24: [ADR-0219](0219-install-sh-unmanaged-refuses-a-dir-that-holds-the-recorded-installation.md), proposed, supersedes in part the **A directory is required.** clause's sentence that a `--dir` naming the live install's directory replaces the live binary and that the flag does not guard against it: under `--unmanaged`, a `--dir` whose `<dir>/<name>` is the path `install.json` records fails before any download with exit 2, and the binary and the record stay as they were. The paths compare by text, with the trailing slash stripped, and the directories by their physical paths under `pwd -P`. With no record, one the script cannot read, or one that names another path, the flag installs as this record states, and the mode is still never inferred from `--dir`. It binds when that record is accepted.

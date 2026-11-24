@@ -40,12 +40,24 @@
  *   existing `install.json` byte for byte as it was, or absent when none existed, creating no
  *   record directory, and prints no PATH advice. An install path that holds a backslash, a quote,
  *   or a newline exits 1 with the record's sentence and downloads nothing, as without the flag.
+ *   A `<d>` that holds the binary an existing `install.json` names exits 2 with its own sentence,
+ *   downloads nothing, and leaves the binary and the record as they were, and so does a `<d>` that
+ *   is the same physical directory reached by a link or a dotted spelling. A symlink at
+ *   `<d>/<name>` to the recorded binary installs, and an unreadable record installs silently.
  *   Without the flag, behavior is unchanged.
  * - Init. The loom init acceptance plan in packages/loom/tests/init.test.ts covers rendering,
  *   drift, and the missing repository.
  */
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 import { applicationDirectory } from '@loomcli/core';
@@ -159,6 +171,102 @@ test('--unmanaged with no existing record writes none and creates no record dire
   expect(result.stderr).not.toContain('PATH');
   expect(readFileSync(join(directory, app), 'utf8')).toBe('test');
   expect(entries(box.state)).toEqual([]);
+});
+
+test.each([
+  ['the directory as given', (directory: string) => directory],
+  ['the directory with a trailing slash', (directory: string) => `${directory}/`],
+])(
+  '--unmanaged refuses %s when it holds the recorded binary, before it downloads anything',
+  (_given, spelling) => {
+    const box = sandbox();
+    const directory = join(box.root, 'live');
+    const target = join(directory, app);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(target, 'old');
+    const record = join(recordDirectory(box), 'install.json');
+    mkdirSync(recordDirectory(box), { recursive: true });
+    writeFileSync(record, recordBytes(target, 'f'.repeat(64)));
+    const result = runScript(box, ['--unmanaged', '--dir', spelling(directory)]);
+    expect(result.status).toBe(2);
+    expect(result.stderr.split('\n')[0]).toBe(
+      `notes: --unmanaged cannot install into ${directory}, which holds the installation that install.json records. Choose another directory for the side copy with --dir.`,
+    );
+    expect(requested(box)).toEqual([]);
+    expect(readFileSync(target, 'utf8')).toBe('old');
+    expect(readFileSync(record, 'utf8')).toBe(recordBytes(target, 'f'.repeat(64)));
+    expect(entries(directory)).toEqual([app]);
+  },
+);
+
+test.each([
+  ['a symlink to it', (box: Sandbox) => join(box.root, 'alias')],
+  ['a dotted spelling of it', (_box: Sandbox, directory: string) => `${directory}/./../live`],
+])(
+  '--unmanaged refuses %s, the same physical directory as the recorded binary',
+  (_given, spelling) => {
+    const box = sandbox();
+    const directory = join(box.root, 'live');
+    const target = join(directory, app);
+    mkdirSync(directory, { recursive: true });
+    symlinkSync(directory, join(box.root, 'alias'));
+    writeFileSync(target, 'old');
+    const record = join(recordDirectory(box), 'install.json');
+    mkdirSync(recordDirectory(box), { recursive: true });
+    writeFileSync(record, recordBytes(target, 'f'.repeat(64)));
+    const given = spelling(box, directory);
+    const result = runScript(box, ['--unmanaged', '--dir', given]);
+    expect(result.status).toBe(2);
+    expect(result.stderr.split('\n')[0]).toBe(
+      `notes: --unmanaged cannot install into ${given}, which holds the installation that install.json records. Choose another directory for the side copy with --dir.`,
+    );
+    expect(requested(box)).toEqual([]);
+    expect(readFileSync(target, 'utf8')).toBe('old');
+    expect(readFileSync(record, 'utf8')).toBe(recordBytes(target, 'f'.repeat(64)));
+    expect(entries(directory)).toEqual([app]);
+  },
+);
+
+test('--unmanaged installs when the side copy is a symlink to the recorded binary, which the rename replaces', () => {
+  const box = sandbox();
+  const live = join(box.root, 'live');
+  const side = join(box.root, 'side');
+  mkdirSync(live, { recursive: true });
+  mkdirSync(side, { recursive: true });
+  writeFileSync(join(live, app), 'old');
+  symlinkSync(join(live, app), join(side, app));
+  mkdirSync(recordDirectory(box), { recursive: true });
+  writeFileSync(join(recordDirectory(box), 'install.json'), recordBytes(join(live, app)));
+  expect(runScript(box, ['--unmanaged', '--dir', side]).status).toBe(0);
+  expect(readFileSync(join(live, app), 'utf8')).toBe('old');
+  expect(readFileSync(join(side, app), 'utf8')).toBe('test');
+});
+
+test.skipIf(process.getuid?.() === 0)(
+  '--unmanaged installs as before, with nothing extra on stderr, when install.json is unreadable',
+  () => {
+    const box = sandbox();
+    const record = join(recordDirectory(box), 'install.json');
+    mkdirSync(recordDirectory(box), { recursive: true });
+    writeFileSync(record, recordBytes(join(box.root, 'live', app)));
+    chmodSync(record, 0o000);
+    const result = runScript(box, ['--unmanaged', '--dir', join(box.root, 'scratch')]);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe(
+      `notes: Downloading notes-linux-x64 from the latest release of me/notes.\nnotes: Installed ${join(box.root, 'scratch', app)}.\n`,
+    );
+    expect(readFileSync(join(box.root, 'scratch', app), 'utf8')).toBe('test');
+  },
+);
+
+test('--unmanaged into the recorded directory still installs when the record names another path', () => {
+  const box = sandbox();
+  const directory = join(box.root, 'scratch');
+  const record = join(recordDirectory(box), 'install.json');
+  mkdirSync(recordDirectory(box), { recursive: true });
+  writeFileSync(record, recordBytes(join(box.root, 'live', app), 'f'.repeat(64)));
+  expect(runScript(box, ['--unmanaged', '--dir', directory]).status).toBe(0);
+  expect(readFileSync(join(directory, app), 'utf8')).toBe('test');
 });
 
 test('--unmanaged still refuses a download whose digest does not match', () => {

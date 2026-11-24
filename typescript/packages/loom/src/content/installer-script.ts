@@ -178,6 +178,10 @@ mv -f "$staging" "$record/install.json"
  * into the staging file, so a downloader that cannot write hidden paths itself still works. It
  * runs under POSIX `sh`, as dash and bash 3.2 in sh mode read it, so it uses no `local`, arrays,
  * `[[`, or `pipefail`.
+ *
+ * The record directory that `check_unrecorded_target` resolves mirrors the first part of the
+ * installation record's recipe, `docs/core/installation-record.md`, and must change with it. It
+ * cannot share code with `recipePrepare`, which stays byte for byte as that document gives it.
  */
 export function installerScript(
   name: string,
@@ -377,6 +381,42 @@ check_install_path() {
   esac
 }
 
+# An unmanaged install must not replace the binary install.json records, whose digest would then
+# name other bytes.
+# The record directory below is resolved the way the installer records it.
+# The directories are compared by physical path, not the files by -ef, because a symlink at
+# <dir>/<name> is replaced by the rename and leaves the recorded binary alone.
+check_unrecorded_target() {
+  case $(uname -s) in
+    Darwin) state="$HOME/Library/Application Support" ;;
+    *) case \${XDG_STATE_HOME:-} in /*) state=$XDG_STATE_HOME ;; *) state="$HOME/.local/state" ;; esac ;;
+  esac
+  case $state in /*) ;; *) return 0 ;; esac
+  record_file="$state/$app/installation/install.json"
+  [ -f "$record_file" ] && [ -r "$record_file" ] || return 0
+  recorded=
+  while IFS= read -r line || [ -n "$line" ]; do
+    case $line in
+      *'"path":"'*)
+        recorded=\${line#*'"path":"'}
+        recorded=\${recorded%%'"'*}
+        ;;
+    esac
+  done <"$record_file" 2>/dev/null || :
+  [ -n "$recorded" ] || return 0
+  same=
+  if [ "$recorded" = "$target" ]; then
+    same=1
+  elif [ "\${recorded##*/}" = "$app" ] && [ -d "$dir" ]; then
+    here=$(cd "$dir" 2>/dev/null && pwd -P) || here=
+    there=$(cd "\${recorded%/*}/" 2>/dev/null && pwd -P) || there=
+    [ -n "$here" ] && [ "$here" = "$there" ] && same=1
+  fi
+  if [ -n "$same" ]; then
+    argument_error "--unmanaged cannot install into $dir, which holds the installation that install.json records. Choose another directory for the side copy with --dir."
+  fi
+}
+
 fetch() {
   if [ "$downloader" = curl ]; then
     curl --fail --location --silent --proto '=https' --proto-redir '=https' --tlsv1.2 "$1" >"$2" 2>/dev/null || download_failed "$1"
@@ -488,6 +528,7 @@ main() {
     prepare_record
   else
     check_install_path
+    check_unrecorded_target
   fi
   install_binary
   if [ -z "$unmanaged" ]; then
