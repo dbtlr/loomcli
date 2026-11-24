@@ -28,7 +28,7 @@ Success prints `PR checks passed.` and exits with status 0. Invalid PR content o
 
 The comparison starts at the merge base of the supplied base and head. Changes made only on the base branch do not satisfy fragment admission.
 
-- A build-affecting diff requires an added or modified fragment, or the exact label `skip-changelog`. Root Markdown files and `docs/` are excluded from the build-path policy. A path inside the workspace is judged from the workspace directory, and a path outside it from the git root, so `docs/` and top-level Markdown at the git root stay excluded from a workspace below it, and `.github/` there is build-affecting.
+- A build-affecting diff requires an added or modified fragment, or the exact label `skip-changelog`. Root Markdown files and `docs/` are excluded from the build-path policy. A path inside the workspace is judged from the workspace directory, and a path outside it from the git root, so `docs/` and top-level Markdown at the git root stay excluded from a workspace below it. Outside that workspace only `.github/` and a top-level file that is not Markdown are build-affecting, so a sibling directory such as `rust/` is not.
 - An unchanged fragment, a deleted fragment, or `.changes/README.md` does not satisfy admission.
 - Every fragment at the head must pass validation, even with `skip-changelog` or a documentation-only diff.
 - Participating libraries must retain the synchronized stable `0.x` version from the comparison base. New libraries join that version.

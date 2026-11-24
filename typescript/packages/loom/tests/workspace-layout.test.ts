@@ -555,6 +555,12 @@ const ordinaryChanges = [
     top: true,
   },
   {
+    change: 'a top-level file that is not Markdown at the git root',
+    path: '.gitattributes',
+    stderr: fragmentRequired,
+    top: true,
+  },
+  {
     change: 'a library source',
     path: 'packages/core/index.js',
     stderr: fragmentRequired,
@@ -595,6 +601,37 @@ test.each(ordinaryCases)(
     });
   },
 );
+
+// A directory beside the workspace is no build input, but the same directory is one inside it.
+test.each([
+  { layout: 'at the git root', stderr: fragmentRequired, workspace: '' },
+  { layout: 'below the git root', stderr: '', workspace: 'typescript' },
+])(
+  'pr check from the workspace $layout judges a rust/ directory at the git root',
+  async ({ stderr, workspace }) => {
+    const { base, root, top } = layoutRepository(workspace);
+    put(top, 'rust/src/main.rs', 'fn main() {}\n');
+    commit(top);
+    await expect(prCheck(root, base, 'Fix output')).resolves.toEqual(
+      stderr === ''
+        ? { status: 0, stderr: '', stdout: 'PR checks passed.\n' }
+        : { status: 1, stderr, stdout: '' },
+    );
+  },
+);
+
+test('a release cut dry run from typescript/ does not count a rust/ change against a library', async () => {
+  const { root, top } = layoutRepository('typescript');
+  put(root, '.changes/guide.md', '- Fix the guide.\n');
+  commit(top);
+  put(top, 'rust/src/main.rs', 'fn main() {}\n');
+  await expect(dryRunAfterMove(root)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout:
+      '## v0.4.8 - 2026-09-14\n\n### Fixes\n\n- Fix the guide.\n\nNo material changes: @sample/core.\n\n',
+  });
+});
 
 test.each(layouts)(
   'a release PR $layout that edits the shared decision beyond acceptance fails naming it from the workspace',

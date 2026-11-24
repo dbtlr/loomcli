@@ -170,11 +170,21 @@ export async function materialBaseline(
  * Root Markdown and docs do not enter the current library build. A path is judged from the root it
  * sits under: a path in the checkout's root from that root, and one outside it, which climbs to the
  * top of the work tree, from the top, so `../README.md` is top-level Markdown as `README.md` is.
+ * Beside a workspace below the top, only `.github/` and a top-level file that is not Markdown can
+ * affect the build, so a sibling directory such as `rust/` is no build input.
  */
 export function isBuildAffectingPath(path: string, placement: Placement) {
   // At the top, `up` is empty, so every path is judged as it reads.
-  const judged = path.startsWith(placement.up) ? path.slice(placement.up.length) : path;
-  return !judged.startsWith('docs/') && !(!judged.includes('/') && /\.md$/iu.test(judged));
+  const outside = placement.up !== '' && path.startsWith(placement.up);
+  const judged = outside ? path.slice(placement.up.length) : path;
+  const topLevel = !judged.includes('/');
+  if (topLevel && /\.md$/iu.test(judged)) {
+    return false;
+  }
+  if (judged.startsWith('docs/')) {
+    return false;
+  }
+  return !outside || topLevel || judged.startsWith('.github/');
 }
 
 export async function unchangedLibraries(
