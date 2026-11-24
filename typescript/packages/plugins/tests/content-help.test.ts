@@ -6,9 +6,9 @@ import { help } from '../src/help/plugin.js';
 import { manPages } from '../src/manpage/page.js';
 
 test.each([
-  [0, 'min: 0 sources, max: 0 sources'],
-  [1, 'min: 1 source, max: 1 source'],
-  [2, 'min: 2 sources, max: 2 sources'],
+  [0, 'min: 0 sources; max: 0 sources'],
+  [1, 'min: 1 source; max: 1 source'],
+  [2, 'min: 2 sources; max: 2 sources'],
 ])(
   'help and man pages name a content bound of %s with the right source noun',
   async (bound, facts) => {
@@ -32,10 +32,10 @@ test.each([
     if (outcome.status !== 'completed') {
       throw new Error('Expected the help takeover to complete.');
     }
-    expect(outcome.output).toContain(`The files.  (file path, ${facts})`);
-    expect(outcome.output).toContain(`The additional files.  (file path, ${facts},`);
+    expect(outcome.output).toContain(`The files.  (file path; ${facts})`);
+    expect(outcome.output).toContain(`The additional files.  (file path; ${facts};`);
     const [page] = manPages(app.inspect());
-    expect(page?.text).toContain(`The files.  (file path, ${facts})`);
-    expect(page?.text).toContain(`The additional files.  (file path, ${facts},`);
+    expect(page?.text).toContain(`The files.  (file path; ${facts})`);
+    expect(page?.text).toContain(`The additional files.  (file path; ${facts};`);
   },
 );

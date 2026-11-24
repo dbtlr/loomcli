@@ -23,7 +23,7 @@ test('help shows conditional arguments as required operands with a conditional r
   expect(mock.stdout.text).toContain('clone <url> <files...> [options]');
   expect(mock.stdout.text).toContain('url    (required when not interactive)');
   expect(mock.stdout.text).toContain('files  (required when not interactive)');
-  expect(mock.stdout.text).toContain('(required when not interactive, repeatable)');
+  expect(mock.stdout.text).toContain('(required when not interactive; repeatable)');
 });
 
 test('manifest publishes conditional requiredness on every argument', async () => {

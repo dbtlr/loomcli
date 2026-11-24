@@ -243,11 +243,11 @@ declare const examplesHeading = "EXAMPLES";
 
 declare function extendedHint(command: string, style: ContextualStyle): string;
 
-declare const fileOrStdinFact = "file or piped stdin; - selects stdin";
+declare const fileOrStdinFact = "file or piped stdin, - selects stdin";
 
 declare const filePathFact = "file path";
 
-declare const filesAndStdinFact = "files and piped stdin; - places stdin";
+declare const filesAndStdinFact = "files and piped stdin, - places stdin";
 
 declare const globalOptionsHeading = "GLOBAL OPTIONS";
 

@@ -816,7 +816,7 @@ test('a wrapped binding fact prints its labels, names, and separators dim on eve
     '\u001b[90mOPTIONS\u001b[39m',
     '      \u001b[33m--listen\u001b[39m \u001b[90;3m<listen>\u001b[39;23m',
     '          Where the server listens.',
-    '          \u001b[90m(env: APP_LISTEN APP_ADDRESS,\u001b[39m',
+    '          \u001b[90m(env: APP_LISTEN APP_ADDRESS;\u001b[39m',
     '          \u001b[90mconfig: server.listen address)\u001b[39m',
   ]);
 });
@@ -839,7 +839,7 @@ test("a list binding's delimiter literal never breaks across lines, and the row 
   expect(block(await render({ app: listBound, columns: 40 }), 'OPTIONS').slice(0, 5)).toEqual([
     'OPTIONS',
     '      --word <word>  A word to count.',
-    '                     (repeatable, env:',
+    '                     (repeatable; env:',
     '                     APP_WORDS as a list',
     '                     separated by " ")',
   ]);

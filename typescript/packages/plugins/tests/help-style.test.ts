@@ -214,7 +214,7 @@ test('help measures wide and combining placeholders and escapes literal data bef
       '  界é  Wide.',
       '',
       'OPTIONS',
-      '  -F, --field <界界>  Fields.  (required, repeatable, deprecated: Use new.)',
+      '  -F, --field <界界>  Fields.  (required; repeatable; deprecated: Use new.)',
       '      --mode <mode>   Literal default.  (default: \uE001red\uE002x\uE003)',
       '      --no-quiet      (default: true)',
       '      --[no-]cache',
@@ -245,7 +245,7 @@ test('themed option cells separate spellings, placeholders, facts, and warning t
     '  \u001b[33mwide\u001b[39m \u001b[90;3m<界é...>\u001b[39;23m \u001b[33m--field\u001b[39m \u001b[90;3m<界界>...\u001b[39;23m \u001b[90;3m[options]\u001b[39;23m\n',
   );
   expect(result.stdout).toContain(
-    '  \u001b[33m-F\u001b[90m,\u001b[39m \u001b[33m--field\u001b[39m \u001b[90;3m<界界>\u001b[39;23m  Fields.  \u001b[90m(required,\u001b[39m \u001b[90mrepeatable,\u001b[39m \u001b[93mdeprecated: Use new.\u001b[90m)\u001b[39m\n',
+    '  \u001b[33m-F\u001b[90m,\u001b[39m \u001b[33m--field\u001b[39m \u001b[90;3m<界界>\u001b[39;23m  Fields.  \u001b[90m(required;\u001b[39m \u001b[90mrepeatable;\u001b[39m \u001b[93mdeprecated: Use new.\u001b[90m)\u001b[39m\n',
   );
   expect(result.stdout).toContain(
     '      \u001b[33m--mode\u001b[39m \u001b[90;3m<mode>\u001b[39;23m   Literal default.  \u001b[90m(default: \uE001red\uE002x\uE003)\u001b[39m\n',
