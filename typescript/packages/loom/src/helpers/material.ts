@@ -171,9 +171,12 @@ export async function materialBaseline(
  * sits under: a path in the checkout's root from that root, and one outside it, which climbs to the
  * top of the work tree, from the top, so `../README.md` is top-level Markdown as `README.md` is.
  * Beside a workspace below the top, only `.github/` and a top-level file that is not Markdown can
- * affect the build, so a sibling directory such as `rust/` is no build input.
+ * affect the build, so a sibling directory such as `rust/` is no build input. That holds when the
+ * judged revision itself holds its workspace below the top, `below`, as `workspaceAt` reports: a
+ * revision from before the workspace moved holds it at the top, so a path outside the checkout's
+ * root is a path of the workspace there.
  */
-export function isBuildAffectingPath(path: string, placement: Placement) {
+export function isBuildAffectingPath(path: string, placement: Placement, below: boolean) {
   // At the top, `up` is empty, so every path is judged as it reads.
   const outside = placement.up !== '' && path.startsWith(placement.up);
   const judged = outside ? path.slice(placement.up.length) : path;
@@ -184,7 +187,7 @@ export function isBuildAffectingPath(path: string, placement: Placement) {
   if (judged.startsWith('docs/')) {
     return false;
   }
-  return !outside || topLevel || judged.startsWith('.github/');
+  return !outside || !below || topLevel || judged.startsWith('.github/');
 }
 
 export async function unchangedLibraries(
@@ -201,6 +204,7 @@ export async function unchangedLibraries(
   ]);
   await git(checkout, ['merge-base', '--is-ancestor', base, head ?? 'HEAD']);
   const placement = await readPlacement(checkout);
+  const below = (await workspaceAt(checkout, head)) === '';
   const paths = await changedWithoutMove(checkout, placement, base, head);
   // Untracked files anywhere in the work tree, as the diff reads it, printed from its top.
   const untracked =
@@ -217,7 +221,8 @@ export async function unchangedLibraries(
       : [];
   const changed = new Set<string>();
   for (const path of [...paths, ...untracked].filter(
-    (candidate) => !candidate.startsWith('.changes/') && isBuildAffectingPath(candidate, placement),
+    (candidate) =>
+      !candidate.startsWith('.changes/') && isBuildAffectingPath(candidate, placement, below),
   )) {
     const owner = libraries.find((library) => path.startsWith(`${library.directory}/`));
     if (!owner) {

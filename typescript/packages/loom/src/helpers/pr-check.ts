@@ -92,7 +92,7 @@ export async function checkPullRequest(
     }
   }
   if (
-    changed.some((path) => isBuildAffectingPath(path, placement)) &&
+    changed.some((path) => isBuildAffectingPath(path, placement, location === '')) &&
     !options.labels.includes('skip-changelog')
   ) {
     /*

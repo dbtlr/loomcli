@@ -788,3 +788,16 @@ test.each(layouts)(
     });
   },
 );
+
+test('pr check from typescript/ requires a fragment for a library change in a head from before the move', async () => {
+  const { root: top } = layoutRepository('');
+  const base = git(top, ['rev-parse', 'HEAD']);
+  put(top, 'packages/core/index.js', 'export const value = 2;\n');
+  const head = commit(top);
+  const { root } = moveWorkspace(top);
+  await expect(prCheck(root, base, 'Change the value', '--head', head)).resolves.toEqual({
+    status: 1,
+    stderr: fragmentRequired,
+    stdout: '',
+  });
+});
