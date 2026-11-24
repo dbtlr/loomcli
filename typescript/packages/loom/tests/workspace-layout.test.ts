@@ -801,3 +801,17 @@ test('pr check from typescript/ requires a fragment for a library change in a he
     stdout: '',
   });
 });
+
+test('pr check from typescript/ counts a fragment a head from before the move adds at the git root', async () => {
+  const { root: top } = layoutRepository('');
+  const base = git(top, ['rev-parse', 'HEAD']);
+  put(top, 'packages/core/index.js', 'export const value = 2;\n');
+  put(top, '.changes/value.md', '- Change the value.\n');
+  const head = commit(top);
+  const { root } = moveWorkspace(top);
+  await expect(prCheck(root, base, 'Change the value', '--head', head)).resolves.toEqual({
+    status: 0,
+    stderr: '',
+    stdout: 'PR checks passed.\n',
+  });
+});

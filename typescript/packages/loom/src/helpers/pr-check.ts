@@ -101,7 +101,9 @@ export async function checkPullRequest(
      */
     const own = await changedWithoutMove(checkout, placement, ancestor, head);
     const counts = (path: string) => changed.includes(path) && own.includes(path);
-    if (!fragments.some((fragment) => counts(`${conventionalFragments}/${fragment.name}`))) {
+    if (
+      !fragments.some((fragment) => counts(`${location}${conventionalFragments}/${fragment.name}`))
+    ) {
       throw new Error(fragmentRequired);
     }
   }
