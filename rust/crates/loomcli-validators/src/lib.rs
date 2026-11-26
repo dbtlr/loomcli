@@ -23,6 +23,7 @@ mod grammar;
 mod issues;
 mod js;
 mod layout;
+mod messages;
 mod network;
 mod numbers;
 mod path;
