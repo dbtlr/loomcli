@@ -132,16 +132,21 @@ pub(crate) struct ValueParts {
     pub(crate) placeholder: String,
     /// The text after the placeholder word: `>` or `>]`.
     pub(crate) after: &'static str,
+    /// The number of times to print the placeholder.
+    pub(crate) words: usize,
 }
 
 impl ValueParts {
     /// The placeholder with the text around it, such as `<path>` or `[=<control>]`.
     fn text(&self) -> String {
-        format!("{}{}{}", self.before, self.placeholder, self.after)
+        let word = format!("{}{}{}", self.before, self.placeholder, self.after);
+        std::iter::repeat_n(word.as_str(), self.words)
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
-fn value_parts(implied: bool, long: bool, placeholder: &str) -> ValueParts {
+fn value_parts(implied: bool, long: bool, placeholder: &str, words: usize) -> ValueParts {
     let placeholder = placeholder.to_owned();
     if !implied {
         return ValueParts {
@@ -149,6 +154,7 @@ fn value_parts(implied: bool, long: bool, placeholder: &str) -> ValueParts {
             before: "<",
             placeholder,
             after: ">",
+            words,
         };
     }
     ValueParts {
@@ -156,6 +162,7 @@ fn value_parts(implied: bool, long: bool, placeholder: &str) -> ValueParts {
         before: if long { "[=<" } else { "[<" },
         placeholder,
         after: ">]",
+        words,
     }
 }
 
@@ -198,7 +205,12 @@ pub(super) fn option_cell(option: &OptionNode, help: &OptionHelp, context: &View
         return cell;
     };
     let placeholder = help.placeholder.as_deref().unwrap_or(valued.name);
-    let parts = value_parts(valued.implied.is_some(), valued.long.is_some(), placeholder);
+    let parts = value_parts(
+        valued.implied.is_some(),
+        valued.long.is_some(),
+        placeholder,
+        option.arity().unwrap_or(1),
+    );
     format!(
         "{cell}{}{}",
         parts.separator,
@@ -223,7 +235,12 @@ pub(crate) fn option_cell_parts(option: &OptionNode, help: &OptionHelp) -> Optio
     let long = long_spelling(option);
     let value = value_option(option).map(|valued| {
         let placeholder = help.placeholder.as_deref().unwrap_or(valued.name);
-        value_parts(valued.implied.is_some(), valued.long.is_some(), placeholder)
+        value_parts(
+            valued.implied.is_some(),
+            valued.long.is_some(),
+            placeholder,
+            option.arity().unwrap_or(1),
+        )
     });
     OptionCellParts {
         short: option.short().map(str::to_owned),
@@ -293,7 +310,22 @@ pub(crate) fn option_form(
     let long = long_spelling(option);
     let spelling = long.as_deref().or(valued.short).unwrap_or("");
     let placeholder = help.placeholder.as_deref().unwrap_or(valued.name);
-    let parts = value_parts(valued.implied.is_some(), long.is_some(), placeholder);
+    let parts = value_parts(
+        valued.implied.is_some(),
+        long.is_some(),
+        placeholder,
+        option.arity().unwrap_or(1),
+    );
+    if valued.multiple && option.arity().is_some() {
+        return format!(
+            "{}{}{}{}{}",
+            writer.word("("),
+            writer.spelling(spelling),
+            parts.separator,
+            writer.word(&parts.text()),
+            writer.word(")..."),
+        );
+    }
     let ellipsis = if valued.multiple { "..." } else { "" };
     format!(
         "{}{}{}",
@@ -335,7 +367,7 @@ pub(crate) struct Fact {
     text: String,
     tone: Tone,
     names: Option<Vec<String>>,
-    delimiter: Option<String>,
+    delimiter: Option<(String, String)>,
 }
 
 #[cfg(feature = "manpage")]
@@ -357,7 +389,7 @@ fn dim_fact(text: impl Into<String>) -> Fact {
 }
 
 /// A dim fact that prints a label, then names help keeps whole, then a list's delimiter.
-fn binding_fact(label: &str, names: Vec<String>, delimiter: Option<String>) -> Fact {
+fn binding_fact(label: &str, names: Vec<String>, delimiter: Option<(String, String)>) -> Fact {
     Fact {
         text: label.to_owned(),
         tone: Tone::Dim,
@@ -504,6 +536,13 @@ pub(crate) fn delimiter_literal(option: &OptionNode) -> Option<String> {
     serde_json::to_string(delimiter).ok()
 }
 
+/// The values an environment delimiter separates.
+pub(crate) fn split_noun(option: &OptionNode) -> String {
+    option
+        .arity()
+        .map_or_else(|| "a list".to_owned(), |arity| format!("{arity} values"))
+}
+
 /// The names the option's bindings contribute: its variables as `env`, with a multiple option's
 /// delimiter after them, then its configuration path as `config`. Names alone, never a value.
 fn binding_facts(option: &OptionNode, help: &OptionHelp) -> Vec<Fact> {
@@ -519,7 +558,8 @@ fn binding_facts(option: &OptionNode, help: &OptionHelp) -> Vec<Fact> {
     };
     let mut facts = Vec::new();
     if !env.is_empty() {
-        facts.push(binding_fact("env:", env.clone(), delimiter_literal(option)));
+        let split = delimiter_literal(option).map(|delimiter| (delimiter, split_noun(option)));
+        facts.push(binding_fact("env:", env.clone(), split));
     }
     if let Some(path) = &help.config_path {
         facts.push(binding_fact("config:", vec![path.clone()], None));
@@ -574,9 +614,13 @@ fn write_fact(
     };
     let list = fact
         .delimiter
-        .as_deref()
-        .map_or_else(String::new, |delimiter| {
-            format!("{}{}", prose(" as a list separated by "), whole(delimiter))
+        .as_ref()
+        .map_or_else(String::new, |(delimiter, noun)| {
+            format!(
+                "{}{}",
+                prose(&format!(" as {noun} separated by ")),
+                whole(delimiter)
+            )
         });
     let joined: Vec<String> = names.iter().map(|name| whole(name)).collect();
     format!(

@@ -1053,3 +1053,36 @@ async fn a_call_reads_the_declared_default_although_the_server_environment_binds
     assert_eq!(printed["region"], "default-region");
     assert_eq!(printed["secret"], "default-secret");
 }
+
+#[tokio::test]
+async fn an_arity_tool_call_accepts_grouped_values_and_reports_wrong_lengths() {
+    let app = Application::new("draw")
+        .plugins([mcp()])
+        .extend([opted()])
+        .option("size", Opt::string().arity(2).required())
+        .option("point", Opt::string().arity(2).multiple())
+        .action(|ctx: Context| async move {
+            let size = ctx.option::<Option<Vec<String>>>("size")?;
+            let points = ctx.option::<Vec<Vec<String>>>("point")?;
+            ctx.out.print(&json!([size, points]).to_string()).await
+        });
+    let result = result_of(
+        &app,
+        "draw",
+        Some(json!({"size": [800, 600], "point": [[1, 2], ["--", "-x"]]})),
+    )
+    .await;
+    assert_eq!(
+        result,
+        json!({
+            "content": [{"type":"text","text":"[[\"800\",\"600\"],[[\"1\",\"2\"],[\"--\",\"-x\"]]]\n"}],
+            "isError": false,
+        })
+    );
+    let result = result_of(&app, "draw", Some(json!({"size": [800]}))).await;
+    assert_eq!(result["isError"], true);
+    assert_eq!(
+        result["structuredContent"]["failure"]["message"],
+        "Option \"size\": Use a list of 2 strings or numbers."
+    );
+}

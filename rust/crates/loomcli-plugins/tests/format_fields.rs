@@ -596,6 +596,7 @@ async fn the_manifest_publishes_both_formatter_control_options() {
             "deprecated": null, "description": "Select top-level fields of json and jsonl output, as a comma list.",
             "env": [], "envAllowEmpty": false, "envDelimiter": null, "implied": null,
             "long": "--fields", "multiple": true, "name": "fields", "required": false,
+            "arity": null, "lastWins": false,
             "requiredWhen": null, "schema": {"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string"},
             "short": null, "type": "string"
         })

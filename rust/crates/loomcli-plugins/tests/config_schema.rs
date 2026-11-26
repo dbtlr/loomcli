@@ -459,6 +459,7 @@ fn link_fault(schema: Value, path: &str, kind: &str) -> Option<LinkFault> {
         "boolean" => Opt::boolean().extend(extension).into(),
         "count" => Opt::count().extend(extension).into(),
         "multiple" => Opt::string().multiple().extend(extension).into(),
+        "arity" => Opt::string().arity(2).extend(extension).into(),
         _ => Opt::string().extend(extension).into(),
     };
     let app = declare(Application::new("app").plugins([config.plugin]), option)
@@ -480,7 +481,7 @@ fn declare(
 const PATH_RULE: &str = "@loomcli/plugins/config/link-path";
 const TYPE_RULE: &str = "@loomcli/plugins/config/link-type";
 const PATH_CORRECTION: &str = "Link a path the schema describes, or add the key to the schema.";
-const TYPE_CORRECTION: &str = "Link a key that holds a value the option takes: a string or a number for a string option, a Boolean for a Boolean option, a whole number for a counted option, or an array for a multiple option.";
+const TYPE_CORRECTION: &str = "Link a key that holds a value the option takes: a string or a number for a string option, a Boolean for a Boolean option, a whole number for a counted option, or an array for a multiple or arity option.";
 
 /// Asserts the whole fault, as the reference's `toEqual` does.
 fn assert_fault(fault: Option<LinkFault>, rule: &'static str, sentence: &str, correction: &str) {
@@ -885,4 +886,22 @@ fn a_directory_option_named_config_or_no_config_claims_the_plugins_own_spelling_
         });
         assert!(message.is_some(), "{name}");
     }
+}
+
+#[test]
+fn an_arity_option_links_an_array_key_and_refuses_a_string_key() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "pair": {"type": "array", "items": {"type": "string"}},
+            "word": {"type": "string"},
+        },
+    });
+    assert!(link_fault(schema.clone(), "pair", "arity").is_none());
+    assert_fault(
+        link_fault(schema, "word", "arity"),
+        TYPE_RULE,
+        "The root Command option \"opt\" links to word, which holds a string.",
+        TYPE_CORRECTION,
+    );
 }

@@ -322,8 +322,10 @@ fn option_node(option: &OptionInput, table: &Table) -> OptionNode {
                 .and_then(|validator| validator.schema.clone()),
             validate_omitted: config.validate_omitted,
             validated: config.validator.is_some(),
+            arity: config.arity,
             background: config.background,
             env_allow_empty: config.env_allow_empty,
+            last_wins: config.last_wins,
             kind: StringType::String,
         }),
         OptionDecl::Content(config) => OptionNode::Content(ContentOptionNode {

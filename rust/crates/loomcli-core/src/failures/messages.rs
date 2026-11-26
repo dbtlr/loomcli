@@ -192,6 +192,31 @@ pub(crate) fn missing_attached_value(spelling: &str) -> String {
     )
 }
 
+pub(crate) fn missing_arity(
+    spelling: &str,
+    arity: usize,
+    received: usize,
+    refused: Option<&str>,
+) -> String {
+    let spelling = quoted(spelling);
+    match refused {
+        Some(refused) => format!(
+            "Option {spelling} requires {arity} values, and {} reads as an option. Supply {arity} values after {spelling}; a value that reads as an option cannot be one of them.",
+            quoted(refused)
+        ),
+        None => format!(
+            "Option {spelling} requires {arity} values and received {received}. Supply {arity} values after {spelling}."
+        ),
+    }
+}
+
+pub(crate) fn attached_arity_value(spelling: &str) -> String {
+    let spelling = quoted(spelling);
+    format!(
+        "Option {spelling} takes its values as separate words. Supply each one after {spelling} as its own word."
+    )
+}
+
 pub(crate) fn counted_value(spelling: &str) -> String {
     let spelling = quoted(spelling);
     format!(

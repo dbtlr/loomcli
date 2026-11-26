@@ -101,6 +101,17 @@ fn read_variable(decl: &OptionDecl, env: &Env) -> Option<(Reading, String)> {
     })?;
     let raw = env.get(variable.as_str())?;
     let reading = match decl {
+        OptionDecl::String(option) if let Some(arity) = option.arity => {
+            let words = match option.env_delimiter.as_deref() {
+                Some(delimiter) => raw.split(delimiter).map(str::to_owned).collect::<Vec<_>>(),
+                None => vec![raw.to_owned()],
+            };
+            if words.len() == arity {
+                Reading::Fill(Fill::Tuples(vec![words]))
+            } else {
+                Reading::Rejected
+            }
+        }
         OptionDecl::String(option) => {
             Reading::Fill(split(raw, option.multiple, option.env_delimiter.as_deref()))
         }
@@ -167,6 +178,8 @@ enum RawKind {
     Count,
     List,
     String,
+    Tuple(usize),
+    Tuples(usize),
 }
 
 impl RawKind {
@@ -174,24 +187,41 @@ impl RawKind {
         match decl {
             OptionDecl::Boolean(_) => RawKind::Boolean,
             OptionDecl::Count(_) => RawKind::Count,
+            _ if let Some(arity) = decl.arity() => {
+                if decl.multiple() {
+                    RawKind::Tuples(arity)
+                } else {
+                    RawKind::Tuple(arity)
+                }
+            }
             _ if decl.multiple() => RawKind::List,
             _ => RawKind::String,
         }
     }
 
     /// How a fault names the value an answer owed.
-    fn owed(self) -> &'static str {
+    fn owed(self) -> String {
         match self {
-            RawKind::Boolean => "a Boolean",
-            RawKind::Count => "a whole number of 0 or more",
-            RawKind::List => "an array of strings",
-            RawKind::String => "a string",
+            RawKind::Boolean => "a Boolean".to_owned(),
+            RawKind::Count => "a whole number of 0 or more".to_owned(),
+            RawKind::List => "an array of strings".to_owned(),
+            RawKind::String => "a string".to_owned(),
+            RawKind::Tuple(arity) => format!("an array of {arity} strings"),
+            RawKind::Tuples(arity) => format!("an array of arrays, each of {arity} strings"),
         }
     }
 
     /// The answered value as the raw type its option takes, or `None` when it holds another.
     fn fill(self, value: &SourceValue) -> Option<Fill> {
         match (self, value) {
+            (RawKind::Tuple(arity), SourceValue::List(words)) if words.len() == arity => {
+                Some(Fill::Tuples(vec![words.clone()]))
+            }
+            (RawKind::Tuples(arity), SourceValue::Tuples(tuples))
+                if tuples.iter().all(|words| words.len() == arity) =>
+            {
+                Some(Fill::Tuples(tuples.clone()))
+            }
             (RawKind::List, SourceValue::List(list)) => Some(Fill::List(list.clone())),
             (RawKind::Boolean, SourceValue::Bool(flag)) => Some(Fill::Flag(*flag)),
             (RawKind::Count, SourceValue::Number(number))

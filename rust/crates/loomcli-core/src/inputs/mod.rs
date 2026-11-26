@@ -27,6 +27,7 @@ pub use options::{
     StringOpt,
 };
 pub(crate) use typed::DeclarationCall;
+pub(crate) use typed::input_read;
 pub use typed::{
     Declarations, FromInputValue, GlobalInputs, InputValues, Inputs, IntoInputValue, IsType,
     NoInputs, Required, SuppliedInputs, SuppliedValue, assert_string_input,

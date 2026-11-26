@@ -278,3 +278,68 @@ async fn a_relative_path_resolves_against_the_files_directory_and_provided_keeps
         json!("/abs/dir")
     );
 }
+
+#[tokio::test]
+async fn configuration_fills_arity_groups_and_ignores_a_wrong_shape_as_one_value() {
+    use loomcli_core::{Application, Context, Opt, RunOptions};
+    use loomcli_plugins::config::extension::{CONFIG_INPUT, ConfigInputFacts};
+    use loomcli_plugins::config::{ConfigurationSettings, configuration};
+    use loomcli_testing::{MockFields, mock_process};
+    use std::sync::Arc;
+
+    let space = Workspace::new();
+    let file = space.write(
+        ".app.json",
+        r#"{"size":[800,600],"points":[[1,2],["3",4]]}"#,
+    );
+    let plugin = configuration::<serde_json::Value>(ConfigurationSettings::new(None)).plugin;
+    let app = Application::new("app")
+        .plugins((plugin, loud()))
+        .option(
+            "size",
+            Opt::string()
+                .arity(2)
+                .default(["40", "20"])
+                .extend([CONFIG_INPUT.value(ConfigInputFacts::path("size"))]),
+        )
+        .option(
+            "point",
+            Opt::string()
+                .arity(2)
+                .multiple()
+                .extend([CONFIG_INPUT.value(ConfigInputFacts::path("points"))]),
+        )
+        .action(|ctx: Context| async move {
+            let size = ctx.option::<Option<Vec<String>>>("size")?;
+            let points = ctx.option::<Vec<Vec<String>>>("point")?;
+            ctx.out.print(&json!([size, points]).to_string()).await
+        });
+    let run = async || {
+        let handle = mock_process(MockFields::new().cwd(file.parent().unwrap()).argv(["-L"]));
+        let status = app
+            .run(RunOptions::new().process(Arc::clone(&handle) as _))
+            .await;
+        assert_eq!(status.get(), 0, "{}", handle.stderr_text());
+        (
+            serde_json::from_str::<serde_json::Value>(&handle.stdout_text()).unwrap(),
+            handle.stderr_text(),
+        )
+    };
+    assert_eq!(
+        run().await,
+        (
+            json!([["800", "600"], [["1", "2"], ["3", "4"]]]),
+            String::new()
+        )
+    );
+    space.write(".app.json", r#"{"size":[800],"points":[[1,2],[3,false]]}"#);
+    let (value, stderr) = run().await;
+    assert_eq!(value, json!([["40", "20"], []]));
+    assert_eq!(
+        stderr,
+        wrong(&[
+            "Ignored option \"--size\" from size in .app.json: Use an array of 2 strings or numbers.",
+            "Ignored option \"--point\" from points in .app.json: Use an array of arrays, each of 2 strings or numbers.",
+        ])
+    );
+}

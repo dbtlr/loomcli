@@ -220,7 +220,7 @@ fn a_passthrough_field_rejects_facts_other_than_description_at_the_key() {
         pair(
             "unknown input fact `unknown`; the facts are `name`, `description`, `short`, \
              `short_only`, `aliases`, `hidden`, `deprecated`, `control`, `count`, `polarity`, \
-             `validate`, `validate_omitted`, `default`, `implied`, `required`, `non_interactive`, \
+             `validate`, `validate_omitted`, `default`, `implied`, `last_wins`, `arity`, `required`, `non_interactive`, \
              `env`, `env_delimiter`, `env_allow_empty`, `extensions`, `stdin`, `min`, `max`, \
              `interaction`, `color`, `plain`, `verbose`, `quiet`, `background`, `builder`",
             "unknown",
@@ -766,5 +766,34 @@ fn a_plain_option_takes_only_a_positive_long_spelling_and_no_other_source() {
             inputs_fault(&format!("struct I {{ #[option({attribute})] flat: bool }}")),
             pair(message, key),
         );
+    }
+}
+
+#[test]
+fn arity_and_last_wins_reject_incompatible_derived_fields() {
+    for (source, span) in [
+        ("struct I { #[option(arity)] point: String }", "arity"),
+        ("struct I { #[option(arity)] point: [String; 1] }", "1"),
+        (
+            "struct I { #[option(arity, implied = \"x\")] point: [String; 2] }",
+            "implied",
+        ),
+        (
+            "struct I { #[option(arity, env = \"POINT\")] point: Vec<[String; 2]> }",
+            "env",
+        ),
+        (
+            "struct I { #[option(arity, default = [\"x\"])] point: [String; 2] }",
+            "default",
+        ),
+        ("struct I { #[option(last_wins)] point: bool }", "last_wins"),
+        (
+            "struct I { #[option(last_wins)] point: Vec<String> }",
+            "last_wins",
+        ),
+    ] {
+        let (message, found) = inputs_fault(source);
+        assert!(!message.is_empty(), "{source}");
+        assert_eq!(found, span, "{source}");
     }
 }

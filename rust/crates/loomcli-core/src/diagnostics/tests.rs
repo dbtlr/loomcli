@@ -53,9 +53,9 @@ fn every_rule_core_declares_has_one_declaration_a_one_line_headline_and_an_expla
 }
 
 #[test]
-fn the_registry_holds_fifty_one_shared_rules_and_eight_rust_rules() {
-    assert_eq!(rules::ALL.len(), 59);
-    let ports: Vec<&str> = rules::ALL[51..]
+fn the_registry_holds_fifty_two_shared_rules_and_eight_rust_rules() {
+    assert_eq!(rules::ALL.len(), 60);
+    let ports: Vec<&str> = rules::ALL[52..]
         .iter()
         .map(|rule| rule.identity())
         .collect();
@@ -137,10 +137,6 @@ fn shared_rules_keep_their_pinned_headlines_and_explanations() {
     // Keep the wording for the features Rust currently supports until the corresponding ports land.
     let pending = [
         (
-            "@loomcli/core/env-delimiter",
-            "A multiple option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.",
-        ),
-        (
             "@loomcli/core/failure-encoder-taken",
             "A failed run writes its failure through the one encoder registered for the media type its selected view declares. Two encoders for one media type leave core no way to choose between them.",
         ),
@@ -167,13 +163,7 @@ fn shared_rules_keep_their_pinned_headlines_and_explanations() {
             .map_or(explanation.as_str(), |(_, text)| *text);
         assert_eq!(rule.explanation(), expected, "{identity}");
     }
-    assert_eq!(
-        missing,
-        [
-            "@loomcli/core/option-arity",
-            "@loomcli/core/phrasebook-language",
-        ]
-    );
+    assert_eq!(missing, ["@loomcli/core/phrasebook-language",]);
     let shared: BTreeSet<&str> = reference
         .iter()
         .map(|(identity, _, _)| identity.as_str())

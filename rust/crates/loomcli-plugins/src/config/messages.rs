@@ -174,3 +174,11 @@ pub(super) const COUNT_ISSUE: &str = "Use a whole number of 0 or more.";
 pub(super) const STRING_OR_NUMBER_ISSUE: &str = "Use a string or a number.";
 
 pub(super) const STRING_LIST_ISSUE: &str = "Use an array of strings or numbers.";
+
+pub(super) fn arity_issue(arity: usize, multiple: bool) -> String {
+    if multiple {
+        format!("Use an array of arrays, each of {arity} strings or numbers.")
+    } else {
+        format!("Use an array of {arity} strings or numbers.")
+    }
+}

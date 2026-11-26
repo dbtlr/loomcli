@@ -81,6 +81,11 @@ impl<'a> Declared<'a> {
         }
     }
 
+    /// The arity count for a string option that declares one.
+    pub(crate) fn arity(self) -> Option<usize> {
+        self.option().and_then(OptionDecl::arity)
+    }
+
     /// The option declaration, for an option.
     pub(crate) fn option(self) -> Option<&'a OptionDecl> {
         match self {
@@ -273,7 +278,7 @@ pub(crate) fn validate_list(
     context: &dyn Fn() -> ValidationContext,
     implied: Option<(&[usize], &ErasedOutput)>,
     cancelled: &dyn Fn() -> bool,
-) -> Result<RawValue, Vec<Issue>> {
+) -> Result<Vec<ErasedOutput>, Vec<Issue>> {
     let mut outputs = Vec::new();
     let mut issues = Vec::new();
     for (position, value) in values.iter().enumerate() {
@@ -300,9 +305,50 @@ pub(crate) fn validate_list(
         }
     }
     if issues.is_empty() {
-        Ok(RawValue::Many(outputs))
+        Ok(outputs)
     } else {
         Err(issues)
+    }
+}
+
+/// Validates every word of each arity occurrence, retaining the occurrence boundaries.
+pub(crate) fn validate_arity(
+    validator: Option<&ErasedValidator>,
+    tuples: &[Vec<String>],
+    multiple: bool,
+    context: &dyn Fn() -> ValidationContext,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<RawValue, Vec<Issue>> {
+    let mut outputs = Vec::new();
+    let mut issues = Vec::new();
+    for (occurrence, words) in tuples.iter().enumerate() {
+        let Some(validator) = validator else {
+            outputs.push(Arc::new(words.clone()) as ErasedOutput);
+            continue;
+        };
+        match validate_list(Some(validator), words, context, None, cancelled) {
+            Ok(words) => {
+                // Each word was erased by this same validator, so its pack knows the output type.
+                if let Some(output) = (validator.pack)(&words) {
+                    outputs.push(output);
+                } else {
+                    issues.extend(reported(Vec::new()));
+                }
+            }
+            Err(found) if multiple => issues.extend(
+                found
+                    .into_iter()
+                    .map(|issue| issue.at(super::PathSegment::Index(occurrence))),
+            ),
+            Err(found) => issues.extend(found),
+        }
+    }
+    if !issues.is_empty() {
+        Err(issues)
+    } else if multiple {
+        Ok(RawValue::Many(outputs))
+    } else {
+        Ok(outputs.pop().map_or(RawValue::Absent, RawValue::One))
     }
 }
 
@@ -443,22 +489,33 @@ pub(crate) fn prepare_declared_values(
         };
         if let Some(default) = input.default() {
             let validator = input.validator();
-            let output = if input.collects() {
-                let list = match default {
-                    DefaultValue::One(value) => std::slice::from_ref(value),
-                    DefaultValue::Many(values) => values.as_slice(),
-                };
-                validate_list(validator, list, &context, None, &|| false)
-            } else {
-                match default {
-                    DefaultValue::One(value) => {
-                        validate_one(validator, value, &context()).map(RawValue::One)
-                    }
-                    // The option-config rule keeps a list default on a collecting input.
-                    DefaultValue::Many(values) => {
-                        validate_list(validator, values, &context, None, &|| false)
-                    }
+            let output = match (input.arity(), default) {
+                (Some(_), DefaultValue::Many(words)) => validate_arity(
+                    validator,
+                    std::slice::from_ref(words),
+                    false,
+                    &context,
+                    &|| false,
+                ),
+                (Some(_), DefaultValue::Tuples(tuples)) => {
+                    validate_arity(validator, tuples, true, &context, &|| false)
                 }
+                (_, DefaultValue::One(value)) if !input.collects() => {
+                    validate_one(validator, value, &context()).map(RawValue::One)
+                }
+                (_, DefaultValue::One(value)) => validate_list(
+                    validator,
+                    std::slice::from_ref(value),
+                    &context,
+                    None,
+                    &|| false,
+                )
+                .map(RawValue::Many),
+                (_, DefaultValue::Many(values)) => {
+                    validate_list(validator, values, &context, None, &|| false).map(RawValue::Many)
+                }
+                // The declaring call accepts grouped defaults only for multiple arity options.
+                (_, DefaultValue::Tuples(_)) => Err(reported(Vec::new())),
             };
             match output {
                 Ok(output) => values.defaults.push((key.clone(), output)),

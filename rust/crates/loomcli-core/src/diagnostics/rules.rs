@@ -89,11 +89,18 @@ pub(crate) const DECLARED_NAME: DiagnosticRule = diagnostic_rule(
     "An action reads each argument and option under its name, and help and diagnostics print it. A leading \"-\" reads as an option, and whitespace or \"=\" splits the name where the parser reads it.",
 );
 
+/// `@loomcli/core/option-arity`: Invalid option arity.
+pub(crate) const OPTION_ARITY: DiagnosticRule = diagnostic_rule(
+    "@loomcli/core/option-arity",
+    "Invalid option arity",
+    "An option with an arity takes exactly that many words per occurrence and gives the action a tuple of them. A count below 2 is the single word an option without arity already takes, and a count that is not whole names no number of words.",
+);
+
 /// `@loomcli/core/env-delimiter`: Empty environment delimiter.
 pub(crate) const ENV_DELIMITER: DiagnosticRule = diagnostic_rule(
     "@loomcli/core/env-delimiter",
     "Empty environment delimiter",
-    "A multiple option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.",
+    "A multiple option's or a scalar arity option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.",
 );
 
 /// `@loomcli/core/extension-output`: Extension output not plain data.
@@ -497,6 +504,7 @@ pub(crate) const ALL: &[DiagnosticRule] = &[
     MISSING_INPUT_NAME,
     NAME_SHARED_ACROSS_KINDS,
     NEXT_MISUSE,
+    OPTION_ARITY,
     OPTION_DECLARED_TWICE,
     OPTION_GROUP,
     OPTIONAL_ARGUMENT_LAST,

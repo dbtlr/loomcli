@@ -171,19 +171,19 @@ pub(crate) fn color_choice(
 /// The run's background choice from argv alone: among the words before the first bare `--`, the
 /// last occurrence of a long spelling of the background-marked option, its aliases' included,
 /// whose value is `dark` or `light`. The value is attached after `=`, or is the next word unless
-/// that word is an option word or the bare `--`. Any other value supplies nothing.
+/// that word is an option word or the bare `--`. With last-wins, a later value outside the two
+/// choices leaves the background to the remaining sources.
 pub(crate) fn background_choice(
     application: &ApplicationDeclaration,
     argv: &[String],
 ) -> Option<Background> {
     let name = marked(application, "background")?;
-    let spellings: Vec<&str> = application
-        .global_table
-        .table
+    let table = &application.global_table.table;
+    let spellings = table
         .iter()
-        .filter(|(_, entry)| entry.name == name && entry.role != Role::Short)
-        .map(|(spelling, _)| spelling.as_str())
-        .collect();
+        .filter(|(_, entry)| entry.name == name && entry.role != Role::Short);
+    let last_wins = spellings.clone().any(|(_, entry)| entry.last_wins);
+    let spellings: Vec<&str> = spellings.map(|(spelling, _)| spelling.as_str()).collect();
     let mut choice = None;
     let mut index = 0;
     while let Some(word) = argv.get(index) {
@@ -204,8 +204,11 @@ pub(crate) fn background_choice(
                 .filter(|(spelling, _)| spellings.contains(spelling))
                 .map(|(_, value)| value)
         };
-        if let Some(background) = value.and_then(Background::from_name) {
-            choice = Some(background);
+        if let Some(value) = value {
+            let background = Background::from_name(value);
+            if last_wins || background.is_some() {
+                choice = background;
+            }
         }
     }
     choice

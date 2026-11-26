@@ -79,7 +79,10 @@ fn when_not_interactive(conditional: bool) -> &'static str {
 /// What to supply for a missing option: its spellings that need no value, or its value.
 pub(crate) enum OptionFix<'a> {
     Spellings(&'a [&'a str]),
-    Value { collected: bool },
+    Value {
+        collected: bool,
+        arity: Option<usize>,
+    },
 }
 
 fn option_fix(fix: &OptionFix<'_>) -> String {
@@ -88,8 +91,26 @@ fn option_fix(fix: &OptionFix<'_>) -> String {
             let names: Vec<String> = spellings.iter().map(|name| quoted(name)).collect();
             format!("Supply {}.", names.join(" or "))
         }
-        OptionFix::Value { collected: true } => "Supply at least one value.".to_owned(),
-        OptionFix::Value { collected: false } => "Supply a value.".to_owned(),
+        OptionFix::Value {
+            collected: true,
+            arity: Some(arity),
+        } => {
+            format!("Supply at least one set of {arity} values.")
+        }
+        OptionFix::Value {
+            collected: false,
+            arity: Some(arity),
+        } => {
+            format!("Supply {arity} values.")
+        }
+        OptionFix::Value {
+            collected: true,
+            arity: None,
+        } => "Supply at least one value.".to_owned(),
+        OptionFix::Value {
+            collected: false,
+            arity: None,
+        } => "Supply a value.".to_owned(),
     }
 }
 
@@ -166,4 +187,8 @@ pub(crate) fn group_sentence(kind: OptionGroupKind, members: &[(&str, Option<&st
             format!("Options {members} must be supplied together. Supply all of them, or none.")
         }
     }
+}
+
+pub(crate) fn environment_arity(arity: usize, delimiter: &str) -> String {
+    format!("Use {arity} values separated by {}.", quoted(delimiter))
 }

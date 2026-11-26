@@ -301,6 +301,13 @@ impl ArgumentDecl {
                         }
                     }
                 }
+                if matches!(argument.default, Some(DefaultValue::Tuples(_))) {
+                    return Some((
+                        "default",
+                        "declares a grouped default, which only a multiple arity option takes"
+                            .to_owned(),
+                    ));
+                }
                 if let Some(DefaultValue::Many(_)) = argument.default
                     && !argument.variadic
                 {

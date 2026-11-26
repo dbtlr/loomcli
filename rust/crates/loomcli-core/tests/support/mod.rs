@@ -44,6 +44,7 @@ pub fn value_json(value: &SuppliedValue) -> Value {
     match value {
         SuppliedValue::One(text) => json!(text),
         SuppliedValue::Many(texts) => json!(texts),
+        SuppliedValue::Tuples(groups) => json!(groups),
         SuppliedValue::Flag(flag) => json!(flag),
         SuppliedValue::Count(count) => json!(count),
         _ => Value::Null,

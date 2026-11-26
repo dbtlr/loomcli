@@ -90,12 +90,44 @@ fn shape(request: &OptionNode, value: &Value) -> Shaped {
             || wrong(messages::COUNT_ISSUE),
             |count| Shaped::Value(SourceValue::Number(count)),
         ),
+        OptionNode::String(node) if let Some(arity) = node.arity => {
+            shape_arity(value, arity, node.multiple)
+        }
         OptionNode::String(node) if node.multiple => list_of(value),
         OptionNode::Content(node) if node.multiple => list_of(value),
         _ => text_of(value).map_or_else(
             || wrong(messages::STRING_OR_NUMBER_ISSUE),
             |text| Shaped::Value(SourceValue::String(text)),
         ),
+    }
+}
+
+fn shape_arity(value: &Value, arity: usize, multiple: bool) -> Shaped {
+    fn tuple(value: &Value, arity: usize) -> Option<Vec<String>> {
+        let Value::Array(items) = value else {
+            return None;
+        };
+        if items.len() != arity {
+            return None;
+        }
+        items.iter().map(|item| text_of(&item.value)).collect()
+    }
+
+    let shaped = if multiple {
+        match value {
+            Value::Array(items) => items
+                .iter()
+                .map(|item| tuple(&item.value, arity))
+                .collect::<Option<Vec<_>>>()
+                .map(SourceValue::Tuples),
+            _ => None,
+        }
+    } else {
+        tuple(value, arity).map(SourceValue::List)
+    };
+    match shaped {
+        Some(value) => Shaped::Value(value),
+        None => Shaped::Wrong(vec![Issue::new(messages::arity_issue(arity, multiple))]),
     }
 }
 

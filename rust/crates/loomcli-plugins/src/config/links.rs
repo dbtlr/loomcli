@@ -214,7 +214,7 @@ fn taken_types(option: &OptionNode) -> &'static [&'static str] {
     match option {
         OptionNode::Boolean(_) => &["boolean"],
         OptionNode::Count(_) => &["integer", "number"],
-        OptionNode::String(node) if node.multiple => &["array"],
+        OptionNode::String(node) if node.multiple || node.arity.is_some() => &["array"],
         OptionNode::Content(node) if node.multiple => &["array"],
         _ => &["integer", "number", "string"],
     }
@@ -331,7 +331,7 @@ fn fault_of(link: &Linked<'_>, shape: &Shape) -> Option<DeclarationError> {
             link.path,
             describe(&leaves)
         ),
-        "Link a key that holds a value the option takes: a string or a number for a string option, a Boolean for a Boolean option, a whole number for a counted option, or an array for a multiple option.",
+        "Link a key that holds a value the option takes: a string or a number for a string option, a Boolean for a Boolean option, a whole number for a counted option, or an array for a multiple or arity option.",
         &link.path,
     ))
 }

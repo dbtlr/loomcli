@@ -6,6 +6,7 @@ The reference's fixtures install `version()`, `verbose()`, `manifest()`, and oth
 
 | Reference file | Status | Notes |
 | --- | --- | --- |
+| `help-page.test.ts` (arity addition) | ported | `help_page.rs` checks grouped usage, placeholder repetition, default display, and the environment delimiter fact. |
 | `passthrough-mode.test.ts`, `help-page.test.ts`, `help-command.test.ts` | ported, parsing and terminal cases | `passthrough_mode.rs` checks the delimiter forms, child-name escape, terminal requirement, and help takeover off a terminal. `help_command.rs` covers an argument after the delimiter. |
 | `help-page.test.ts` | partly ported, 22 of 23 cases in `help_page.rs` | Not applicable: `a default JSON cannot render prints as String renders it`, because a Rust default is a string or a list of strings (see deviations). The `facts` scenario's number, bigint, `NaN`, and `Infinity` defaults are the strings they print. |
 | `views.test.ts` | partly ported, the 4 help cases in `help_page.rs` (3 tests) | Ported: an override of `helpPage` at the root and at a routed Command, a broken override reporting `app: Something went wrong.` with exit 1 in a distributed build, and a marker character in the description printing literally. The version-line cases belong to the version package. |

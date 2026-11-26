@@ -708,3 +708,69 @@ async fn a_select_question_answers_a_choice_value() {
     .await;
     assert_eq!(answer, "safe");
 }
+
+#[tokio::test]
+async fn an_arity_option_cannot_link_a_text_select_or_multiselect_question() {
+    use loomcli_prompts::{MultiselectSettings, multiselect};
+    for scenario in ["text", "select", "multiselect"] {
+        let mut option = Opt::string().arity(2);
+        if scenario != "text" {
+            option = option.multiple();
+        }
+        let app = Application::new("link").option("point", option).action(
+            move |ctx: Context| async move {
+                let error = match scenario {
+                    "text" => text(&ctx, TextSettings::new("Point").option("point"), Verbatim)
+                        .await
+                        .map(|_| ()),
+                    "select" => select::<_, _, String, _>(
+                        &ctx,
+                        SelectSettings::new("Point", vec![Choice::text("a")]).option("point"),
+                    )
+                    .await
+                    .map(|_| ()),
+                    _ => multiselect::<_, _, String, _>(
+                        &ctx,
+                        MultiselectSettings::new("Point", vec![Choice::text("a")]).option("point"),
+                    )
+                    .await
+                    .map(|_| ()),
+                }
+                .unwrap_err();
+                let fault = error.downcast_failure::<DeclarationError>().unwrap();
+                ctx.out.print(fault.sentence()).await
+            },
+        );
+        let mock = mock_process(MockFields::new().terminal(MockTerminal::new(80, 24)));
+        assert_eq!(run(app, &mock).await, 0);
+        let text = mock.stdout_text();
+        let expected = if scenario == "multiselect" {
+            "The question \"Point\" links option \"point\", which is not a multiple string option.\n"
+        } else {
+            "The question \"Point\" links option \"point\", which is not a string option that takes one value.\n"
+        };
+        assert_eq!(text, expected);
+    }
+}
+
+#[tokio::test]
+async fn a_one_word_option_can_link_a_question_whose_validator_returns_a_pair() {
+    struct Pair;
+    impl Validator for Pair {
+        type Output = [String; 2];
+
+        fn validate(&self, input: &str, _: &ValidationContext) -> Result<Self::Output, Vec<Issue>> {
+            Ok([input.to_owned(), input.to_owned()])
+        }
+    }
+    let app = Application::new("link")
+        .option("pair", Opt::string().validate(Pair))
+        .action(|ctx: Context| async move {
+            let pair = text(&ctx, TextSettings::new("Pair").option("pair"), Pair).await?;
+            assert_eq!(pair, ["word", "word"]);
+            Ok(())
+        });
+    let mock = mock_process(MockFields::new().argv(["--pair", "word"]));
+    assert_eq!(run(app, &mock).await, 0);
+    assert_eq!(mock.stderr_text(), "");
+}

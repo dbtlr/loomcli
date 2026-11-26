@@ -109,7 +109,7 @@ fn adds_occurrence(option: &OptionNode, given: u32) -> bool {
                 true
             }
         }
-        OptionNode::String(string) => string.multiple || given == 0,
+        OptionNode::String(string) => string.multiple || string.last_wins || given == 0,
         OptionNode::Content(content) => content.multiple || given == 0,
         OptionNode::Boolean(_) => given == 0,
         _ => given == 0,
@@ -257,6 +257,7 @@ fn offers_at(graph: &CommandGraph, position: &WordPosition) -> Offers {
             command,
             argument,
             prefix,
+            ..
         } => {
             let mut children = child_offers(command);
             let Some(argument) = argument else {
@@ -278,6 +279,7 @@ fn offers_at(graph: &CommandGraph, position: &WordPosition) -> Offers {
             supplied,
             counts,
             booleans,
+            ..
         } => Offers {
             directive: FILES_OFF,
             offers: option_offers(

@@ -308,7 +308,17 @@ fn list_bounds(property: &Property, schema: &mut Schema) {
 /// values, at least one when the tool requires the input, with the description and default the
 /// plugin sets in place of any the converter wrote.
 fn property_schema(property: &Property) -> Result<Schema, Error> {
-    let value = value_schema(property);
+    let mut value = value_schema(property);
+    if let Property::Option { node, .. } = property
+        && let Some(arity) = node.arity()
+    {
+        let mut tuple = Schema::new();
+        tuple.insert("type".into(), json!("array"));
+        tuple.insert("items".into(), Value::Object(value));
+        tuple.insert("minItems".into(), json!(arity));
+        tuple.insert("maxItems".into(), json!(arity));
+        value = tuple;
+    }
     let mut schema = if takes_several(property) {
         let mut list = Schema::new();
         list.insert("type".into(), json!("array"));

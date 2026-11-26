@@ -792,3 +792,29 @@ fn an_entry_with_an_empty_description_and_a_fact_keeps_the_gutter() {
         pages["kit.1"]
     );
 }
+
+#[test]
+fn arity_manpage_entries_repeat_placeholders_and_explain_the_delimiter() {
+    let graph = Application::new("draw")
+        .plugins((manpage(),))
+        .option(
+            "point",
+            Opt::string().arity(2).multiple().required().short('p'),
+        )
+        .option(
+            "resize",
+            Opt::string()
+                .arity(2)
+                .default(["800", "600"])
+                .env(["BOX_SIZE"])
+                .env_delimiter("x"),
+        )
+        .action(noop)
+        .inspect()
+        .unwrap();
+    let pages = pages_of(&graph);
+    let page = &pages["draw.1"];
+    assert!(page.contains(r"<\fIpoint\fR> <\fIpoint\fR>"), "{page}");
+    assert!(page.contains("2 values separated by"), "{page}");
+    assert!(page.contains("default: 800 600"), "{page}");
+}

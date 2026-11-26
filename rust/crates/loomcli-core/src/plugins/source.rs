@@ -28,8 +28,10 @@ pub enum SourceValue {
     Bool(bool),
     /// A number.
     Number(f64),
-    /// Strings for a multiple option.
+    /// Strings for a multiple option or one occurrence of a scalar arity option.
     List(Vec<String>),
+    /// Groups of words for a multiple arity option.
+    Tuples(Vec<Vec<String>>),
 }
 
 /// A source's answer for one option: the value, the label a message names its origin by, and the

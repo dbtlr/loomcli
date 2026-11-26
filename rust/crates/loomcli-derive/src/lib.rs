@@ -45,6 +45,8 @@ use proc_macro::TokenStream;
 /// | `validate` | `validate = text()`, any `Validator` expression | string input |
 /// | `validate_omitted` | flag; `validate` names an `OmissionValidator` | string input |
 /// | `default` | `default = "8080"` or `default = ["a", "b"]` | string input |
+/// | `arity` | flag taking the count from a fixed-size array field | string option |
+/// | `last_wins` | flag keeping the latest occurrence | scalar string option |
 /// | `implied` | `implied = "simple"` | string option |
 /// | `required` | flag, on a `Vec` field alone: at least one value | both |
 /// | `non_interactive` | flag, on an `Option` or `Vec` field: required when the run cannot ask | both |
@@ -73,6 +75,11 @@ use proc_macro::TokenStream;
 /// | `T`, with `validate = v` | string, validated by `v`; `T` is `v`'s `Output` | required unless `default` or `validate_omitted` |
 /// | `Option<T>` | string | optional; `non_interactive` requires it when the run cannot ask |
 /// | `Vec<T>` | string, multiple or variadic | `required`: at least one |
+/// | `[T; N]`, `Option<[T; N]>`, or `Vec<[T; N]>` with `arity` | string option taking `N` words per occurrence | required unless defaulted, optional, or multiple, respectively |
+///
+/// An arity option validates each word as `T`. Its default is a raw array of words, or an array
+/// of such arrays for a multiple option. For example, `#[option(arity, default = ["0", "0"])]`
+/// fills a field of type `[String; 2]`.
 ///
 /// A `bool` field is never `Option<bool>` or `Vec<bool>`; a `count` field is `u8`, `u16`, `u32`,
 /// `u64`, or `usize`; `min` and `max` sit on a `Vec` field alone.

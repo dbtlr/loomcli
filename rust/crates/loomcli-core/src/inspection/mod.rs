@@ -194,7 +194,7 @@ pub struct StringOptionNode {
     /// The declared default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<DeclaredDefault>,
-    /// The environment delimiter of a multiple option.
+    /// The environment delimiter of a multiple option or a scalar arity option.
     pub env_delimiter: Option<String>,
     /// The implied value.
     pub implied: Option<String>,
@@ -210,10 +210,14 @@ pub struct StringOptionNode {
     pub validate_omitted: bool,
     /// Whether it has a validator.
     pub validated: bool,
+    /// The number of separate words in one occurrence, if declared.
+    pub arity: Option<usize>,
     /// Whether it states the background.
     pub background: bool,
     /// Whether an empty environment value fills it.
     pub env_allow_empty: bool,
+    /// Whether a later argv occurrence replaces an earlier one.
+    pub last_wins: bool,
     #[serde(rename = "type")]
     pub(crate) kind: StringType,
 }
@@ -411,6 +415,15 @@ macro_rules! shared_field {
 }
 
 impl OptionNode {
+    /// The count of words each arity occurrence takes.
+    #[must_use]
+    pub fn arity(&self) -> Option<usize> {
+        match self {
+            Self::String(node) => node.arity,
+            _ => None,
+        }
+    }
+
     /// The declared name.
     #[must_use]
     pub fn name(&self) -> &str {
@@ -557,6 +570,16 @@ impl CommandGraph {
     }
 }
 
+/// The earlier words an unfinished invocation gave each input, keyed by declared name.
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct TypedInputs {
+    /// Raw option words, with arity occurrences flattened in the order read.
+    pub options: std::collections::BTreeMap<String, Vec<String>>,
+    /// Raw positional words bound to their argument slots.
+    pub arguments: std::collections::BTreeMap<String, Vec<String>>,
+}
+
 /// Where a word in an unfinished invocation sits, for completion. Every node is the graph's own
 /// `Arc`, so a reader compares by `Arc::ptr_eq`.
 #[derive(Clone, Debug)]
@@ -568,6 +591,8 @@ pub enum WordPosition {
         argument: Option<Arc<ArgumentNode>>,
         /// The Command routing reached.
         command: Arc<CommandNode>,
+        /// The words the earlier part of the invocation gave its inputs.
+        typed: TypedInputs,
         /// The partial word.
         prefix: String,
     },
@@ -575,6 +600,8 @@ pub enum WordPosition {
     Option {
         /// The Command routing reached.
         command: Arc<CommandNode>,
+        /// The words the earlier part of the invocation gave its inputs.
+        typed: TypedInputs,
         /// The partial word.
         prefix: String,
         /// The options already supplied, by declared name.
@@ -588,6 +615,8 @@ pub enum WordPosition {
     Value {
         /// The Command routing reached.
         command: Arc<CommandNode>,
+        /// The words the earlier part of the invocation gave its inputs.
+        typed: TypedInputs,
         /// The option.
         option: Arc<OptionNode>,
         /// The text before the value in the same word, such as `--file=`.
@@ -599,6 +628,8 @@ pub enum WordPosition {
     Argument {
         /// The Command routing reached.
         command: Arc<CommandNode>,
+        /// The words the earlier part of the invocation gave its inputs.
+        typed: TypedInputs,
         /// The argument.
         argument: Arc<ArgumentNode>,
         /// The partial word.
@@ -608,6 +639,8 @@ pub enum WordPosition {
     Passthrough {
         /// The Command routing reached.
         command: Arc<CommandNode>,
+        /// The words the earlier part of the invocation gave its inputs.
+        typed: TypedInputs,
         /// The partial word.
         prefix: String,
     },
@@ -662,6 +695,7 @@ impl Scope<'_, '_> {
             }
             return WordPosition::Passthrough {
                 command: Arc::clone(&self.command),
+                typed: self.earlier.typed_inputs(),
                 prefix: last.to_owned(),
             };
         }
@@ -699,6 +733,7 @@ impl Scope<'_, '_> {
         // Build published every option the parser reads, so every name is found.
         option.map_or(WordPosition::None, |option| WordPosition::Value {
             command: Arc::clone(&self.command),
+            typed: self.earlier.typed_inputs(),
             option: Arc::clone(option),
             lead: lead.to_owned(),
             prefix: prefix.to_owned(),
@@ -712,6 +747,7 @@ impl Scope<'_, '_> {
             return WordPosition::Command {
                 argument: self.command.arguments.first().cloned(),
                 command: Arc::clone(&self.command),
+                typed: self.earlier.typed_inputs(),
                 prefix: last.to_owned(),
             };
         }
@@ -719,6 +755,7 @@ impl Scope<'_, '_> {
             .and_then(|(index, _)| self.command.arguments.get(index))
             .map_or(WordPosition::None, |argument| WordPosition::Argument {
                 command: Arc::clone(&self.command),
+                typed: self.earlier.typed_inputs(),
                 argument: Arc::clone(argument),
                 prefix: last.to_owned(),
             })
@@ -764,6 +801,7 @@ impl Scope<'_, '_> {
         }
         WordPosition::Option {
             command: Arc::clone(&self.command),
+            typed: self.earlier.typed_inputs(),
             prefix: last.to_owned(),
             supplied: self.earlier.supplied.clone(),
             counts,

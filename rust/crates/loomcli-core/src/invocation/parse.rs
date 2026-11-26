@@ -14,13 +14,13 @@ use std::sync::Arc;
 
 use crate::commands::declaration::ErasedAction;
 use crate::failures::{
-    Error, MisplacedOptionError, MissingValueError, MissingValueForm, RepeatedOptionError,
-    UnexpectedArgumentError, UnexpectedValueError, UnknownCommandError, UnknownOptionError,
-    ValuelessKind,
+    AttachedValueRefusal, Error, MisplacedOptionError, MissingValueError, MissingValueForm,
+    RepeatedOptionError, UnexpectedArgumentError, UnexpectedValueError, UnknownCommandError,
+    UnknownOptionError,
 };
 use crate::inputs::SuppliedValue;
 use crate::inputs::table::{Form, Table};
-use crate::inspection::CommandNode;
+use crate::inspection::{CommandNode, TypedInputs};
 
 /// One entry of a spelling table: the option a spelling binds, whether that option is global, and
 /// how the spelling reads its value.
@@ -29,6 +29,7 @@ pub(crate) struct Entry {
     pub(crate) name: String,
     pub(crate) global: bool,
     pub(crate) form: Form,
+    pub(crate) last_wins: bool,
     /// Which accepted form the spelling is, which an invocation by name reads.
     pub(crate) role: crate::inputs::table::Role,
 }
@@ -36,40 +37,62 @@ pub(crate) struct Entry {
 impl Entry {
     /// Whether the option takes a string: a string or a content option.
     fn is_string(&self) -> bool {
-        matches!(self.form, Form::Separate { .. } | Form::Implied { .. })
+        matches!(
+            self.form,
+            Form::Separate { .. } | Form::Implied { .. } | Form::Arity { .. }
+        )
     }
 
     /// Whether the option collects every occurrence: a multiple string option.
     fn collects(&self) -> bool {
         matches!(
             self.form,
-            Form::Separate { multiple: true } | Form::Implied { multiple: true, .. }
+            Form::Separate { multiple: true }
+                | Form::Implied { multiple: true, .. }
+                | Form::Arity { multiple: true, .. }
         )
     }
 
-    /// Whether every occurrence adds to the option, so none is a repeat: a counted option or a
-    /// multiple string option.
-    fn accumulates(&self) -> bool {
-        matches!(self.form, Form::Count) || self.collects()
+    /// Whether a later occurrence can supply this option again.
+    fn accepts_another(&self) -> bool {
+        matches!(self.form, Form::Count) || self.collects() || self.last_wins
     }
 
     /// Whether two entries read their values alike: both take the next word, both imply a value,
     /// both are Boolean, or both count.
     fn same_class(&self, other: &Entry) -> bool {
-        std::mem::discriminant(&self.form) == std::mem::discriminant(&other.form)
+        match (&self.form, &other.form) {
+            (Form::Arity { words: one, .. }, Form::Arity { words: other, .. }) => one == other,
+            (one, other) => std::mem::discriminant(one) == std::mem::discriminant(other),
+        }
     }
 
-    /// Whether a spelling with nothing attached takes the next word as its value.
-    fn takes_separate(&self) -> bool {
-        matches!(self.form, Form::Separate { .. })
+    fn arity(&self) -> Option<usize> {
+        match self.form {
+            Form::Arity { words, .. } => Some(words),
+            _ => None,
+        }
     }
 
-    /// The kind an attached value is unexpected on: a counted option, or a Boolean one.
-    fn valueless_kind(&self) -> ValuelessKind {
-        if matches!(self.form, Form::Count) {
-            ValuelessKind::Count
-        } else {
-            ValuelessKind::Boolean
+    /// How many words a bare spelling can take from those remaining.
+    fn separate_words(&self, following: &[String]) -> usize {
+        let count = match self.form {
+            Form::Arity { words, .. } => words,
+            Form::Separate { .. } => 1,
+            _ => 0,
+        };
+        following
+            .iter()
+            .take(count)
+            .take_while(|word| !refuses_value(word))
+            .count()
+    }
+
+    fn attachment_refusal(&self) -> AttachedValueRefusal {
+        match self.form {
+            Form::Arity { .. } => AttachedValueRefusal::Arity,
+            Form::Count => AttachedValueRefusal::Count,
+            _ => AttachedValueRefusal::Boolean,
         }
     }
 }
@@ -96,6 +119,7 @@ pub(crate) fn table_entries(table: &Table, global: bool) -> SpellingTable {
                     name: entry.name.clone(),
                     global,
                     form: entry.form.clone(),
+                    last_wins: entry.last_wins,
                     role: entry.role,
                 },
             )
@@ -158,10 +182,11 @@ pub(crate) fn refuses_value(word: &str) -> bool {
     word == "--" || is_option_word(word)
 }
 
-/// The value one occurrence supplies: a string, a Boolean's own value, or one occurrence of a count.
+/// The value one occurrence supplies. A tuple holds a complete arity occurrence.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Supplied {
     Text(String),
+    Tuple(Vec<String>),
     Flag(bool),
     Count(u32),
 }
@@ -197,10 +222,13 @@ pub(crate) enum Occurrence<'g> {
     Missing {
         option: &'g Entry,
         spelling: String,
+        received: usize,
+        refused: Option<String>,
     },
     Awaiting {
         option: &'g Entry,
         spelling: String,
+        words: Vec<String>,
     },
 }
 
@@ -235,10 +263,10 @@ impl<'g> Occurrence<'g> {
     }
 }
 
-/// What one option word holds, in order, and whether its last occurrence took the next word.
+/// What one option word holds, in order, and how many following words it took.
 pub(crate) struct WordReading<'g> {
     pub(crate) occurrences: Vec<Occurrence<'g>>,
-    pub(crate) takes_next: bool,
+    pub(crate) takes: usize,
 }
 
 /// One scope's parsed option values, each map in the order the words first supplied each name.
@@ -246,6 +274,7 @@ pub(crate) struct WordReading<'g> {
 pub(crate) struct OptionValues {
     pub(crate) strings: Vec<(String, String)>,
     pub(crate) lists: Vec<(String, Vec<String>)>,
+    pub(crate) tuples: Vec<(String, Vec<Vec<String>>)>,
     pub(crate) booleans: Vec<(String, bool)>,
     pub(crate) counts: Vec<(String, u32)>,
     /// The spelling of the token that last supplied each option.
@@ -286,6 +315,7 @@ fn get<'m, T>(map: &'m [(String, T)], name: &str) -> Option<&'m T> {
 pub(crate) enum Fill {
     Text(String),
     List(Vec<String>),
+    Tuples(Vec<Vec<String>>),
     Flag(bool),
     Count(u32),
 }
@@ -295,6 +325,7 @@ impl OptionValues {
     pub(crate) fn is_supplied(&self, name: &str) -> bool {
         has(&self.strings, name)
             || has(&self.lists, name)
+            || has(&self.tuples, name)
             || has(&self.booleans, name)
             || has(&self.counts, name)
     }
@@ -307,6 +338,11 @@ impl OptionValues {
     /// The strings a multiple option collected for `name`.
     pub(crate) fn list(&self, name: &str) -> Option<&Vec<String>> {
         get(&self.lists, name)
+    }
+
+    /// The groups of words, one per supplied arity occurrence.
+    pub(crate) fn tuples(&self, name: &str) -> Option<&[Vec<String>]> {
+        get(&self.tuples, name).map(Vec::as_slice)
     }
 
     /// The Boolean value supplied for `name`.
@@ -329,6 +365,7 @@ impl OptionValues {
         match value {
             Fill::Text(text) => set(&mut self.strings, name, text),
             Fill::List(list) => set(&mut self.lists, name, list),
+            Fill::Tuples(tuples) => set(&mut self.tuples, name, tuples),
             Fill::Flag(flag) => set(&mut self.booleans, name, flag),
             Fill::Count(count) => set(&mut self.counts, name, count),
         }
@@ -338,6 +375,7 @@ impl OptionValues {
     pub(crate) fn withdraw(&mut self, name: &str) {
         self.strings.retain(|(known, _)| known != name);
         self.lists.retain(|(known, _)| known != name);
+        self.tuples.retain(|(known, _)| known != name);
         self.booleans.retain(|(known, _)| known != name);
         self.counts.retain(|(known, _)| known != name);
     }
@@ -350,6 +388,7 @@ impl OptionValues {
         Self {
             strings: both(&globals.strings, &locals.strings),
             lists: both(&globals.lists, &locals.lists),
+            tuples: both(&globals.tuples, &locals.tuples),
             booleans: both(&globals.booleans, &locals.booleans),
             counts: both(&globals.counts, &locals.counts),
             spellings: both(&globals.spellings, &locals.spellings),
@@ -379,8 +418,20 @@ impl OptionValues {
                 Some(total) => *total = total.saturating_add(*count),
                 None => self.counts.push((name.to_owned(), *count)),
             },
+            Supplied::Tuple(words) => {
+                if option.collects()
+                    && let Some(tuples) = entry_of(&mut self.tuples, name)
+                {
+                    tuples.push(words.clone());
+                } else {
+                    set(&mut self.tuples, name, vec![words.clone()]);
+                }
+            }
             Supplied::Text(text) => {
                 let position = self.write_string(option, text);
+                if option.last_wins {
+                    self.implied.retain(|(known, _)| known != name);
+                }
                 if implied {
                     match entry_of(&mut self.implied, name) {
                         Some(positions) => positions.push(position),
@@ -445,7 +496,7 @@ struct WordContext<'a, 'g> {
 impl WordContext<'_, '_> {
     /// Whether an occurrence of `option` repeats one an earlier word supplied.
     fn repeats(&self, option: &Entry) -> bool {
-        !option.accumulates() && self.values.of(option).is_supplied(&option.name)
+        !option.accepts_another() && self.values.of(option).is_supplied(&option.name)
     }
 }
 
@@ -456,7 +507,7 @@ fn bare_value<'g>(option: &'g Entry, spelling: &str) -> Option<Occurrence<'g>> {
         Form::Boolean { value } => (Supplied::Flag(*value), false),
         Form::Count => (Supplied::Count(1), false),
         Form::Implied { implied, .. } => (Supplied::Text(implied.clone()), true),
-        Form::Separate { .. } => return None,
+        Form::Separate { .. } | Form::Arity { .. } => return None,
     };
     Some(Occurrence::Value {
         option,
@@ -467,39 +518,61 @@ fn bare_value<'g>(option: &'g Entry, spelling: &str) -> Option<Occurrence<'g>> {
     })
 }
 
-/// Whether a string option with no value in its own word takes the next word as its value.
-fn takes_separate(next: Option<&str>) -> bool {
-    next.is_some_and(|word| !refuses_value(word))
+/// Which spelling to name when a word stops an arity occurrence.
+fn refused_spelling(word: &str) -> Option<String> {
+    if word == "--" {
+        None
+    } else if word.starts_with("--") {
+        Some(word.split('=').next().unwrap_or(word).to_owned())
+    } else {
+        Some(word.chars().take(2).collect())
+    }
 }
 
-/// A string option whose value is the next word: that word, unless the words ran out or it is a word
-/// the grammar never consumes as a value.
-fn separate_value<'g>(option: &'g Entry, spelling: &str, next: Option<&str>) -> WordReading<'g> {
+/// Reads the separate words after a spelling. The next option word stays available to the parser.
+fn separate_value<'g>(option: &'g Entry, spelling: &str, following: &[String]) -> WordReading<'g> {
+    let takes = option.separate_words(following);
+    let arity = option.arity();
     let spelling = spelling.to_owned();
-    match next {
-        None => WordReading {
-            occurrences: vec![Occurrence::Awaiting { option, spelling }],
-            takes_next: false,
-        },
-        Some(word) if refuses_value(word) => WordReading {
-            occurrences: vec![Occurrence::Missing { option, spelling }],
-            takes_next: false,
-        },
-        Some(word) => WordReading {
-            occurrences: vec![Occurrence::Value {
-                option,
-                spelling,
-                value: Supplied::Text(word.to_owned()),
-                lead: None,
-                implied: false,
-            }],
-            takes_next: true,
-        },
+    let occurrence = if takes == arity.unwrap_or(1) {
+        let value = if arity.is_some() {
+            Supplied::Tuple(following[..takes].to_vec())
+        } else {
+            Supplied::Text(following[0].clone())
+        };
+        Occurrence::Value {
+            option,
+            spelling,
+            value,
+            lead: None,
+            implied: false,
+        }
+    } else if let Some(refused) = following.get(takes) {
+        Occurrence::Missing {
+            option,
+            spelling,
+            received: takes,
+            refused: arity.and_then(|_| refused_spelling(refused)),
+        }
+    } else {
+        Occurrence::Awaiting {
+            option,
+            spelling,
+            words: following[..takes].to_vec(),
+        }
+    };
+    WordReading {
+        occurrences: vec![occurrence],
+        takes,
     }
 }
 
 /// A word that starts with `--`, split at its first `=` into the spelling and the value it carries.
-fn read_long<'g>(context: &WordContext<'_, 'g>, word: &str, next: Option<&str>) -> WordReading<'g> {
+fn read_long<'g>(
+    context: &WordContext<'_, 'g>,
+    word: &str,
+    following: &[String],
+) -> WordReading<'g> {
     let (spelling, inline) = match word.split_once('=') {
         Some((spelling, inline)) => (spelling, Some(inline)),
         None => (word, None),
@@ -509,29 +582,29 @@ fn read_long<'g>(context: &WordContext<'_, 'g>, word: &str, next: Option<&str>) 
             occurrences: vec![Occurrence::Unknown {
                 spelling: spelling.to_owned(),
             }],
-            takes_next: false,
+            takes: 0,
         };
     };
     if context.repeats(option) {
-        let separate = option.takes_separate() && inline.is_none() && takes_separate(next);
+        let takes = inline.map_or_else(|| option.separate_words(following), |_| 0);
         return WordReading {
             occurrences: vec![Occurrence::Repeated {
                 option,
                 spelling: spelling.to_owned(),
             }],
-            takes_next: separate,
+            takes,
         };
     }
     let Some(inline) = inline else {
         return match bare_value(option, spelling) {
             Some(bare) => WordReading {
                 occurrences: vec![bare],
-                takes_next: false,
+                takes: 0,
             },
-            None => separate_value(option, spelling, next),
+            None => separate_value(option, spelling, following),
         };
     };
-    let occurrence = if option.is_string() {
+    let occurrence = if option.is_string() && option.arity().is_none() {
         Occurrence::Value {
             option,
             spelling: spelling.to_owned(),
@@ -548,7 +621,7 @@ fn read_long<'g>(context: &WordContext<'_, 'g>, word: &str, next: Option<&str>) 
     };
     WordReading {
         occurrences: vec![occurrence],
-        takes_next: false,
+        takes: 0,
     }
 }
 
@@ -557,7 +630,7 @@ fn read_long<'g>(context: &WordContext<'_, 'g>, word: &str, next: Option<&str>) 
 struct Group<'a, 'b, 'g> {
     context: &'b WordContext<'a, 'g>,
     letters: Vec<char>,
-    next: Option<&'b str>,
+    following: &'b [String],
     set: Vec<String>,
     word: &'b str,
 }
@@ -595,7 +668,7 @@ fn valueless_letter<'g>(option: &'g Entry, spelling: String, rest: &str) -> Lett
         ends: !occurrence.is_value(),
         reading: WordReading {
             occurrences: vec![occurrence],
-            takes_next: false,
+            takes: 0,
         },
     }
 }
@@ -613,9 +686,9 @@ fn value_letter<'g>(
         let reading = match bare_value(option, &spelling) {
             Some(bare) => WordReading {
                 occurrences: vec![bare],
-                takes_next: false,
+                takes: 0,
             },
-            None => separate_value(option, &spelling, group.next),
+            None => separate_value(option, &spelling, group.following),
         };
         return LetterReading {
             reading,
@@ -623,17 +696,26 @@ fn value_letter<'g>(
         };
     }
     let value = rest.strip_prefix('=').unwrap_or(rest);
-    let lead = group.word[..group.word.len() - value.len()].to_owned();
+    let occurrence = if option.arity().is_some() {
+        Occurrence::Unexpected {
+            option,
+            spelling,
+            value: value.to_owned(),
+        }
+    } else {
+        let lead = group.word[..group.word.len() - value.len()].to_owned();
+        Occurrence::Value {
+            option,
+            spelling,
+            value: Supplied::Text(value.to_owned()),
+            lead: Some(lead),
+            implied: false,
+        }
+    };
     LetterReading {
         reading: WordReading {
-            occurrences: vec![Occurrence::Value {
-                option,
-                spelling,
-                value: Supplied::Text(value.to_owned()),
-                lead: Some(lead),
-                implied: false,
-            }],
-            takes_next: false,
+            occurrences: vec![occurrence],
+            takes: 0,
         },
         ends: true,
     }
@@ -647,18 +729,22 @@ fn read_letter<'g>(group: &mut Group<'_, '_, 'g>, index: usize) -> LetterReading
         return LetterReading {
             reading: WordReading {
                 occurrences: vec![Occurrence::Unknown { spelling }],
-                takes_next: false,
+                takes: 0,
             },
             ends: true,
         };
     };
-    let in_group = group.set.contains(&option.name) && !option.accumulates();
+    let in_group = group.set.contains(&option.name) && !option.accepts_another();
     if in_group || group.context.repeats(option) {
-        let takes_next = option.takes_separate() && rest.is_empty() && takes_separate(group.next);
+        let takes = if rest.is_empty() {
+            option.separate_words(group.following)
+        } else {
+            0
+        };
         return LetterReading {
             reading: WordReading {
                 occurrences: vec![Occurrence::Repeated { option, spelling }],
-                takes_next,
+                takes,
             },
             ends: true,
         };
@@ -677,12 +763,12 @@ fn read_letter<'g>(group: &mut Group<'_, '_, 'g>, index: usize) -> LetterReading
 fn read_group<'g>(
     context: &WordContext<'_, 'g>,
     word: &str,
-    next: Option<&str>,
+    following: &[String],
 ) -> WordReading<'g> {
     let mut group = Group {
         context,
         letters: word.chars().skip(1).collect(),
-        next,
+        following,
         set: Vec::new(),
         word,
     };
@@ -693,28 +779,28 @@ fn read_group<'g>(
         if letter.ends {
             return WordReading {
                 occurrences,
-                takes_next: letter.reading.takes_next,
+                takes: letter.reading.takes,
             };
         }
     }
     WordReading {
         occurrences,
-        takes_next: false,
+        takes: 0,
     }
 }
 
-/// One option word read against one table, with the word after it as its possible value.
+/// One option word read against one table, with its remaining words available as values.
 fn read_option_word<'g>(
     table: &'g SpellingTable,
     values: &ScopeValues,
     word: &str,
-    next: Option<&str>,
+    following: &[String],
 ) -> WordReading<'g> {
     let context = WordContext { table, values };
     if word.starts_with("--") {
-        read_long(&context, word, next)
+        read_long(&context, word, following)
     } else {
-        read_group(&context, word, next)
+        read_group(&context, word, following)
     }
 }
 
@@ -737,6 +823,8 @@ pub(crate) struct AwaitingValue {
     pub(crate) global: bool,
     pub(crate) name: String,
     pub(crate) spelling: String,
+    pub(crate) arity: Option<usize>,
+    pub(crate) words: Vec<String>,
 }
 
 /// The state one reading carries from word to word, through routing and the routed Command's words
@@ -859,11 +947,17 @@ impl<'g> ReadState<'g> {
                 let failure = MisplacedOptionError::new(spelling, vec![self.path.clone()]).into();
                 self.hold(failure, false)
             }
-            Occurrence::Awaiting { option, spelling } => {
+            Occurrence::Awaiting {
+                option,
+                spelling,
+                words,
+            } => {
                 self.awaiting = Some(AwaitingValue {
                     global: option.global,
                     name: option.name.clone(),
                     spelling: spelling.clone(),
+                    arity: option.arity(),
+                    words: words.clone(),
                 });
                 false
             }
@@ -874,17 +968,27 @@ impl<'g> ReadState<'g> {
             } => {
                 self.note_faulted(option);
                 let failure =
-                    UnexpectedValueError::new(spelling, value, option.valueless_kind()).into();
+                    UnexpectedValueError::new(spelling, value, option.attachment_refusal()).into();
                 self.hold(failure, option.global)
             }
             Occurrence::Repeated { option, spelling } => {
                 self.note_faulted(option);
                 self.hold(RepeatedOptionError::new(spelling).into(), option.global)
             }
-            Occurrence::Missing { option, spelling } => {
+            Occurrence::Missing {
+                option,
+                spelling,
+                received,
+                refused,
+            } => {
                 self.note_faulted(option);
-                let failure = MissingValueError::new(spelling, MissingValueForm::Attached).into();
-                self.hold(failure, option.global)
+                let failure = option.arity().map_or_else(
+                    || MissingValueError::new(spelling, MissingValueForm::Attached),
+                    |arity| {
+                        MissingValueError::for_arity(spelling, arity, *received, refused.as_deref())
+                    },
+                );
+                self.hold(failure.into(), option.global)
             }
         }
     }
@@ -919,9 +1023,13 @@ impl<'g> ReadState<'g> {
     /// declaration of the same spelling. A Command without it reports the spelling as it reports any
     /// its table lacks, and a declaration of another value class is misplaced, because the parent's
     /// declaration already decided whether the next word was the value.
-    fn rebound(&self, pending: &Occurrence<'g>) -> Occurrence<'g> {
+    fn rebound(
+        command: &'g GrammarCommand,
+        values: &ScopeValues,
+        pending: &Occurrence<'g>,
+    ) -> Occurrence<'g> {
         let spelling = pending.spelling().to_owned();
-        let Some(option) = lookup(&self.command.table, &spelling) else {
+        let Some(option) = lookup(&command.table, &spelling) else {
             return Occurrence::Unknown { spelling };
         };
         let Some(held) = pending.option() else {
@@ -938,8 +1046,8 @@ impl<'g> ReadState<'g> {
                 ..
             } => {
                 let context = WordContext {
-                    table: &self.command.table,
-                    values: &self.values,
+                    table: &command.table,
+                    values,
                 };
                 if context.repeats(option) {
                     return Occurrence::Repeated { option, spelling };
@@ -964,7 +1072,7 @@ impl<'g> ReadState<'g> {
                 }
             }
             Occurrence::Unexpected { value, .. } => {
-                if option.is_string() {
+                if option.is_string() && option.arity().is_none() {
                     Occurrence::Misplaced { spelling }
                 } else {
                     Occurrence::Unexpected {
@@ -975,7 +1083,14 @@ impl<'g> ReadState<'g> {
                 }
             }
             Occurrence::Repeated { .. } => Occurrence::Repeated { option, spelling },
-            Occurrence::Missing { .. } => Occurrence::Missing { option, spelling },
+            Occurrence::Missing {
+                received, refused, ..
+            } => Occurrence::Missing {
+                option,
+                spelling,
+                received: *received,
+                refused: refused.clone(),
+            },
             other => other.clone(),
         }
     }
@@ -985,7 +1100,7 @@ impl<'g> ReadState<'g> {
         let pending = std::mem::take(&mut self.pending);
         for (at, occurrence) in &pending {
             self.at = *at;
-            let bound = self.rebound(occurrence);
+            let bound = Self::rebound(self.command, &self.values, occurrence);
             self.apply_occurrence(&bound);
         }
     }
@@ -1004,13 +1119,13 @@ impl<'g> ReadState<'g> {
     }
 
     /// One word of the routed Command, read against its table. Answers how many later words it took.
-    fn read_command_word(&mut self, word: &str, next: Option<&str>) -> usize {
+    fn read_command_word(&mut self, word: &str, following: &[String]) -> usize {
         if !is_option_word(word) {
             self.positional(word);
             return 0;
         }
-        let reading = read_option_word(&self.command.table, &self.values, word, next);
-        let takes = usize::from(reading.takes_next);
+        let reading = read_option_word(&self.command.table, &self.values, word, following);
+        let takes = reading.takes;
         self.apply(reading);
         takes
     }
@@ -1069,6 +1184,7 @@ pub(crate) struct RoutingFailure {
 pub(crate) struct WordsRead<'g> {
     pub(crate) awaiting: Option<AwaitingValue>,
     pub(crate) command: &'g GrammarCommand,
+    pending: Vec<(usize, Occurrence<'g>)>,
     /// Whether the routed Command read a word, so no later plain word names a child.
     pub(crate) committed: bool,
     pub(crate) delimited: bool,
@@ -1083,6 +1199,74 @@ pub(crate) struct WordsRead<'g> {
     pub(crate) read: usize,
     pub(crate) supplied: Vec<String>,
     pub(crate) values: ScopeValues,
+}
+
+impl WordsRead<'_> {
+    /// Reads the earlier words for completion, including a parent's still-unbound occurrences.
+    pub(crate) fn typed_inputs(&self) -> TypedInputs {
+        let mut held = ScopeValues::default();
+        for (_, occurrence) in &self.pending {
+            if let Occurrence::Value {
+                option,
+                value,
+                implied,
+                ..
+            } = ReadState::rebound(self.command, &held, occurrence)
+            {
+                held.locals.write(option, &value, implied);
+            }
+        }
+        let locals = if self.pending.is_empty() {
+            &self.values.locals
+        } else {
+            &held.locals
+        };
+
+        let mut typed = TypedInputs::default();
+        for values in [&self.values.globals, locals] {
+            for (name, value) in &values.strings {
+                if values.implied_positions(name).is_none_or(Vec::is_empty) {
+                    typed.options.insert(name.clone(), vec![value.clone()]);
+                }
+            }
+            for (name, words) in &values.lists {
+                let implied = values.implied_positions(name);
+                let words: Vec<_> = words
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| implied.is_none_or(|positions| !positions.contains(index)))
+                    .map(|(_, word)| word.clone())
+                    .collect();
+                if !words.is_empty() {
+                    typed.options.insert(name.clone(), words);
+                }
+            }
+            for (name, tuples) in &values.tuples {
+                typed
+                    .options
+                    .insert(name.clone(), tuples.iter().flatten().cloned().collect());
+            }
+        }
+        if let Some(awaiting) = &self.awaiting
+            && !awaiting.words.is_empty()
+        {
+            typed
+                .options
+                .entry(awaiting.name.clone())
+                .or_default()
+                .extend_from_slice(&awaiting.words);
+        }
+        for (index, word) in self.positionals.iter().enumerate() {
+            if let Some((_, slot)) = argument_slot(&self.command.arguments, index) {
+                typed
+                    .arguments
+                    .entry(slot.name.clone())
+                    .or_default()
+                    .push(word.clone());
+            }
+        }
+        typed
+    }
 }
 
 /// Reads a word list through routing, the routed Command's own words, and the delimiter tail.
@@ -1142,9 +1326,10 @@ pub(crate) fn read_words<'g>(
             }
             break;
         }
-        index += state.read_command_word(word, words.get(index + 1).map(String::as_str)) + 1;
+        index += state.read_command_word(word, &words[index + 1..]) + 1;
     }
     Ok(WordsRead {
+        pending: state.pending,
         awaiting: state.awaiting,
         command: state.command,
         committed: start < words.len() && words[start] != "--",
@@ -1183,8 +1368,7 @@ fn route<'g>(
             } else {
                 &command.table
             };
-            let next = words.get(index + 1).map(String::as_str);
-            let reading = read_option_word(table, &state.values, word, next);
+            let reading = read_option_word(table, &state.values, word, &words[index + 1..]);
             if reading
                 .occurrences
                 .iter()
@@ -1192,7 +1376,7 @@ fn route<'g>(
             {
                 break;
             }
-            let read = if reading.takes_next { 2 } else { 1 };
+            let read = reading.takes + 1;
             state.apply(reading);
             read
         } else {
@@ -1288,7 +1472,20 @@ pub(crate) fn parse_invocation<'g>(
     let missing = read.awaiting.as_ref().map(|awaiting| HeldFault {
         at: read.read,
         kind: FaultKind::Failure(
-            MissingValueError::new(&awaiting.spelling, MissingValueForm::Separate).into(),
+            awaiting
+                .arity
+                .map_or_else(
+                    || MissingValueError::new(&awaiting.spelling, MissingValueForm::Separate),
+                    |arity| {
+                        MissingValueError::for_arity(
+                            &awaiting.spelling,
+                            arity,
+                            awaiting.words.len(),
+                            None,
+                        )
+                    },
+                )
+                .into(),
         ),
     });
     let fault = read.fault.or(missing).map(|fault| match fault.kind {
@@ -1324,5 +1521,5 @@ pub(crate) fn parse_invocation<'g>(
 /// What locate reads of one option word: the occurrences it holds against the routed Command's
 /// table and the earlier words' values, with no next word.
 pub(crate) fn read_last_word<'g>(read: &WordsRead<'g>, word: &str) -> Vec<Occurrence<'g>> {
-    read_option_word(&read.command.table, &read.values, word, None).occurrences
+    read_option_word(&read.command.table, &read.values, word, &[]).occurrences
 }

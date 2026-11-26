@@ -426,6 +426,7 @@ fn a_description_reads_each_line_break_as_a_space_with_every_control_character_r
     let position = WordPosition::Command {
         argument: None,
         command: Arc::new(root),
+        typed: loomcli_core::TypedInputs::default(),
         prefix: String::new(),
     };
     assert_eq!(
@@ -550,4 +551,40 @@ async fn a_shell_command_reaches_help_when_help_is_installed() {
         "{}",
         ran.stdout
     );
+}
+
+#[test]
+fn arity_offers_every_value_and_last_wins_offers_another_occurrence() {
+    let graph = Application::new("draw")
+        .option(
+            "point",
+            Opt::string()
+                .arity(2)
+                .last_wins()
+                .validate(shaped(["one", "two"])),
+        )
+        .option(
+            "once",
+            Opt::string().arity(2).validate(shaped(["one", "two"])),
+        )
+        .action(nothing)
+        .inspect()
+        .unwrap();
+    assert_eq!(
+        answered(&graph, &["--point", ""]),
+        framed(&["one", "two"], 4)
+    );
+    assert_eq!(
+        answered(&graph, &["--point", "one", "t"]),
+        framed(&["two"], 4)
+    );
+    assert_eq!(
+        answered(&graph, &["--point", "one", "two", "--p"]),
+        framed(&["--point"], 4)
+    );
+    assert_eq!(
+        answered(&graph, &["--once", "one", "two", "--o"]),
+        framed(&[], 4)
+    );
+    assert!(matches!(locate(&graph, &["--point="]), WordPosition::None));
 }

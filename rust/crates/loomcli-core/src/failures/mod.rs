@@ -17,10 +17,11 @@ pub(crate) mod translators;
 mod tests;
 
 pub use builtin::{
-    DeclarationError, FatalError, InputError, InternalError, LoomError, MisplacedOptionError,
-    MissingValueError, MissingValueForm, NonCallableCommandError, RepeatedOptionError, ResultError,
-    ResultFault, TerminalUnavailableError, UnexpectedArgumentError, UnexpectedValueError,
-    UnknownCommandError, UnknownOptionError, UsageError, ValuelessKind, WorkingDirectoryError,
+    AttachedValueRefusal, DeclarationError, FatalError, InputError, InternalError, LoomError,
+    MisplacedOptionError, MissingValueError, MissingValueForm, NonCallableCommandError,
+    RepeatedOptionError, ResultError, ResultFault, TerminalUnavailableError,
+    UnexpectedArgumentError, UnexpectedValueError, UnknownCommandError, UnknownOptionError,
+    UsageError, WorkingDirectoryError,
 };
 pub use class::{
     EX_CANTCREAT, EX_CONFIG, EX_DATAERR, EX_IOERR, EX_NOHOST, EX_NOINPUT, EX_NOPERM, EX_NOUSER,

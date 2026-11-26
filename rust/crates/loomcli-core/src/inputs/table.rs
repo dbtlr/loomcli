@@ -31,6 +31,7 @@ pub(crate) enum Role {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Form {
     Separate { multiple: bool },
+    Arity { words: usize, multiple: bool },
     Implied { multiple: bool, implied: String },
     Boolean { value: bool },
     Count,
@@ -42,6 +43,7 @@ pub(crate) struct Spelling {
     pub(crate) name: String,
     pub(crate) role: Role,
     pub(crate) form: Form,
+    pub(crate) last_wins: bool,
 }
 
 /// A scope's spellings, in declaration order.
@@ -146,11 +148,22 @@ pub(crate) fn check_option_name(name: &str, site: &InputSite) -> Result<(), Decl
     ))
 }
 
-/// Rejects a builder combination the reference's types rule out, under `option-config`.
+/// Checks an arity count and the builder combinations the reference's types rule out.
 pub(crate) fn check_option_config(
     option: &ScopeOption<'_>,
     global: bool,
 ) -> Result<(), DeclarationError> {
+    if let Some(arity @ (0 | 1)) = option.decl.arity() {
+        return Err(DeclarationError::new(
+            rules::OPTION_ARITY,
+            DiagnosticParts::new(format!(
+                "Option {} declares arity {arity}.",
+                quoted(option.name)
+            ))
+            .finding(option.site.finding("1.arity"))
+            .correction("Declare a whole number of 2 or more, or remove arity."),
+        ));
+    }
     let Some((setter, reason)) = option.decl.config_conflict(global) else {
         return Ok(());
     };
@@ -179,12 +192,16 @@ pub(crate) fn distinct_aliases<'a>(name: &str, decl: &'a OptionDecl) -> Vec<(usi
 /// The form a positive spelling of `decl` reads.
 fn positive_form(decl: &OptionDecl) -> Form {
     match decl {
-        OptionDecl::String(option) => match &option.implied {
-            Some(implied) => Form::Implied {
+        OptionDecl::String(option) => match (option.arity, &option.implied) {
+            (Some(words), _) => Form::Arity {
+                words,
+                multiple: option.multiple,
+            },
+            (None, Some(implied)) => Form::Implied {
                 multiple: option.multiple,
                 implied: implied.clone(),
             },
-            None => Form::Separate {
+            (None, None) => Form::Separate {
                 multiple: option.multiple,
             },
         },
@@ -265,6 +282,7 @@ impl<'a, 'b> Compiling<'a, 'b> {
                     name: option.name.to_owned(),
                     role,
                     form,
+                    last_wins: option.decl.last_wins(),
                 };
                 self.add_spelling(spelling, entry, option)?;
             }
@@ -331,6 +349,7 @@ impl<'a, 'b> Compiling<'a, 'b> {
                 name: name.to_owned(),
                 role: Role::Short,
                 form: positive_form(option.decl),
+                last_wins: option.decl.last_wins(),
             };
             self.add_spelling(format!("-{letter}"), entry, option)?;
         }
