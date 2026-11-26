@@ -10,9 +10,11 @@ use crate::failures::{Error, InternalError};
 use crate::host::Host;
 use crate::inputs::{Content, FromInputValue, InputValues};
 use crate::inspection::{CommandGraph, CommandNode};
-use crate::output::{Log, Out};
+use crate::invocation::InvokedBy;
+use crate::output::{Log, Out, ResultTransform};
 use crate::signals::{Registration, RunSignal, ShutdownEvent};
 
+use super::messages;
 use super::plugin::plugin_sentence;
 
 /// How the rest of the chain settled, as `Next::run` reports it.
@@ -151,6 +153,8 @@ pub struct MiddlewareContext<O> {
     pub command: Arc<CommandNode>,
     /// The routed invocation; `None` under a held fault and on a group.
     pub request: Option<Request>,
+    /// Whether this run received argv or an invocation by name.
+    pub invoked_by: InvokedBy,
     /// The host: one `Arc` per run, shared with the run's source, providers, and action.
     pub host: Arc<Host>,
     /// The output handle.
@@ -178,6 +182,7 @@ pub(crate) struct ChainCall {
     pub(crate) graph: Arc<CommandGraph>,
     pub(crate) command: Arc<CommandNode>,
     pub(crate) request: Option<Request>,
+    pub(crate) invoked_by: InvokedBy,
     pub(crate) host: Arc<Host>,
     pub(crate) out: Out,
     pub(crate) signal: RunSignal,
@@ -201,6 +206,7 @@ impl<O: crate::inputs::Inputs> MiddlewareContext<O> {
             graph: call.graph,
             command: call.command,
             request: call.request,
+            invoked_by: call.invoked_by,
             host: call.host,
             out: call.out,
             signal: call.signal,
@@ -224,6 +230,47 @@ impl<O> MiddlewareContext<O> {
     /// wins; a name the result does not hold is a defect there.
     pub fn select_view(&self, name: &str) {
         locked(&self.selection).assign(&self.identity, name);
+    }
+
+    /// The selected result view's media type, or the type assigned to a run with no result.
+    /// A context built for testing reads its stated or assigned media type independently of its
+    /// view.
+    #[must_use]
+    pub fn media_type(&self) -> Option<String> {
+        let selection = locked(&self.selection);
+        if selection.unit_context {
+            return selection.assigned_media_type();
+        }
+        selection.at_failure().media_type
+    }
+
+    /// Sets the media type on a run with no result. The last assignment before dispatch wins.
+    ///
+    /// On a Command with a result, the dispatch boundary rejects this assignment.
+    pub fn set_media_type(&self, media_type: &str) {
+        let mut selection = locked(&self.selection);
+        if !selection.reached {
+            selection.media_type = Some((Arc::clone(&self.identity), media_type.to_owned()));
+        }
+    }
+
+    /// The assigned result transform, if a middleware has selected one for this run.
+    #[must_use]
+    pub fn transform(&self) -> Option<ResultTransform> {
+        locked(&self.selection)
+            .transform
+            .as_ref()
+            .map(|(_, transform)| transform.clone())
+    }
+
+    /// Sets the transform used before rendering the selected result view.
+    ///
+    /// The last assignment before the dispatch boundary wins.
+    pub fn set_transform(&self, transform: ResultTransform) {
+        let mut selection = locked(&self.selection);
+        if !selection.reached {
+            selection.transform = Some((Arc::clone(&self.identity), transform));
+        }
     }
 
     /// Any global option's value by name, read as `T`. While `options` is `None`, which it is when
@@ -258,13 +305,13 @@ impl<O> MiddlewareContext<O> {
     }
 }
 
-pub(crate) fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn locked<T: ?Sized>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// The run's selection when it failed, which a failure view, an `on_failure` hook, and a failure
-/// encoder read: the view the result would render through, and the media type that view declares.
-/// Both are absent where no view would render.
+/// encoder read: the selected view and its media type, or the assigned type on a Command
+/// without a result.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct FailureSelection {
     pub(crate) view: Option<String>,
@@ -279,13 +326,14 @@ struct Assignment {
     correction: &'static str,
 }
 
-/// The view one run selects, one value whichever middleware wrote it. The assignment is kept as it
-/// arrived, because only the routed Command's result decides whether it renders, and the check
-/// belongs at the dispatch boundary, where its fault ranks behind a held fault.
+/// The view, media type, and transform one run selects, fixed at the dispatch boundary.
 pub(crate) struct ViewSelection {
     assigned: Option<Assignment>,
+    media_type: Option<(Arc<str>, String)>,
+    pub(crate) transform: Option<(Arc<str>, ResultTransform)>,
     reached: bool,
     result: Option<DeclaredResult>,
+    unit_context: bool,
 }
 
 impl ViewSelection {
@@ -293,8 +341,19 @@ impl ViewSelection {
     pub(crate) fn new(result: Option<DeclaredResult>) -> Self {
         Self {
             assigned: None,
+            media_type: None,
+            transform: None,
             reached: false,
             result,
+            unit_context: false,
+        }
+    }
+
+    /// Unit contexts read their assigned media type directly because they have no declared views.
+    pub(crate) fn for_unit_context(result: Option<DeclaredResult>) -> Self {
+        Self {
+            unit_context: true,
+            ..Self::new(result)
         }
     }
 
@@ -307,8 +366,7 @@ impl ViewSelection {
                 subject: "invoke()".to_owned(),
                 correction: rules::INVOKE_VIEW_CORRECTION,
             }),
-            reached: false,
-            result,
+            ..Self::new(result)
         }
     }
 
@@ -323,12 +381,21 @@ impl ViewSelection {
         )
     }
 
+    fn assigned_media_type(&self) -> Option<String> {
+        self.media_type
+            .as_ref()
+            .map(|(_, media_type)| media_type.clone())
+    }
+
     /// The selection a failure reads: the last assignment, else the default, the rule the boundary
     /// applies, read the same before and after dispatch. A name the boundary would reject selects
     /// nothing.
     pub(crate) fn at_failure(&self) -> FailureSelection {
         let Some(result) = &self.result else {
-            return FailureSelection::default();
+            return FailureSelection {
+                view: None,
+                media_type: self.assigned_media_type(),
+            };
         };
         let name = self
             .assigned
@@ -362,6 +429,19 @@ impl ViewSelection {
     /// The name the boundary dispatches through: `None` when nothing selected one and the
     /// declaration's default stands. A selected name is checked here.
     pub(crate) fn resolve(&self, path: &[String]) -> Result<Option<String>, Error> {
+        let view = self.resolve_view(path)?;
+        if self.result.is_some()
+            && let Some((plugin, media_type)) = &self.media_type
+        {
+            return Err(selection_fault(
+                messages::media_type_on_result(plugin, media_type, path),
+                rules::MEDIA_TYPE_CORRECTION,
+            ));
+        }
+        Ok(view)
+    }
+
+    fn resolve_view(&self, path: &[String]) -> Result<Option<String>, Error> {
         let Some(assigned) = &self.assigned else {
             return Ok(None);
         };

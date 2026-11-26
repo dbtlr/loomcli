@@ -16,7 +16,8 @@ use loomcli_core::{
     FatalError, InputIdentity, InputKind, InputProblem, InputValues, Inputs, InvocationOutcome,
     InvocationValues, InvokeOptions, InvokedBy, Issue, LogDestination, LogEvent, LogFields,
     MiddlewareContext, Next, Outcome, Persistent, Plugin, Provider, ProviderContext, RegionOptions,
-    RowsResult, RunOptions, SuppliedValue, UnknownCommandError, ValueResult, View, ViewContext,
+    ResultTransform, RowsResult, RunOptions, SuppliedValue, UnknownCommandError, ValueResult, View,
+    ViewContext,
 };
 use loomcli_testing::{
     ActionValues, FailureHookValues, MiddlewareValues, MockFields, MockProcess, ProviderValues,
@@ -410,6 +411,24 @@ async fn the_context_keeps_the_last_view_the_middleware_selects() {
 }
 
 #[tokio::test]
+async fn a_middleware_context_reads_the_stated_media_type_and_keeps_the_last_assignment() {
+    let (ctx, _next) = middleware_context(options(false).view("table"));
+    assert_eq!(ctx.media_type(), None);
+
+    let (ctx, next) = middleware_context(
+        options(false)
+            .view("table")
+            .media_type("application/jsonl")
+            .outcome(ChainOutcome::Dispatched),
+    );
+    assert_eq!(ctx.media_type().as_deref(), Some("application/jsonl"));
+
+    ctx.set_media_type("application/json");
+    assert_eq!(next.run().await.unwrap(), ChainOutcome::Dispatched);
+    assert_eq!(ctx.media_type().as_deref(), Some("application/json"));
+}
+
+#[tokio::test]
 async fn an_unstated_outcome_makes_next_fail_with_a_sentence_that_shows_a_stated_one() {
     let (ctx, next) = middleware_context(options(false));
     let error = dry_run(ctx, next).await.unwrap_err();
@@ -417,6 +436,32 @@ async fn an_unstated_outcome_makes_next_fail_with_a_sentence_that_shows_a_stated
         error.foreign().unwrap().to_string(),
         "middleware_context has no outcome for this middleware's next to resolve. Add one to its values, such as .outcome(ChainOutcome::Dispatched)."
     );
+}
+
+#[test]
+fn a_middleware_context_defaults_to_argv_and_reads_a_stated_invocation_by_name() {
+    let (ctx, _next) = middleware_context(options(false));
+    assert_eq!(ctx.invoked_by, InvokedBy::Argv);
+
+    let (ctx, _next) = middleware_context(options(false).invoked_by(InvokedBy::Name));
+    assert_eq!(ctx.invoked_by, InvokedBy::Name);
+}
+
+#[tokio::test]
+async fn a_middleware_context_reads_a_stated_transform_without_discarding_it_at_next() {
+    let (ctx, _next) = middleware_context(options(false));
+    assert!(ctx.transform().is_none());
+
+    let (ctx, next) = middleware_context(
+        options(false)
+            .transform(ResultTransform::new(|value: String| {
+                Ok(value.to_uppercase())
+            }))
+            .outcome(ChainOutcome::Dispatched),
+    );
+    assert!(ctx.transform().is_some());
+    assert_eq!(next.run().await.unwrap(), ChainOutcome::Dispatched);
+    assert!(ctx.transform().is_some());
 }
 
 #[tokio::test]

@@ -53,8 +53,8 @@ fn every_rule_core_declares_has_one_declaration_a_one_line_headline_and_an_expla
 }
 
 #[test]
-fn the_registry_holds_forty_nine_shared_rules_and_seven_rust_rules() {
-    assert_eq!(rules::ALL.len(), 56);
+fn the_registry_holds_forty_nine_shared_rules_and_eight_rust_rules() {
+    assert_eq!(rules::ALL.len(), 57);
     let ports: Vec<&str> = rules::ALL[49..]
         .iter()
         .map(|rule| rule.identity())
@@ -69,6 +69,7 @@ fn the_registry_holds_forty_nine_shared_rules_and_seven_rust_rules() {
             "@loomcli/core/input-read",
             "@loomcli/core/handler-registered-twice",
             "@loomcli/core/entry-point",
+            "@loomcli/core/result-transform",
         ]
     );
     assert_eq!(
@@ -151,10 +152,6 @@ fn shared_rules_keep_their_pinned_headlines_and_explanations() {
             "@loomcli/core/source-answers",
             "A configuration source answers with a record that maps each option core requested to { value, label }, where the value has the raw type the option takes and the label is one line of prose, and an answer may add a directory, the absolute path of the folder holding the file the value came from. Core fills no option from any other answer.",
         ),
-        (
-            "@loomcli/core/view-selection",
-            "A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render.",
-        ),
     ];
     let mut missing = Vec::new();
     for (identity, headline, explanation) in &reference {
@@ -198,6 +195,7 @@ fn shared_rules_keep_their_pinned_headlines_and_explanations() {
             "@loomcli/core/input-read",
             "@loomcli/core/handler-registered-twice",
             "@loomcli/core/entry-point",
+            "@loomcli/core/result-transform",
         ]
     );
 }

@@ -160,6 +160,7 @@ impl RenderSite<'_> {
                     destination,
                     source,
                     crate::output::emit::SequenceView::Rows(view),
+                    Ok,
                 )
                 .await
         }))

@@ -14,7 +14,7 @@ use loomcli_core::{
     RenderingPolicy, ResultViews, RowSource, RowView, RowViews, RowsResult, RunOptions,
     SuppliedValue, TerminalControls, UsageError, ValidationContext, Validator, ValueResult, View,
 };
-use loomcli_plugins::format::{format, json};
+use loomcli_plugins::format::{format, json, jsonl};
 use loomcli_testing::{MockFields, mock_process};
 use serde_json::{Value, json};
 
@@ -83,14 +83,17 @@ fn count() -> Command<NoInputs, ValueResult<Value>> {
         })
 }
 
-/// A Command whose table view writes each row as it arrives, and which `format()` adds `json` and
-/// `jsonl` to.
+/// A Command with a streaming table and an explicit whole JSON Lines view.
 fn walk() -> Command<NoInputs, RowsResult<Value>> {
     Command::new("walk")
-        .rows::<Value>(RowViews::new().view(
-            "table",
-            RowView::new(|row: &Value, _, _| format!("{}\n", row["key"].as_str().unwrap())),
-        ))
+        .rows::<Value>(
+            RowViews::new()
+                .view(
+                    "table",
+                    RowView::new(|row: &Value, _, _| format!("{}\n", row["key"].as_str().unwrap())),
+                )
+                .view("jsonl", jsonl::<[Value]>()),
+        )
         .action(|ctx: Context<NoInputs, RowsResult<Value>>| async move {
             let rows = std::collections::VecDeque::from([
                 Ok(json!({ "key": "a" })),

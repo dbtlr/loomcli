@@ -1,6 +1,7 @@
 //! The operator sentences core's output writes.
 
 use crate::failures::messages::{quoted, routed_subject};
+use crate::plugins::plugin::plugin_sentence;
 
 /// The sentence a sequence that stopped early leaves on stderr, without its line end.
 pub(super) fn incomplete_output(path: &[String], yielded: usize, written: usize) -> String {
@@ -26,3 +27,11 @@ pub(super) const VIEW_RENDERS_VALUE: &str = "The selected view renders a value, 
 
 pub(super) const NOT_JSON_DATA: &str =
     "The value cannot be encoded as JSON. Emit plain JSON data from the action.";
+
+pub(super) fn incompatible_transform(plugin: &str, path: &[String]) -> String {
+    format!(
+        "{} assigned a result transform incompatible with the selected view on {}.",
+        plugin_sentence(plugin),
+        routed_subject(path)
+    )
+}

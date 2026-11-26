@@ -151,6 +151,7 @@ async fn a_leaf_page_carries_the_formatter_option_and_the_globals() {
             "",
             "OPTIONS",
             "  -o, --format <format>  Select the output format, text by default. One of: text, json, jsonl.",
+            "      --fields <fields>  Select top-level fields of json and jsonl output, as a comma list.  (repeatable)",
             "",
         ],
         &[],

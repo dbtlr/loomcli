@@ -1,15 +1,17 @@
 //! Results: what a Command promises to emit, its named views, and row sources.
 
+use std::any::Any;
 use std::marker::PhantomData;
 use std::pin::Pin;
 
 use futures_core::Stream;
 use serde::Serialize;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::commands::declaration::{ResultCall, ResultCallKind, ViewEntry};
 use crate::failures::Error;
+use crate::plugins::middleware::locked;
 
 use super::{RowView, View};
 
@@ -29,6 +31,54 @@ pub struct RowsResult<R>(PhantomData<fn() -> R>);
 impl ResultKind for NoResult {}
 impl<V: 'static> ResultKind for ValueResult<V> {}
 impl<R: 'static> ResultKind for RowsResult<R> {}
+
+type ErasedValue = Box<dyn Any + Send>;
+type TransformFn = dyn FnMut(ErasedValue) -> Option<Result<ErasedValue, Error>> + Send;
+
+/// A run's synchronous transform over its result value or each of its rows.
+///
+/// A clone shares the transform's state. Build a stateful transform in middleware to give
+/// each invocation its own state.
+#[derive(Clone)]
+pub struct ResultTransform {
+    transform: Arc<Mutex<TransformFn>>,
+    pub(super) json: bool,
+}
+
+impl ResultTransform {
+    /// Transforms the declared value or row type before the selected view sees it.
+    pub fn new<T: Send + 'static>(
+        mut transform: impl FnMut(T) -> Result<T, Error> + Send + 'static,
+    ) -> Self {
+        let erased = move |value: ErasedValue| {
+            let value = value.downcast::<T>().ok()?;
+            Some(transform(*value).map(|value| Box::new(value) as ErasedValue))
+        };
+        Self {
+            transform: Arc::new(Mutex::new(erased)),
+            json: false,
+        }
+    }
+
+    /// Transforms serialized data for a hook-added view, or the original data for a result
+    /// whose value or row type is already `serde_json::Value`.
+    pub fn json(
+        transform: impl FnMut(serde_json::Value) -> Result<serde_json::Value, Error> + Send + 'static,
+    ) -> Self {
+        Self {
+            json: true,
+            ..Self::new(transform)
+        }
+    }
+
+    /// `None` means the transform takes a different type from the one passed.
+    pub(super) fn apply<T: Send + 'static>(&self, value: T) -> Option<Result<T, Error>> {
+        match (locked(&self.transform))(Box::new(value))? {
+            Ok(value) => value.downcast::<T>().ok().map(|value| Ok(*value)),
+            Err(error) => Some(Err(error)),
+        }
+    }
+}
 
 /// The named whole views of a value result. The first view is the default unless
 /// [`ResultViews::default_view`] names another.

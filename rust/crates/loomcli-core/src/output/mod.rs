@@ -24,8 +24,8 @@ pub use region::{
     EndState, ProgressEvent, ProgressReport, ProgressState, Region, RegionCloser, RegionOptions,
 };
 pub use results::{
-    NoResult, ResultKind, ResultView, ResultViews, RowSource, RowViewEntry, RowViews, RowsResult,
-    ValueResult,
+    NoResult, ResultKind, ResultTransform, ResultView, ResultViews, RowSource, RowViewEntry,
+    RowViews, RowsResult, ValueResult,
 };
 pub use view::{
     AnyDeclaredView, Declare, DeclaredRowView, DeclaredView, IncompleteResult, IntoRendered,

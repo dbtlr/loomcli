@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use loomcli_core::{
     Activation, AnyPlugin, Application, AttachedViews, Build, Command, Context, Done, Inputs,
-    NoInputs, NoResult, Opt, Plugin, ProcessHandle, ReleaseFacts, ResultViews, RunOptions,
+    NoInputs, NoResult, Opt, Plugin, ProcessHandle, ReleaseFacts, ResultViews, RunOptions, State,
     ValueResult, View,
 };
 use loomcli_plugins::format::{format, json_mapped};
@@ -34,7 +34,7 @@ fn ran(status: u8, stdout: &str, stderr: &str) -> Ran {
 
 type App = Application<NoInputs, NoResult, Done>;
 
-async fn run(application: &App, argv: &[&str]) -> Ran {
+async fn run<S: State>(application: &Application<NoInputs, NoResult, S>, argv: &[&str]) -> Ran {
     let process = mock_process(
         MockFields::new()
             .argv(argv.iter().copied())
@@ -447,6 +447,52 @@ fn a_short_spelling_the_commands_own_option_holds_is_the_spelling_taken_fault_na
     assert_eq!(
         fault.sentence(),
         "Plugin \"@loomcli/plugins/format\" declares option \"format\" with spelling \"-f\" on Command \"count\", which \"--file\" already uses."
+    );
+}
+
+#[tokio::test]
+async fn a_groups_own_format_option_is_a_build_fault_even_without_a_requested_format() {
+    let clear = Command::new("clear").action(|_: Context| async { Ok(()) });
+    let cache = Command::new("cache")
+        .option("format", Opt::string())
+        .command(clear);
+    let application = Application::new("app").plugins(formatted()).command(cache);
+    let fault = application.inspect().expect_err("a build fault");
+    assert_eq!(
+        fault.rule().map(|rule| rule.identity()),
+        Some("@loomcli/core/option-declared-twice")
+    );
+    assert_eq!(
+        fault.sentence(),
+        "Plugin \"@loomcli/plugins/format\" declares option \"format\" on Command \"cache\", which is already declared as a local option."
+    );
+    assert_eq!(
+        run(&application, &["cache", "clear"]).await,
+        ran(1, "", "app: Something went wrong.\n")
+    );
+}
+
+#[tokio::test]
+async fn a_groups_own_short_spelling_is_a_build_fault_even_without_a_requested_format() {
+    let clear = Command::new("clear").action(|_: Context| async { Ok(()) });
+    let cache = Command::new("cache")
+        .option("force", Opt::boolean().short('f'))
+        .command(clear);
+    let application = Application::new("app")
+        .plugins(vec![AnyPlugin::from(format().short('f'))])
+        .command(cache);
+    let fault = application.inspect().expect_err("a build fault");
+    assert_eq!(
+        fault.rule().map(|rule| rule.identity()),
+        Some("@loomcli/core/spelling-taken")
+    );
+    assert_eq!(
+        fault.sentence(),
+        "Plugin \"@loomcli/plugins/format\" declares option \"format\" with spelling \"-f\" on Command \"cache\", which \"--force\" already uses."
+    );
+    assert_eq!(
+        run(&application, &["cache", "clear"]).await,
+        ran(1, "", "app: Something went wrong.\n")
     );
 }
 

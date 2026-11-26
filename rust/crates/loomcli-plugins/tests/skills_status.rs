@@ -357,6 +357,26 @@ async fn status_uses_its_own_json_view_and_the_appended_jsonl_view() {
 }
 
 #[tokio::test]
+async fn status_refuses_fields_under_its_own_json_view_and_names_only_the_appended_jsonl_view() {
+    let f = Fixture::new();
+    let ran = f
+        .run(&["status", "--format", "json", "--fields", "skill,state"])
+        .await;
+    assert_eq!(ran.status, 2);
+    assert_eq!(ran.stdout, "");
+    assert_eq!(
+        ran.stderr,
+        format!(
+            "{{\"error\":{{\"code\":\"invalid-input\",\"exitCode\":2,\"message\":{},\"hints\":[]}}}}\n",
+            serde_json::to_string(
+                "Option \"--fields\" applies only to the jsonl output the formatter provides. Remove the option, or select jsonl with \"--format\"."
+            )
+            .unwrap()
+        )
+    );
+}
+
+#[tokio::test]
 async fn graph_changes_missing_files_and_executable_changes_read_stale() {
     let f = Fixture::new();
     f.succeed(&["install"]).await;

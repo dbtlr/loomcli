@@ -361,11 +361,23 @@ pub(crate) const VERBOSE_MARK: DiagnosticRule = diagnostic_rule(
 pub(crate) const VIEW_SELECTION: DiagnosticRule = diagnostic_rule(
     "@loomcli/core/view-selection",
     "Invalid view selection",
-    "A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render.",
+    "A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render. A middleware states the run's media type only on a Command that declares no result, because on one that declares a result the selected view states it.",
 );
 
-// Rules this port adds. Each replaces a compile-time check of the reference's TypeScript types that
-// Rust's types cannot state, and docs/deviations.md lists it.
+pub(crate) const MEDIA_TYPE_CORRECTION: &str = "Assign mediaType only on a Command that declares no result; select a view by name on one that does.";
+
+/// The fix for an incompatible result transform.
+pub(crate) const RESULT_TRANSFORM_CORRECTION: &str = "Assign a transform that accepts the result's value or row type, or select a view over JSON data.";
+
+// Rules this port adds for checks moved to runtime and for Rust-specific behavior. The result
+// transform check follows from type erasure. The deviations register lists the port's rules.
+
+/// `@loomcli/core/result-transform`: Incompatible result transform.
+pub(crate) const RESULT_TRANSFORM: DiagnosticRule = diagnostic_rule(
+    "@loomcli/core/result-transform",
+    "Incompatible result transform",
+    "A result transform receives the declared value or row type. A JSON transform serves a hook-added view or a result whose value or row type is serde_json::Value.",
+);
 
 /// `@loomcli/core/option-config`: Option configuration conflict.
 pub(crate) const OPTION_CONFIG: DiagnosticRule = diagnostic_rule(
@@ -498,4 +510,5 @@ pub(crate) const ALL: &[DiagnosticRule] = &[
     INPUT_READ,
     HANDLER_REGISTERED_TWICE,
     ENTRY_POINT,
+    RESULT_TRANSFORM,
 ];
