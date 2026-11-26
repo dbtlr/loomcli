@@ -12,7 +12,7 @@ The reference is the TypeScript workspace at [`../typescript`](../typescript) an
 
 - In the [principles](../docs/principles.md), "Node and Bun underneath" reads as "std and tokio underneath", and "types, then lint, then diagnostics" reads as "types, then `#[must_use]` and clippy, then diagnostics".
 - `../docs/core`, `../docs/plugins`, `../docs/libs`, and `../docs/toolchain` state behavior. Open the page for the area under change, and the decision records it cites, before writing code.
-- `../typescript/packages/*/tests` are the behavioral oracle. Port a behavior's test cases with the behavior.
+- `../typescript/packages/*/tests` are the behavioral oracle. Port a behavior's test cases with the behavior, and give each reference test file a row in its crate's test map (`crates/<crate>/tests/README.md`, or a page under [`crates/loomcli-plugins/tests/maps/`](crates/loomcli-plugins/tests/maps/)): ported, partly ported with what remains, or not applicable with why.
 
 What an operator sees or a machine reads matches the reference byte for byte, except at a limit of the programming language, which ADR-0217 puts outside parity: messages, help pages, tables, manifest and MCP JSON, completion output, exit codes. The authoring API is Rust-native and follows the port's own [decision records](docs/decisions/README.md) and [core API design](docs/design/core-api.md).
 
@@ -55,7 +55,7 @@ cargo run -p conformance-harness
 - **JSON keeps declaration order.** `serde_json` runs with `preserve_order`, and number and escape formatting match `JSON.stringify` where a document is operator output.
 - **Paths are configurable.** Code and tests name no machine-specific path.
 - **The reference is read, not loaded.** Nothing under `rust/` reads a file under `../typescript` at build or test time. The shared conformance cases are captured from the reference into `../conformance/`; any other fact the port takes from the reference, such as a copied rule table, is captured into `rust/` and names the revision it came from.
-- **Scratch lives in `.scratch/`.** When several agents build at once, each sets `CARGO_TARGET_DIR=.scratch/target-<name>`.
+- **Scratch lives in `.scratch/`.** When several agents build at once, each sets `CARGO_TARGET_DIR=.scratch/target-<name>`. Each also passes a job cap, such as `-j 4`, to every cargo command that compiles (`build`, `check`, `clippy`, `test`, `run`), because each target directory compiles the workspace from scratch.
 - **Commits** use `type(scope): summary`, such as `feat(core): route an invocation on global options`. When others are working in the same checkout, commit with an explicit pathspec: `git add <paths> && git commit -m "<message>" -- <paths>`.
 
 ## Judging review findings here
