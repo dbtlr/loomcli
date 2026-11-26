@@ -16,8 +16,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::json_rpc::{
     Incoming, LineSplitter, ProtocolError, RequestId, classify, error_codes, error_message, frame,
-    js_number, json_text, notification_message, result_message,
+    js_number, notification_message, result_message,
 };
+use crate::messages;
 use crate::protocol::{ProgressSink, ProgressUpdate, ServerInfo, ToolCall, ToolResult, ToolSource};
 use crate::revision::{
     HANDSHAKE_REVISIONS, LATEST_HANDSHAKE_REVISION, PROTOCOL_REVISION,
@@ -366,9 +367,7 @@ impl<S: ToolSource> Session<S> {
         if let Some(negotiated) = self.handshake {
             let error = ProtocolError::new(
                 error_codes::INVALID_REQUEST,
-                format!(
-                    "The connection is already initialized on MCP {negotiated}. Send initialize once, as the first request."
-                ),
+                messages::already_initialized(negotiated),
             );
             self.send(error_message(Some(id), &error));
             return;
@@ -395,12 +394,9 @@ impl<S: ToolSource> Session<S> {
     /// in flight keeps its id and runs untouched, so its answer stays the only one under that id.
     fn id_in_use(&self, id: &RequestId) -> Option<ProtocolError> {
         if self.in_flight.contains_key(id) || self.subscriptions.contains(id) {
-            let shown = json_text(&id.to_value());
             Some(ProtocolError::new(
                 error_codes::INVALID_REQUEST,
-                format!(
-                    "The request id {shown} is in use by a request still in flight. Send each request with an id no request in flight holds."
-                ),
+                messages::ID_IN_USE,
             ))
         } else {
             None
@@ -643,7 +639,7 @@ async fn list<S: ToolSource>(
     if params.contains_key("cursor") {
         return Err(ProtocolError::new(
             error_codes::INVALID_PARAMS,
-            "The cursor is not one this server issued. Call tools/list without a cursor.",
+            messages::UNKNOWN_CURSOR,
         ));
     }
     let tools = shared.source.list_tools().await?;
@@ -666,7 +662,7 @@ async fn call<S: ToolSource>(
     let Some(Value::String(name)) = params.get("name") else {
         return Err(ProtocolError::new(
             error_codes::INVALID_PARAMS,
-            "The tools/call request names no tool. Send the tool's name as params.name.",
+            messages::CALL_WITHOUT_TOOL,
         ));
     };
     let result = shared
@@ -757,10 +753,7 @@ fn era_of(params: Option<&Value>) -> Era {
 fn unsupported_version(requested: &str) -> ProtocolError {
     ProtocolError::new(
         error_codes::UNSUPPORTED_PROTOCOL_VERSION,
-        format!(
-            "Unsupported protocol version. This server speaks MCP {PROTOCOL_REVISION} per request; send that version in every request's params._meta, or open the connection with initialize for MCP {}.",
-            HANDSHAKE_REVISIONS.join(" or ")
-        ),
+        messages::version_not_spoken(PROTOCOL_REVISION, &HANDSHAKE_REVISIONS.join(" or ")),
     )
     .with_data(json!({ "supported": supported_revisions(), "requested": requested }))
 }
@@ -768,9 +761,7 @@ fn unsupported_version(requested: &str) -> ProtocolError {
 fn missing_meta(key: &str) -> ProtocolError {
     ProtocolError::new(
         error_codes::INVALID_PARAMS,
-        format!(
-            "The request's params._meta carries no \"{key}\". Send \"{META_PROTOCOL_VERSION}\" and \"{META_CLIENT_CAPABILITIES}\" with every request, or open the connection with initialize."
-        ),
+        messages::meta_key_missing(key, META_PROTOCOL_VERSION, META_CLIENT_CAPABILITIES),
     )
 }
 
@@ -793,7 +784,7 @@ fn negotiate(params: Option<&Value>) -> Result<&'static str, ProtocolError> {
             .unwrap_or(LATEST_HANDSHAKE_REVISION)),
         _ => Err(ProtocolError::new(
             error_codes::INVALID_PARAMS,
-            "The initialize request carries no protocol version or no capabilities. Send params.protocolVersion as a string and params.capabilities as an object.",
+            messages::INITIALIZE_INCOMPLETE,
         )),
     }
 }
@@ -837,9 +828,7 @@ fn request_fault(method: &str, params: Option<&Value>, initialized: bool) -> Opt
         } else {
             Some(ProtocolError::new(
                 error_codes::METHOD_NOT_FOUND,
-                format!(
-                    "The method is not one this server serves. This server speaks MCP {PROTOCOL_REVISION}; call server/discover, tools/list, tools/call, or subscriptions/listen."
-                ),
+                messages::method_not_served(PROTOCOL_REVISION),
             ))
         };
     }
@@ -849,7 +838,7 @@ fn request_fault(method: &str, params: Option<&Value>, initialized: bool) -> Opt
     (!HANDSHAKE_METHODS.contains(&method)).then(|| {
         ProtocolError::new(
             error_codes::METHOD_NOT_FOUND,
-            "The method is not one this server serves on an initialized connection. Call ping, tools/list, or tools/call.",
+            messages::METHOD_NOT_SERVED_INITIALIZED,
         )
     })
 }

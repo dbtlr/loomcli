@@ -25,7 +25,7 @@ async fn a_request_that_reuses_the_id_of_a_call_in_flight_is_answered_with_32600
         json!({
             "error": {
                 "code": -32_600,
-                "message": "The request id 7 is in use by a request still in flight. Send each request with an id no request in flight holds.",
+                "message": "The request id is in use by a request still in flight. Send each request with an id no request in flight holds.",
             },
             "id": 7,
             "jsonrpc": "2.0",
@@ -79,7 +79,7 @@ async fn a_request_that_reuses_the_id_of_an_open_subscription_is_answered_with_3
         &json!({
             "error": {
                 "code": -32_600,
-                "message": "The request id \"listen\" is in use by a request still in flight. Send each request with an id no request in flight holds.",
+                "message": "The request id is in use by a request still in flight. Send each request with an id no request in flight holds.",
             },
             "id": "listen",
         }),

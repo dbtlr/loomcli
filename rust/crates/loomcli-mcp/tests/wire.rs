@@ -170,12 +170,13 @@ async fn treats_ids_that_are_the_same_javascript_number_as_one_id() {
         .send_raw(&format!("{}\n", wait("10000000000000000")))
         .await;
     let answer = session.next().await;
+    assert_eq!(answer["id"], serde_json::json!(10_000_000_000_000_000_u64));
     assert_eq!(answer["error"]["code"], -32_600);
     assert!(
         answer["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("The request id 10000000000000000 is in use"),
+            .starts_with("The request id is in use"),
         "{answer}"
     );
     session.close().await;
