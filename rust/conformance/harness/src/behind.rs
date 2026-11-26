@@ -29,22 +29,24 @@ struct File {
 pub fn load(path: &Path) -> Result<Behind, String> {
     let text =
         fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let file: File = serde_json::from_str(&text).map_err(|e| format!("behind.json: {e}"))?;
+    let name = path.display();
+    let file: File = serde_json::from_str(&text).map_err(|e| format!("{name}: {e}"))?;
     let mut behind = Behind::new();
     for entry in file.behind {
         let parts = entry
             .parts
             .iter()
-            .map(|name| {
-                Part::parse(name)
-                    .ok_or_else(|| format!("behind.json: {}: unknown part {name:?}", entry.id))
+            .map(|part| {
+                Part::parse(part).ok_or_else(|| {
+                    format!("{}: {}: unknown part {part:?}", path.display(), entry.id)
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
         if parts.is_empty() {
-            return Err(format!("behind.json: {}: parts is empty", entry.id));
+            return Err(format!("{name}: {}: parts is empty", entry.id));
         }
         if behind.insert(entry.id.clone(), parts).is_some() {
-            return Err(format!("behind.json: {}: duplicate case id", entry.id));
+            return Err(format!("{name}: {}: duplicate case id", entry.id));
         }
     }
     Ok(behind)

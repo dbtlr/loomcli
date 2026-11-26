@@ -7,9 +7,9 @@ use std::process::ExitCode;
 use conformance_harness::runner::{
     APPS, Context, KnownDifferences, check_binaries, run_cases, rust_workspace,
 };
-use conformance_harness::{behind, cases, report};
+use conformance_harness::{behind, cases, growth, report};
 
-const USAGE: &str = "usage: conformance-harness [--only <id prefix or group>] [--show <id>] [--bin-dir <dir>] [--json <file>] [--jobs <n>] [--write-behind <file>]";
+const USAGE: &str = "usage: conformance-harness [--only <id prefix or group>] [--show <id>] [--bin-dir <dir>] [--json <file>] [--jobs <n>] [--write-behind <file>]\n       conformance-harness --check-growth <folder of the base lists> --changed <file of NUL-ended changed paths>";
 
 #[derive(Default)]
 struct Args {
@@ -19,6 +19,8 @@ struct Args {
     json: Option<PathBuf>,
     jobs: Option<usize>,
     write_behind: Option<PathBuf>,
+    check_growth: Option<PathBuf>,
+    changed: Option<PathBuf>,
 }
 
 fn parse_args(mut raw: impl Iterator<Item = String>) -> Result<Args, String> {
@@ -34,6 +36,8 @@ fn parse_args(mut raw: impl Iterator<Item = String>) -> Result<Args, String> {
             "--bin-dir" => args.bin_dir = Some(PathBuf::from(value("--bin-dir")?)),
             "--json" => args.json = Some(PathBuf::from(value("--json")?)),
             "--write-behind" => args.write_behind = Some(PathBuf::from(value("--write-behind")?)),
+            "--check-growth" => args.check_growth = Some(PathBuf::from(value("--check-growth")?)),
+            "--changed" => args.changed = Some(PathBuf::from(value("--changed")?)),
             "--jobs" => {
                 args.jobs = Some(
                     value("--jobs")?
@@ -46,6 +50,21 @@ fn parse_args(mut raw: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     if args.write_behind.is_some() && (args.only.is_some() || args.show.is_some()) {
         return Err("omit --only and --show when writing a behind list".into());
+    }
+    let checks_growth = args.check_growth.is_some() || args.changed.is_some();
+    if checks_growth
+        && (args.check_growth.is_none()
+            || args.changed.is_none()
+            || args.only.is_some()
+            || args.show.is_some()
+            || args.bin_dir.is_some()
+            || args.json.is_some()
+            || args.jobs.is_some()
+            || args.write_behind.is_some())
+    {
+        return Err(format!(
+            "--check-growth and --changed go together, with no other argument\n{USAGE}"
+        ));
     }
     Ok(args)
 }
@@ -60,11 +79,22 @@ fn default_bin_dir(root: &Path) -> PathBuf {
     }
 }
 
+/// Compares the committed behind list with the base branch's and fails on growth the change does
+/// not explain. It runs no case.
+fn check_growth(rust_dir: &Path, base: &Path, changed: &Path) -> Result<bool, String> {
+    let (passed, text) = growth::check(base, &rust_dir.join("conformance/behind.json"), changed)?;
+    print!("{text}");
+    Ok(passed)
+}
+
 fn run() -> Result<bool, String> {
     let args = parse_args(env::args().skip(1))?;
     let rust_dir = rust_workspace()
         .canonicalize()
         .map_err(|e| format!("cannot find the Rust workspace: {e}"))?;
+    if let (Some(base), Some(changed)) = (&args.check_growth, &args.changed) {
+        return check_growth(&rust_dir, base, changed);
+    }
     let conformance_dir = rust_dir.join("../conformance");
     let all = cases::load_cases(&conformance_dir)?;
     let differences = KnownDifferences::load()?;
