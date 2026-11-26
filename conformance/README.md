@@ -94,7 +94,7 @@ The shared set has 687 cases.
 | `textstat-usage`         |    56 | Usage failures and option forms |
 | `textstat-actions`       |    95 | Counting, stdin placement, `TEXTSTAT_MIN_BYTES` and `TEXTSTAT_TOTAL`, configuration files, formats, color |
 
-textstat has no `-v` or `-q`, no `--color` flag, no `help` command, no `completion`, `mcp`, or `manpage`; the cases record those absences as usage failures.
+textstat has no `-v` or `-q`, no `--color` flag, no `help` command, and no `mcp` or `manpage`; the cases record those absences as usage failures. It installs `completion`.
 
 ## Behavior outside the shared cases
 
