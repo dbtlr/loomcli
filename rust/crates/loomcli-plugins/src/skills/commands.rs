@@ -2,15 +2,17 @@
 
 use std::sync::Arc;
 
-use loomcli_core::{Command, Context, Error, Inputs, Plugin};
+use loomcli_core::{Command, Context, Error, Inputs, Plugin, RowView, RowViews, RowsResult};
 use loomcli_validators::one_of;
 
 use super::Declared;
 use super::global::{ChildRun, InstallRequestFacts, install_global, uninstall_global};
 use super::messages::WritingVerb;
 use super::project::{ProjectRequest, directory_needs_project, install_project};
+use super::status::{self, SkillStatus};
 use super::targets::Target;
 use crate::PACKAGE_NAME;
+use crate::format::views::json;
 
 /// The options of `skills install`.
 #[derive(Inputs)]
@@ -43,9 +45,11 @@ fn target_of(agent: Option<&str>) -> Option<Target> {
 }
 
 /// The run a child acts on, read from its action context.
-fn child_run<'a, I>(context: &'a Context<I>, name: &'a str) -> ChildRun<'a> {
+fn child_run<'a, I, R>(context: &'a Context<I, R>, name: &'a str) -> ChildRun<'a, R> {
     ChildRun {
         name,
+        graph: &context.graph,
+        log: &context.log,
         host: &context.host,
         signal: &context.signal,
         out: &context.out,
@@ -118,12 +122,70 @@ fn uninstall_command() -> Command<UninstallInputs> {
         })
 }
 
-/// The plugin: the `skills` group and its three children.
+#[derive(Inputs)]
+struct StatusInputs {
+    /// The agents to report on: claude or agents. Both when left out.
+    #[option(validate = one_of(["claude", "agents"]))]
+    agent: Option<String>,
+    /// Report on the current repository's skills instead of your home folder's.
+    #[option]
+    project: bool,
+    /// Find the repository from this directory instead of the current one.
+    #[option(short = 'C')]
+    directory: Option<String>,
+}
+
+fn status_command(declared: &Arc<Declared>) -> Command<StatusInputs, RowsResult<SkillStatus>> {
+    let declared = Arc::clone(declared);
+    Command::new("status")
+        .description("Report whether each skill is installed and up to date.")
+        .inputs::<StatusInputs>()
+        .rows(
+            RowViews::new()
+                .view("text", RowView::new(status::text))
+                .view("json", json::<[SkillStatus]>()),
+        )
+        .action(
+            move |context: Context<StatusInputs, RowsResult<SkillStatus>>| {
+                let declared = Arc::clone(&declared);
+                async move {
+                    let run = child_run(&context, &context.graph.name);
+                    let request = ProjectRequest {
+                        agent: target_of(context.inputs.agent.as_deref()),
+                        directory: context.inputs.directory.as_deref(),
+                    };
+                    let report =
+                        status::report(&run, &declared, context.inputs.project, &request).await?;
+                    context.out.results(report.rows).await?;
+                    for notice in report.notices {
+                        context.out.info(&notice).await?;
+                    }
+                    Ok(())
+                }
+            },
+        )
+}
+
+/// The plugin: the `skills` group and its four children.
 pub(super) fn plugin(declared: Declared) -> Plugin {
     let declared = Arc::new(declared);
-    Plugin::new(format!("{PACKAGE_NAME}/skills")).commands([Command::new("skills")
-        .description("Install this application's agent skills.")
-        .command(install_command(&declared))
-        .command(update_command(&declared))
-        .command(uninstall_command())])
+    let selections = Arc::clone(&declared);
+    Plugin::new(format!("{PACKAGE_NAME}/skills"))
+        .extensions([super::extension::SKILL_COMMAND])
+        .on_graph_built(move |graph| {
+            for selection in &selections.selections {
+                super::selection::selected_commands(
+                    graph,
+                    &selection.paths,
+                    Some(&selection.skill),
+                )?;
+            }
+            Ok(())
+        })
+        .commands([Command::new("skills")
+            .description("Install this application's agent skills.")
+            .command(install_command(&declared))
+            .command(update_command(&declared))
+            .command(uninstall_command())
+            .command(status_command(&declared))])
 }

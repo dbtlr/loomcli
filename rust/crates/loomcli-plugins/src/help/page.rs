@@ -10,20 +10,22 @@ use std::sync::Arc;
 
 use loomcli_core::style::nowrap;
 use loomcli_core::{
-    ArgumentNode, CommandGraph, CommandNode, Error, OptionGroupKind, OptionNode, ViewContext,
-    read_extension, reported_spelling,
+    CommandGraph, CommandNode, Error, OptionGroupKind, OptionNode, ViewContext, read_extension,
+    reported_spelling,
 };
 
 use super::accepted::accepted;
 use super::cells::{
-    OptionHelp, ROW_INDENT, Row, UsageStyle, UsageWriter, argument_facts, argument_form, column,
-    deprecated_facts, named_in_usage, option_cell, option_facts, option_form, right_cell,
+    Fact, OptionHelp, ROW_INDENT, Row, UsageStyle, UsageWriter, argument_facts, argument_form,
+    column, deprecated_facts, named_in_usage, option_cell, option_facts, option_form, right_cell,
     single_line,
 };
 use super::details::render_details;
 use super::extension::{CommandExample, HELP_ARGUMENT, HELP_COMMAND, HELP_INPUT, HelpCommandFacts};
 use super::layout::{Hang, continuation, hang_lines, on_terminal, prose, signed, spaces};
-use super::messages::{CHILD_NAME_ESCAPE, TERMINAL_NEED_LABEL, TERMINAL_NEED_TEXT};
+use super::messages::{
+    CHILD_NAME_ESCAPE, TERMINAL_NEED_LABEL, TERMINAL_NEED_TEXT, stdin_example, stdin_sentence,
+};
 use super::sections::{SectionMember, section_blocks};
 use super::views::{HelpPage, HelpVariant};
 use crate::config::extension::CONFIG_INPUT;
@@ -284,49 +286,85 @@ pub(crate) fn notes_escape(command: &CommandNode, has_visible_children: bool) ->
     has_visible_children && !command.arguments.is_empty() && command.passthrough.is_none()
 }
 
-/// The ARGUMENTS block: declared arguments, then the row for the delimiter when applicable.
+/// The parts of a row in the ARGUMENTS block before presentation.
+pub(crate) struct ArgumentRow<'a> {
+    /// The delimiter and its following space, if any, printed before the word.
+    pub(crate) lead: &'static str,
+    /// The argument name or passthrough placeholder. The escape row has no word.
+    pub(crate) word: &'a str,
+    /// The author's description or help's explanation of the escape.
+    pub(crate) description: Option<&'a str>,
+    /// The accepted-values sentence, if one applies.
+    pub(crate) accepts: Option<String>,
+    /// The facts printed after the description and accepted values.
+    pub(crate) facts: Vec<Fact>,
+}
+
+/// The declared arguments, followed by the passthrough or child-name escape row when applicable.
+pub(crate) fn argument_rows(
+    command: &CommandNode,
+    has_visible_children: bool,
+) -> Result<Vec<ArgumentRow<'_>>, Error> {
+    let mut rows = command
+        .arguments
+        .iter()
+        .map(|argument| {
+            let authored =
+                read_extension(argument.as_ref(), &HELP_ARGUMENT)?.and_then(|facts| facts.accepts);
+            Ok(ArgumentRow {
+                lead: "",
+                word: &argument.name,
+                description: argument.description.as_deref(),
+                accepts: accepted(authored.as_deref(), &argument.schema),
+                facts: argument_facts(argument),
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let delimiter = if let Some(mode) = &command.passthrough {
+        Some(("-- ", "<args>...", mode.description.as_deref()))
+    } else if notes_escape(command, has_visible_children) {
+        Some(("--", "", Some(CHILD_NAME_ESCAPE)))
+    } else {
+        None
+    };
+    if let Some((lead, word, description)) = delimiter {
+        rows.push(ArgumentRow {
+            lead,
+            word,
+            description,
+            accepts: None,
+            facts: Vec::new(),
+        });
+    }
+    Ok(rows)
+}
+
+/// The ARGUMENTS block with help's styles and column layout.
 fn arguments(
     command: &CommandNode,
     has_visible_children: bool,
     context: &ViewContext,
 ) -> Result<Vec<String>, Error> {
-    let mut rows = command
-        .arguments
-        .iter()
-        .map(|argument| argument_row(argument, context))
-        .collect::<Result<Vec<_>, Error>>()?;
-    if let Some(mode) = &command.passthrough {
-        rows.push(Row {
-            left: format!("-- {}", context.style.dim().italic().apply("<args>...")),
-            right: right_cell(mode.description.as_deref(), None, &[], context),
-        });
-    } else if notes_escape(command, has_visible_children) {
-        rows.push(Row {
-            left: "--".to_owned(),
-            right: right_cell(Some(CHILD_NAME_ESCAPE), None, &[], context),
-        });
-    }
+    let style = &context.style;
+    let rows: Vec<_> = argument_rows(command, has_visible_children)?
+        .into_iter()
+        .map(|row| {
+            let mut left = row.lead.to_owned();
+            if !row.word.is_empty() {
+                left.push_str(&style.dim().italic().apply(&style.escape(row.word)));
+            }
+            Row {
+                left,
+                right: right_cell(row.description, row.accepts.as_deref(), &row.facts, context),
+            }
+        })
+        .collect();
     if rows.is_empty() {
         return Ok(Vec::new());
     }
     let mut lines = vec![context.style.dim().apply("ARGUMENTS")];
     lines.extend(column(&rows, context, ROW_INDENT));
     Ok(lines)
-}
-
-fn argument_row(argument: &ArgumentNode, context: &ViewContext) -> Result<Row, Error> {
-    let style = &context.style;
-    let authored = read_extension(argument, &HELP_ARGUMENT)?.and_then(|facts| facts.accepts);
-    let accepts = accepted(authored.as_deref(), &argument.schema);
-    Ok(Row {
-        left: style.dim().italic().apply(&style.escape(&argument.name)),
-        right: right_cell(
-            argument.description.as_deref(),
-            accepts.as_deref(),
-            &argument_facts(argument),
-            context,
-        ),
-    })
 }
 
 /// The sentence an option row prints for the values it accepts. A Boolean or counted option takes
@@ -482,14 +520,34 @@ fn hints(
     lines
 }
 
-/// The INPUT block of a node that declares the standalone stdin.
+/// The unstyled lines of help's standalone stdin block.
+pub(crate) struct StdinParts {
+    /// The author's description on one line, if given.
+    pub(crate) summary: Option<String>,
+    /// Whether stdin is required and what kind of input it reads.
+    pub(crate) sentence: &'static str,
+    /// An example piping input to the Command.
+    pub(crate) example: String,
+}
+
+/// The input lines of a Command that declares standalone stdin.
+pub(crate) fn stdin_parts(command: &CommandNode, path: &str) -> Option<StdinParts> {
+    let input = command.stdin.as_ref()?;
+    Some(StdinParts {
+        summary: input.description.as_deref().map(single_line),
+        sentence: stdin_sentence(input.required),
+        example: stdin_example(path),
+    })
+}
+
+/// The INPUT block with help's styles and prose wrapping.
 fn stdin_input(command: &CommandNode, path: &str, context: &ViewContext) -> Vec<String> {
     let style = &context.style;
-    let Some(input) = &command.stdin else {
+    let Some(parts) = stdin_parts(command, path) else {
         return Vec::new();
     };
     let mut lines = vec![style.dim().apply("INPUT")];
-    if let Some(summary) = input.description.as_deref().map(single_line) {
+    if let Some(summary) = parts.summary {
         lines.extend(prose(
             &style.primary().apply(&style.escape(&summary)),
             None,
@@ -497,31 +555,21 @@ fn stdin_input(command: &CommandNode, path: &str, context: &ViewContext) -> Vec<
             context,
         ));
     }
-    let presence = if input.required {
-        "Required."
-    } else {
-        "Optional."
-    };
     lines.extend(prose(
-        &style.primary().apply(&format!(
-            "{presence} Reads piped or redirected stdin. Terminal input is not accepted."
-        )),
+        &style.primary().apply(parts.sentence),
         None,
         "  ",
         context,
     ));
     lines.push(format!(
         "  {}",
-        style
-            .primary()
-            .apply(&style.escape(&format!("Example: <producer> | {path}")))
+        style.primary().apply(&style.escape(&parts.example))
     ));
     lines
 }
 
-/// One sentence per option group whose every member is visible, each prose at a two-space indent.
-fn group_sentences(command: &CommandNode, context: &ViewContext) -> Vec<String> {
-    let style = &context.style;
+/// The plain sentence for each option group whose members are all visible.
+pub(crate) fn option_group_sentences(command: &CommandNode) -> impl Iterator<Item = String> + '_ {
     command
         .option_groups
         .iter()
@@ -533,7 +581,7 @@ fn group_sentences(command: &CommandNode, context: &ViewContext) -> Vec<String> 
                     .any(|option| option.name() == name && !option.hidden())
             })
         })
-        .flat_map(|group| {
+        .map(|group| {
             let nodes: Vec<&Arc<OptionNode>> = command
                 .options
                 .iter()
@@ -567,9 +615,15 @@ fn group_sentences(command: &CommandNode, context: &ViewContext) -> Vec<String> 
             } else {
                 ""
             };
-            let sentence = style
-                .primary()
-                .apply(&style.escape(&format!("{rule}{caveat}.")));
+            format!("{rule}{caveat}.")
+        })
+}
+
+fn group_sentences(command: &CommandNode, context: &ViewContext) -> Vec<String> {
+    let style = &context.style;
+    option_group_sentences(command)
+        .flat_map(|sentence| {
+            let sentence = style.primary().apply(&style.escape(&sentence));
             prose(&sentence, None, "  ", context)
         })
         .collect()

@@ -153,11 +153,20 @@ pub fn committed(directories: &[&Path], files: &[(&Path, &str)]) -> String {
 }
 
 /// A committed plugin's file's bytes with the folders it records and no files.
-pub fn committed_folders(directories: &[&Path], folders: &[&Path]) -> String {
-    let folders: Vec<_> = folders.iter().map(|path| json!({ "path": path })).collect();
+pub fn committed_folders(directories: &[&Path], folders: &[(&Path, &[(&str, &str)])]) -> String {
+    let folders: Vec<_> = folders
+        .iter()
+        .map(|(path, files)| {
+            let files: Vec<_> = files
+                .iter()
+                .map(|(path, digest)| json!({ "path": path, "digest": digest }))
+                .collect();
+            json!({ "path": path, "files": files })
+        })
+        .collect();
     format!(
         "{}\n",
-        json!({ "format": 1, "state": "committed", "directories": directories, "files": [], "folders": folders })
+        json!({ "format": 2, "state": "committed", "directories": directories, "files": [], "folders": folders })
     )
 }
 

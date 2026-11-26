@@ -914,7 +914,7 @@ async fn a_damaged_record_refuses_install_and_uninstall_before_any_program_start
 #[tokio::test]
 async fn refuses_a_file_of_an_unknown_format() {
     let state = state_folder();
-    write_record(&state, "claude", &json!({ "format": 2 }).to_string());
+    write_record(&state, "claude", &json!({ "format": 3 }).to_string());
     let result = run(
         &["install", "--agent", "claude"],
         Options::default(),

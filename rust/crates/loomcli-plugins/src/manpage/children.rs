@@ -179,7 +179,7 @@ fn is_unchanged(recorded: &Recorded, wanted: &[InstalledFile]) -> Result<bool, E
 /// States each refused page, then fails: nothing was written.
 async fn refuse(run: &ChildRun<'_>, verb: WritingVerb, refused: &[Refusal]) -> Result<(), Error> {
     let name = &run.graph.name;
-    for Refusal { path, reason } in refused {
+    for Refusal { path, reason, .. } in refused {
         match reason {
             RefusalReason::Damaged | RefusalReason::UnknownFormat => {
                 return Err(FatalError::new(messages::record(name, path, "install")).into());

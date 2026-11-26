@@ -25,12 +25,12 @@ use installation_support::{
     outside, pending, sandbox, uninstalled, utf8_with_mark,
 };
 use loomcli_plugins::installation_test_support::{
-    CommittedFile, FolderFile, InstallOutcome, InstallRequest, InstallationError, Installed,
-    InstalledFile, InstalledFolder, InstalledLine, PluginRecord, RecordedFolder, RecordedRead,
-    RecordedRegistration, Refusal, RefusalReason, RegistrationRead, ReplaceOptions,
+    CommittedFile, FolderDigest, FolderFile, InstallOutcome, InstallRequest, InstallationError,
+    Installed, InstalledFile, InstalledFolder, InstalledLine, PluginRecord, RecordedFolder,
+    RecordedRead, RecordedRegistration, Refusal, RefusalReason, RegistrationRead, ReplaceOptions,
     StartupEncoding, StartupFileState, StartupLine, StartupLinesOutcome, Step, UninstallOutcome,
-    Uninstalled, UninstalledLines, fill_folder, folder_holds_exactly, folder_refusals,
-    inspect_startup_file, replace_file, set_probe, target_refusals, write_folder,
+    Uninstalled, UninstalledLines, fill_folder, folder_refusals, inspect_startup_file,
+    replace_file, set_probe, target_refusals, write_folder,
 };
 use serde_json::{Value, json};
 
@@ -49,6 +49,7 @@ fn refused(entries: &[(&Path, RefusalReason)]) -> InstallOutcome {
             .iter()
             .map(|(path, reason)| Refusal {
                 path: path.to_path_buf(),
+                file: None,
                 reason: *reason,
             })
             .collect(),
@@ -349,7 +350,7 @@ fn a_plugin_file_with_an_unknown_state_refuses_the_install() {
 #[test]
 fn a_plugin_file_of_an_unknown_format_refuses_the_install() {
     plugin_file_refuses(
-        "{\"format\":2,\"state\":\"committed\",\"directories\":[],\"files\":[]}\n",
+        "{\"format\":3,\"state\":\"committed\",\"directories\":[],\"files\":[]}\n",
         RefusalReason::UnknownFormat,
     );
 }
@@ -511,6 +512,7 @@ fn uninstall_refuses_a_damaged_plugin_file_and_reports_its_path() {
         uninstalled(&s),
         UninstallOutcome::Refused(vec![Refusal {
             path: s.owner.clone(),
+            file: None,
             reason: RefusalReason::Damaged,
         }])
     );
@@ -1008,6 +1010,7 @@ fn file_entry(path: &Path, digest: &str) -> CommittedFile {
 fn folder_entry(path: &Path) -> RecordedFolder {
     RecordedFolder {
         path: path.to_path_buf(),
+        files: None,
     }
 }
 
@@ -1064,6 +1067,7 @@ fn reading_refuses(reason: RefusalReason, content: &str) {
         read(&s),
         RecordedRead::Refused(Refusal {
             path: s.owner.clone(),
+            file: None,
             reason,
         })
     );
@@ -1079,7 +1083,7 @@ fn reading_a_damaged_plugin_file_refuses_it_and_reports_its_path() {
 fn reading_an_unknown_format_plugin_file_refuses_it_and_reports_its_path() {
     reading_refuses(
         RefusalReason::UnknownFormat,
-        "{\"format\":2,\"state\":\"committed\",\"directories\":[],\"files\":[]}\n",
+        "{\"format\":3,\"state\":\"committed\",\"directories\":[],\"files\":[]}\n",
     );
 }
 
@@ -1101,14 +1105,17 @@ fn the_target_refusals_read_without_writing_match_the_ones_an_install_meets() {
         [
             Refusal {
                 path: unrecorded.clone(),
+                file: None,
                 reason: RefusalReason::Unrecorded
             },
             Refusal {
                 path: link.clone(),
+                file: None,
                 reason: RefusalReason::Link
             },
             Refusal {
                 path: s.skills.clone(),
+                file: None,
                 reason: RefusalReason::Directory
             },
         ]
@@ -1118,6 +1125,7 @@ fn the_target_refusals_read_without_writing_match_the_ones_an_install_meets() {
         target_refusals(&[&s.first], &files).unwrap(),
         [Refusal {
             path: s.first.clone(),
+            file: None,
             reason: RefusalReason::Changed
         }]
     );
@@ -1168,7 +1176,20 @@ fn installing_a_folder_writes_it_whole_with_its_modes_and_records_its_path_and_c
     );
     assert_eq!(
         text(&s.owner),
-        committed_folders(&[&s.skills.join("deep")], &[&folder])
+        format!(
+            "{}\n",
+            json!({
+                "format": 2, "state": "committed", "directories": [s.skills.join("deep")],
+                "files": [],
+                "folders": [{
+                    "path": folder,
+                    "files": [
+                        { "path": "SKILL.md", "digest": DIGEST_TEST },
+                        { "path": "agents/run.sh", "digest": DIGEST_ABC }
+                    ]
+                }]
+            })
+        )
     );
     assert_eq!(
         listing(&s.skills.join("deep")),
@@ -1221,7 +1242,16 @@ fn a_second_install_leaves_exactly_the_new_files_even_after_edits_and_additions_
             "notes/references/old.md"
         ]
     );
-    assert_eq!(text(&s.owner), committed_folders(&[], &[&s.directory]));
+    assert_eq!(
+        text(&s.owner),
+        committed_folders(
+            &[],
+            &[(
+                &s.directory,
+                &[("SKILL.md", DIGEST_NEW), ("references/old.md", DIGEST_ABC)]
+            )]
+        )
+    );
 }
 
 #[test]
@@ -1253,7 +1283,10 @@ fn an_install_that_no_longer_lists_a_recorded_folder_removes_it_whole_edits_incl
         })
     );
     assert_eq!(listing(&s.skills), ["other/", "other/a.md"]);
-    assert_eq!(text(&s.owner), committed_folders(&[], &[&other]));
+    assert_eq!(
+        text(&s.owner),
+        committed_folders(&[], &[(&other, &[("a.md", DIGEST_ABC)])])
+    );
 }
 
 #[test]
@@ -1272,7 +1305,10 @@ fn files_and_folders_install_together_and_an_uninstall_removes_both() {
         owner["files"],
         json!([{ "path": s.first, "digest": DIGEST_TEST }])
     );
-    assert_eq!(owner["folders"], json!([{ "path": folder }]));
+    assert_eq!(
+        owner["folders"],
+        json!([{ "path": folder, "files": [{"path": "a.md", "digest": DIGEST_ABC}] }])
+    );
     assert_eq!(
         uninstalled(&s),
         UninstallOutcome::Uninstalled(Uninstalled {
@@ -1356,7 +1392,7 @@ fn the_force_mode_replaces_an_occupant_records_the_folder_and_reports_the_takeov
         assert_eq!(text(&target.join("keep.txt")), "keep", "{name}");
         assert_eq!(
             text(&s.owner),
-            committed_folders(&[], &[&s.directory]),
+            committed_folders(&[], &[(&s.directory, &[("SKILL.md", DIGEST_TEST)])]),
             "{name}"
         );
         assert_eq!(names(&s.skills), ["notes"], "{name}");
@@ -1525,7 +1561,12 @@ fn a_process_killed_between_moving_the_old_folder_aside_and_renaming_the_new_one
     assert_eq!(owner["state"], "pending");
     assert_eq!(
         owner["folders"],
-        json!([{ "path": s.directory }, { "path": other }])
+        json!([
+            { "path": s.directory, "prior": [{ "path": "SKILL.md", "digest": DIGEST_TEST }],
+              "intended": [{ "path": "SKILL.md", "digest": DIGEST_NEW }, { "path": "extra.md", "digest": DIGEST_ABC }] },
+            { "path": other, "prior": [{ "path": "a.md", "digest": DIGEST_ABC }],
+              "intended": [{ "path": "a.md", "digest": DIGEST_ABC }] }
+        ])
     );
     assert!(!s.directory.exists());
     let leftovers = names(&s.skills)
@@ -1562,7 +1603,16 @@ fn a_process_killed_between_moving_the_old_folder_aside_and_renaming_the_new_one
     );
     assert_eq!(
         text(&s.owner),
-        committed_folders(&[], &[&s.directory, &other])
+        committed_folders(
+            &[],
+            &[
+                (
+                    &s.directory,
+                    &[("SKILL.md", DIGEST_NEW), ("extra.md", DIGEST_ABC)]
+                ),
+                (&other, &[("a.md", DIGEST_ABC)])
+            ]
+        )
     );
 }
 
@@ -1627,7 +1677,18 @@ fn reading_a_plugin_file_returns_its_recorded_folders_and_none_when_it_records_n
     );
     assert_eq!(
         read(&s),
-        recorded_read(vec![], vec![folder_entry(&s.directory)], vec![])
+        recorded_read(
+            vec![],
+            vec![RecordedFolder {
+                files: Some(vec![FolderDigest {
+                    path: "a.md".to_owned(),
+                    digest: DIGEST_ABC.to_owned(),
+                    generated: false,
+                }]),
+                ..folder_entry(&s.directory)
+            }],
+            vec![]
+        )
     );
     installed_folders(&s, vec![], vec![], false);
     assert_eq!(read(&s), recorded_read(vec![], vec![], vec![]));
@@ -1654,6 +1715,7 @@ fn a_plugin_file_with_a_folders_member_that_is_not_a_list_of_absolute_paths_is_d
             read(&s),
             RecordedRead::Refused(Refusal {
                 path: s.owner.clone(),
+                file: None,
                 reason: RefusalReason::Damaged
             })
         );
@@ -1681,6 +1743,7 @@ fn the_folder_refusals_read_without_writing_match_the_ones_an_install_meets() {
         folder_refusals(&listed, &[folder_entry(&s.directory)]).unwrap(),
         [&link, &file, &directory].map(|path| Refusal {
             path: path.clone(),
+            file: None,
             reason: RefusalReason::Unrecorded
         })
     );
@@ -1693,82 +1756,6 @@ fn exact_files() -> Vec<FolderFile> {
         FolderFile::new("SKILL.md", "test"),
         FolderFile::new("agents/run.sh", "abc").mode(0o755),
     ]
-}
-
-/// A folder written with the exact files, which a case then spoils one way.
-fn exact_folder(s: &Sandbox) -> PathBuf {
-    write_folder(&s.directory, &exact_files()).unwrap();
-    s.directory.clone()
-}
-
-#[test]
-fn a_folder_holds_exactly_its_files_when_contents_and_modes_match_with_no_mode_named_for_a_file_that_names_none()
- {
-    let s = sandbox();
-    assert!(folder_holds_exactly(&exact_folder(&s), &exact_files()).unwrap());
-    fs::set_permissions(
-        s.directory.join("SKILL.md"),
-        fs::Permissions::from_mode(0o600),
-    )
-    .unwrap();
-    assert!(folder_holds_exactly(&s.directory, &exact_files()).unwrap());
-}
-
-#[test]
-fn a_spoiled_folder_does_not_hold_exactly_its_files() {
-    type Spoiler = (&'static str, fn(&Path));
-    let spoilers: Vec<Spoiler> = vec![
-        ("an extra file", |path| {
-            fs::write(path.join("extra.md"), "x").unwrap();
-        }),
-        ("an extra file in a subfolder", |path| {
-            fs::write(path.join("agents/extra.md"), "x").unwrap();
-        }),
-        ("an extra empty subfolder", |path| {
-            fs::create_dir(path.join("empty")).unwrap();
-        }),
-        ("a wrong mode", |path| {
-            fs::set_permissions(
-                path.join("agents/run.sh"),
-                fs::Permissions::from_mode(0o644),
-            )
-            .unwrap();
-        }),
-        ("a wrong content", |path| {
-            fs::write(path.join("SKILL.md"), "other").unwrap();
-        }),
-        ("a missing file", |path| {
-            fs::remove_file(path.join("SKILL.md")).unwrap();
-        }),
-        ("a link in place of a file", |path| {
-            fs::remove_file(path.join("SKILL.md")).unwrap();
-            fs::write(path.join("../target.md"), "test").unwrap();
-            symlink(path.join("../target.md"), path.join("SKILL.md")).unwrap();
-        }),
-        ("a link to a directory inside", |path| {
-            symlink(path.join("agents"), path.join("again")).unwrap();
-        }),
-    ];
-    for (name, spoil) in spoilers {
-        let s = sandbox();
-        spoil(&exact_folder(&s));
-        assert!(
-            !folder_holds_exactly(&s.directory, &exact_files()).unwrap(),
-            "{name}"
-        );
-    }
-}
-
-#[test]
-fn a_link_at_the_path_a_file_or_nothing_does_not_hold_exactly_its_files() {
-    let s = sandbox();
-    let real = s.root.join("real");
-    write_folder(&real, &exact_files()).unwrap();
-    assert!(!folder_holds_exactly(&s.directory, &exact_files()).unwrap());
-    symlink(&real, &s.directory).unwrap();
-    assert!(!folder_holds_exactly(&s.directory, &exact_files()).unwrap());
-    assert!(!folder_holds_exactly(&real.join("SKILL.md"), &exact_files()).unwrap());
-    assert!(folder_holds_exactly(&real, &exact_files()).unwrap());
 }
 
 // The folder write without a record
@@ -1792,7 +1779,8 @@ fn writing_a_folder_without_a_record_replaces_what_is_there_and_removes_the_left
         symlink(&target, path.join("link")).unwrap();
     }
     write_folder(&s.directory, &exact_files()).unwrap();
-    assert!(folder_holds_exactly(&s.directory, &exact_files()).unwrap());
+    assert_eq!(text(&s.directory.join("SKILL.md")), "test");
+    assert_eq!(text(&s.directory.join("agents/run.sh")), "abc");
     assert!(!own[0].exists());
     assert!(!own[1].exists());
     assert!(others.iter().all(|path| path.exists()));
@@ -2537,6 +2525,7 @@ fn a_plugin_file_whose_startup_line_is_malformed_is_damaged() {
         .unwrap();
         let refusal = Refusal {
             path: h.owner.clone(),
+            file: None,
             reason: RefusalReason::Damaged,
         };
         assert_eq!(read(&h), RecordedRead::Refused(refusal.clone()), "{name}");
@@ -2970,7 +2959,7 @@ fn a_plugin_file_with_a_malformed_registration_refuses_as_damaged() {
 fn a_plugin_file_of_an_unknown_format_refuses_its_registration() {
     let s = sandbox();
     fs::create_dir_all(&s.record).unwrap();
-    fs::write(s.record.join("mcp.claude.json"), "{\"format\":2}").unwrap();
+    fs::write(s.record.join("mcp.claude.json"), "{\"format\":3}").unwrap();
     assert!(matches!(
         PluginRecord::new(&s.record, "mcp.claude")
             .read_registration()
@@ -3037,4 +3026,102 @@ fn the_worked_example_from_the_module_rustdoc() {
     assert!(!data.exists());
     assert_eq!(text(&rc), "");
     assert!(!h.record.join("completion.bash.json").exists());
+}
+
+#[test]
+fn format_two_without_folders_is_readable_and_record_writes_format_one_for_files_alone() {
+    let s = sandbox();
+    fs::create_dir(&s.record).unwrap();
+    fs::write(
+        &s.owner,
+        "{\"format\":2,\"state\":\"committed\",\"directories\":[],\"files\":[]}\n",
+    )
+    .unwrap();
+    assert_eq!(read(&s), recorded_read(vec![], vec![], vec![]));
+    installed(&s, vec![InstalledFile::new(&s.first, "test")]);
+    assert_eq!(
+        text(&s.owner),
+        committed(&[&s.directory], &[(&s.first, DIGEST_TEST)])
+    );
+}
+
+#[test]
+fn a_folder_record_cannot_name_a_file_outside_the_folder() {
+    let s = sandbox();
+    fs::create_dir(&s.record).unwrap();
+    for path in [
+        "",
+        "/",
+        "/outside",
+        "../outside",
+        "here/../outside",
+        "here//there",
+        "./inside",
+    ] {
+        let malformed = json!({
+            "format": 2, "state": "committed", "directories": [], "files": [], "folders": [{
+                "path": s.directory, "files": [{"path": path, "digest": DIGEST_TEST}],
+            }],
+        })
+        .to_string();
+        fs::write(&s.owner, &malformed).unwrap();
+        assert_eq!(
+            read(&s),
+            RecordedRead::Refused(Refusal {
+                path: s.owner.clone(),
+                reason: RefusalReason::Damaged,
+                file: None,
+            }),
+            "{path}"
+        );
+        assert_eq!(text(&s.owner), malformed);
+    }
+}
+
+#[test]
+fn read_checks_reachability_for_directories_and_folders_before_mutation() {
+    let s = sandbox();
+    fs::create_dir(&s.record).unwrap();
+    let blocker = s.root.join("blocker");
+    fs::write(&blocker, "blocking").unwrap();
+    let unreachable = blocker.join("child");
+    let held = s.skills.join("held");
+    fs::create_dir(&held).unwrap();
+    for member in ["directories", "folders"] {
+        let mut value = json!({
+            "format": 2, "state": "committed", "files": [], "directories": [], "folders": [{ "path": held }],
+        });
+        if member == "folders" {
+            value["folders"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({ "path": unreachable }));
+        } else {
+            value["directories"] = json!([unreachable]);
+        }
+        let before = value.to_string();
+        fs::write(&s.owner, &before).unwrap();
+        let record = record(&s);
+        let read = record.read().unwrap_err();
+        let uninstall = record.uninstall(&[], &Running).unwrap_err();
+        let install = record
+            .install(&InstallRequest::new(), &Running)
+            .unwrap_err();
+        for error in [read, uninstall, install] {
+            let sentence = error.to_string();
+            assert!(sentence.starts_with("Cannot reach "), "{sentence}");
+            assert!(
+                sentence.contains(unreachable.to_str().unwrap()),
+                "{sentence}"
+            );
+            assert!(sentence.ends_with("because a file sits where one of its folders is needed. Remove or rename that file, then run the command again."), "{sentence}");
+            let loom = loomcli_core::Error::from(error);
+            assert!(
+                loom.downcast_failure::<loomcli_core::FatalError>()
+                    .is_some()
+            );
+        }
+        assert_eq!(text(&s.owner), before);
+        assert!(held.is_dir());
+    }
 }

@@ -1,12 +1,13 @@
 //! The skills plugin: installs the application's agent skills where coding agents read them, keeps
 //! them current with the binary, and removes them.
 //!
-//! Its whole contribution is one `skills` Command group with three children. `skills install`
+//! Its whole contribution is one `skills` Command group with four children. `skills install`
 //! writes every skill's folder to the Claude folder (`<claude>/skills/<name>/`, where `<claude>`
 //! is an absolute `CLAUDE_CONFIG_DIR`, else `<home>/.claude`) and to the shared agents folder
 //! (`<home>/.agents/skills/<name>/`), and records each folder in the installation record;
 //! `skills install --project` writes the same folders at the repository root with no record;
-//! `skills update` brings the recorded folders up to date; `skills uninstall` removes them.
+//! `skills update` brings the recorded folders up to date, `skills uninstall` removes them, and
+//! `skills status` reports each skill at each selected target.
 //! Install it once, and pass [`refresh_skills`] to the self-update plugin so a replaced binary
 //! brings the skills along.
 //!
@@ -76,8 +77,7 @@
 //! # let _ = application;
 //! ```
 //!
-//! A skill whose files are generated comes from a loader, which runs only when a skills Command
-//! installs or updates (`uninstall` calls no loader):
+//! A loader can compute a skill's files when a run installs, updates, or reports status.
 //!
 //! ```
 //! use loomcli_plugins::skills::{Skill, SkillFile, skills};
@@ -99,13 +99,18 @@
 //! Command reports before it writes anything.
 
 mod commands;
+pub mod extension;
 mod folder;
 mod global;
 mod judge;
 mod load;
+mod markdown;
 mod messages;
 mod project;
+mod references;
+mod selection;
 mod settings;
+mod status;
 mod targets;
 
 use std::borrow::Cow;
@@ -119,6 +124,9 @@ use loomcli_core::{AnyPlugin, Error, Plugin};
 
 pub use crate::installation::RefreshContext;
 use crate::installation::{Refresh, refresh_by_running};
+
+pub use references::{CommandReference, command_references};
+use selection::{Selection, collect_paths};
 
 /// One file of a skill's folder: its path relative to the skill's folder, its bytes, and whether it
 /// is written as an executable.
@@ -218,8 +226,8 @@ impl Skill {
         }
     }
 
-    /// A skill whose files `loader` computes, called only when a skills Command installs or
-    /// updates. A loader that fails takes the ordinary failure path, and nothing is written.
+    /// A skill whose files `loader` computes for install, update, and status. A loader failure
+    /// ends the Command before it writes any files.
     pub fn loaded(
         name: impl Into<String>,
         loader: impl Fn() -> Result<Vec<SkillFile>, Error> + Send + Sync + 'static,
@@ -264,6 +272,7 @@ pub(crate) struct Declared {
     pub(crate) listed: Vec<Skill>,
     pub(crate) folder: Option<PathBuf>,
     pub(crate) embedded: Option<Vec<Skill>>,
+    selections: Vec<Selection>,
 }
 
 /// The skills plugin's settings builder.
@@ -287,13 +296,14 @@ pub fn skills(skills: Vec<Skill>) -> Skills {
             listed: skills,
             folder: None,
             embedded: None,
+            selections: Vec::new(),
         },
     }
 }
 
 impl Skills {
     /// A folder whose subfolders are skills, each named for its subfolder, read from disk when a
-    /// skills Command installs or updates. The path is absolute, such as
+    /// skills Command installs, updates, or reports status. The path is absolute, such as
     /// `Path::new(env!("CARGO_MANIFEST_DIR")).join("skills")`; a relative path fails the Command,
     /// because no run resolves it. A source or development run reads the folder where it stands. A
     /// distributed run reads it too unless [`Skills::embedded_folder`] gave it a copy, and when the
@@ -334,6 +344,35 @@ impl Skills {
                 ..self.declared
             },
         }
+    }
+
+    /// Selects canonical Command paths for the named skill. An empty path selects the root, and
+    /// an empty list selects no Commands. A later call for the skill replaces its selection.
+    ///
+    /// # Panics
+    ///
+    /// With the `@loomcli/plugins/skills/settings` diagnostic when the name is outside the skill
+    /// name grammar.
+    #[track_caller]
+    pub fn select_commands(
+        mut self,
+        skill: impl Into<String>,
+        paths: impl IntoIterator<Item = impl IntoIterator<Item = impl AsRef<str>>>,
+    ) -> Self {
+        let skill = skill.into();
+        settings::judge_selection_name(&skill);
+        let paths = collect_paths(paths);
+        if let Some(selection) = self
+            .declared
+            .selections
+            .iter_mut()
+            .find(|entry| entry.skill == skill)
+        {
+            selection.paths = paths;
+        } else {
+            self.declared.selections.push(Selection { skill, paths });
+        }
+        self
     }
 
     /// The plugin.

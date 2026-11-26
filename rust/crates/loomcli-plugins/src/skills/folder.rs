@@ -14,6 +14,7 @@ use loomcli_core::{
 
 use super::SkillFile;
 use super::judge::{files_fault, judged};
+use super::messages;
 use super::settings::is_skill_name;
 use crate::PACKAGE_NAME;
 
@@ -252,6 +253,7 @@ pub(super) enum Missing {
 pub(super) fn read_skills_folder(
     folder: &Path,
     listed: &[&str],
+    selecting: &[&str],
     missing_as: Missing,
 ) -> Result<Vec<FolderSkill>, Error> {
     if !followed(folder)?.is_some_and(|metadata| metadata.is_dir()) {
@@ -262,7 +264,7 @@ pub(super) fn read_skills_folder(
         .into());
     }
     let skills = skills_in(folder)?;
-    check_folder_skills(folder, &skills, listed)?;
+    check_folder_skills(folder, &skills, listed, selecting)?;
     Ok(skills)
 }
 
@@ -272,8 +274,9 @@ pub(super) fn check_folder_skills(
     folder: &Path,
     skills: &[FolderSkill],
     listed: &[&str],
+    selecting: &[&str],
 ) -> Result<(), Error> {
-    if skills.is_empty() && listed.is_empty() {
+    if skills.is_empty() && listed.is_empty() && selecting.is_empty() {
         return Err(empty(folder).into());
     }
     if let Some(twice) = skills
@@ -281,6 +284,13 @@ pub(super) fn check_folder_skills(
         .find(|skill| listed.contains(&skill.name.as_str()))
     {
         return Err(listed_twice(folder, &twice.name).into());
+    }
+    if let Some(absent) = selecting
+        .iter()
+        .find(|name| !skills.iter().any(|skill| skill.name == **name))
+    {
+        let (sentence, correction) = messages::selected_skill_missing(folder, absent);
+        return Err(folder_fault(sentence, &correction).into());
     }
     Ok(())
 }

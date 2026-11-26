@@ -35,7 +35,7 @@ impl WritingVerb {
 /// The failure of folders the record does not list that are in the way.
 pub(super) fn in_the_way(name: &str, verb: WritingVerb) -> String {
     format!(
-        "{name} skills {verb} changed nothing, because folders it did not install are in the way. Remove them, or run {name} skills install --force to replace them.",
+        "{name} skills {verb} changed nothing, because folders it did not install, or whose command references changed since it installed them, are in the way. Copy any file you want to keep out of them, then remove them or run {name} skills install --force to replace them.",
         name = shown(name),
         verb = verb.word()
     )
@@ -168,5 +168,222 @@ pub(super) fn directory_missing(start: &str) -> String {
     format!(
         "Option \"--directory\" names {}, which is not a directory. Name a directory that exists.",
         shown(start)
+    )
+}
+
+pub(super) fn reference_changed(name: &str, file: &Path) -> String {
+    format!(
+        "{} changed since {} skills install wrote it.",
+        shown_path(file),
+        shown(name)
+    )
+}
+
+pub(super) fn replaced_modified(name: &str, folder: &Path) -> String {
+    format!(
+        "Replaced {}, whose command references changed since {} skills install wrote them.",
+        shown_path(folder),
+        shown(name)
+    )
+}
+
+pub(super) fn modified_kept(name: &str, folder: &Path) -> String {
+    format!(
+        "{} was left in place, because command references in it changed since {} skills install wrote them. Copy what you want to keep, then remove the folder.",
+        shown_path(folder),
+        shown(name)
+    )
+}
+
+pub(super) fn status_same_folder(name: &str, agents: &Path, claude: &Path) -> String {
+    format!(
+        "{} is the same folder as {}, so {} reports on it once, for claude.",
+        shown_path(agents),
+        shown_path(claude),
+        shown(name)
+    )
+}
+
+pub(super) fn status_record(name: &str, path: &Path) -> String {
+    let name = shown(name);
+    let path = shown_path(path);
+    format!(
+        "{path} cannot be read, so {name} cannot tell which skills it installed. Remove it and the folders it lists, then run {name} skills install again."
+    )
+}
+
+pub(super) fn status_project_global(name: &str, folder: &Path) -> String {
+    let name = shown(name);
+    let folder = shown_path(folder);
+    format!(
+        "{name} skills status --project would read {folder}, the folder {name} skills install keeps for your home folder. Run it inside a repository, name one with --directory, or leave out --project."
+    )
+}
+
+pub(super) fn obsolete_skill(name: &str, folder: &Path, modified: bool) -> String {
+    let name = shown(name);
+    let folder = shown_path(folder);
+    if modified {
+        format!(
+            "{name} skills install recorded {folder}, a skill this version no longer declares, and command references in it changed, so {name} skills update will leave it in place. Copy what you want to keep, then remove the folder."
+        )
+    } else {
+        format!(
+            "{name} skills install recorded {folder}, a skill this version no longer declares. Run {name} skills update to remove it, once no skill reads modified or unmanaged."
+        )
+    }
+}
+
+use super::status::State;
+
+fn directory_word(root: &Path) -> String {
+    let root = root.to_string_lossy();
+    if root
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || b"_./:-".contains(&byte))
+    {
+        shown(&root)
+    } else {
+        shown(&format!("'{}'", root.replace('\'', r"'\''")))
+    }
+}
+
+pub(super) fn global_status_note(name: &str, target: &str, state: State) -> Option<String> {
+    let name = shown(name);
+    let target = shown(target);
+    let install = format!("{name} skills install --agent {target}");
+    Some(match state {
+        State::Missing => {
+            format!("Run {install} to install it, once no skill reads modified or unmanaged.")
+        }
+        State::Unmanaged => format!(
+            "The installation record does not list what is at this path. Remove it, or run {install} --force to replace it."
+        ),
+        State::Modified => format!(
+            "Its command references changed since {name} skills install wrote them, so {name} skills update will not replace it. Copy the changed files elsewhere to keep them, then run {install} --force to replace the folder."
+        ),
+        State::Stale => format!(
+            "Run {name} skills update to bring it up to date, once no skill reads modified or unmanaged."
+        ),
+        State::Current => return None,
+    })
+}
+
+pub(super) fn project_status_note(
+    name: &str,
+    target: &str,
+    root: Option<&Path>,
+    state: State,
+) -> Option<String> {
+    let name = shown(name);
+    let target = shown(target);
+    let mut install = format!("{name} skills install --project --agent {target}");
+    if let Some(root) = root {
+        install.push_str(" --directory ");
+        install.push_str(&directory_word(root));
+    }
+    Some(match state {
+        State::Missing => format!("Run {install} to install it."),
+        State::Unmanaged => format!(
+            "{name} skills install --project did not write this, because it is not a folder. Run {install} to replace it."
+        ),
+        State::Modified | State::Stale => {
+            format!("Run {install} to replace it with this version's.")
+        }
+        State::Current => return None,
+    })
+}
+
+pub(super) fn unknown_command_path(skill: Option<&str>, path: &[String]) -> (String, &'static str) {
+    let names: Vec<_> = path
+        .iter()
+        .map(|name| serde_json::Value::String(name.clone()).to_string())
+        .collect();
+    let path = shown(&format!("[{}]", names.join(", ")));
+    let sentence = skill.map_or_else(
+        || format!("The path {path} names no Command."),
+        |skill| {
+            format!(
+                "Skill \"{}\" selects the path {path}, which names no Command.",
+                shown(skill)
+            )
+        },
+    );
+    (
+        sentence,
+        "Name each Command on the path from the root down, such as [\"note\", \"add\"], or select [] for the whole application.",
+    )
+}
+
+pub(super) fn reference_name_taken(
+    skill: Option<&str>,
+    earlier: &str,
+    later: &str,
+    file: &str,
+) -> (String, &'static str) {
+    let commands = format!("Commands \"{}\" and \"{}\"", shown(earlier), shown(later));
+    let file = shown(file);
+    match skill {
+        None => (
+            format!("{commands} both give the file {file}."),
+            "Rename one of them, or hide one.",
+        ),
+        Some(skill) => (
+            format!(
+                "Skill \"{}\" selects {commands}, which both give the file references/commands/{file}.",
+                shown(skill)
+            ),
+            "Rename one of them, hide one, or select one of them alone.",
+        ),
+    }
+}
+
+pub(super) fn root_is_index(skill: Option<&str>, application: &str) -> (String, &'static str) {
+    let name = shown(application);
+    match skill {
+        None => (
+            format!("The root of {name} gives the file index.md, which is the name of the index."),
+            "Rename the application.",
+        ),
+        Some(skill) => (
+            format!(
+                "Skill \"{}\" selects the root of {name}, whose file references/commands/index.md is the name of the index.",
+                shown(skill)
+            ),
+            "Select the root's Commands by their own paths, such as [\"get\"], in place of [].",
+        ),
+    }
+}
+
+pub(super) fn skill_file_left_out(skill: &str, path: &str) -> String {
+    format!(
+        "Left out {}, which the skill {} supplies, because the plugin owns that name for its command references.",
+        shown(path),
+        shown(skill)
+    )
+}
+
+pub(super) fn reference_aliases(aliases: &[String], heading: bool) -> String {
+    let label = match (aliases.len() == 1, heading) {
+        (true, true) => "Alias",
+        (true, false) => "alias",
+        (false, true) => "Aliases",
+        (false, false) => "aliases",
+    };
+    format!("{label}: {}", shown(&aliases.join(", ")))
+}
+
+pub(super) const SKILL_FILE_LEFT_OUT: &str = "Left out {path}, which the skill {skill} supplies, because the plugin owns that name for its command references.";
+
+pub(super) fn selected_skill_missing(folder: &Path, name: &str) -> (String, String) {
+    let name = shown(name);
+    let folder = shown(&folder.to_string_lossy());
+    (
+        format!(
+            "The skills setting lists the skill {name} without files, and the skills folder {folder} holds no skill {name}."
+        ),
+        format!(
+            "Add a folder named {name}, holding its SKILL.md, to the skills folder, or give the entry its files."
+        ),
     )
 }

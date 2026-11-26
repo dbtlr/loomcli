@@ -3,11 +3,14 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use loomcli_core::{Build, Error};
+use loomcli_core::{Build, Error, LogFields};
 
 use super::folder::{FolderSkill, Missing, check_folder_skills, folder_fault, read_skills_folder};
+use super::global::ChildRun;
 use super::judge::judged;
+use super::selection::{REFERENCES, owns_reference};
 use super::{Declared, Skill, SkillFile};
+use super::{messages, references};
 use crate::PACKAGE_NAME;
 use crate::installation::FolderFile;
 
@@ -82,6 +85,7 @@ async fn embedded_skills(
     folder: &Path,
     embedded: &[Skill],
     listed: &[&str],
+    selecting: &[&str],
 ) -> Result<Vec<FolderSkill>, Error> {
     let mut sorted: Vec<&Skill> = embedded.iter().collect();
     sorted.sort_by(|a, b| a.name().cmp(b.name()));
@@ -94,7 +98,7 @@ async fn embedded_skills(
             files: judged(skill.name(), files)?,
         });
     }
-    check_folder_skills(folder, &skills, listed)?;
+    check_folder_skills(folder, &skills, listed, selecting)?;
     Ok(skills)
 }
 
@@ -106,26 +110,29 @@ async fn folder_skills(declared: &Declared, build: Build) -> Result<Vec<FolderSk
         return Ok(Vec::new());
     };
     let listed: Vec<&str> = declared.listed.iter().map(Skill::name).collect();
+    let selecting = declared
+        .selections
+        .iter()
+        .map(|selection| selection.skill.as_str())
+        .filter(|name| !listed.contains(name))
+        .collect::<Vec<_>>();
     let folder = folder_path(setting)?;
     if let (Build::Distributed, Some(embedded)) = (build, &declared.embedded) {
-        return embedded_skills(&folder, embedded, &listed).await;
+        return embedded_skills(&folder, embedded, &listed, &selecting).await;
     }
     let missing = if build == Build::Distributed {
         Missing::Built
     } else {
         Missing::Setting
     };
-    read_skills_folder(&folder, &listed, missing)
+    read_skills_folder(&folder, &listed, &selecting, missing)
 }
 
 /// Reads the skills folder, then calls each listed skill's loader once, in declaration order,
 /// awaiting each, then judges every result before anything is written. The folder's skills come
 /// first, in name order, then the listed skills. The first fault is returned as a
 /// `DeclarationError`, and a loader that fails fails the run as it did.
-pub(super) async fn load_skills(
-    declared: &Declared,
-    build: Build,
-) -> Result<Vec<LoadedSkill>, Error> {
+async fn load_skills(declared: &Declared, build: Build) -> Result<Vec<LoadedSkill>, Error> {
     let from_folder = folder_skills(declared, build).await?;
     let mut answers = Vec::new();
     for skill in &declared.listed {
@@ -143,6 +150,51 @@ pub(super) async fn load_skills(
             name: name.to_owned(),
             files: with_modes(judged(name, files)?),
         });
+    }
+    Ok(loaded)
+}
+
+/// Shares the loader and generated file set across both install scopes and status.
+pub(super) async fn load_for_run<R>(
+    run: &ChildRun<'_, R>,
+    declared: &Declared,
+) -> Result<Vec<LoadedSkill>, Error> {
+    let mut loaded = load_skills(declared, run.host.release.build).await?;
+    let mut left_out = Vec::new();
+    for skill in &mut loaded {
+        let Some(selection) = declared
+            .selections
+            .iter()
+            .find(|selection| selection.skill == skill.name)
+        else {
+            continue;
+        };
+        if selection.paths.is_empty() {
+            continue;
+        }
+        skill.files.retain(|file| {
+            let owned = owns_reference(&file.path, run.name);
+            if owned {
+                left_out.push((file.path.clone(), skill.name.clone()));
+            }
+            !owned
+        });
+        for reference in references::render(run.graph, &selection.paths, true, Some(&skill.name))? {
+            let mut file =
+                FolderFile::new(format!("{REFERENCES}{}", reference.name), reference.content)
+                    .mode(PLAIN_MODE);
+            file.generated = true;
+            skill.files.push(file);
+        }
+    }
+    for (path, skill) in left_out {
+        run.log.trace(
+            messages::SKILL_FILE_LEFT_OUT,
+            LogFields::new().field("path", &path).field("skill", &skill),
+        );
+        run.out
+            .trace(&messages::skill_file_left_out(&skill, &path))
+            .await?;
     }
     Ok(loaded)
 }

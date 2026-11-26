@@ -42,3 +42,33 @@ pub(super) fn startup_file_changed(path: &str) -> String {
         escape_control_characters(path)
     )
 }
+
+fn shown_path(path: &std::path::Path) -> String {
+    loomcli_core::nowrap(&escape_control_characters(&path.to_string_lossy()))
+}
+
+pub(super) fn path_blocked(path: &std::path::Path) -> String {
+    format!(
+        "Cannot reach {} because a file sits where one of its folders is needed. Remove or rename that file, then run the command again.",
+        shown_path(path)
+    )
+}
+
+pub(super) fn read_unreadable(path: &std::path::Path) -> String {
+    format!(
+        "Cannot read {} because you do not have permission to reach or read it. Make it readable, then run the command again.",
+        shown_path(path)
+    )
+}
+
+pub(super) fn write_unwritable(path: &std::path::Path, read_only: bool) -> String {
+    let reason = if read_only {
+        "the file system is read-only"
+    } else {
+        "you do not have permission to write there"
+    };
+    format!(
+        "Cannot write {} because {reason}. Make the location writable, then run the command again.",
+        shown_path(path)
+    )
+}

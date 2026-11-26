@@ -114,3 +114,20 @@ pub(super) fn embedded_without_folder(skills: &[Skill]) {
         "Name the folder with Skills::folder, such as Path::new(env!(\"CARGO_MANIFEST_DIR\")).join(\"skills\").",
     );
 }
+
+/// Checks the skill name accepted by the selection builder.
+#[track_caller]
+pub(super) fn judge_selection_name(name: &str) {
+    if !is_skill_name(name) {
+        settings_fault(
+            "Skills::select_commands",
+            Literal::String(name.to_owned()),
+            "0",
+            format!(
+                "setting \"skills\" holds a name that is not a skill name: {}.",
+                escape_control_characters(name)
+            ),
+            "Use lowercase letters, digits, and single hyphens, 64 characters at most, such as notes.",
+        );
+    }
+}
