@@ -477,7 +477,8 @@ jobs:
           workspaces: rust
 
       # Rust work only shrinks rust/conformance/behind.json (ADR-0006), so a pull request may add
-      # or widen an entry only for a case whose files under conformance/expected/ it changes.
+      # or widen an entry only for a case whose files under conformance/expected/ it changes, or
+      # one the base branch lists in accepted.json. -z keeps each path unquoted.
       - name: Check that the behind list grows only for cases whose expected output changed
         if: github.event_name == 'pull_request'
         shell: bash
@@ -487,9 +488,11 @@ jobs:
             echo "The checkout is not a merge commit, so the base branch's behind list is unknown." >&2
             exit 1
           fi
-          git show HEAD^1:rust/conformance/behind.json > "$RUNNER_TEMP/behind-base.json"
-          git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed-paths"
-          cargo run -p conformance-harness -- --check-growth "$RUNNER_TEMP/behind-base.json" --changed "$RUNNER_TEMP/changed-paths"
+          mkdir "$RUNNER_TEMP/behind-base"
+          git show HEAD^1:rust/conformance/behind.json > "$RUNNER_TEMP/behind-base/behind.json"
+          git show HEAD^1:rust/conformance/accepted.json > "$RUNNER_TEMP/behind-base/accepted.json"
+          git diff -z --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed-paths"
+          cargo run -p conformance-harness -- --check-growth "$RUNNER_TEMP/behind-base" --changed "$RUNNER_TEMP/changed-paths"
 
       - name: Run the tests
         run: cargo test --workspace --all-features

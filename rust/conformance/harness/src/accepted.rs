@@ -32,6 +32,25 @@ struct File {
     accepted: Vec<Accepted>,
 }
 
+#[derive(Deserialize)]
+struct Ids {
+    accepted: Vec<Id>,
+}
+
+#[derive(Deserialize)]
+struct Id {
+    id: String,
+}
+
+/// The case ids an `accepted.json` lists, read without checking its rows against a register, as a
+/// base branch's copy is read.
+pub fn ids(path: &Path) -> Result<Vec<String>, String> {
+    let text =
+        fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let file: Ids = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(file.accepted.into_iter().map(|entry| entry.id).collect())
+}
+
 /// Parses the file text; `deviations` is the text of `docs/deviations.md` that every `row` must occur in.
 pub fn parse(text: &str, deviations: &str) -> Result<Vec<Accepted>, String> {
     let file: File = serde_json::from_str(text).map_err(|e| format!("accepted.json: {e}"))?;

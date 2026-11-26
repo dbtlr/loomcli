@@ -9,7 +9,7 @@ use conformance_harness::runner::{
 };
 use conformance_harness::{behind, cases, growth, report};
 
-const USAGE: &str = "usage: conformance-harness [--only <id prefix or group>] [--show <id>] [--bin-dir <dir>] [--json <file>] [--jobs <n>] [--write-behind <file>]\n       conformance-harness --check-growth <base behind.json> --changed <file of changed paths>";
+const USAGE: &str = "usage: conformance-harness [--only <id prefix or group>] [--show <id>] [--bin-dir <dir>] [--json <file>] [--jobs <n>] [--write-behind <file>]\n       conformance-harness --check-growth <folder of the base lists> --changed <file of NUL-ended changed paths>";
 
 #[derive(Default)]
 struct Args {
@@ -79,26 +79,21 @@ fn default_bin_dir(root: &Path) -> PathBuf {
     }
 }
 
-/// Compares the committed behind list with the base branch's and fails on growth the change's
-/// paths do not explain. It runs no case.
+/// Compares the committed behind list with the base branch's and fails on growth the change does
+/// not explain. It runs no case.
 fn check_growth(rust_dir: &Path, base: &Path, changed: &Path) -> Result<bool, String> {
-    let base = behind::load(base)?;
-    let head = behind::load(&rust_dir.join("conformance/behind.json"))?;
-    let changed: Vec<String> = std::fs::read_to_string(changed)
-        .map_err(|e| format!("cannot read {}: {e}", changed.display()))?
-        .lines()
-        .filter(|line| !line.is_empty())
-        .map(str::to_owned)
-        .collect();
-    let unexplained = growth::unexplained(growth::grown(&base, &head), &changed);
-    if unexplained.is_empty() {
-        println!(
-            "behind.json grows for no case whose expected output this change leaves unchanged."
-        );
-        return Ok(true);
+    match growth::check(base, &rust_dir.join("conformance/behind.json"), changed)? {
+        None => {
+            println!(
+                "behind.json grows for no case whose expected output this change leaves unchanged."
+            );
+            Ok(true)
+        }
+        Some(report) => {
+            print!("{report}");
+            Ok(false)
+        }
     }
-    print!("{}", growth::render(&unexplained));
-    Ok(false)
 }
 
 fn run() -> Result<bool, String> {

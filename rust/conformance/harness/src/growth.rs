@@ -1,7 +1,11 @@
 //! The growth check: a change may add to the behind list only for a case whose expected output it
 //! changed, because Rust work only shrinks the list (ADR-0006).
 
-use crate::behind::Behind;
+use std::fs;
+use std::path::Path;
+
+use crate::accepted;
+use crate::behind::{self, Behind};
 use crate::compare::Part;
 
 /// The parts one case gained on the behind list against the base branch's list.
@@ -32,16 +36,40 @@ pub fn grown(base: &Behind, head: &Behind) -> Vec<Growth> {
         .collect()
 }
 
-/// The growth that `changed`, the repository-relative paths a change touched, does not explain: a
-/// case's growth is explained when the change touched a file under `conformance/expected/<id>/`.
-pub fn unexplained(growth: Vec<Growth>, changed: &[String]) -> Vec<Growth> {
+/// The growth that `changed`, the repository-relative paths a change touched, does not explain. A
+/// case's growth is explained when the change touched a file under `conformance/expected/<id>/`,
+/// or when the base listed the case in `accepted.json`: a deviation reclassified as owed to the
+/// catch-up was already known to differ, so its move is no regression.
+pub fn unexplained(
+    growth: Vec<Growth>,
+    changed: &[String],
+    base_accepted: &[String],
+) -> Vec<Growth> {
     growth
         .into_iter()
         .filter(|g| {
             let folder = format!("conformance/expected/{}/", g.id);
-            !changed.iter().any(|path| path.starts_with(&folder))
+            !base_accepted.contains(&g.id) && !changed.iter().any(|path| path.starts_with(&folder))
         })
         .collect()
+}
+
+/// Checks `head`, the committed behind list, against `base`, a folder holding the base branch's
+/// `behind.json` and `accepted.json`, and `changed`, a file of the repository-relative paths the
+/// change touched, each ended by a NUL as `git diff -z --name-only` writes them. Returns the report
+/// of unexplained growth, or `None` when there is none.
+pub fn check(base: &Path, head: &Path, changed: &Path) -> Result<Option<String>, String> {
+    let base_behind = behind::load(&base.join("behind.json"))?;
+    let base_accepted = accepted::ids(&base.join("accepted.json"))?;
+    let head = behind::load(head)?;
+    let changed: Vec<String> = fs::read_to_string(changed)
+        .map_err(|e| format!("cannot read {}: {e}", changed.display()))?
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(str::to_owned)
+        .collect();
+    let found = unexplained(grown(&base_behind, &head), &changed, &base_accepted);
+    Ok((!found.is_empty()).then(|| render(&found)))
 }
 
 /// The report for unexplained growth: one line per case, then the rule it breaks.
@@ -136,7 +164,7 @@ mod tests {
             "rust/conformance/behind.json",
         ]);
         assert_eq!(
-            unexplained(found, &changed),
+            unexplained(found, &changed, &[]),
             [growth("jsonkit-b", &[Part::Stderr])]
         );
     }
@@ -151,9 +179,21 @@ mod tests {
             "rust/conformance/expected/jsonkit-a/stdout",
         ]);
         assert_eq!(
-            unexplained(found.clone(), &changed),
+            unexplained(found.clone(), &changed, &[]),
             found,
             "only a file under conformance/expected/jsonkit-a/ explains jsonkit-a"
+        );
+    }
+
+    #[test]
+    fn a_case_the_base_accepted_is_explained_and_no_other() {
+        let found = vec![
+            growth("jsonkit-a", &[Part::Stdout]),
+            growth("jsonkit-b", &[Part::Stdout]),
+        ];
+        assert_eq!(
+            unexplained(found, &[], &["jsonkit-a".to_owned()]),
+            [growth("jsonkit-b", &[Part::Stdout])]
         );
     }
 
@@ -161,7 +201,7 @@ mod tests {
     fn a_files_part_is_explained_by_a_changed_file_under_the_cases_files_folder() {
         let found = vec![growth("jsonkit-a", &[Part::Files])];
         let changed = paths(&["conformance/expected/jsonkit-a/files/out/report.json"]);
-        assert_eq!(unexplained(found, &changed), []);
+        assert_eq!(unexplained(found, &changed, &[]), []);
     }
 
     #[test]

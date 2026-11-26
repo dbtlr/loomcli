@@ -30,7 +30,7 @@ The cases now sit at the repository root in `conformance/`, and the TypeScript w
 
 ## Consequences
 
-A reference behavior change is ported by refreshing the shared expectations, listing what Rust no longer matches, and then closing the entries. The parity Rust reaches at any moment is the shared cases less the behind list, and the list's size is the catch-up's measure. The reference revision the cases were captured from is recorded in `conformance/expected/META.json`. `--write-behind` writes an entry for a regression as readily as for a reference change, so a check compares the list with its base branch: on a pull request, CI fails when the list adds a case or a part for a case whose files under `conformance/expected/` the change leaves unchanged. A reference change that alters a case's expected output can still carry an unrelated Rust regression in that same case, and review holds the rule there.
+A reference behavior change is ported by refreshing the shared expectations, listing what Rust no longer matches, and then closing the entries. The parity Rust reaches at any moment is the shared cases less the behind list, and the list's size is the catch-up's measure. The reference revision the cases were captured from is recorded in `conformance/expected/META.json`. `--write-behind` writes an entry for a regression as readily as for a reference change, so a check compares the list with its base branch: on a pull request, CI fails when the list adds a case or a part for a case whose files under `conformance/expected/` the change leaves unchanged, unless the base lists the case in `accepted.json`: a deviation reclassified as behind was already known to differ, so its move is not a regression. A reference change that alters a case's expected output can still carry an unrelated Rust regression in that same case, and review holds the rule there.
 
 ## Status
 
@@ -39,4 +39,4 @@ Proposed on 2026-11-24 with the change that moved the cases and added the list. 
 ## Changelog
 
 - 2026-11-24: Proposed.
-- 2026-11-26: Consequences: a CI check on pull requests holds the rule that Rust work only shrinks the list, case by case against the change's expected files.
+- 2026-11-26: Consequences: a CI check on pull requests holds the rule that Rust work only shrinks the list, case by case against the change's expected files, and lets a case the base accepted move to the list.
