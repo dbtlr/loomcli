@@ -1,7 +1,7 @@
 //! The one reader every action reads its document through.
 
 use loomcli_core::{
-    Content, ContentKind, ContextualStyle, Error, FailureFacts, FatalError, Out,
+    Content, ContentKind, Error, FailureFacts, FatalError, Log, LogFields,
     escape_control_characters,
 };
 use serde_json::Value;
@@ -27,21 +27,16 @@ fn explain(error: &Error, fallback: &str) -> String {
 /// characters escaped as every other operator-supplied name jsonkit prints. A malformed document
 /// returns the parse error `serde_json` raises, which the application's translator turns into its
 /// `InvalidJsonError`.
-pub async fn read_json<R>(
-    file: &Content,
-    out: &Out<R>,
-    style: &ContextualStyle,
-) -> Result<Value, Error> {
+pub async fn read_json(file: &Content, log: &Log) -> Result<Value, Error> {
     let stdin = matches!(file.kind, ContentKind::Stdin);
-    let line = if stdin {
-        "Reading stdin.".to_owned()
+    if stdin {
+        log.debug("Reading stdin.", ());
     } else {
-        format!(
-            "Reading {}.",
-            style.escape(&escape_control_characters(&file.name))
-        )
-    };
-    out.debug(&line).await?;
+        log.debug(
+            "Reading {file}.",
+            LogFields::new().field("file", &file.name),
+        );
+    }
     let subject = if stdin {
         "stdin".to_owned()
     } else {

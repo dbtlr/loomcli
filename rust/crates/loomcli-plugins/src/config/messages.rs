@@ -1,6 +1,7 @@
 //! The sentences of the configuration plugin. A clause that says why a file cannot be used is one
 //! of the fixed strings `Clause::text` returns.
 
+use loomcli_core::LogFields;
 use loomcli_core::{ContextualStyle, escape_control_characters, nowrap};
 
 use super::reading::{Clause, Position};
@@ -122,33 +123,48 @@ pub(super) fn no_file_notice(file: &str, app: &str, style: &ContextualStyle) -> 
 
 /// The `-v` line for one removed value: the value at a shown path, kept on one line, or every key.
 pub(super) fn ignored_value(
-    path: Option<&str>,
+    key: Option<&str>,
     file: Option<&str>,
     issue: &str,
-    style: &ContextualStyle,
-) -> String {
-    let subject = path.map_or_else(
-        || "every key".to_owned(),
-        |path| nowrap(&style.escape(&shown(path))),
-    );
-    let place = file.map_or_else(String::new, |file| format!(" in {}", warned(file, style)));
-    format!("Ignored {subject}{place}: {}", style.escape(&shown(issue)))
+) -> (&'static str, LogFields) {
+    const WHOLE: &str = "Ignored every key: {issue}";
+    const WHOLE_FILE: &str = "Ignored every key in {file}: {issue}";
+    const KEY: &str = "Ignored {key}: {issue}";
+    const KEY_FILE: &str = "Ignored {key} in {file}: {issue}";
+    let mut fields = LogFields::new();
+    if let Some(file) = file {
+        fields = fields.field("file", file);
+    }
+    fields = fields.field("issue", issue);
+    if let Some(key) = key {
+        fields = fields.field("key", key);
+    }
+    let template = match (key, file) {
+        (None, None) => WHOLE,
+        (None, Some(_)) => WHOLE_FILE,
+        (Some(_), None) => KEY,
+        (Some(_), Some(_)) => KEY_FILE,
+    };
+    (template, fields)
 }
 
-/// The `-v` line for one value an option cannot take.
+/// The debug event for a value an option cannot take.
 pub(super) fn ignored_option(
     spelling: &str,
     path: Option<&str>,
     label: &str,
     issue: &str,
-    style: &ContextualStyle,
-) -> String {
-    let position = path.map_or_else(String::new, |path| format!(" at {}", shown(path)));
-    format!(
-        "Ignored option \"{}\"{position} from {}: {issue}",
-        shown(spelling),
-        style.escape(&shown(label))
-    )
+) -> (&'static str, LogFields) {
+    const OPTION: &str = r#"Ignored option "{option}" from {label}: {issue}"#;
+    const POSITION: &str = r#"Ignored option "{option}" at {position} from {label}: {issue}"#;
+    let fields = LogFields::new()
+        .field("issue", issue)
+        .field("label", label)
+        .field("option", spelling);
+    match path {
+        Some(path) => (POSITION, fields.field("position", path)),
+        None => (OPTION, fields),
+    }
 }
 
 pub(super) const BOOLEAN_ISSUE: &str = "Use true or false.";

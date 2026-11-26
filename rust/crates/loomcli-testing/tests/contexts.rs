@@ -623,7 +623,7 @@ async fn a_provider_context_writes_to_its_process_and_never_cancels() {
     );
     ctx.out.warn("Loud.").await.unwrap();
     // Verbosity 0 hides a debug line, as in a run.
-    ctx.out.debug("Quiet.").await.unwrap();
+    ctx.log.debug("Quiet.", ());
     assert_eq!(process.stderr_text(), "⚠ Loud.\n");
     assert!(!ctx.signal.is_cancelled());
     let registration = ctx.on_shutdown(|_event| panic!("a built context's handler ran"));

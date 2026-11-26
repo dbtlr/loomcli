@@ -14,8 +14,7 @@ use loomcli_core::{
     Application, Arg, Background, BackgroundPolicy, Build, Command, Context, FailureFacts,
     FailureView, Group, InvocationOutcome, InvocationValues, InvokeOptions, NoInputs, NoResult,
     Opt, OutputTerminal, ReleaseFacts, RenderingPolicy, ResultViews, RowViews, RowsResult,
-    RunOptions, Switch, UsageError, ValueResult, View, ViewContext, failure, lanes, override_view,
-    style,
+    RunOptions, Switch, UsageError, ValueResult, View, ViewContext, failure, override_view, style,
 };
 use loomcli_testing::{MockTerminal, mock_process};
 use serde_json::{Value, json};
@@ -33,8 +32,8 @@ fn distributed() -> ReleaseFacts {
 
 /// Writes every lane once, then the counts the action read on stdout.
 async fn every_lane(ctx: Context) -> loomcli_core::Outcome {
-    ctx.out.trace("trace").await?;
-    ctx.out.debug("debug").await?;
+    ctx.log.trace("trace", ());
+    ctx.log.debug("debug", ());
     ctx.out.info("info").await?;
     ctx.out.success("success").await?;
     ctx.out.warn("warn").await?;
@@ -81,10 +80,12 @@ fn fetchit(variant: &str) -> App {
         .description("Fetch records.");
     if variant == "override" {
         app = app.overrides([override_view(
-            lanes::debug(),
-            View::new(|_: &str, _: &ViewContext| -> Result<String, io::Error> {
-                Err(io::Error::other("The debug lane view was called."))
-            }),
+            loomcli_core::log_line(),
+            View::new(
+                |_: &loomcli_core::LogLine, _: &ViewContext| -> Result<String, io::Error> {
+                    Err(io::Error::other("The log-line view was called."))
+                },
+            ),
         )]);
     }
     let get = Command::new("get")
@@ -98,8 +99,9 @@ fn fetchit(variant: &str) -> App {
     let get = if variant == "long" {
         get.action(|ctx: Context| async move {
             let message = "one two three four five six seven eight nine ten";
-            ctx.out.debug(message).await?;
-            ctx.out.trace(message).await
+            ctx.log.debug(message, ());
+            ctx.log.trace(message, ());
+            Ok(())
         })
     } else {
         get.action(every_lane)
@@ -115,8 +117,8 @@ fn fetchit(variant: &str) -> App {
                     View::new(|data: &String, _: &ViewContext| format!("{data}\n")),
                 ))
                 .action(|ctx: Context<NoInputs, ValueResult<String>>| async move {
-                    ctx.out.debug("debug").await?;
-                    ctx.out.trace("trace").await?;
+                    ctx.log.debug("debug", ());
+                    ctx.log.trace("trace", ());
                     ctx.out.results("record".to_owned()).await
                 }),
         )
@@ -191,7 +193,7 @@ fn fetchit_plugins(variant: &str) -> Vec<loomcli_core::Plugin> {
                 .source(loomcli_core::ConfigurationSource::new(
                     &FETCHIT_KEY,
                     |context: loomcli_core::SourceContext<NoInputs>| async move {
-                        context.out.debug("Read .fetchit.json.").await?;
+                        context.log.debug("Read .fetchit.json.", ());
                         Ok(std::collections::BTreeMap::new())
                     },
                 )),
@@ -205,7 +207,7 @@ fn fetchit_plugins(variant: &str) -> Vec<loomcli_core::Plugin> {
         "middleware" => vec![Plugin::new("@fixture/middleware").middleware(
             loomcli_core::Activation::Always,
             |ctx, next: loomcli_core::Next| async move {
-                ctx.out.debug("middleware debug").await?;
+                ctx.log.debug("middleware debug", ());
                 ctx.out.info("middleware info").await?;
                 next.run().await.map(|_| ())
             },
@@ -365,9 +367,10 @@ async fn invoke_with_verbose_2_captures_the_debug_and_trace_lines_in_messages() 
 }
 
 #[tokio::test]
-async fn a_call_inherits_nothing_from_a_parent_run_started_with_vv() {
+async fn a_calls_log_lines_go_to_the_parent_run_instead_of_its_capture() {
     let ran = run_fetchit("own", false, &["-vv", "nested"], &[]).await;
     assert_eq!(ran.stdout, format!("{}\n", Value::from(DEFAULT)));
+    assert_eq!(ran.stderr, "  ┆ trace\n› debug\n");
 }
 
 #[tokio::test]
@@ -481,7 +484,7 @@ async fn a_long_message_wraps_right_of_its_gutter() {
 }
 
 #[tokio::test]
-async fn a_hidden_call_calls_no_override_of_its_lane_view() {
+async fn a_hidden_event_skips_the_log_line_view_and_a_visible_error_fails_the_run() {
     assert_eq!(
         run_fetchit("override", false, &["get", "u"], &[])
             .await

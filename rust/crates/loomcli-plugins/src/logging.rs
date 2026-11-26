@@ -12,9 +12,11 @@ mod file;
 mod messages;
 mod record;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, Weak};
 
-use loomcli_core::{AnyPlugin, IntoOutcome, LogDestination, LogEvent, LogLevel, Outcome, Plugin};
+use loomcli_core::{
+    AnyPlugin, IntoOutcome, LogDestination, LogEvent, LogFields, LogLevel, Outcome, Plugin,
+};
 
 use crate::PACKAGE_NAME;
 
@@ -54,6 +56,7 @@ pub struct Logging {
     max_bytes: u64,
     keep: usize,
     on_error: Option<ErrorHook>,
+    announced: Mutex<Vec<Weak<()>>>,
 }
 
 /// The logging plugin: info and above to `<app>.jsonl` in the platform's log directory, rotating
@@ -66,6 +69,7 @@ pub fn logging() -> Logging {
         max_bytes: DEFAULT_MAX_BYTES,
         keep: DEFAULT_KEEP,
         on_error: None,
+        announced: Mutex::default(),
     }
 }
 
@@ -156,7 +160,30 @@ impl Logging {
             report: &report,
             rename: &|from, to| std::fs::rename(from, to),
         };
-        write_record(&sink, &record_of(event))
+        let written = write_record(&sink, &record_of(event))?;
+        let fields = || LogFields::new().field("path", path.to_string_lossy());
+        if written.rotated {
+            destination.log.trace(messages::ROTATED, fields());
+        }
+        if written.appended && self.first_record(destination) {
+            destination.log.debug(messages::LOGGING_TO, fields());
+        }
+        Ok(())
+    }
+
+    /// Remembers each live run after its first successful append, before invoking other hooks.
+    fn first_record(&self, destination: &LogDestination) -> bool {
+        let scope = destination.run_scope();
+        let mut announced = self
+            .announced
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        announced.retain(|run| run.strong_count() > 0);
+        if announced.iter().any(|run| run.ptr_eq(&scope)) {
+            return false;
+        }
+        announced.push(scope);
+        true
     }
 }
 

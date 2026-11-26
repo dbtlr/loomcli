@@ -14,6 +14,16 @@ pub(super) fn incomplete_output(path: &[String], yielded: usize, written: usize)
 /// The text of the cancellation echo a write rejects with once a closed reader cancelled the run.
 pub(super) const RUN_CANCELLED: &str = "The run was cancelled.";
 
+pub(super) fn invalid_redact_path(path: &str) -> String {
+    format!(
+        "The Application redacts {}, which is not a dotted path of nonempty keys.",
+        quoted(path)
+    )
+}
+
+pub(super) const REDACT_PATH_CORRECTION: &str =
+    "List dotted paths of nonempty keys, such as password or user.token.";
+
 pub(super) const RESULTS_NOT_DECLARED: &str =
     "Only the action of a Command that declares a result calls out.results().";
 

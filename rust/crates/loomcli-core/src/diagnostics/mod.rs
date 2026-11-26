@@ -177,6 +177,8 @@ pub enum Literal {
     Bool(bool),
     /// A list, printed as an array: `["a", "b"]`.
     List(Vec<Literal>),
+    /// A borrowed array, printed as a slice literal.
+    Slice(Vec<Literal>),
     /// A builder chain, such as `Opt::string().short('F')`: the opening call and each setter call
     /// with its arguments. A builder with no calls prints its opening call alone, so
     /// `Command::new("get")` stands for a Command value.

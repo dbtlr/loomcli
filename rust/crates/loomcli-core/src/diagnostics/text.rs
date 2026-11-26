@@ -206,8 +206,15 @@ impl CodePrinter {
             Literal::Number(number) => self.push(&number_code(*number)),
             Literal::Bool(flag) => self.push(if *flag { "true" } else { "false" }),
             Literal::Opaque => self.push(ELIDED),
-            Literal::List(_) | Literal::Builder { .. } if depth >= DEPTH_LIMIT => self.push(ELIDED),
-            Literal::List(members) => {
+            Literal::List(_) | Literal::Slice(_) | Literal::Builder { .. }
+                if depth >= DEPTH_LIMIT =>
+            {
+                self.push(ELIDED)
+            }
+            Literal::List(members) | Literal::Slice(members) => {
+                if matches!(value, Literal::Slice(_)) {
+                    self.push("&");
+                }
                 self.push("[");
                 self.separated(members, path, depth + 1);
                 self.push("]");

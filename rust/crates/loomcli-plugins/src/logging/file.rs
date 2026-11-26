@@ -46,10 +46,10 @@ fn size_of(path: &Path) -> u64 {
 }
 
 /// Runs a file operation that a missing source does not fail: the file it names is already gone.
-fn unless_missing(operation: io::Result<()>) -> io::Result<()> {
+fn unless_missing(operation: io::Result<()>) -> io::Result<bool> {
     match operation {
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
-        other => other,
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+        other => other.map(|()| true),
     }
 }
 
@@ -57,7 +57,7 @@ fn unless_missing(operation: io::Result<()>) -> io::Result<()> {
 /// copy. With `keep` 0 the file is deleted, as logrotate's `rotate 0` does. A copy that is not there
 /// is skipped, and so is a file that is not there: another process rotated it first, and the record
 /// then goes to the file now at the path.
-fn rotate(path: &Path, keep: usize, rename: Rename<'_>) -> io::Result<()> {
+fn rotate(path: &Path, keep: usize, rename: Rename<'_>) -> io::Result<bool> {
     if keep < 1 {
         return unless_missing(std::fs::remove_file(path));
     }
@@ -72,19 +72,22 @@ fn rotate(path: &Path, keep: usize, rename: Rename<'_>) -> io::Result<()> {
 }
 
 /// Rotates the file when the record would take it past `max_bytes`, reporting a failure.
-fn rotate_when_full(sink: &FileSink<'_>, bytes: u64) -> Outcome {
+fn rotate_when_full(sink: &FileSink<'_>, bytes: u64) -> Result<bool, loomcli_core::Error> {
     let size = size_of(sink.path);
     // A file with nothing in it has nothing to rotate, so an oversize record lands whole in it.
-    if size == 0 || size + bytes <= sink.max_bytes {
-        return Ok(());
+    if size == 0 || size.saturating_add(bytes) <= sink.max_bytes {
+        return Ok(false);
     }
     match rotate(sink.path, sink.keep, sink.rename) {
-        Ok(()) => Ok(()),
-        Err(cause) => (sink.report)(LoggingError::failed(
-            LoggingErrorKind::Rotate,
-            sink.path.to_path_buf(),
-            cause,
-        )),
+        Ok(rotated) => Ok(rotated),
+        Err(cause) => {
+            (sink.report)(LoggingError::failed(
+                LoggingErrorKind::Rotate,
+                sink.path.to_path_buf(),
+                cause,
+            ))?;
+            Ok(false)
+        }
     }
 }
 
@@ -122,16 +125,24 @@ fn append(path: &Path, record: &str) -> Option<LoggingError> {
         .map(|cause| LoggingError::failed(LoggingErrorKind::Append, path.to_path_buf(), cause))
 }
 
-/// Writes one record to the file before returning: it rotates first when the record would pass
-/// `max_bytes`, then appends. A failed step goes to the sink's `report`, and the next record tries
-/// again. A failed rotation still appends, so a record goes unwritten only when the append itself
-/// fails. A report that answers `Err` ends the write with that error.
-pub(super) fn write_record(sink: &FileSink<'_>, record: &str) -> Outcome {
-    rotate_when_full(sink, u64::try_from(record.len()).unwrap_or(u64::MAX))?;
-    match append(sink.path, record) {
-        Some(failure) => (sink.report)(failure),
-        None => Ok(()),
+/// What happened when writing one record.
+pub(super) struct Written {
+    pub(super) rotated: bool,
+    pub(super) appended: bool,
+}
+
+/// Rotates when needed, appends the record, and returns which operations succeeded.
+pub(super) fn write_record(
+    sink: &FileSink<'_>,
+    record: &str,
+) -> Result<Written, loomcli_core::Error> {
+    let rotated = rotate_when_full(sink, u64::try_from(record.len()).unwrap_or(u64::MAX))?;
+    let failure = append(sink.path, record);
+    let appended = failure.is_none();
+    if let Some(failure) = failure {
+        (sink.report)(failure)?;
     }
+    Ok(Written { rotated, appended })
 }
 
 #[cfg(test)]

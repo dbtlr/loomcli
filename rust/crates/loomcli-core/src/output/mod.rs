@@ -7,18 +7,21 @@
 
 pub(crate) mod emit;
 mod log;
+mod log_line;
 mod messages;
 mod out;
 mod progress;
+pub(crate) mod redaction;
 mod region;
 pub(crate) mod registry;
 mod results;
 mod screen;
 pub(crate) mod view;
 
-pub(crate) use log::{LogHook, RunLog};
+pub(crate) use log::{InstalledLogHook, LogHook, RunLog};
 
 pub use log::{Log, LogApplication, LogDefect, LogDestination, LogEvent, LogFields, LogLevel};
+pub use log_line::{LogLine, LogLineField, LogLineLevel, log_line};
 pub use out::{Message, Out};
 pub use region::{
     EndState, ProgressEvent, ProgressReport, ProgressState, Region, RegionCloser, RegionOptions,

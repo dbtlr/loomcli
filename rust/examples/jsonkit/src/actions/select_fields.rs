@@ -26,9 +26,13 @@ pub struct SelectInputs {
 /// Missing fields warn once while the remaining selection keeps its first-occurrence order.
 pub async fn select_fields(context: Context<SelectInputs>) -> Outcome {
     let Context {
-        inputs, out, style, ..
+        inputs,
+        out,
+        log,
+        style,
+        ..
     } = context;
-    let document = read_json(&inputs.file, &out, &style).await?;
+    let document = read_json(&inputs.file, &log).await?;
     let Value::Object(record) = document else {
         return Err(out.fatal(format!(
             "Expected an object at the root; found {}. Supply a document whose root is an object.",

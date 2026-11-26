@@ -198,6 +198,17 @@ impl<I, R, S: State> Application<I, R, S> {
         application
     }
 
+    /// Sets the dotted paths whose values are replaced in every log event's fields.
+    /// An empty key is a declaration fault at this call.
+    #[track_caller]
+    pub fn log_redact(mut self, paths: &[&str]) -> Self
+    where
+        S: Open,
+    {
+        self.declared().log_redaction = raise(crate::output::redaction::Redaction::new(paths));
+        self
+    }
+
     /// Sets the shutdown budget: the milliseconds runs get to unwind after an ending signal, 500
     /// unless set.
     #[track_caller]

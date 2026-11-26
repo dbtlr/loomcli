@@ -53,9 +53,9 @@ fn every_rule_core_declares_has_one_declaration_a_one_line_headline_and_an_expla
 }
 
 #[test]
-fn the_registry_holds_fifty_shared_rules_and_eight_rust_rules() {
-    assert_eq!(rules::ALL.len(), 58);
-    let ports: Vec<&str> = rules::ALL[50..]
+fn the_registry_holds_fifty_one_shared_rules_and_eight_rust_rules() {
+    assert_eq!(rules::ALL.len(), 59);
+    let ports: Vec<&str> = rules::ALL[51..]
         .iter()
         .map(|rule| rule.identity())
         .collect();
@@ -170,7 +170,6 @@ fn shared_rules_keep_their_pinned_headlines_and_explanations() {
     assert_eq!(
         missing,
         [
-            "@loomcli/core/invalid-redact-path",
             "@loomcli/core/option-arity",
             "@loomcli/core/phrasebook-language",
         ]

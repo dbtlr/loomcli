@@ -118,7 +118,8 @@ impl Default for LogDestinationValues {
 }
 
 impl LogDestinationValues {
-    /// Uses an empty environment, home `/loom-test/home`, platform `linux`, and no stderr.
+    /// Uses an empty environment, home `/loom-test/home`, platform `linux`, and no stderr,
+    /// and a log that discards events.
     pub fn new() -> Self {
         Self::default()
     }
@@ -141,6 +142,12 @@ impl LogDestinationValues {
         self
     }
 
+    /// Supplies the log the hook writes to.
+    pub fn log(mut self, log: loomcli_core::Log) -> Self {
+        self.0.log = log;
+        self
+    }
+
     /// Supplies the stream the hook writes to.
     pub fn stderr(mut self, stderr: Arc<dyn OutputStream>) -> Self {
         self.0.stderr = Some(stderr);
@@ -151,6 +158,54 @@ impl LogDestinationValues {
 /// Builds the destination a test passes to an `on_log` hook, sharing any stated stream.
 #[must_use]
 pub fn log_destination(values: LogDestinationValues) -> LogDestination {
+    values.0
+}
+
+/// The log-line members a test can set.
+#[derive(Clone, Debug)]
+#[must_use]
+pub struct LogLineValues(loomcli_core::LogLine);
+
+impl Default for LogLineValues {
+    fn default() -> Self {
+        Self(unit::log_line())
+    }
+}
+
+impl LogLineValues {
+    /// Uses an info level, empty text and fields, and the default log event.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the visible level.
+    pub fn level(mut self, level: loomcli_core::LogLineLevel) -> Self {
+        self.0.level = level;
+        self
+    }
+
+    /// Sets the escaped, marked message text.
+    pub fn text(mut self, text: impl Into<String>) -> Self {
+        self.0.text = text.into();
+        self
+    }
+
+    /// Appends one escaped trailing field.
+    pub fn field(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        unit::add_log_line_field(&mut self.0, name.into(), value.into());
+        self
+    }
+
+    /// Sets the log event the view reads.
+    pub fn event(mut self, event: LogEvent) -> Self {
+        self.0.event = Arc::new(event);
+        self
+    }
+}
+
+/// Builds the value a test passes to a log-line view.
+#[must_use]
+pub fn log_line(values: LogLineValues) -> loomcli_core::LogLine {
     values.0
 }
 

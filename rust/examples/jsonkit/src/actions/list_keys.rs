@@ -24,9 +24,13 @@ pub struct KeysInputs {
 /// document, so the root keeps its own wording.
 pub async fn list_keys(context: Context<KeysInputs>) -> Outcome {
     let Context {
-        inputs, out, style, ..
+        inputs,
+        out,
+        log,
+        style,
+        ..
     } = context;
-    let document = read_json(&inputs.file, &out, &style).await?;
+    let document = read_json(&inputs.file, &log).await?;
     let value = match &inputs.path {
         None => &document,
         Some(path) => resolve_path(&document, path)?,

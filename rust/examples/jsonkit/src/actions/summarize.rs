@@ -13,9 +13,9 @@ use crate::read_json::read_json;
 /// that is not an object has no members, so its result is an empty sequence.
 pub async fn summarize(context: Context<DocumentInputs, RowsResult<Member>>) -> Outcome {
     let Context {
-        inputs, out, style, ..
+        inputs, out, log, ..
     } = context;
-    let document = read_json(&inputs.file, &out, &style).await?;
+    let document = read_json(&inputs.file, &log).await?;
     out.info(&describe_kind(&document)).await?;
     let members: Vec<Member> = match &document {
         Value::Object(record) => object_entries(record)

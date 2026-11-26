@@ -147,10 +147,7 @@ impl<O: Inputs> ConfigurationSource<O> {
                     },
                     style: crate::style::style(),
                     graph: call.graph,
-                    log: Log {
-                        run: call.run,
-                        plugin: Some(Arc::from(identity.as_str())),
-                    },
+                    log: call.run.log.bind(Some(Arc::from(identity.as_str()))),
                     invoked_by: call.invoked_by,
                 });
                 Box::pin(async move { resolve(context?).await })

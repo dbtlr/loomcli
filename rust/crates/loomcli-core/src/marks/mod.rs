@@ -16,7 +16,7 @@
 //!   option's value, before validation.
 //!
 //! The context reads the result: `interactive`, the color decision inside the style, the verbosity
-//! that gates `out.debug` and `out.trace`, and the background a view context reports.
+//! that gates log lines and the `info` and `success` lanes, and the background a view context reports.
 
 pub(crate) mod plain;
 

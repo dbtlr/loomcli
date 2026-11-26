@@ -816,7 +816,7 @@ async fn an_on_log_hooks_destination_carries_the_runs_home() {
 // verbosity.test.ts
 
 #[tokio::test]
-async fn under_vv_an_on_log_hook_receives_no_event_for_a_debug_or_trace_line() {
+async fn under_vv_an_on_log_hook_receives_the_events_that_show_as_log_lines() {
     let application = Application::new("probe")
         .global_option(
             "verbose",
@@ -826,13 +826,16 @@ async fn under_vv_an_on_log_hook_receives_no_event_for_a_debug_or_trace_line() {
                 .verbose(),
         )
         .action(|ctx: Context| async move {
-            ctx.out.debug("debug line").await?;
-            ctx.out.trace("trace line").await
+            ctx.log.debug("debug line", ());
+            ctx.log.trace("trace line", ());
+            Ok(())
         });
     let run = logged(application, &["-vv"], Build::Distributed).await;
     assert_eq!(run.code, 0);
     assert!(run.stderr.contains("debug line") && run.stderr.contains("trace line"));
-    assert!(run.events.is_empty());
+    assert_eq!(run.events.len(), 2);
+    assert_eq!(run.events[0].message, "debug line");
+    assert_eq!(run.events[1].message, "trace line");
 }
 
 // The reach of log: a middleware, a source, an `on_failure` hook, and a plugin's Command.

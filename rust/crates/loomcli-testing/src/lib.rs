@@ -16,8 +16,8 @@ pub use contexts::{
     middleware_context, piped_content, provider_context, view_context,
 };
 pub use hook_values::{
-    LogDestinationValues, LogEventValues, ProgressEventValues, log_destination, log_event,
-    progress_event,
+    LogDestinationValues, LogEventValues, LogLineValues, ProgressEventValues, log_destination,
+    log_event, log_line, progress_event,
 };
 pub use mock::{
     KeyEntry, MockFields, MockProcess, MockTerminal, Program, ProgramAnswer, ProgramCall,

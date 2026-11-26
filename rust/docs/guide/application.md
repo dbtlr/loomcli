@@ -333,18 +333,23 @@ A type of your own implements `loomcli_core::Validator`: `validate(&self, token,
 
 ## Output, results, and views
 
-`context.out` writes everything an action shows. Each write is `async` and writes when it is awaited.
+`context.out` writes messages and results. Each write is `async` and writes when it is awaited.
 
 | Method | Writes to | Shown |
 | --- | --- | --- |
 | `print(text)` | stdout | always |
 | `info`, `success` | stderr, with a glyph | unless the run is quiet (`-q`) |
 | `warn`, `error` | stderr, with a glyph | always |
-| `debug`, `trace` | stderr | from `-v` and `-vv` |
 | `render(data, &view)` | stdout | always |
 | `results(value)` | stdout, through the result's views | once per run |
 
 Text an author writes may carry style markup from `context.style`, such as `context.style.bold().apply("Ready")`. Core resolves it for the destination: color on a terminal that takes it, plain text in a pipe or under `NO_COLOR`. Escape text that came from outside the program with `context.style.escape(text)`, so a stray markup character prints as written.
+
+### Logging
+
+Use `context.log.debug("Read {file}.", LogFields::new().field("file", name))` to record a message and its fields. At `-v`, core fills the template on stderr and shows unused fields as `name=value`. At `-vv`, it also shows `trace` events. Hooks receive the original template and the fields as JSON.
+
+Use `context.log.with(fields)` to bind fields across calls and `Application::log_redact(&["credentials.token"])` to hide a field's value from every reader.
 
 ### Results
 

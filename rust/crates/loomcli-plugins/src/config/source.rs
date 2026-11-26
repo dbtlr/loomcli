@@ -7,8 +7,8 @@
 use std::collections::BTreeMap;
 
 use loomcli_core::{
-    ContextualStyle, Error, InvokedBy, Issue, OptionNode, Out, PathSegment, SourceAnswer,
-    SourceValue, escape_control_characters, issue_path, read_extension, reported_spelling,
+    Error, InvokedBy, Issue, Log, LogFields, OptionNode, PathSegment, SourceAnswer, SourceValue,
+    issue_path, read_extension, reported_spelling,
 };
 
 use super::document::Value;
@@ -114,8 +114,7 @@ fn ignored_lines(
     label: &str,
     issues: &[Issue],
     invoked_by: InvokedBy,
-    style: &ContextualStyle,
-) -> Vec<String> {
+) -> Vec<(&'static str, LogFields)> {
     let spelling = if invoked_by == InvokedBy::Name {
         request.name().to_owned()
     } else {
@@ -129,7 +128,6 @@ fn ignored_lines(
                 issue_path(issue).as_deref(),
                 label,
                 &issue.message,
-                style,
             )
         })
         .collect()
@@ -137,12 +135,11 @@ fn ignored_lines(
 
 /// Every request answered from the file, by option name. A value an option cannot take writes its
 /// lines at `-v` and answers nothing.
-pub(crate) async fn answer_all(
+pub(crate) fn answer_all(
     requests: &[OptionNode],
     usable: &UsableFile,
     invoked_by: InvokedBy,
-    out: &Out,
-    style: &ContextualStyle,
+    log: &Log,
 ) -> Result<BTreeMap<String, SourceAnswer>, Error> {
     let mut answers = BTreeMap::new();
     for request in requests {
@@ -152,11 +149,7 @@ pub(crate) async fn answer_all(
         let Some(value) = value_at(&usable.object, &binding.path) else {
             continue;
         };
-        let label = format!(
-            "{} in {}",
-            escape_control_characters(&binding.path),
-            usable.file.shown
-        );
+        let label = format!("{} in {}", binding.path, usable.file.shown);
         match shape(request, value) {
             Shaped::Value(value) => {
                 answers.insert(
@@ -165,8 +158,8 @@ pub(crate) async fn answer_all(
                 );
             }
             Shaped::Wrong(issues) => {
-                for line in ignored_lines(request, &label, &issues, invoked_by, style) {
-                    out.debug(&line).await?;
+                for (template, fields) in ignored_lines(request, &label, &issues, invoked_by) {
+                    log.debug(template, fields);
                 }
             }
         }

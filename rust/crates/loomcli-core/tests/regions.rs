@@ -262,7 +262,7 @@ async fn two_regions_stack_in_open_order_below_a_lane_line_and_a_debug_line_writ
                 first.draw("first frame", &text()).await?;
                 second.draw("second frame", &text()).await?;
                 ctx.out.info("info line").await?;
-                ctx.out.debug("debug line").await?;
+                ctx.log.debug("debug line", ());
                 fixture.mark("lines");
                 first.draw("first frame\nfirst grown row", &text()).await?;
                 fixture.mark("grown");

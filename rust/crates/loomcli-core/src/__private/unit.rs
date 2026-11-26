@@ -77,12 +77,7 @@ impl UnitRun {
         let place = crate::signals::lane::Place::unentered(lane);
         output.use_place(place.clone());
         output.set_route(log.path);
-        let log = Arc::new(RunLog::unattached(
-            &log.application,
-            log.hooks,
-            &host,
-            &output,
-        ));
+        let log = RunLog::unattached(&log.application, log.hooks, &host, &output);
         Self {
             state: Arc::new(RunState {
                 host,
@@ -110,10 +105,7 @@ impl UnitRun {
     }
 
     fn log(&self, plugin: Option<&str>) -> Log {
-        Log {
-            run: Arc::clone(&self.state),
-            plugin: plugin.map(Arc::from),
-        }
+        self.state.log.bind(plugin.map(Arc::from))
     }
 }
 
@@ -175,7 +167,25 @@ pub fn log_destination(home: std::path::PathBuf, platform: String) -> crate::Log
         home,
         platform,
         stderr: None,
+        log: Log::inert(),
+        scope: Arc::new(()),
     }
+}
+
+/// The fixed starting value for the testing crate's log-line builder.
+#[must_use]
+pub fn log_line() -> crate::LogLine {
+    crate::LogLine {
+        level: crate::LogLineLevel::Info,
+        text: String::new(),
+        fields: Vec::new(),
+        event: Arc::new(log_event()),
+    }
+}
+
+/// Appends a trailing field to a fixture line.
+pub fn add_log_line_field(line: &mut crate::LogLine, name: String, value: String) {
+    line.fields.push(crate::LogLineField { name, value });
 }
 
 /// The fixed starting value for the testing crate's progress event builder.

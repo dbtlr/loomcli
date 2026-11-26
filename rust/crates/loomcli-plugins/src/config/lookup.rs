@@ -12,7 +12,7 @@ use std::path::{Component, Path, PathBuf};
 
 use loomcli_core::{
     ContextualStyle, Host, InputError, InputIdentity, InputKind, InputProblem, InvokedBy, Issue,
-    OptionGroupKind, escape_control_characters,
+    OptionGroupKind,
 };
 
 use super::document::Value;
@@ -20,15 +20,14 @@ use super::messages;
 use super::reading::{Clause, Reading, parse_file, split_extension};
 
 /// One line the lookup or the drop writes, by its level.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Line {
     Warn(String),
     Info(String),
-    Debug(String),
+    Debug((&'static str, loomcli_core::LogFields)),
 }
 
-/// One file the lookup reads: where it is, and how a label or a message shows it, its control
-/// characters escaped.
+/// One file the lookup reads: where it is and the name its labels and messages use.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ConfigFile {
     pub(crate) path: PathBuf,
@@ -39,7 +38,7 @@ impl ConfigFile {
     fn new(path: PathBuf, shown: &str) -> Self {
         Self {
             path,
-            shown: escape_control_characters(shown),
+            shown: shown.to_owned(),
         }
     }
 }

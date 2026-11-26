@@ -52,7 +52,8 @@ pub(crate) struct ApplicationDeclaration {
     /// The configuration schema the claiming plugin's source publishes on the graph.
     pub(crate) configuration: Option<crate::inspection::InputSchema>,
     /// The installed `on_log` hooks, in installation order.
-    pub(crate) log_hooks: Vec<crate::output::LogHook>,
+    pub(crate) log_hooks: Vec<crate::output::InstalledLogHook>,
+    pub(crate) log_redaction: crate::output::redaction::Redaction,
 }
 
 /// The site of a global option the application declares.
@@ -346,6 +347,7 @@ impl ApplicationDeclaration {
             source: None,
             configuration: None,
             log_hooks: Vec::new(),
+            log_redaction: crate::output::redaction::Redaction::default(),
         })
     }
 
@@ -613,7 +615,8 @@ impl ApplicationDeclaration {
                 self.configuration = Some(claimed.schema.clone());
             }
             if let Some(hook) = &plugin.on_log {
-                self.log_hooks.push(Arc::clone(hook));
+                self.log_hooks
+                    .push((Some(Arc::from(plugin.identity.as_str())), Arc::clone(hook)));
             }
         }
         Ok(())

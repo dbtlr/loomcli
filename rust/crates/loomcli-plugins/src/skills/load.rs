@@ -192,9 +192,6 @@ pub(super) async fn load_for_run<R>(
             messages::SKILL_FILE_LEFT_OUT,
             LogFields::new().field("path", &path).field("skill", &skill),
         );
-        run.out
-            .trace(&messages::skill_file_left_out(&skill, &path))
-            .await?;
     }
     Ok(loaded)
 }
