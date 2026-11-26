@@ -25,14 +25,16 @@ pub enum Polarity {
     Both,
 }
 
-/// A declared default: a raw string, or a list of raw strings for an input of several values, in
-/// the validator's input type. It passes through the validator like a token.
+/// A declared default in the validator's input type, with one raw string per word. Each word
+/// passes through the validator as a supplied word would.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DefaultValue {
     /// One raw value.
     One(String),
     /// Raw values of a multiple option or a variadic argument.
     Many(Vec<String>),
+    /// Groups of raw words, one per occurrence of a multiple arity option.
+    Tuples(Vec<Vec<String>>),
 }
 
 impl From<&str> for DefaultValue {
@@ -59,6 +61,18 @@ impl From<Vec<String>> for DefaultValue {
     }
 }
 
+impl<const N: usize, const M: usize> From<[[&str; N]; M]> for DefaultValue {
+    fn from(values: [[&str; N]; M]) -> Self {
+        Self::Tuples(values.map(|words| words.map(str::to_owned).into()).into())
+    }
+}
+
+impl From<Vec<Vec<String>>> for DefaultValue {
+    fn from(values: Vec<Vec<String>>) -> Self {
+        Self::Tuples(values)
+    }
+}
+
 /// One validated value with its type erased: the validator's output, or the string itself.
 pub(crate) type ErasedOutput = Arc<dyn std::any::Any + Send + Sync>;
 
@@ -73,6 +87,7 @@ type OmissionFn = Arc<dyn Fn(&super::ValidationContext) -> ErasedVerdict + Send 
 #[derive(Clone)]
 pub(crate) struct ErasedValidator {
     judge: JudgeFn,
+    pub(crate) pack: fn(&[ErasedOutput]) -> Option<ErasedOutput>,
     omission: Option<OmissionFn>,
     /// The input schema the validator publishes, read once at the declaring call.
     pub(crate) schema: crate::inspection::InputSchema,
@@ -106,6 +121,13 @@ impl ErasedValidator {
                     .validate(input, context)
                     .map(|output| Arc::new(output) as ErasedOutput)
             }),
+            pack: |outputs| {
+                let words = outputs
+                    .iter()
+                    .map(|output| output.downcast_ref::<V::Output>().cloned())
+                    .collect::<Option<Vec<_>>>()?;
+                Some(Arc::new(words))
+            },
             omission: None,
             schema,
         }
@@ -280,6 +302,8 @@ pub struct StringOpt {
     pub(crate) required: bool,
     pub(crate) required_non_interactive: bool,
     pub(crate) multiple: bool,
+    pub(crate) last_wins: bool,
+    pub(crate) arity: Option<usize>,
     pub(crate) default: Option<DefaultValue>,
     pub(crate) implied: Option<String>,
     pub(crate) validator: Option<ErasedValidator>,
@@ -312,6 +336,21 @@ impl StringOpt {
     pub fn multiple(mut self) -> Self {
         self.facts.called("multiple", Vec::new());
         self.multiple = true;
+        self
+    }
+
+    /// Takes exactly `words` separate words per occurrence. The declaring call requires at least two.
+    pub fn arity(mut self, words: usize) -> Self {
+        self.facts
+            .called("arity", vec![Literal::from(words as f64)]);
+        self.arity = Some(words);
+        self
+    }
+
+    /// Keeps the last occurrence across all accepted spellings of a scalar string option.
+    pub fn last_wins(mut self) -> Self {
+        self.facts.called("last_wins", Vec::new());
+        self.last_wins = true;
         self
     }
 
@@ -351,7 +390,7 @@ impl StringOpt {
         self
     }
 
-    /// Splits a multiple option's environment value at `delimiter`.
+    /// Splits the environment value of a multiple option or a scalar arity option at `delimiter`.
     pub fn env_delimiter(mut self, delimiter: impl Into<String>) -> Self {
         let delimiter = delimiter.into();
         self.facts
@@ -589,6 +628,7 @@ impl DefaultValue {
         match self {
             DefaultValue::One(value) => value.as_str().into(),
             DefaultValue::Many(values) => Literal::from(values.clone()),
+            DefaultValue::Tuples(values) => Literal::from(values.clone()),
         }
     }
 
@@ -597,6 +637,7 @@ impl DefaultValue {
         match self {
             DefaultValue::One(value) => serde_json::Value::from(value.as_str()),
             DefaultValue::Many(values) => serde_json::Value::from(values.clone()),
+            DefaultValue::Tuples(values) => serde_json::Value::from(values.clone()),
         }
     }
 }
@@ -644,6 +685,19 @@ impl OptionDecl {
             OptionDecl::Boolean(option) => Some(option.polarity),
             _ => None,
         }
+    }
+
+    /// The count of separate words in one occurrence of an arity option.
+    pub(crate) fn arity(&self) -> Option<usize> {
+        match self {
+            OptionDecl::String(option) => option.arity,
+            _ => None,
+        }
+    }
+
+    /// Whether the latest argv occurrence replaces earlier ones.
+    pub(crate) fn last_wins(&self) -> bool {
+        matches!(self, OptionDecl::String(option) if option.last_wins)
     }
 
     /// Whether it collects several values.
@@ -804,6 +858,9 @@ impl OptionDecl {
 /// The conflicts of a string option's own facts.
 fn string_conflict(option: &StringOpt, global: bool) -> Option<(&'static str, String)> {
     let facts = &option.facts;
+    if option.multiple && option.last_wins {
+        return Some(("last_wins", "declares last_wins beside multiple".to_owned()));
+    }
     if global && option.required {
         return Some((
             "required",
@@ -845,6 +902,53 @@ fn string_conflict(option: &StringOpt, global: bool) -> Option<(&'static str, St
                 ));
             }
         }
+    }
+    if let Some(arity) = option.arity {
+        for (present, setter) in [
+            (option.implied.is_some(), "implied"),
+            (option.validate_omitted, "validate_omitted"),
+            (option.background, "background"),
+            (option.env_allow_empty, "env_allow_empty"),
+        ] {
+            if present {
+                return Some((setter, format!("declares {setter} beside arity")));
+            }
+        }
+        if !facts.env.is_empty() {
+            if option.multiple {
+                return Some((
+                    "env",
+                    "binds a multiple arity option to the environment".to_owned(),
+                ));
+            }
+            if option.env_delimiter.is_none() {
+                return Some((
+                    "env",
+                    "binds an arity option to the environment without env_delimiter".to_owned(),
+                ));
+            }
+        }
+        let default_matches = match &option.default {
+            None => true,
+            Some(DefaultValue::Many(words)) => !option.multiple && words.len() == arity,
+            Some(DefaultValue::Tuples(tuples)) => {
+                option.multiple && tuples.iter().all(|words| words.len() == arity)
+            }
+            Some(DefaultValue::One(_)) => false,
+        };
+        if !default_matches {
+            return Some((
+                "default",
+                "declares a default whose shape does not match its arity".to_owned(),
+            ));
+        }
+        return list_binding_conflict(!option.multiple, &facts.env, option.env_delimiter.as_ref());
+    }
+    if matches!(option.default, Some(DefaultValue::Tuples(_))) {
+        return Some((
+            "default",
+            "declares a grouped default without arity".to_owned(),
+        ));
     }
     if let Some(DefaultValue::Many(_)) = option.default
         && !option.multiple

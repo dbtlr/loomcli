@@ -107,6 +107,8 @@ struct FieldAttributes {
     validate_omitted: Option<Span>,
     default: Option<Valued<Expr>>,
     implied: Option<Valued<LitStr>>,
+    last_wins: Option<Span>,
+    arity: Option<Span>,
     required: Option<Span>,
     non_interactive: Option<Span>,
     env: Option<Valued<Expr>>,
@@ -129,7 +131,7 @@ struct FieldAttributes {
 
 /// Every fact the grammar knows, and what it is a fact of, for the sentence that rejects it on a
 /// field of another kind.
-const FACTS: [(&str, &str); 30] = [
+const FACTS: [(&str, &str); 32] = [
     ("name", "an option or an argument"),
     ("description", "an input"),
     ("short", "an option"),
@@ -144,6 +146,8 @@ const FACTS: [(&str, &str); 30] = [
     ("validate_omitted", "a string input"),
     ("default", "a string input"),
     ("implied", "a string option"),
+    ("last_wins", "a scalar string option"),
+    ("arity", "a string option"),
     ("required", "a `Vec` input"),
     ("non_interactive", "an `Option` or `Vec` string input"),
     ("env", "an option"),
@@ -238,6 +242,8 @@ fn parse_fact(facts: &mut FieldAttributes, meta: &ParseNestedMeta<'_>) -> syn::R
         "validate_omitted" => set_flag(&mut facts.validate_omitted, meta, &key),
         "default" => set_value(&mut facts.default, meta, &key),
         "implied" => set_value(&mut facts.implied, meta, &key),
+        "last_wins" => set_flag(&mut facts.last_wins, meta, &key),
+        "arity" => set_flag(&mut facts.arity, meta, &key),
         "required" => set_flag(&mut facts.required, meta, &key),
         "non_interactive" => set_flag(&mut facts.non_interactive, meta, &key),
         "env" => set_value(&mut facts.env, meta, &key),
@@ -396,6 +402,8 @@ impl Kind {
                         "validate_omitted",
                         "default",
                         "implied",
+                        "last_wins",
+                        "arity",
                         "required",
                         "non_interactive",
                         "env_delimiter",
@@ -638,7 +646,7 @@ fn reject_env_facts(wrapper: Wrapper<'_>, facts: &FieldAttributes) -> syn::Resul
     let list = matches!(wrapper, Wrapper::List(_));
     if let Some(delimiter) = &facts.env_delimiter {
         reject(
-            !list,
+            !list && facts.arity.is_none(),
             delimiter.key,
             "`env_delimiter` splits the variable's value into several, so it sits on a `Vec` field",
         )?;
@@ -700,6 +708,13 @@ fn reject_marks(wrapper: Wrapper<'_>, facts: &FieldAttributes) -> syn::Result<()
 /// The rules between two facts of one option, which the builder faults at the call under
 /// `option-config`, as compile errors at the second fact's key.
 fn reject_fact_pairs(kind: Kind, wrapper: Wrapper<'_>, facts: &FieldAttributes) -> syn::Result<()> {
+    if let Some(last_wins) = facts.last_wins {
+        reject(
+            matches!(wrapper, Wrapper::List(_)),
+            last_wins,
+            "`last_wins` applies to a scalar option; a `Vec` field collects all occurrences",
+        )?;
+    }
     reject_spellings(facts)?;
     reject_env_facts(wrapper, facts)?;
     reject_marks(wrapper, facts)?;
@@ -819,7 +834,7 @@ fn reject_fact_pairs(kind: Kind, wrapper: Wrapper<'_>, facts: &FieldAttributes) 
     }
     if let Some(default) = &facts.default {
         reject(
-            matches!(default.value, Expr::Array(_)) && !list,
+            matches!(default.value, Expr::Array(_)) && !list && facts.arity.is_none(),
             default.key,
             "a list default fills a `Vec` field; give one value, such as `default = \"a\"`",
         )?;
@@ -981,12 +996,99 @@ fn insert_field(field: &Field, kind: Kind, wrapper: Wrapper<'_>, name: &LitStr) 
     }
 }
 
+fn arity_of<'a>(
+    wrapper: Wrapper<'a>,
+    facts: &FieldAttributes,
+) -> syn::Result<Option<&'a syn::TypeArray>> {
+    let Some(flag) = facts.arity else {
+        return Ok(None);
+    };
+    let Type::Array(array) = wrapper.element() else {
+        return Err(syn::Error::new(
+            flag,
+            "`arity` needs an array field: `[T; N]`, `Option<[T; N]>`, or `Vec<[T; N]>`",
+        ));
+    };
+    let multiple = matches!(wrapper, Wrapper::List(_));
+    for (key, setting) in [
+        (facts.implied.as_ref().map(|fact| fact.key), "implied"),
+        (facts.validate_omitted, "validate_omitted"),
+        (facts.env_allow_empty, "env_allow_empty"),
+        (facts.background, "background"),
+    ] {
+        if let Some(key) = key {
+            return Err(syn::Error::new(
+                key,
+                format!("`{setting}` does not apply to an arity option"),
+            ));
+        }
+    }
+    if let Some(env) = &facts.env {
+        reject(
+            multiple,
+            env.key,
+            "a multiple arity option takes no environment binding",
+        )?;
+        reject(
+            facts.env_delimiter.is_none(),
+            env.key,
+            "an arity option's environment binding needs `env_delimiter`",
+        )?;
+    }
+    let count = if let Expr::Lit(literal) = &array.len
+        && let syn::Lit::Int(count) = &literal.lit
+    {
+        let value = count.base10_parse::<usize>()?;
+        reject(
+            value < 2,
+            count.span(),
+            "an arity option takes at least two words",
+        )?;
+        Some(value)
+    } else {
+        None
+    };
+    if let Some(default) = &facts.default {
+        reject(
+            matches!(default.value, Expr::Lit(_)),
+            default.key,
+            "an arity option takes an array default, or an array of arrays for a multiple option",
+        )?;
+        if let Expr::Array(items) = &default.value {
+            if multiple {
+                for item in &items.elems {
+                    if let Expr::Array(words) = item {
+                        reject(
+                            count.is_some_and(|count| words.elems.len() != count),
+                            item.span(),
+                            "each default occurrence must have exactly the declared arity",
+                        )?;
+                    } else if matches!(item, Expr::Lit(_)) {
+                        return Err(syn::Error::new(
+                            item.span(),
+                            "each default occurrence must be an array of words",
+                        ));
+                    }
+                }
+            } else {
+                reject(
+                    count.is_some_and(|count| items.elems.len() != count),
+                    default.key,
+                    "the default must have exactly the declared arity",
+                )?;
+            }
+        }
+    }
+    Ok(Some(array))
+}
+
 fn expand_field(field: &Field) -> syn::Result<Expanded> {
     let (role, facts) = parse_field(field)?;
     let wrapper = Wrapper::of(&field.ty);
     let kind = kind_of(role, wrapper, &facts)?;
     reject_foreign_facts(kind, &facts)?;
     reject_beside_builder(&facts)?;
+    let arity = arity_of(wrapper, &facts)?;
     reject_presence(kind, wrapper, &facts)?;
     reject_fact_pairs(kind, wrapper, &facts)?;
     let name = declared_name(field, &facts)?;
@@ -1011,12 +1113,27 @@ fn expand_field(field: &Field) -> syn::Result<Expanded> {
         Kind::BooleanOption => expand_boolean(&facts, &name, description.as_ref()),
         Kind::CountOption => expand_count(&facts, wrapper, &name, description.as_ref())?,
         Kind::ContentOption => expand_content_option(&facts, wrapper, &name, description.as_ref()),
-        Kind::StringOption => expand_string_option(&facts, wrapper, &name, description.as_ref()),
+        Kind::StringOption => {
+            expand_string_option(&facts, wrapper, arity, &name, description.as_ref())
+        }
         Kind::StringArgument | Kind::ContentArgument => {
             expand_argument(&facts, kind, wrapper, &name, description.as_ref())
         }
     };
-    expanded.insert = insert_field(field, kind, wrapper, &name);
+    expanded.insert = if arity.is_some() {
+        let ident = &field.ident;
+        let vector = quote!(::std::vec::Vec::from);
+        let value = match wrapper {
+            Wrapper::Scalar(_) => quote!(::loomcli_core::Required(#vector(self.#ident))),
+            Wrapper::Optional(_) => quote!(self.#ident.map(#vector)),
+            Wrapper::List(_) => {
+                quote!(self.#ident.into_iter().map(#vector).collect::<::std::vec::Vec<_>>())
+            }
+        };
+        quote!(let values = values.with_option(#name, #value);)
+    } else {
+        insert_field(field, kind, wrapper, &name)
+    };
     Ok(expanded)
 }
 
@@ -1206,17 +1323,34 @@ fn validation(facts: &FieldAttributes, element: &Type) -> (TokenStream, TokenStr
 fn expand_string_option(
     facts: &FieldAttributes,
     wrapper: Wrapper<'_>,
+    arity: Option<&syn::TypeArray>,
     name: &LitStr,
     description: Option<&LitStr>,
 ) -> Expanded {
-    let element = wrapper.element();
+    let element = arity.map_or_else(|| wrapper.element(), |array| array.elem.as_ref());
     let (prelude, validate) = validation(facts, element);
     let mut builder = quote!(::loomcli_core::Opt::string());
     builder.extend(shared_option_setters(facts, description));
     builder.extend(validate);
+    if let Some(array) = arity {
+        let count = &array.len;
+        builder.extend(quote!(.arity(#count)));
+    }
     if let Some(default) = &facts.default {
         let default = &default.value;
-        builder.extend(quote!(.default(#default)));
+        if matches!(wrapper, Wrapper::List(_))
+            && let Some(array) = arity
+            && let Expr::Array(items) = default
+            && items.elems.is_empty()
+        {
+            let count = &array.len;
+            builder.extend(quote!(.default([] as [[&str; #count]; 0])));
+        } else {
+            builder.extend(quote!(.default(#default)));
+        }
+    }
+    if facts.last_wins.is_some() {
+        builder.extend(quote!(.last_wins()));
     }
     if let Some(implied) = &facts.implied {
         let implied = &implied.value;
@@ -1232,27 +1366,32 @@ fn expand_string_option(
     if facts.background.is_some() {
         builder.extend(quote!(.background()));
     }
+    let read_type = if arity.is_some() {
+        quote!(::std::vec::Vec<#element>)
+    } else {
+        quote!(#element)
+    };
     let (extract, global) = match wrapper {
-        Wrapper::Scalar(element) => {
+        Wrapper::Scalar(_) => {
             let present = facts.default.is_some() || facts.validate_omitted.is_some();
             if !present {
                 builder.extend(quote!(.required()));
             }
             (
-                quote!(values.required_option::<#element>(#name)?),
+                quote!(values.required_option::<#read_type>(#name)?),
                 facts.default.is_some(),
             )
         }
-        Wrapper::Optional(element) => {
+        Wrapper::Optional(_) => {
             if facts.non_interactive.is_some() {
                 builder.extend(quote!(.required_when_non_interactive()));
             }
             (
-                quote!(values.option::<::core::option::Option<#element>>(#name)?),
+                quote!(values.option::<::core::option::Option<#read_type>>(#name)?),
                 facts.non_interactive.is_none(),
             )
         }
-        Wrapper::List(element) => {
+        Wrapper::List(_) => {
             builder.extend(quote!(.multiple()));
             if facts.required.is_some() {
                 builder.extend(quote!(.required()));
@@ -1261,10 +1400,23 @@ fn expand_string_option(
                 builder.extend(quote!(.required_when_non_interactive()));
             }
             (
-                quote!(values.option::<::std::vec::Vec<#element>>(#name)?),
+                quote!(values.option::<::std::vec::Vec<#read_type>>(#name)?),
                 facts.required.is_none() && facts.non_interactive.is_none(),
             )
         }
+    };
+    let extract = if let Some(array) = arity {
+        let count = &array.len;
+        let array = quote!(|words| ::loomcli_core::__private::arity_array::<#element, { #count }>(#name, words));
+        match wrapper {
+            Wrapper::Scalar(_) => quote!((#array)(#extract)?),
+            Wrapper::Optional(_) => quote!((#extract).map(#array).transpose()?),
+            Wrapper::List(_) => {
+                quote!((#extract).into_iter().map(#array).collect::<::core::result::Result<::std::vec::Vec<_>, _>>()?)
+            }
+        }
+    } else {
+        extract
     };
     Expanded {
         declare: quote! {

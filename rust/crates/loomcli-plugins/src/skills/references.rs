@@ -94,9 +94,12 @@ fn option_entry(option: &ReadOption) -> String {
         label.push_str("...");
     } else if let Some(value) = parts.value {
         label.push_str(value.separator);
-        label.push_str(value.before);
-        label.push_str(&value.placeholder);
-        label.push_str(value.after);
+        let word = format!("{}{}{}", value.before, value.placeholder, value.after);
+        label.push_str(
+            &std::iter::repeat_n(word.as_str(), value.words)
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
     }
     item(
         &label,

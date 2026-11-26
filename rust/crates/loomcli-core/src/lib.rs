@@ -44,6 +44,7 @@ pub use commands::{
 pub use diagnostics::{
     DiagnosticParts, DiagnosticRule, Finding, Literal, diagnostic_rule, is_rule_identity,
 };
+pub use failures::{AttachedValueRefusal, MissingValueForm};
 pub use failures::{
     DeclarationError, EX_CANTCREAT, EX_CONFIG, EX_DATAERR, EX_IOERR, EX_NOHOST, EX_NOINPUT,
     EX_NOPERM, EX_NOUSER, EX_OSERR, EX_OSFILE, EX_PROTOCOL, EX_SOFTWARE, EX_TEMPFAIL,
@@ -55,7 +56,6 @@ pub use failures::{
     UnknownCommandError, UnknownOptionError, UsageError, WorkingDirectoryError, encode_failure,
     failure, is_failure_code, translate,
 };
-pub use failures::{MissingValueForm, ValuelessKind};
 pub use host::{
     Child, ChildExit, ChildOutput, ChildProcess, ChildStream, DetachedSpawnOptions, Env, Host,
     HostTerminal, InputStream, InputTerminal, InterruptKeys, InterruptRaised, InterruptSignal,
@@ -76,7 +76,7 @@ pub use inspection::{
     ArgumentNode, BooleanOptionNode, CommandGraph, CommandNode, ConfigurationNode,
     ContentOptionNode, ContentType, CountOptionNode, DeclaredDefault, InputSchema, OptionGroup,
     OptionGroupKind, OptionNode, PassthroughNode, ResultKindName, ResultNode, StdinNode,
-    StringOptionNode, WordPosition, locate, reported_spelling,
+    StringOptionNode, TypedInputs, WordPosition, locate, reported_spelling,
 };
 pub use inspection::{JSON_SCHEMA_DIALECT, with_schema_dialect};
 pub use invocation::{

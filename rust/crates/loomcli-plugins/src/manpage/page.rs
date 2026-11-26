@@ -12,7 +12,7 @@ use super::roff::{Fill, Font, escape, escape_text, escape_unbroken, in_font, req
 use crate::help::accepted::accepted;
 use crate::help::cells::{
     Fact, OptionCellParts, UsageStyle, argument_facts, delimiter_literal, deprecated_facts,
-    option_cell_parts, single_line, unbound_option_facts,
+    option_cell_parts, single_line, split_noun, unbound_option_facts,
 };
 use crate::help::extension::{CommandExample, HELP_ARGUMENT};
 use crate::help::messages::{CHILD_NAME_ESCAPE, TERMINAL_NEED_LABEL, TERMINAL_NEED_TEXT};
@@ -319,12 +319,18 @@ fn option_tag(parts: &OptionCellParts) -> String {
     }
     match &parts.value {
         None => spellings,
-        Some(value) => format!(
-            "{spellings}{}{}{}",
-            escape(&format!("{}{}", value.separator, value.before)),
-            in_font(&value.placeholder, Font::Italic, Fill::Fill),
-            escape(value.after)
-        ),
+        Some(value) => {
+            let word = format!(
+                "{}{}{}",
+                escape(value.before),
+                in_font(&value.placeholder, Font::Italic, Fill::Fill),
+                escape(value.after),
+            );
+            let words = std::iter::repeat_n(word.as_str(), value.words)
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("{spellings}{}{words}", escape(value.separator))
+        }
     }
 }
 
@@ -356,7 +362,7 @@ fn bindings(option: &ReadOption) -> Vec<String> {
             .map(|name| in_font(name, Font::Bold, Fill::Fill))
             .collect();
         let list = list_delimiter(node)
-            .map(|delimiter| format!(" (a list separated by {delimiter})"))
+            .map(|delimiter| format!(" ({} separated by {delimiter})", split_noun(node)))
             .unwrap_or_default();
         lines.push(format!("Environment: {}{list}", names.join(", ")));
     }
@@ -394,7 +400,7 @@ fn environment(subject: &Subject<'_>) -> Vec<String> {
         let node = option.node.as_ref();
         for name in env_of(node) {
             let list = list_delimiter(node)
-                .map(|delimiter| format!(" as a list separated by {delimiter}"))
+                .map(|delimiter| format!(" as {} separated by {delimiter}", split_noun(node)))
                 .unwrap_or_default();
             let empty = match node {
                 OptionNode::String(string) if string.env_allow_empty => {

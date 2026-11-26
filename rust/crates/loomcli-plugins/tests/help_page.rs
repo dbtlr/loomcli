@@ -1108,3 +1108,36 @@ async fn a_graph_fact_that_carries_a_marker_character_prints_literally_on_the_he
         Some("app · A \u{e001}fixture\u{e002} application.")
     );
 }
+
+#[tokio::test]
+async fn arity_placeholders_group_an_occurrence_and_describe_bindings() {
+    let app = installed("draw")
+        .option(
+            "point",
+            Opt::string().arity(2).multiple().required().short('p'),
+        )
+        .option(
+            "resize",
+            Opt::string()
+                .arity(2)
+                .default(["800", "600"])
+                .env(["BOX_SIZE"])
+                .env_delimiter("x"),
+        )
+        .action(dispatch);
+    let rendered = run(&app, &["--help"]).await;
+    assert!(
+        rendered.stdout.contains("(--point <point> <point>)..."),
+        "{rendered:?}"
+    );
+    assert!(
+        rendered.stdout.contains("-p, --point <point> <point>"),
+        "{rendered:?}"
+    );
+    assert!(
+        rendered
+            .stdout
+            .contains("default: 800 600, env: BOX_SIZE as 2 values separated by \"x\""),
+        "{rendered:?}"
+    );
+}

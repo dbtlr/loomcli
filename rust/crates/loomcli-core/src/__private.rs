@@ -3,6 +3,17 @@
 pub mod time_zone;
 pub mod unit;
 
+/// Reads the vector of one arity occurrence as the fixed array of a derived field.
+pub fn arity_array<T, const N: usize>(name: &str, words: Vec<T>) -> Result<[T; N], crate::Error> {
+    words.try_into().map_err(|words: Vec<T>| {
+        crate::inputs::input_read(format!(
+            "The inputs read option {} with arity {N}, and its value holds {} words.",
+            crate::failures::messages::quoted(name),
+            words.len()
+        ))
+    })
+}
+
 /// The phantom marker a declaration carries its type parameters in, without owning them.
 pub type Types<A, B, C> = std::marker::PhantomData<fn() -> (A, B, C)>;
 

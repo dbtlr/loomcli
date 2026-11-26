@@ -40,7 +40,7 @@ fn globals(short: Value) -> Value {
         {
             "type": "string", "name": "file", "description": "The document.", "deprecated": null,
             "control": false, "long": "--file", "short": "-f", "required": false,
-            "requiredWhen": null, "multiple": false, "schema": null, "env": [],
+            "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false, "schema": null, "env": [],
             "envDelimiter": null, "envAllowEmpty": false, "default": null, "implied": null,
             "background": false,
         },
@@ -72,7 +72,7 @@ fn get_entry() -> Value {
             {
                 "type": "string", "name": "limit", "description": "The limit.", "deprecated": null,
                 "control": false, "long": "--limit", "short": "-l", "required": false,
-                "requiredWhen": null, "multiple": false,
+                "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false,
                 "schema": { "$schema": SCHEMA, "type": "string", "pattern": "^[0-9]+$" },
                 "env": ["APP_LIMIT", "APP_LIMIT_FALLBACK"], "envDelimiter": null,
                 "envAllowEmpty": true, "default": { "value": "10" }, "implied": null,
@@ -81,7 +81,7 @@ fn get_entry() -> Value {
             {
                 "type": "string", "name": "tag", "description": null, "deprecated": null,
                 "control": false, "long": "--tag", "short": null, "required": false,
-                "requiredWhen": null, "multiple": true, "schema": null, "env": ["APP_TAGS"],
+                "requiredWhen": null, "multiple": true, "arity": null, "lastWins": false, "schema": null, "env": ["APP_TAGS"],
                 "envDelimiter": ",", "envAllowEmpty": false, "default": null, "implied": null,
                 "background": false,
             },
@@ -93,14 +93,14 @@ fn get_entry() -> Value {
             {
                 "type": "string", "name": "backup", "description": null, "deprecated": null,
                 "control": false, "long": "--backup", "short": null, "required": false,
-                "requiredWhen": null, "multiple": false, "schema": null, "env": [],
+                "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false, "schema": null, "env": [],
                 "envDelimiter": null, "envAllowEmpty": false, "default": { "value": "none" },
                 "implied": "simple", "background": false,
             },
             {
                 "type": "string", "name": "mode", "description": null, "deprecated": null,
                 "control": false, "long": "--mode", "short": null, "required": false,
-                "requiredWhen": null, "multiple": false,
+                "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false,
                 "schema": { "$schema": SCHEMA, "type": "string" }, "env": [],
                 "envDelimiter": null, "envAllowEmpty": false, "default": null, "implied": null,
                 "background": false,
@@ -357,7 +357,7 @@ async fn marker_characters_print_exactly_c1_controls_escape_up_to_u009f_and_u00a
         json!([{
             "type": "string", "name": "marked", "description": null, "deprecated": null,
             "control": false, "long": "--marked", "short": null, "required": false,
-            "requiredWhen": null, "multiple": false, "schema": null, "env": [],
+            "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false, "schema": null, "env": [],
             "envDelimiter": null, "envAllowEmpty": false,
             "default": { "value": "c\u{e000}\u{e001}\u{e002}\u{e003}d\u{e003}E000e" },
             "implied": null, "background": false,
@@ -744,5 +744,44 @@ async fn a_listing_never_advertises_an_option_group_that_would_reveal_a_hidden_m
     assert_eq!(
         entry_at(&document, &[])["optionGroups"],
         json!([{ "kind": "exclusive", "options": ["a", "b"] }])
+    );
+}
+
+#[tokio::test]
+async fn string_entries_publish_arity_and_last_wins_in_order() {
+    let app = Application::new("draw")
+        .plugins([manifest()])
+        .option(
+            "point",
+            Opt::string().arity(2).default(["1", "2"]).last_wins(),
+        )
+        .option("ordinary", Opt::string())
+        .option("file", Opt::content())
+        .option(
+            "points",
+            Opt::string()
+                .arity(2)
+                .multiple()
+                .default([["1", "2"], ["3", "4"]]),
+        )
+        .action(dispatched);
+    let document = document_of(&app, &["--manifest"]).await;
+    let options = entry_at(&document, &[])["options"].as_array().unwrap();
+    let keys = keys(&options[0]);
+    let multiple = keys.iter().position(|key| *key == "multiple").unwrap();
+    assert_eq!(
+        keys[multiple..multiple + 4],
+        ["multiple", "arity", "lastWins", "schema"]
+    );
+    assert_eq!(options[0]["arity"], 2);
+    assert_eq!(options[0]["lastWins"], true);
+    assert_eq!(options[0]["default"], json!({"value": ["1", "2"]}));
+    assert_eq!(options[1]["arity"], Value::Null);
+    assert_eq!(options[1]["lastWins"], false);
+    assert!(options[2].get("arity").is_none());
+    assert!(options[2].get("lastWins").is_none());
+    assert_eq!(
+        options[3]["default"],
+        json!({"value": [["1", "2"], ["3", "4"]]})
     );
 }

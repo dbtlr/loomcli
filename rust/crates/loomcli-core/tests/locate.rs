@@ -82,6 +82,7 @@ fn reduce(graph: &CommandGraph, position: &WordPosition, mode: Mode) -> Value {
             supplied,
             counts,
             booleans,
+            ..
         } => {
             reduced.insert("prefix".into(), json!(prefix));
             reduced.insert("supplied".into(), json!(supplied));
@@ -106,6 +107,7 @@ fn reduce(graph: &CommandGraph, position: &WordPosition, mode: Mode) -> Value {
             option,
             lead,
             prefix,
+            ..
         } => {
             reduced.insert("lead".into(), json!(lead));
             reduced.insert("prefix".into(), json!(prefix));
@@ -116,12 +118,15 @@ fn reduce(graph: &CommandGraph, position: &WordPosition, mode: Mode) -> Value {
             command,
             argument,
             prefix,
+            ..
         } => {
             reduced.insert("prefix".into(), json!(prefix));
             reduced.insert("argument".into(), json!(argument.name));
             ("argument", command)
         }
-        WordPosition::Passthrough { command, prefix } => {
+        WordPosition::Passthrough {
+            command, prefix, ..
+        } => {
             reduced.insert("prefix".into(), json!(prefix));
             ("passthrough", command)
         }

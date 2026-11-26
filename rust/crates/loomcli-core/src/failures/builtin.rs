@@ -408,6 +408,7 @@ pub struct MissingValueError {
     #[failure(base)]
     base: UsageError,
     spelling: String,
+    arity: Option<usize>,
 }
 
 impl MissingValueError {
@@ -421,7 +422,30 @@ impl MissingValueError {
         Self {
             base: UsageError::new(message),
             spelling,
+            arity: None,
         }
+    }
+
+    /// An arity occurrence that received too few words. `refused` is the next option's spelling.
+    pub fn for_arity(
+        spelling: impl Into<String>,
+        arity: usize,
+        received: usize,
+        refused: Option<&str>,
+    ) -> Self {
+        let spelling = spelling.into();
+        let message = messages::missing_arity(&spelling, arity, received, refused);
+        Self {
+            base: UsageError::new(message),
+            spelling,
+            arity: Some(arity),
+        }
+    }
+
+    /// The declared word count of an arity occurrence.
+    #[must_use]
+    pub fn arity(&self) -> Option<usize> {
+        self.arity
     }
 
     /// The spelling as supplied.
@@ -431,16 +455,18 @@ impl MissingValueError {
     }
 }
 
-/// The kind of option that takes no value.
+/// Why an option refuses a value in the spelling's own word.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ValuelessKind {
+pub enum AttachedValueRefusal {
+    /// An option that takes several separate words.
+    Arity,
     /// A Boolean option.
     Boolean,
     /// A counted option.
     Count,
 }
 
-/// A value attached to a spelling that takes none.
+/// A value attached to a spelling that refuses it.
 #[derive(Debug, Failure)]
 #[failure(code = "unexpected-value")]
 pub struct UnexpectedValueError {
@@ -452,11 +478,16 @@ pub struct UnexpectedValueError {
 
 impl UnexpectedValueError {
     /// The spelling, the attached value, and the option's kind.
-    pub fn new(spelling: impl Into<String>, value: impl Into<String>, kind: ValuelessKind) -> Self {
+    pub fn new(
+        spelling: impl Into<String>,
+        value: impl Into<String>,
+        kind: AttachedValueRefusal,
+    ) -> Self {
         let spelling = spelling.into();
         let message = match kind {
-            ValuelessKind::Count => messages::counted_value(&spelling),
-            ValuelessKind::Boolean => messages::boolean_value(&spelling),
+            AttachedValueRefusal::Arity => messages::attached_arity_value(&spelling),
+            AttachedValueRefusal::Count => messages::counted_value(&spelling),
+            AttachedValueRefusal::Boolean => messages::boolean_value(&spelling),
         };
         Self {
             base: UsageError::new(message),
@@ -478,7 +509,7 @@ impl UnexpectedValueError {
     }
 }
 
-/// An option that is neither multiple nor counted, supplied twice.
+/// An option that accepts only one occurrence was supplied again.
 #[derive(Debug, Failure)]
 #[failure(code = "repeated-option")]
 pub struct RepeatedOptionError {

@@ -150,7 +150,10 @@ pub fn missing_input_error<I, R>(context: &Context<I, R>, link: &ValueLink) -> E
             let fix = if !named && !forms.is_empty() {
                 messages::OptionFix::Spellings(&forms)
             } else {
-                messages::OptionFix::Value { collected }
+                messages::OptionFix::Value {
+                    collected,
+                    arity: option.arity(),
+                }
             };
             InputError::new(
                 messages::required_option(

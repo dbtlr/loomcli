@@ -193,7 +193,8 @@ fn check_kind(option: &OptionNode, kind: LinkKind, message: &str) -> Result<(), 
     let name = option.name();
     match kind {
         LinkKind::Multiselect => {
-            if !matches!(option, OptionNode::String(string) if string.multiple) {
+            if !matches!(option, OptionNode::String(string) if string.multiple && string.arity.is_none())
+            {
                 return Err(invalid(
                     format!(
                         "The question \"{message}\" links option \"{name}\", which is not a multiple string option."
@@ -213,7 +214,8 @@ fn check_kind(option: &OptionNode, kind: LinkKind, message: &str) -> Result<(), 
             }
         }
         LinkKind::Text | LinkKind::Secret | LinkKind::Select => {
-            if !matches!(option, OptionNode::String(string) if !string.multiple) {
+            if !matches!(option, OptionNode::String(string) if !string.multiple && string.arity.is_none())
+            {
                 return Err(invalid(
                     format!(
                         "The question \"{message}\" links option \"{name}\", which is not a string option that takes one value."

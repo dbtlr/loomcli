@@ -459,3 +459,30 @@ async fn the_extensions_description_replaces_the_core_one_and_a_tool_with_neithe
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn a_tool_describes_the_word_schema_inside_each_fixed_size_group() {
+    let app = Application::new("draw")
+        .plugins([mcp()])
+        .extend([opted()])
+        .option(
+            "resize",
+            Opt::string()
+                .arity(2)
+                .last_wins()
+                .validate(Shaped(json!({"type": "integer"})))
+                .default(["800", "600"]),
+        )
+        .option("point", Opt::string().arity(2).multiple().required())
+        .action(dispatch);
+    let tools = tools_of(&app).await;
+    let properties = &tool_named(&tools, "draw").unwrap()["inputSchema"]["properties"];
+    assert_eq!(
+        serde_json::to_string(&properties["resize"]).unwrap(),
+        r#"{"type":"array","items":{"type":"integer"},"minItems":2,"maxItems":2,"default":["800","600"]}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&properties["point"]).unwrap(),
+        r#"{"type":"array","items":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":2},"minItems":1}"#
+    );
+}

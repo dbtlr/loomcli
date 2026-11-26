@@ -18,7 +18,8 @@ use crate::invocation::parse::OptionValues;
 
 use super::content::{ContentScope, ContentSettings, Prepared, PreparedContent, prepare_content};
 use super::declared::{
-    DeclKey, Declared, DeclaredValues, Presence, messages, reported, text, validate_list,
+    DeclKey, Declared, DeclaredValues, Presence, messages, reported, text, validate_arity,
+    validate_list,
 };
 use super::groups::{GroupContext, group_reports};
 use super::messages;
@@ -277,6 +278,16 @@ pub(crate) fn supplied_inputs(
                 let value = match &option.decl {
                     OptionDecl::Boolean(_) => options.boolean(name).map(SuppliedValue::Flag),
                     OptionDecl::Count(_) => options.count(name).map(SuppliedValue::Count),
+                    OptionDecl::String(string) if string.arity.is_some() => {
+                        let tuples = options.tuples(name);
+                        if collected {
+                            Some(SuppliedValue::Tuples(tuples.unwrap_or_default().to_vec()))
+                        } else {
+                            tuples
+                                .and_then(|tuples| tuples.first())
+                                .map(|words| SuppliedValue::Many(words.clone()))
+                        }
+                    }
                     _ if collected => options
                         .list(name)
                         .map(|list| SuppliedValue::Many(list.clone()))
@@ -297,6 +308,9 @@ pub(crate) fn supplied_inputs(
 /// The issue a variable outside its option's grammar reports.
 fn grammar_issue(decl: &OptionDecl) -> Issue {
     match decl {
+        OptionDecl::String(option) if let Some(arity) = option.arity => Issue::new(
+            messages::environment_arity(arity, option.env_delimiter.as_deref().unwrap_or_default()),
+        ),
         OptionDecl::Count(_) => Issue::new(messages::ENVIRONMENT_COUNT),
         _ => Issue::new(messages::ENVIRONMENT_BOOLEAN),
     }
@@ -324,7 +338,10 @@ fn missing_message(
         Declared::Option(_) => messages::required_option(
             &supplied_name(input, spelling, origin),
             conditional,
-            &messages::OptionFix::Value { collected },
+            &messages::OptionFix::Value {
+                collected,
+                arity: input.arity(),
+            },
         ),
     }
 }
@@ -333,6 +350,7 @@ fn missing_message(
 enum Raw<'a> {
     One(&'a str),
     Many(&'a [String]),
+    Tuples(&'a [Vec<String>], bool),
     None,
 }
 
@@ -341,6 +359,10 @@ impl Raw<'_> {
         match self {
             Self::One(value) => Some(SuppliedValue::One((*value).to_owned())),
             Self::Many(values) => Some(SuppliedValue::Many(values.to_vec())),
+            Self::Tuples(values, true) => Some(SuppliedValue::Tuples(values.to_vec())),
+            Self::Tuples(values, false) => values
+                .first()
+                .map(|words| SuppliedValue::Many(words.clone())),
             Self::None => None,
         }
     }
@@ -524,6 +546,14 @@ impl Pass<'_, '_> {
                 &|| self.context(entry),
                 implied.map(|(positions, output)| (positions.as_slice(), output)),
                 self.invocation.cancelled,
+            )
+            .map(RawValue::Many),
+            Raw::Tuples(values, multiple) => validate_arity(
+                validator,
+                values,
+                *multiple,
+                &|| self.context(entry),
+                self.invocation.cancelled,
             ),
             Raw::None => match validator
                 .and_then(|validator| validator.validate_omission(&self.context(entry)))
@@ -592,7 +622,7 @@ impl Pass<'_, '_> {
             let tokens: Vec<String> = match from {
                 Raw::One(value) => vec![(*value).to_owned()],
                 Raw::Many(values) => values.to_vec(),
-                Raw::None => Vec::new(),
+                Raw::None | Raw::Tuples(..) => Vec::new(),
             };
             let host = pass.host_for(input);
             prepare_content(
@@ -712,6 +742,10 @@ impl Pass<'_, '_> {
                 Some(SuppliedValue::Many(values)) => Raw::Many(values),
                 _ => Raw::None,
             },
+            Declared::Option(option) if option.decl.arity().is_some() => invocation
+                .options
+                .tuples(&option.name)
+                .map_or(Raw::None, |values| Raw::Tuples(values, collected)),
             Declared::Option(option) if collected => invocation
                 .options
                 .list(&option.name)
@@ -724,9 +758,14 @@ impl Pass<'_, '_> {
         if let Some(settings) = input.content() {
             return self.content(entry, &settings, &raw);
         }
+        let empty = match &raw {
+            Raw::Many(values) => values.is_empty(),
+            Raw::Tuples(values, _) => values.is_empty(),
+            _ => false,
+        };
         match raw {
             Raw::None => self.absent(entry, &spelling, false),
-            Raw::Many(values) if values.is_empty() && self.requires(input) => {
+            _ if empty && self.requires(input) => {
                 // A filled list satisfies the at-least-one rule by its length.
                 let origin = self.origin(input);
                 let line = missing_message(input, &spelling, collected, origin.as_deref());

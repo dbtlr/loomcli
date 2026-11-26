@@ -17,7 +17,7 @@ use super::extension::{DeclaredFailure, MANIFEST_COMMAND};
 use crate::encode::{escape_controls, stringify};
 
 /// The token rule, stated once so no entry repeats it.
-const TOKENS: &str = "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
+const TOKENS: &str = "Every input is a string token. An input's schema describes the value one token must satisfy, and each token of a multiple option or a variadic argument, and each word of an arity option, satisfies it alone. The configuration schema describes the configuration the application reads, not a token. A null schema means the accepted shape is unknown, not that every token is accepted. An example's command holds the tokens after the application name.";
 
 /// The Meaning column of core's Invocation table, with its code formatting removed.
 const CORE_EXIT_CODES: [(u16, &str); 8] = [
@@ -164,6 +164,8 @@ fn option_entry(node: &OptionNode) -> Value {
             put("required", json!(node.required));
             put("requiredWhen", serialized(&node.required_when));
             put("multiple", json!(node.multiple));
+            put("arity", json!(node.arity));
+            put("lastWins", json!(node.last_wins));
             put("schema", schema_of(&node.schema));
             put("env", strings(&node.env));
             put("envDelimiter", text_or_null(node.env_delimiter.as_ref()));

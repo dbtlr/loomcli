@@ -5,14 +5,14 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use loomcli_core::{
-    DeclarationError, DiagnosticParts, EX_CANTCREAT, EX_CONFIG, EX_DATAERR, EX_IOERR, EX_NOHOST,
-    EX_NOINPUT, EX_NOPERM, EX_NOUSER, EX_OSERR, EX_OSFILE, EX_PROTOCOL, EX_SOFTWARE, EX_TEMPFAIL,
-    EX_UNAVAILABLE, EX_USAGE, Error, ExitCode, Failure, FailureClass, FailureExitCode,
-    FailureFacts, FatalError, InputError, InternalError, LoomError, MisplacedOptionError,
-    MissingValueError, MissingValueForm, NonCallableCommandError, RepeatedOptionError, ResultError,
-    ResultFault, TerminalUnavailableError, UnexpectedArgumentError, UnexpectedValueError,
-    UnknownCommandError, UnknownOptionError, UsageError, ValuelessKind, WorkingDirectoryError,
-    diagnostic_rule, encode_failure, is_failure_code,
+    AttachedValueRefusal, DeclarationError, DiagnosticParts, EX_CANTCREAT, EX_CONFIG, EX_DATAERR,
+    EX_IOERR, EX_NOHOST, EX_NOINPUT, EX_NOPERM, EX_NOUSER, EX_OSERR, EX_OSFILE, EX_PROTOCOL,
+    EX_SOFTWARE, EX_TEMPFAIL, EX_UNAVAILABLE, EX_USAGE, Error, ExitCode, Failure, FailureClass,
+    FailureExitCode, FailureFacts, FatalError, InputError, InternalError, LoomError,
+    MisplacedOptionError, MissingValueError, MissingValueForm, NonCallableCommandError,
+    RepeatedOptionError, ResultError, ResultFault, TerminalUnavailableError,
+    UnexpectedArgumentError, UnexpectedValueError, UnknownCommandError, UnknownOptionError,
+    UsageError, WorkingDirectoryError, diagnostic_rule, encode_failure, is_failure_code,
 };
 
 /// jsonkit's `PathNotFoundError`, which declares a failure code and an exit code.
@@ -379,12 +379,16 @@ fn each_token_fault_states_what_went_wrong_and_what_to_do() {
             Box::new(UnexpectedValueError::new(
                 "--quiet",
                 "1",
-                ValuelessKind::Boolean,
+                AttachedValueRefusal::Boolean,
             )),
             "Boolean option \"--quiet\" does not accept a value. Supply the flag alone.",
         ),
         (
-            Box::new(UnexpectedValueError::new("-v", "2", ValuelessKind::Count)),
+            Box::new(UnexpectedValueError::new(
+                "-v",
+                "2",
+                AttachedValueRefusal::Count,
+            )),
             "Counted option \"-v\" does not accept a value. Repeat \"-v\" to raise its count.",
         ),
         (
@@ -432,7 +436,7 @@ fn a_token_fault_keeps_its_facts() {
         (extra.command(), extra.accepted(), extra.extra()),
         (&["get".to_owned()][..], 1, &["b".to_owned()][..])
     );
-    let value = UnexpectedValueError::new("--quiet", "1", ValuelessKind::Boolean);
+    let value = UnexpectedValueError::new("--quiet", "1", AttachedValueRefusal::Boolean);
     assert_eq!((value.spelling(), value.value()), ("--quiet", "1"));
     let misplaced = MisplacedOptionError::new("-m", vec![vec!["get".to_owned()]]);
     assert_eq!(misplaced.commands(), [vec!["get".to_owned()]]);

@@ -487,6 +487,8 @@ pub enum SuppliedValue {
     One(String),
     /// Several raw strings.
     Many(Vec<String>),
+    /// Raw words grouped by occurrence of a multiple arity option.
+    Tuples(Vec<Vec<String>>),
     /// A Boolean option's value.
     Flag(bool),
     /// A counted option's count.

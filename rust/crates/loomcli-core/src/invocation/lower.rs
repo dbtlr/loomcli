@@ -52,7 +52,7 @@ fn tokens_of(value: &Value) -> Option<Vec<String>> {
 /// What one value lowers to: the occurrences argv would give, or the issue that says what it takes.
 enum Lowering<T> {
     Occurrences(T),
-    Issue(&'static str),
+    Issue(String),
 }
 
 /// One occurrence a value lowers to: the entry it reads as, the value it supplies, and whether it
@@ -93,7 +93,7 @@ fn option_occurrences<'g>(entries: &[&'g Entry], value: &Value) -> Lowering<Vec<
         Form::Boolean { .. } => {
             // A Boolean lowers to the spelling that reads its value, or to absence where none does.
             let Value::Bool(flag) = value else {
-                return Lowering::Issue(messages::TAKES_BOOLEAN);
+                return Lowering::Issue(messages::TAKES_BOOLEAN.to_owned());
             };
             let reading = entries
                 .iter()
@@ -124,7 +124,7 @@ fn option_occurrences<'g>(entries: &[&'g Entry], value: &Value) -> Lowering<Vec<
                 _ => None,
             };
             let Some(count) = count else {
-                return Lowering::Issue(messages::TAKES_COUNT);
+                return Lowering::Issue(messages::TAKES_COUNT.to_owned());
             };
             Lowering::Occurrences(if count > 0 {
                 vec![Lowered {
@@ -136,6 +136,7 @@ fn option_occurrences<'g>(entries: &[&'g Entry], value: &Value) -> Lowering<Vec<
                 Vec::new()
             })
         }
+        Form::Arity { words, multiple } => arity_occurrences(option, value, *words, *multiple),
         Form::Separate { multiple } | Form::Implied { multiple, .. } => {
             let implied = match &option.form {
                 Form::Implied { implied, .. } => Some(implied),
@@ -164,27 +165,63 @@ fn option_occurrences<'g>(entries: &[&'g Entry], value: &Value) -> Lowering<Vec<
                         })
                         .collect(),
                 ),
-                None => Lowering::Issue(match (multiple, implied.is_some()) {
-                    (true, true) => messages::TAKES_LIST_OR_IMPLIED,
-                    (true, false) => messages::TAKES_LIST,
-                    (false, true) => messages::TAKES_IMPLIED,
-                    (false, false) => messages::TAKES_SCALAR,
-                }),
+                None => Lowering::Issue(
+                    match (multiple, implied.is_some()) {
+                        (true, true) => messages::TAKES_LIST_OR_IMPLIED,
+                        (true, false) => messages::TAKES_LIST,
+                        (false, true) => messages::TAKES_IMPLIED,
+                        (false, false) => messages::TAKES_SCALAR,
+                    }
+                    .to_owned(),
+                ),
             }
         }
+    }
+}
+
+fn arity_occurrences<'g>(
+    option: &'g Entry,
+    value: &Value,
+    arity: usize,
+    multiple: bool,
+) -> Lowering<Vec<Lowered<'g>>> {
+    let tuple = |value: &Value| {
+        let elements = value.as_array().filter(|items| items.len() == arity)?;
+        elements.iter().map(token_of).collect::<Option<Vec<_>>>()
+    };
+    let groups = tuple(value).map(|words| vec![words]).or_else(|| {
+        if multiple {
+            value.as_array()?.iter().map(tuple).collect()
+        } else {
+            None
+        }
+    });
+    match groups {
+        Some(groups) => Lowering::Occurrences(
+            groups
+                .into_iter()
+                .map(|words| Lowered {
+                    option,
+                    value: Supplied::Tuple(words),
+                    implied: false,
+                })
+                .collect(),
+        ),
+        None => Lowering::Issue(messages::takes_arity(arity, multiple)),
     }
 }
 
 /// One argument's value bound to its slot: one token, or one per element on a variadic.
 fn argument_tokens(slot: &Slot, value: &Value) -> Lowering<SuppliedValue> {
     if slot.variadic {
-        tokens_of(value).map_or(Lowering::Issue(messages::TAKES_LIST), |tokens| {
+        tokens_of(value).map_or(Lowering::Issue(messages::TAKES_LIST.to_owned()), |tokens| {
             Lowering::Occurrences(SuppliedValue::Many(tokens))
         })
     } else {
-        token_of(value).map_or(Lowering::Issue(messages::TAKES_SCALAR), |token| {
-            Lowering::Occurrences(SuppliedValue::One(token))
-        })
+        token_of(value).map_or(
+            Lowering::Issue(messages::TAKES_SCALAR.to_owned()),
+            |token| Lowering::Occurrences(SuppliedValue::One(token)),
+        )
     }
 }
 
@@ -254,7 +291,7 @@ pub(crate) fn lower_invocation<'g>(
                             kind: InputKind::Option,
                             name: name.clone(),
                         },
-                        issue.to_owned(),
+                        issue,
                     ));
                 }
             }
@@ -284,7 +321,7 @@ pub(crate) fn lower_invocation<'g>(
                     kind: InputKind::Argument,
                     name: name.clone(),
                 },
-                issue.to_owned(),
+                issue,
             )),
         }
     }

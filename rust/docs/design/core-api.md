@@ -110,7 +110,9 @@ The first bare `--` ends routing and option parsing. With passthrough enabled, e
 | `required: true` | `.required()` | string, content |
 | `required: 'non-interactive'` | `.required_when_non_interactive()` | string |
 | `multiple` | `.multiple()` | string, content |
-| `default` | `.default(DefaultValue)` (from `&str`, `String`, `[&str; N]`, `Vec<String>`) | string |
+| `arity` | `.arity(words: usize)` | string |
+| `lastWins` | `.last_wins()` | scalar string |
+| `default` | `.default(value: impl Into<DefaultValue>)` | string |
 | `implied` | `.implied(text)` | string |
 | `validate` | `.validate(validator)` | string |
 | `validateOmitted` with `validate` | `.validate_omitted(validator: impl OmissionValidator)` | string |
@@ -127,6 +129,106 @@ The first bare `--` ends routing and option parsing. With passthrough enabled, e
 `option()` takes `impl Into<OptionDecl>` (all four builders). `global_option()` and a plugin's `option()` take `impl Into<GlobalOptionDecl>`, which `ContentOpt` does not implement.
 
 The plain mark is `Opt::boolean().plain()` or `#[option(plain)]` on one global Boolean option. The marked option takes positive long spellings. It carries neither an environment or configuration binding nor a color or interaction mark. The `plain` Cargo feature exposes `loomcli_plugins::plain::{plain, PlainOptions}`, which declares the `--plain` control option.
+
+### Option value arity
+
+`Opt::string().arity(2)` declares an option whose occurrence takes two separate words.
+The same builder works for local, global, plugin, and hook declarations. An arity is a `usize`
+of at least 2. The declaring call reports `@loomcli/core/option-arity` for a smaller count.
+`implied`, `validate_omitted`, `background`, and `env_allow_empty` are incompatible with `arity`.
+A scalar arity option may bind an environment variable with `env` and `env_delimiter` together.
+A multiple arity option takes no environment binding. The declaring call uses `option-config`
+for incompatible setters and `env-delimiter` for an empty delimiter.
+
+```rust
+use loomcli_core::{Command, Context, Opt};
+use loomcli_validators::integer;
+
+let draw = Command::new("draw")
+    .option("resize", Opt::string().arity(2).validate(integer()))
+    .option("point", Opt::string().arity(2).multiple().validate(integer()))
+    .action(|ctx: Context| async move {
+        let resize = ctx.option::<Option<Vec<i64>>>("resize")?;
+        let points = ctx.option::<Vec<Vec<i64>>>("point")?;
+        ctx.out.print(&format!("{resize:?} {points:?}")).await
+    });
+```
+
+The by-name accessor reads one `Vec<T>` per occurrence. `T` is `String` or the validator's
+`Output` for one word. A scalar option reads as `Option<Vec<T>>`, even when required or defaulted.
+`InputValues::required_option::<Vec<T>>(name)` reads the required value directly. A multiple
+option reads as `Vec<Vec<T>>` in occurrence order. The outer vector is empty when the option
+is omitted and has no default. These shapes use the existing accessors for runtime arities.
+Derived fields use fixed-size arrays so the action can destructure a group at its declared size.
+
+`#[option(arity)]` takes the count from the array field type. The explicit flag also lets an
+unmarked field keep reading an array that its validator returns for a single word.
+
+```rust
+use loomcli_core::Inputs;
+use loomcli_validators::integer;
+
+#[derive(Inputs)]
+struct DrawInputs {
+    #[option(arity, last_wins, validate = integer())]
+    resize: Option<[i64; 2]>,
+    #[option(arity, short = 'p', required, validate = integer())]
+    point: Vec<[i64; 2]>,
+}
+```
+
+A bare `[T; N]` is required unless it declares a default. `Option<[T; N]>` is optional,
+with `non_interactive` available for conditional presence. `Vec<[T; N]>` declares `multiple`,
+and `required` means at least one occurrence. The derive expands to `.arity(N)` and reads the
+same validated vectors as the by-name accessor, converting each to `[T; N]`. The reverse
+conversion in `Inputs::into_values` writes the same vector shapes so a test context supports
+both reads. The derive checks the field shape, the validator's output type per word, and
+incompatible facts at compile time. It rejects a literal count below 2. The declaring call
+checks a count from a constant expression.
+
+Defaults hold raw strings. Use `.default(["800", "600"])` or a `Vec<String>` for one
+occurrence and `.default([["0", "0"], ["3", "4"]])` or a `Vec<Vec<String>>` for multiple
+occurrences. `DefaultValue::Many` holds one group and `DefaultValue::Tuples` holds several.
+The declaring call checks the default's shape and the length of each group under `option-config`.
+The derive takes the same arrays as `default = ["800", "600"]` or `default = [["0", "0"]]`
+and checks literal lengths when the field's count is a literal. A default's words pass the
+validator in the default phase, even on runs that supply the option.
+
+Each occurrence reads exactly its declared count after a long spelling or a value letter that
+ends a short group. An attached value raises `UnexpectedValueError`. An option word, the bare
+`--`, or the end of the line before the count raises `MissingValueError`. Routing rebinds an
+occurrence to a child's option only when the value classes match, including the arity count.
+All operator text follows ADR-0161 and the reference, including the usage grouping, default
+display, environment fact, and man-page binding lines. MCP uses a fixed-length array of the
+one-word schema, wrapped in an outer array for a multiple option. See [ADR-0161](../../../docs/decisions/0161-a-string-option-may-declare-an-arity-and-each-occurrence-takes-that-many-separate-words.md).
+
+### Last occurrence wins
+
+`Opt::string().last_wins()` and `#[option(last_wins)]` let a scalar string option keep its
+latest argv occurrence across all spellings. The flag works with arity, with an implied value,
+or on the background-marked option. The `multiple` builder combination is an `option-config`
+fault. The derive rejects `last_wins` on a collected field or an input of another kind.
+Without the flag, a repeated scalar option raises `RepeatedOptionError`.
+
+The winning occurrence supplies the whole value, including all words of an arity option. Core
+validates and records the winner and discards superseded occurrences without logging their values.
+Declared implied values still validate in the default phase. An implied-value note belongs to
+its occurrence. A later occurrence that replaces it clears the note. Every occurrence reads
+its words and keeps its structural faults. A faulted occurrence supplies nothing, and any such fault
+leaves the option absent from a plugin middleware's `own_options`. The middleware's `spellings`
+records the winning spelling. The background choice also follows the winner, including when
+its value leaves the choice to the ordinary background detection. Input-source precedence and
+the rules for invocation by name stay the same.
+
+Routing ignores `last_wins` when comparing value classes. A parent's own option rebinds to the
+routed Command's option of the same spelling and value class. The routed declaration decides
+whether a later occurrence replaces or repeats. A global last-wins option keeps the last
+occurrence before the first bare `--` across all routing layers.
+
+`locate` reads a later occurrence the way it reads the first. Its `typed` words hold the latest
+completed occurrence followed by any words of the open occurrence. Completion offers the option
+again after a completed occurrence. Help, man pages, and MCP use the scalar option's ordinary shape.
+See [ADR-0162](../../../docs/decisions/0162-a-scalar-string-option-may-declare-that-its-last-occurrence-wins.md).
 
 ### Arguments and stdin
 
@@ -152,6 +254,19 @@ Without a variadic, words fill arguments from the start in declaration order. Af
 
 Precedence is the reference's: a token, then the environment, then the configuration source, then the declared default. An environment binding is the `env` setters above, read under the reference's rules: the first name holding a non-empty value (or, under `env_allow_empty`, the first defined name), a string as it is, a multiple option's value split at its delimiter, a Boolean through the `true`/`false`/`yes`/`no`/`y`/`n`/`on`/`off`/`1`/`0` grammar, and a count as ASCII digits; a value outside its grammar is the option's `invalid` problem, naming the variable. The configuration source is the single slot a plugin claims with `Plugin::source(ConfigurationSource::new(&BINDING, resolver).schema(schema))`; the binding is an option-target extension descriptor and the resolver answers `BTreeMap<String, SourceAnswer>` (`SourceAnswer::new(value, label).directory(dir)`) by option name. Core reaches the slot through `inputs::sources::SourceSlot`, the erased form a `ConfigurationSource` takes once `Plugin::source` claims it: the resolver receives a `SourceContext<O>` whose `options` are the claiming plugin's own validated options extracted as `O`, and whose `out` and `log` are the run's, the log tagged with the plugin. A resolver's foreign error is offered to the translators before it becomes the plugin's `foreign-throw` fault. The hidden `__private::install_source(app, plugin, &BINDING, own, resolver)` installs a source with untyped options for a test. Option groups withdraw lower-tier members before validation.
 
+For a scalar arity option, the environment splits on the declared delimiter, preserves empty
+items and whitespace, and requires exactly `arity` items. An empty variable is unset. A
+nonempty value with the wrong count produces an `invalid` problem that names its variable.
+A configuration source uses `SourceValue::List(Vec<String>)` for one group and
+`SourceValue::Tuples(Vec<Vec<String>>)` for multiple groups. The wrong shape or a group of the
+wrong length raises `source-answers`. The configuration plugin accepts arrays in these shapes
+and converts each string or number by its ordinary string rule. For a wrong-shaped non-strict
+value, the source logs a debug line such as `Use an array of 2 strings or numbers.` and the
+option falls through without an answer. If the validator rejects one word of a non-strict
+answer, the whole answer drops under ADR-0117. Either failure fails the run in strict mode.
+The link-type correction includes `or an array for a multiple or arity option.` See the exact
+configuration sentences in [ADR-0161](../../../docs/decisions/0161-a-string-option-may-declare-an-arity-and-each-occurrence-takes-that-many-separate-words.md).
+
 ### Where each authoring rule is enforced
 
 "Type" means the program does not compile. "Call", "attach", and "build" are the reference's moments; the identity is the reference rule a fault reports under, or a [Rust-only rule](#rust-only-rules).
@@ -176,6 +291,8 @@ Precedence is the reference's: a token, then the environment, then the configura
 | A global option declares no presence rule | Call (`option-config`); derive: `GlobalInputs` is not implemented, a compile error at `globals::<G>()` or `options::<O>()` under `cargo check` | `option-config` |
 | Run-wide marks only on global options | Call | `option-config` |
 | `required` excludes `default`; `shortOnly` excludes `aliases`; `polarity: 'both'` excludes `shortOnly`; a color mark excludes a short spelling and `env`; a verbose or quiet mark excludes `env`; a multiple option's `env` needs `envDelimiter`; `validateOmitted` excludes `required`, `default`, `multiple` | Call; derive: compile error | `option-config` |
+| Option arity is at least 2 | Call, or a compile error for a literal count in the derive | `option-arity` |
+| Arity and last-wins combinations, arity environment bindings, and arity default shape | Call, or a compile error for facts the derive can check | `option-config` |
 | An empty `envDelimiter` | Call | `env-delimiter` |
 | One mark of each kind per Application | Call | `interaction-mark`, `color-mark`, `plain-mark`, `verbose-mark`, `quiet-mark`, `background-mark` |
 | A key, spelling, or variable used twice in one scope | Call | `option-declared-twice`, `spelling-taken`, `variable-bound-twice` |
@@ -232,8 +349,10 @@ The struct may carry `#[inputs(exclusive("a", "b"), one_required(…), required_
 | `polarity` | `polarity = "both"` | Boolean option |
 | `validate` | `validate = text()` | string input |
 | `validate_omitted` | flag; `validate` names an `OmissionValidator` | string input |
-| `default` | `default = "8080"` or `default = ["a", "b"]` | string input |
+| `default` | `default = "8080"`, `default = ["a", "b"]`, or `default = [["a", "b"]]` for a multiple arity option | string input |
 | `implied` | `implied = "simple"` | string option |
+| `arity` | flag taking the count from `[T; N]`, `Option<[T; N]>`, or `Vec<[T; N]>` | string option |
+| `last_wins` | flag | scalar string option |
 | `required` | flag, on a `Vec` field alone: at least one value | both |
 | `non_interactive` | flag, on an `Option` or `Vec` field: required when the run cannot ask | both |
 | `env`, `env_delimiter`, `env_allow_empty` | `env = "ACME_LOG"` or `env = ["A", "B"]` | option |
@@ -257,6 +376,7 @@ The field type decides the builder, the presence, and the extraction. The struct
 | `T`, with `validate = v` | string, `.validate(v)`; `T` must be `v`'s `Output` | `.required()` unless `default` or `validate_omitted` | `values.required_option::<T>(name)` |
 | `Option<T>` | string | optional; `non_interactive` adds `.required_when_non_interactive()` | `values.option::<Option<T>>(name)` |
 | `Vec<T>` | string, `.multiple()` / `.variadic()` | `required` adds `.required()` | `values.option::<Vec<T>>(name)` |
+| `[T; N]`, `Option<[T; N]>`, `Vec<[T; N]>` with `arity` | string, `.arity(N)` | scalar, optional, or multiple, respectively | standard by-name vector reads, converted to arrays |
 
 A `bool` field is a Boolean option and is never `Option<bool>` or `Vec<bool>`; a `count` field is `u8`, `u16`, `u32`, `u64`, or `usize`; a `#[stdin]` field is `Content` or `Option<Content>`; `min` and `max` sit on a `Vec` field alone.
 
@@ -341,6 +461,7 @@ pub trait OmissionValidator: Validator {
 ```
 
 - **Synchronous.** A validator judges one string and returns. It holds no state between calls; on a multiple option or a variadic argument it judges each value. `path` probes the file system synchronously.
+- **Arity.** One validator judges every word in each supplied occurrence in order. An issue's path starts with the zero-based word position, and a multiple arity option prefixes that with the occurrence position. The same rule applies to default words.
 - **Issues.** `Issue { message, path: Vec<PathSegment>, code, params }`, built with `Issue::new(message).at(segment).code(code, params)`. A rejection with no issue reads as core's "rejected without an explanation" issue. `issue_path(&issue)` returns the dotted path. `loomcli-validators` declares typed codes with `issue_code::<P>(code, message)`.
 - **Context.** `ValidationContext { phase, host, input, command, passthrough, supplied }`. Phases: `Default` (a declared default or implied value, once per run before any token), `Invocation` (a supplied or filled value), `Question` (a prompt's answer). Outside a run, `validation_context(handle: Arc<dyn ProcessHandle>, ValidationFacts) -> Result<ValidationContext, Error>` builds one, the reference's `validationOptions`: it captures a host of its own from the handle, with the background its terminal states, and returns the `WorkingDirectoryError` a run would report for a working directory the handle cannot read. `ValidationFacts::default_phase(input)` or `::invocation(input)`, then `.command(path)`, `.passthrough(words)`, `.supplied(record)`, which the default phase ignores. The context is a parameter, so the reference's `validationContext(options)` and `validationContextKey` have no counterpart.
 - **Absence.** An omitted input with no default calls no validator unless it declares `validate_omitted`. An empty variadic or multiple input is an empty list and calls no validator.
@@ -349,6 +470,7 @@ pub trait OmissionValidator: Validator {
 - **Problems.** `InputProblem::{Group, Missing, Invalid}` aggregate in authoring order, globals first, the standalone stdin's in its declaration position and the groups' last, into `InputError`, whose message is every problem's lines in core's sentences. `reported_spelling(&option)` names an option as core does.
 - **Content.** A content input's sources are prepared before dispatch: counted, probed for existence and readability with no read, and each a lazy `Content` handle. `ContentKind::File { path }` holds the absolute path (the operand joined to the run's `cwd` without normalizing) and `name` the operand; `text()` and `bytes()` read the rest of the source, a file opened afresh on each read and stdin read on from where it stands; `stream()` hands the stream itself.
 - **Linked and missing inputs.** `ValueLink::option(name, message)` or `ValueLink::argument(name, message)` names the input a question links. `validate_linked_value::<T>(ctx, &link, value) -> Result<Result<T, Vec<Issue>>, Error>`, `question_validation_context(ctx, link, message)`, and `missing_input_error(ctx, &link) -> Error` serve the prompts. `validate_linked_value` runs the linked input's declared validator on one value in the question phase: the inner result is the validator's verdict, an input with no validator answers the value as a `String`, and the outer `Err` is the `input-read` fault of a `T` the validator does not produce. `missing_input_error` returns the error to return: core's `InputError`, or, for a link that names no local option or argument of the routed Command, the `missing-input-name` `DeclarationError`.
+- **Arity and questions.** The prompts link check refuses an arity option. An action may ask an unlinked question and use `missing_input_error(ctx, &ValueLink::option(name, message))` to report an unanswered option. The missing-input correction names the arity and, for a multiple option, asks for at least one set of that many values.
 
 ## 4. The action context
 
@@ -384,9 +506,27 @@ Command::new("hello").action(move |ctx: Context| {
 })
 ```
 
-**Reading inputs.** `ctx.inputs` is the routed Command's inputs struct, extracted from the validated values; `ctx.option::<T>(name)` reads a local option, else a global one, `ctx.argument::<T>(name)` an argument, and `ctx.globals::<G>()` extracts a struct of global options, each under the rules of section 2. `ctx.supplied` holds the raw value of every declared input any tier supplied: `One` or `Many` for a string or content input (`Many(vec![])` for an omitted collected one), `Flag` for a Boolean, `Count` for a counted option, and no key for an omitted scalar or an input left to its default; a member an exclusive group withdrew is left out.
+**Reading inputs.** `ctx.inputs` is the routed Command's inputs struct, extracted from the
+validated values. `ctx.option::<T>(name)` reads a local option or falls back to a global one.
+`ctx.argument::<T>(name)` reads an argument and `ctx.globals::<G>()` extracts a struct of global
+options, both under the rules of section 2.
 
-**Invocation values.** `InvocationValues::new().arg(name, v).option(name, v)` takes any `impl Into<serde_json::Value>` for `v`, such as `"text"`, `5`, `true`, `vec!["a", "b"]`, or the JSON value an agent sent. The MCP plugin passes a tool call's `arguments` through as received. Core applies the reference's lowering table. A finite number lowers to the token JavaScript's `String(number)` writes, such as `5` or `0.5`. An unlowerable value supplies nothing and becomes an `invalid` problem in authoring order. Examples include `null`, an object, a nested array, an array on a scalar input, a non-finite number, and a Boolean on an argument. An absent key is the reference's `undefined`.
+`ctx.supplied` holds the raw values any tier supplied after exclusive group withdrawal.
+`SuppliedValue::One` holds one string and `SuppliedValue::Many` holds a flat list, including
+the words of a scalar arity option. `SuppliedValue::Tuples(Vec<Vec<String>>)` holds one group
+per occurrence of a multiple arity option. A multiple arity option records `Tuples(vec![])`
+when omitted or invoked with an empty outer array. An omitted scalar input has no key and
+other omitted collected inputs have an empty flat list. A supplied Boolean or count reads as
+`Flag` or `Count`.
+The same shapes serve `ValidationContext::supplied` and `FailureHookContext::received`.
+
+**Invocation values.** `InvocationValues::new().arg(name, v).option(name, v)` takes any `impl Into<serde_json::Value>` for `v`, such as `"text"`, `5`, `true`, `vec!["a", "b"]`, or the JSON value an agent sent. The MCP plugin passes a tool call's `arguments` through as received. Core applies the reference's lowering table. A finite number lowers to the token JavaScript's `String(number)` writes, such as `5` or `0.5`. An unlowerable value supplies nothing and becomes an `invalid` problem in authoring order. Examples include `null`, an object, a non-finite number, and a Boolean on an argument. For inputs without an arity, a nested array and an array on a scalar input are also unlowerable. An absent key is the reference's `undefined`.
+
+A scalar arity option takes a JSON array of exactly `arity` strings or finite numbers.
+A multiple arity option accepts either one such array or an array of such arrays, including
+an empty outer array for no occurrences. For example, `.option("point", vec![vec![1, 2], vec![3, 4]])`
+supplies two occurrences. Lowering writes occurrences directly, so option-like strings and the
+bare `--` can be values in the array.
 
 `InvocationValues::passthrough(words)` takes `impl IntoIterator<Item = impl Into<String>>`. A Command with the mode receives the words in order. A Command with the mode off accepts an empty list and rejects a nonempty list with `UnexpectedArgumentError`, whose `extra()` holds those words and whose `accepted()` holds the Command’s argument count. A crate-private constructor sets the sentence to `Command "get" declares no passthrough. Remove passthrough from the values.` The message module escapes the Command name. Core holds this structural fault behind unknown option keys, excluded names, and argument keys. This applies to both `Application::invoke` and `Context::invoke`.
 
@@ -544,6 +684,14 @@ The fifteen `sysexits.h` constants (`EX_USAGE` … `EX_CONFIG`) are `FailureExit
 
 `TerminalUnavailableError::new(application, command)` takes the application name and routed path. `command()` returns that path, empty for the root. `NonCallableCommandError::new(command, candidates)` takes the same two arguments and `.argument(word)` adds the escapable spelling. `argument_word()` returns `Option<&str>`, with `None` on invocations by name. It carries the spelling used to route to a group from a parent with arguments and passthrough off on an argv run. The failure suggests placing `--` before that spelling to pass it as an argument.
 
+`MissingValueError::for_arity(spelling, arity, received, refused)` takes the declared and
+received word counts as `usize` and the terminating option spelling as `Option<&str>`. The
+refused spelling excludes attached text. A short group such as `-old` gives `-o`. At the
+bare `--` or end of the line, `refused` is `None`. `MissingValueError::arity()` returns
+`Option<usize>`, with `None` for a missing single-word value. `UnexpectedValueError::new`
+accepts `AttachedValueRefusal::Arity` to report that the attached value must be supplied as separate
+words. The existing failure codes and exit code 2 apply to both forms.
+
 **`#[derive(Failure)]`.** One `#[failure(base)]` field holds the parent class's value; `#[failure(code = "…", exit_code = …, abstract)]` on the struct. It writes the `Failure` impl with its `static` class and, unless abstract, `From<T> for loomcli_core::Error`. Generic structs are rejected. A `code` outside the failure-code grammar and an integer-literal `exit_code` outside 1 through 125 are compile errors at the literal; an `exit_code` constant such as `EX_DATAERR` is checked by `FailureExitCode::new` in `const`.
 
 ```rust
@@ -574,8 +722,8 @@ through the report. The only public reader of that association is
 `FailureHookContext::received(&self, problem: &InputProblem) -> Option<SuppliedValue>`.
 It returns the value core held before validation or content preparation, from argv, an invocation
 by name, the environment, or a configuration fill that validation keeps. `SuppliedValue::One`
-holds a string and `SuppliedValue::Many` holds the whole collection. An issue's path identifies
-its rejected element.
+holds a string, `SuppliedValue::Many` holds a flat collection, and `SuppliedValue::Tuples`
+holds the groups of a multiple arity option. An issue's path identifies its rejected element.
 The reader returns `None` for missing or group problems, copies of problems, problems from another
 failure, and problems with no recorded value. An author's own problem, a rejected omission, an
 environment value outside its option's grammar, and an invocation by name whose input could not
@@ -631,7 +779,7 @@ the reference's object-literal order.
 | `CommandGraph` | `configuration`, `description`?, `globals`, `name`, `root`, `version` |
 | `CommandNode` | `optionGroups`, `passthrough`, `stdin`?, `aliases`, `arguments`, `children`, `deprecated`?, `description`?, `extensions`, `hasAction`, `hidden`, `name`, `needsTerminal`, `options`, `path`, `result` |
 | `ArgumentNode` | `max`?, `min`?, `stdin`?, `type`? (content alone), `default`?, `description`?, `extensions`, `name`, `required`, `requiredWhen`, `schema`, `validateOmitted`, `validated`, `variadic` |
-| `StringOptionNode` | `aliases`, `control`, `deprecated`?, `description`?, `env`, `extensions`, `hidden`, `long`, `name`, `short`, `default`?, `envDelimiter`, `implied`, `multiple`, `required`, `requiredWhen`, `schema`, `validateOmitted`, `validated`, `background`, `envAllowEmpty`, `type` |
+| `StringOptionNode` | `aliases`, `control`, `deprecated`?, `description`?, `env`, `extensions`, `hidden`, `long`, `name`, `short`, `default`?, `envDelimiter`, `implied`, `multiple`, `required`, `requiredWhen`, `schema`, `validateOmitted`, `validated`, `arity`, `background`, `envAllowEmpty`, `lastWins`, `type` |
 | `ContentOptionNode` | the string node's keys through `validated`, then `max`?, `min`?, `stdin`, `type` |
 | `BooleanOptionNode` | shared keys through `short`, then `color`, `interaction`, `negative`, `plain`, `polarity`, `schema`, `type` |
 | `CountOptionNode` | shared keys through `short`, then `quiet`, `schema`, `type`, `verbose` |
@@ -644,6 +792,15 @@ the reference's object-literal order.
 `?` marks a key absent when the value is absent. `OptionNode` is an untagged enum of the four option nodes, with the shared accessors `name()`, `long()`, `short()`, `hidden()`, `deprecated()`, and `extensions()`. Children, arguments, options, and globals are `Arc`s, so a context holds the routed node without copying the tree, and every node a reader receives, from a context or from `locate`, is the graph's own: a reader compares by `Arc::ptr_eq`. `extensions` and `mediaTypes` are `serde_json::Map` (insertion order, `preserve_order`). `locate(&graph, words) -> WordPosition` reads a partial invocation with the run's grammar and never fails: the words before the last go through the parser's own walk (`invocation::parse`, with routing left open where they run out at a Command with children), and an empty list reads as one empty word. Core constructs `CommandGraph` (`#[non_exhaustive]`). A clone shares the parser's tables, so `foreign-graph` is unreachable. `WordPosition::Option`'s `counts` and `booleans` are `Vec<(String, _)>` in the order the earlier words first gave each, the reference's insertion-ordered maps. `graph.command(&["cache", "clear"])` finds a node by canonical path.
 
 `CommandNode::passthrough` is `Option<PassthroughNode>`, serialized as `null` when the mode is off. When the mode is on but the description is absent, the graph serializes an empty object and the manifest serializes an object with `description: null`. `CommandNode::needs_terminal` is `bool`. `WordPosition::Command` includes `argument: Option<Arc<ArgumentNode>>`, the graph's first argument for a word that matches no child. With passthrough off, `locate` returns an argument position for a word after `--` when a slot is available.
+
+`StringOptionNode::arity` is `Option<usize>`, serialized as `null` without an arity.
+`StringOptionNode::last_wins` is a `bool`, serialized as `lastWins` and `false` by default.
+The manifest writes both fields after `multiple` on string entries. Content, Boolean, and
+counted entries omit them in both projections. The graph's `schema` describes one word and
+its `default` keeps the declared array shape. `WordPosition::Value` reads each unfinished
+arity occurrence one word at a time. Its `typed` view flattens each retained occurrence's words
+in order, including the words already read for the open occurrence. An attached value on an
+arity spelling gives `WordPosition::None`.
 
 ## 8. The plugin contract
 
