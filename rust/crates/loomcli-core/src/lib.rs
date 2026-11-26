@@ -88,9 +88,9 @@ pub use output::{
     AnyDeclaredView, Declare, DeclaredRowView, DeclaredView, EndState, IncompleteResult,
     IntoRendered, Log, LogApplication, LogDefect, LogDestination, LogEvent, LogFields, LogLevel,
     Message, NoResult, Out, OverrideKey, ProgressEvent, ProgressReport, ProgressState, Region,
-    RegionCloser, RegionOptions, Render, ResultKind, ResultView, ResultViews, RowSource, RowView,
-    RowViewEntry, RowViews, RowsResult, ValueResult, View, ViewContext, ViewContribution,
-    ViewOverride, WholeView, incomplete_result, lanes, override_view, view,
+    RegionCloser, RegionOptions, Render, ResultKind, ResultTransform, ResultView, ResultViews,
+    RowSource, RowView, RowViewEntry, RowViews, RowsResult, ValueResult, View, ViewContext,
+    ViewContribution, ViewOverride, WholeView, incomplete_result, lanes, override_view, view,
 };
 pub use plugins::{
     Activation, AnyExtension, AnyPlugin, AnyProvider, ArgumentTarget, AttachedCommand,

@@ -387,6 +387,7 @@ impl Chain {
             graph: Arc::clone(&self.graph),
             command: Arc::clone(&self.command),
             request: self.request.clone(),
+            invoked_by: self.invoked_by,
             host: Arc::clone(&self.state.host),
             out: Out {
                 run: Arc::clone(&self.state),
@@ -452,9 +453,15 @@ impl Chain {
         match reaching {
             Some(Reaching::Held(fault)) => Err(fault),
             Some(Reaching::Dispatch(dispatch)) => {
-                let view = locked(&self.selection).resolve(&dispatch.path)?;
+                let (view, transform) = {
+                    let selection = locked(&self.selection);
+                    (
+                        selection.resolve(&dispatch.path)?,
+                        selection.transform.clone(),
+                    )
+                };
                 self.invoked.store(true, Ordering::SeqCst);
-                self.dispatch(*dispatch, view).await
+                self.dispatch(*dispatch, view, transform).await
             }
             // Each `Next` is consumed by its run and only the last entry's reaches the boundary,
             // so the boundary is reached once.
@@ -470,6 +477,7 @@ impl Chain {
         &self,
         dispatch: Dispatch,
         view: Option<String>,
+        transform: Option<(Arc<str>, crate::ResultTransform)>,
     ) -> Result<ChainOutcome, Error> {
         let Dispatch {
             action,
@@ -532,6 +540,7 @@ impl Chain {
             declared,
             path: path.clone(),
             selected: view,
+            transform,
         });
         let channel = Arc::new(Channel::action(binding));
         let context = Context {

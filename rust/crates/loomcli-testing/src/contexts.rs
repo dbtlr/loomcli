@@ -19,7 +19,7 @@ use loomcli_core::{
     Application, Background, ChainOutcome, CommandGraph, CommandNode, Content, Context,
     EnvironmentContext, FailureFacts, FailureHookContext, InputProblem, InputValues, Inputs,
     IntoOutcome, InvokedBy, Lifetime, LogDestination, LogEvent, MiddlewareContext, Next,
-    ProcessHandle, Provider, ProviderContext, SuppliedValue, ViewContext,
+    ProcessHandle, Provider, ProviderContext, ResultTransform, SuppliedValue, ViewContext,
 };
 
 use crate::{MockFields, mock_process};
@@ -293,12 +293,15 @@ pub struct MiddlewareValues<O> {
     pub(crate) options: Option<O>,
     pub(crate) own_options: Option<InputValues>,
     pub(crate) request: Option<InputValues>,
+    pub(crate) invoked_by: InvokedBy,
     pub(crate) outcome: Option<ChainOutcome>,
     pub(crate) process: Option<Arc<dyn ProcessHandle>>,
     pub(crate) graph: Option<Arc<CommandGraph>>,
     pub(crate) command: Vec<String>,
     pub(crate) spellings: Vec<(String, String)>,
     pub(crate) view: Option<String>,
+    pub(crate) media_type: Option<String>,
+    pub(crate) transform: Option<ResultTransform>,
     pub(crate) plugin: String,
     pub(crate) log: Vec<UnitLogHook>,
 }
@@ -310,12 +313,15 @@ impl<O: Inputs> MiddlewareValues<O> {
             options,
             own_options: None,
             request: None,
+            invoked_by: InvokedBy::Argv,
             outcome: None,
             process: None,
             graph: None,
             command: Vec::new(),
             spellings: Vec::new(),
             view: None,
+            media_type: None,
+            transform: None,
             plugin: "@loom-test/plugin".to_owned(),
             log: Vec::new(),
         }
@@ -342,6 +348,12 @@ impl<O: Inputs> MiddlewareValues<O> {
         self
     }
 
+    /// Sets how the run received its inputs. Unstated, it reads as [`InvokedBy::Argv`].
+    pub fn invoked_by(mut self, invoked_by: InvokedBy) -> Self {
+        self.invoked_by = invoked_by;
+        self
+    }
+
     /// Records the spelling that supplied the plugin's option `name`.
     pub fn spelling(mut self, name: &str, spelling: &str) -> Self {
         self.spellings.push((name.to_owned(), spelling.to_owned()));
@@ -352,6 +364,20 @@ impl<O: Inputs> MiddlewareValues<O> {
     /// middleware selects another. Unstated, `view()` reads `None`, as on a Command with no result.
     pub fn view(mut self, name: &str) -> Self {
         self.view = Some(name.to_owned());
+        self
+    }
+
+    /// Sets the media type that `media_type()` reads until the middleware assigns another.
+    /// Unstated, it reads `None` regardless of the view.
+    pub fn media_type(mut self, media_type: &str) -> Self {
+        self.media_type = Some(media_type.to_owned());
+        self
+    }
+
+    /// Sets the result transform that `transform()` reads until the middleware assigns another.
+    /// Unstated, it reads `None`.
+    pub fn transform(mut self, transform: ResultTransform) -> Self {
+        self.transform = Some(transform);
         self
     }
 
@@ -399,6 +425,9 @@ const UNSTATED_NEXT: &str = "middleware_context has no outcome for this middlewa
 
 /// Builds the context and the rest of the chain a middleware receives.
 ///
+/// The context keeps the last media type and result transform the middleware assigns. The test's
+/// `Next` resolves with the stated outcome without reaching a dispatch boundary.
+///
 /// # Panics
 ///
 /// When the graph holds no Command at the stated path, or the options' `extract` cannot read what
@@ -425,10 +454,13 @@ pub fn middleware_context<O: Inputs>(values: MiddlewareValues<O>) -> (Middleware
             globals,
             own_options,
             request: values.request.map(|values| (values, Vec::new(), None)),
+            invoked_by: values.invoked_by,
             spellings: values.spellings,
             outcome: values.outcome,
             unstated: UNSTATED_NEXT.to_owned(),
             view: values.view,
+            media_type: values.media_type,
+            transform: values.transform,
             graph,
             command,
             identity: values.plugin,

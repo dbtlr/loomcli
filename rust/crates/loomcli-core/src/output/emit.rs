@@ -26,7 +26,11 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use serde::Serialize;
 
 use crate::commands::declaration::DeclaredResult;
-use crate::failures::{Error, ResultError, ResultFault};
+use crate::diagnostics::{
+    DiagnosticParts,
+    rules::{RESULT_TRANSFORM, RESULT_TRANSFORM_CORRECTION},
+};
+use crate::failures::{Error, InternalError, ResultError, ResultFault};
 use crate::host::{Host, OutputStream};
 use crate::signals::{CancellationSource, RunSignal};
 use crate::style::{
@@ -37,7 +41,7 @@ use crate::style::{
 use super::messages;
 use super::region::{CloseWork, ProgressEvent, RegionCloser, Regions, ScreenOp};
 use super::registry::ViewRegistry;
-use super::results::{ResultView, RowSource, RowViewEntry};
+use super::results::{ResultTransform, ResultView, RowSource, RowViewEntry};
 use super::screen::{Frame, Measure, Screen, ends_line};
 use super::view::{IncompleteResult, incomplete_result, lanes};
 use super::{DeclaredView, Message, RowView, View, ViewContext, WholeView};
@@ -186,12 +190,50 @@ pub(crate) enum SequenceView<R> {
 pub(crate) type OwnedRender<R> =
     Arc<dyn Fn(Vec<R>, &ViewContext) -> Result<String, Error> + Send + Sync>;
 
-/// The result one action's channel promises, and the view a run selected for it.
+/// The result one action's channel promises, with the run's view and transform selection.
 pub(crate) struct ResultBinding {
     pub(crate) declared: DeclaredResult,
     pub(crate) path: Vec<String>,
     /// The view a middleware selected, or `None` for the declaration's default.
     pub(crate) selected: Option<String>,
+    pub(crate) transform: Option<(Arc<str>, ResultTransform)>,
+}
+
+impl ResultBinding {
+    fn apply<T: Send + 'static>(&self, value: T) -> Result<T, Error> {
+        match &self.transform {
+            Some((plugin, transform)) => self.apply_transform(plugin, transform, value),
+            None => Ok(value),
+        }
+    }
+
+    fn apply_json<T: Serialize + Send + 'static>(
+        &self,
+        value: T,
+    ) -> Result<serde_json::Value, Error> {
+        if let Some((plugin, transform)) = &self.transform
+            && transform.json
+        {
+            return self.apply_transform(plugin, transform, to_json_data(&value)?);
+        }
+        to_json_data(&self.apply(value)?)
+    }
+
+    fn apply_transform<T: Send + 'static>(
+        &self,
+        plugin: &str,
+        transform: &ResultTransform,
+        value: T,
+    ) -> Result<T, Error> {
+        transform.apply(value).unwrap_or_else(|| {
+            Err(InternalError::without_cause(
+                RESULT_TRANSFORM,
+                DiagnosticParts::new(messages::incompatible_transform(plugin, &self.path))
+                    .correction(RESULT_TRANSFORM_CORRECTION),
+            )
+            .into())
+        })
+    }
 }
 
 /// One caller's output channel: where its `print`, `render`, and `text` go, and, for the action of
@@ -1354,11 +1396,12 @@ impl Output {
     /// last. A stop before the end retracts nothing, writes no closing piece, and holds one
     /// incomplete-result line for the run to write before its report. A cancelled run stops the
     /// sequence quietly; a source, view, or write failure stops it and is the call's failure.
-    pub(crate) async fn sequence<R: Send + 'static>(
+    pub(crate) async fn sequence<R: Send + 'static, D: Send>(
         &self,
         stream: Stream,
         mut source: RowSource<R>,
-        view: SequenceView<R>,
+        view: SequenceView<D>,
+        map: impl Fn(R) -> Result<D, Error> + Send + Sync,
     ) -> Result<(), Error> {
         let lane = self.lane(stream);
         let place = SequencePlace((lane == Stream::Stdout).then(|| {
@@ -1372,7 +1415,7 @@ impl Output {
         };
         let mut counts = Counts::default();
         let outcome = self
-            .pieces(stream, &mut source, view, number, &mut counts)
+            .pieces(stream, &mut source, view, number, &mut counts, map)
             .await;
         // The source is told the writer wants no more rows: dropping it runs its own cleanup.
         drop(source);
@@ -1391,13 +1434,14 @@ impl Output {
 
     /// Every piece of one sequence, each written before the next row is requested, so a slow
     /// destination applies back-pressure to the source. Answers whether the sequence completed.
-    async fn pieces<R: Send>(
+    async fn pieces<R: Send, D: Send>(
         &self,
         stream: Stream,
         source: &mut RowSource<R>,
-        view: SequenceView<R>,
+        view: SequenceView<D>,
         number: u64,
         counts: &mut Counts,
+        map: impl Fn(R) -> Result<D, Error> + Send + Sync,
     ) -> Result<bool, Error> {
         if self.halted() {
             return Ok(false);
@@ -1420,12 +1464,10 @@ impl Output {
                         break;
                     };
                     let row = next?;
-                    counts.yielded += 1;
-                    // A row an in-flight request delivered after the stop counts, and is not written.
-                    if self.halted() {
+                    if !self.row_delivered(counts).await {
                         return Ok(false);
                     }
-                    let marked = (view.row)(&row, counts.yielded - 1, &context());
+                    let marked = (view.row)(&map(row)?, counts.yielded - 1, &context());
                     self.piece(&renderer, stream, number, marked).await?;
                     counts.written += 1;
                 }
@@ -1441,6 +1483,7 @@ impl Output {
                 let Some(rows) = self.collect(source, counts).await? else {
                     return Ok(false);
                 };
+                let rows = rows.into_iter().map(map).collect::<Result<Vec<_>, _>>()?;
                 let marked = (view.render)(rows.as_slice(), &context());
                 self.piece(&renderer, stream, number, marked).await?;
             }
@@ -1448,6 +1491,7 @@ impl Output {
                 let Some(rows) = self.collect(source, counts).await? else {
                     return Ok(false);
                 };
+                let rows = rows.into_iter().map(map).collect::<Result<Vec<_>, _>>()?;
                 let marked = render(rows, &context());
                 self.piece(&renderer, stream, number, marked).await?;
             }
@@ -1470,16 +1514,24 @@ impl Output {
             let Some(next) = pull(source).await else {
                 break;
             };
-            rows.push(next?);
-            counts.yielded += 1;
-            if self.halted() {
+            let row = next?;
+            if !self.row_delivered(counts).await {
                 return Ok(None);
             }
+            rows.push(row);
         }
         if self.halted() {
             return Ok(None);
         }
         Ok(Some(rows))
+    }
+
+    async fn row_delivered(&self, counts: &mut Counts) -> bool {
+        counts.yielded += 1;
+        // Ready pulls may never yield to another Tokio task. A row delivered during
+        // cancellation counts even when it never reaches the view.
+        tokio::task::consume_budget().await;
+        !self.halted()
     }
 
     /// One piece: the marked text a view function returned, resolved through the sequence's
@@ -1499,7 +1551,10 @@ impl Output {
     /// The view an emission renders through: the one a middleware selected, else the declaration's
     /// default. A second call writes nothing and rejects with `ResultError`; a selection no view
     /// answers fails as a broken view does.
-    fn selected<'b>(&self, channel: &'b Channel) -> Result<&'b ViewEntryRef, Error> {
+    fn selected<'b>(
+        &self,
+        channel: &'b Channel,
+    ) -> Result<(&'b ResultBinding, &'b ViewEntryRef), Error> {
         let Some(binding) = &channel.result else {
             return Err(Error::from_foreign(messages::RESULTS_NOT_DECLARED.into()));
         };
@@ -1515,7 +1570,7 @@ impl Output {
             .views
             .iter()
             .find(|entry| entry.key == name)
-            .map(|entry| &entry.view)
+            .map(|entry| (binding, &entry.view))
             .ok_or_else(|| Error::from_foreign(messages::view_not_declared(name).into()))
     }
 
@@ -1528,13 +1583,13 @@ impl Output {
         value: V,
     ) -> Result<(), Error> {
         let text = {
-            let view = self.selected(channel)?;
+            let (binding, view) = self.selected(channel)?;
             if let Some(view) = view.downcast_ref::<View<V>>() {
-                self.render_whole(Stream::Stdout, None, view, &value)?
+                self.render_whole(Stream::Stdout, None, view, &binding.apply(value)?)?
             } else {
                 match view.downcast_ref::<ResultView>() {
                     Some(ResultView::Whole(view)) => {
-                        let data = to_json_data(&value)?;
+                        let data = binding.apply_json(value)?;
                         self.render_whole(Stream::Stdout, None, view, &data)?
                     }
                     _ => {
@@ -1553,13 +1608,15 @@ impl Output {
         channel: &Channel,
         source: RowSource<R>,
     ) -> Result<(), Error> {
-        let view = self.selected(channel)?;
+        let (binding, view) = self.selected(channel)?;
         if let Some(entry) = view.downcast_ref::<RowViewEntry<R>>() {
             let view = match entry {
                 RowViewEntry::Whole(view) => SequenceView::Whole(view.clone()),
                 RowViewEntry::Row(view) => SequenceView::Rows(view.clone()),
             };
-            return self.sequence(Stream::Stdout, source, view).await;
+            return self
+                .sequence(Stream::Stdout, source, view, |row| binding.apply(row))
+                .await;
         }
         let view = match view.downcast_ref::<ResultView>() {
             Some(ResultView::Row(view)) => SequenceView::Rows(view.clone()),
@@ -1568,7 +1625,8 @@ impl Output {
                 return Err(Error::from_foreign(messages::VIEW_RENDERS_VALUE.into()));
             }
         };
-        self.sequence(Stream::Stdout, json_rows(source), view).await
+        self.sequence(Stream::Stdout, source, view, |row| binding.apply_json(row))
+            .await
     }
 }
 
@@ -1604,31 +1662,6 @@ impl std::error::Error for JsonDataError {
 fn to_json_data<T: Serialize + ?Sized>(data: &T) -> Result<serde_json::Value, Error> {
     serde_json::to_value(data)
         .map_err(|source| Error::from_foreign(Box::new(JsonDataError(source))))
-}
-
-/// A row source read as JSON rows, so a hook's view over JSON data renders any result's rows.
-fn json_rows<R: Serialize + Send + 'static>(source: RowSource<R>) -> RowSource<serde_json::Value> {
-    RowSource::stream(JsonRows { source })
-}
-
-/// The rows of a source, each as its JSON data.
-struct JsonRows<R> {
-    source: RowSource<R>,
-}
-
-impl<R: Serialize> futures_core::Stream for JsonRows<R> {
-    type Item = Result<serde_json::Value, Error>;
-
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        context: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        let next = match &mut self.get_mut().source {
-            RowSource::Iter(rows) => std::task::Poll::Ready(rows.next().map(Ok)),
-            RowSource::Stream(rows) => rows.as_mut().poll_next(context),
-        };
-        next.map(|row| row.map(|row| row.and_then(|row| to_json_data(&row))))
-    }
 }
 
 /// The next row of a source: an iterator's at once, a stream's when it yields.

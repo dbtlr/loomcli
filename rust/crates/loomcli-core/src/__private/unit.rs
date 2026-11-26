@@ -17,7 +17,8 @@ use crate::marks::Background;
 use crate::output::emit::{Channel, Output, ResultBinding};
 use crate::output::registry::ViewRegistry;
 use crate::output::{
-    Log, NoResult, Out, ResultView, RowView, RowsResult, RunLog, ValueResult, View, ViewContext,
+    Log, NoResult, Out, ResultTransform, ResultView, RowView, RowsResult, RunLog, ValueResult,
+    View, ViewContext,
 };
 pub use crate::plugins::hooks::ReceivedReader;
 use crate::plugins::middleware::{OwnOptions, Request, Spellings, ViewSelection};
@@ -256,6 +257,7 @@ fn json_binding(kind: ResultCallKind, view: ResultView, path: &[String]) -> Resu
         },
         path: path.to_vec(),
         selected: None,
+        transform: None,
     }
 }
 
@@ -355,6 +357,8 @@ pub struct MiddlewareParts<O> {
     pub own_options: InputValues,
     /// The routed request's values, or `None` as under a held fault.
     pub request: Option<(InputValues, Vec<String>, Option<Content>)>,
+    /// How the run received its inputs.
+    pub invoked_by: InvokedBy,
     /// The spelling that supplied each of the plugin's options.
     pub spellings: Vec<(String, String)>,
     /// What the rest of the chain resolves with; `None` makes `next.run()` fail with `unstated`.
@@ -363,6 +367,10 @@ pub struct MiddlewareParts<O> {
     pub unstated: String,
     /// The view the routed Command's result renders through, or `None` for a Command with none.
     pub view: Option<String>,
+    /// The initial media type, independent of the view.
+    pub media_type: Option<String>,
+    /// The initial result transform.
+    pub transform: Option<ResultTransform>,
     /// The graph.
     pub graph: Arc<CommandGraph>,
     /// The routed node.
@@ -398,15 +406,22 @@ pub fn middleware_context<O>(
             passthrough,
             stdin,
         }),
+        invoked_by: parts.invoked_by,
         host: run.host(),
         out: run.out(Channel::plain()),
         signal: run.signal.clone(),
         log: run.log(Some(&parts.identity)),
         run: Arc::clone(&run.state),
         globals: parts.globals,
-        selection: Arc::new(Mutex::new(ViewSelection::new(result))),
+        selection: Arc::new(Mutex::new(ViewSelection::for_unit_context(result))),
         identity: Arc::from(parts.identity.as_str()),
     };
+    if let Some(media_type) = parts.media_type {
+        context.set_media_type(&media_type);
+    }
+    if let Some(transform) = parts.transform {
+        context.set_transform(transform);
+    }
     let next = Next::stated(parts.outcome.ok_or(parts.unstated));
     (context, next)
 }

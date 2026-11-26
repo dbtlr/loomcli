@@ -395,7 +395,7 @@ impl OwnRun<'_, '_, '_> {
 
     /// The pass over the options a held fault left unvalidated: each plugin's global options and
     /// each local option a hook declared on the routed Command, whose tokens parsed, none of whose
-    /// occurrences faulted, and that no earlier pass reached. A group validates no local option.
+    /// occurrences faulted, and that no earlier pass reached, including at a group.
     /// The held fault stays the one raised, so whatever the validators answer reports nothing.
     fn validate_own(&self, ledger: &mut Ledger) {
         let parsed = self.parsed;
@@ -412,7 +412,7 @@ impl OwnRun<'_, '_, '_> {
             .flat_map(|plugin| plugin.options.iter())
             .filter(|option| unreached(true, &option.name, &parsed.values.globals))
             .map(|option| InputIdentity::new(true, InputKind::Option, option.name.clone()));
-        let local = self.declaration.filter(|_| parsed.command.action.is_some());
+        let local = self.declaration;
         let attached = local
             .map(|declaration| declaration.attached_by.as_slice())
             .unwrap_or_default()

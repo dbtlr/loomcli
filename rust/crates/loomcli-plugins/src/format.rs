@@ -1,8 +1,10 @@
-//! The formatter: `--format` selects a result's view, and machine views encode failures.
+//! The formatter selects a result view and projects the requested fields.
 //!
 //! The `format` feature is the plugin. The `format-views` feature is the machine views alone,
-//! [`json`] and [`jsonl`], which install nothing and render as ordinary views.
+//! which install nothing and render as ordinary views.
 
+#[cfg(feature = "format")]
+mod fields;
 #[cfg(feature = "format")]
 mod messages;
 #[cfg(feature = "format")]
@@ -14,12 +16,14 @@ pub mod views;
 mod plugin {
     use loomcli_core::{
         Activation, AnyPlugin, AttachedCommand, AttachedViews, Error, FailureForm,
-        MiddlewareContext, Next, NoOptions, Opt, Outcome, Plugin, encode_failure,
+        MiddlewareContext, Next, NoOptions, Opt, Outcome, Plugin, ResultKindName, encode_failure,
     };
     use serde::Serialize;
 
+    use super::fields::{FieldList, PROVIDED_VIEWS, select_fields};
+    use super::messages;
     use super::name::FormatName;
-    use super::views::{json, jsonl};
+    use super::views::{json, jsonl, jsonl_rows};
     use crate::PACKAGE_NAME;
     use crate::encode::{escape_controls, stringify};
 
@@ -29,9 +33,9 @@ mod plugin {
         short: Option<char>,
     }
 
-    /// The formatter: the `--format` option on every Command that declares a result, the `json`
-    /// and `jsonl` views appended to each result that lacks them, and the failure encoders for
-    /// `application/json` and `application/jsonl`.
+    /// The formatter contributes `--format` and `--fields` on Commands with results and as
+    /// hidden options on groups. It adds missing `json` and `jsonl` views and their failure
+    /// encoders.
     pub fn format() -> Format {
         Format { short: None }
     }
@@ -45,8 +49,7 @@ mod plugin {
             }
         }
 
-        /// The plugin. Its `on_command_attach` hook declares `format` on each Command with a
-        /// result, with the chosen short spelling.
+        /// The plugin, with the chosen short spelling for `--format`.
         pub fn plugin(self) -> Plugin {
             let short = self.short;
             Plugin::new(format!("{PACKAGE_NAME}/format"))
@@ -78,37 +81,75 @@ mod plugin {
         Ok(format!("{}\n", escape_controls(&text)))
     }
 
-    /// Appends `json` and `jsonl` to a result's views where the record lacks the key, then
-    /// declares `--format` over the resulting names. A Command with no result is unchanged.
+    /// Adds missing machine views and remembers their names for field selection.
     fn attach(command: &mut AttachedCommand, short: Option<char>) -> Result<(), Error> {
         let Some(result) = command.result() else {
+            if !command.has_action() {
+                let names = ["json", "jsonl"].map(str::to_owned).to_vec();
+                declare_options(
+                    command,
+                    names,
+                    messages::GROUP_FORMAT_DESCRIPTION,
+                    short,
+                    true,
+                )?;
+            }
             return Ok(());
         };
-        let mut names = result.views.clone();
+        let mut names = result.views;
+        let mut provided = Vec::new();
         let mut added = AttachedViews::new();
         if !names.iter().any(|name| name == "json") {
             added = added.view("json", json::<serde_json::Value>());
-            names.push("json".to_owned());
+            provided.push("json".to_owned());
         }
         if !names.iter().any(|name| name == "jsonl") {
-            added = added.view("jsonl", jsonl::<serde_json::Value>());
-            names.push("jsonl".to_owned());
+            added = if result.kind == ResultKindName::Rows {
+                added.view("jsonl", jsonl_rows::<serde_json::Value>())
+            } else {
+                added.view("jsonl", jsonl::<serde_json::Value>())
+            };
+            provided.push("jsonl".to_owned());
         }
-        if names.len() != result.views.len() {
+        if !provided.is_empty() {
             command.views(added)?;
         }
-        // `--format` says how the run prints, not what the Command works on, so it is a control option.
+        names.extend(provided.iter().cloned());
+        command.extend([PROVIDED_VIEWS.value(provided)])?;
+        declare_options(
+            command,
+            names,
+            &messages::format_description(&result.default),
+            short,
+            false,
+        )
+    }
+
+    fn declare_options(
+        command: &mut AttachedCommand,
+        names: Vec<String>,
+        description: &str,
+        short: Option<char>,
+        hidden: bool,
+    ) -> Result<(), Error> {
         let mut option = Opt::string()
             .control()
-            .description(format!(
-                "Select the output format, {} by default.",
-                result.default
-            ))
+            .description(description)
             .validate(FormatName::over(names));
+        let mut fields = Opt::string()
+            .control()
+            .multiple()
+            .description(messages::FIELDS_DESCRIPTION)
+            .validate(FieldList);
         if let Some(letter) = short {
             option = option.short(letter);
         }
+        if hidden {
+            option = option.hidden();
+            fields = fields.hidden();
+        }
         command.option("format", option)?;
+        command.option("fields", fields)?;
         Ok(())
     }
 
@@ -116,11 +157,20 @@ mod plugin {
     /// `own_options` holds it whenever it validated, a held fault on another input included, so the
     /// selection stands for the failure too.
     async fn select_view(context: MiddlewareContext<NoOptions>, next: Next) -> Outcome {
-        if context.view().is_some()
+        if context.own_options.validated("format")
             && let Some(name) = context.own_options.option::<Option<String>>("format")?
         {
-            context.select_view(&name);
+            if context.view().is_some() {
+                context.select_view(&name);
+            } else if let Some(media_type) = match name.as_str() {
+                "json" => Some("application/json"),
+                "jsonl" => Some("application/jsonl"),
+                _ => None,
+            } {
+                context.set_media_type(media_type);
+            }
         }
+        select_fields(&context)?;
         next.run().await?;
         Ok(())
     }
@@ -129,4 +179,4 @@ mod plugin {
 #[cfg(feature = "format")]
 pub use plugin::{Format, format};
 #[cfg(feature = "format-views")]
-pub use views::{json, json_mapped, jsonl, jsonl_mapped};
+pub use views::{json, json_mapped, jsonl, jsonl_mapped, jsonl_rows, jsonl_rows_mapped};

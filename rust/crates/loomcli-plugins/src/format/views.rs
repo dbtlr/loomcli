@@ -1,6 +1,6 @@
-//! The machine views: `json` and `jsonl`, whole views that write the data as JSON text.
+//! Whole and row views that write JSON text.
 
-use loomcli_core::{Error, View, ViewContext};
+use loomcli_core::{Error, RowView, View, ViewContext};
 use serde::Serialize;
 
 use crate::encode::{escape_controls, stringify, stringify_lines};
@@ -12,8 +12,12 @@ fn encoded(text: &str, context: &ViewContext) -> String {
 }
 
 /// One indented document and a newline.
-fn document<T: Serialize + ?Sized>(value: &T, context: &ViewContext) -> Result<String, Error> {
-    let mut text = stringify(value, true)?;
+fn line<T: Serialize + ?Sized>(
+    value: &T,
+    pretty: bool,
+    context: &ViewContext,
+) -> Result<String, Error> {
+    let mut text = stringify(value, pretty)?;
     text.push('\n');
     Ok(encoded(&text, context))
 }
@@ -26,7 +30,7 @@ fn lines<T: Serialize + ?Sized>(value: &T, context: &ViewContext) -> Result<Stri
 /// A whole view that writes the data as one JSON document indented two spaces, with one trailing
 /// newline, declared `application/json`. Under a rows result the data is the collected array.
 pub fn json<D: Serialize + ?Sized + 'static>() -> View<D> {
-    View::new(|data: &D, context: &ViewContext| document(data, context))
+    View::new(|data: &D, context: &ViewContext| line(data, true, context))
         .media_type("application/json")
 }
 
@@ -34,7 +38,7 @@ pub fn json<D: Serialize + ?Sized + 'static>() -> View<D> {
 pub fn json_mapped<D: ?Sized + 'static, M: Serialize>(
     map: impl Fn(&D) -> M + Send + Sync + 'static,
 ) -> View<D> {
-    View::new(move |data: &D, context: &ViewContext| document(&map(data), context))
+    View::new(move |data: &D, context: &ViewContext| line(&map(data), true, context))
         .media_type("application/json")
 }
 
@@ -51,5 +55,21 @@ pub fn jsonl_mapped<D: ?Sized + 'static, M: Serialize>(
     map: impl Fn(&D) -> M + Send + Sync + 'static,
 ) -> View<D> {
     View::new(move |data: &D, context: &ViewContext| lines(&map(data), context))
+        .media_type("application/jsonl")
+}
+
+/// A row view that writes each row as one compact JSON line, declared `application/jsonl`.
+/// It writes no head or tail and emits nothing for an empty source.
+pub fn jsonl_rows<R: Serialize + 'static>() -> RowView<R> {
+    RowView::new(|row: &R, _, context: &ViewContext| line(row, false, context))
+        .media_type("application/jsonl")
+}
+
+/// Like [`jsonl_rows`], with a mapping function applied to each row before encoding.
+/// A mapped array is written as one line.
+pub fn jsonl_rows_mapped<R: 'static, M: Serialize>(
+    map: impl Fn(&R) -> M + Send + Sync + 'static,
+) -> RowView<R> {
+    RowView::new(move |row: &R, _, context: &ViewContext| line(&map(row), false, context))
         .media_type("application/jsonl")
 }

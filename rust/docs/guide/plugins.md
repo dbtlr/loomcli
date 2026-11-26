@@ -105,8 +105,10 @@ Feature `version`; `version()`, with `.postfix(text)`.
 Feature `format`; `format()`, with `.short(letter)`.
 
 - **Operator:** `--format <view>` on every Command that declares a result selects one of its views, such as `table` or `records`.
+  Use `--fields` to select top-level keys in a formatter-provided JSON view, or use the hidden `--format` on a group root to select JSON or JSON Lines for failures. See [formatter options](../design/core-api.md#formatter-options).
 - **Agent:** every result gains `json` (one JSON document) and `jsonl` (one JSON document per line) views with their media types, `application/json` and `application/jsonl`. Under either one, a failure is written to stderr as one line, `{"error":{"code":…,"exitCode":…,"message":…,"hints":[…]}}`, so a machine reads the outcome from the same stream it asked for.
 - **Author:** `format::views::json::<D>()` and `format::views::jsonl::<D>()` are the views themselves, and `json_mapped(map)` and `jsonl_mapped(map)` reshape the data first. A Command lists one of them among its own views to choose its JSON shape.
+  For a rows result, use `jsonl_rows()` to stream one JSON line per row or `jsonl_rows_mapped()` to reshape each row before writing it. See [formatter views](../design/core-api.md#formatter-views).
 
 ### Pack views
 

@@ -61,12 +61,6 @@
       ]
     },
     {
-      "id": "jsonkit-completion-protocol-bare-dash",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
       "id": "jsonkit-completion-protocol-bare-dash-after-get",
       "parts": [
         "stdout"
@@ -74,12 +68,6 @@
     },
     {
       "id": "jsonkit-completion-protocol-bare-dash-after-select",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-completion-protocol-double-dash-prefix",
       "parts": [
         "stdout"
       ]
@@ -164,12 +152,6 @@
     },
     {
       "id": "jsonkit-form-short-group-help",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-format-incomplete-jsonl",
       "parts": [
         "stdout"
       ]
