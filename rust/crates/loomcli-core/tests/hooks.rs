@@ -502,7 +502,7 @@ async fn every_graph_hook_runs_once_per_build_in_installation_order_after_every_
 }
 
 #[tokio::test]
-async fn every_graph_hook_runs_once_per_app_invoke_and_never_for_an_actions_invoke() {
+async fn both_forms_of_invoke_reuse_the_already_judged_graph() {
     let calls: Arc<Mutex<usize>> = Arc::default();
     let judge = |identity: &'static str| {
         let calls = Arc::clone(&calls);
@@ -551,7 +551,7 @@ async fn every_graph_hook_runs_once_per_app_invoke_and_never_for_an_actions_invo
         outcome,
         loomcli_core::InvocationOutcome::Completed { .. }
     ));
-    assert_eq!(count(), 6, "app.invoke");
+    assert_eq!(count(), 4, "app.invoke");
     let outcome = application
         .invoke(
             &["caller"],
@@ -564,7 +564,7 @@ async fn every_graph_hook_runs_once_per_app_invoke_and_never_for_an_actions_invo
         outcome,
         loomcli_core::InvocationOutcome::Completed { .. }
     ));
-    assert_eq!(count(), 8, "app.invoke with an action invoke");
+    assert_eq!(count(), 4, "app.invoke with an action invoke");
 }
 
 const REJECTING: DiagnosticRule = diagnostic_rule(

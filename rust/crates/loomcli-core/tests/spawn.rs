@@ -576,3 +576,36 @@ async fn an_actions_invoke_passes_streams_to_its_runs_handle_in_place_of_inherit
         )
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn abandoning_settles_every_waiter_without_ending_the_child() {
+    let started = Arc::new(Sink::default());
+    let child = start(
+        &real(),
+        "printf ready >&2; exec /bin/sleep 10",
+        SpawnOptions::new().stderr(ChildStream::Stream(started.clone())),
+    );
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while started.text().is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let mut first = std::pin::pin!(child.exited());
+    std::future::poll_fn(|cx| {
+        assert!(first.as_mut().poll(cx).is_pending());
+        std::task::Poll::Ready(())
+    })
+    .await;
+
+    child.abandon();
+    child.abandon();
+    let (left, right) = tokio::join!(first, child.exited());
+    child.kill(KillSignal::Kill);
+    for exit in [left, right] {
+        assert!(matches!(exit, ChildExit::Abandoned { stdout, stderr }
+            if stdout.bytes.is_empty() && stderr.bytes.is_empty()));
+    }
+}

@@ -169,7 +169,7 @@ async fn an_option_position_offers_long_spellings_and_short_ones_too_when_the_wo
 
 /// A root with its own action, a local `--format`, a `cache` group, and `--help` by hand, as the
 /// reference's `format()` and `help()` plugins make it.
-fn store() -> CommandGraph {
+fn store() -> Arc<CommandGraph> {
     Application::new("store")
         .option("format", Opt::string().description("The view."))
         .global_option(
@@ -263,7 +263,7 @@ async fn a_counted_option_is_offered_again_because_another_occurrence_adds_to_it
 
 /// The verbose plugin's two options, declared directly: a verbose-marked `--verbose` and a
 /// quiet-marked `--quiet`.
-fn verbosity() -> CommandGraph {
+fn verbosity() -> Arc<CommandGraph> {
     Application::new("kit")
         .global_option(
             "verbose",

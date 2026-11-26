@@ -387,12 +387,12 @@ fn run_still_reports_a_build_fault_with_code_1() {
 }
 
 #[test]
-fn builds_a_new_graph_on_each_call() {
+fn keeps_the_graph_on_each_call() {
     let application = jsonkit(None);
     let first = application.inspect().expect("the graph builds");
     let second = application.inspect().expect("the graph builds");
     assert_eq!(first, second);
-    assert!(!std::sync::Arc::ptr_eq(&first.root, &second.root));
+    assert!(std::sync::Arc::ptr_eq(&first, &second));
     assert_eq!(
         first.command(&["select"]).map(|node| node.path.clone()),
         Some(vec!["select".to_owned()])

@@ -58,6 +58,7 @@ use crate::support::IntoList;
 #[must_use]
 pub struct Application<I = NoInputs, R = NoResult, S = Done> {
     pub(crate) declaration: Arc<declaration::ApplicationDeclaration>,
+    pub(crate) graphs: Arc<crate::inspection::build::KeptGraphs>,
     pub(crate) _types: crate::__private::Types<I, R, S>,
 }
 
@@ -65,6 +66,7 @@ impl<I, R, S> Clone for Application<I, R, S> {
     fn clone(&self) -> Self {
         Self {
             declaration: Arc::clone(&self.declaration),
+            graphs: Arc::clone(&self.graphs),
             _types: PhantomData,
         }
     }
@@ -78,6 +80,7 @@ impl Application<NoInputs, NoResult, Configuring> {
             declaration: Arc::new(crate::commands::declaration::raise(
                 declaration::ApplicationDeclaration::new(name),
             )),
+            graphs: Arc::default(),
             _types: PhantomData,
         }
     }
@@ -500,7 +503,11 @@ impl<I, R, S: State> Application<I, R, S> {
     /// on the real process the default disposition ends it with the shell's status, as the
     /// reference does.
     pub fn run(&self, options: RunOptions) -> crate::support::BoxFuture<'static, ExitCode> {
-        Box::pin(crate::invocation::run::run(&self.declaration, options))
+        Box::pin(crate::invocation::run::run(
+            &self.declaration,
+            &self.graphs,
+            options,
+        ))
     }
 
     /// Builds a current-thread tokio runtime, runs on the real process, and returns the exit code,
@@ -549,12 +556,12 @@ impl<I, R, S: State> Application<I, R, S> {
         }
     }
 
-    /// Runs the Command at `path` of a graph built for this call, with named values in place of
+    /// Runs the Command at `path` of the graph for the captured build, with named values in place of
     /// argv, and captures what it writes: `output` is stdout and `messages` stderr, both plain
     /// text, on a host with no argv, an empty stdin, and no terminal. It reads its facts from
     /// `process`, or the real process's handle, and makes no process effect: it keeps core
-    /// listening for no signal, writes no exit code, and touches no real stream. Each call builds
-    /// the graph and runs every lifecycle hook, as `run` does.
+    /// listening for no signal, writes no exit code, and touches no real stream. It reuses the
+    /// graph and runs its own validation, as `run` does.
     pub async fn invoke<M: Send + 'static>(
         &self,
         path: &[&str],
@@ -562,20 +569,28 @@ impl<I, R, S: State> Application<I, R, S> {
         options: InvokeOptions<M>,
         process: Option<Arc<dyn ProcessHandle>>,
     ) -> InvocationOutcome<M> {
-        crate::invocation::run::invoke(&self.declaration, path, values, options, process).await
+        crate::invocation::run::invoke(
+            &self.declaration,
+            &self.graphs,
+            path,
+            values,
+            options,
+            process,
+        )
+        .await
     }
 
-    /// Builds the graph and returns it as plain data, applying every build rule `run` applies
-    /// before it reads a token except validating defaults and implied values.
-    pub fn inspect(&self) -> Result<crate::inspection::CommandGraph, DeclarationError> {
-        crate::inspection::build::inspect(&self.declaration)
+    /// Returns the shared graph of the baked build, building it on the first successful call
+    /// that needs it. The graph has the same identity as the one actions read in that build.
+    pub fn inspect(&self) -> Result<Arc<crate::inspection::CommandGraph>, DeclarationError> {
+        self.graphs
+            .get(&self.declaration, &crate::shipping::ReleaseFacts::baked())
     }
 
-    /// Builds the graph with nothing run and returns every declaration fault a development run
-    /// reports before routing: the build rules, every `on_command_attach` and `on_graph_built`
-    /// hook's fault, and the development checks, whatever the build. It does not validate declared
-    /// defaults or implied values: their validation context carries the run's host, so that verdict
-    /// belongs to the machine that runs the application, and `run` still reports it.
+    /// Builds a fresh graph and returns the build fault, if any. Once the graph is built,
+    /// returns every fault reported by `on_graph_built` hooks.
+    ///
+    /// The run validates declared defaults and implied values against its own host.
     #[must_use]
     pub fn check(&self) -> Vec<DeclarationError> {
         crate::inspection::build::check(&self.declaration)
@@ -585,6 +600,7 @@ impl<I, R, S: State> Application<I, R, S> {
 impl<I, R, S> Application<I, R, S> {
     /// The declaration to change: this value's own, or a copy when another value shares it.
     fn declared(&mut self) -> &mut declaration::ApplicationDeclaration {
+        self.graphs = Arc::default();
         Arc::make_mut(&mut self.declaration)
     }
 
@@ -592,6 +608,7 @@ impl<I, R, S> Application<I, R, S> {
     fn retyped<J, Q, T>(self) -> Application<J, Q, T> {
         Application {
             declaration: self.declaration,
+            graphs: self.graphs,
             _types: PhantomData,
         }
     }

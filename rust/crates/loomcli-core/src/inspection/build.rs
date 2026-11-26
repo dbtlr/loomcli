@@ -2,9 +2,9 @@
 //! `inspect()` returns.
 //!
 //! Build reads an Application's declarations, applies the rules no earlier call could judge, and
-//! writes each node in the reference's key order. It caches nothing: each call builds anew.
+//! writes each node in the reference's key order. An Application keeps its successful builds.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::application::declaration::ApplicationDeclaration;
 use crate::commands::declaration::{
@@ -36,22 +36,36 @@ fn content_schema() -> InputSchema {
     Some(schema)
 }
 
-/// Builds the graph `inspect()` returns, applying every build rule, then every `on_graph_built`
-/// judgment of it, the first of which ends the build.
-pub(crate) fn inspect(
-    application: &Arc<ApplicationDeclaration>,
-) -> Result<CommandGraph, DeclarationError> {
-    shared(application).map(Arc::unwrap_or_clone)
+/// A successful graph for each build mode. The Application owns these slots because the built
+/// graph may itself retain the Application's declaration.
+#[derive(Default)]
+pub(crate) struct KeptGraphs {
+    development: Mutex<Option<Arc<CommandGraph>>>,
+    distributed: Mutex<Option<Arc<CommandGraph>>>,
 }
 
-/// The graph a run shares, built and judged as `inspect()` builds it: each `on_graph_built` hook
-/// receives the graph the run's action reads, at one address.
-pub(crate) fn shared(
-    application: &Arc<ApplicationDeclaration>,
-) -> Result<Arc<CommandGraph>, DeclarationError> {
-    let graph = Arc::new(build(application)?);
-    judge_graph(&graph, &application.plugins, &mut Err)?;
-    Ok(graph)
+impl KeptGraphs {
+    /// Builds and judges a graph once per mode. Keeping the lock until judgment finishes lets
+    /// overlapping runs see the same graph and leaves a faulted slot available for retry.
+    pub(crate) fn get(
+        &self,
+        application: &Arc<ApplicationDeclaration>,
+        release: &ReleaseFacts,
+    ) -> Result<Arc<CommandGraph>, DeclarationError> {
+        let slot = if release.is_development() {
+            &self.development
+        } else {
+            &self.distributed
+        };
+        let mut kept = slot.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(graph) = &*kept {
+            return Ok(Arc::clone(graph));
+        }
+        let graph = Arc::new(build(application)?);
+        judge_graph(&graph, &application.plugins, &mut Err)?;
+        *kept = Some(Arc::clone(&graph));
+        Ok(graph)
+    }
 }
 
 /// Every declaration fault a development run reports before routing, in the order a run meets them.

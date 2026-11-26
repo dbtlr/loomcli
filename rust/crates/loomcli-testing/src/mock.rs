@@ -22,7 +22,9 @@ use tokio_util::sync::CancellationToken;
 /// The default working directory, a path that does not exist, so no file is found by accident.
 const DEFAULT_CWD: &str = "/loom-test";
 /// The default home folder, a path that does not exist.
-const DEFAULT_HOME: &str = "/loom-test/home";
+pub(crate) const DEFAULT_HOME: &str = "/loom-test/home";
+/// The platform the default mock describes.
+pub(crate) const DEFAULT_PLATFORM: &str = "linux";
 /// The default temporary folder, a path that does not exist.
 const DEFAULT_TMPDIR: &str = "/loom-test/tmp";
 /// The default `program` words: a runtime and a script that do not exist.
@@ -226,6 +228,7 @@ pub struct MockFields {
     pub(crate) argv: Vec<String>,
     pub(crate) env: Env,
     cwd: Option<MockCwd>,
+    ceiling: Option<PathBuf>,
     pub(crate) home: Option<PathBuf>,
     pub(crate) tmpdir: Option<PathBuf>,
     pub(crate) platform: Option<String>,
@@ -277,6 +280,13 @@ impl MockFields {
             cwd: Some(MockCwd::Read(Arc::new(read))),
             ..self
         }
+    }
+
+    /// Sets the project configuration walk's ceiling. The default uses the working directory,
+    /// calling a stated `cwd_with` reader again when the handle is asked for its ceiling.
+    pub fn ceiling(mut self, path: impl Into<PathBuf>) -> Self {
+        self.ceiling = Some(path.into());
+        self
     }
 
     /// Sets the home folder, which wins over `HOME` in the environment.
@@ -420,6 +430,7 @@ pub struct MockProcess {
     argv: Vec<String>,
     env: Env,
     cwd: MockCwd,
+    ceiling: Option<PathBuf>,
     home: PathBuf,
     tmpdir: PathBuf,
     platform: String,
@@ -507,7 +518,9 @@ pub fn mock_process(fields: MockFields) -> Arc<MockProcess> {
         terminal: keyboard.is_some().then(|| Arc::clone(&stdin)),
         listeners: Mutex::new(Registry::default()),
     });
-    let platform = fields.platform.unwrap_or_else(|| "linux".to_owned());
+    let platform = fields
+        .platform
+        .unwrap_or_else(|| DEFAULT_PLATFORM.to_owned());
     let absolute = |name: &str| {
         fields
             .env
@@ -530,6 +543,7 @@ pub fn mock_process(fields: MockFields) -> Arc<MockProcess> {
         platform,
         argv: fields.argv,
         env: fields.env,
+        ceiling: fields.ceiling,
         cwd: fields
             .cwd
             .unwrap_or_else(|| MockCwd::Path(PathBuf::from(DEFAULT_CWD))),
@@ -652,6 +666,12 @@ impl ProcessHandle for MockProcess {
             MockCwd::Read(read) => read(),
         }
     }
+    fn ceiling(&self) -> io::Result<Option<PathBuf>> {
+        match &self.ceiling {
+            Some(path) => Ok(Some(path.clone())),
+            None => self.cwd().map(Some),
+        }
+    }
     fn home(&self) -> PathBuf {
         self.home.clone()
     }
@@ -749,8 +769,14 @@ impl ProcessHandle for MockProcess {
         if let Some(signal) = cancellation.clone() {
             let end = Arc::clone(&end);
             runtime.spawn(async move {
-                signal.cancelled().await;
-                end.end(KillSignal::Signal(ProcessSignal::Term));
+                if end
+                    .finished
+                    .run_until_cancelled(signal.cancelled())
+                    .await
+                    .is_some()
+                {
+                    end.end(KillSignal::Signal(ProcessSignal::Term));
+                }
             });
         }
         let own = (Arc::clone(&self.stdout), Arc::clone(&self.stderr));
@@ -764,23 +790,30 @@ impl ProcessHandle for MockProcess {
                 }
             };
             let mut cancelled = pin!(cancelled);
+            // An abandoned script keeps running after the spawn's signal fires, so the signal is
+            // polled only until it has fired once: a finished `async` block cannot be polled again.
+            let mut cancel_seen = false;
             let mut answer = pin!(program(call));
             let mut ended = pin!(ending.cancelled());
             let answered = std::future::poll_fn(|context| {
                 // The spawn's signal wins over an answer ready at the same moment, on any worker.
-                if cancelled.as_mut().poll(context).is_ready() {
+                if !cancel_seen && cancelled.as_mut().poll(context).is_ready() {
+                    cancel_seen = true;
                     script.end(KillSignal::Signal(ProcessSignal::Term));
-                    return Poll::Ready(None);
+                    if !script.is_abandoned() {
+                        return Poll::Ready(None);
+                    }
                 }
                 if let Poll::Ready(answer) = answer.as_mut().poll(context) {
                     return Poll::Ready(Some(answer));
                 }
-                if ended.as_mut().poll(context).is_ready() {
+                if ended.as_mut().poll(context).is_ready() && !script.is_abandoned() {
                     return Poll::Ready(None);
                 }
                 Poll::Pending
             })
             .await;
+            script.finished.cancel();
             match answered {
                 None => {}
                 Some(Err(error)) => script.settle(ChildExit::Unstarted {
@@ -790,18 +823,23 @@ impl ProcessHandle for MockProcess {
                     if script.is_settled() {
                         return;
                     }
-                    let (stdout, stderr) = match outputs {
-                        None => (ChildOutput::default(), ChildOutput::default()),
-                        Some((stdout, stderr)) => (
-                            deliver(&stdout, answer.stdout, &own.0).await,
-                            deliver(&stderr, answer.stderr, &own.1).await,
-                        ),
-                    };
-                    script.settle(ChildExit::Exited {
-                        code: answer.code,
-                        stdout,
-                        stderr,
-                    });
+                    let _ = script
+                        .abandoned
+                        .run_until_cancelled(async {
+                            let (stdout, stderr) = match outputs {
+                                None => (ChildOutput::default(), ChildOutput::default()),
+                                Some((stdout, stderr)) => (
+                                    deliver(&stdout, answer.stdout, &own.0).await,
+                                    deliver(&stderr, answer.stderr, &own.1).await,
+                                ),
+                            };
+                            script.settle(ChildExit::Exited {
+                                code: answer.code,
+                                stdout,
+                                stderr,
+                            });
+                        })
+                        .await;
                 }
             }
         });
@@ -833,10 +871,11 @@ async fn deliver(choice: &ChildStream, bytes: Vec<u8>, own: &Arc<Recorder>) -> C
     }
 }
 
-/// One scripted child's end, settled once: by its script's answer, by a script that fails, or by an
-/// ending signal, which cancels the call's signal and ends it with 128 plus the signal's number.
+/// The exit a scripted child reports and the signals its still-running script can observe.
 struct ChildEnd {
     ending: CancellationToken,
+    finished: CancellationToken,
+    abandoned: CancellationToken,
     exit: watch::Sender<Option<ChildExit>>,
 }
 
@@ -844,12 +883,18 @@ impl ChildEnd {
     fn new() -> Self {
         Self {
             ending: CancellationToken::new(),
+            finished: CancellationToken::new(),
+            abandoned: CancellationToken::new(),
             exit: watch::Sender::new(None),
         }
     }
 
     fn is_settled(&self) -> bool {
         self.exit.borrow().is_some()
+    }
+
+    fn is_abandoned(&self) -> bool {
+        matches!(&*self.exit.borrow(), Some(ChildExit::Abandoned { .. }))
     }
 
     fn settle(&self, exit: ChildExit) {
@@ -864,14 +909,37 @@ impl ChildEnd {
 
     /// Ends the child for an ending signal; `SIGTSTP` and `SIGCONT` end nothing.
     fn end(&self, signal: KillSignal) {
-        if !signal.ends() || self.is_settled() {
+        if !signal.ends() {
             return;
         }
-        self.ending.cancel();
-        self.settle(ChildExit::Exited {
-            code: signal.ended_code(),
-            stdout: ChildOutput::default(),
-            stderr: ChildOutput::default(),
+        self.exit.send_if_modified(|exit| {
+            if matches!(exit, Some(ChildExit::Abandoned { .. })) && !self.finished.is_cancelled() {
+                self.ending.cancel();
+            }
+            if exit.is_some() {
+                return false;
+            }
+            self.ending.cancel();
+            *exit = Some(ChildExit::Exited {
+                code: signal.ended_code(),
+                stdout: ChildOutput::default(),
+                stderr: ChildOutput::default(),
+            });
+            true
+        });
+    }
+
+    fn abandon(&self) {
+        self.exit.send_if_modified(|exit| {
+            if exit.is_some() {
+                return false;
+            }
+            self.abandoned.cancel();
+            *exit = Some(ChildExit::Abandoned {
+                stdout: ChildOutput::default(),
+                stderr: ChildOutput::default(),
+            });
+            true
         });
     }
 }
@@ -897,6 +965,10 @@ impl ChildProcess for MockChild {
 
     fn kill(&self, signal: KillSignal) {
         self.end.end(signal);
+    }
+
+    fn abandon(&self) {
+        self.end.abandon();
     }
 }
 

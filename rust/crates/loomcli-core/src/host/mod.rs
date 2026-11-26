@@ -467,6 +467,13 @@ pub enum ChildExit {
         /// Why it did not start.
         error: Arc<io::Error>,
     },
+    /// The caller stopped waiting before the child reported its status.
+    Abandoned {
+        /// Stdout captured before abandonment.
+        stdout: ChildOutput,
+        /// Stderr captured before abandonment.
+        stderr: ChildOutput,
+    },
 }
 
 /// A signal a run can send to its child.
@@ -482,11 +489,16 @@ pub enum KillSignal {
 /// and a mock's runs a script. A handle implements it and returns it from
 /// [`ProcessHandle::spawn`] inside a [`Child`].
 pub trait ChildProcess: Send + Sync + 'static {
-    /// Resolves when the child exits, or at once when it never started. Called once.
+    /// Resolves when the child and its streams finish, the start fails, or the caller abandons it.
+    /// Every current and later waiter receives the same answer. The first settlement wins.
     fn exited(&self) -> BoxFuture<'_, ChildExit>;
 
     /// Sends `signal` to the child. An ending signal on a child that already exited does nothing.
     fn kill(&self, signal: KillSignal);
+
+    /// Releases the child's streams and settles every waiter without waiting for the child.
+    /// Preserves a settled answer or a reported status and sends no signal.
+    fn abandon(&self);
 }
 
 /// A child program a run started.
@@ -508,8 +520,8 @@ impl Child {
         Self::new(Unstarted(Arc::new(error)))
     }
 
-    /// Resolves once the child has ended and its streams have closed, or at once when it never
-    /// started. It never fails.
+    /// Waits for the child and its streams to finish, or returns the previously settled answer.
+    /// A child that never started or was abandoned resolves without waiting.
     pub async fn exited(&self) -> ChildExit {
         self.process.exited().await
     }
@@ -518,6 +530,14 @@ impl Child {
     /// child can handle. It does nothing once the child has exited.
     pub fn kill(&self, signal: KillSignal) {
         self.process.kill(signal);
+    }
+
+    /// Stops waiting for the child and releases its connections without sending a signal.
+    /// Every `exited()` waiter immediately receives the captured output and any already reported
+    /// status. Repeating the call preserves the first answer. Dropping a handle leaves the child
+    /// and its streams active while the runtime runs.
+    pub fn abandon(&self) {
+        self.process.abandon();
     }
 }
 
@@ -531,6 +551,8 @@ impl ChildProcess for Unstarted {
     }
 
     fn kill(&self, _signal: KillSignal) {}
+
+    fn abandon(&self) {}
 }
 
 impl ProcessSignal {
@@ -574,6 +596,10 @@ pub trait ProcessHandle: Send + Sync + 'static {
     fn env(&self) -> Env;
     /// The working directory; an error when it cannot be read.
     fn cwd(&self) -> io::Result<PathBuf>;
+    /// The optional ceiling for the project configuration walk. Read after `cwd` succeeds.
+    fn ceiling(&self) -> io::Result<Option<PathBuf>> {
+        Ok(None)
+    }
     /// The operator's home folder.
     fn home(&self) -> PathBuf;
     /// The folder for temporary files.
@@ -638,6 +664,7 @@ pub struct ProcessFields {
     pub(crate) program: Option<Vec<String>>,
     pub(crate) env: Option<Env>,
     pub(crate) cwd: Option<CwdField>,
+    pub(crate) ceiling: Option<PathBuf>,
     pub(crate) home: Option<PathBuf>,
     pub(crate) tmpdir: Option<PathBuf>,
     pub(crate) platform: Option<String>,
@@ -796,6 +823,13 @@ impl ProcessFields {
         }
     }
 
+    /// Sets the ceiling for the project configuration walk, relative to the captured working
+    /// directory when given a relative path.
+    pub fn ceiling(mut self, path: impl Into<PathBuf>) -> Self {
+        self.ceiling = Some(path.into());
+        self
+    }
+
     /// Replaces stdout.
     pub fn stdout(self, stream: Arc<dyn OutputStream>) -> Self {
         Self {
@@ -949,6 +983,8 @@ pub struct Host {
     pub program: Vec<String>,
     /// The working directory.
     pub cwd: PathBuf,
+    /// The ceiling the handle supplied for the project configuration walk.
+    pub ceiling: Option<PathBuf>,
     /// The environment, with environment hooks' additions merged.
     pub env: Env,
     /// The home folder.

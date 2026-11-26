@@ -137,18 +137,25 @@ fn is_inside(directory: &Path, home: &Path) -> bool {
     directory.starts_with(home)
 }
 
-/// The directories the walk may look in, nearest first: the start directory and each ancestor, up
-/// to the directory below home when the start is inside it, and up to the root otherwise.
-fn walk_directories(start: &Path, home: Option<&Path>) -> Vec<PathBuf> {
-    let bound = home.filter(|home| is_inside(start, home));
+/// The project directories, nearest first. Home belongs to the user scope even at the ceiling.
+fn walk_directories(start: &Path, home: Option<&Path>, ceiling: Option<&Path>) -> Vec<PathBuf> {
+    if let Some(ceiling) = ceiling.filter(|ceiling| !start.starts_with(ceiling)) {
+        return if Some(start) == home || ceiling.starts_with(start) {
+            Vec::new()
+        } else {
+            vec![start.to_path_buf()]
+        };
+    }
+    let home = home.filter(|home| is_inside(start, home));
     let mut directories = Vec::new();
-    let mut directory = Some(start);
-    while let Some(current) = directory {
-        if Some(current) == bound {
+    for directory in start
+        .ancestors()
+        .take_while(|directory| Some(*directory) != home)
+    {
+        directories.push(directory.to_path_buf());
+        if Some(directory) == ceiling {
             break;
         }
-        directories.push(current.to_path_buf());
-        directory = current.parent();
     }
     directories
 }
@@ -307,15 +314,19 @@ impl Lookup<'_> {
 
     /// The project scope's steps: the walk's directories, nearest first, ending after a directory
     /// that holds a root marker, which is checked once the directory has been looked in.
-    fn project_steps(&self, home: Option<&Path>) -> Vec<Step> {
-        walk_directories(&self.start(), home)
+    fn project_steps(&self, home: Option<&Path>) -> impl Iterator<Item = Step> {
+        let ceiling = self
+            .host
+            .ceiling
+            .as_ref()
+            .map(|path| resolve(&self.cwd(), path));
+        walk_directories(&self.start(), home, ceiling.as_deref())
             .into_iter()
             .map(|directory| Step {
                 directory,
                 candidates: self.candidates.to_vec(),
                 walked: true,
             })
-            .collect()
     }
 
     /// The user scope's steps: the home directory, then the user folder. The home file shows as
@@ -409,14 +420,7 @@ impl Lookup<'_> {
     fn notice_line(&self) -> Option<Line> {
         let home = home_of(self.host);
         let walked = if self.reach.project {
-            walk_directories(&self.start(), home.as_deref())
-                .into_iter()
-                .next()
-                .map(|directory| Step {
-                    directory,
-                    candidates: self.candidates.to_vec(),
-                    walked: true,
-                })
+            self.project_steps(home.as_deref()).next()
         } else {
             None
         };
@@ -501,12 +505,12 @@ mod tests {
     fn the_walk_ends_below_home_inside_home_and_at_the_root_outside_it() {
         let home = Path::new("/h");
         assert_eq!(
-            walk_directories(Path::new("/h/w/d"), Some(home)),
+            walk_directories(Path::new("/h/w/d"), Some(home), None),
             [PathBuf::from("/h/w/d"), PathBuf::from("/h/w")]
         );
-        assert!(walk_directories(home, Some(home)).is_empty());
+        assert!(walk_directories(home, Some(home), None).is_empty());
         assert_eq!(
-            walk_directories(Path::new("/p/a"), Some(home)),
+            walk_directories(Path::new("/p/a"), Some(home), None),
             [
                 PathBuf::from("/p/a"),
                 PathBuf::from("/p"),

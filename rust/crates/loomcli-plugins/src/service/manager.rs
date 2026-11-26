@@ -63,6 +63,9 @@ pub(super) struct Manager<'a> {
 /// The code of a call that succeeded.
 pub(super) const SUCCEEDED: i32 = 0;
 
+/// The status of an abandoned call without a reported exit code.
+const FAILED: i32 = 1;
+
 /// How many seconds one read that status makes may run before the plugin ends it.
 pub(super) const READ_LIMIT_SECONDS: u64 = 5;
 
@@ -77,6 +80,10 @@ fn answer_of(exit: ChildExit) -> Answer {
             stdout: stdout.text,
         },
         ChildExit::Unstarted { error } => Answer::Missing(error),
+        ChildExit::Abandoned { stdout, .. } => Answer::Exited {
+            code: FAILED,
+            stdout: stdout.text,
+        },
         // A way of ending that core adds later started nothing the plugin can read.
         _ => Answer::Missing(Arc::new(io::Error::other("the call did not end normally"))),
     }

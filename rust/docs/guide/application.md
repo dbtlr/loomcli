@@ -554,10 +554,15 @@ An opener reads settings from global options through `context.globals::<G>()` ra
 
 `loomcli-testing` runs an application through its public surface on a mock process and reads back the exact bytes. The mock reads nothing from the real environment, terminal, clock, or home folder: its working directory is `/loom-test`, its home `/loom-test/home`, and every stream is a pipe unless the test puts it on a `MockTerminal`.
 
-- `assert_assembles(&app)` builds the graph with every development check and panics with each fault's diagnostic. Keep one such test in every application; `cargo loom init` writes it, and that toolchain is not in this tree.
+- `assert_assembles(&app)` builds a fresh graph, as `Application::check` does, and panics with each fault's diagnostic. Keep one such test in every application; `cargo loom init` writes it, and that toolchain is not in this tree.
 - `assert_described(&app)` panics naming each Command, option, argument, and stdin with no description, which help, agents, MCP tools, and the manifest all read.
 - `mock_process(MockFields::new().argv([...]))` is a process handle with argv, env, cwd, stdin, and terminal facts you state. `run(RunOptions::new().process(handle))` runs on it, and `stdout_text()`, `stderr_text()`, and the returned exit code are what to assert.
-- `action_context`, `middleware_context`, `failure_hook_context`, `provider_context`, and `view_context` build the context one function receives, with no Application and no run.
+- The mock sets its configuration ceiling to its working directory. To let the project walk reach
+  a parent inside the test's workspace, set `MockFields::ceiling(path)`.
+- `action_context`, `middleware_context`, `failure_hook_context`, `provider_context`,
+  `environment_context`, and `view_context` build the context one function receives.
+- `log_event`, `log_destination`, and `progress_event` build values with fixed defaults for testing
+  a log hook or a progress observer.
 
 In a test file each body below sits in a `#[tokio::test]` function:
 

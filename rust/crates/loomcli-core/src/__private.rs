@@ -302,6 +302,7 @@ where
     });
     crate::Application {
         declaration: std::sync::Arc::new(declaration),
+        graphs: std::sync::Arc::default(),
         _types: std::marker::PhantomData,
     }
 }
@@ -326,6 +327,7 @@ where
         }));
     crate::Application {
         declaration: std::sync::Arc::new(declaration),
+        graphs: std::sync::Arc::default(),
         _types: std::marker::PhantomData,
     }
 }

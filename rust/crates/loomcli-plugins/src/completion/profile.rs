@@ -139,6 +139,12 @@ async fn answer_of(request: &ProfileRequest<'_>, program: &Path) -> Result<Strin
             &ProfileFault::Exited(code),
         ))
         .into()),
+        ChildExit::Abandoned { stdout, .. } => Err(FatalError::new(messages::profile_not_found(
+            name,
+            SHELL,
+            &ProfileFault::Reported(stdout.text),
+        ))
+        .into()),
         _ => Err(FatalError::new(messages::profile_not_found(
             name,
             SHELL,

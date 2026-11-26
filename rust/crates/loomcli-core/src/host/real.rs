@@ -5,10 +5,11 @@ use std::collections::HashSet;
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::watch;
+use tokio_util::sync::CancellationToken;
 
 use super::messages;
 use super::{
@@ -104,6 +105,10 @@ impl ProcessHandle for RealProcess {
             Some(CwdField::Path(path)) => Ok(resolved(&std::env::current_dir()?, path)),
             None => std::env::current_dir(),
         }
+    }
+
+    fn ceiling(&self) -> io::Result<Option<PathBuf>> {
+        Ok(self.fields.ceiling.clone())
     }
 
     fn home(&self) -> PathBuf {
@@ -897,6 +902,7 @@ struct RealChild {
     pid: Option<u32>,
     ended: Arc<AtomicBool>,
     exit: watch::Receiver<Option<ChildExit>>,
+    io: Weak<ChildIo>,
 }
 
 impl ChildProcess for RealChild {
@@ -919,6 +925,60 @@ impl ChildProcess for RealChild {
                 send_signal(pid, signal);
             }
         }
+    }
+
+    fn abandon(&self) {
+        if let Some(io) = self.io.upgrade() {
+            io.settle(true);
+        }
+    }
+}
+
+/// Status and captured bytes under one lock so an abandoned answer has one snapshot.
+#[derive(Default)]
+struct ChildSnapshot {
+    status: Option<Result<i32, Arc<io::Error>>>,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+/// A child's wait and pipe tasks own its I/O, so a handle alone never keeps the exit pending
+/// after its runtime shuts down.
+struct ChildIo {
+    snapshot: Mutex<ChildSnapshot>,
+    abandoned: CancellationToken,
+    feeding: Option<tokio::task::JoinHandle<()>>,
+    exit: watch::Sender<Option<ChildExit>>,
+}
+
+impl ChildIo {
+    fn close_input(&self) {
+        if let Some(feeding) = &self.feeding {
+            feeding.abort();
+        }
+    }
+
+    fn settle(&self, abandon: bool) {
+        let mut snapshot = locked(&self.snapshot);
+        if self.exit.borrow().is_some() {
+            return;
+        }
+        if abandon {
+            self.abandoned.cancel();
+            self.close_input();
+        }
+        let stdout = ChildOutput::new(std::mem::take(&mut snapshot.stdout));
+        let stderr = ChildOutput::new(std::mem::take(&mut snapshot.stderr));
+        let exit = match snapshot.status.take() {
+            Some(Ok(code)) => ChildExit::Exited {
+                code,
+                stdout,
+                stderr,
+            },
+            Some(Err(error)) => ChildExit::Unstarted { error },
+            None => ChildExit::Abandoned { stdout, stderr },
+        };
+        self.exit.send_replace(Some(exit));
     }
 }
 
@@ -1027,9 +1087,28 @@ fn start_child(request: SpawnRequest, own: &HandleStreams) -> Child {
     let ended = Arc::new(AtomicBool::new(false));
     let (settle, exit) = watch::channel(None);
     let options = options.unwrap_or_default();
-    let feeding = feed_input(&runtime, child.stdin.take(), &options, &own.stdin);
-    let stdout = collect_output(&runtime, child.stdout.take(), &options.stdout, &own.stdout);
-    let stderr = collect_output(&runtime, child.stderr.take(), &options.stderr, &own.stderr);
+    let io = Arc::new(ChildIo {
+        snapshot: Mutex::default(),
+        abandoned: CancellationToken::new(),
+        feeding: feed_input(&runtime, child.stdin.take(), &options, &own.stdin),
+        exit: settle,
+    });
+    let stdout = collect_output(
+        &runtime,
+        child.stdout.take(),
+        &options.stdout,
+        &own.stdout,
+        Arc::clone(&io),
+        |snapshot| &mut snapshot.stdout,
+    );
+    let stderr = collect_output(
+        &runtime,
+        child.stderr.take(),
+        &options.stderr,
+        &own.stderr,
+        Arc::clone(&io),
+        |snapshot| &mut snapshot.stderr,
+    );
     let watching = options.signal.clone().map(|signal| {
         let ended = Arc::clone(&ended);
         runtime.spawn(async move {
@@ -1042,30 +1121,28 @@ fn start_child(request: SpawnRequest, own: &HandleStreams) -> Child {
         })
     });
     let ending = Arc::clone(&ended);
+    let live_io = Arc::downgrade(&io);
     runtime.spawn(async move {
         let status = child.wait().await;
-        ending.store(true, Ordering::SeqCst);
+        {
+            let mut snapshot = locked(&io.snapshot);
+            ending.store(true, Ordering::SeqCst);
+            snapshot.status = Some(status.map(code_of).map_err(Arc::new));
+        }
         if let Some(watching) = watching {
             watching.abort();
         }
-        if let Some(feeding) = feeding {
-            feeding.abort();
-        }
-        let stdout = ChildOutput::new(stdout.await.unwrap_or_default());
-        let stderr = ChildOutput::new(stderr.await.unwrap_or_default());
-        let settled = match status {
-            Ok(status) => ChildExit::Exited {
-                code: code_of(status),
-                stdout,
-                stderr,
-            },
-            Err(error) => ChildExit::Unstarted {
-                error: Arc::new(error),
-            },
-        };
-        settle.send_replace(Some(settled));
+        io.close_input();
+        let _ = stdout.await;
+        let _ = stderr.await;
+        io.settle(false);
     });
-    Child::new(RealChild { pid, ended, exit })
+    Child::new(RealChild {
+        pid,
+        ended,
+        exit,
+        io: live_io,
+    })
 }
 
 /// Feeds the child's piped stdin: the input and then its end, or the handle's own stdin until it
@@ -1098,14 +1175,16 @@ fn feed_input(
     }))
 }
 
-/// Connects one piped output stream: collected when captured, else written to its stream as the
-/// child writes, never ended. The task answers the bytes it collected, none for a stream it copied.
+/// Copies one piped output stream until EOF or abandonment. An abandoned pipe drains to keep
+/// its writer from blocking while the runtime can still service it.
 fn collect_output<R>(
     runtime: &tokio::runtime::Handle,
     pipe: Option<R>,
     choice: &ChildStream,
     own: &Arc<dyn OutputStream>,
-) -> tokio::task::JoinHandle<Vec<u8>>
+    io: Arc<ChildIo>,
+    capture: fn(&mut ChildSnapshot) -> &mut Vec<u8>,
+) -> tokio::task::JoinHandle<()>
 where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
 {
@@ -1116,22 +1195,31 @@ where
     };
     runtime.spawn(async move {
         let Some(mut pipe) = pipe else {
-            return Vec::new();
+            return;
         };
-        let mut collected = Vec::new();
-        let mut bytes = vec![0_u8; 8192];
-        loop {
-            match pipe.read(&mut bytes).await {
-                Ok(0) | Err(_) => break,
-                Ok(count) => match &target {
-                    None => collected.extend_from_slice(&bytes[..count]),
-                    Some(stream) => {
-                        let _ = stream.write(&bytes[..count]).await;
+        let _ = io
+            .abandoned
+            .run_until_cancelled(async {
+                let mut bytes = vec![0_u8; 8192];
+                while let Ok(count) = pipe.read(&mut bytes).await {
+                    if count == 0 || io.abandoned.is_cancelled() {
+                        break;
                     }
-                },
-            }
+                    if let Some(stream) = &target {
+                        let _ = stream.write(&bytes[..count]).await;
+                    } else {
+                        let mut snapshot = locked(&io.snapshot);
+                        if !io.abandoned.is_cancelled() {
+                            capture(&mut snapshot).extend_from_slice(&bytes[..count]);
+                        }
+                    }
+                }
+            })
+            .await;
+        drop(target);
+        if io.abandoned.is_cancelled() {
+            let _ = tokio::io::copy(&mut pipe, &mut tokio::io::sink()).await;
         }
-        collected
     })
 }
 

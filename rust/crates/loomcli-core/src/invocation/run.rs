@@ -37,6 +37,7 @@ use crate::host::{
 use crate::inputs::declared::{DeclaredValues, prepare_declared_values};
 use crate::inputs::pass::ReceivedInputs;
 use crate::inspection::CommandGraph;
+use crate::inspection::build::KeptGraphs;
 use crate::marks::{self, Background};
 use crate::output::emit::{Channel, Output, ProgressObserver, Stream, is_echo};
 use crate::output::registry::ViewRegistry;
@@ -160,12 +161,25 @@ struct Door {
     named: Option<NamedValues>,
     /// The view an invocation by name starts from.
     start_view: Option<String>,
-    /// The action's run an action's call reuses the graph, declared values, and persistent values
-    /// of.
-    bound: Option<Arc<CallScope>>,
+    graph_source: GraphSource,
     /// Where an invocation by name's log events go: its action's run's destination, or one with
     /// no stderr.
     destination: Option<LogDestination>,
+}
+
+/// An outer call uses the Application's kept graph. An action's call uses its run's preparation.
+enum GraphSource {
+    Application(Arc<KeptGraphs>),
+    Caller(Arc<CallScope>),
+}
+
+impl GraphSource {
+    fn caller(&self) -> Option<&CallScope> {
+        match self {
+            Self::Application(_) => None,
+            Self::Caller(scope) => Some(scope),
+        }
+    }
 }
 
 /// What an action's call reuses of its run: the graph and declared values the run built and
@@ -191,6 +205,7 @@ pub(crate) struct CallScope {
 /// await, so a signal raised right after the call reaches it.
 pub(crate) fn run(
     application: &Arc<ApplicationDeclaration>,
+    graphs: &Arc<KeptGraphs>,
     options: RunOptions,
 ) -> impl Future<Output = ExitCode> + Send + 'static {
     let handle: Arc<dyn ProcessHandle> = options
@@ -210,6 +225,7 @@ pub(crate) fn run(
         application.shutdown_timeout,
     );
     let application = Arc::clone(application);
+    let graphs = Arc::clone(graphs);
     async move {
         let policy = options
             .rendering
@@ -225,7 +241,7 @@ pub(crate) fn run(
             substitutes: Arc::from(options.substitutes),
             named: None,
             start_view: None,
-            bound: None,
+            graph_source: GraphSource::Application(graphs),
             destination: None,
         };
         let code = execute(&application, door, &entered).await.code();
@@ -259,11 +275,12 @@ pub(crate) fn entry_inside_runtime(application: &str) -> crate::failures::Declar
     )
 }
 
-/// Runs the Command at `path` of a graph built for this call, with named values in place of argv,
+/// Runs the Command at `path` of the graph for this build, with named values in place of argv,
 /// on a host of capture sinks around the handle's facts. It makes no process effect: it keeps no
 /// lane listening and writes no exit code.
 pub(crate) async fn invoke<M: Send + 'static>(
     application: &Arc<ApplicationDeclaration>,
+    graphs: &Arc<KeptGraphs>,
     path: &[&str],
     values: InvocationValues,
     options: InvokeOptions<M>,
@@ -299,7 +316,7 @@ pub(crate) async fn invoke<M: Send + 'static>(
         options,
         sinks,
         capture,
-        bound: None,
+        graph_source: GraphSource::Application(Arc::clone(graphs)),
     };
     call.run(entered).await
 }
@@ -330,7 +347,7 @@ pub(crate) async fn invoke_nested<M: Send + 'static>(
         options,
         sinks,
         capture,
-        bound: Some(Arc::clone(scope)),
+        graph_source: GraphSource::Caller(Arc::clone(scope)),
     };
     call.run(entered).await
 }
@@ -343,7 +360,7 @@ struct Call<M> {
     options: InvokeOptions<M>,
     sinks: Sinks,
     capture: HostCapture,
-    bound: Option<Arc<CallScope>>,
+    graph_source: GraphSource,
 }
 
 impl<M: Send + 'static> Call<M> {
@@ -358,10 +375,11 @@ impl<M: Send + 'static> Call<M> {
             options,
             sinks,
             capture,
-            bound,
+            graph_source,
         } = self;
         let observer = GuardedObserver::new(options.on_progress.clone());
-        let destination = bound.as_ref().map_or_else(
+        let bound = graph_source.caller();
+        let destination = bound.map_or_else(
             || LogDestination {
                 env: capture.host.env.clone(),
                 home: capture.host.home.clone(),
@@ -375,7 +393,7 @@ impl<M: Send + 'static> Call<M> {
             capture,
             policy: application.rendering.plain(),
             progress: observer.observer(),
-            substitutes: bound.as_ref().map_or_else(
+            substitutes: bound.map_or_else(
                 || Arc::from(Vec::new()),
                 |scope| Arc::clone(&scope.substitutes),
             ),
@@ -385,7 +403,7 @@ impl<M: Send + 'static> Call<M> {
                 exclude: options.exclude.clone(),
             }),
             start_view: options.view.clone(),
-            bound,
+            graph_source,
             destination: Some(destination),
         };
         let end = execute(&application, door, &entered).await;
@@ -560,7 +578,7 @@ async fn execute(
         substitutes,
         named,
         start_view,
-        bound,
+        graph_source,
         destination,
     } = door;
     let signal = &entered.signal;
@@ -629,7 +647,7 @@ async fn execute(
                 &body,
                 named.as_ref(),
                 start_view,
-                bound,
+                graph_source,
                 substitutes,
                 &mut reached,
             );
@@ -789,7 +807,7 @@ async fn run_body(
     body: &Body<'_>,
     named: Option<&NamedValues>,
     start_view: Option<String>,
-    bound: Option<Arc<CallScope>>,
+    graph_source: GraphSource,
     substitutes: Arc<[AnyProvider]>,
     reached: &mut Reached,
 ) -> Result<(), Error> {
@@ -802,12 +820,12 @@ async fn run_body(
         place,
         invoked_by,
     } = *body;
-    // Step 5: graph build, with every lifecycle hook of the build. A build fault is the run's
-    // failure, exit 1, which reports through the application's own overrides.
-    let graph = match &bound {
-        Some(scope) => Arc::clone(&scope.graph),
-        None => crate::inspection::build::shared(application)?,
+    // Step 5: obtain the graph of the run's build or reuse its caller's graph.
+    let graph = match &graph_source {
+        GraphSource::Application(graphs) => graphs.get(application, &host.release)?,
+        GraphSource::Caller(scope) => Arc::clone(&scope.graph),
     };
+    let bound = graph_source.caller();
     output.use_views(ViewRegistry::with_plugins(
         &application.overrides,
         &application.plugins,
@@ -832,7 +850,7 @@ async fn run_body(
     // Step 7: each environment hook adds variables before any input validates; an action's call
     // reads its run's prepared environment. Only an argv run copies its additions out to the
     // handle: an invocation by name makes no process effect.
-    let host = &match &bound {
+    let host = &match bound {
         Some(_) => Arc::clone(host),
         None => {
             let publish = call.is_none();
@@ -842,7 +860,7 @@ async fn run_body(
     reached.host = Some(Arc::clone(host));
     // Step 8: every declared default and implied value is validated before any token is read; an
     // action's call reuses its run's.
-    let declared = match &bound {
+    let declared = match bound {
         Some(scope) => Arc::clone(&scope.declared),
         None => Arc::new(prepare_declared_values(application, host)?),
     };
@@ -878,11 +896,7 @@ async fn run_body(
         timeout: application.shutdown_timeout,
         signal: signal.clone(),
         destination: log.destination(),
-        persistent: Mutex::new(
-            bound
-                .as_ref()
-                .and_then(|scope| locked(&scope.persistent).clone()),
-        ),
+        persistent: Mutex::new(bound.and_then(|scope| locked(&scope.persistent).clone())),
         substitutes: Arc::clone(&substitutes),
     });
     let state = Arc::new(RunState {
