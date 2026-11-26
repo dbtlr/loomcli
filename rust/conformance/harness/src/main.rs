@@ -82,16 +82,9 @@ fn default_bin_dir(root: &Path) -> PathBuf {
 /// Compares the committed behind list with the base branch's and fails on growth the change does
 /// not explain. It runs no case.
 fn check_growth(rust_dir: &Path, base: &Path, changed: &Path) -> Result<bool, String> {
-    match growth::check(base, &rust_dir.join("conformance/behind.json"), changed)? {
-        None => {
-            println!("behind.json grows only where this change explains it.");
-            Ok(true)
-        }
-        Some(report) => {
-            print!("{report}");
-            Ok(false)
-        }
-    }
+    let (passed, text) = growth::check(base, &rust_dir.join("conformance/behind.json"), changed)?;
+    print!("{text}");
+    Ok(passed)
 }
 
 fn run() -> Result<bool, String> {

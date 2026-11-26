@@ -62,9 +62,10 @@ pub fn unexplained(growth: Vec<Growth>, changed: &[String], base_accepted: &Behi
 
 /// Checks `head`, the committed behind list, against `base`, a folder holding the base branch's
 /// `behind.json` and `accepted.json`, and `changed`, a file of the repository-relative paths the
-/// change touched, each ended by a NUL as `git diff -z --name-only` writes them. Returns the report
-/// of unexplained growth, or `None` when there is none.
-pub fn check(base: &Path, head: &Path, changed: &Path) -> Result<Option<String>, String> {
+/// change touched, each ended by a NUL as `git diff -z --name-only` writes them. Returns whether the
+/// check passed and the text to print: the report of unexplained growth, or one line saying there
+/// is none.
+pub fn check(base: &Path, head: &Path, changed: &Path) -> Result<(bool, String), String> {
     let base_behind = behind::load(&base.join("behind.json"))?;
     let base_accepted = accepted::listed(&base.join("accepted.json"))?;
     let head = behind::load(head)?;
@@ -75,7 +76,13 @@ pub fn check(base: &Path, head: &Path, changed: &Path) -> Result<Option<String>,
         .map(str::to_owned)
         .collect();
     let found = unexplained(grown(&base_behind, &head), &changed, &base_accepted);
-    Ok((!found.is_empty()).then(|| render(&found)))
+    if found.is_empty() {
+        return Ok((
+            true,
+            "behind.json grows only where this change explains it.\n".to_owned(),
+        ));
+    }
+    Ok((false, render(&found)))
 }
 
 /// The report for unexplained growth: one line per case, then the rule it breaks.

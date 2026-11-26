@@ -45,20 +45,20 @@ struct ListedEntry {
 }
 
 /// The parts an `accepted.json` lists for each case, read without checking its rows against a
-/// register, as a base branch's copy is read. A part name the harness does not know is skipped.
+/// register, as a base branch's copy is read. A part name the harness does not know is skipped, and
+/// the first entry for a case decides, as the runner reads the list.
 pub fn listed(path: &Path) -> Result<BTreeMap<String, Vec<Part>>, String> {
     let text =
         fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let file: Listed =
         serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(file
-        .accepted
-        .into_iter()
-        .map(|entry| {
-            let parts = entry.parts.iter().filter_map(|p| Part::parse(p)).collect();
-            (entry.id, parts)
-        })
-        .collect())
+    let mut listed = BTreeMap::new();
+    for entry in file.accepted {
+        listed
+            .entry(entry.id)
+            .or_insert_with(|| entry.parts.iter().filter_map(|p| Part::parse(p)).collect());
+    }
+    Ok(listed)
 }
 
 /// Parses the file text; `deviations` is the text of `docs/deviations.md` that every `row` must occur in.
