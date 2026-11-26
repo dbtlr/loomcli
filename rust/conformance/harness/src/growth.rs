@@ -84,7 +84,7 @@ pub fn render(unexplained: &[Growth]) -> String {
     text.push_str(
         "Rust work only shrinks behind.json (ADR-0006), so a new difference here is a regression \
          to fix. A case may be added or widened only in the change that alters its files under \
-         conformance/expected/.\n",
+         conformance/expected/, or that moves it from accepted.json.\n",
     );
     text
 }
@@ -217,7 +217,7 @@ mod tests {
              textstat-b: files\n\
              Rust work only shrinks behind.json (ADR-0006), so a new difference here is a regression \
              to fix. A case may be added or widened only in the change that alters its files under \
-             conformance/expected/.\n"
+             conformance/expected/, or that moves it from accepted.json.\n"
         );
     }
 }
