@@ -193,7 +193,7 @@ fn capture_copies_each_fact_from_the_handle() {
         ),
         ("linux", "riscv64", Some(Libc::Musl), Some(0))
     );
-    assert_eq!(host.time_zone, "Europe/Paris");
+    assert_eq!(host.time_zone(), "Europe/Paris");
     assert_eq!(host.release, ReleaseFacts::new(Build::Distributed));
     assert_eq!(host.read_source("a.rs").as_deref(), Some("a.rs in /work"));
 }

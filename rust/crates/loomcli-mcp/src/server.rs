@@ -670,6 +670,7 @@ async fn call<S: ToolSource>(
         .call_tool(ToolCall {
             name: name.clone(),
             arguments: params.get("arguments").cloned(),
+            metadata: params.get("_meta").and_then(Value::as_object).cloned(),
             cancel: handling.cancel,
             progress: handling.progress,
         })

@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 
 use jiff::civil;
 use jiff::tz::{self, TimeZone};
+use loomcli_core::__private::time_zone;
 use loomcli_core::{Finding, InputSchema, Issue, Literal, ValidationContext, Validator};
 use serde_json::{Map, Value, json};
 
@@ -140,9 +141,9 @@ impl DateTime {
     /// not know is a fault at the call.
     #[track_caller]
     pub fn time_zone(mut self, zone: &str) -> Self {
-        match TimeZone::get(zone) {
-            Ok(known) => self.zone = Some(known),
-            Err(_) => fault::raise(
+        match time_zone::lookup(zone) {
+            Some(known) => self.zone = Some(known),
+            None => fault::raise(
                 fault::TIME_ZONE,
                 "date_time() time_zone is not an IANA time zone name.",
                 "Supply a name such as America/New_York.",
@@ -171,7 +172,7 @@ impl Validator for DateTime {
                     .ok(),
                 Offset::Absent => {
                     let zone = self.zone.clone().unwrap_or_else(|| {
-                        TimeZone::get(&context.host.time_zone).unwrap_or(TimeZone::UTC)
+                        time_zone::lookup(context.host.time_zone()).unwrap_or(TimeZone::UTC)
                     });
                     zone.to_ambiguous_timestamp(wall).compatible().ok()
                 }

@@ -8,7 +8,7 @@
 //! the process. Each step is its own function.
 
 use std::future::Future;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use tokio_util::sync::CancellationToken;
 
@@ -32,7 +32,7 @@ use crate::failures::{
 use crate::host::capture::{HostCapture, OwnStreams, RunStreams, capture_host, capture_parts};
 use crate::host::{
     Host, HostTerminal, InputStream, OutputStream, ProcessFields, ProcessHandle, QueryRun,
-    ask_terminal, process_handle,
+    ask_terminal, process_handle, resolve_time_zone,
 };
 use crate::inputs::declared::{DeclaredValues, prepare_declared_values};
 use crate::inputs::pass::ReceivedInputs;
@@ -146,6 +146,7 @@ struct NamedValues {
     path: Vec<String>,
     values: InvocationValues,
     exclude: Vec<String>,
+    time_zone: Option<String>,
 }
 
 /// What differs between `run()` and `invoke()`.
@@ -401,6 +402,7 @@ impl<M: Send + 'static> Call<M> {
                 path,
                 values,
                 exclude: options.exclude.clone(),
+                time_zone: options.time_zone,
             }),
             start_view: options.view.clone(),
             graph_source,
@@ -583,13 +585,26 @@ async fn execute(
     } = door;
     let signal = &entered.signal;
     let mut host = capture.host;
+    let capture_failure = capture
+        .unreadable_cwd
+        .map(|error| Error::from(WorkingDirectoryError::new(error)))
+        .or_else(|| {
+            let name = named.as_ref()?.time_zone.as_deref()?;
+            match resolve_time_zone(name) {
+                Some(zone) => {
+                    host.time_zone = Arc::new(OnceLock::from(zone));
+                    None
+                }
+                None => Some(InputError::new(super::messages::INVALID_TIME_ZONE, vec![]).into()),
+            }
+        });
     let argv = invoked_by == InvokedBy::Argv;
     // The installed theme, which the settled background resolves to a palette.
     let theme = application
         .plugins
         .iter()
         .find_map(|plugin| plugin.theme.as_ref());
-    let policy = match &capture.unreadable_cwd {
+    let policy = match &capture_failure {
         // A failed capture reads no choice: color is off in an Application that marks one.
         Some(_) if argv => RenderingPolicy::uncaptured(marks::declares_color(application)),
         // An invocation by name renders plain from its entry.
@@ -610,9 +625,9 @@ async fn execute(
     });
     let host = Arc::new(host);
     // A build fault reports through the application's own overrides alone; every contributor's
-    // join once the graph has built. An unreadable working directory fails before the build, where
-    // no override has registered, so core's default text writes it.
-    let overrides: &[_] = if capture.unreadable_cwd.is_some() {
+    // join once the graph has built. A host capture failure uses core's default text because the
+    // application's overrides have yet to register.
+    let overrides: &[_] = if capture_failure.is_some() {
         &[]
     } else {
         &application.overrides
@@ -631,8 +646,8 @@ async fn execute(
         None => RunLog::new(application, &host, &output),
     });
     let mut reached = Reached::default();
-    let outcome = match capture.unreadable_cwd {
-        Some(error) => Err(WorkingDirectoryError::new(error).into()),
+    let outcome = match capture_failure {
+        Some(error) => Err(error),
         None => {
             let body = Body {
                 application,
@@ -801,8 +816,8 @@ async fn settle_background(
 
 /// Graph build, verbosity, environment preparation, routing, parsing or lowering, and the dispatch
 /// boundary of one run. `reached` records when graph build, and then its declared values, finished.
-/// An action's call reuses its run's graph and declared values, so no lifecycle hook runs again,
-/// and no environment hook.
+/// An action's call reuses its run's graph and prepared environment. The declared values are
+/// reusable when their validation zone matches the call's.
 async fn run_body(
     body: &Body<'_>,
     named: Option<&NamedValues>,
@@ -858,11 +873,17 @@ async fn run_body(
         }
     };
     reached.host = Some(Arc::clone(host));
-    // Step 8: every declared default and implied value is validated before any token is read; an
-    // action's call reuses its run's.
+    // Step 8: an explicit zone needs a comparison before the call can reuse declared values.
+    let inherits_zone = named.is_none_or(|named| named.time_zone.is_none());
     let declared = match bound {
-        Some(scope) => Arc::clone(&scope.declared),
-        None => Arc::new(prepare_declared_values(application, host)?),
+        Some(scope)
+            if inherits_zone
+                || resolve_time_zone(scope.host.time_zone()).as_deref()
+                    == Some(host.time_zone()) =>
+        {
+            Arc::clone(&scope.declared)
+        }
+        _ => Arc::new(prepare_declared_values(application, host)?),
     };
     reached.declared = true;
     if signal.is_cancelled() {

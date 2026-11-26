@@ -192,6 +192,8 @@ pub struct ToolCall {
     /// The `arguments` the client sent, as sent: absent, an object, or any other JSON value, so
     /// the tool source judges its shape.
     pub arguments: Option<Value>,
+    /// The request's `params._meta` when it is an object, as sent by the client.
+    pub metadata: Option<Map<String, Value>>,
     /// Cancelled when the client cancels the request or the server shuts down.
     pub cancel: CancellationToken,
     /// Present when the request's `params._meta` carries a `progressToken`.

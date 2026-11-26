@@ -15,7 +15,7 @@ mod tests;
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use tokio_util::sync::CancellationToken;
 
@@ -23,6 +23,18 @@ use crate::failures::ExitCode;
 use crate::marks::Background;
 use crate::shipping::{DirectoryFacts, ReleaseFacts};
 use crate::support::BoxFuture;
+
+/// Resolves an IANA time zone name or alias to the database's spelling. The lookup ignores ASCII
+/// case and checks Jiff's system database first, followed by its bundled database.
+///
+/// Returns `None` for empty or unknown names, numeric offsets, names with surrounding whitespace,
+/// the `Factory` placeholder, and the host configuration entries `localtime` and `posixrules`.
+#[must_use]
+pub fn resolve_time_zone(name: &str) -> Option<String> {
+    crate::__private::time_zone::lookup(name)?
+        .iana_name()
+        .map(str::to_owned)
+}
 
 // The run lifecycle captures the host, asks the terminal its background, and dispatches the exit
 // event through these.
@@ -1014,8 +1026,7 @@ pub struct Host {
     pub libc: Option<Libc>,
     /// The user id, on Unix.
     pub uid: Option<u32>,
-    /// The IANA time zone captured at the start of the run.
-    pub time_zone: String,
+    pub(crate) time_zone: Arc<OnceLock<String>>,
     /// How this copy was built.
     pub release: ReleaseFacts,
     /// The terminal facts.
@@ -1031,6 +1042,12 @@ pub struct Host {
 }
 
 impl Host {
+    /// The run's effective IANA time zone. Inherited hosts share the handle's first read.
+    #[must_use]
+    pub fn time_zone(&self) -> &str {
+        self.time_zone.get_or_init(|| self.handle.time_zone())
+    }
+
     /// Starts a child program through the run's process handle, with no shell, in the run's `cwd`
     /// and with its `env` unless the options name others; a relative `cwd` resolves against the
     /// run's. An inherited stream reaches the handle as inherited only when the run's stream is the

@@ -10,14 +10,15 @@ mod mcp_support;
 
 use loomcli_core::{
     Application, Arg, Command, Context, Done, EX_DATAERR, Error, Failure, FailureView, FatalError,
-    NoInputs, NoResult, Opt, ResultViews, RowView, RowViews, RowsResult, ValueResult, View,
-    ViewContext, failure, override_view,
+    NoInputs, NoResult, Opt, ResultViews, RowView, RowViews, RowsResult, Validator, ValueResult,
+    View, ViewContext, failure, override_view, resolve_time_zone,
 };
 use loomcli_plugins::mcp::extension::{MCP_COMMAND, MCP_INPUT, McpCommandFacts, McpInputFacts};
 use loomcli_plugins::mcp::mcp;
+use loomcli_validators::{DateTime, date_time};
 use mcp_support::{
-    Launch, Observed, call, called, cancelled, handshake_request, initialize, launch, request,
-    result_of, serve, tool_named, tools_of,
+    Launch, Observed, call, called, cancelled, handshake_request, initialize, launch, meta,
+    request, result_of, serve, tool_named, tools_of,
 };
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -639,6 +640,141 @@ async fn arguments_that_are_not_an_object_are_invalid_params() {
             "{arguments}"
         );
     }
+}
+
+const TIME_ZONE_KEY: &str = "io.github.dbtlr.loomcli/timeZone";
+const INVALID_TIME_ZONE: &str = "Metadata key \"io.github.dbtlr.loomcli/timeZone\" requires an IANA time zone name this runtime knows. Use a name such as \"Asia/Tokyo\".";
+
+async fn time_zone_calls(revision: &str) {
+    let app = Application::new("clock").plugins([mcp()]).command(
+        Command::new("stamp")
+            .description("Print the time zone and instant.")
+            .extend([opted()])
+            .option(
+                "at",
+                Opt::string()
+                    .description("A local date and time.")
+                    .default("2026-09-25T14:30:00")
+                    .validate(date_time()),
+            )
+            .action(|ctx: Context| async move {
+                let at = ctx
+                    .option::<Option<<DateTime as Validator>::Output>>("at")?
+                    .unwrap();
+                ctx.out
+                    .print(&format!("{} {at:.3}", ctx.host.time_zone()))
+                    .await
+            }),
+    );
+    let mut session = serve(&app);
+    let per_request = revision == "2026-07-28";
+    if !per_request {
+        session.send(&initialize(0, revision));
+        assert_eq!(session.next().await["result"]["protocolVersion"], revision);
+    }
+
+    let utc = "UTC 2026-09-25T14:30:00.000Z\n";
+    let tokyo = "Asia/Tokyo 2026-09-25T05:30:00.000Z\n";
+    let alias = resolve_time_zone("US/Eastern").unwrap();
+    let eastern = format!("{alias} 2026-09-25T18:30:00.000Z\n");
+    let unlisted =
+        "Tool \"stamp\" takes no argument \"extra\". Use a property its input schema lists.";
+    for (index, (zone, arguments, text, is_error)) in [
+        (None, json!({}), utc, false),
+        (
+            Some(json!("Asia/Tokyo")),
+            json!({"at": "2026-09-25T14:30:00"}),
+            tokyo,
+            false,
+        ),
+        (Some(json!("Asia/Tokyo")), json!({}), tokyo, false),
+        (
+            Some(json!("US/Eastern")),
+            json!({}),
+            eastern.as_str(),
+            false,
+        ),
+        (
+            Some(json!("Mars/Olympus")),
+            json!({}),
+            INVALID_TIME_ZONE,
+            true,
+        ),
+        (
+            Some(json!("Mars/Olympus")),
+            json!({"extra": "unused"}),
+            unlisted,
+            true,
+        ),
+        (Some(json!("+09:00")), json!({}), INVALID_TIME_ZONE, true),
+        (
+            Some(json!("\u{2212}09:00")),
+            json!({}),
+            INVALID_TIME_ZONE,
+            true,
+        ),
+        (Some(Value::Null), json!({}), INVALID_TIME_ZONE, true),
+        (Some(json!(false)), json!({}), INVALID_TIME_ZONE, true),
+        (None, json!({}), utc, false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = index + 1;
+        let mut metadata = if per_request { meta() } else { json!({}) };
+        if let Some(zone) = zone {
+            metadata[TIME_ZONE_KEY] = zone;
+        }
+        session.send(&handshake_request(
+            id,
+            "tools/call",
+            json!({
+                "_meta": metadata, "name": "stamp", "arguments": arguments
+            }),
+        ));
+        let message = session.next().await;
+        assert_eq!(message["id"], id);
+        assert!(message.get("error").is_none(), "{message}");
+        let result = &message["result"];
+        assert_eq!(result["content"], json!([{"type": "text", "text": text}]));
+        assert_eq!(result["isError"], is_error);
+        assert!(result.get("structuredContent").is_none(), "{result}");
+    }
+
+    let mut metadata = if per_request { meta() } else { json!({}) };
+    metadata[TIME_ZONE_KEY] = json!("Mars/Olympus");
+    session.send(&handshake_request(
+        12,
+        "tools/call",
+        json!({
+            "_meta": metadata, "name": "stamp", "arguments": []
+        }),
+    ));
+    assert_eq!(
+        session.next().await["error"],
+        json!({
+            "code": -32602,
+            "message": "Tool \"stamp\" arguments must be an object. Supply a JSON object of named inputs."
+        })
+    );
+    let ending = session.close().await;
+    assert_eq!(ending.status, 0);
+    assert_eq!(ending.stderr, "");
+}
+
+#[tokio::test]
+async fn serves_time_zone_calls_on_the_per_request_revision() {
+    time_zone_calls("2026-07-28").await;
+}
+
+#[tokio::test]
+async fn serves_time_zone_calls_on_the_2025_11_25_revision() {
+    time_zone_calls("2025-11-25").await;
+}
+
+#[tokio::test]
+async fn serves_time_zone_calls_on_the_2025_06_18_revision() {
+    time_zone_calls("2025-06-18").await;
 }
 
 #[tokio::test]

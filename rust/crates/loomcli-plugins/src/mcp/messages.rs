@@ -281,6 +281,9 @@ pub(super) fn unlisted_argument(tool: &str, key: &str) -> String {
     )
 }
 
+/// A tool call whose time zone metadata gives no IANA name the runtime knows.
+pub(super) const INVALID_TIME_ZONE: &str = "Metadata key \"io.github.dbtlr.loomcli/timeZone\" requires an IANA time zone name this runtime knows. Use a name such as \"Asia/Tokyo\".";
+
 /// A tool call that names no tool the server serves.
 pub(super) fn unknown_tool(tool: &str) -> String {
     format!(
