@@ -4,7 +4,7 @@ title: ADR-0006 - Rust tracks the shared conformance cases it is behind on in a 
 description: The conformance cases live in the repository's shared conformance/ directory, captured from TypeScript, and both implementations check them. A case Rust has yet to match is listed with its differing parts in rust/conformance/behind.json, which Rust work only shrinks and a TypeScript change that alters expected output grows. A listed case that matches, or whose listed parts no longer all differ, fails the run. Deviations stay in docs/deviations.md and rust/conformance/accepted.json.
 status: proposed
 created: 2026-11-24
-modified: 2026-11-24
+modified: 2026-11-26
 ---
 
 # ADR-0006 - Rust tracks the shared conformance cases it is behind on in a list, apart from deviations
@@ -30,7 +30,7 @@ The cases now sit at the repository root in `conformance/`, and the TypeScript w
 
 ## Consequences
 
-A reference behavior change is ported by refreshing the shared expectations, listing what Rust no longer matches, and then closing the entries. The parity Rust reaches at any moment is the shared cases less the behind list, and the list's size is the catch-up's measure. The reference revision the cases were captured from is recorded in `conformance/expected/META.json`. No check compares the list with its base branch, so review holds the rule that Rust work only shrinks it: a Rust change that adds an entry, which `--write-behind` would write for a regression too, is a regression, not a listing.
+A reference behavior change is ported by refreshing the shared expectations, listing what Rust no longer matches, and then closing the entries. The parity Rust reaches at any moment is the shared cases less the behind list, and the list's size is the catch-up's measure. The reference revision the cases were captured from is recorded in `conformance/expected/META.json`. `--write-behind` writes an entry for a regression as readily as for a reference change, so a check compares the list with its base branch: on a pull request, CI fails when the list adds a case or a part for a case whose files under `conformance/expected/` the change leaves unchanged. A reference change that alters a case's expected output can still carry an unrelated Rust regression in that same case, and review holds the rule there.
 
 ## Status
 
@@ -39,3 +39,4 @@ Proposed on 2026-11-24 with the change that moved the cases and added the list. 
 ## Changelog
 
 - 2026-11-24: Proposed.
+- 2026-11-26: Consequences: a CI check on pull requests holds the rule that Rust work only shrinks the list, case by case against the change's expected files.
