@@ -4,7 +4,7 @@
 //! This is the reference's `prepareDispatch`. The phases run in order: the structural fault parsing
 //! held, a group's missing subcommand, the input-source stage, and validation. Either of the first
 //! two outranks a configuration source's fault, and a source's fault takes the place of every
-//! validation problem. Validation checks the global options whatever was held.
+//! validation problem. A held unknown command skips these phases.
 
 use std::sync::Arc;
 
@@ -23,10 +23,10 @@ use crate::inputs::sources::{SourceCall, StageFacts, StageScope, fill_inputs};
 use crate::inputs::{Content, InputIdentity, InputKind, InputValues, OptionDecl, SuppliedInputs};
 use crate::inspection::{CommandGraph, OptionNode, reported_spelling};
 
-use crate::plugins::Request;
+use crate::plugins::{Request, UnknownCommand};
 
 use super::chain::{Dispatch, OwnValues};
-use super::parse::{OptionValues, ParsedInvocation, candidates_of};
+use super::parse::{OptionValues, ParsedInvocation, RoutingFailure, candidates_of};
 use super::{InvokedBy, RunInputs};
 
 /// One prepared dispatch: what the dispatch boundary does, and what the chain ahead of it reads.
@@ -34,6 +34,23 @@ pub(crate) struct Prepared {
     pub(crate) boundary: Boundary,
     pub(crate) chain: ChainFacts,
     pub(crate) received: Option<ReceivedInputs>,
+}
+
+impl Prepared {
+    /// Prepares an unknown command for the chain without reading or validating its inputs.
+    pub(crate) fn unknown_command(held: RoutingFailure<'_>) -> Self {
+        Self {
+            boundary: Boundary::Held(held.error()),
+            received: None,
+            chain: ChainFacts {
+                globals: OptionValues::default(),
+                options: None,
+                own: OwnValues::default(),
+                request: None,
+                unknown_command: Some(held.unknown),
+            },
+        }
+    }
 }
 
 /// What the dispatch boundary does: raise the fault the preparation held, or dispatch the action.
@@ -51,6 +68,7 @@ pub(crate) struct ChainFacts {
     pub(crate) options: Option<InputValues>,
     pub(crate) own: OwnValues,
     pub(crate) request: Option<Request>,
+    pub(crate) unknown_command: Option<Arc<UnknownCommand>>,
 }
 
 /// What a clean preparation hands the dispatch boundary.
@@ -330,6 +348,7 @@ pub(crate) async fn prepare_dispatch(run: &Run<'_>, mut parsed: ParsedInvocation
             faulted: parsed.faulted.clone(),
         },
         request: Some(request),
+        unknown_command: None,
     };
     let dispatch = Dispatch {
         action: routed.action.clone(),
@@ -381,6 +400,7 @@ impl OwnRun<'_, '_, '_> {
                     faulted: self.parsed.faulted.clone(),
                 },
                 request: None,
+                unknown_command: None,
             },
         }
     }

@@ -375,7 +375,10 @@ async fn a_named_run_captures_warnings_and_writes_to_neither_stream() {
         (String::new(), String::new())
     );
     assert_eq!(process.exit_code(), None);
-    let InvocationOutcome::Completed { output, messages } = outcome else {
+    let InvocationOutcome::Completed {
+        output, messages, ..
+    } = outcome
+    else {
         panic!("the named run completed");
     };
     assert_eq!(

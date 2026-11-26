@@ -905,7 +905,10 @@ async fn an_invocation_by_name_captures_plain_text_under_force_color_and_a_decla
             Some(process as _),
         )
         .await;
-    let InvocationOutcome::Completed { output, messages } = outcome else {
+    let InvocationOutcome::Completed {
+        output, messages, ..
+    } = outcome
+    else {
         panic!("the invocation completes");
     };
     assert_eq!(

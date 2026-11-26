@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::__private::RunState;
 use crate::commands::declaration::{DeclaredResult, ResultCallKind, ViewEntry};
+use crate::failures::ExitCode;
 use crate::host::{Host, ProcessHandle};
 use crate::inputs::{Content, InputValues, Inputs, SuppliedInputs};
 use crate::inspection::{CommandGraph, CommandNode};
@@ -21,11 +22,11 @@ use crate::output::{
     View, ViewContext,
 };
 pub use crate::plugins::hooks::ReceivedReader;
-use crate::plugins::middleware::{OwnOptions, Request, Spellings, ViewSelection};
+use crate::plugins::middleware::{OwnOptions, Request, Spellings, ViewSelection, locked};
 use crate::plugins::provider::{ErasedValue, ProvidedValues, ProviderKey};
 use crate::plugins::{
     ChainOutcome, EnvironmentContext, FailureHookContext, Lifetime, MiddlewareContext, Next,
-    Provider, ProviderContext,
+    Provider, ProviderContext, UnknownCommand,
 };
 use crate::signals::RunSignal;
 use crate::style::{Palette, RenderingPolicy};
@@ -370,6 +371,10 @@ pub struct MiddlewareParts<O> {
     pub request: Option<(InputValues, Vec<String>, Option<Content>)>,
     /// How the run received its inputs.
     pub invoked_by: InvokedBy,
+    /// The unmatched word and unread tail, if stated.
+    pub unknown_command: Option<(String, Vec<String>)>,
+    /// The exit code the fixture starts with, if stated.
+    pub exit_code: Option<ExitCode>,
     /// The spelling that supplied each of the plugin's options.
     pub spellings: Vec<(String, String)>,
     /// What the rest of the chain resolves with; `None` makes `next.run()` fail with `unstated`.
@@ -390,11 +395,38 @@ pub struct MiddlewareParts<O> {
     pub identity: String,
 }
 
-/// The context and the rest of the chain a middleware receives, built from `parts` over `run`.
+/// Reads a unit middleware context's assignments after a handler consumes the context.
+#[non_exhaustive]
+pub struct MiddlewareProbe {
+    selection: Arc<Mutex<ViewSelection>>,
+    stated_exit_code: Arc<Mutex<Option<ExitCode>>>,
+}
+
+impl MiddlewareProbe {
+    /// The last assigned exit code, or `None` before any assignment.
+    #[must_use]
+    pub fn exit_code(&self) -> Option<ExitCode> {
+        *locked(&self.stated_exit_code)
+    }
+
+    /// The last assigned media type, or `None` before any assignment.
+    #[must_use]
+    pub fn media_type(&self) -> Option<String> {
+        locked(&self.selection).assigned_media_type()
+    }
+
+    /// The last assigned result transform, or `None` before any assignment.
+    #[must_use]
+    pub fn transform(&self) -> Option<ResultTransform> {
+        locked(&self.selection).assigned_transform()
+    }
+}
+
+/// The unit middleware context, its continuation, and its probe, built from `parts` over `run`.
 pub fn middleware_context<O>(
     run: &UnitRun,
     parts: MiddlewareParts<O>,
-) -> (MiddlewareContext<O>, Next) {
+) -> (MiddlewareContext<O>, Next, MiddlewareProbe) {
     let validated = parts.own_options.option_names();
     // A view a test states is the default of a result that holds it, so a selection reads back
     // whatever name the middleware assigns, and no boundary checks it.
@@ -417,6 +449,9 @@ pub fn middleware_context<O>(
             passthrough,
             stdin,
         }),
+        unknown_command: parts
+            .unknown_command
+            .map(|(word, rest)| Arc::new(UnknownCommand { word, rest })),
         invoked_by: parts.invoked_by,
         host: run.host(),
         out: run.out(Channel::plain()),
@@ -425,6 +460,7 @@ pub fn middleware_context<O>(
         run: Arc::clone(&run.state),
         globals: parts.globals,
         selection: Arc::new(Mutex::new(ViewSelection::for_unit_context(result))),
+        stated_exit_code: Arc::new(Mutex::new(parts.exit_code)),
         identity: Arc::from(parts.identity.as_str()),
     };
     if let Some(media_type) = parts.media_type {
@@ -434,7 +470,11 @@ pub fn middleware_context<O>(
         context.set_transform(transform);
     }
     let next = Next::stated(parts.outcome.ok_or(parts.unstated));
-    (context, next)
+    let probe = MiddlewareProbe {
+        selection: Arc::clone(&context.selection),
+        stated_exit_code: Arc::clone(&context.stated_exit_code),
+    };
+    (context, next, probe)
 }
 
 /// The facts a failure hook context reads.

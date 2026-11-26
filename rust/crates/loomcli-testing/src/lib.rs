@@ -10,6 +10,8 @@ mod hook_values;
 pub mod key;
 mod mock;
 
+pub use loomcli_core::__private::unit::MiddlewareProbe;
+
 pub use contexts::{
     ActionValues, EnvironmentValues, FailureHookValues, MiddlewareValues, ProviderValues,
     ViewValues, action_context, environment_context, failure_hook_context, file_content,

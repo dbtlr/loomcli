@@ -23,7 +23,9 @@ pub use hooks::{
     AttachedCommand, AttachedViews, EnvironmentAdditions, EnvironmentContext, FailureHookContext,
     Hints, IntoHints,
 };
-pub use middleware::{ChainOutcome, MiddlewareContext, Next, OwnOptions, Request, Spellings};
+pub use middleware::{
+    ChainOutcome, MiddlewareContext, Next, OwnOptions, Request, Spellings, UnknownCommand,
+};
 pub use plugin::{Activation, AnyPlugin, NoOptions, Plugin};
 pub(crate) use provider::check_uses;
 pub use provider::{

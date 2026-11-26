@@ -58,7 +58,7 @@ use crate::support::BoxFuture;
 use super::chain::{ChainRun, run_chain};
 use super::lower::{NamedCall, lower_invocation};
 use super::parse::parse_invocation;
-use super::prepare::{Run, prepare_dispatch};
+use super::prepare::{Prepared, Run, prepare_dispatch};
 use super::{InvocationOutcome, InvocationValues, InvokeFailure, InvokeOptions, InvokedBy};
 use crate::plugins::middleware::{FailureSelection, ViewSelection, locked};
 
@@ -122,7 +122,7 @@ impl Drop for Entered {
 /// How one run ended, which `run()` reads the code of and `invoke()` builds its outcome from.
 pub(crate) enum RunEnd {
     Cancelled(ExitCode),
-    Completed,
+    Completed(ExitCode),
     Failed {
         exit_code: FailureExitCode,
         failure: Error,
@@ -134,8 +134,7 @@ pub(crate) enum RunEnd {
 impl RunEnd {
     fn code(&self) -> ExitCode {
         match self {
-            RunEnd::Cancelled(code) => *code,
-            RunEnd::Completed => ExitCode::SUCCESS,
+            RunEnd::Cancelled(code) | RunEnd::Completed(code) => *code,
             RunEnd::Failed { exit_code, .. } => ExitCode::from(*exit_code),
         }
     }
@@ -401,7 +400,11 @@ impl<M: Send + 'static> Call<M> {
         let messages = sinks.stderr.text();
         match end {
             RunEnd::Cancelled(exit_code) => InvocationOutcome::Cancelled { exit_code },
-            RunEnd::Completed => InvocationOutcome::Completed { output, messages },
+            RunEnd::Completed(exit_code) => InvocationOutcome::Completed {
+                exit_code,
+                output,
+                messages,
+            },
             RunEnd::Failed {
                 exit_code,
                 failure,
@@ -812,7 +815,7 @@ async fn run_body(
     graph_source: GraphSource,
     substitutes: Arc<[AnyProvider]>,
     reached: &mut Reached,
-) -> Result<(), Error> {
+) -> Result<ExitCode, Error> {
     let Body {
         application,
         host,
@@ -874,22 +877,23 @@ async fn run_body(
     };
     reached.declared = true;
     if signal.is_cancelled() {
-        return Ok(());
+        return Ok(ExitCode::SUCCESS);
     }
-    // Steps 9 and 10: routing raises an unknown Command at once; parsing holds every other fault.
-    // An invocation by name lowers its values into what parsing produces.
+    // Steps 9 and 10: routing holds an unknown command before parsing or lowering inputs.
     let parsed = match &call {
-        None => parse_invocation(&link.grammar, &host.argv).map_err(|failure| {
-            output.set_route(failure.path);
-            failure.error
-        })?,
-        Some(call) => lower_invocation(&link.grammar, call)?,
+        None => parse_invocation(&link.grammar, &host.argv),
+        Some(call) => lower_invocation(&link.grammar, call),
     };
-    output.set_route(parsed.path.clone());
+    let (routed, path) = match &parsed {
+        Ok(parsed) => (parsed.command, parsed.path.clone()),
+        Err(held) => (held.command, held.path.clone()),
+    };
+    output.set_route(path.clone());
     let selection = Arc::new(Mutex::new(ViewSelection::starting(
-        application
-            .root
-            .at(&parsed.path)
+        parsed
+            .as_ref()
+            .ok()
+            .and_then(|parsed| application.root.at(&parsed.path))
             .and_then(crate::commands::declaration::CommandDeclaration::result),
         start_view,
     )));
@@ -914,28 +918,32 @@ async fn run_body(
         place: place.clone(),
         calls: Some(calls),
     });
-    let command = Arc::clone(&parsed.command.node);
-    let path = parsed.path.clone();
+    let command = Arc::clone(&routed.node);
     // Steps 11 to 13: the input sources fill the parsed values, interaction settles, and
     // validation runs, every fault held for the dispatch boundary.
     let cancelled = || signal.is_cancelled();
-    let mut prepared = prepare_dispatch(
-        &Run {
-            application,
-            graph: &graph,
-            host,
-            state: &state,
-            declared: &declared,
-            invoked_by,
-            cancelled: &cancelled,
-        },
-        parsed,
-    )
-    .await;
+    let mut prepared = match parsed {
+        Ok(parsed) => {
+            prepare_dispatch(
+                &Run {
+                    application,
+                    graph: &graph,
+                    host,
+                    state: &state,
+                    declared: &declared,
+                    invoked_by,
+                    cancelled: &cancelled,
+                },
+                parsed,
+            )
+            .await
+        }
+        Err(held) => Prepared::unknown_command(held),
+    };
     reached.received = prepared.received.take().map(Arc::new);
     // Steps 14 to 18: activation, the chain in installation order, the dispatch boundary, and the
     // unwind.
-    run_chain(
+    let completed = run_chain(
         ChainRun {
             application,
             graph: &graph,
@@ -953,7 +961,7 @@ async fn run_body(
     // The chain has unwound, so every region a middleware or a source left open closes.
     output.close_regions(RegionCloser::Completion, None);
     output.flush().await;
-    Ok(())
+    Ok(completed)
 }
 
 /// Environment preparation: each installed plugin's `on_environment` hook, in installation order,
@@ -1077,11 +1085,12 @@ async fn settle(
     scene: &Scene<'_>,
     signal: &RunSignal,
     reached: &Reached,
-    outcome: Result<(), Error>,
+    outcome: Result<ExitCode, Error>,
 ) -> RunEnd {
     let output = scene.output();
     let cancelled = || signal.exit_code().filter(|_| reached.declared);
-    let mut code = ExitCode::SUCCESS;
+    let completion_code = outcome.as_ref().copied().unwrap_or(ExitCode::SUCCESS);
+    let mut failure_code = None;
     let mut reports = Reports {
         development: scene.development(),
         generic: false,
@@ -1105,13 +1114,13 @@ async fn settle(
             translated
         };
         let failure = to_failure(error);
-        code = ExitCode::from(failure.exit_code());
+        failure_code = Some(failure.exit_code());
         let mut form = None;
         if (answered || output.failed().is_none()) && !silenced {
             let (broken, reported) = report(scene, reached, &*failure, &mut reports).await;
             form = Some(reported);
             if broken {
-                code = forced();
+                failure_code = Some(forced());
             }
         }
         decisive = Some((failure, form));
@@ -1129,11 +1138,11 @@ async fn settle(
             broken = report_broke;
         }
         if decisive.is_none() {
-            code = ExitCode::from(failure.exit_code());
+            failure_code = Some(failure.exit_code());
             decisive = Some((failure, form));
         }
         if broken {
-            code = forced();
+            failure_code = Some(forced());
         }
     }
     // A run no report reached, such as a cancelled one, writes its held lines now, and a line
@@ -1142,13 +1151,13 @@ async fn settle(
         && decisive.is_none()
     {
         let failure = to_failure(fault);
-        code = ExitCode::from(failure.exit_code());
+        failure_code = Some(failure.exit_code());
         let mut form = None;
         if output.failed().is_none() {
             let (broken, reported) = report(scene, reached, &*failure, &mut reports).await;
             form = Some(reported);
             if broken {
-                code = forced();
+                failure_code = Some(forced());
             }
         }
         decisive = Some((failure, form));
@@ -1157,13 +1166,13 @@ async fn settle(
         let failure: Box<dyn Failure> = Box::new(foreign_failure(thrown));
         let (_, reported) = report(scene, reached, &*failure, &mut reports).await;
         // After a primary outcome that succeeded, the hook's failure decides the run.
-        if code == ExitCode::SUCCESS {
+        if failure_code.is_none() {
             decisive = Some((failure, Some(reported)));
         }
-        code = forced();
+        failure_code = Some(forced());
     }
     if !answered && let Some(cause) = output.failed() {
-        code = forced();
+        failure_code = Some(forced());
         let defect = InternalError::new(
             rules::BROKEN_DESTINATION,
             DiagnosticParts::new("Could not write invocation output.").correction(
@@ -1183,10 +1192,10 @@ async fn settle(
         }
     }
     // A region nothing closed yet, such as one a run whose stdout broke left open, closes here.
-    let closer = if code == ExitCode::SUCCESS {
-        RegionCloser::Completion
-    } else {
+    let closer = if failure_code.is_some() {
         RegionCloser::Failure
+    } else {
+        RegionCloser::Completion
     };
     output.close_regions(closer, None);
     output.flush().await;
@@ -1194,8 +1203,8 @@ async fn settle(
     if let Some(cancelled) = cancelled() {
         return RunEnd::Cancelled(cancelled);
     }
-    let Some(exit_code) = FailureExitCode::of(code) else {
-        return RunEnd::Completed;
+    let Some(exit_code) = failure_code else {
+        return RunEnd::Completed(completion_code);
     };
     let (failure, form) = decisive.unwrap_or_else(|| {
         // A forced code with no failure of its own cannot arise: every path that forces one
@@ -1218,8 +1227,8 @@ async fn settle(
 }
 
 /// The code a broken view, encoder, hook, or destination forces.
-fn forced() -> ExitCode {
-    ExitCode::from(crate::failures::FailureExitCode::new(1))
+fn forced() -> FailureExitCode {
+    FailureExitCode::new(1)
 }
 
 /// One failure's form with these hints, which its log event and an encoder read.

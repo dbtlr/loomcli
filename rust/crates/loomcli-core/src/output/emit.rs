@@ -349,6 +349,7 @@ struct WriteQueue {
     detached: VecDeque<u64>,
     draining: bool,
     end: Option<ShutdownCause>,
+    shutdown_stdout: Option<ShutdownStdout>,
     post_end_log: bool,
 }
 
@@ -394,12 +395,19 @@ impl Drop for WritePlace<'_> {
 
 /// Keeps writes queued during the end behind the draining writes, even on an embedding host
 /// that keeps its runtime alive after the exit event.
-struct EndDrain<'a>(&'a Output);
+struct EndDrain<'a> {
+    output: &'a Output,
+    stdout: Option<ShutdownStdout>,
+}
 
 impl Drop for EndDrain<'_> {
     fn drop(&mut self) {
-        locked(&self.0.queue).draining = false;
-        self.0.end_flushed.notify_waiters();
+        {
+            let mut queue = locked(&self.output.queue);
+            queue.shutdown_stdout = self.stdout.take();
+            queue.draining = false;
+        }
+        self.output.end_flushed.notify_waiters();
     }
 }
 
@@ -619,13 +627,15 @@ impl Output {
             queue.detached.clear();
             std::mem::take(&mut queue.pending)
         };
-        let drain = EndDrain(self);
-        let mut stdout = matches!(cause, ShutdownCause::Signal(_)).then(ShutdownStdout::default);
+        let mut drain = EndDrain {
+            output: self,
+            stdout: matches!(cause, ShutdownCause::Signal(_)).then(ShutdownStdout::default),
+        };
         let mut closed = Vec::new();
         for (_, mut work) in pending {
             let measure = self.stderr_tty.then(|| self.measure());
             for (stream, text) in self.parts(work.stream, work.job, measure.as_ref()) {
-                self.send_at_end(stream, &text, stdout.as_mut());
+                self.send_at_end(stream, &text, drain.stdout.as_mut());
             }
             closed.extend(work.close.take());
         }
@@ -635,7 +645,7 @@ impl Output {
             self.send_at_end(
                 Stream::Stderr,
                 &format!("{text}{}", self.cursor_shown()),
-                stdout.as_mut(),
+                drain.stdout.as_mut(),
             );
         }
         for work in closed {
@@ -649,7 +659,7 @@ impl Output {
     /// drain. The terminal's last frame is already on screen and the cursor is visible.
     fn flush_after_end(&self) {
         loop {
-            let (pending, cause) = {
+            let (pending, mut drain) = {
                 let mut queue = locked(&self.queue);
                 if queue.draining || !queue.post_end_log {
                     return;
@@ -657,14 +667,15 @@ impl Output {
                 queue.post_end_log = false;
                 queue.draining = true;
                 queue.detached.clear();
-                (std::mem::take(&mut queue.pending), queue.end)
+                let drain = EndDrain {
+                    output: self,
+                    stdout: queue.shutdown_stdout.take(),
+                };
+                (std::mem::take(&mut queue.pending), drain)
             };
-            let _drain = EndDrain(self);
-            let mut stdout =
-                matches!(cause, Some(ShutdownCause::Signal(_))).then(ShutdownStdout::default);
             for (_, work) in pending {
                 for (stream, text) in self.parts(work.stream, work.job, None) {
-                    self.send_at_end(stream, &text, stdout.as_mut());
+                    self.send_at_end(stream, &text, drain.stdout.as_mut());
                 }
                 if let Some(close) = work.close {
                     wake_close(close, Ok(()));

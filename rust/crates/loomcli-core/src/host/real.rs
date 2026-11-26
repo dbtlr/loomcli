@@ -441,24 +441,34 @@ impl ShutdownStdout {
         if !is_process_stdout(stream) {
             return false;
         }
-        self.stalled = self.stalled || try_write_stdout(bytes).is_err();
+        self.stalled = self.stalled || write_shutdown_stdout(bytes).is_err();
         true
     }
 }
 
-fn try_write_stdout(bytes: &[u8]) -> io::Result<()> {
-    let _write = match STDOUT_WRITE.try_lock() {
-        Ok(guard) => guard,
-        Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
-        Err(std::sync::TryLockError::WouldBlock) => return Err(io::ErrorKind::WouldBlock.into()),
-    };
+fn write_shutdown_stdout(bytes: &[u8]) -> io::Result<()> {
     let stdout = io::stdout();
     #[cfg(unix)]
-    if rustix::fs::FileType::from_raw_mode(rustix::fs::fstat(&stdout)?.st_mode)
-        == rustix::fs::FileType::Fifo
     {
-        return write_shutdown_pipe(&stdout, bytes);
+        use rustix::fs::{FileType, fstat};
+        use std::sync::TryLockError;
+
+        let kind = FileType::from_raw_mode(fstat(&stdout)?.st_mode);
+        if matches!(kind, FileType::Fifo | FileType::Socket) {
+            let _write = match STDOUT_WRITE.try_lock() {
+                Ok(guard) => guard,
+                Err(TryLockError::Poisoned(error)) => error.into_inner(),
+                Err(TryLockError::WouldBlock) => return Err(io::ErrorKind::WouldBlock.into()),
+            };
+            if kind == FileType::Fifo {
+                return write_shutdown_pipe(&stdout, bytes);
+            }
+            return write_until_blocked(bytes, |bytes| {
+                rustix::net::send(&stdout, bytes, rustix::net::SendFlags::DONTWAIT)
+            });
+        }
     }
+    let _write = locked(&STDOUT_WRITE);
     let mut stdout = stdout.lock();
     stdout.write_all(bytes)?;
     stdout.flush()
@@ -466,29 +476,36 @@ fn try_write_stdout(bytes: &[u8]) -> io::Result<()> {
 
 #[cfg(unix)]
 fn write_shutdown_pipe(stdout: &io::Stdout, bytes: &[u8]) -> io::Result<()> {
-    use rustix::fs::{OFlags, fcntl_getfl};
+    use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};
 
-    if fcntl_getfl(stdout)?.contains(OFlags::NONBLOCK) {
-        return write_nonblocking(stdout, bytes);
+    let flags = fcntl_getfl(stdout)?;
+    let write = || write_until_blocked(bytes, |bytes| rustix::io::write(stdout, bytes));
+    if flags.contains(OFlags::NONBLOCK) {
+        return write();
     }
     #[cfg(target_os = "linux")]
-    {
-        // Reopen the pipe rather than changing the inherited file description's flags.
-        let pipe = rustix::fs::open(
-            "/proc/self/fd/1",
-            OFlags::WRONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            rustix::fs::Mode::empty(),
-        )?;
-        write_nonblocking(&pipe, bytes)
+    // Reopening the pipe leaves its inherited file description's flags alone.
+    if let Ok(pipe) = rustix::fs::open(
+        "/proc/self/fd/1",
+        OFlags::WRONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    ) {
+        return write_until_blocked(bytes, |bytes| rustix::io::write(&pipe, bytes));
     }
-    #[cfg(not(target_os = "linux"))]
-    Err(io::ErrorKind::WouldBlock.into())
+
+    fcntl_setfl(stdout, flags | OFlags::NONBLOCK)?;
+    let written = write();
+    let restored = fcntl_setfl(stdout, flags).map_err(io::Error::from);
+    written.and(restored)
 }
 
 #[cfg(unix)]
-fn write_nonblocking(fd: &impl std::os::fd::AsFd, mut bytes: &[u8]) -> io::Result<()> {
+fn write_until_blocked(
+    mut bytes: &[u8],
+    mut write: impl FnMut(&[u8]) -> rustix::io::Result<usize>,
+) -> io::Result<()> {
     while !bytes.is_empty() {
-        match rustix::io::write(fd, bytes) {
+        match write(bytes) {
             Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
             Ok(written) => bytes = &bytes[written..],
             Err(error) => return Err(error.into()),

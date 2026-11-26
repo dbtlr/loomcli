@@ -145,7 +145,9 @@ fn call_result(outcome: InvocationOutcome<FailedCall>, view: Option<&str>) -> To
             })),
             is_error: true,
         },
-        InvocationOutcome::Completed { output, messages } => {
+        InvocationOutcome::Completed {
+            output, messages, ..
+        } => {
             // The output parsed as JSON, or nothing when it does not parse: a media type is a
             // promise core never checks.
             let structured_content = view.and_then(|_| serde_json::from_str(&output).ok());

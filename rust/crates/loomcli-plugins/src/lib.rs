@@ -28,6 +28,8 @@ pub mod completion;
 pub mod config;
 #[cfg(feature = "dotenv")]
 pub mod dotenv;
+#[cfg(feature = "external-commands")]
+pub mod external_commands;
 #[cfg(any(feature = "format", feature = "format-views"))]
 pub mod format;
 // The JSON text the formatter's views and the manifest write: `JSON.stringify`'s bytes. The manifest

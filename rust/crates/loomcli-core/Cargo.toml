@@ -34,7 +34,7 @@ tokio = { workspace = true, features = ["macros", "rt", "time"] }
 tokio-util = { workspace = true }
 
 [target.'cfg(unix)'.dev-dependencies]
-rustix = { workspace = true, features = ["fs"] }
+rustix = { workspace = true, features = ["fs", "pipe", "pty"] }
 
 # The real-process shutdown test runs itself again as the probe it signals, so it has its own main.
 [[test]]

@@ -337,17 +337,24 @@ async fn a_middleware_takes_over_the_root_group_and_a_group_without_the_callable
 }
 
 #[tokio::test]
-async fn an_unknown_command_fails_in_routing_before_any_middleware_runs() {
+async fn an_unknown_command_runs_the_always_middleware_and_fails_at_the_boundary() {
     let loaded = calls();
     let app = fixture(plugins(vec![
         wrapper("outer", &loaded),
         wrapper("inner", &loaded),
     ]));
+    let sentence = "Unknown command \"nope\". Use one of: get, cache.";
     assert_eq!(
         ran(&app, &["nope"], &[]).await,
-        support::usage("app: Unknown command \"nope\". Use one of: get, cache.")
+        Ran {
+            status: 2,
+            stdout: String::new(),
+            stderr: format!(
+                "ℹ outer:start\nℹ inner:start\nℹ inner:rejected:{sentence}\nℹ inner:cleanup\nℹ outer:rejected:{sentence}\nℹ outer:cleanup\napp: {sentence}\n"
+            ),
+        }
     );
-    assert!(recorded(&loaded).is_empty());
+    assert_eq!(recorded(&loaded), ["loaded:outer", "loaded:inner"]);
 }
 
 #[tokio::test]
@@ -1653,7 +1660,8 @@ async fn a_run_cancelled_mid_chain_never_reaches_the_boundary_and_raises_no_held
     let token = tokio_util::sync::CancellationToken::new();
     let cancel = token.clone();
     let canceller =
-        Plugin::new("@fixture/canceller").middleware(Activation::Always, move |_, next| {
+        Plugin::new("@fixture/canceller").middleware(Activation::Always, move |ctx, next| {
+            ctx.set_exit_code(loomcli_core::ExitCode::new(77));
             cancel.cancel();
             async move { next.run().await.map(|_| ()) }
         });

@@ -41,6 +41,7 @@ completion = ["installation", "dep:rustix"]
 # The configuration plugin reads TOML through toml and YAML 1.2 through saphyr-parser.
 config = ["config-extension", "dep:toml", "dep:saphyr-parser"]
 dotenv = []
+external-commands = ["dep:rustix"]
 format = ["format-views"]
 # Help supplies its details and examples to the manifest's collecting extension.
 help = ["help-extension", "help-views", "manifest-extension"]
@@ -85,7 +86,7 @@ rule = []
 step = []
 table = []
 
-# The completion plugin asks the system whether the process may write or run a path, as access(2) does.
+# Completion and external commands ask the system whether the process may write or run a path.
 [target.'cfg(unix)'.dependencies]
 rustix = { workspace = true, features = ["fs"], optional = true }
 

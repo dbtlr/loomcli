@@ -802,7 +802,9 @@ impl Run {
             )
             .await;
         match outcome {
-            InvocationOutcome::Completed { output, messages } => (None, output, messages),
+            InvocationOutcome::Completed {
+                output, messages, ..
+            } => (None, output, messages),
             InvocationOutcome::Failed {
                 exit_code,
                 output,

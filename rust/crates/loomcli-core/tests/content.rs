@@ -455,7 +455,10 @@ async fn a_named_content_argument_checks_a_path_and_hands_its_action_a_lazy_file
             Some(mock_process(MockFields::new().cwd(&root)) as _),
         )
         .await;
-    let loomcli_core::InvocationOutcome::Completed { output, messages } = outcome else {
+    let loomcli_core::InvocationOutcome::Completed {
+        output, messages, ..
+    } = outcome
+    else {
         panic!("the call completes");
     };
     assert_eq!(messages, "");

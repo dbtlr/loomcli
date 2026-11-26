@@ -1,4 +1,4 @@
-//! The facts a held or raised parse fault carries, and the path routing reached, which the reference
+//! The facts a held parse fault carries, and the path routing reached, which the reference
 //! reads through a failure view: `parse.test.ts`, `rebind-classes.test.ts`, `failures.test.ts`,
 //! `hidden.test.ts`, `counted-options.test.ts`, and `implied-values.test.ts`. The bytes each fault
 //! writes are asserted end to end in `tests/parse.rs` and `tests/routing.rs`.
@@ -63,8 +63,8 @@ fn facts(path: &[String], error: &Error) -> Value {
     Value::Object(facts)
 }
 
-/// The facts of the fault an invocation raises or holds, with the path routing reached: the
-/// unknown Command routing raised, else the held structural fault, else a group's missing
+/// The facts of the fault an invocation holds, with the path routing reached: an unknown
+/// Command, else the first structural fault, else a group's missing
 /// subcommand.
 fn held(app: &App, argv: &[&str]) -> Value {
     let graph = app
@@ -72,7 +72,7 @@ fn held(app: &App, argv: &[&str]) -> Value {
         .unwrap_or_else(|fault| panic!("{}", fault.message()));
     let argv: Vec<String> = argv.iter().map(|word| (*word).to_owned()).collect();
     match parse_invocation(&graph.link.grammar, &argv) {
-        Err(failure) => facts(&failure.path, &failure.error),
+        Err(failure) => facts(&failure.path, &failure.error()),
         Ok(parsed) => match parsed.fault {
             Some(fault) => facts(&parsed.path, &fault),
             None if parsed.command.action.is_none() => facts(

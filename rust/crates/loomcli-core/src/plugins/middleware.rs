@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use crate::commands::declaration::DeclaredResult;
 use crate::diagnostics::{DiagnosticParts, rules};
 use crate::failures::messages::{quoted, routed_subject};
-use crate::failures::{Error, InternalError};
+use crate::failures::{Error, ExitCode, InternalError};
 use crate::host::Host;
 use crate::inputs::{Content, FromInputValue, InputValues};
 use crate::inspection::{CommandGraph, CommandNode};
@@ -137,22 +137,34 @@ impl OwnOptions {
     }
 }
 
+/// The unmatched command word and the words routing left unread.
+#[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct UnknownCommand {
+    /// The unmatched word as supplied in argv or the named path.
+    pub word: String,
+    /// Every argv word or named path element after it, in order.
+    pub rest: Vec<String>,
+}
+
 /// What a middleware receives. `O` is its plugin's options struct.
 #[non_exhaustive]
 pub struct MiddlewareContext<O> {
     /// Every global option's validated value; `None` when a global option has a structural fault or
-    /// a validation problem, or a source failed.
+    /// a validation problem, a source failed, or routing held an unknown command.
     pub options: Option<O>,
-    /// The plugin's own options that validated, under any held fault.
+    /// The plugin's own options that validated. Empty when routing held an unknown command.
     pub own_options: OwnOptions,
     /// The spellings that supplied the plugin's own options.
     pub spellings: Spellings,
     /// The built graph.
     pub graph: Arc<CommandGraph>,
-    /// The routed node.
+    /// The last node routing reached.
     pub command: Arc<CommandNode>,
     /// The routed invocation; `None` under a held fault and on a group.
     pub request: Option<Request>,
+    /// The unmatched word and unread tail while the chain holds an unknown command.
+    pub unknown_command: Option<Arc<UnknownCommand>>,
     /// Whether this run received argv or an invocation by name.
     pub invoked_by: InvokedBy,
     /// The host: one `Arc` per run, shared with the run's source, providers, and action.
@@ -169,6 +181,7 @@ pub struct MiddlewareContext<O> {
     pub(crate) globals: InputValues,
     /// The run's one view selection.
     pub(crate) selection: Arc<Mutex<ViewSelection>>,
+    pub(crate) stated_exit_code: Arc<Mutex<Option<ExitCode>>>,
     /// The plugin whose middleware this is.
     pub(crate) identity: Arc<str>,
 }
@@ -182,6 +195,7 @@ pub(crate) struct ChainCall {
     pub(crate) graph: Arc<CommandGraph>,
     pub(crate) command: Arc<CommandNode>,
     pub(crate) request: Option<Request>,
+    pub(crate) unknown_command: Option<Arc<UnknownCommand>>,
     pub(crate) invoked_by: InvokedBy,
     pub(crate) host: Arc<Host>,
     pub(crate) out: Out,
@@ -189,6 +203,7 @@ pub(crate) struct ChainCall {
     pub(crate) log: Log,
     pub(crate) run: Arc<crate::__private::RunState>,
     pub(crate) selection: Arc<Mutex<ViewSelection>>,
+    pub(crate) stated_exit_code: Arc<Mutex<Option<ExitCode>>>,
     pub(crate) identity: Arc<str>,
 }
 
@@ -206,6 +221,7 @@ impl<O: crate::inputs::Inputs> MiddlewareContext<O> {
             graph: call.graph,
             command: call.command,
             request: call.request,
+            unknown_command: call.unknown_command,
             invoked_by: call.invoked_by,
             host: call.host,
             out: call.out,
@@ -214,12 +230,25 @@ impl<O: crate::inputs::Inputs> MiddlewareContext<O> {
             run: call.run,
             globals: call.globals,
             selection: call.selection,
+            stated_exit_code: call.stated_exit_code,
             identity: call.identity,
         }
     }
 }
 
 impl<O> MiddlewareContext<O> {
+    /// The last exit code any middleware assigned, or `None` until the first assignment.
+    #[must_use]
+    pub fn exit_code(&self) -> Option<ExitCode> {
+        *locked(&self.stated_exit_code)
+    }
+
+    /// Sets the completion code for a takeover. The last assignment before the chain settles
+    /// wins. A dispatched action, unhandled failure, or cancellation keeps its own outcome.
+    pub fn set_exit_code(&self, code: ExitCode) {
+        *locked(&self.stated_exit_code) = Some(code);
+    }
+
     /// The view the result renders through: the declaration's default until a middleware selects
     /// one, and `None` on a Command that declares no result.
     pub fn view(&self) -> Option<String> {
@@ -257,10 +286,7 @@ impl<O> MiddlewareContext<O> {
     /// The assigned result transform, if a middleware has selected one for this run.
     #[must_use]
     pub fn transform(&self) -> Option<ResultTransform> {
-        locked(&self.selection)
-            .transform
-            .as_ref()
-            .map(|(_, transform)| transform.clone())
+        locked(&self.selection).assigned_transform()
     }
 
     /// Sets the transform used before rendering the selected result view.
@@ -381,10 +407,16 @@ impl ViewSelection {
         )
     }
 
-    fn assigned_media_type(&self) -> Option<String> {
+    pub(crate) fn assigned_media_type(&self) -> Option<String> {
         self.media_type
             .as_ref()
             .map(|(_, media_type)| media_type.clone())
+    }
+
+    pub(crate) fn assigned_transform(&self) -> Option<ResultTransform> {
+        self.transform
+            .as_ref()
+            .map(|(_, transform)| transform.clone())
     }
 
     /// The selection a failure reads: the last assignment, else the default, the rule the boundary
