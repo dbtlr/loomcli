@@ -32,15 +32,20 @@ fn main() {}
 
 #[cfg(unix)]
 mod probe {
+    use std::future::{Future, pending, poll_fn};
     use std::io::Write;
+    use std::pin::Pin;
+    use std::task::Poll;
 
     use loomcli_core::{
-        Activation, Application, CancellationSource, Context, EndingSignal, Plugin, Provider,
-        ProviderContext, ShutdownCause, ShutdownEvent,
+        Activation, Application, CancellationSource, Context, EndingSignal, Error, Plugin,
+        Provider, ProviderContext, RowSource, RowView, ShutdownCause, ShutdownEvent, Stream,
     };
 
     /// The variable that names the case the probe runs.
     pub const CASE: &str = "LOOMCLI_SHUTDOWN_PROBE";
+    pub const PIPE_BUDGET_MS: u32 = 300;
+    pub const LARGE_WRITE: usize = 4 * 1024 * 1024;
 
     /// One line on the real stdout, written at once, as a shell sees it.
     fn line(text: &str) {
@@ -98,8 +103,83 @@ mod probe {
             "order" => order(),
             "process-scoped" => process_scoped(),
             "closing" => closing(),
+            "stalled-stdout" => stalled_stdout(true),
+            "drained-stdout" => stalled_stdout(false),
+            "queued-stdout" => queued_stdout(false),
+            "oversized-stdout" => queued_stdout(true),
             _ => watching(case == "ignoring"),
         }
+    }
+
+    async fn start<F: Future>(mut work: Pin<&mut F>) {
+        poll_fn(|context| {
+            assert!(work.as_mut().poll(context).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+    }
+
+    fn stalled_stdout(signalled: bool) -> std::process::ExitCode {
+        use std::io::Read;
+
+        Application::new("probe")
+            .shutdown_timeout(PIPE_BUDGET_MS)
+            .action(move |ctx: Context| async move {
+                let out = ctx.out.clone();
+                let runtime = tokio::runtime::Handle::current();
+                // The action can queue more output while an earlier write fills the pipe.
+                let writer = std::thread::spawn(move || {
+                    runtime.block_on(out.print(&"x".repeat(LARGE_WRITE)))
+                });
+                // The parent releases us after it has seen the write start on stdout.
+                std::io::stdin().read_exact(&mut [0]).unwrap();
+                let mut queued = std::pin::pin!(ctx.out.print("pending stdout"));
+                start(queued.as_mut()).await;
+                let _kept = ctx.on_shutdown(|event| eprintln!("{}", described("handler", event)));
+                eprintln!("ready");
+                if !signalled {
+                    queued.await?;
+                    return writer.join().unwrap();
+                }
+                pending().await
+            })
+            .main()
+    }
+
+    /// Holds stdout's queue turn without writing to the pipe.
+    struct WaitingRows;
+
+    impl Stream for WaitingRows {
+        type Item = Result<(), Error>;
+
+        fn poll_next(
+            self: Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> Poll<Option<Self::Item>> {
+            Poll::Pending
+        }
+    }
+
+    fn queued_stdout(oversized: bool) -> std::process::ExitCode {
+        Application::new("probe")
+            .shutdown_timeout(PIPE_BUDGET_MS)
+            .action(move |ctx: Context| async move {
+                let rows = RowSource::stream(WaitingRows);
+                let view = RowView::new(|_: &(), _, _| String::new());
+                let mut sequence = std::pin::pin!(ctx.out.render(rows, &view));
+                start(sequence.as_mut()).await;
+                let text = if oversized {
+                    "x".repeat(LARGE_WRITE)
+                } else {
+                    "pending stdout".to_owned()
+                };
+                let mut queued = std::pin::pin!(ctx.out.print(&text));
+                start(queued.as_mut()).await;
+                let _kept = ctx.on_shutdown(|event| eprintln!("{}", described("handler", event)));
+                eprintln!("ready");
+                pending().await
+            })
+            .main()
     }
 
     /// An application whose action holds a process-scoped handler and ends normally.
@@ -210,9 +290,9 @@ mod probe {
 
 #[cfg(unix)]
 mod parent {
-    use std::io::{BufRead, BufReader, Read};
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::os::unix::process::ExitStatusExt;
-    use std::process::{Command, Stdio};
+    use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio};
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
 
@@ -396,8 +476,118 @@ mod parent {
         );
     }
 
+    fn stdout_probe(case: &str, in_flight: bool) -> (Child, ChildStdout, BufReader<ChildStderr>) {
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .env(super::probe::CASE, case)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdout = child.stdout.take().unwrap();
+        let mut stderr = BufReader::new(child.stderr.take().unwrap());
+        let mut stdin = child.stdin.take().unwrap();
+        let (sender, ready) = mpsc::channel();
+        let reading = std::thread::spawn(move || {
+            if in_flight {
+                let mut first = [0];
+                stdout.read_exact(&mut first).unwrap();
+                assert_eq!(first, *b"x");
+                stdin.write_all(b"1").unwrap();
+            }
+            let mut line = String::new();
+            stderr.read_line(&mut line).unwrap();
+            sender.send(line).unwrap();
+            (stdout, stderr)
+        });
+        let announced = ready.recv_timeout(Duration::from_secs(30));
+        if announced.as_deref() != Ok("ready\n") {
+            let _ = child.kill();
+            child.wait().unwrap();
+            panic!("the probe never queued its pending write: {announced:?}");
+        }
+        let (stdout, stderr) = reading.join().unwrap();
+        (child, stdout, stderr)
+    }
+
+    fn wait_for_probe(child: &mut Child, timeout: Duration, failure: &str) -> ExitStatus {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                return status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                child.wait().unwrap();
+                panic!("{failure}");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn signal_stdout_probe(case: &str, signal: Signal, name: &str) -> Vec<u8> {
+        let (mut child, mut stdout, mut stderr) = stdout_probe(case, case == "stalled-stdout");
+        let number = signal.as_raw();
+        let budget = Duration::from_millis(u64::from(super::probe::PIPE_BUDGET_MS));
+        let sent = Instant::now();
+        kill_process(Pid::from_child(&child), signal).unwrap();
+        let status = wait_for_probe(
+            &mut child,
+            budget + Duration::from_secs(2),
+            &format!("the {case} probe outlived its shutdown budget after {name}"),
+        );
+        assert_eq!(status.signal(), Some(number), "{name}: {status}");
+        assert!(sent.elapsed() >= budget.saturating_sub(Duration::from_millis(50)));
+
+        // Keep the reader open and stalled until after the child's re-raise.
+        let mut rest = Vec::new();
+        stdout.read_to_end(&mut rest).unwrap();
+        let mut report = String::new();
+        stderr.read_to_string(&mut report).unwrap();
+        assert_eq!(report, format!("handler:{name}:{}\n", 128 + number));
+        rest
+    }
+
+    fn signals_end_the_process_when_the_stdout_reader_stalls() {
+        for (signal, name) in [(Signal::TERM, "SIGTERM"), (Signal::INT, "SIGINT")] {
+            let stdout = signal_stdout_probe("stalled-stdout", signal, name);
+            assert!(stdout.iter().all(|byte| *byte == b'x'));
+        }
+    }
+
+    fn shutdown_does_not_block_on_a_fresh_stdout_write() {
+        let stdout = signal_stdout_probe("oversized-stdout", Signal::TERM, "SIGTERM");
+        assert!(stdout.len() < super::probe::LARGE_WRITE);
+        assert!(stdout.iter().all(|byte| *byte == b'x'));
+    }
+
+    #[cfg(target_os = "linux")]
+    fn shutdown_sends_queued_bytes_that_fit_in_the_stdout_pipe() {
+        let stdout = signal_stdout_probe("queued-stdout", Signal::TERM, "SIGTERM");
+        assert_eq!(stdout, b"pending stdout\n");
+    }
+
+    fn a_normal_run_finishes_queued_stdout_after_the_reader_resumes() {
+        let (mut child, mut stdout, _) = stdout_probe("drained-stdout", true);
+        let reading = std::thread::spawn(move || {
+            let mut rest = Vec::new();
+            stdout.read_to_end(&mut rest).unwrap();
+            rest
+        });
+        let status = wait_for_probe(
+            &mut child,
+            Duration::from_secs(30),
+            "the probe never finished after stdout resumed",
+        );
+        assert!(status.success(), "{status}");
+        let stdout = reading.join().unwrap();
+        let (first, rest) = stdout.split_at(super::probe::LARGE_WRITE - 1);
+        assert!(first.iter().all(|byte| *byte == b'x'));
+        assert_eq!(rest, b"\npending stdout\n");
+    }
+
     pub fn run_all() {
-        let cases: [(&str, fn()); 8] = [
+        let cases: &[(&str, fn())] = &[
             (
                 "main_and_main_async_run_a_pending_handler_at_a_normal_end",
                 main_and_main_async_run_a_pending_handler_at_a_normal_end,
@@ -429,6 +619,23 @@ mod parent {
             (
                 "a_signal_during_a_providers_close_ends_at_the_budget",
                 a_signal_during_a_providers_close_ends_at_the_budget,
+            ),
+            (
+                "signals_end_the_process_when_the_stdout_reader_stalls",
+                signals_end_the_process_when_the_stdout_reader_stalls,
+            ),
+            (
+                "shutdown_does_not_block_on_a_fresh_stdout_write",
+                shutdown_does_not_block_on_a_fresh_stdout_write,
+            ),
+            #[cfg(target_os = "linux")]
+            (
+                "shutdown_sends_queued_bytes_that_fit_in_the_stdout_pipe",
+                shutdown_sends_queued_bytes_that_fit_in_the_stdout_pipe,
+            ),
+            (
+                "a_normal_run_finishes_queued_stdout_after_the_reader_resumes",
+                a_normal_run_finishes_queued_stdout_after_the_reader_resumes,
             ),
         ];
         for (name, case) in cases {

@@ -36,7 +36,7 @@ pub(crate) struct LaneRun {
     /// Cancels the run with the signal as its source. A run already cancelled keeps its reason.
     pub(crate) cancel: Box<dyn Fn(EndingSignal) + Send + Sync>,
     /// Sends pending output to the run's streams and restores the terminal cursor.
-    pub(crate) flush: Box<dyn Fn() + Send + Sync>,
+    pub(crate) flush: Box<dyn Fn(ShutdownCause) + Send + Sync>,
     /// Whether the run keeps its lane listening: a `run()`, or a call whose outermost run is one.
     pub(crate) listens: bool,
     /// The Application's shutdown budget, in milliseconds.
@@ -524,9 +524,8 @@ impl Lane {
         }
     }
 
-    /// Ends the shutdown under way: every run's pending output reaches its streams, every
-    /// pending handler is called, newest first, core's listeners go, and the signal is re-raised on
-    /// the source, whose default action ends the process. Nothing is awaited.
+    /// Offers every run's pending output to its streams, calls the handlers newest first, removes
+    /// core's listeners, and re-raises the signal. Nothing is awaited.
     fn end(&self, signal: EndingSignal) {
         let flushes = {
             let mut state = locked(&self.state);
@@ -543,11 +542,12 @@ impl Lane {
             }
             flushes
         };
+        let cause = ShutdownCause::Signal(signal);
         for run in flushes {
-            call_caught(|| (run.flush)(), None);
+            call_caught(|| (run.flush)(cause), None);
         }
         self.call_shutdown_handlers(ShutdownEvent {
-            cause: ShutdownCause::Signal(signal),
+            cause,
             code: signal.code(),
         });
         {
@@ -582,7 +582,7 @@ impl Lane {
     fn exited(&self, code: i32) {
         let flushes = Self::unflushed(&mut locked(&self.state));
         for run in flushes {
-            call_caught(|| (run.flush)(), None);
+            call_caught(|| (run.flush)(ShutdownCause::Exit), None);
         }
         self.call_shutdown_handlers(ShutdownEvent {
             cause: ShutdownCause::Exit,
@@ -817,7 +817,7 @@ mod tests {
         let source: Arc<dyn SignalSource> = Arc::clone(&driven) as Arc<dyn SignalSource>;
         let place = lane_of(&source).enter(LaneRun {
             cancel: Box::new(|_| {}),
-            flush: Box::new(|| {}),
+            flush: Box::new(|_| {}),
             listens: true,
             timeout: 0,
         });
