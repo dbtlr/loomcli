@@ -88,6 +88,7 @@ fn fetchit(variant: &str) -> App {
         )]);
     }
     let get = Command::new("get")
+        .passthrough(loomcli_core::Passthrough::new())
         .description("Fetch one URL.")
         .option(
             "field",

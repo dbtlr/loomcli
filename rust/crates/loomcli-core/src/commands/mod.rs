@@ -7,6 +7,7 @@
 //! `views()`.
 
 pub(crate) mod declaration;
+mod messages;
 mod state;
 
 use std::future::Future;
@@ -15,15 +16,14 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use crate::inputs::{ArgumentDecl, Inputs, NoInputs, OptionDecl, Shape, Stdin};
+use crate::inputs::{ArgumentDecl, Inputs, NoInputs, OptionDecl, Stdin};
 use crate::invocation::{Context, Outcome};
 use crate::output::{NoResult, ResultViews, RowViews, RowsResult, ValueResult};
 use crate::plugins::{AnyProvider, CommandTarget, ExtensionValue};
 use crate::support::IntoList;
 
 pub use state::{
-    CarriesResult, Configuring, Done, Fresh, Group, Leaf, NoResultYet, Open, State, TakesArguments,
-    TakesChildren, TakesGlobals,
+    CarriesResult, Configuring, Done, Fresh, Group, NoResultYet, Open, State, TakesGlobals,
 };
 
 /// A named Command.
@@ -162,6 +162,28 @@ impl<I, R, S: State> Command<I, R, S> {
         command.retyped()
     }
 
+    /// Enables passthrough after the first bare `--`. A second declaration is a call fault.
+    #[track_caller]
+    pub fn passthrough(self, mode: Passthrough) -> Command<I, R, <S as State>::Declared>
+    where
+        S: Open,
+    {
+        let mut command = self;
+        declaration::raise(command.declaration.declare_passthrough(mode));
+        command.retyped()
+    }
+
+    /// Requires stdin and stderr at a terminal outside CI. A second declaration is a call fault.
+    #[track_caller]
+    pub fn needs_terminal(self) -> Command<I, R, <S as State>::Declared>
+    where
+        S: Open,
+    {
+        let mut command = self;
+        declaration::raise(command.declaration.declare_terminal_need());
+        command.retyped()
+    }
+
     /// Declares that at most one of these local options is supplied.
     #[track_caller]
     pub fn exclusive(self, names: &[&str]) -> Self
@@ -209,9 +231,13 @@ impl<I, R, S: State> Command<I, R, S> {
 
     /// Declares an argument. Arguments bind words in declaration order.
     #[track_caller]
-    pub fn argument(self, name: &str, argument: impl Into<ArgumentDecl>) -> Command<I, R, Leaf>
+    pub fn argument(
+        self,
+        name: &str,
+        argument: impl Into<ArgumentDecl>,
+    ) -> Command<I, R, <S as State>::Declared>
     where
-        S: TakesArguments,
+        S: Open,
     {
         let mut command = self;
         declaration::raise(command.declaration.declare_argument(name, argument.into()));
@@ -222,7 +248,7 @@ impl<I, R, S: State> Command<I, R, S> {
     #[track_caller]
     pub fn command(self, child: impl Into<AnyCommand>) -> Command<I, R, Group>
     where
-        S: TakesChildren,
+        S: Open,
     {
         let mut command = self;
         declaration::raise(command.declaration.attach(child.into().declaration));
@@ -242,11 +268,10 @@ impl<I, R, S: State> Command<I, R, S> {
 impl<R, S: State> Command<NoInputs, R, S> {
     /// Declares the fields of `J` as arguments and options, and types the action's inputs as `J`.
     #[track_caller]
-    pub fn inputs<J>(self) -> Command<J, R, <J::Shape as Shape<S>>::After>
+    pub fn inputs<J>(self) -> Command<J, R, <S as State>::Declared>
     where
         S: Open,
         J: Inputs,
-        J::Shape: Shape<S>,
     {
         let mut command = self;
         let calls = J::declare(crate::inputs::Declarations::new()).calls;
@@ -371,6 +396,34 @@ impl<I, R, S: State> From<Command<I, R, S>> for AnyCommand {
     fn from(command: Command<I, R, S>) -> Self {
         AnyCommand {
             declaration: command.declaration,
+        }
+    }
+}
+
+/// An opt-in passthrough declaration for the words after the first bare `--`.
+#[derive(Clone, Debug, Default)]
+#[must_use]
+pub struct Passthrough {
+    pub(crate) description: Option<String>,
+}
+
+impl Passthrough {
+    /// Declares the mode without a description.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the description the Command's projections read.
+    pub fn description(mut self, text: impl Into<String>) -> Self {
+        self.description = Some(text.into());
+        self
+    }
+
+    pub(crate) fn literal(&self) -> crate::diagnostics::Literal {
+        let literal = crate::diagnostics::Literal::builder("Passthrough::new()");
+        match &self.description {
+            Some(description) => literal.call("description", vec![description.as_str().into()]),
+            None => literal,
         }
     }
 }

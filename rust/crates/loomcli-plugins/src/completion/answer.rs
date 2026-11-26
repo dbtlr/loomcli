@@ -253,10 +253,25 @@ fn value_offers(schema: Option<&Schema>, lead: &str, prefix: &str) -> Offers {
 /// What one position offers before the prefix filter and the exactness rule apply.
 fn offers_at(graph: &CommandGraph, position: &WordPosition) -> Offers {
     match position {
-        WordPosition::Command { command, .. } => Offers {
-            directive: FILES_OFF,
-            offers: child_offers(command),
-        },
+        WordPosition::Command {
+            command,
+            argument,
+            prefix,
+        } => {
+            let mut children = child_offers(command);
+            let Some(argument) = argument else {
+                return Offers {
+                    directive: FILES_OFF,
+                    offers: children,
+                };
+            };
+            let values = value_offers(argument_schema(argument), "", prefix);
+            children.extend(values.offers);
+            Offers {
+                directive: values.directive,
+                offers: children,
+            }
+        }
         WordPosition::Option {
             command,
             prefix,

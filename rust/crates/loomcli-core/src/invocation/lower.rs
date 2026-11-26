@@ -288,14 +288,30 @@ pub(crate) fn lower_invocation<'g>(
             )),
         }
     }
+    let passthrough = if command.node.passthrough.is_some() {
+        call.passthrough.to_vec()
+    } else {
+        if !call.passthrough.is_empty() && fault.is_none() {
+            fault = Some(
+                UnexpectedArgumentError::declared_no_passthrough(
+                    path.clone(),
+                    command.arguments.len(),
+                    call.passthrough.to_vec(),
+                )
+                .into(),
+            );
+        }
+        Vec::new()
+    };
     Ok(ParsedInvocation {
         args,
         command,
+        escapable: None,
         fault,
         // A value no token spells is an input problem, never a faulted occurrence.
         faulted: Vec::new(),
         global_fault: false,
-        passthrough: call.passthrough.to_vec(),
+        passthrough,
         path,
         values,
         unlowered,

@@ -67,6 +67,7 @@ pub fn modes() -> Vec<String> {
 /// the help plugin is not part of this feature set.
 pub fn kit() -> Application<NoInputs, NoResult, Group> {
     let paths = Command::new("paths")
+        .passthrough(loomcli_core::Passthrough::new())
         .description("Walk\tall paths.")
         .option(
             "format",

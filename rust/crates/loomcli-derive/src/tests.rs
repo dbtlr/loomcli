@@ -194,6 +194,55 @@ fn a_type_no_kind_reads_points_at_the_type() {
 }
 
 #[test]
+fn a_passthrough_field_requires_a_vector_of_strings() {
+    let message = "a #[passthrough] field reads the tail as `Vec<String>`";
+    assert_eq!(
+        inputs_fault("struct I { #[passthrough] tail: String }"),
+        pair(message, "String")
+    );
+    assert_eq!(
+        inputs_fault("struct I { #[passthrough] tail: Vec<bool> }"),
+        pair(message, "bool")
+    );
+}
+
+#[test]
+fn a_passthrough_field_rejects_facts_other_than_description_at_the_key() {
+    assert_eq!(
+        inputs_fault("struct I { #[passthrough(name = \"tail\")] tail: Vec<String> }"),
+        pair(
+            "`name` is not a fact of the passthrough mode: it is a fact of an option or an argument",
+            "name",
+        )
+    );
+    assert_eq!(
+        inputs_fault("struct I { #[passthrough(unknown)] tail: Vec<String> }"),
+        pair(
+            "unknown input fact `unknown`; the facts are `name`, `description`, `short`, \
+             `short_only`, `aliases`, `hidden`, `deprecated`, `control`, `count`, `polarity`, \
+             `validate`, `validate_omitted`, `default`, `implied`, `required`, `non_interactive`, \
+             `env`, `env_delimiter`, `env_allow_empty`, `extensions`, `stdin`, `min`, `max`, \
+             `interaction`, `color`, `verbose`, `quiet`, `background`, `builder`",
+            "unknown",
+        )
+    );
+}
+
+#[test]
+fn a_passthrough_field_rejects_a_second_input_attribute_at_that_attribute() {
+    let message =
+        "a field is one input: one of #[option], #[argument], #[stdin], or #[passthrough]";
+    assert_eq!(
+        inputs_fault("struct I { #[passthrough] #[argument] tail: Vec<String> }"),
+        pair(message, "#[argument]")
+    );
+    assert_eq!(
+        inputs_fault("struct I { #[passthrough] #[passthrough()] tail: Vec<String> }"),
+        pair(message, "#[passthrough()]")
+    );
+}
+
+#[test]
 fn the_option_config_rules_are_compile_errors_at_the_second_fact() {
     assert_eq!(
         inputs_fault("struct I { #[option(short = 'n', short_only, aliases = [\"x\"])] n: bool }"),
@@ -475,14 +524,14 @@ fn the_attribute_grammar_points_at_the_word_at_fault() {
     assert_eq!(
         inputs_fault("struct I { #[option] #[argument] file: String }"),
         pair(
-            "a field is one input: one of #[option], #[argument], or #[stdin]",
+            "a field is one input: one of #[option], #[argument], #[stdin], or #[passthrough]",
             "#[argument]",
         )
     );
     assert_eq!(
         inputs_fault("struct I { file: String }"),
         pair(
-            "each field of an Inputs struct carries #[option], #[argument], or #[stdin]",
+            "each field of an Inputs struct carries #[option], #[argument], #[stdin], or #[passthrough]",
             "file",
         )
     );
@@ -544,14 +593,7 @@ fn global_inputs_is_implemented_only_for_structs_every_global_may_hold() {
     assert!(!global(
         "#[inputs(exclusive(\"a\", \"b\"))] struct G { #[option] a: bool, #[option] b: bool }"
     ));
-    assert!(
-        expanded("struct S { #[argument] path: String }")
-            .contains("Shape = :: loomcli_core :: Arguments")
-    );
-    assert!(
-        expanded("struct S { #[option] force: bool }")
-            .contains("Shape = :: loomcli_core :: NoArguments")
-    );
+    assert!(!global("struct G { #[passthrough] tail: Vec<String> }"));
 }
 
 #[test]

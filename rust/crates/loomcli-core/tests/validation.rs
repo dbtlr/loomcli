@@ -199,6 +199,7 @@ async fn context_run(app: &App, argv: &[&str]) -> Value {
 async fn every_invocation_validator_call_reads_the_routed_path_passthrough_and_supplied_tokens() {
     let recorded = calls();
     let app = Application::new("context")
+        .passthrough(loomcli_core::Passthrough::new())
         .global_option("mode", Opt::string().validate(echo("mode", &recorded)))
         .argument(
             "name",
@@ -1350,6 +1351,7 @@ async fn validator_issues_keep_declaration_and_validator_order_kind_and_position
 async fn a_variadic_validator_transforms_each_value_leaving_passthrough_and_argv_intact() {
     let app = Application::new("schema")
         .argument("files", Arg::string().required().variadic().validate(Upper))
+        .passthrough(loomcli_core::Passthrough::new())
         .action(|ctx: Context| async move {
             let files: Vec<String> = ctx.argument("files")?;
             let line = json!({

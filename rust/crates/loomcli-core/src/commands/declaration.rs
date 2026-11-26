@@ -24,6 +24,8 @@ use crate::plugins::extension::{
 use crate::plugins::{AnyProvider, CommandTarget, ExtensionValue, OptionTarget};
 use crate::support::{BoxFuture, is_declared_name, is_portable_name};
 
+use super::{Passthrough, messages};
+
 /// The correction every portable-name fault gives.
 pub(crate) const PORTABLE_NAME_CORRECTION: &str = "Use a nonempty name of A-Z, a-z, 0-9, \".\", \"_\", and \"-\" that does not start with \"-\" or \".\".";
 
@@ -108,6 +110,8 @@ pub(crate) struct CommandDeclaration {
     pub(crate) aliases: Vec<String>,
     pub(crate) inputs: Vec<InputDeclaration>,
     pub(crate) stdin: Option<Stdin>,
+    pub(crate) passthrough: Option<Passthrough>,
+    pub(crate) needs_terminal: bool,
     /// How many inputs the Command declared before `stdin()`, which places the standalone stdin's
     /// validation problem among the input problems in authoring order.
     pub(crate) stdin_position: usize,
@@ -409,8 +413,7 @@ impl CommandDeclaration {
         Ok(())
     }
 
-    /// `argument(name, config)`: the name, the builder's own facts, the name taken, children
-    /// beside it, its place after the previous argument, and a second stdin claim.
+    /// Checks the name, argument order, builder facts, and stdin claim before declaring an argument.
     pub(crate) fn declare_argument(
         &mut self,
         name: &str,
@@ -455,14 +458,12 @@ impl CommandDeclaration {
                 .correction("Remove or rename the duplicate."),
             ));
         }
-        if let Some(child) = self.children.first() {
-            return Err(self.placement_fault(&path, name, &site, child));
-        }
         if let Some(previous) = self.arguments().last() {
-            check_slot_order(
-                (previous, &self.argument_site(&path, previous)),
+            self.check_slot_order(
+                previous,
+                self.arguments().find(|argument| argument.decl.variadic()),
                 (name, &decl, &site),
-                &subject,
+                &path,
             )?;
         }
         if decl.claims_stdin() {
@@ -488,28 +489,6 @@ impl CommandDeclaration {
         self.descriptors = registry;
         self.inputs.push(InputDeclaration::Argument(input));
         Ok(())
-    }
-
-    pub(crate) fn placement_fault(
-        &self,
-        path: &[String],
-        argument: &str,
-        site: &InputSite,
-        child: &CommandDeclaration,
-    ) -> DeclarationError {
-        let child_name = child.name.as_deref().unwrap_or_default();
-        DeclarationError::new(
-            rules::ARGUMENTS_BESIDE_CHILDREN,
-            DiagnosticParts::new(format!(
-                "{} declares argument {} and attaches child {}.",
-                command_sentence(self.name.as_deref()),
-                quoted(argument),
-                quoted(child_name)
-            ))
-            .finding(site.named(Some("the argument")))
-            .finding(Self::placement(path, child_name).note("the child"))
-            .correction("Move the argument into a child Command or remove the children."),
-        )
     }
 
     /// Rejects a second stdin target: the claims the inputs already hold and the standalone
@@ -631,6 +610,43 @@ impl CommandDeclaration {
         declared.check_stdin_claims(&path, None)?;
         self.stdin = Some(stdin);
         self.stdin_position = self.inputs.len();
+        Ok(())
+    }
+
+    /// Declares the passthrough mode once.
+    pub(crate) fn declare_passthrough(
+        &mut self,
+        mode: Passthrough,
+    ) -> Result<(), DeclarationError> {
+        if self.passthrough.is_some() {
+            return Err(DeclarationError::new(
+                rules::PASSTHROUGH_DECLARED_TWICE,
+                DiagnosticParts::new(messages::PASSTHROUGH_DECLARED_TWICE)
+                    .finding(
+                        Finding::new("passthrough", vec![mode.literal()])
+                            .path(own_path(self.name.as_deref()))
+                            .mark("0"),
+                    )
+                    .correction("Keep one passthrough declaration."),
+            ));
+        }
+        self.passthrough = Some(mode);
+        Ok(())
+    }
+
+    /// Declares the terminal need once.
+    pub(crate) fn declare_terminal_need(&mut self) -> Result<(), DeclarationError> {
+        if self.needs_terminal {
+            return Err(DeclarationError::new(
+                rules::TERMINAL_NEED_DECLARED_TWICE,
+                DiagnosticParts::new(messages::TERMINAL_NEED_DECLARED_TWICE)
+                    .finding(
+                        Finding::new("needs_terminal", vec![]).path(own_path(self.name.as_deref())),
+                    )
+                    .correction("Keep one needs_terminal() declaration."),
+            ));
+        }
+        self.needs_terminal = true;
         Ok(())
     }
 
@@ -783,6 +799,7 @@ impl CommandDeclaration {
                     self.declare_stdin(stdin)?;
                     self.typed_stdin = true;
                 }
+                DeclarationCall::Passthrough(mode) => self.declare_passthrough(mode)?,
                 DeclarationCall::Group(kind, names) => {
                     let names: Vec<&str> = names.iter().map(String::as_str).collect();
                     self.declare_group(kind, &names)?;
@@ -793,7 +810,7 @@ impl CommandDeclaration {
     }
 
     /// The finished-Command rules attach applies to a child and build to the root: a Command with
-    /// no action holds children, and declares no stdin.
+    /// no action holds children and leaves action-specific declarations off.
     pub(crate) fn check_finished(
         &self,
         path: &[String],
@@ -813,6 +830,28 @@ impl CommandDeclaration {
                 parts.correction("Register an action."),
             ));
         }
+        if let Some(argument) = self.arguments().next() {
+            return Err(DeclarationError::new(
+                rules::COMMAND_WITHOUT_ACTION,
+                DiagnosticParts::new(messages::arguments_without_action(self.name.as_deref()))
+                    .finding(self.argument_site(path, argument).named(Some("the first argument")))
+                    .correction("Declare the arguments on the Command that reads them, or register an action."),
+            ));
+        }
+        if let Some(mode) = &self.passthrough {
+            return Err(DeclarationError::new(
+                rules::COMMAND_WITHOUT_ACTION,
+                DiagnosticParts::new(messages::passthrough_without_action(self.name.as_deref()))
+                    .finding(
+                        Finding::new("passthrough", vec![mode.literal()])
+                            .path(path.to_vec())
+                            .mark("0"),
+                    )
+                    .correction(
+                        "Declare passthrough on the Command that reads it, or register an action.",
+                    ),
+            ));
+        }
         if let Some(stdin) = &self.stdin {
             return Err(DeclarationError::new(
                 rules::COMMAND_WITHOUT_ACTION,
@@ -827,11 +866,18 @@ impl CommandDeclaration {
                 .correction("Declare stdin on the Command that reads it, or register an action."),
             ));
         }
+        if self.needs_terminal {
+            return Err(DeclarationError::new(
+                rules::COMMAND_WITHOUT_ACTION,
+                DiagnosticParts::new(messages::terminal_need_without_action(self.name.as_deref()))
+                    .finding(Finding::new("needs_terminal", vec![]).path(path.to_vec()))
+                    .correction("Declare needs_terminal() on the Command whose action needs it, or register an action."),
+            ));
+        }
         Ok(())
     }
 
-    /// `command(child)`: the child is finished, holds a name and aliases no sibling holds, and
-    /// this Command declares no argument.
+    /// `command(child)`: the child is finished, with a name and aliases no sibling holds.
     pub(crate) fn attach(&mut self, child: CommandDeclaration) -> Result<(), DeclarationError> {
         self.check_attach(&child)?;
         self.children.push(child);
@@ -845,12 +891,7 @@ impl CommandDeclaration {
         let mut child_path = path.clone();
         child_path.push(child_name.clone());
         child.check_finished(&child_path, Some(Self::placement(&path, &child_name)))?;
-        self.check_sibling(&path, child)?;
-        if let Some(argument) = self.arguments().next() {
-            let site = self.argument_site(&path, argument);
-            return Err(self.placement_fault(&path, &argument.name, &site, child));
-        }
-        Ok(())
+        self.check_sibling(&path, child)
     }
 
     /// Rejects a child whose name or alias a sibling already holds. The checks run in the
@@ -1023,32 +1064,51 @@ impl CommandDeclaration {
     }
 }
 
-/// The ordering rules between one argument and the next: a variadic argument is last, and the
-/// tiers run required, then required only when input is not interactive, then optional.
-pub(crate) fn check_slot_order(
-    previous: (&ArgumentInput, &InputSite),
-    next: (&str, &ArgumentDecl, &InputSite),
-    subject: &str,
-) -> Result<(), DeclarationError> {
-    let (slot, slot_site) = previous;
-    let (name, decl, site) = next;
-    let after = site.named(Some("the argument after it"));
-    let needs_value = decl.ordered_required();
-    if slot.decl.variadic() {
-        return Err(DeclarationError::new(
-            rules::VARIADIC_ARGUMENT_LAST,
-            DiagnosticParts::new(format!(
-                "Argument {} is variadic and precedes argument {} on {subject}.",
-                quoted(&slot.name),
-                quoted(name)
-            ))
-            .finding(slot_site.named(Some("the variadic argument")))
-            .finding(after)
-            .correction("Declare the variadic argument last."),
-        ));
-    }
-    if slot.decl.non_interactive() && needs_value {
-        return Err(DeclarationError::new(
+impl CommandDeclaration {
+    /// Checks argument ordering, including the required scalar suffix after a variadic.
+    pub(crate) fn check_slot_order(
+        &self,
+        previous: &ArgumentInput,
+        variadic: Option<&ArgumentInput>,
+        next: (&str, &ArgumentDecl, &InputSite),
+        path: &[String],
+    ) -> Result<(), DeclarationError> {
+        let (name, decl, site) = next;
+        if let Some(variadic) = variadic {
+            let reason = if matches!(decl, ArgumentDecl::Content(_)) {
+                "is a content argument"
+            } else if decl.variadic() {
+                "is variadic"
+            } else if decl.non_interactive() {
+                "is required only when input is not interactive"
+            } else if !decl.required() {
+                "is optional"
+            } else {
+                return Ok(());
+            };
+            return Err(DeclarationError::new(
+                rules::ARGUMENT_AFTER_VARIADIC,
+                DiagnosticParts::new(messages::argument_after_variadic(
+                    name,
+                    reason,
+                    &variadic.name,
+                    self.name.as_deref(),
+                ))
+                .finding(
+                    self.argument_site(path, variadic)
+                        .named(Some("the variadic argument")),
+                )
+                .finding(site.named(Some("the argument after it")))
+                .correction("Declare only required scalar arguments after a variadic argument."),
+            ));
+        }
+        let subject = command_subject(self.name.as_deref());
+        let slot = previous;
+        let slot_site = self.argument_site(path, previous);
+        let after = site.named(Some("the argument after it"));
+        let needs_value = decl.ordered_required();
+        if slot.decl.non_interactive() && needs_value {
+            return Err(DeclarationError::new(
             rules::OPTIONAL_ARGUMENT_LAST,
             DiagnosticParts::new(format!(
                 "Argument {} is required only when input is not interactive and precedes required argument {} on {subject}.",
@@ -1061,24 +1121,25 @@ pub(crate) fn check_slot_order(
                 "Declare arguments required only when input is not interactive after required ones.",
             ),
         ));
+        }
+        if !slot.decl.required()
+            && !slot.decl.non_interactive()
+            && (needs_value || decl.non_interactive())
+        {
+            return Err(DeclarationError::new(
+                rules::OPTIONAL_ARGUMENT_LAST,
+                DiagnosticParts::new(format!(
+                    "Argument {} is optional and precedes required argument {} on {subject}.",
+                    quoted(&slot.name),
+                    quoted(name)
+                ))
+                .finding(slot_site.named(Some("the optional argument")))
+                .finding(after)
+                .correction("Declare optional arguments after required ones."),
+            ));
+        }
+        Ok(())
     }
-    if !slot.decl.required()
-        && !slot.decl.non_interactive()
-        && (needs_value || decl.non_interactive())
-    {
-        return Err(DeclarationError::new(
-            rules::OPTIONAL_ARGUMENT_LAST,
-            DiagnosticParts::new(format!(
-                "Argument {} is optional and precedes required argument {} on {subject}.",
-                quoted(&slot.name),
-                quoted(name)
-            ))
-            .finding(slot_site.named(Some("the optional argument")))
-            .finding(after)
-            .correction("Declare optional arguments after required ones."),
-        ));
-    }
-    Ok(())
 }
 
 /// Validates an option or argument's own values into its store: used where a declaration other

@@ -162,6 +162,12 @@ fn command_node(
     let (extensions, owners) = command.extensions.publish();
     let node = CommandNode {
         option_groups: command.groups.clone(),
+        passthrough: command
+            .passthrough
+            .as_ref()
+            .map(|mode| super::PassthroughNode {
+                description: mode.description.clone(),
+            }),
         stdin: command.stdin.as_ref().map(|stdin| StdinNode {
             description: stdin.description.clone(),
             required: stdin.required,
@@ -179,6 +185,7 @@ fn command_node(
         has_action: command.action.is_some(),
         hidden: command.hidden,
         name: command.name.clone(),
+        needs_terminal: command.needs_terminal,
         options: command
             .options()
             .map(|option| Arc::new(option_node(option, &table)))

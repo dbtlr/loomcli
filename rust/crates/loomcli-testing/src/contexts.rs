@@ -81,8 +81,7 @@ fn unit_log(graph: &CommandGraph, path: &[String], hooks: Vec<UnitLogHook>) -> U
 /// A typed struct written as values and read back, so the context holds both: the inverse
 /// `Inputs::into_values` promises.
 #[track_caller]
-fn round_trip<I: Inputs>(inputs: I, builder: &str) -> (I, InputValues) {
-    let values = inputs.into_values();
+fn extract_values<I: Inputs>(values: InputValues, builder: &str) -> (I, InputValues) {
     match I::extract(&values) {
         Ok(inputs) => (inputs, values),
         Err(error) => {
@@ -120,7 +119,7 @@ pub fn file_content(cwd: impl AsRef<std::path::Path>, path: &str) -> Content {
 pub struct ActionValues<I> {
     pub(crate) inputs: I,
     pub(crate) globals: InputValues,
-    pub(crate) passthrough: Vec<String>,
+    pub(crate) passthrough: Option<Vec<String>>,
     pub(crate) interactive: bool,
     pub(crate) process: Option<Arc<dyn ProcessHandle>>,
     pub(crate) graph: Option<Arc<CommandGraph>>,
@@ -135,7 +134,7 @@ impl<I: Inputs> ActionValues<I> {
         Self {
             inputs,
             globals: InputValues::new(),
-            passthrough: Vec::new(),
+            passthrough: None,
             interactive: false,
             process: None,
             graph: None,
@@ -153,9 +152,9 @@ impl<I: Inputs> ActionValues<I> {
         self
     }
 
-    /// Sets the passthrough words.
+    /// Overrides the passthrough words the typed inputs supply.
     pub fn passthrough(mut self, words: &[&str]) -> Self {
-        self.passthrough = words.iter().map(|word| (*word).to_owned()).collect();
+        self.passthrough = Some(words.iter().map(|word| (*word).to_owned()).collect());
         self
     }
 
@@ -217,7 +216,12 @@ impl<I: Inputs> ActionValues<I> {
 /// their `into_values` wrote.
 #[track_caller]
 pub fn action_context<I: Inputs, R: UnitResult>(values: ActionValues<I>) -> Context<I, R> {
-    let (inputs, locals) = round_trip(values.inputs, "action_context");
+    let mut locals = values.inputs.into_values();
+    if let Some(words) = values.passthrough {
+        locals = locals.with_passthrough(words);
+    }
+    let (inputs, locals) = extract_values::<I>(locals, "action_context");
+    let passthrough = locals.passthrough().to_vec();
     let graph = values.graph.unwrap_or_else(default_graph);
     let command = node_at(&graph, &values.command, "action_context");
     let log = unit_log(&graph, &values.command, values.log);
@@ -228,7 +232,7 @@ pub fn action_context<I: Inputs, R: UnitResult>(values: ActionValues<I>) -> Cont
             inputs,
             locals,
             globals: values.globals,
-            passthrough: values.passthrough,
+            passthrough,
             interactive: values.interactive,
             graph,
             command,
@@ -357,7 +361,8 @@ const UNSTATED_NEXT: &str = "middleware_context has no outcome for this middlewa
 pub fn middleware_context<O: Inputs>(values: MiddlewareValues<O>) -> (MiddlewareContext<O>, Next) {
     let (options, globals) = match values.options {
         Some(options) => {
-            let (options, globals) = round_trip(options, "middleware_context");
+            let (options, globals) =
+                extract_values::<O>(options.into_values(), "middleware_context");
             (Some(options), globals)
         }
         None => (None, InputValues::new()),

@@ -968,7 +968,7 @@ async fn a_rejected_global_leaves_options_none_and_a_local_fault_leaves_them_set
         Ran {
             status: 2,
             stdout: values.clone(),
-            stderr: "app: Unknown option \"--nope\". Supply a declared option; prefix a hyphenated path with \"./\".\n".to_owned(),
+            stderr: "app: Unknown option \"--nope\". Supply a declared option, or pass it as an argument after \"--\".\n".to_owned(),
         }
     );
     assert_eq!(
@@ -1381,6 +1381,7 @@ fn request_app(list: Vec<AnyPlugin>) -> App {
                 .validate(Number("Use decimal digits.")),
         )
         .option("raw", Opt::boolean().description("The raw option."))
+        .passthrough(loomcli_core::Passthrough::new())
         .action(|ctx: Context| async move {
             let values = support::values_json(&ctx);
             let line = json!({"args": values["args"], "options": values["options"], "passthrough": ctx.passthrough});

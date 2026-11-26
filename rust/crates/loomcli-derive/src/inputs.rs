@@ -24,6 +24,7 @@ enum Role {
     Option,
     Argument,
     Stdin,
+    Passthrough,
 }
 
 /// How the field's type wraps its value.
@@ -260,6 +261,8 @@ fn role_of(attribute: &Attribute) -> Option<Role> {
         Some(Role::Argument)
     } else if attribute.path().is_ident("stdin") {
         Some(Role::Stdin)
+    } else if attribute.path().is_ident("passthrough") {
+        Some(Role::Passthrough)
     } else {
         None
     }
@@ -275,7 +278,7 @@ fn parse_field(field: &Field) -> syn::Result<(Role, FieldAttributes)> {
         if found.is_some() {
             return Err(syn::Error::new_spanned(
                 attribute,
-                "a field is one input: one of #[option], #[argument], or #[stdin]",
+                "a field is one input: one of #[option], #[argument], #[stdin], or #[passthrough]",
             ));
         }
         found = Some(role);
@@ -300,7 +303,7 @@ fn parse_field(field: &Field) -> syn::Result<(Role, FieldAttributes)> {
                 .ident
                 .as_ref()
                 .map_or_else(|| field.span(), Ident::span),
-            "each field of an Inputs struct carries #[option], #[argument], or #[stdin]",
+            "each field of an Inputs struct carries #[option], #[argument], #[stdin], or #[passthrough]",
         )),
     }
 }
@@ -358,6 +361,7 @@ enum Kind {
     StringArgument,
     ContentArgument,
     Stdin,
+    Passthrough,
 }
 
 impl Kind {
@@ -370,6 +374,7 @@ impl Kind {
             Kind::StringArgument => "a string argument",
             Kind::ContentArgument => "a content argument",
             Kind::Stdin => "the standalone stdin",
+            Kind::Passthrough => "the passthrough mode",
         }
     }
 
@@ -427,7 +432,7 @@ impl Kind {
                 "extensions",
             ]
             .contains(&fact),
-            Kind::Stdin => fact == "description",
+            Kind::Stdin | Kind::Passthrough => fact == "description",
         }
     }
 }
@@ -438,6 +443,15 @@ fn kind_of(role: Role, wrapper: Wrapper<'_>, facts: &FieldAttributes) -> syn::Re
     let ident = last_ident(element);
     let is_content = ident.as_deref() == Some("Content");
     let is_bool = ident.as_deref() == Some("bool");
+    if role == Role::Passthrough {
+        if matches!(wrapper, Wrapper::List(_)) && ident.as_deref() == Some("String") {
+            return Ok(Kind::Passthrough);
+        }
+        return Err(syn::Error::new(
+            element.span(),
+            "a #[passthrough] field reads the tail as `Vec<String>`",
+        ));
+    }
     if role == Role::Stdin && !is_content {
         return Err(syn::Error::new(
             element.span(),
@@ -452,6 +466,7 @@ fn kind_of(role: Role, wrapper: Wrapper<'_>, facts: &FieldAttributes) -> syn::Re
     }
     Ok(match role {
         Role::Stdin => Kind::Stdin,
+        Role::Passthrough => Kind::Passthrough,
         Role::Argument if is_bool => {
             return Err(syn::Error::new(
                 element.span(),
@@ -901,7 +916,6 @@ struct Expanded {
     declare: TokenStream,
     extract: TokenStream,
     insert: TokenStream,
-    argument: bool,
     global: bool,
 }
 
@@ -915,6 +929,7 @@ fn insert_field(field: &Field, kind: Kind, wrapper: Wrapper<'_>, name: &LitStr) 
             quote!(let values = values.with_stdin(::core::option::Option::Some(self.#ident));)
         }
         Kind::Stdin => quote!(let values = values.with_stdin(self.#ident);),
+        Kind::Passthrough => quote!(let values = values.with_passthrough(self.#ident);),
         Kind::BooleanOption | Kind::CountOption => {
             quote!(let values = values.with_option(#name, self.#ident);)
         }
@@ -942,7 +957,7 @@ fn expand_field(field: &Field) -> syn::Result<Expanded> {
     reject_presence(kind, wrapper, &facts)?;
     reject_fact_pairs(kind, wrapper, &facts)?;
     let name = declared_name(field, &facts)?;
-    if kind != Kind::Stdin {
+    if !matches!(kind, Kind::Stdin | Kind::Passthrough) {
         reject_declared_names(&name, &facts)?;
     }
     // A shared builder carries its own description; the field's doc comment documents the field.
@@ -959,6 +974,7 @@ fn expand_field(field: &Field) -> syn::Result<Expanded> {
         });
     let mut expanded = match kind {
         Kind::Stdin => expand_stdin(wrapper, description.as_ref()),
+        Kind::Passthrough => expand_passthrough(description.as_ref()),
         Kind::BooleanOption => expand_boolean(&facts, &name, description.as_ref()),
         Kind::CountOption => expand_count(&facts, wrapper, &name, description.as_ref())?,
         Kind::ContentOption => expand_content_option(&facts, wrapper, &name, description.as_ref()),
@@ -969,6 +985,19 @@ fn expand_field(field: &Field) -> syn::Result<Expanded> {
     };
     expanded.insert = insert_field(field, kind, wrapper, &name);
     Ok(expanded)
+}
+
+fn expand_passthrough(description: Option<&LitStr>) -> Expanded {
+    let mut mode = quote!(::loomcli_core::Passthrough::new());
+    if let Some(description) = description {
+        mode.extend(quote!(.description(#description)));
+    }
+    Expanded {
+        declare: quote!(let declarations = declarations.passthrough(#mode);),
+        extract: quote!(values.passthrough().to_vec()),
+        insert: quote!(),
+        global: false,
+    }
 }
 
 fn expand_stdin(wrapper: Wrapper<'_>, description: Option<&LitStr>) -> Expanded {
@@ -986,7 +1015,6 @@ fn expand_stdin(wrapper: Wrapper<'_>, description: Option<&LitStr>) -> Expanded 
         declare: quote!(let declarations = declarations.stdin(#stdin);),
         extract,
         insert: quote!(),
-        argument: false,
         global: false,
     }
 }
@@ -1016,7 +1044,6 @@ fn expand_boolean(
         declare: quote!(let declarations = declarations.option(#name, #builder);),
         extract: quote!(values.option::<bool>(#name)?),
         insert: quote!(),
-        argument: false,
         global: true,
     }
 }
@@ -1047,7 +1074,6 @@ fn expand_count(
         declare: quote!(let declarations = declarations.option(#name, #builder);),
         extract: quote!(values.option::<#element>(#name)?),
         insert: quote!(),
-        argument: false,
         global: true,
     })
 }
@@ -1107,7 +1133,6 @@ fn expand_content_option(
         declare: quote!(let declarations = declarations.option(#name, #builder);),
         extract,
         insert: quote!(),
-        argument: false,
         global: false,
     }
 }
@@ -1214,7 +1239,6 @@ fn expand_string_option(
         },
         extract,
         insert: quote!(),
-        argument: false,
         global,
     }
 }
@@ -1294,7 +1318,6 @@ fn expand_argument(
         },
         extract,
         insert: quote!(),
-        argument: true,
         global: false,
     }
 }
@@ -1381,7 +1404,6 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
     let mut declares = Vec::new();
     let mut extracts = Vec::new();
     let mut inserts = Vec::new();
-    let mut arguments = false;
     let mut global = true;
     let mut errors: Option<syn::Error> = None;
     let mut names = Vec::new();
@@ -1400,7 +1422,6 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
                 let ident = &field.ident;
                 let extract = expanded.extract;
                 extracts.push(quote!(#ident: #extract));
-                arguments |= expanded.argument;
                 global &= expanded.global;
             }
             // Every field's fault is reported at once, each at its own span.
@@ -1416,11 +1437,6 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
     let (groups, grouped) = struct_groups(input, &names)?;
     // A group is a Command's rule, never a global option's.
     let global = global && !grouped;
-    let shape = if arguments {
-        quote!(::loomcli_core::Arguments)
-    } else {
-        quote!(::loomcli_core::NoArguments)
-    };
     let construct = match &data.fields {
         Fields::Unit => quote!(#name),
         _ => quote!(#name { #(#extracts),* }),
@@ -1436,8 +1452,6 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
         #global_impl
 
         impl #impl_generics ::loomcli_core::Inputs for #name #type_generics #where_clause {
-            type Shape = #shape;
-
             fn declare(declarations: ::loomcli_core::Declarations) -> ::loomcli_core::Declarations {
                 #(#declares)*
                 #groups

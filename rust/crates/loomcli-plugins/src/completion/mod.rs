@@ -127,6 +127,7 @@ fn shell_argument(context: &Context) -> Result<Option<Shell>, Error> {
 /// reads one of them as an option.
 fn answer_command() -> Command<loomcli_core::NoInputs, loomcli_core::NoResult, loomcli_core::Done> {
     Command::new("__complete")
+        .passthrough(loomcli_core::Passthrough::new())
         .description("Answer a completion script.")
         .hidden()
         .action(|context: Context| async move {

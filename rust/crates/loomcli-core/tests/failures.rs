@@ -10,9 +10,9 @@ use loomcli_core::{
     EX_UNAVAILABLE, EX_USAGE, Error, ExitCode, Failure, FailureClass, FailureExitCode,
     FailureFacts, FatalError, InputError, InternalError, LoomError, MisplacedOptionError,
     MissingValueError, MissingValueForm, NonCallableCommandError, RepeatedOptionError, ResultError,
-    ResultFault, UnexpectedArgumentError, UnexpectedValueError, UnknownCommandError,
-    UnknownOptionError, UsageError, ValuelessKind, WorkingDirectoryError, diagnostic_rule,
-    encode_failure, is_failure_code,
+    ResultFault, TerminalUnavailableError, UnexpectedArgumentError, UnexpectedValueError,
+    UnknownCommandError, UnknownOptionError, UsageError, ValuelessKind, WorkingDirectoryError,
+    diagnostic_rule, encode_failure, is_failure_code,
 };
 
 /// jsonkit's `PathNotFoundError`, which declares a failure code and an exit code.
@@ -111,6 +111,7 @@ fn codes() -> Vec<(&'static str, &'static str)> {
         of::<NonCallableCommandError>(),
         of::<RepeatedOptionError>(),
         of::<ResultError>(),
+        of::<TerminalUnavailableError>(),
         of::<UnexpectedArgumentError>(),
         of::<UnexpectedValueError>(),
         of::<UnknownCommandError>(),
@@ -139,6 +140,7 @@ fn each_core_class_reads_its_failure_code_without_an_instance_and_an_authors_cla
             ("NonCallableCommandError", "missing-subcommand"),
             ("RepeatedOptionError", "repeated-option"),
             ("ResultError", "internal"),
+            ("TerminalUnavailableError", "terminal-unavailable"),
             ("UnexpectedArgumentError", "unexpected-argument"),
             ("UnexpectedValueError", "unexpected-value"),
             ("UnknownCommandError", "unknown-command"),

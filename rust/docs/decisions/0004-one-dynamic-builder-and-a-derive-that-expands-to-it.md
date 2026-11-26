@@ -61,3 +61,7 @@ The workspace carries a procedural-macro crate. The derive's expansion is part o
 ## Status
 
 Accepted on 2026-11-12. The code that enforces this record has landed: `Application` and `Command` are the one builder, `loomcli-derive`'s `#[derive(Inputs)]` expands to its calls against public items alone, and plugins and hooks declare through the same builder.
+
+## Changelog
+
+- 2026-11-26: The reference now permits arguments beside children on a Command with an action, in either order. The Rust rule for how to enforce authoring order still applies. See [ADR-0160](../../../docs/decisions/0160-a-command-with-an-action-may-declare-arguments-and-hold-children-and-an-exact-child-name-routes-first.md).

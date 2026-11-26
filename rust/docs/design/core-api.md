@@ -25,11 +25,10 @@ Conventions that hold everywhere below:
 | --- | --- | --- |
 | `Configuring` | `Application::new` | `plugins()`, and every call `Fresh` offers |
 | `Fresh` | `Command::new`; any call on `Configuring` | arguments, children, options, globals, results, action |
-| `Leaf` | `argument()`; `inputs::<I>()` when `I` declares arguments | arguments, options, globals, results, action |
-| `Group` | `command()` | children, options, results, action |
+| `Group` | `command()` | arguments, children, options, results, action |
 | `Done` | `action()` | `extend()`; `views()` when a result is declared |
 
-`Open`, `TakesArguments`, `TakesChildren`, and `TakesGlobals` are sealed marker traits over the states, each with a `#[diagnostic::on_unimplemented]` message that names the reference rule. `inputs::<J>()` moves to `<J::Shape as Shape<S>>::After`, where the derive sets `Shape` to `Arguments` or `NoArguments`.
+`Open` and `TakesGlobals` are sealed marker traits over the states, each with a `#[diagnostic::on_unimplemented]` message that names the rule. Arguments and children are available in every open state. `Group` records that an explicit child was attached. The finished declaration determines whether the Command is a group. Both `argument()` and `inputs::<J>()` return a builder in `<S as State>::Declared`, preserving `Group` after a child is attached.
 
 ### Application
 
@@ -45,14 +44,16 @@ Conventions that hold everywhere below:
 | `options.uses` | `.uses(list)` | open states |
 | `options.shutdown.timeout` | `.shutdown_timeout(ms: u32)` | open states |
 | `options.rendering` | `.rendering(RenderingPolicy)` | open states |
-| `argument(name, config)` | `.argument(name, Arg::…)` | `TakesArguments` |
+| `argument(name, config)` | `.argument(name, Arg::…)` | open states |
 | `option(name, config)` | `.option(name, Opt::…)` | open states |
 | `globalOption(name, config)` | `.global_option(name, Opt::…)` | `TakesGlobals` |
 | (types of globals) | `.globals::<G: GlobalInputs>()` | `TakesGlobals` |
 | (inferred inputs) | `.inputs::<I>()` | `I = NoInputs`, open states |
 | `exclusive`, `oneRequired`, `requiredTogether` | `.exclusive(&[..])`, `.one_required(&[..])`, `.required_together(&[..])` | open states |
 | `stdin(config)` | `.stdin(Stdin::new()…)` | open states |
-| `command(child)` | `.command(child)` | `TakesChildren` |
+| `passthrough(config?)` | `.passthrough(Passthrough::new()…)` | open states |
+| `needsTerminal()` | `.needs_terminal()` | open states |
+| `command(child)` | `.command(child)` | open states |
 | `result({views})`, `rows({views})` | `.result(ResultViews)`, `.rows(RowViews)`; `ValueResult<V>` carries views when `V: Serialize + 'static` | `R = NoResult`, open states |
 | `views(replacements, {default})` | `.views(ResultViews or RowViews)`, default inside the record | `R: CarriesResult`, every state |
 | `action(handler)` | `.action(handler)` | open states |
@@ -62,7 +63,7 @@ Conventions that hold everywhere below:
 
 A `list` is `impl IntoList<T>`: an array or `Vec` of one type, or a tuple of up to 32 mixed types, each element `Into<T>`. A tuple is how `plugins((help().command(true), version(), …))` holds settings builders of different types; a longer mixed list is a `Vec` of converted values, `vec![help().into(), version().into(), …]`.
 
-Each state bound sits in the method's `where` clause rather than the impl header, so a call the state removes, such as `.command(x).argument(..)` or `.action(h).option(..)`, reports the bound's `#[diagnostic::on_unimplemented]` message (E0277) instead of a bare "method exists but its trait bounds were not satisfied" (E0599). A return type names no projection through a bounded trait: the state after a call that removes nothing is `<S as State>::Declared`, which every state defines (`Done`'s is `Done`), so the projection resolves before the `Open` bound is judged. The result calls are bounded the same way: `result()` and `rows()` by `R: NoResultYet`, `views()` by `R: CarriesResult`, each with its own message, and `compile_fail` doctests on the three traits keep the messages reachable. A function that returns a group Command with no action names it `GroupCommand<I, R>`, an alias for `Command<I, R, Group>`, and a group Application `GroupApplication<I, R>`, an alias for `Application<I, R, Group>`.
+Each state bound sits in the method's `where` clause rather than the impl header, so a call the state removes, such as `.command(x).global_option(..)` or `.action(h).option(..)`, reports the bound's `#[diagnostic::on_unimplemented]` message (E0277) instead of a bare "method exists but its trait bounds were not satisfied" (E0599). A return type names no projection through a bounded trait: the state after a call that removes nothing is `<S as State>::Declared`, which every state defines (`Done`'s is `Done`), so the projection resolves before the `Open` bound is judged. The result calls are bounded the same way: `result()` and `rows()` by `R: NoResultYet`, `views()` by `R: CarriesResult`, each with its own message, and `compile_fail` doctests on the three traits keep the messages reachable. A function that returns a group Command with no action names it `GroupCommand<I, R>`, an alias for `Command<I, R, Group>`, and a group Application `GroupApplication<I, R>`, an alias for `Application<I, R, Group>`.
 
 ### Command
 
@@ -76,6 +77,16 @@ Each state bound sits in the method's `where` clause rather than the impl header
 | `options.uses` | `.uses(list)` |
 | `alias(...names)` | `.alias(name)`, once per alias |
 | every other call | as on Application, minus `global_option`, `globals`, `plugins`, and the Application-only facts |
+
+A Command with an action may declare arguments and attach children in either order. The root may also declare arguments beside a plugin's Commands. A group has children and no action. Its declaration may carry local options, and any argument, stdin, passthrough mode, or terminal need is a `command-without-action` fault. Attach checks a child, and graph build checks the root and hook contributions.
+
+### Passthrough and terminal need
+
+`Passthrough::new()` declares the mode. `.description(text)` on that builder supplies the optional description for help, man pages, and the manifest. `passthrough(Passthrough::new().description(text))` sets that declaration on the Command or the root. Each setting applies only to the declaration that sets it. Both setters require an open declaration and fault on a second call. A typed input may declare passthrough through `#[passthrough]`. The terminal need is declared through `needs_terminal()`.
+
+The first bare `--` ends routing and option parsing. With passthrough enabled, every later word reaches the action in `Context::passthrough` in order, including any empty word or later `--`. With the mode off, the parser reads those words as positional arguments. A word that has no argument slot raises `UnexpectedArgumentError` with exit 2. When the routed Command has arguments and the mode is off, `UnknownOptionError` suggests passing the word as an argument after `--`.
+
+`needs_terminal()` requires terminal stdin and stderr outside CI. A redirected stdout or the operator's choice to turn questions off has no effect on that requirement. A Command that needs a terminal always fails with `TerminalUnavailableError` on an invocation by name, even when the calling action runs at a terminal. Help and the man page include the requirement, and opting the Command in as an MCP tool raises `@loomcli/plugins/mcp/tool-needs-terminal` during graph build.
 
 ### Options
 
@@ -131,6 +142,8 @@ Each state bound sits in the method's `where` clause rather than the impl header
 
 An argument builder has no `hidden`, `deprecated`, `control`, `env`, or spelling setter, so the reference's `ArgumentKeyConstraint` is a type error. A standalone `stdin()` takes `Stdin::new().description(text).required()`.
 
+Without a variadic, words fill arguments from the start in declaration order. After a variadic, only unconditionally required scalar string arguments are allowed. Core fills those arguments from the end first, then fills the arguments before the variadic from the start. The variadic receives the words between. The required-before-optional rule applies through the variadic, so an optional variadic can precede a required scalar argument.
+
 ### Input sources
 
 Precedence is the reference's: a token, then the environment, then the configuration source, then the declared default. An environment binding is the `env` setters above, read under the reference's rules: the first name holding a non-empty value (or, under `env_allow_empty`, the first defined name), a string as it is, a multiple option's value split at its delimiter, a Boolean through the `true`/`false`/`yes`/`no`/`y`/`n`/`on`/`off`/`1`/`0` grammar, and a count as ASCII digits; a value outside its grammar is the option's `invalid` problem, naming the variable. The configuration source is the single slot a plugin claims with `Plugin::source(ConfigurationSource::new(&BINDING, resolver).schema(schema))`; the binding is an option-target extension descriptor and the resolver answers `BTreeMap<String, SourceAnswer>` (`SourceAnswer::new(value, label).directory(dir)`) by option name. Core reaches the slot through `inputs::sources::SourceSlot`, the erased form a `ConfigurationSource` takes once `Plugin::source` claims it: the resolver receives a `SourceContext<O>` whose `options` are the claiming plugin's own validated options extracted as `O`, and whose `out` and `log` are the run's, the log tagged with the plugin. A resolver's foreign error is offered to the translators before it becomes the plugin's `foreign-throw` fault. The hidden `__private::install_source(app, plugin, &BINDING, own, resolver)` installs a source with untyped options for a test. Option groups withdraw lower-tier members before validation.
@@ -141,7 +154,6 @@ Precedence is the reference's: a token, then the environment, then the configura
 
 | Reference rule | Rust enforcement | Identity |
 | --- | --- | --- |
-| `argument()` removes `command()`, and back | Type: `TakesArguments`, `TakesChildren`, `Shape` | `arguments-beside-children` |
 | `command()` and `action()` remove `globalOption()` | Type: `TakesGlobals` | (types) |
 | `result()`/`rows()` once, `views()` only with a result | Type: `NoResultYet`, `CarriesResult` | (types) |
 | `action()` closes every call but `extend()`/`views()` | Type: `Open` | (types) |
@@ -164,13 +176,14 @@ Precedence is the reference's: a token, then the environment, then the configura
 | One mark of each kind per Application | Call | `interaction-mark`, `color-mark`, `verbose-mark`, `quiet-mark`, `background-mark` |
 | A key, spelling, or variable used twice in one scope | Call | `option-declared-twice`, `spelling-taken`, `variable-bound-twice` |
 | A local option that collides with a global, the plugins' included | Call (`option`), attach (`command`) | same three |
-| Variadic last; required before optional | Call | `variadic-argument-last`, `optional-argument-last` |
+| Only required scalar string arguments follow a variadic. Required arguments precede optional ones up through the variadic. | Call | `argument-after-variadic`, `optional-argument-last` |
 | An argument declared twice | Call | `argument-declared-twice` |
-| A root argument beside plugin Commands | Call | `arguments-beside-children` |
+| Passthrough declared twice | Call | `passthrough-declared-twice` |
+| Terminal need declared twice | Call | `terminal-need-declared-twice` |
 | An option group of fewer than two, repeated, or undeclared members | Call | `option-group` |
 | Siblings share a name or alias | Attach | `sibling-name-taken` |
 | One Command value at two places | Type: `command()` moves the child, and `Command` is not `Clone`, so one value cannot attach twice; `command-attached-twice` is unreachable | (types) |
-| A Command with neither children nor an action; stdin on a group | Attach; build for the root | `command-without-action` |
+| A Command with neither children nor an action, or arguments, stdin, passthrough, or terminal need on a group | Attach; build for the root and hook contributions | `command-without-action` |
 | Two providers with one name in a `uses` closure | Call (`uses`) | `provider-name-taken` |
 | A persistent provider uses an ephemeral one | Type: `Provider<V, Persistent>::uses` takes `PersistentProvider` alone | (types) |
 | At most one stdin target per Command | Call: `stdin()`, or `option()`/`argument()` of a content input with `.stdin()`, when another already claims stdin | `stdin-claimed-twice` |
@@ -199,6 +212,7 @@ Each field carries exactly one of:
 - `#[option(fact, …)]`: an option.
 - `#[argument(fact, …)]`: an argument, bound in field order.
 - `#[stdin(description = "…")]`: the standalone stdin, on a `Content` or `Option<Content>` field.
+- `#[passthrough(description = "…")]` declares the passthrough mode on a `Vec<String>` field. The description is optional and defaults to the field’s doc comment.
 
 The struct may carry `#[inputs(exclusive("a", "b"), one_required(…), required_together(…))]`. Each member is an option's declared name (`dry-run` for a field `dry_run`), not a field identifier: a member that is a field's identifier where that field declares another name is a compile error at the member (`` `dry_run` is the field; a group names the declared name "dry-run" ``). A member that names no field stays a call fault at `inputs::<I>()`, because an option declared before that call may be a member.
 
@@ -255,7 +269,7 @@ The derive rejects at compile time what the builder would reject at the call for
 - **A type no kind reads**: `Option<bool>`, a `bool` argument, a `count` field that is no unsigned integer, a `#[stdin]` field that is not `Content` or `Option<Content>`.
 - **The grammar**: an unknown fact (the message lists the facts), a fact named twice, a flag given a value, a valued fact given none, two roles on one field, a field with no role, and a tuple struct or an enum.
 
-The rules that read more than one declaration, a name or a spelling taken twice, a run-wide mark on a local option, and a presence rule on a struct used as global options, stay the call's faults, as does a rule on a value the derive cannot read as a literal, such as `short = SHORT` or `aliases = ALIASES`. A type the field and its input disagree on is E0277 at the field type through `IsType`; a struct that is not eligible as global options is E0277 at `globals::<G>()` or `options::<O>()` through `GlobalInputs`. The derive implements `GlobalInputs` only for a struct with no argument, no stdin, no content option, no presence rule, and no option group.
+The rules that read more than one declaration, a name or a spelling taken twice, a run-wide mark on a local option, and a presence rule on a struct used as global options, stay the call's faults, as does a rule on a value the derive cannot read as a literal, such as `short = SHORT` or `aliases = ALIASES`. A type the field and its input disagree on is E0277 at the field type through `IsType`; a struct that is not eligible as global options is E0277 at `globals::<G>()` or `options::<O>()` through `GlobalInputs`. The derive implements `GlobalInputs` only for a struct with no argument, no stdin, no passthrough, no content option, no presence rule, and no option group.
 
 ### Expansion contract
 
@@ -266,8 +280,6 @@ The expansion is public contract (ADR-0004), written against public items alone:
 // impl loomcli_core::GlobalInputs for SelectInputs {}
 
 impl loomcli_core::Inputs for SelectInputs {
-    type Shape = loomcli_core::NoArguments;   // `Arguments` when any field is an argument
-
     fn declare(declarations: Declarations) -> Declarations {
         let declarations = declarations.option("file", (document_input()).required());
         let declarations = {
@@ -300,7 +312,7 @@ impl loomcli_core::Inputs for SelectInputs {
 
 `IntoInputValue` is the inverse of `FromInputValue`: `Option<T>`, `Vec<T>`, `bool`, an unsigned count, and `Required<T>` for a value validation guarantees. Every read returns `Result`: a name the table does not hold, a `T` the declaration does not produce, and a required read of an absent value are the `input-read` fault. `T` is `String` for an input with no validator, the validator's `Output` with one, and `Content` for a content input; a count beyond the integer type's range reads as its largest value.
 
-`Command::inputs::<I>()` applies `I::declare` through the Command's own `argument()`, `option()`, `stdin()`, and group calls, in the order `declare` made them, so every call-time rule applies. `Application::globals::<G>()` applies each option through `global_option()`; a hand-written `GlobalInputs` impl that lists an argument, stdin, a group, or a content option faults there under `option-config`. `I::extract` runs at dispatch over the validated values.
+`Command::inputs::<I>()` applies `I::declare` through the Command's own `argument()`, `option()`, `stdin()`, `passthrough()`, and group calls, in the order `declare` made them, so every call-time rule applies. `Application::globals::<G>()` applies each option through `global_option()`; a hand-written `GlobalInputs` impl that lists an argument, stdin, passthrough, a group, or a content option faults there under `option-config`. `I::extract` runs at dispatch over the validated values.
 
 ### Globals, plugin options, and dynamic reads
 
@@ -308,6 +320,7 @@ impl loomcli_core::Inputs for SelectInputs {
 - **Read typed.** `ctx.globals::<G>()` extracts any struct whose fields name global options, the plugins' included; a middleware reads its own as `ctx.options: Option<O>`. A field that names no global, or a type that does not match the declaration, returns the `input-read` fault.
 - **Read by name.** Plugins and hooks read inputs they did not declare: `ctx.option::<T>(name)`, `ctx.argument::<T>(name)`, `middleware.option::<T>(name)`, `own_options.option::<T>(name)`, `request.values.option::<T>(name)`. Every one returns `Result<T, Error>`: absence reads through `T = Option<V>`, and a name the scope does not declare, or a `T` the declaration does not produce, is `input-read`. `T: FromInputValue` is `Option<V>` for one value, `Vec<V>` for several, `bool` for a Boolean option, and an unsigned integer for a counted option. A Boolean or counted option also reads as `Option<bool>` or `Option<u32>` (any unsigned integer), so a record that holds an option only once it validated, such as `own_options`, reads its absence as `None`. While a middleware's `options` is `None`, `middleware.option::<T>(name)` reads every global option as absent, so a middleware that runs on an invocation whose global value did not validate reads a Boolean as `Option<bool>` and a count as `Option<u32>`: a read of an absent value as a type that always holds one (`bool`, `u32`, `String`) is `input-read` with its own sentence, `The inputs read option "peek" as a type that always holds a value, and the run holds none for it.`, whose correction names the `Option` reads.
 - **Stdin.** A derived `#[stdin]` field is the typed form of `ctx.stdin`: when an inputs struct claims stdin, `ctx.stdin` is `None`, so one stdin is read one way.
+- **Passthrough.** The derive declares the mode with `Declarations::passthrough`, extracts the tail with `InputValues::passthrough()`, and restores it with `InputValues::with_passthrough`. The same words are available through `ctx.passthrough`.
 
 ## 3. Validation
 
@@ -341,7 +354,7 @@ pub trait OmissionValidator: Validator {
 | `args`, `options` | `ctx.inputs: I` (arguments and local options); globals through `ctx.globals::<G>()`; by name through `ctx.argument::<T>()`, `ctx.option::<T>()` |
 | `supplied` | `ctx.supplied: SuppliedInputs` (`args`, `options` maps of `SuppliedValue`) |
 | `interactive` | `ctx.interactive: bool` |
-| `passthrough` | `ctx.passthrough: Vec<String>` |
+| `passthrough` | `ctx.passthrough: Vec<String>`, empty when the Command leaves the mode off or the invocation supplies no tail |
 | `graph` | `ctx.graph: Arc<CommandGraph>` |
 | `command` | `ctx.command: Arc<CommandNode>` |
 | `out` | `ctx.out: Out<R>` |
@@ -368,7 +381,9 @@ Command::new("hello").action(move |ctx: Context| {
 
 **Reading inputs.** `ctx.inputs` is the routed Command's inputs struct, extracted from the validated values; `ctx.option::<T>(name)` reads a local option, else a global one, `ctx.argument::<T>(name)` an argument, and `ctx.globals::<G>()` extracts a struct of global options, each under the rules of section 2. `ctx.supplied` holds the raw value of every declared input any tier supplied: `One` or `Many` for a string or content input (`Many(vec![])` for an omitted collected one), `Flag` for a Boolean, `Count` for a counted option, and no key for an omitted scalar or an input left to its default; a member an exclusive group withdrew is left out.
 
-**Invocation values.** `InvocationValues::new().arg(name, v).option(name, v).passthrough(words)` takes any `impl Into<serde_json::Value>`: `"text"`, `5`, `true`, `vec!["a", "b"]`, or a `serde_json::Value` as an agent sent it, so the MCP plugin passes a tool call's `arguments` through unchanged. Core applies the reference's lowering table: a finite number lowers to the token JavaScript's `String(number)` writes (`5`, `0.5`); an unlowerable value (`null`, an object, a nested array, an array on a scalar input, a non-finite number, a Boolean on an argument, and the rest of the table) supplies nothing and is an `invalid` problem with core's sentence (`Use a string or a number.` …), in authoring order. An absent key is the reference's `undefined`.
+**Invocation values.** `InvocationValues::new().arg(name, v).option(name, v)` takes any `impl Into<serde_json::Value>` for `v`, such as `"text"`, `5`, `true`, `vec!["a", "b"]`, or the JSON value an agent sent. The MCP plugin passes a tool call's `arguments` through as received. Core applies the reference's lowering table. A finite number lowers to the token JavaScript's `String(number)` writes, such as `5` or `0.5`. An unlowerable value supplies nothing and becomes an `invalid` problem in authoring order. Examples include `null`, an object, a nested array, an array on a scalar input, a non-finite number, and a Boolean on an argument. An absent key is the reference's `undefined`.
+
+`InvocationValues::passthrough(words)` takes `impl IntoIterator<Item = impl Into<String>>`. A Command with the mode receives the words in order. A Command with the mode off accepts an empty list and rejects a nonempty list with `UnexpectedArgumentError`, whose `extra()` holds those words and whose `accepted()` holds the Command’s argument count. A crate-private constructor sets the sentence to `Command "get" declares no passthrough. Remove passthrough from the values.` The message module escapes the Command name. Core holds this structural fault behind unknown option keys, excluded names, and argument keys. This applies to both `Application::invoke` and `Context::invoke`.
 
 ## 5. Output
 
@@ -450,12 +465,15 @@ async fn show(out: &Out) -> Result<(), Error> {
 | `RepeatedOptionError` | `UsageError` | `repeated-option` | 2 |
 | `MisplacedOptionError` | `UsageError` | `misplaced-option` | 2 |
 | `FatalError` | `LoomError` | `fatal` | 1 |
+| `TerminalUnavailableError` | `FatalError` | `terminal-unavailable` | 1 |
 | `WorkingDirectoryError` | `LoomError` | `working-directory-unreadable` | 1 |
 | `DeclarationError` | `LoomError` | `internal` | 1 |
 | `InternalError` | `LoomError` | `internal` | 1 |
 | `ResultError` | `InternalError` | `internal` (inherited) | 1 |
 
 The fifteen `sysexits.h` constants (`EX_USAGE` … `EX_CONFIG`) are `FailureExitCode` constants. `ExitCode` is what a run resolves: 0, a failure's code, or 129, 130, 131, 141, 143.
+
+`TerminalUnavailableError::new(application, command)` takes the application name and routed path. `command()` returns that path, empty for the root. `NonCallableCommandError::new(command, candidates)` takes the same two arguments and `.argument(word)` adds the escapable spelling. `argument_word()` returns `Option<&str>`, with `None` on invocations by name. It carries the spelling used to route to a group from a parent with arguments and passthrough off on an argv run. The failure suggests placing `--` before that spelling to pass it as an argument.
 
 **`#[derive(Failure)]`.** One `#[failure(base)]` field holds the parent class's value; `#[failure(code = "…", exit_code = …, abstract)]` on the struct. It writes the `Failure` impl with its `static` class and, unless abstract, `From<T> for loomcli_core::Error`. Generic structs are rejected. A `code` outside the failure-code grammar and an integer-literal `exit_code` outside 1 through 125 are compile errors at the literal; an `exit_code` constant such as `EX_DATAERR` is checked by `FailureExitCode::new` in `const`.
 
@@ -486,6 +504,8 @@ Each replaces a TypeScript compile-time check that Rust's types cannot state. Ea
 
 | Identity | Raised | Replaces |
 | --- | --- | --- |
+| `@loomcli/core/passthrough-declared-twice` | At the second declaration | The builder type closing `passthrough()` |
+| `@loomcli/core/terminal-need-declared-twice` | At the second declaration | The builder type closing `needsTerminal()` |
 | `@loomcli/core/option-config` | At the declaring call | The option-config unions (`Presence`, `OptionSpelling`, marks, `GlobalOmissionConstraint`, `ListBinding`) |
 | `@loomcli/core/plugin-option-name` | At the `middleware`, `short`, or `env` call | `activate: readonly (keyof Options)[]`, and the settings' typed option names |
 | `@loomcli/core/input-read` | At the typed read | `Register`/`AttachmentConstraint` globals and `uses`-typed `provided` |
@@ -498,7 +518,7 @@ Each replaces a TypeScript compile-time check that Rust's types cannot state. Ea
 | Node | Keys in order |
 | --- | --- |
 | `CommandGraph` | `configuration`, `description`?, `globals`, `name`, `root`, `version` |
-| `CommandNode` | `optionGroups`, `stdin`?, `aliases`, `arguments`, `children`, `deprecated`?, `description`?, `extensions`, `hasAction`, `hidden`, `name`, `options`, `path`, `result` |
+| `CommandNode` | `optionGroups`, `passthrough`, `stdin`?, `aliases`, `arguments`, `children`, `deprecated`?, `description`?, `extensions`, `hasAction`, `hidden`, `name`, `needsTerminal`, `options`, `path`, `result` |
 | `ArgumentNode` | `max`?, `min`?, `stdin`?, `type`? (content alone), `default`?, `description`?, `extensions`, `name`, `required`, `requiredWhen`, `schema`, `validateOmitted`, `validated`, `variadic` |
 | `StringOptionNode` | `aliases`, `control`, `deprecated`?, `description`?, `env`, `extensions`, `hidden`, `long`, `name`, `short`, `default`?, `envDelimiter`, `implied`, `multiple`, `required`, `requiredWhen`, `schema`, `validateOmitted`, `validated`, `background`, `envAllowEmpty`, `type` |
 | `ContentOptionNode` | the string node's keys through `validated`, then `max`?, `min`?, `stdin`, `type` |
@@ -506,10 +526,13 @@ Each replaces a TypeScript compile-time check that Rust's types cannot state. Ea
 | `CountOptionNode` | shared keys through `short`, then `quiet`, `schema`, `type`, `verbose` |
 | `ResultNode` | `default`, `kind`, `mediaTypes`, `views` |
 | `OptionGroup` | `kind`, `options` |
+| `PassthroughNode` | `description`? |
 | `StdinNode` | `description`?, `required` |
 | `ConfigurationNode` | `schema` |
 
 `?` marks a key absent when the value is absent. `OptionNode` is an untagged enum of the four option nodes, with the shared accessors `name()`, `long()`, `short()`, `hidden()`, `deprecated()`, and `extensions()`. Children, arguments, options, and globals are `Arc`s, so a context holds the routed node without copying the tree, and every node a reader receives, from a context or from `locate`, is the graph's own: a reader compares by `Arc::ptr_eq`. `extensions` and `mediaTypes` are `serde_json::Map` (insertion order, `preserve_order`). `locate(&graph, words) -> WordPosition` reads a partial invocation with the run's grammar and never fails: the words before the last go through the parser's own walk (`invocation::parse`, with routing left open where they run out at a Command with children), and an empty list reads as one empty word. Only `inspect()` builds a `CommandGraph` (it is `#[non_exhaustive]`), and a clone shares the parser's tables, so `foreign-graph` is unreachable. `WordPosition::Option`'s `counts` and `booleans` are `Vec<(String, _)>` in the order the earlier words first gave each, the reference's insertion-ordered maps. `graph.command(&["cache", "clear"])` finds a node by canonical path.
+
+`CommandNode::passthrough` is `Option<PassthroughNode>`, serialized as `null` when the mode is off. When the mode is on but the description is absent, the graph serializes an empty object and the manifest serializes an object with `description: null`. `CommandNode::needs_terminal` is `bool`. `WordPosition::Command` includes `argument: Option<Arc<ArgumentNode>>`, the graph's first argument for a word that matches no child. With passthrough off, `locate` returns an argument position for a word after `--` when a slot is available.
 
 ## 8. The plugin contract
 
@@ -570,11 +593,11 @@ The order is the reference's (`invocation.md`, steps 1 to 9; `providers.md`, Clo
 6. **Verbosity settles** from `host.argv`, read with the parser's own word reader against the built graph, before anything that can write a lane.
 7. **Environment preparation.** Each `on_environment` hook, in installation order, for an outer run alone; additions merge into `host.env` and, on an argv run, pass to `publish_env`.
 8. **Defaults.** Core validates every declared default and implied value against the prepared environment (`invalid-default`, `invalid-implied`), so an `on_environment` failure outranks an invalid default.
-9. **Routing.** Words before `--` route on global options; an unknown command is raised here.
+9. **Routing.** Before `--`, a word that is a value for an option being read fills that option. An exact child name or alias descends to that child. A plain word matching no child becomes the first positional word when the Command declares arguments. For a Command with children and no arguments, an unmatched plain word raises the unknown-command failure. The first positional word and the first bare `--` each end routing.
 10. **Parsing.** The routed Command's words against its one table; every other fault is held.
 11. **Input sources.** Environment, then the configuration source's resolver, then defaults; option groups withdraw lower tiers.
 12. **Interaction settles** from the terminal facts, `CI`, and the marked option's value.
-13. **Validation.** Globals then locals, in authoring order; plugins' own options validate under any held fault for `own_options`.
+13. **Validation.** Globals then locals, in authoring order. Plugins' own options validate under any held fault for `own_options`. When a Command needs a terminal and the run has none, core holds `TerminalUnavailableError` for the dispatch boundary so middleware takeovers still answer. It outranks collected input problems. Structural faults, configuration-source failures, and validator defects outrank it.
 14. **Activation** of each plugin's middleware from which tier supplied its options.
 15. **The chain.** Each activated middleware, in installation order.
 16. **The dispatch boundary.** Core raises a held fault, else reads the view selection (`view-selection`), builds the opted-in providers, extracts `I`, and calls the action.
@@ -649,7 +672,7 @@ The five context builders build the context one author function receives, with n
 
 | Builder | Values | Notes |
 | --- | --- | --- |
-| `action_context::<I, R: UnitResult>(ActionValues::new(inputs))` | `.globals(g)`, `.passthrough(words)`, `.interactive()`, `.process(handle)`, `.graph(graph)`, `.command(path)`, `.provide(&provider, value)`, `.on_log(hook)` | `ctx.inputs` is the inputs read back through `extract(&into_values())`, which `ctx.argument` and `ctx.option` read; `out.results` writes a value as one JSON line and rows as one JSON line each |
+| `action_context::<I, R: UnitResult>(ActionValues::new(inputs))` | `.globals(g)`, `.passthrough(words)`, `.interactive()`, `.process(handle)`, `.graph(graph)`, `.command(path)`, `.provide(&provider, value)`, `.on_log(hook)` | `ctx.inputs` is the inputs read back through `extract(&into_values())`, which `ctx.argument` and `ctx.option` read. The typed inputs supply the tail, with an empty vector by default. The fixture’s `.passthrough(words)` overrides the tail for both the typed field and `ctx.passthrough`. `out.results` writes a value as one JSON line and rows as one JSON line each. |
 | `middleware_context(MiddlewareValues::new(Some(options)))` returns `(MiddlewareContext<O>, Next)` | `.outcome(ChainOutcome)`, `.own_options(values)`, `.request(values)`, `.spelling(name, spelling)`, `.view(name)`, `.plugin(identity)`, `.process`, `.graph`, `.command`, `.on_log` | an unstated outcome makes `next.run()` fail with `middleware_context has no outcome for this middleware's next to resolve. Add one to its values, such as .outcome(ChainOutcome::Dispatched).` |
 | `failure_hook_context(FailureHookValues::new(app, path))` | `.invoked_by(…)`, `.view(name, media_type)`, `.graph(graph)`, `.on_log` | `command` is the graph's node at the path, or its root |
 | `provider_context(ProviderValues::new(globals))` | `.process`, `.graph`, `.provide(&provider, value)`, `.on_log` | `options` holds the globals' values |

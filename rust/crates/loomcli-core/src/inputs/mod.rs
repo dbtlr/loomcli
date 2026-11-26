@@ -28,9 +28,9 @@ pub use options::{
 };
 pub(crate) use typed::DeclarationCall;
 pub use typed::{
-    Arguments, Declarations, FromInputValue, GlobalInputs, InputValues, Inputs, IntoInputValue,
-    IsType, NoArguments, NoInputs, Required, Shape, SuppliedInputs, SuppliedValue,
-    assert_string_input, assert_validator_output,
+    Declarations, FromInputValue, GlobalInputs, InputValues, Inputs, IntoInputValue, IsType,
+    NoInputs, Required, SuppliedInputs, SuppliedValue, assert_string_input,
+    assert_validator_output,
 };
 pub use validation::{
     InputIdentity, InputKind, InputProblem, Issue, OmissionValidator, PathSegment,

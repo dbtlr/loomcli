@@ -76,7 +76,7 @@ mod plugin {
 
     use loomcli_core::{
         ConfigurationSource, Declarations, Error, GlobalInputs, InputSchema, InputValues, Inputs,
-        NoArguments, Opt, Plugin, Provider, ProviderContext, SourceContext,
+        Opt, Plugin, Provider, ProviderContext, SourceContext,
     };
     use serde::de::DeserializeOwned;
 
@@ -112,8 +112,6 @@ mod plugin {
     }
 
     impl Inputs for ConfigOptions {
-        type Shape = NoArguments;
-
         fn declare(declarations: Declarations) -> Declarations {
             declarations
                 .option(

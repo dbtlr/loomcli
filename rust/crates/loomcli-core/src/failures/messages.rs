@@ -111,6 +111,32 @@ pub(crate) fn missing_subcommand(command: &[String], candidates: &[String]) -> S
     }
 }
 
+pub(crate) fn pass_as_argument(sentence: &str, argument: &str) -> String {
+    format!(
+        "{sentence} To pass {} as an argument, write -- before it.",
+        quoted(argument)
+    )
+}
+
+pub(crate) fn declared_no_passthrough(command: &[String]) -> String {
+    format!(
+        "{} declares no passthrough. Remove passthrough from the values.",
+        routed_sentence(command)
+    )
+}
+
+pub(crate) fn terminal_unavailable(application: &str, command: &[String]) -> String {
+    let words = std::iter::once(application)
+        .chain(command.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "{} needs a terminal. Run {} with stdin and stderr at a terminal, outside CI.",
+        routed_sentence(command),
+        quoted(&words)
+    )
+}
+
 pub(crate) fn unexpected_arguments(command: &[String], accepted: usize) -> String {
     let subject = routed_sentence(command);
     match accepted {
@@ -131,6 +157,13 @@ pub(crate) fn undeclared_argument(command: &[String], name: &str) -> String {
 pub(crate) fn unknown_option(spelling: &str) -> String {
     format!(
         "Unknown option {}. Supply a declared option; prefix a hyphenated path with \"./\".",
+        quoted(spelling)
+    )
+}
+
+pub(crate) fn unknown_option_before_arguments(spelling: &str) -> String {
+    format!(
+        "Unknown option {}. Supply a declared option, or pass it as an argument after \"--\".",
         quoted(spelling)
     )
 }

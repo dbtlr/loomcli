@@ -184,8 +184,13 @@ fn rooted() -> App {
 const UNKNOWN: &str = "Supply a declared option; prefix a hyphenated path with \"./\".";
 
 fn unknown(spelling: &str, path: &[&str]) -> Value {
+    let correction = if path == ["get"] {
+        "Supply a declared option, or pass it as an argument after \"--\"."
+    } else {
+        UNKNOWN
+    };
     json!({
-        "message": format!("Unknown option \"{spelling}\". {UNKNOWN}"),
+        "message": format!("Unknown option \"{spelling}\". {correction}"),
         "name": "UnknownOptionError",
         "path": path,
         "spelling": spelling,

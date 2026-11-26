@@ -127,10 +127,6 @@ pub(crate) struct GrammarCommand {
 }
 
 impl GrammarCommand {
-    fn has_action(&self) -> bool {
-        self.action.is_some()
-    }
-
     /// The child a word routes to, by canonical name or alias.
     pub(crate) fn route(&self, word: &str) -> Option<&(String, Arc<GrammarCommand>)> {
         self.routes
@@ -750,6 +746,7 @@ struct ReadState<'g> {
     at: usize,
     awaiting: Option<AwaitingValue>,
     command: &'g GrammarCommand,
+    escapable: Option<String>,
     fault: Option<HeldFault>,
     faulted: Vec<String>,
     global_fault: bool,
@@ -835,11 +832,13 @@ impl<'g> ReadState<'g> {
     /// The failure a spelling the routed Command's table does not hold reports.
     fn unplaced(&self, spelling: &str) -> Error {
         let commands = declarers(self.command, &self.path, spelling);
-        if commands.is_empty() {
-            UnknownOptionError::new(spelling).into()
-        } else {
-            MisplacedOptionError::new(spelling, commands).into()
+        if !commands.is_empty() {
+            return MisplacedOptionError::new(spelling, commands).into();
         }
+        if self.command.node.passthrough.is_none() && !self.command.arguments.is_empty() {
+            return UnknownOptionError::before_arguments(spelling).into();
+        }
+        UnknownOptionError::new(spelling).into()
     }
 
     /// Applies one occurrence, and answers whether the word's next occurrence is read.
@@ -1046,22 +1045,18 @@ pub(crate) fn candidates_of(command: &GrammarCommand) -> Vec<String> {
         .collect()
 }
 
-/// The slot the positional at one index fills: the slot at that index, else a variadic last slot,
-/// else none.
+/// The next positional slot for an unfinished invocation. A variadic takes every word from its
+/// position onward until complete binding has enough information to reserve the suffix.
 pub(crate) fn argument_slot(slots: &[Slot], position: usize) -> Option<(usize, &Slot)> {
-    if let Some(slot) = slots.get(position) {
-        return Some((position, slot));
+    if let Some((index, slot)) = slots
+        .iter()
+        .take(position.saturating_add(1))
+        .enumerate()
+        .find(|(_, slot)| slot.variadic)
+    {
+        return Some((index, slot));
     }
-    let last = slots.len().checked_sub(1)?;
-    slots
-        .get(last)
-        .filter(|slot| slot.variadic)
-        .map(|slot| (last, slot))
-}
-
-/// Whether routing reads a Command's own options: it has an action and children.
-fn reads_own_options(command: &GrammarCommand) -> bool {
-    command.has_action() && !command.children.is_empty()
+    slots.get(position).map(|slot| (position, slot))
 }
 
 /// An unknown Command, raised as routing reads it, with the path routing walked to it.
@@ -1077,6 +1072,7 @@ pub(crate) struct WordsRead<'g> {
     /// Whether the routed Command read a word, so no later plain word names a child.
     pub(crate) committed: bool,
     pub(crate) delimited: bool,
+    pub(crate) escapable: Option<String>,
     pub(crate) fault: Option<HeldFault>,
     pub(crate) faulted: Vec<String>,
     pub(crate) global_fault: bool,
@@ -1089,7 +1085,7 @@ pub(crate) struct WordsRead<'g> {
     pub(crate) values: ScopeValues,
 }
 
-/// Reads a word list through routing and the routed Command's own words, up to the first bare `--`.
+/// Reads a word list through routing, the routed Command's own words, and the delimiter tail.
 /// `partial` reads the earlier words of an unfinished invocation, as `locate` does: a word after
 /// them may continue routing, so routing has not ended where they run out at a Command with
 /// children, and a parent's own option stays unbound.
@@ -1102,6 +1098,7 @@ pub(crate) fn read_words<'g>(
         at: 0,
         awaiting: None,
         command: &grammar.root,
+        escapable: None,
         fault: None,
         faulted: Vec::new(),
         global_fault: false,
@@ -1135,7 +1132,14 @@ pub(crate) fn read_words<'g>(
         let word = &words[index];
         if word == "--" {
             delimited = true;
-            passthrough = words[index + 1..].to_vec();
+            let tail = &words[index + 1..];
+            if state.command.node.passthrough.is_some() {
+                passthrough = tail.to_vec();
+            } else {
+                for word in tail {
+                    state.positional(word);
+                }
+            }
             break;
         }
         index += state.read_command_word(word, words.get(index + 1).map(String::as_str)) + 1;
@@ -1145,6 +1149,7 @@ pub(crate) fn read_words<'g>(
         command: state.command,
         committed: start < words.len() && words[start] != "--",
         delimited,
+        escapable: state.escapable,
         fault: state.fault,
         faulted: state.faulted,
         global_fault: state.global_fault,
@@ -1159,7 +1164,7 @@ pub(crate) fn read_words<'g>(
 }
 
 /// Routing: the words before the first bare `--`, read from the root against the global options,
-/// and at a Command with an action and children against its whole table. Answers the index of the
+/// and at a Command with children against its whole table. Answers the index of the
 /// first word it did not read; an unknown Command is the one fault raised here.
 fn route<'g>(
     grammar: &'g Grammar,
@@ -1173,10 +1178,10 @@ fn route<'g>(
         }
         let read = if is_option_word(word) {
             let command = state.command;
-            let table = if reads_own_options(command) {
-                &command.table
-            } else {
+            let table = if command.children.is_empty() {
                 &grammar.globals
+            } else {
+                &command.table
             };
             let next = words.get(index + 1).map(String::as_str);
             let reading = read_option_word(table, &state.values, word, next);
@@ -1196,12 +1201,17 @@ fn route<'g>(
                 break;
             }
             let Some((name, child)) = command.route(word) else {
+                if !command.arguments.is_empty() {
+                    break;
+                }
                 return Err(RoutingFailure {
                     path: state.path.clone(),
                     error: UnknownCommandError::new(word, candidates_of(command)).into(),
                 });
             };
             // An alias routes like the canonical name, and the path reports that name alone.
+            state.escapable = (!command.arguments.is_empty() && command.node.passthrough.is_none())
+                .then(|| word.clone());
             state.command = child;
             state.path.push(name.clone());
             1
@@ -1216,6 +1226,7 @@ pub(crate) struct ParsedInvocation<'g> {
     /// What each argument slot received, by argument name; an omitted argument binds nothing.
     pub(crate) args: Vec<(String, SuppliedValue)>,
     pub(crate) command: &'g GrammarCommand,
+    pub(crate) escapable: Option<String>,
     /// The first structural fault in word order, which core holds to the dispatch boundary.
     pub(crate) fault: Option<Error>,
     /// Every option with an occurrence that faulted, whether or not its fault is the one held.
@@ -1238,7 +1249,17 @@ fn bind_arguments(
     positionals: &[String],
 ) -> Vec<(String, SuppliedValue)> {
     let mut bound: Vec<(String, SuppliedValue)> = Vec::new();
-    for (position, word) in positionals.iter().enumerate() {
+    let mut prefix = positionals;
+    if let Some(variadic) = command.arguments.iter().position(|slot| slot.variadic) {
+        for slot in command.arguments[variadic + 1..].iter().rev() {
+            let Some((word, remaining)) = prefix.split_last() else {
+                break;
+            };
+            bound.push((slot.name.clone(), SuppliedValue::One(word.clone())));
+            prefix = remaining;
+        }
+    }
+    for (position, word) in prefix.iter().enumerate() {
         let Some((_, slot)) = argument_slot(&command.arguments, position) else {
             continue;
         };
@@ -1288,6 +1309,7 @@ pub(crate) fn parse_invocation<'g>(
     Ok(ParsedInvocation {
         args: bind_arguments(read.command, &read.positionals),
         command: read.command,
+        escapable: read.escapable,
         fault,
         faulted,
         global_fault: read.global_fault || read.awaiting.as_ref().is_some_and(|a| a.global),

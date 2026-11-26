@@ -288,3 +288,13 @@ pub(super) fn unknown_tool(tool: &str) -> String {
         shown(tool)
     )
 }
+
+/// The build fault for a tool opt-in on a Command that needs a terminal.
+pub(super) fn tool_needs_terminal(path: &[String]) -> String {
+    let command = if path.is_empty() {
+        "The root Command".to_owned()
+    } else {
+        format!("Command \"{}\"", shown_command(path))
+    };
+    format!("{command} carries mcpCommand and needs a terminal, which no tool call has.")
+}

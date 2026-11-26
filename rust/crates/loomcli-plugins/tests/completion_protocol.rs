@@ -424,6 +424,7 @@ fn a_description_reads_each_line_break_as_a_space_with_every_control_character_r
         child("five", Some("\t")),
     ];
     let position = WordPosition::Command {
+        argument: None,
         command: Arc::new(root),
         prefix: String::new(),
     };

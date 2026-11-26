@@ -78,7 +78,7 @@ fn notes() -> GroupApplication {
 loomcli_testing::assert_assembles(&notes());
 ```
 
-That application needs the features `background`, `color`, `completion`, `config`, `dotenv`, `format`, `help`, `interaction`, `logging`, `manifest`, `manpage`, `mcp`, `self-update`, `service`, `skills`, `suggestions`, `theme`, `verbose`, and `version`. A plugin with settings returns a settings builder (`Help`, `Format`, `Version`, `Manifest`), which converts into a plugin in the list; `.plugin()` converts it explicitly. A plugin that attaches Commands to the root (`help` with its Command, `mcp`, `completion`, `manpage`, `skills`, `self-update`, `service`) needs a root that declares no arguments, because a Command with children takes none.
+That application needs the features `background`, `color`, `completion`, `config`, `dotenv`, `format`, `help`, `interaction`, `logging`, `manifest`, `manpage`, `mcp`, `self-update`, `service`, `skills`, `suggestions`, `theme`, `verbose`, and `version`. A plugin with settings returns a settings builder (`Help`, `Format`, `Version`, `Manifest`) that converts into a plugin in the list. `.plugin()` converts it explicitly. A root with an action may declare arguments beside the Commands its plugins attach.
 
 A plugin that defines extensions keeps their descriptors in its `extension` module behind a feature of its own (`help-extension`, `manifest-extension`, `mcp-extension`, `config-extension`), and a plugin that declares views keeps them in its `views` module (`help-views`, `version-views`, `format-views`). A crate that supplies values to a plugin's extensions, such as a plugin crate that adds help sections, turns on the extension feature alone, and the application that installs the plugin turns on the plugin.
 

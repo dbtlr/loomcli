@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::__private::RawValue;
-use crate::commands::{Leaf, State, TakesArguments};
+use crate::commands::Passthrough;
 use crate::failures::Error;
 
 use super::{ArgumentDecl, Content, OptionDecl, Stdin};
@@ -20,10 +20,6 @@ use super::{ArgumentDecl, Content, OptionDecl, Stdin};
 /// its declared name, and [`Inputs::into_values`] is its inverse, which a test's context builder
 /// uses to hand typed values to code that reads by name.
 pub trait Inputs: Sized + Send + Sync + 'static {
-    /// [`Arguments`] when a field is an argument, [`NoArguments`] otherwise. It decides the authoring
-    /// state `inputs::<I>()` moves a Command to: a Command declares arguments or children, not both.
-    type Shape;
-
     /// The builder calls for each field, in field order.
     fn declare(declarations: Declarations) -> Declarations;
 
@@ -36,12 +32,12 @@ pub trait Inputs: Sized + Send + Sync + 'static {
 }
 
 /// An inputs struct whose every field may be a global option: no argument, no content option, no
-/// stdin, and no presence rule. `#[derive(Inputs)]` implements it for exactly those structs, so
+/// stdin, no passthrough, and no presence rule. `#[derive(Inputs)]` implements it for exactly those structs, so
 /// `Application::globals::<G>()` and `Plugin::options::<O>()` reject any other at the call, under
 /// `cargo check`.
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` cannot be global options: global options take no argument, content option, stdin, or presence rule",
-    label = "a field of `{Self}` is an argument, a content option, stdin, or a required option",
+    message = "`{Self}` cannot be global options: global options take no argument, content option, stdin, passthrough, or presence rule",
+    label = "a field of `{Self}` is an argument, a content option, stdin, passthrough, or a required option",
     note = "declare those inputs on the Command with `inputs::<I>()` instead"
 )]
 pub trait GlobalInputs: Inputs {}
@@ -51,8 +47,6 @@ pub trait GlobalInputs: Inputs {}
 pub struct NoInputs;
 
 impl Inputs for NoInputs {
-    type Shape = NoArguments;
-
     fn declare(declarations: Declarations) -> Declarations {
         declarations
     }
@@ -68,33 +62,9 @@ impl Inputs for NoInputs {
 
 impl GlobalInputs for NoInputs {}
 
-/// The shape of an inputs struct that declares at least one argument.
-pub struct Arguments;
-
-/// The shape of an inputs struct that declares no argument.
-pub struct NoArguments;
-
-/// The authoring state a declaration moves to when it takes inputs of this shape in state `S`.
-#[diagnostic::on_unimplemented(
-    message = "a Command declares arguments or attaches children, never both",
-    label = "these inputs declare arguments, and this Command already attached a child or registered its action"
-)]
-pub trait Shape<S: State> {
-    /// The state after the inputs are declared.
-    type After: State;
-}
-
-impl<S: TakesArguments> Shape<S> for Arguments {
-    type After = Leaf;
-}
-
-impl<S: State> Shape<S> for NoArguments {
-    type After = S::Declared;
-}
-
 /// The builder calls an `Inputs` struct makes, collected in call order and then applied to the
 /// Command, Application, or plugin that takes the struct, at that call, through that declaration's
-/// own `argument()`, `option()`, `stdin()`, and group calls.
+/// own `argument()`, `option()`, `stdin()`, `passthrough()`, and group calls.
 #[derive(Clone, Default)]
 #[must_use]
 pub struct Declarations {
@@ -107,6 +77,7 @@ pub(crate) enum DeclarationCall {
     Argument(String, ArgumentDecl),
     Option(String, OptionDecl),
     Stdin(Stdin),
+    Passthrough(Passthrough),
     Group(crate::inspection::OptionGroupKind, Vec<String>),
 }
 
@@ -133,6 +104,12 @@ impl Declarations {
     /// Declares standalone stdin.
     pub fn stdin(mut self, stdin: Stdin) -> Self {
         self.calls.push(DeclarationCall::Stdin(stdin));
+        self
+    }
+
+    /// Declares the passthrough mode for this Command.
+    pub fn passthrough(mut self, mode: Passthrough) -> Self {
+        self.calls.push(DeclarationCall::Passthrough(mode));
         self
     }
 
@@ -308,6 +285,7 @@ pub struct InputValues {
     pub(crate) arguments: BTreeMap<String, RawValue>,
     pub(crate) options: BTreeMap<String, RawValue>,
     pub(crate) stdin: Option<Content>,
+    pub(crate) passthrough: Vec<String>,
 }
 
 impl InputValues {
@@ -336,6 +314,19 @@ impl InputValues {
     pub fn with_stdin(mut self, stdin: Option<Content>) -> Self {
         self.stdin = stdin;
         self
+    }
+
+    /// Sets the passthrough words for a typed field or a unit context.
+    #[must_use]
+    pub fn with_passthrough(mut self, words: Vec<String>) -> Self {
+        self.passthrough = words;
+        self
+    }
+
+    /// The words the invocation supplied after its delimiter in passthrough mode.
+    #[must_use]
+    pub fn passthrough(&self) -> &[String] {
+        &self.passthrough
     }
 
     /// The option `name`, read as `T`. A name this scope does not declare, or a `T` that does not
