@@ -361,6 +361,7 @@ impl<'a> AnsiState<'a> {
         let mut unknown: Vec<&str> = Vec::new();
         let mut index = 0;
         while index < parameters.len() {
+            let start = index;
             let raw = parameters.get(index).copied().unwrap_or_default();
             let colon: Vec<&str> = raw.split(':').collect();
             let code = number(colon.first().copied()).unwrap_or(f64::NAN);
@@ -373,6 +374,14 @@ impl<'a> AnsiState<'a> {
             }
             if code == 39.0 || code == 49.0 {
                 self.set_color(code == 49.0, None);
+                continue;
+            }
+            if code == 4.0
+                && let [_, style] = colon.as_slice()
+                && !style.is_empty()
+                && number(Some(style)) == Some(0.0)
+            {
+                self.modifiers.delete(Modifier::Underline);
                 continue;
             }
             if let Some(modifier) = enabled_modifier(code) {
@@ -406,7 +415,7 @@ impl<'a> AnsiState<'a> {
                 }
                 continue;
             }
-            if code == 38.0 || code == 48.0 {
+            if matches!(code, 38.0 | 48.0 | 58.0) {
                 let mode = if colon.len() > 1 {
                     number(colon.get(1).copied())
                 } else {
@@ -417,6 +426,14 @@ impl<'a> AnsiState<'a> {
                     Some(5.0) => 1,
                     _ => 0,
                 };
+                if code == 58.0 {
+                    // Underline color is unmodeled, but its parameters belong to one command.
+                    if colon.len() == 1 {
+                        index = (index + 1 + count).min(parameters.len());
+                    }
+                    unknown.extend_from_slice(parameters.get(start..index).unwrap_or_default());
+                    continue;
+                }
                 let values: Vec<Option<f64>> = if colon.len() > 1 {
                     // The reference slices from `length - count`, and JavaScript's slice reads a
                     // negative start from the end.

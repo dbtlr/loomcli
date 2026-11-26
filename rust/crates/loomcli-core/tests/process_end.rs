@@ -1,0 +1,521 @@
+//! Ports process-end output through a mock process and its registered exit listener.
+
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+mod support;
+
+use std::future::{Future, poll_fn};
+use std::io;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::task::Poll;
+
+use loomcli_core::{
+    Application, BoxFuture, Context, InputStream, LogDestination, LogEvent, OutputStream,
+    ProcessHandle, ProcessSignal, RegionOptions, RunOptions, ShutdownCause, SignalEvent,
+    SignalListener, SignalSource, View, ViewContext,
+};
+use loomcli_testing::{MockFields, MockProcess, MockTerminal, StreamName, Write, mock_process};
+use support::streams::Swapped;
+
+const SHOW_CURSOR: &str = "\u{1b}[?25h";
+
+/// The mock's signal source with its exit listeners available to the test.
+struct ExitEvent {
+    mock: Arc<MockProcess>,
+    listeners: Mutex<Vec<(u64, SignalListener)>>,
+}
+
+impl ExitEvent {
+    fn fire(&self, code: i32) {
+        let listeners = self.listeners.lock().unwrap().clone();
+        for (_, listener) in listeners {
+            listener(Some(code));
+        }
+    }
+}
+
+impl SignalSource for ExitEvent {
+    fn on(&self, event: SignalEvent, listener: SignalListener) -> u64 {
+        let id = self.mock.signals().on(event, Arc::clone(&listener));
+        if event == SignalEvent::Exit {
+            self.listeners.lock().unwrap().push((id, listener));
+        }
+        id
+    }
+
+    fn off(&self, id: u64) {
+        self.listeners
+            .lock()
+            .unwrap()
+            .retain(|(held, _)| *held != id);
+        self.mock.signals().off(id);
+    }
+
+    fn raise(&self, signal: ProcessSignal) {
+        self.mock.raise(signal);
+    }
+
+    fn terminal(&self) -> Option<Arc<dyn InputStream>> {
+        self.mock.signals().terminal()
+    }
+}
+
+/// Holds the acknowledgment of one write after its bytes reach the stream. Every later write can
+/// finish synchronously, including writes made by a process-end flush.
+struct Pausing {
+    stream: Arc<dyn OutputStream>,
+    pause: AtomicBool,
+    resume: tokio::sync::Notify,
+}
+
+impl Pausing {
+    fn new(stream: Arc<dyn OutputStream>) -> Arc<Self> {
+        Arc::new(Self {
+            stream,
+            pause: AtomicBool::new(false),
+            resume: tokio::sync::Notify::new(),
+        })
+    }
+
+    fn next(&self) {
+        self.pause.store(true, Ordering::SeqCst);
+    }
+}
+
+impl OutputStream for Pausing {
+    fn write<'a>(&'a self, bytes: &'a [u8]) -> BoxFuture<'a, io::Result<()>> {
+        Box::pin(async move {
+            self.stream.write(bytes).await?;
+            if self.pause.swap(false, Ordering::SeqCst) {
+                self.resume.notified().await;
+            }
+            Ok(())
+        })
+    }
+}
+
+fn fixture(fields: MockFields) -> (Arc<ExitEvent>, Arc<Pausing>, RunOptions) {
+    fixture_with_paused_stream(fields, StreamName::Stderr)
+}
+
+fn fixture_with_paused_stream(
+    fields: MockFields,
+    stream: StreamName,
+) -> (Arc<ExitEvent>, Arc<Pausing>, RunOptions) {
+    let mock = mock_process(fields);
+    let signals = Arc::new(ExitEvent {
+        mock: Arc::clone(&mock),
+        listeners: Mutex::default(),
+    });
+    let pause = Pausing::new(match stream {
+        StreamName::Stdout => mock.stdout(),
+        StreamName::Stderr => mock.stderr(),
+    });
+    let mut handle = Swapped::new(mock);
+    handle.signals = Some(Arc::clone(&signals) as _);
+    match stream {
+        StreamName::Stdout => handle.stdout = Some(Arc::clone(&pause) as _),
+        StreamName::Stderr => handle.stderr = Some(Arc::clone(&pause) as _),
+    }
+    (signals, pause, RunOptions::new().process(Arc::new(handle)))
+}
+
+async fn start<F: Future>(mut future: Pin<&mut F>) {
+    poll_fn(|context| {
+        assert!(future.as_mut().poll(context).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+}
+
+fn literal(text: &str, _: &ViewContext) -> String {
+    text.to_owned()
+}
+
+#[tokio::test]
+async fn an_exit_event_writes_a_waiting_pipe_message_before_shutdown_handlers_and_only_once() {
+    let (signals, pause, options) = fixture(MockFields::new());
+    let mock = Arc::clone(&signals.mock);
+    let handled = Arc::new(Mutex::new(None));
+    let observed = Arc::clone(&handled);
+    let app = Application::new("ship").action(move |ctx: Context| {
+        let (signals, pause) = (Arc::clone(&signals), Arc::clone(&pause));
+        let observed = Arc::clone(&observed);
+        async move {
+            let mock = Arc::clone(&signals.mock);
+            let _handler = ctx.on_shutdown(move |event| {
+                *observed.lock().unwrap() = Some((event.cause, event.code, mock.stderr_text()));
+            });
+            pause.next();
+            let mut first = std::pin::pin!(ctx.out.error("first"));
+            start(first.as_mut()).await;
+            let mut message = std::pin::pin!(ctx.out.error("queued last"));
+            start(message.as_mut()).await;
+            signals.fire(1);
+            assert_eq!(signals.mock.stderr_text(), "✘ first\n✘ queued last\n");
+            pause.resume.notify_one();
+            first.await?;
+            message.await
+        }
+    });
+    assert_eq!(app.run(options).await.get(), 0);
+    assert_eq!(
+        handled.lock().unwrap().take(),
+        Some((
+            ShutdownCause::Exit,
+            1,
+            "✘ first\n✘ queued last\n".to_owned()
+        ))
+    );
+    assert_eq!(mock.stderr_text(), "✘ first\n✘ queued last\n");
+}
+
+#[tokio::test]
+async fn an_exit_event_restores_the_cursor_only_on_a_terminal_when_nothing_is_queued() {
+    for terminal in [false, true] {
+        let mut fields = MockFields::new();
+        if terminal {
+            fields = fields.terminal(MockTerminal::new(80, 24));
+        }
+        let (signals, _, options) = fixture(fields);
+        let app = Application::new("ship").action(move |ctx: Context| {
+            let signals = Arc::clone(&signals);
+            async move {
+                ctx.out
+                    .region(RegionOptions::new())
+                    .draw("working", &View::new(literal))
+                    .await?;
+                let before = signals.mock.stderr_text().len();
+                signals.fire(1);
+                assert_eq!(
+                    &signals.mock.stderr_text()[before..],
+                    if terminal { SHOW_CURSOR } else { "" }
+                );
+                Ok(())
+            }
+        });
+        assert_eq!(app.run(options).await.get(), 0);
+    }
+}
+
+#[tokio::test]
+async fn an_exit_event_interleaves_queued_messages_and_frames_on_stderr() {
+    let (signals, pause, options) = fixture(MockFields::new().terminal(MockTerminal::new(80, 24)));
+    let mock = Arc::clone(&signals.mock);
+    let app = Application::new("ship").action(move |ctx: Context| {
+        let (signals, pause) = (Arc::clone(&signals), Arc::clone(&pause));
+        async move {
+            let region = ctx.out.region(RegionOptions::new());
+            region.draw("working 1/2", &View::new(literal)).await?;
+            pause.next();
+            let mut block = std::pin::pin!(ctx.out.error("block"));
+            start(block.as_mut()).await;
+            let mut first = std::pin::pin!(ctx.out.error("first"));
+            start(first.as_mut()).await;
+            let mut frame = std::pin::pin!(region.draw("working 2/2", &View::new(literal)));
+            start(frame.as_mut()).await;
+            let mut last = std::pin::pin!(ctx.out.warn("second"));
+            start(last.as_mut()).await;
+            let before = signals.mock.stderr_text().len();
+            signals.fire(1);
+            assert_eq!(
+                &signals.mock.stderr_text()[before..],
+                concat!(
+                    "\r\u{1b}[J✘ first\nworking 1/2",
+                    "\r\u{1b}[Jworking 2/2",
+                    "\r\u{1b}[J⚠ second\nworking 2/2\u{1b}[?25h",
+                )
+            );
+            pause.resume.notify_one();
+            block.await?;
+            first.await?;
+            frame.await?;
+            last.await
+        }
+    });
+    assert_eq!(app.run(options).await.get(), 0);
+    assert_eq!(
+        mock.stderr_text(),
+        concat!(
+            "working 1/2\r\u{1b}[J✘ block\nworking 1/2",
+            "\r\u{1b}[J✘ first\nworking 1/2\r\u{1b}[Jworking 2/2",
+            "\r\u{1b}[J⚠ second\nworking 2/2\u{1b}[?25h\n",
+        )
+    );
+}
+
+#[tokio::test]
+async fn an_exit_event_finishes_a_partly_handed_off_print_then_the_shared_terminal_queue() {
+    let fields = MockFields::new().terminal(MockTerminal::new(80, 24).streams([
+        loomcli_testing::StreamName::Stdout,
+        loomcli_testing::StreamName::Stderr,
+    ]));
+    let (signals, pause, options) = fixture(fields);
+    let mock = Arc::clone(&signals.mock);
+    let app = Application::new("ship").action(move |ctx: Context| {
+        let (signals, pause) = (Arc::clone(&signals), Arc::clone(&pause));
+        async move {
+            ctx.out
+                .region(RegionOptions::new())
+                .draw("working", &View::new(literal))
+                .await?;
+            pause.next();
+            let mut first = std::pin::pin!(ctx.out.print("applied"));
+            start(first.as_mut()).await;
+            assert_eq!(signals.mock.stdout_text(), "");
+            assert_eq!(signals.mock.stderr_text(), "working\r\u{1b}[J");
+
+            let mut second = std::pin::pin!(ctx.out.error("failed"));
+            start(second.as_mut()).await;
+            let mut third = std::pin::pin!(ctx.out.print("retrying"));
+            start(third.as_mut()).await;
+
+            signals.fire(1);
+            let transcript: String = signals
+                .mock
+                .transcript()
+                .iter()
+                .filter_map(|write| match write {
+                    Write::Stdout(text) | Write::Stderr(text) => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                transcript,
+                concat!(
+                    "working\r\u{1b}[Japplied\nworking",
+                    "\r\u{1b}[J✘ failed\nworking",
+                    "\r\u{1b}[Jretrying\nworking\u{1b}[?25h",
+                )
+            );
+            pause.resume.notify_one();
+            first.await?;
+            second.await?;
+            third.await
+        }
+    });
+    assert_eq!(app.run(options).await.get(), 0);
+    assert_eq!(mock.stdout_text(), "applied\nretrying\n");
+    assert_eq!(
+        mock.stderr_text(),
+        "working\r\u{1b}[Jworking\r\u{1b}[J✘ failed\nworking\r\u{1b}[Jworking\u{1b}[?25h\n"
+    );
+}
+
+#[tokio::test]
+async fn the_exit_event_draws_a_queued_first_frame_before_showing_the_cursor() {
+    let (signals, pause, options) = fixture(MockFields::new().terminal(MockTerminal::new(80, 24)));
+    let app = Application::new("ship").action(move |ctx: Context| {
+        let (signals, pause) = (Arc::clone(&signals), Arc::clone(&pause));
+        async move {
+            pause.next();
+            let mut block = std::pin::pin!(ctx.out.error("block"));
+            start(block.as_mut()).await;
+            let region = ctx.out.region(RegionOptions::new());
+            let mut frame = std::pin::pin!(region.draw("first frame", &View::new(literal)));
+            start(frame.as_mut()).await;
+            signals.fire(1);
+            assert_eq!(
+                signals.mock.stderr_text(),
+                "✘ block\nfirst frame\u{1b}[?25h"
+            );
+            pause.resume.notify_one();
+            block.await?;
+            frame.await
+        }
+    });
+    assert_eq!(app.run(options).await.get(), 0);
+}
+
+#[tokio::test]
+async fn an_immediate_signal_shutdown_drains_the_write_queue_in_that_step() {
+    for (signal, status, terminal) in [
+        (ProcessSignal::Quit, 131, true),
+        (ProcessSignal::Term, 143, false),
+    ] {
+        let mut fields = MockFields::new();
+        if terminal {
+            fields = fields.terminal(MockTerminal::new(80, 24));
+        }
+        let (signals, pause, options) = fixture(fields);
+        let app = Application::new("ship")
+            .shutdown_timeout(0)
+            .action(move |ctx: Context| {
+                let (signals, pause) = (Arc::clone(&signals), Arc::clone(&pause));
+                async move {
+                    pause.next();
+                    let mut block = std::pin::pin!(ctx.out.error("block"));
+                    start(block.as_mut()).await;
+                    let mut message = std::pin::pin!(ctx.out.error("The deploy was interrupted."));
+                    start(message.as_mut()).await;
+                    signals.mock.raise(signal);
+                    assert_eq!(
+                        signals.mock.stderr_text(),
+                        format!(
+                            "✘ block\n✘ The deploy was interrupted.\n{}",
+                            if terminal { SHOW_CURSOR } else { "" }
+                        ),
+                    );
+                    assert_eq!(signals.mock.ended_by(), Some(signal));
+                    pause.resume.notify_one();
+                    block.await?;
+                    message.await
+                }
+            });
+        assert_eq!(app.run(options).await.get(), status);
+    }
+}
+
+#[tokio::test]
+async fn log_hook_records_follow_polled_messages_on_pipes_and_shared_terminals() {
+    for (terminal, frame, expected) in [
+        (false, false, "ℹ lane\n[REC] after\n"),
+        (true, false, "before\n[REC] after\n"),
+        (
+            true,
+            true,
+            "FRAME\r\u{1b}[Jbefore\nFRAME\r\u{1b}[J[REC] after\nFRAME\n",
+        ),
+    ] {
+        let mut fields = MockFields::new();
+        if terminal {
+            fields = fields.terminal(
+                MockTerminal::new(80, 24).streams([StreamName::Stdout, StreamName::Stderr]),
+            );
+        }
+        let held = if terminal && !frame {
+            StreamName::Stdout
+        } else {
+            StreamName::Stderr
+        };
+        let (signals, pause, options) = fixture_with_paused_stream(fields, held);
+        let mock = Arc::clone(&signals.mock);
+        let app = loomcli_core::__private::install_log_hook(
+            Application::new("ship").action(move |ctx: Context| {
+                let pause = Arc::clone(&pause);
+                async move {
+                    if frame {
+                        ctx.out
+                            .region(RegionOptions::new())
+                            .draw("FRAME", &View::new(literal))
+                            .await?;
+                    }
+                    pause.next();
+                    let mut message = std::pin::pin!(async {
+                        if terminal {
+                            ctx.out.print("before").await
+                        } else {
+                            ctx.out.info("lane").await
+                        }
+                    });
+                    start(message.as_mut()).await;
+                    ctx.log.info("after", ());
+                    pause.resume.notify_one();
+                    message.await
+                }
+            }),
+            |event: &LogEvent, destination: &LogDestination| {
+                if let Some(stderr) = &destination.stderr {
+                    drop(stderr.write(format!("[REC] {}\n", event.message).as_bytes()));
+                }
+            },
+        );
+        assert_eq!(app.run(options).await.get(), 0);
+        let writes = mock.transcript();
+        let bytes: String = writes
+            .iter()
+            .filter_map(|write| match write {
+                Write::Stdout(text) | Write::Stderr(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bytes, expected);
+    }
+}
+
+#[tokio::test]
+async fn zero_shutdown_budget_drains_a_record_queued_during_cancellation() {
+    let (signals, _, options) = fixture(MockFields::new());
+    let mock = Arc::clone(&signals.mock);
+    let app = loomcli_core::__private::install_log_hook(
+        Application::new("ship")
+            .shutdown_timeout(0)
+            .action(move |ctx: Context| {
+                let signals = Arc::clone(&signals);
+                async move {
+                    let region = ctx.out.region(RegionOptions::new());
+                    region.on_close(move |_| ctx.log.info("Stopped before the upload.", ()));
+                    signals.mock.raise(ProcessSignal::Term);
+                    assert_eq!(signals.mock.ended_by(), Some(ProcessSignal::Term));
+                    assert_eq!(signals.mock.stderr_text(), "✘ Stopped before the upload.\n");
+                    Ok(())
+                }
+            }),
+        |event: &LogEvent, destination: &LogDestination| {
+            if let Some(stderr) = &destination.stderr {
+                drop(stderr.write(format!("✘ {}\n", event.message).as_bytes()));
+            }
+        },
+    );
+    assert_eq!(app.run(options).await.get(), 143);
+    assert_eq!(mock.stderr_text(), "✘ Stopped before the upload.\n");
+}
+
+/// Holds a sequence's first row until another write is queued behind the sequence.
+struct HeldRow(Option<tokio::sync::oneshot::Receiver<&'static str>>);
+
+impl loomcli_core::Stream for HeldRow {
+    type Item = Result<&'static str, loomcli_core::Error>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let Some(receiver) = self.0.as_mut() else {
+            return Poll::Ready(None);
+        };
+        let read = std::task::ready!(Pin::new(receiver).poll(context));
+        self.0 = None;
+        Poll::Ready(read.ok().map(Ok))
+    }
+}
+
+#[tokio::test]
+async fn an_exit_event_keeps_a_queued_row_ahead_of_the_write_waiting_for_its_sequence() {
+    use loomcli_core::{RowSource, RowView};
+
+    let fields = MockFields::new()
+        .terminal(MockTerminal::new(80, 24).streams([StreamName::Stdout, StreamName::Stderr]));
+    let (signals, pause, options) = fixture(fields);
+    let mock = Arc::clone(&signals.mock);
+    let app = Application::new("ship").action(move |ctx: Context| {
+        let (signals, pause) = (Arc::clone(&signals), Arc::clone(&pause));
+        async move {
+            pause.next();
+            let mut block = std::pin::pin!(ctx.out.warn("block"));
+            start(block.as_mut()).await;
+
+            let (ready, row) = tokio::sync::oneshot::channel();
+            let view = RowView::new(|row: &&str, _, _| format!("{row}\n"));
+            let mut sequence =
+                std::pin::pin!(ctx.out.render(RowSource::stream(HeldRow(Some(row))), &view));
+            start(sequence.as_mut()).await;
+            let mut waiting = std::pin::pin!(ctx.out.print("waiting"));
+            start(waiting.as_mut()).await;
+            ready.send("row").unwrap();
+            start(sequence.as_mut()).await;
+
+            signals.fire(1);
+            assert_eq!(signals.mock.stdout_text(), "row\nwaiting\n");
+            pause.resume.notify_one();
+            block.await?;
+            sequence.await?;
+            waiting.await
+        }
+    });
+    assert_eq!(app.run(options).await.get(), 0);
+    assert_eq!(mock.stdout_text(), "row\nwaiting\n");
+    assert_eq!(mock.stderr_text(), "⚠ block\n\u{1b}[?25h");
+}

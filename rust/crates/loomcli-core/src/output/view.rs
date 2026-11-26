@@ -480,7 +480,8 @@ impl<R: 'static> From<DeclaredRowView<R>> for ViewContribution {
     }
 }
 
-/// A whole view over `D`: a bare view or a declared one. `out.draw`, `out.text`, and a region take it.
+/// A whole view over `D`: a bare view or a declared one. `out.draw`, `out.text`, a region, and
+/// [`Message::view`](crate::Message::view) take it.
 pub trait WholeView<D: ?Sized> {
     #[doc(hidden)]
     fn whole(&self) -> (Option<&str>, &View<D>);
@@ -687,7 +688,7 @@ static LANES: std::sync::LazyLock<Lanes> = std::sync::LazyLock::new(|| Lanes {
 /// Core's lane views, each a declared view over the message, overridable like any other. An
 /// application replaces the function of any of them through `overrides`, and the replacement owns
 /// the gutter the default supplies. A lane view returns no line break: the semantic method appends
-/// one after it.
+/// one only when the drawn text lacks a final line break.
 pub mod lanes {
     use super::{DeclaredView, LANES};
 

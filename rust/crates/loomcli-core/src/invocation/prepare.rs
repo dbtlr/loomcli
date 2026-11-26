@@ -285,7 +285,7 @@ pub(crate) async fn prepare_dispatch(run: &Run<'_>, mut parsed: ParsedInvocation
         if let Err(error) = run
             .state
             .output
-            .emit(Lane::Debug, line, Stream::Stderr)
+            .emit(Lane::Debug, line.into(), Stream::Stderr)
             .await
         {
             return own_run.held(error, None, ledger);

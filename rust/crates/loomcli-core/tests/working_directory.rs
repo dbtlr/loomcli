@@ -208,7 +208,7 @@ async fn an_actions_invoke_reads_its_runs_working_directory_and_captures_nothing
         .run(RunOptions::new().process(Arc::clone(&mock) as _))
         .await;
     assert_eq!(code.get(), 0);
-    assert_eq!(mock.stdout_text(), "completed:/srv/override\n\n");
+    assert_eq!(mock.stdout_text(), "completed:/srv/override\n");
     assert_eq!(mock.stderr_text(), "");
     assert_eq!(*calls.lock().unwrap(), ["action:nested", "action:where"]);
 }

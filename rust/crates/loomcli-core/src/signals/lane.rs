@@ -5,7 +5,7 @@
 //! event only while a run that listens is live or a handler that listens is registered, and for
 //! `SIGTSTP` and `SIGCONT` only while a suspend or resume handler is. An ending signal starts one
 //! shutdown: every live run is cancelled, and the shutdown ends at the first of every run resolved,
-//! the budget, or a second ending signal. At its end the lane flushes each run's terminal, calls
+//! the budget, or a second ending signal. At its end the lane flushes each run's pending output, calls
 //! every pending shutdown handler newest first, removes its listeners, and re-raises the first
 //! signal on the source, whose default action ends the process.
 //!
@@ -35,7 +35,7 @@ type HeldHandler = Arc<dyn Fn() + Send + Sync>;
 pub(crate) struct LaneRun {
     /// Cancels the run with the signal as its source. A run already cancelled keeps its reason.
     pub(crate) cancel: Box<dyn Fn(EndingSignal) + Send + Sync>,
-    /// Writes every region frame still queued straight to the run's terminal and shows the cursor.
+    /// Sends pending output to the run's streams and restores the terminal cursor.
     pub(crate) flush: Box<dyn Fn() + Send + Sync>,
     /// Whether the run keeps its lane listening: a `run()`, or a call whose outermost run is one.
     pub(crate) listens: bool,
@@ -524,7 +524,7 @@ impl Lane {
         }
     }
 
-    /// Ends the shutdown under way: every run's queued region frames reach its terminal, every
+    /// Ends the shutdown under way: every run's pending output reaches its streams, every
     /// pending handler is called, newest first, core's listeners go, and the signal is re-raised on
     /// the source, whose default action ends the process. Nothing is awaited.
     fn end(&self, signal: EndingSignal) {

@@ -19,7 +19,7 @@ pub(crate) mod view;
 pub(crate) use log::{LogHook, RunLog};
 
 pub use log::{Log, LogApplication, LogDefect, LogDestination, LogEvent, LogFields, LogLevel};
-pub use out::Out;
+pub use out::{Message, Out};
 pub use region::{
     EndState, ProgressEvent, ProgressReport, ProgressState, Region, RegionCloser, RegionOptions,
 };

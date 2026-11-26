@@ -12,8 +12,8 @@ const ESCAPE: char = '\u{1b}';
 const BELL: char = '\u{7}';
 
 /// The length in characters of the terminal control sequence that starts at `chars[0]`, an escape,
-/// or `None` when no sequence starts there: a CSI sequence, an OSC string ended by a bell or a
-/// string terminator, or a two-character escape.
+/// or `None` when no sequence starts there. An OSC string can end with a bell or a string
+/// terminator. A DCS, SOS, PM, or APC can end with a string terminator.
 fn control_length(chars: &[char]) -> Option<usize> {
     let next = *chars.get(1)?;
     if next == '[' {
@@ -43,6 +43,12 @@ fn control_length(chars: &[char]) -> Option<usize> {
             }
             index += 1;
         }
+    }
+    if matches!(next, 'P' | 'X' | '^' | '_')
+        && let Some(offset) = chars.iter().skip(2).position(|&c| c == ESCAPE)
+        && chars.get(offset + 3) == Some(&'\\')
+    {
+        return Some(offset + 4);
     }
     (('@'..='Z').contains(&next) || ('\\'..='_').contains(&next)).then_some(2)
 }
@@ -101,8 +107,8 @@ fn blank(frame: Option<&Frame>) -> bool {
 }
 
 /// Whether text ends with a line break of its own.
-fn ends_line(text: &str) -> bool {
-    visible(text).ends_with('\n')
+pub(super) fn ends_line(text: &str) -> bool {
+    text.ends_with('\n') || (text.contains(ESCAPE) && visible(text).ends_with('\n'))
 }
 
 /// The text a closed region leaves in scrollback: its last frame, ending with a line break.

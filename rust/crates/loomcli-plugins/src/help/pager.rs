@@ -72,7 +72,7 @@ fn outgrows_screen(host: &Host, page: &str) -> bool {
 /// send `SIGTERM`, on which less restores the terminal.
 async fn show_in_pager<F>(show: &Show<'_, F>, pager: &str, page: &str) -> bool
 where
-    F: Fn(ShutdownHandler) -> Registration,
+    F: Fn(ShutdownHandler) -> Registration + Sync,
 {
     let mut env = show.host.env.clone();
     env.entry("LESS".to_owned())
@@ -104,12 +104,17 @@ where
 /// cannot start.
 pub(super) async fn show_page<F>(show: Show<'_, F>, page: HelpPage, paging: bool) -> Outcome
 where
-    F: Fn(ShutdownHandler) -> Registration,
+    F: Fn(ShutdownHandler) -> Registration + Sync,
 {
     let view = help_page();
     if let Some(pager) = paging.then(|| pager_of(show.host)).flatten() {
         let text = show.out.text(&page, &view)?;
-        if outgrows_screen(show.host, &text) && show_in_pager(&show, &pager, &text).await {
+        if outgrows_screen(show.host, &text)
+            && show
+                .out
+                .lend_terminal(|| show_in_pager(&show, &pager, &text))
+                .await
+        {
             return Ok(());
         }
     }

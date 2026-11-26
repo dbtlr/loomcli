@@ -139,7 +139,7 @@ async fn a_stdin_only_declaration_hands_the_action_a_lazy_stdin_handle() {
         run_with(&app, MockFields::new().stdin("events\n")).await,
         Ran {
             status: 0,
-            stdout: "events\n\n".to_owned(),
+            stdout: "events\n".to_owned(),
             stderr: String::new(),
         }
     );

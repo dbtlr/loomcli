@@ -140,7 +140,7 @@ impl RenderSite<'_> {
         let output = std::sync::Arc::clone(&self.output);
         let destination = self.destination;
         Prepared(Box::pin(async move {
-            output.write(destination, &rendered?).await
+            output.write(destination, rendered?).await
         }))
     }
 

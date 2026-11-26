@@ -330,3 +330,57 @@ async fn while_the_pager_is_open_a_shutdown_sends_it_sigterm() {
     );
     assert_eq!(process.stdout_text(), "");
 }
+
+#[tokio::test]
+async fn a_live_region_draws_its_latest_frame_after_the_pager_returns() {
+    use loomcli_core::{Activation, Next, Plugin, Region, RegionOptions, View};
+    use loomcli_testing::MockProcess;
+
+    let region: Arc<Mutex<Option<Region>>> = Arc::default();
+    let process: Arc<Mutex<Option<Arc<MockProcess>>>> = Arc::default();
+    let during = Arc::new(Mutex::new(String::new()));
+    let holder = {
+        let region = Arc::clone(&region);
+        Plugin::new("@fixture/holder").middleware(Activation::Always, move |ctx, next: Next| {
+            let region = Arc::clone(&region);
+            async move {
+                let opened = ctx.out.region(RegionOptions::new());
+                opened.draw("first frame", &View::new(str_view)).await?;
+                *region.lock().unwrap() = Some(opened);
+                next.run().await.map(|_| ())
+            }
+        })
+    };
+    let fields = terminal(&["--help"]).script("/bin/sh", {
+        let (process, during) = (Arc::clone(&process), Arc::clone(&during));
+        move |_| {
+            let opened = region.lock().unwrap().clone().unwrap();
+            let process = process.lock().unwrap().clone().unwrap();
+            let during = Arc::clone(&during);
+            async move {
+                opened
+                    .draw("second frame", &View::new(str_view))
+                    .await
+                    .unwrap();
+                *during.lock().unwrap() = process.stderr_text();
+                Ok(ProgramAnswer::new())
+            }
+        }
+    });
+    let mock = mock_process(fields);
+    *process.lock().unwrap() = Some(Arc::clone(&mock));
+    let app = Application::new("notes")
+        .plugins((holder, help().paging(true)))
+        .command(note("add"));
+    let exit = app
+        .run(RunOptions::new().process(Arc::clone(&mock) as _))
+        .await;
+    assert_eq!(exit.get(), 0);
+    assert_eq!(*during.lock().unwrap(), "first frame\n");
+    assert_eq!(mock.stdout_text(), "");
+    assert_eq!(mock.stderr_text(), "first frame\n\nsecond frame\n");
+}
+
+fn str_view(text: &str, _: &loomcli_core::ViewContext) -> String {
+    text.to_owned()
+}

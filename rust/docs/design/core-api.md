@@ -376,7 +376,7 @@ Command::new("hello").action(move |ctx: Context| {
 
 | Method | Destination | Rules |
 | --- | --- | --- |
-| `print(&str)` | stdout | `print` lane; adds the line break |
+| `print(message)` | stdout | `print` lane by default |
 | `info`, `success` | stderr | hidden at verbosity -1 |
 | `warn`, `error` | stderr | every verbosity |
 | `debug` | stderr | from verbosity 1 |
@@ -391,9 +391,32 @@ Command::new("hello").action(move |ctx: Context| {
 
 Every write method is `async` and returns `Result<_, Error>`; a closed stdout pipe returns the cancellation echo, and the run exits 141. A call writes when it is awaited: a Rust future runs only when polled, so a call the action never awaits writes nothing and raises nothing.
 
-**Lanes and verbosity.** The seven semantic methods render through core's lane views and append one line break after the view's text. `print` writes the message unchanged. `info`, `success`, `warn`, and `error` open with their glyph and one space, styled with the matching token; `debug` opens with `Glyph::PointerSmall` and `trace` with two spaces and `Glyph::LineVerticalDashed0`, glyph and message `dim`, and `dim` with `faint` for `trace`. Those six indent continuation lines by the measured gutter and, on a terminal, expand tabs and wrap the message at the context's `columns` less the gutter. The run's verbosity, settled after graph build, hides `info` and `success` at -1, and shows `debug` from 1 and `trace` from 2; a hidden call calls no lane view.
+**Message level and view.** `print`, `info`, `success`, `warn`, and `error` each take `impl Into<Message<'a>>`. `Message<'a>` is a borrowed builder exported by `loomcli-core`. A borrowed `AsRef<str>` value, such as `&str` or `&String`, converts to a message drawn through the method's lane view. `Message::new(text).view(&view)` borrows the text as `&str` and the view as a `WholeView<str>`, either bare or declared. `EnvironmentContext::warn` takes the same argument.
+
+`debug` and `trace` take `&str` until the core logging port (LM-621) removes them.
+The streamed message port (LM-645) uses a separate constructor or type without `.view`.
+
+A method sets the message's level, which fixes its destination and verbosity. The run skips rendering when the level is hidden. A message with its own view uses that view for its whole layout, including any glyph, gutter, wrapping, or indentation. The view receives the destination's context. A declared view resolves through the registry, including when the message names a different lane's view. A rendering error is returned by the awaited call.
+
+**Message line breaks.** Core appends `\n` when the view's drawn text lacks a final line break. The test ignores control sequences, so an LF inside a style frame and a CRLF both count. Core preserves every line break the view supplied. Empty view text writes one `\n`. The same rule applies to the default lanes, lane overrides, and views a message passes.
+
+**Lane views.** The default `print` view returns the message as given. `info`, `success`, `warn`, and `error` open with their glyph and one space, styled with the matching token. `debug` opens with `Glyph::PointerSmall` and `trace` with two spaces and `Glyph::LineVerticalDashed0`. Both style the glyph and message in `dim`, with `faint` added for `trace`. These six lane views indent continuation lines by the measured gutter and, on a terminal, expand tabs and wrap at the context's `columns` less the gutter.
+
+**Step view.** The `step` Cargo feature of `loomcli-plugins` enables `loomcli_plugins::step::step`. Its factory `step<D: AsRef<str> + ?Sized + 'static>() -> View<D>` returns a bare view. The input is `str` for a message or a text render call, and can be `String` for a value result. The view draws `Glyph::Pointer` styled `primary`, one space, and the text styled `bold`, preserving the author's styling. On a terminal the view expands tabs and wraps the text at `columns` less the measured gutter, with a minimum of one column. The gutter uses the destination's glyph form. Off a terminal the view keeps the authored lines. Continuation lines align under the text and blank lines stay empty. The view ends a drawn step with `\n` and returns empty text for input that resolves to no characters.
+
+```rust
+use loomcli_core::{Error, Message, Out};
+use loomcli_plugins::step::step;
+
+async fn show(out: &Out) -> Result<(), Error> {
+	out.info(Message::new("Building 3 packages").view(&step())).await?;
+	out.success("Built 3 packages").await
+}
+```
 
 **Destinations and order.** `print`, `render`, and `text` follow the caller's channel: the action of a Command that declares a result writes them to stderr, with stderr's view context, so stdout carries the result alone; every other caller keeps stdout. Each destination has one turn, so writes to it keep the order their calls were made in. A sequence, under `render` with a row view or under `results`, holds its destination's turn from its first piece to its last, requests no row until the previous piece is written, and resolves each piece's `columns` just before its view function runs. A sequence that stops early, at a source's, view's, or write's `Err` or at the run's cancellation, writes no closing piece and holds one line of `incomplete_result()` (`@loomcli/core/results/incomplete`), which the run writes on stderr ahead of its failure report, or at its end; a closed stdout drops it. A stdout write that fails with `BrokenPipe` or `NotConnected` cancels the run with `ClosedPipe`, and that write and every later one to stdout return the cancellation echo, which the run reports nothing for. Any other failed write, and every failed stderr write, is a broken destination: the run reports `broken-destination` through the plain fallback path and exits 1.
+
+**Process end.** At a shutdown's end or a host exit event, core drains writes that have reached the queue. It sends only the parts that have yet to reach their streams, in queue order. On a shared terminal a stdout write's erase and redraw go to stderr as usual. Core restores the terminal cursor before calling shutdown handlers. The drain polls each stream write once and skips a destination that already failed. A future that has yet to be polled has no queued write.
 
 **Views.** `View<D: ?Sized>` (`View::new(|data, ctx| …).media_type(…)`), `RowView<R>` (`RowView::new(|row, index, ctx| …).head(…).tail(…)`), and `view(identity, definition)` declares either through `Declare`, returning `DeclaredView<D>` or `DeclaredRowView<R>`. A render function returns `impl IntoRendered`: a `String`, or a `Result<String, E>` whose `Err` is the view's failure, which takes the ordinary failure path from the write site (`out.render` and `out.text` return it). `View<[T]>` and `DeclaredView<[T]>` render a `&Vec<T>` as well as a `&[T]`. `ViewContext { background, columns, style }` with `expand_tabs`, `plain`, `width`, `wrap`, each measuring under the destination's capabilities; `wrap` with `None` or zero columns leaves the text unwrapped. The lanes are declared views: `lanes::print()` … `lanes::trace()`, `@loomcli/core/lanes/<name>`. `Render::prepare` is hidden: it takes the call's `RenderSite` and answers the write that remains.
 
@@ -647,7 +670,7 @@ A built context writes through core's output onto its process handle, by default
 | `version` | `version` | `version-views` |
 | `config-extension`, `help-extension`, `manifest-extension`, `mcp-extension` | `<plugin>::extension` | |
 | `format-views`, `help-views`, `version-views` | `<plugin>::views` | |
-| `box`, `heading`, `list`, `prose`, `records`, `rule`, `table` | the pack view (`box` is module `boxed`) | |
+| `box`, `heading`, `list`, `prose`, `records`, `rule`, `step`, `table` | the pack view (`box` is module `boxed`) | |
 
 **Dependencies.**
 

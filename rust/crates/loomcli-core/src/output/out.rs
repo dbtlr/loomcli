@@ -9,7 +9,33 @@ use crate::failures::{Error, FatalError};
 use super::emit::{Channel, Lane, Output, Stream};
 use super::region::{Region, RegionOptions};
 use super::results::{RowSource, RowsResult, ValueResult};
-use super::{NoResult, Render, WholeView};
+use super::{NoResult, Render, View, WholeView};
+
+/// A borrowed text message with an optional whole view over its text.
+#[must_use]
+pub struct Message<'a> {
+    pub(super) text: &'a str,
+    pub(super) look: Option<(Option<&'a str>, &'a View<str>)>,
+}
+
+impl<'a> Message<'a> {
+    /// A message drawn by its method's lane view.
+    pub fn new(text: &'a str) -> Self {
+        Self { text, look: None }
+    }
+
+    /// Draws this message with the supplied view. A declared view resolves through the registry.
+    pub fn view(mut self, view: &'a impl WholeView<str>) -> Self {
+        self.look = Some(view.whole());
+        self
+    }
+}
+
+impl<'a, T: AsRef<str> + ?Sized> From<&'a T> for Message<'a> {
+    fn from(text: &'a T) -> Self {
+        Self::new(text.as_ref())
+    }
+}
 
 /// Writes a run's output. Every method resolves through the view registry, under the destination's
 /// rendering policy.
@@ -27,6 +53,11 @@ use super::{NoResult, Render, WholeView};
 /// | `text` | none; returns the text `render` would write |
 /// | `results` | stdout; only on a Command that declares a result |
 /// | `fatal` | the failure path |
+///
+/// `print`, `info`, `success`, `warn`, and `error` accept borrowed text or a [`Message`] with its
+/// own view; `debug` and `trace` take borrowed text. The method still
+/// sets the message's destination and verbosity. A message whose drawn text lacks a final line
+/// break gains one.
 ///
 /// `R` is the result the Command declares, so `results` takes exactly its type. Writes to one
 /// destination keep the order their calls were made in. A write the run's stdout refuses because its
@@ -54,53 +85,62 @@ impl<R> Out<R> {
         &self.run.output
     }
 
-    /// Writes `message` and a line break through the `print` lane: to stdout, or to stderr from the
-    /// action of a Command that declares a result.
-    pub async fn print(&self, message: &str) -> Result<(), Error> {
+    /// Prints a message to stdout, or to stderr from the action of a Command that declares a result.
+    pub fn print<'a>(
+        &'a self,
+        message: impl Into<Message<'a>>,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
         self.output()
-            .emit(Lane::Print, message, self.channel.destination)
-            .await
+            .emit(Lane::Print, message.into(), self.channel.destination)
     }
 
-    /// Writes `message` to stderr through the `info` lane; hidden at verbosity -1.
-    pub async fn info(&self, message: &str) -> Result<(), Error> {
+    /// Writes an informational message to stderr, hidden at verbosity -1.
+    pub fn info<'a>(
+        &'a self,
+        message: impl Into<Message<'a>>,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
         self.output()
-            .emit(Lane::Info, message, Stream::Stderr)
-            .await
+            .emit(Lane::Info, message.into(), Stream::Stderr)
     }
 
-    /// Writes `message` to stderr through the `success` lane; hidden at verbosity -1.
-    pub async fn success(&self, message: &str) -> Result<(), Error> {
+    /// Writes a success message to stderr, hidden at verbosity -1.
+    pub fn success<'a>(
+        &'a self,
+        message: impl Into<Message<'a>>,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
         self.output()
-            .emit(Lane::Success, message, Stream::Stderr)
-            .await
+            .emit(Lane::Success, message.into(), Stream::Stderr)
     }
 
-    /// Writes `message` to stderr through the `warn` lane, at every verbosity.
-    pub async fn warn(&self, message: &str) -> Result<(), Error> {
+    /// Writes a warning to stderr at every verbosity.
+    pub fn warn<'a>(
+        &'a self,
+        message: impl Into<Message<'a>>,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
         self.output()
-            .emit(Lane::Warn, message, Stream::Stderr)
-            .await
+            .emit(Lane::Warn, message.into(), Stream::Stderr)
     }
 
-    /// Writes `message` to stderr through the `error` lane, at every verbosity.
-    pub async fn error(&self, message: &str) -> Result<(), Error> {
+    /// Writes an error message to stderr at every verbosity.
+    pub fn error<'a>(
+        &'a self,
+        message: impl Into<Message<'a>>,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
         self.output()
-            .emit(Lane::Error, message, Stream::Stderr)
-            .await
+            .emit(Lane::Error, message.into(), Stream::Stderr)
     }
 
     /// Writes `message` to stderr through the `debug` lane, from verbosity 1.
     pub async fn debug(&self, message: &str) -> Result<(), Error> {
         self.output()
-            .emit(Lane::Debug, message, Stream::Stderr)
+            .emit(Lane::Debug, message.into(), Stream::Stderr)
             .await
     }
 
     /// Writes `message` to stderr through the `trace` lane, from verbosity 2.
     pub async fn trace(&self, message: &str) -> Result<(), Error> {
         self.output()
-            .emit(Lane::Trace, message, Stream::Stderr)
+            .emit(Lane::Trace, message.into(), Stream::Stderr)
             .await
     }
 

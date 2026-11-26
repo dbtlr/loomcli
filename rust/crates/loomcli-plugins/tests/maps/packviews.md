@@ -14,6 +14,7 @@ The reference's unit cases call a view through `viewContext` with the simple mea
 | `heading.test.ts` | ported, 9 cases | `pack_heading.rs`. |
 | `rule.test.ts` | ported, 12 cases | `pack_rule.rs`. |
 | `prose.test.ts` | ported, 10 cases | `pack_prose.rs`. |
+| `step.test.ts` | ported, 9 tests | `pack_step.rs`: semantic and neutral rendering, both destinations, the pointer gutter, wrapping, authored blank lines, nested styles, compatibility glyphs, and empty text. |
 | `box.test.ts` | partly ported, 17 of 18 cases | `pack_box.rs`. Not applicable: "a text box over a value that is not a string fails the run the ordinary way": `BoxConfig::new()` and `BoxConfig::text()` frame only a `str` or an `AsRef<str>` type, so the run cannot reach the reference's `Style helpers require a string.` failure (a recorded deviation). |
 | `pack-fit.test.ts` | ported, 7 cases | `pack_fit.rs`. |
 | `pty-pack-views.test.ts` | ported, 1 case | `pack_box.rs`: the rule and the box at 100 and then 60 columns, exact bytes, with the mock terminal's `resize` in place of `stty` on a pseudo-terminal. |
