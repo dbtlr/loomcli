@@ -205,6 +205,8 @@ Feature `manpage`; `manpage()`.
 Feature `skills`; `skills(list)`, with `.folder(path)` and `.embedded_folder(list)`, then `.plugin()`.
 
 - **Agent:** `app skills install` writes the application's agent skills to the Claude folder and the shared agents folder, and `--project` to the repository root; `update` and `uninstall` keep them current or remove them. A skill's files are embedded in the binary with `SkillFile::embedded(path, include_bytes!(…))`.
+  `app skills status` reports whether each skill is installed and up to date, and `--project` checks the repository's skills.
+- **Author:** Use `Skills::select_commands` to choose which Command references a skill includes, or call `skills::command_references` to generate the Markdown from a built graph. See [skill Command references](../design/core-api.md#skills).
 
 ## Lifecycle
 

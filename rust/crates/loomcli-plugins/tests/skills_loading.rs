@@ -150,7 +150,7 @@ async fn an_asynchronous_loader_runs_and_a_loader_may_fail_with_any_error() {
 }
 
 #[test]
-fn describes_skills_and_its_three_children() {
+fn describes_skills_and_its_children() {
     let box_ = sandbox();
     let graph = serde_json::to_string(
         &application(&box_, &Scenario::default())

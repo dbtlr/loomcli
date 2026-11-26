@@ -20,6 +20,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
+use super::reach::read_failure;
 use super::{Cancellation, InstallationError, read_signal};
 
 /// The permission bits of a file mode, without its file type.
@@ -121,8 +122,8 @@ pub(super) fn is_missing(error: &io::Error) -> bool {
 pub(super) fn lstat(path: &Path) -> io::Result<Option<Metadata>> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => Ok(Some(metadata)),
-        Err(error) if is_missing(&error) => Ok(None),
-        Err(error) => Err(error),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(read_failure(path, error)),
     }
 }
 
@@ -140,7 +141,7 @@ pub fn observe(path: &Path) -> io::Result<Observed> {
     }
     if kind.is_file() {
         return Ok(Observed::File {
-            digest: digest_of(&fs::read(path)?),
+            digest: digest_of(&fs::read(path).map_err(|error| read_failure(path, error))?),
             mode: metadata.permissions().mode() & PERMISSION_BITS,
         });
     }
@@ -370,7 +371,7 @@ pub(super) fn entries_of(directory: &Path) -> io::Result<Vec<OsString>> {
     let entries = match fs::read_dir(directory) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error),
+        Err(error) => return Err(read_failure(directory, error)),
     };
     entries
         .map(|entry| entry.map(|entry| entry.file_name()))
@@ -465,7 +466,7 @@ pub fn real_path(path: &Path) -> io::Result<PathBuf> {
             Err(error) => {
                 let parent = parent_of(&current);
                 if !is_missing(&error) || parent == current {
-                    return Err(error);
+                    return Err(read_failure(&current, error));
                 }
                 below.push(name_of(&current));
                 current = parent;

@@ -204,7 +204,7 @@ async fn a_program_word_holding_a_newline_exits_1_with_nothing_written() {
 async fn a_damaged_or_unknown_format_service_json_fails_install_and_uninstall_and_calls_nothing() {
     for text in [
         "not json",
-        "{\"format\":2,\"state\":\"committed\",\"directories\":[],\"files\":[]}\n",
+        "{\"format\":3,\"state\":\"committed\",\"directories\":[],\"files\":[]}\n",
     ] {
         let box_ = sandbox();
         let record = box_.linux_record();

@@ -1,6 +1,6 @@
 //! A first-party plugin's file in the installation record, `<plugin>.json`: the directories the
 //! installed-files module created, each file it installed with its digest, each installed folder
-//! by its path alone, each startup line by its startup file's path and its text, and each agent
+//! with its per-file digests, each startup line by its startup file's path and its text, and each agent
 //! registration by its name and command line. Only the module reads or writes it, and it replaces
 //! the file whole, through a staging file and a rename.
 //!
@@ -15,6 +15,7 @@ use serde_json::{Map, Value};
 
 use super::InstallationError;
 use super::disk::{self, ReplaceOptions};
+use super::reach::{read_failure, write_failure};
 
 /// A recorded file and the digest the module wrote to it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,13 +26,46 @@ pub struct CommittedFile {
     pub digest: String,
 }
 
-/// An installed folder, recorded by its path alone: the plugin owns it whole, so no digest says
-/// what is inside. A pending file lists the folders an install under way writes or removes the
-/// same way.
+/// An installed folder, with its per-file digests when the record has them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordedFolder {
     /// The folder's absolute path.
     pub path: PathBuf,
+    /// The recorded files, absent for a folder owned by its path alone.
+    pub files: Option<Vec<FolderDigest>>,
+}
+
+/// A file inside an installed folder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FolderDigest {
+    /// The file's relative POSIX path.
+    pub path: String,
+    /// `sha256:` and 64 lowercase hexadecimal digits.
+    pub digest: String,
+    /// Whether the plugin generated this reference from the Command graph.
+    pub generated: bool,
+}
+
+/// The ownership the pending swap started from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FolderPrior {
+    /// The folder was unrecorded.
+    Unrecorded,
+    /// The record listed only the folder's path.
+    Path,
+    /// The record listed the folder's files and their digests.
+    Files(Vec<FolderDigest>),
+}
+
+/// A folder an install is writing or removing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingFolder {
+    /// The folder's absolute path.
+    pub path: PathBuf,
+    /// The prior record, absent for a pending entry read from format 1.
+    pub prior: Option<FolderPrior>,
+    /// The files the install will write, absent when the folder is being removed.
+    pub intended: Option<Vec<FolderDigest>>,
 }
 
 /// A file an install or uninstall under way touches: the digest it held before, `None` when it
@@ -112,7 +146,7 @@ pub struct Pending {
     /// The files it writes or removes.
     pub files: Vec<PendingFile>,
     /// Every folder recorded before and listed now.
-    pub folders: Vec<RecordedFolder>,
+    pub folders: Vec<PendingFolder>,
     /// The startup lines it adds, replaces, or removes.
     pub lines: Vec<PendingLine>,
     /// The registrations the agent's call adds or removes.
@@ -144,8 +178,8 @@ pub(super) enum PluginFileRead {
     Read(PluginFile),
 }
 
-/// The one format the module reads and writes.
-const KNOWN_FORMAT: f64 = 1.0;
+const FILE_FORMAT: u8 = 1;
+const FOLDER_FORMAT: u8 = 2;
 
 /// Whether a value is a digest as the record spells it: `sha256:` and 64 lowercase hexadecimal
 /// digits.
@@ -206,9 +240,55 @@ fn or_null<T>(value: Option<&Value>, read: impl Fn(&Value) -> Option<T>) -> Opti
     }
 }
 
+fn folder_digest_of(value: &Value) -> Option<FolderDigest> {
+    let members = value.as_object()?;
+    let path = members.get("path")?.as_str()?;
+    if path.split('/').any(|part| matches!(part, "" | "." | "..")) {
+        return None;
+    }
+    Some(FolderDigest {
+        path: path.to_owned(),
+        digest: digest_text(members.get("digest")?)?,
+        generated: match members.get("generated") {
+            None => false,
+            Some(Value::Bool(true)) => true,
+            _ => return None,
+        },
+    })
+}
+
 fn recorded_folder_of(value: &Value) -> Option<RecordedFolder> {
-    let path = absolute_path(value.as_object()?.get("path")?)?;
-    Some(RecordedFolder { path })
+    let members = value.as_object()?;
+    Some(RecordedFolder {
+        path: absolute_path(members.get("path")?)?,
+        files: match members.get("files") {
+            None => None,
+            present => Some(every_of(present, folder_digest_of)?),
+        },
+    })
+}
+
+fn pending_folder_of(value: &Value, format: u8) -> Option<PendingFolder> {
+    if format == FILE_FORMAT {
+        return Some(PendingFolder {
+            path: recorded_folder_of(value)?.path,
+            prior: None,
+            intended: None,
+        });
+    }
+    let members = value.as_object()?;
+    let prior = match members.get("prior")? {
+        Value::Null => FolderPrior::Unrecorded,
+        Value::String(text) if text == "path" => FolderPrior::Path,
+        other => FolderPrior::Files(every_of(Some(other), folder_digest_of)?),
+    };
+    Some(PendingFolder {
+        path: absolute_path(members.get("path")?)?,
+        prior: Some(prior),
+        intended: or_null(members.get("intended"), |files| {
+            every_of(Some(files), folder_digest_of)
+        })?,
+    })
 }
 
 fn committed_file_of(value: &Value) -> Option<CommittedFile> {
@@ -281,21 +361,22 @@ fn pending_registration_of(value: &Value) -> Option<PendingRegistration> {
 }
 
 /// The plugin's file one parsed object holds, or `None` when it is not that shape.
-fn plugin_file_of(members: &Map<String, Value>) -> Option<PluginFile> {
+fn plugin_file_of(members: &Map<String, Value>, format: u8) -> Option<PluginFile> {
     let directories = every_of(members.get("directories"), absolute_path)?;
-    let folders = optional_of(members.get("folders"), recorded_folder_of)?;
     match members.get("state").and_then(Value::as_str) {
         Some("committed") => Some(PluginFile::Committed(Committed {
             directories,
             files: every_of(members.get("files"), committed_file_of)?,
-            folders,
+            folders: optional_of(members.get("folders"), recorded_folder_of)?,
             lines: optional_of(members.get("lines"), startup_line_of)?,
             registrations: optional_of(members.get("registrations"), recorded_registration_of)?,
         })),
         Some("pending") => Some(PluginFile::Pending(Pending {
             directories,
             files: every_of(members.get("files"), pending_file_of)?,
-            folders,
+            folders: optional_of(members.get("folders"), |value| {
+                pending_folder_of(value, format)
+            })?,
             lines: optional_of(members.get("lines"), pending_line_of)?,
             registrations: optional_of(members.get("registrations"), pending_registration_of)?,
         })),
@@ -310,7 +391,7 @@ fn read_text(path: &Path) -> io::Result<Option<String>> {
     match fs::read(path) {
         Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error),
+        Err(error) => Err(read_failure(path, error)),
     }
 }
 
@@ -322,10 +403,12 @@ pub(super) fn read_plugin_file(path: &Path) -> io::Result<PluginFileRead> {
     let Ok(Value::Object(members)) = serde_json::from_str::<Value>(&text) else {
         return Ok(PluginFileRead::Refused(RecordProblem::Damaged));
     };
-    if members.get("format").and_then(Value::as_f64) != Some(KNOWN_FORMAT) {
-        return Ok(PluginFileRead::Refused(RecordProblem::UnknownFormat));
-    }
-    Ok(plugin_file_of(&members).map_or(
+    let format = match members.get("format").and_then(Value::as_f64) {
+        Some(1.0) => FILE_FORMAT,
+        Some(2.0) => FOLDER_FORMAT,
+        _ => return Ok(PluginFileRead::Refused(RecordProblem::UnknownFormat)),
+    };
+    Ok(plugin_file_of(&members, format).map_or(
         PluginFileRead::Refused(RecordProblem::Damaged),
         PluginFileRead::Read,
     ))
@@ -365,6 +448,52 @@ fn path_list(paths: &[PathBuf]) -> io::Result<Value> {
         .map(|path| path_text(path))
         .collect::<io::Result<Vec<_>>>()
         .map(Value::Array)
+}
+
+fn folder_members(files: &[FolderDigest]) -> Value {
+    Value::Array(
+        files
+            .iter()
+            .map(|file| {
+                let mut members = vec![
+                    ("path", Value::from(file.path.as_str())),
+                    ("digest", Value::from(file.digest.as_str())),
+                ];
+                if file.generated {
+                    members.push(("generated", Value::Bool(true)));
+                }
+                object(members)
+            })
+            .collect(),
+    )
+}
+
+fn committed_folder_members(folder: &RecordedFolder) -> io::Result<Value> {
+    let mut members = vec![("path", path_text(&folder.path)?)];
+    if let Some(files) = &folder.files {
+        members.push(("files", folder_members(files)));
+    }
+    Ok(object(members))
+}
+
+fn pending_folder_members(folder: &PendingFolder) -> io::Result<Value> {
+    let mut members = vec![("path", path_text(&folder.path)?)];
+    if let Some(prior) = &folder.prior {
+        let prior = match prior {
+            FolderPrior::Unrecorded => Value::Null,
+            FolderPrior::Path => Value::from("path"),
+            FolderPrior::Files(files) => folder_members(files),
+        };
+        members.push(("prior", prior));
+        members.push((
+            "intended",
+            folder
+                .intended
+                .as_deref()
+                .map_or(Value::Null, folder_members),
+        ));
+    }
+    Ok(object(members))
 }
 
 /// The files, startup lines, and registrations of a plugin's file, each entry's members in the
@@ -444,19 +573,31 @@ fn entry_members(file: &PluginFile) -> io::Result<(Vec<Value>, Vec<Value>, Vec<V
 /// The plugin's file as one line of JSON, its members in the contract's order, then `folders` and
 /// `lines` and `registrations`, each only when it lists any, and a line feed.
 pub(super) fn serialize(file: &PluginFile) -> io::Result<String> {
-    let (state, directories, folders) = match file {
-        PluginFile::Committed(committed) => {
-            ("committed", &committed.directories, &committed.folders)
-        }
-        PluginFile::Pending(pending) => ("pending", &pending.directories, &pending.folders),
+    let (state, directories, folders): (_, _, io::Result<Vec<_>>) = match file {
+        PluginFile::Committed(committed) => (
+            "committed",
+            &committed.directories,
+            committed
+                .folders
+                .iter()
+                .map(committed_folder_members)
+                .collect(),
+        ),
+        PluginFile::Pending(pending) => (
+            "pending",
+            &pending.directories,
+            pending.folders.iter().map(pending_folder_members).collect(),
+        ),
     };
     let (files, lines, registrations) = entry_members(file)?;
-    let folders = folders
-        .iter()
-        .map(|folder| Ok(object(vec![("path", path_text(&folder.path)?)])))
-        .collect::<io::Result<Vec<_>>>()?;
+    let folders = folders?;
+    let format = if folders.is_empty() {
+        FILE_FORMAT
+    } else {
+        FOLDER_FORMAT
+    };
     let mut members = vec![
-        ("format", Value::from(1)),
+        ("format", Value::from(format)),
         ("state", Value::from(state)),
         ("directories", path_list(directories)?),
         ("files", Value::Array(files)),
@@ -476,6 +617,7 @@ pub(super) fn serialize(file: &PluginFile) -> io::Result<String> {
 /// Replaces the plugin's file whole, creating the record directory when it is missing.
 pub(super) fn write_plugin_file(path: &Path, file: &PluginFile) -> Result<(), InstallationError> {
     let text = serialize(file)?;
-    fs::create_dir_all(disk::parent_of(path))?;
+    fs::create_dir_all(disk::parent_of(path)).map_err(|error| write_failure(path, error))?;
     disk::replace_file(path, text.as_bytes(), ReplaceOptions::new())
+        .map_err(|error| error.map_io(|error| write_failure(path, error)))
 }

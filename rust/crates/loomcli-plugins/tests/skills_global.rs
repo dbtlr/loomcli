@@ -190,6 +190,10 @@ fn killed_after_swap(box_: &Sandbox) -> Vec<std::path::PathBuf> {
         let mut record: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(record_path(box_, target)).unwrap()).unwrap();
         record["state"] = "pending".into();
+        let folder = &mut record["folders"][0];
+        *folder = serde_json::json!({
+            "path": folder["path"], "prior": folder["files"], "intended": folder["files"]
+        });
         fs::write(record_path(box_, target), format!("{record}\n")).unwrap();
     }
     retired
@@ -246,20 +250,10 @@ async fn replaces_the_folder_whole_after_a_change() {
             Box::new(move |box_| {
                 fs::set_permissions(
                     claude(box_).join("SKILL.md"),
-                    fs::Permissions::from_mode(0o600),
+                    fs::Permissions::from_mode(0o700),
                 )
                 .unwrap();
             }),
-            None,
-        ),
-        (
-            "someone added a file",
-            Box::new(move |box_| fs::write(claude(box_).join("extra.md"), "x").unwrap()),
-            None,
-        ),
-        (
-            "someone added a folder",
-            Box::new(move |box_| fs::create_dir_all(claude(box_).join("extra")).unwrap()),
             None,
         ),
         (
@@ -410,7 +404,7 @@ async fn install_refuses_an_obstacle_at_a_skill_folder_and_changes_nothing() {
             pinned(&box_, &result.stderr),
             strings(&[
                 "HOME/.agents/skills/notes was not installed by notes skills install.",
-                "notes skills install changed nothing, because folders it did not install are in the way. Remove them, or run notes skills install --force to replace them.",
+                "notes skills install changed nothing, because folders it did not install, or whose command references changed since it installed them, are in the way. Copy any file you want to keep out of them, then remove them or run notes skills install --force to replace them.",
             ]),
             "{name}"
         );
@@ -448,7 +442,7 @@ async fn update_refuses_an_obstacle_in_the_way_of_a_newly_declared_skill_and_wri
             pinned(&box_, &result.stderr),
             strings(&[
                 "HOME/.agents/skills/second was not installed by notes skills install.",
-                "notes skills update changed nothing, because folders it did not install are in the way. Remove them, or run notes skills install --force to replace them.",
+                "notes skills update changed nothing, because folders it did not install, or whose command references changed since it installed them, are in the way. Copy any file you want to keep out of them, then remove them or run notes skills install --force to replace them.",
             ]),
             "{name}"
         );
@@ -476,7 +470,7 @@ async fn reports_each_refused_folder_across_both_targets() {
 #[tokio::test]
 async fn install_update_and_uninstall_fail_on_a_damaged_or_unknown_format_file_with_the_record_sentence()
  {
-    for text in ["{\"format\":1,", "{\"format\":2,\"state\":\"committed\"}\n"] {
+    for text in ["{\"format\":1,", "{\"format\":3,\"state\":\"committed\"}\n"] {
         let box_ = sandbox();
         fs::create_dir_all(box_.state.join("notes").join("installation")).unwrap();
         let record = record_path(&box_, CLAUDE);

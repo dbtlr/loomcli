@@ -718,6 +718,23 @@ A built context writes through core's output onto its process handle, by default
 
 `signal-hook`, `rustix`, and `regex` are declared in `[workspace.dependencies]`; core names `signal-hook` and `rustix` for Unix targets, and the validators, the prompts, and the plugins' Markdown subset name `regex`. `loomcli-testing` names `tokio` and `tokio-util` for its scripted children and keyboard.
 
+### Skills
+
+`skills(listed).select_commands(skill, paths)` selects Command paths for a named skill, whether the
+skill comes from the list or the skills folder. Each path is a sequence of canonical Command names.
+An empty path selects the root. An empty list selects no Commands. A later call for the same skill
+replaces its selection. The final graph checks every path and reports a declaration fault if two
+visible Commands selected by one skill give the same reference name. Hidden Commands and their
+descendants give no reference.
+
+`skills::extension::SKILL_COMMAND` attaches `SkillCommandFacts::new(guidance)` to a Command. The
+guidance is nonblank Markdown and a later value replaces the earlier one. A generated command
+reference carries the guidance along with the Command's manifest details, examples, and failures.
+
+`skills::command_references(graph, paths, guidance)` returns the same generated Markdown from a
+built graph. Each `CommandReference` has a file name and its text. The index comes first, followed
+by the selected Commands in graph order. The Boolean selects whether to include skill guidance.
+
 ## 13. Lint rules and TypeScript-only type rules
 
 | Reference | Rust |

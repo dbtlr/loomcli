@@ -10,10 +10,10 @@ use loomcli_core::{Error, FatalError, InputError, InputIdentity, InputKind, Inpu
 
 use super::Declared;
 use super::global::ChildRun;
-use super::load::{LoadedSkill, load_skills};
+use super::load::{LoadedSkill, load_for_run};
 use super::messages;
 use super::targets::{Target, real_folder, selected_targets, skills_directory};
-use crate::installation::{exists, write_folder};
+use crate::installation::{InstallationError, exists, write_folder};
 
 /// An input problem on the `--directory` option, which exits 2.
 fn directory_problem(message: String, issue: &str) -> InputError {
@@ -52,7 +52,7 @@ fn resolve(base: &Path, path: &Path) -> PathBuf {
 }
 
 /// The directory the walk starts at: the working directory, or `--directory` resolved against it.
-fn start_of(run: &ChildRun<'_>, directory: Option<&str>) -> Result<PathBuf, Error> {
+fn start_of<R>(run: &ChildRun<'_, R>, directory: Option<&str>) -> Result<PathBuf, Error> {
     let start = directory.map_or_else(
         || run.host.cwd.clone(),
         |directory| resolve(&run.host.cwd, Path::new(directory)),
@@ -95,15 +95,15 @@ fn repository_root(start: &Path) -> io::Result<PathBuf> {
 }
 
 /// The folder of a skill under a root, for a target.
-fn project_folder(root: &Path, target: Target, name: &str) -> PathBuf {
+pub(super) fn project_folder(root: &Path, target: Target, name: &str) -> PathBuf {
     root.join(format!(".{}", target.name()))
         .join("skills")
         .join(name)
 }
 
 /// The global folder a skill's project folder is, compared by real paths, or none.
-fn clash_of(
-    run: &ChildRun<'_>,
+fn clash_of<R>(
+    run: &ChildRun<'_, R>,
     root: &Path,
     target: Target,
     names: &[&str],
@@ -122,15 +122,21 @@ fn clash_of(
 
 /// Refuses a project folder that is the target's global folder, compared by real paths so a linked
 /// root, a linked `.claude` or `.agents`, or a linked home is seen.
-fn guard_global(
-    run: &ChildRun<'_>,
+fn guard_global<R>(
+    run: &ChildRun<'_, R>,
     root: &Path,
     agent: Option<Target>,
     names: &[&str],
+    status: bool,
 ) -> Result<(), Error> {
     for target in selected_targets(agent) {
         if let Some(clash) = clash_of(run, root, target, names)? {
-            return Err(FatalError::new(messages::never_global(run.name, &clash)).into());
+            let line = if status {
+                messages::status_project_global(run.name, &clash)
+            } else {
+                messages::never_global(run.name, &clash)
+            };
+            return Err(FatalError::new(line).into());
         }
     }
     Ok(())
@@ -149,7 +155,7 @@ async fn replace_folder(
     loaded: &LoadedSkill,
     target: Target,
 ) -> Result<(), Error> {
-    let replacing = exists(folder)?;
+    let replacing = exists(folder).map_err(InstallationError::from)?;
     if let Some(parent) = folder.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -170,13 +176,7 @@ pub(super) async fn install_project(
     declared: &Declared,
     request: &ProjectRequest<'_>,
 ) -> Result<(), Error> {
-    let root = repository_root(&start_of(run, request.directory)?)?;
-    let listed: Vec<&str> = declared.listed.iter().map(super::Skill::name).collect();
-    guard_global(run, &root, request.agent, &listed)?;
-    let loaded = load_skills(declared, run.host.release.build).await?;
-    // Only the folder knows its skills' names, so its skills meet the guard once they are read.
-    let names: Vec<&str> = loaded.iter().map(|skill| skill.name.as_str()).collect();
-    guard_global(run, &root, request.agent, &names)?;
+    let (root, loaded) = project_skills(run, declared, request, false).await?;
     run.signal.throw_if_cancelled()?;
     for target in selected_targets(request.agent) {
         for skill in &loaded {
@@ -185,4 +185,21 @@ pub(super) async fn install_project(
         }
     }
     Ok(())
+}
+
+/// Resolves the project and loads the skills for both install and status.
+pub(super) async fn project_skills<R>(
+    run: &ChildRun<'_, R>,
+    declared: &Declared,
+    request: &ProjectRequest<'_>,
+    status: bool,
+) -> Result<(PathBuf, Vec<LoadedSkill>), Error> {
+    let root = repository_root(&start_of(run, request.directory)?)?;
+    let listed: Vec<&str> = declared.listed.iter().map(super::Skill::name).collect();
+    guard_global(run, &root, request.agent, &listed, status)?;
+    let loaded = load_for_run(run, declared).await?;
+    // Only the folder knows its skills' names, so its skills meet the guard once they are read.
+    let names: Vec<&str> = loaded.iter().map(|skill| skill.name.as_str()).collect();
+    guard_global(run, &root, request.agent, &names, status)?;
+    Ok((root, loaded))
 }

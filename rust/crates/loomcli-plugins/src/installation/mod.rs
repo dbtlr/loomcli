@@ -17,7 +17,9 @@
 //!   (`skills.claude`, `mcp.codex`, `completion.bash`). Each write replaces that file whole
 //!   through a staging file and a rename, and no operation reads or writes another plugin's
 //!   file. The bytes are the reference's, so a TypeScript and a Rust build of one application
-//!   share a record.
+//!   share a record. Format 1 holds records without folders. Format 2 adds the ordered file digests
+//!   and generated reference marks of each folder. A reader also accepts a format 1 folder by its
+//!   path alone.
 //! - **Pending, then committed.** An install writes the plugin's file `pending` (each path with
 //!   the digest it held and the one it will hold) before it touches any target, and `committed`
 //!   after the last. The next install or uninstall recovers a `pending` file by what is on disk
@@ -26,12 +28,13 @@
 //!   exclusively, and is renamed into place; a folder is built in a staging folder and swapped in
 //!   through a `.loom-retired` move. Recovery removes the leftovers of the names it records and
 //!   nothing else.
-//! - **Refusal.** An install never takes over a path it did not record: an unrecorded file, a
-//!   recorded file whose digest changed, a symbolic link, a directory, or a special file at a
-//!   target refuses the whole install, which writes nothing and answers every such path. A damaged
-//!   plugin's file, or one of an unknown `format`, refuses install and uninstall alike.
+//! - **Refusal.** At a file target, an unrecorded file, a changed digest, a symbolic link, a
+//!   directory, or a special file refuses the whole install. At a folder target, an unrecorded
+//!   occupant or an edited generated reference refuses unless the operator forces the install.
+//!   A damaged plugin's file or an unknown `format` refuses install and uninstall alike.
 //! - **Uninstall removes only what is unchanged.** A recorded file whose digest changed is kept
-//!   and reported; recorded directories are removed once empty, deepest first.
+//!   and reported. A folder with an edited generated reference is kept whole and its ownership is
+//!   dropped. Recorded directories are removed once empty, deepest first.
 //! - **Startup lines.** A startup file is the operator's: the module appends one line in place,
 //!   replaces or removes only lines equal to the recorded text, keeps every other byte, its
 //!   encoding (UTF-8 with or without a byte order mark), its line endings, and its mode, and never
@@ -56,7 +59,7 @@
 //! | Judge targets before acting (`status`, `--check`) | [`target_refusals`], [`folder_refusals`] |
 //! | Hand a shared directory to a sibling file | [`PluginRecord::adopt_directories`] |
 //! | Judge a startup file before listing a line | [`inspect_startup_file`] |
-//! | Write or check a folder with no record (a project skill) | [`write_folder`], [`folder_holds_exactly`] |
+//! | Write or check a folder with no record (a project skill) | [`write_folder`] |
 //! | Replace one file atomically (self-update's `install.json`) | [`replace_file`] with [`ReplaceOptions`] |
 //! | Run the new binary's `update` after a self-update | [`refresh_by_running`] |
 //!
@@ -138,6 +141,7 @@ mod files;
 mod folders;
 mod lines;
 mod messages;
+mod reach;
 mod record;
 mod refresh;
 mod startup;
@@ -159,14 +163,14 @@ pub use files::{
     RecordedRead, Refusal, RefusalReason, RegistrationRead, UninstallOutcome, Uninstalled,
     UninstalledLines, folder_refusals, target_refusals,
 };
-pub use folders::{
-    FolderFile, fill_folder, folder_holds_exactly, remove_folder_leftovers, remove_whole,
-    write_folder,
-};
+pub use folders::{FolderFile, fill_folder, remove_folder_leftovers, remove_whole, write_folder};
+#[cfg(feature = "skills")]
+pub(crate) use folders::{changed_references, stale_files};
 pub use lines::{InstalledLine, StartupLinesOutcome};
 pub use record::{
-    Committed, CommittedFile, Pending, PendingFile, PendingLine, PendingRegistration, PluginFile,
-    RecordedFolder, RecordedRegistration, StartupLine, is_line_text, plugin_file_path,
+    Committed, CommittedFile, FolderDigest, FolderPrior, Pending, PendingFile, PendingFolder,
+    PendingLine, PendingRegistration, PluginFile, RecordedFolder, RecordedRegistration,
+    StartupLine, is_line_text, plugin_file_path,
 };
 pub use refresh::{Refresh, RefreshContext, refresh_by_running};
 pub use startup::{StartupEncoding, StartupFileState, inspect_startup_file};
@@ -230,6 +234,15 @@ pub enum InstallationError {
     StartupFileChanged(PathBuf),
 }
 
+impl InstallationError {
+    fn map_io(self, update: impl FnOnce(io::Error) -> io::Error) -> Self {
+        match self {
+            Self::Io(error) => Self::Io(update(error)),
+            error => error,
+        }
+    }
+}
+
 impl fmt::Display for InstallationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -258,7 +271,13 @@ impl From<InstallationError> for loomcli_core::Error {
     fn from(error: InstallationError) -> Self {
         match error {
             InstallationError::Cancelled(echo) => echo,
-            InstallationError::Io(error) => error.into(),
+            InstallationError::Io(error) => match error
+                .get_ref()
+                .and_then(|source| source.downcast_ref::<reach::ReachFailure>())
+            {
+                Some(failure) => loomcli_core::FatalError::new(failure.to_string()).into(),
+                None => error.into(),
+            },
             other => StartupFileError(other.to_string()).into(),
         }
     }

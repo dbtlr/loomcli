@@ -3,19 +3,23 @@
 //! agent's own call.
 
 use std::collections::{BTreeSet, HashMap};
-use std::fmt;
 use std::path::{Path, PathBuf};
+use std::{fmt, io};
 
 use super::disk::{self, Observed, ReplaceOptions, observe};
-use super::folders::{FolderFile, remove_folder_leftovers, remove_whole, write_folder};
+use super::folders::{
+    FolderFile, changed_references, folder_digests, recovered_folder, remove_folder_leftovers,
+    remove_whole, write_folder,
+};
 use super::lines::{
     InstalledLine, LineAction, LineListing, StartupLinesOutcome, held_line, outcome_of, plan_lines,
     recovered_line, unlisted_actions,
 };
+use super::reach::write_failure;
 use super::record::{
-    Committed, CommittedFile, Pending, PendingFile, PendingRegistration, PluginFile,
-    PluginFileRead, RecordProblem, RecordedFolder, RecordedRegistration, StartupLine,
-    plugin_file_path, read_plugin_file, write_plugin_file,
+    Committed, CommittedFile, FolderPrior, Pending, PendingFile, PendingFolder,
+    PendingRegistration, PluginFile, PluginFileRead, RecordProblem, RecordedFolder,
+    RecordedRegistration, StartupLine, plugin_file_path, read_plugin_file, write_plugin_file,
 };
 use super::startup::NotFile;
 use super::{Cancellation, InstallationError, read_signal};
@@ -139,6 +143,8 @@ pub struct Refusal {
     pub path: PathBuf,
     /// Why it refuses.
     pub reason: RefusalReason,
+    /// The relative path of a changed command reference inside a refused folder.
+    pub file: Option<String>,
 }
 
 impl Refusal {
@@ -146,6 +152,7 @@ impl Refusal {
         Self {
             path: path.into(),
             reason,
+            file: None,
         }
     }
 }
@@ -158,9 +165,9 @@ pub struct Installed {
     /// Recorded files the install no longer lists, removed because no one changed them, then
     /// recorded folders it no longer lists.
     pub removed: Vec<PathBuf>,
-    /// Recorded files the install no longer lists, kept because someone changed them.
+    /// Recorded files and folders the install no longer lists and keeps because someone edited them.
     pub kept: Vec<PathBuf>,
-    /// Unrecorded folder paths the force mode took over; `None` when it took none.
+    /// Unrecorded or modified folder paths the force mode took over. `None` when it took none.
     pub replaced: Option<Vec<PathBuf>>,
     /// What happened to each startup line listed, recorded, or released; `None` when there was
     /// none.
@@ -195,7 +202,7 @@ pub struct UninstalledLines {
 pub struct Uninstalled {
     /// Recorded files removed because no one changed them, then recorded folders that were there.
     pub removed: Vec<PathBuf>,
-    /// Recorded files kept because someone changed them.
+    /// Recorded files or folders kept because someone edited them.
     pub kept: Vec<PathBuf>,
     /// What happened to each recorded startup line; `None` when the plugin's file records none.
     pub lines: Option<UninstalledLines>,
@@ -420,8 +427,8 @@ fn kept<T, R>(
 
 /// Resolves a pending plugin's file by what is on disk: a path holding the intended or the prior
 /// digest stays recorded with it, and one that is gone or holds any other digest is dropped. A
-/// listed directory that exists stays, and so does every listed folder, whether or not it is
-/// there. A pending startup line keeps the intended text or the prior one, whichever its file
+/// listed directory that exists stays. A folder keeps the intended digests of a completed swap,
+/// or the prior ownership when the swap stopped and something still holds its path. A pending startup line keeps the intended text or the prior one, whichever its file
 /// holds, or no line. Leftover staging files, of targets and of startup files, and the staging and
 /// retired folders beside each listed folder are removed, and the result is written as committed.
 fn recover(path: &Path, pending: &Pending) -> Result<Committed, InstallationError> {
@@ -440,7 +447,7 @@ fn recover(path: &Path, pending: &Pending) -> Result<Committed, InstallationErro
     let committed = Committed {
         directories,
         files: kept(&pending.files, recovered_file)?,
-        folders: pending.folders.clone(),
+        folders: kept(&pending.folders, recovered_folder)?,
         lines: kept(&pending.lines, recovered_line)?,
         registrations: pending
             .registrations
@@ -471,16 +478,20 @@ fn remove_recorded(
     Ok((removed, kept))
 }
 
-/// Removes each recorded folder whole and answers those that were there; a folder already gone is
-/// no error.
-fn remove_folders(folders: &[RecordedFolder]) -> Result<Vec<PathBuf>, InstallationError> {
+/// Removes each unchanged recorded folder whole and leaves a folder with edited references.
+fn remove_folders(
+    folders: &[RecordedFolder],
+) -> Result<(Vec<PathBuf>, Vec<PathBuf>), InstallationError> {
     let mut removed = Vec::new();
+    let mut kept = Vec::new();
     for folder in folders {
-        if remove_whole(&folder.path)? {
+        if !changed_references(folder)?.is_empty() {
+            kept.push(folder.path.clone());
+        } else if remove_whole(&folder.path)? {
             removed.push(folder.path.clone());
         }
     }
-    Ok(removed)
+    Ok((removed, kept))
 }
 
 /// Removes each recorded directory that is empty, deepest first, so a parent empties before its
@@ -494,31 +505,63 @@ fn remove_directories(directories: &[PathBuf]) -> Result<(), InstallationError> 
     Ok(())
 }
 
-/// The listed folder paths that hold something the plugin's file does not record.
-fn unrecorded_folders(
-    paths: &[&Path],
-    folders: &[RecordedFolder],
-) -> Result<Vec<PathBuf>, InstallationError> {
-    let recorded: BTreeSet<&Path> = folders.iter().map(|folder| folder.path.as_path()).collect();
-    let mut unrecorded = Vec::new();
-    for path in paths {
-        if !recorded.contains(path) && disk::exists(path)? {
-            unrecorded.push(path.to_path_buf());
-        }
-    }
-    Ok(unrecorded)
-}
-
-/// The refusal of each listed folder path that is not recorded and holds anything, a link
-/// included, read without writing: the refusals an install meets for its folders.
+/// Each unrecorded listed folder and each changed reference in a listed recorded folder.
 pub fn folder_refusals(
     paths: &[&Path],
     folders: &[RecordedFolder],
 ) -> Result<Vec<Refusal>, InstallationError> {
-    Ok(unrecorded_folders(paths, folders)?
-        .into_iter()
-        .map(|path| Refusal::new(path, RefusalReason::Unrecorded))
-        .collect())
+    let recorded: BTreeSet<&Path> = folders.iter().map(|folder| folder.path.as_path()).collect();
+    let mut refused = Vec::new();
+    for path in paths {
+        if !recorded.contains(path) && disk::exists(path)? {
+            refused.push(Refusal::new(*path, RefusalReason::Unrecorded));
+        }
+    }
+    for folder in folders
+        .iter()
+        .filter(|folder| paths.contains(&folder.path.as_path()))
+    {
+        refused.extend(changed_references(folder)?.into_iter().map(|file| Refusal {
+            path: folder.path.clone(),
+            reason: RefusalReason::Changed,
+            file: Some(file),
+        }));
+    }
+    Ok(refused)
+}
+
+/// Checks reachability before a recorded path can be dropped, even when a file blocks its parent.
+fn read_reachable(path: &Path) -> io::Result<PluginFileRead> {
+    let read = read_plugin_file(path)?;
+    match &read {
+        PluginFileRead::Read(PluginFile::Committed(file)) => {
+            check_reachable(
+                file.files.iter().map(|entry| &entry.path),
+                file.folders.iter().map(|entry| &entry.path),
+                &file.directories,
+            )?;
+        }
+        PluginFileRead::Read(PluginFile::Pending(file)) => {
+            check_reachable(
+                file.files.iter().map(|entry| &entry.path),
+                file.folders.iter().map(|entry| &entry.path),
+                &file.directories,
+            )?;
+        }
+        _ => {}
+    }
+    Ok(read)
+}
+
+fn check_reachable<'a>(
+    files: impl Iterator<Item = &'a PathBuf>,
+    folders: impl Iterator<Item = &'a PathBuf>,
+    directories: &'a [PathBuf],
+) -> io::Result<()> {
+    for path in files.chain(folders).chain(directories) {
+        disk::lstat(path)?;
+    }
+    Ok(())
 }
 
 /// The refusal each target path would meet from an install against the recorded files, read
@@ -540,7 +583,7 @@ struct Targets {
     /// Each listed file with the digest it holds now, `None` when it holds nothing.
     priors: Vec<Option<String>>,
     refused: Vec<Refusal>,
-    /// The unrecorded folders the force mode takes over.
+    /// The unrecorded or modified folders the force mode takes over.
     replaced: Vec<PathBuf>,
     lines: Vec<LineAction>,
 }
@@ -565,7 +608,7 @@ impl PluginRecord {
     /// plugin's file it can read are removed.
     fn recorded(&self) -> Result<Result<Committed, Refusal>, InstallationError> {
         let path = self.path();
-        let file = match read_plugin_file(&path)? {
+        let file = match read_reachable(&path)? {
             PluginFileRead::Refused(problem) => {
                 return Ok(Err(Refusal::new(path, problem.into())));
             }
@@ -584,7 +627,8 @@ impl PluginRecord {
     ///
     /// It recovers a pending plugin's file first, then checks every target: a file target that is
     /// absent, or a regular file the plugin recorded with its digest unchanged, may be written,
-    /// and a folder target that is absent or recorded may be replaced whatever is inside it. Any
+    /// and a folder target that is absent or recorded may be replaced when its generated references
+    /// have no edits. Any
     /// other target refuses the whole install, which writes nothing and answers
     /// [`InstallOutcome::Refused`] with every such path, except an unrecorded folder target under
     /// the force mode, which is replaced and recorded. A damaged plugin's file, or one of an
@@ -594,7 +638,7 @@ impl PluginRecord {
     /// Each file goes through a staging file and a rename, unless it is already there with the
     /// digest it would be written with, each folder through a staging folder and renames, each
     /// recorded file the install no longer lists is removed when no one changed it, and each
-    /// recorded folder it no longer lists is removed whole. Each listed startup line is added,
+    /// recorded folder it no longer lists is removed whole when its generated references have no edits. Each listed startup line is added,
     /// recorded as held, or replaced where it stands, each recorded line it no longer lists is
     /// removed, and each released line is dropped.
     ///
@@ -627,7 +671,8 @@ impl PluginRecord {
     /// Uninstalls the plugin's files, folders, and startup lines.
     ///
     /// It recovers a pending plugin's file first, removes each recorded file whose digest is
-    /// unchanged, keeps each one someone changed, removes each recorded folder whole, removes each
+    /// unchanged, keeps each one someone changed, removes each recorded folder with unchanged
+    /// generated references whole, removes each
     /// recorded startup line from its startup file, removes each recorded directory that is then
     /// empty, deepest first, and deletes the plugin's file. A line whose startup file `release`
     /// names is dropped without reading or writing that file, and a startup file that no longer
@@ -652,7 +697,7 @@ impl PluginRecord {
         let lines = unlisted_actions(&committed.lines, &release)?;
         read_signal(signal)?;
         let (removed, kept) = remove_recorded(&committed.files)?;
-        let removed_folders = remove_folders(&committed.folders)?;
+        let (removed_folders, kept_folders) = remove_folders(&committed.folders)?;
         for action in &lines {
             action.apply()?;
         }
@@ -660,7 +705,7 @@ impl PluginRecord {
         disk::remove_file_if_present(&path)?;
         Ok(UninstallOutcome::Uninstalled(Uninstalled {
             removed: removed.into_iter().chain(removed_folders).collect(),
-            kept,
+            kept: kept.into_iter().chain(kept_folders).collect(),
             lines: (!lines.is_empty()).then(|| {
                 let outcome = outcome_of(&lines);
                 UninstalledLines {
@@ -683,7 +728,7 @@ impl PluginRecord {
     /// file the module cannot read.
     pub fn read(&self) -> Result<RecordedRead, InstallationError> {
         let path = self.path();
-        Ok(match read_plugin_file(&path)? {
+        Ok(match read_reachable(&path)? {
             PluginFileRead::Refused(problem) => {
                 RecordedRead::Refused(Refusal::new(path, problem.into()))
             }
@@ -699,7 +744,7 @@ impl PluginRecord {
             },
             PluginFileRead::Read(PluginFile::Pending(pending)) => RecordedRead::Read {
                 files: kept(&pending.files, recovered_file)?,
-                folders: pending.folders,
+                folders: kept(&pending.folders, recovered_folder)?,
                 lines: kept(&pending.lines, held_line)?,
             },
         })
@@ -714,7 +759,7 @@ impl PluginRecord {
     ///
     /// The runtime's error for a read that fails.
     pub fn directories(&self) -> Result<Vec<PathBuf>, InstallationError> {
-        Ok(match read_plugin_file(&self.path())? {
+        Ok(match read_reachable(&self.path())? {
             PluginFileRead::Read(PluginFile::Committed(committed)) => committed.directories,
             PluginFileRead::Read(PluginFile::Pending(pending)) => {
                 let mut existing = Vec::new();
@@ -740,7 +785,7 @@ impl PluginRecord {
     /// As [`PluginRecord::install`], without the cancellation.
     pub fn adopt_directories(&self, directories: &[PathBuf]) -> Result<bool, InstallationError> {
         let path = self.path();
-        if !matches!(read_plugin_file(&path)?, PluginFileRead::Read(_)) {
+        if !matches!(read_reachable(&path)?, PluginFileRead::Read(_)) {
             return Ok(false);
         }
         let Ok(committed) = self.recorded()? else {
@@ -767,7 +812,7 @@ impl PluginRecord {
     /// The runtime's error for a read that fails.
     pub fn has_pending(&self) -> Result<bool, InstallationError> {
         Ok(matches!(
-            read_plugin_file(&self.path())?,
+            read_reachable(&self.path())?,
             PluginFileRead::Read(PluginFile::Pending(_))
         ))
     }
@@ -781,7 +826,7 @@ impl PluginRecord {
     /// The runtime's error for a read that fails.
     pub fn read_registration(&self) -> Result<RegistrationRead, InstallationError> {
         let path = self.path();
-        Ok(match read_plugin_file(&path)? {
+        Ok(match read_reachable(&path)? {
             PluginFileRead::Refused(problem) => {
                 RegistrationRead::Refused(Refusal::new(path, problem.into()))
             }
@@ -885,7 +930,8 @@ fn read_targets(
         .iter()
         .map(|folder| folder.path.as_path())
         .collect();
-    let unrecorded = unrecorded_folders(&folder_paths, &committed.folders)?;
+    let folder_refusals = folder_refusals(&folder_paths, &committed.folders)?;
+    let replaced = unique(folder_refusals.iter().map(|refusal| refusal.path.clone()));
     let lines = plan_lines(
         &LineListing {
             lines: &request.lines,
@@ -902,11 +948,7 @@ fn read_targets(
         .filter_map(|(file, seen)| refusal_of(&file.path, seen, &digests))
         .collect();
     if !request.force {
-        refused.extend(
-            unrecorded
-                .iter()
-                .map(|path| Refusal::new(path.clone(), RefusalReason::Unrecorded)),
-        );
+        refused.extend(folder_refusals);
     }
     refused.extend(
         lines
@@ -923,7 +965,7 @@ fn read_targets(
             })
             .collect(),
         refused,
-        replaced: unrecorded,
+        replaced,
         lines: lines.actions,
     })
 }
@@ -1003,30 +1045,45 @@ fn plan_install(
         .filter(|folder| !listed_folders.contains(folder.path.as_path()))
         .cloned()
         .collect();
-    let recorded_folders: BTreeSet<&Path> = committed
+    let committed_folders: Vec<_> = request
         .folders
         .iter()
-        .map(|folder| folder.path.as_path())
+        .map(|folder| RecordedFolder {
+            path: folder.path.clone(),
+            files: Some(folder_digests(&folder.files)),
+        })
         .collect();
-    let every_folder = committed
+    let pending_folders = committed
         .folders
         .iter()
-        .cloned()
+        .map(|folder| &folder.path)
         .chain(
-            request
-                .folders
+            committed_folders
                 .iter()
-                .filter(|folder| !recorded_folders.contains(folder.path.as_path()))
-                .map(|folder| RecordedFolder {
-                    path: folder.path.clone(),
-                }),
+                .filter(|next| !committed.folders.iter().any(|held| held.path == next.path))
+                .map(|folder| &folder.path),
         )
+        .map(|path| {
+            let prior = committed.folders.iter().find(|held| held.path == *path);
+            let intended = committed_folders.iter().find(|next| next.path == *path);
+            PendingFolder {
+                path: path.clone(),
+                prior: Some(match prior {
+                    Some(held) => held
+                        .files
+                        .clone()
+                        .map_or(FolderPrior::Path, FolderPrior::Files),
+                    None => FolderPrior::Unrecorded,
+                }),
+                intended: intended.and_then(|next| next.files.clone()),
+            }
+        })
         .collect();
     Ok(InstallPlan {
         pending: Pending {
             directories: directories.clone(),
             files: pending_files,
-            folders: every_folder,
+            folders: pending_folders,
             lines: targets
                 .lines
                 .iter()
@@ -1037,13 +1094,7 @@ fn plan_install(
         committed: Committed {
             directories,
             files: committed_files,
-            folders: request
-                .folders
-                .iter()
-                .map(|folder| RecordedFolder {
-                    path: folder.path.clone(),
-                })
-                .collect(),
+            folders: committed_folders,
             lines: targets
                 .lines
                 .iter()
@@ -1071,7 +1122,8 @@ fn carry_out(
 ) -> Result<InstallOutcome, InstallationError> {
     write_plugin_file(path, &PluginFile::Pending(plan.pending.clone()))?;
     for directory in &plan.created {
-        disk::create_directory(directory, request.directory_mode)?;
+        disk::create_directory(directory, request.directory_mode)
+            .map_err(|error| write_failure(directory, error))?;
     }
     for file in request
         .files
@@ -1082,7 +1134,8 @@ fn carry_out(
             &file.path,
             &file.content,
             ReplaceOptions::new().maybe_mode(file.mode),
-        )?;
+        )
+        .map_err(|error| error.map_io(|error| write_failure(&file.path, error)))?;
     }
     for folder in &request.folders {
         write_folder(&folder.path, &folder.files)?;
@@ -1091,7 +1144,7 @@ fn carry_out(
         action.apply()?;
     }
     let (removed, kept) = remove_recorded(&plan.removals)?;
-    let removed_folders = remove_folders(&plan.folder_removals)?;
+    let (removed_folders, kept_folders) = remove_folders(&plan.folder_removals)?;
     write_plugin_file(path, &PluginFile::Committed(plan.committed.clone()))?;
     Ok(InstallOutcome::Installed(Installed {
         written: request
@@ -1101,7 +1154,7 @@ fn carry_out(
             .chain(request.folders.iter().map(|folder| folder.path.clone()))
             .collect(),
         removed: removed.into_iter().chain(removed_folders).collect(),
-        kept,
+        kept: kept.into_iter().chain(kept_folders).collect(),
         replaced: (!plan.replaced.is_empty()).then(|| plan.replaced.clone()),
         lines: (!plan.lines.is_empty()).then(|| outcome_of(&plan.lines)),
     }))

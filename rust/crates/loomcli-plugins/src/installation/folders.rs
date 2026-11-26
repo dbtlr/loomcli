@@ -1,9 +1,8 @@
 //! The installed-folder writes of the installed-files module: a folder written whole through a
-//! staging folder and renames, removed whole without following a symbolic link, and read for
-//! whether it holds exactly a list of files. The skills plugin's project install uses the write
-//! with no record.
+//! staging folder and renames, removed whole without following a symbolic link, and read against
+//! recorded per-file digests. The skills plugin's project install uses the write with no record.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -13,6 +12,9 @@ use super::disk::{
     self, Observed, RETIRED_SUFFIX, ReplaceOptions, STAGING_SUFFIX, digest_of, entries_of, exists,
     is_marked_entry, observe, retired_path, staging_path,
 };
+
+use super::reach::write_failure;
+use super::record::{FolderDigest, FolderPrior, PendingFolder, RecordedFolder};
 
 /// One file of an installed folder: its relative POSIX path inside the folder, such as
 /// `agents/run.sh`, its content, and the permission bits it is written with whatever the umask,
@@ -25,6 +27,8 @@ pub struct FolderFile {
     pub content: Vec<u8>,
     /// The permission bits, or `None` to follow the umask.
     pub mode: Option<u32>,
+    /// Whether this file is a generated command reference.
+    pub generated: bool,
 }
 
 impl FolderFile {
@@ -34,6 +38,7 @@ impl FolderFile {
             path: path.into(),
             content: content.into(),
             mode: None,
+            generated: false,
         }
     }
 
@@ -150,7 +155,7 @@ fn swap_in(staging: &Path, path: &Path) -> io::Result<()> {
 pub fn write_folder(path: &Path, files: &[FolderFile]) -> Result<(), InstallationError> {
     remove_folder_leftovers(path)?;
     let staging = staging_path(path);
-    disk::make_directory(&staging)?;
+    disk::make_directory(&staging).map_err(|error| write_failure(path, error))?;
     let attempt = fill_folder(&staging, files).and_then(|()| Ok(swap_in(&staging, path)?));
     if attempt.is_err() {
         // The write's own error is the one to report; a later write removes the leftover.
@@ -159,78 +164,111 @@ pub fn write_folder(path: &Path, files: &[FolderFile]) -> Result<(), Installatio
     attempt
 }
 
-/// What a check of a folder expects, by relative path, and the files it found so far.
-struct Walk<'a> {
-    files: HashMap<&'a str, &'a FolderFile>,
-    directories: BTreeSet<String>,
-    found: BTreeSet<String>,
-}
-
-/// Every directory above a file of the list, as the relative paths the folder holds.
-fn expected_directories(files: &[FolderFile]) -> BTreeSet<String> {
-    let mut directories = BTreeSet::new();
-    for file in files {
-        let mut up = file.path.as_str();
-        while let Some((above, _)) = up.rsplit_once('/') {
-            directories.insert(above.to_owned());
-            up = above;
+/// Reads a relative file through real directories only. A link at the file itself is observed.
+fn observe_in(folder: &Path, file: &str) -> io::Result<Observed> {
+    let mut parent = folder.to_path_buf();
+    if !disk::lstat(&parent)?.is_some_and(|metadata| metadata.is_dir()) {
+        return Ok(Observed::Absent);
+    }
+    if let Some((directory, _)) = file.rsplit_once('/') {
+        for segment in directory.split('/') {
+            parent.push(segment);
+            if !disk::lstat(&parent)?.is_some_and(|metadata| metadata.is_dir()) {
+                return Ok(Observed::Absent);
+            }
         }
     }
-    directories
+    observe(&joined(folder, file))
 }
 
-/// Whether the file at `path` is a regular file holding the listed content and, when named, mode.
-fn file_matches(path: &Path, file: &FolderFile) -> io::Result<bool> {
-    Ok(match observe(path)? {
-        Observed::File { digest, mode } => {
-            digest == digest_of(&file.content) && file.mode.is_none_or(|named| named == mode)
+pub(super) fn folder_digests(files: &[FolderFile]) -> Vec<FolderDigest> {
+    files
+        .iter()
+        .map(|file| FolderDigest {
+            path: file.path.clone(),
+            digest: digest_of(&file.content),
+            generated: file.generated,
+        })
+        .collect()
+}
+
+/// Lists generated references that exist with changed content or kind, in record order.
+pub(crate) fn changed_references(folder: &RecordedFolder) -> io::Result<Vec<String>> {
+    let mut changed = Vec::new();
+    for file in folder.files.iter().flatten().filter(|file| file.generated) {
+        match observe_in(&folder.path, &file.path)? {
+            Observed::Absent => {}
+            Observed::File { digest, .. } if digest == file.digest => {}
+            _ => changed.push(file.path.clone()),
         }
-        _ => false,
-    })
+    }
+    Ok(changed)
 }
 
-/// Whether every entry under `directory` is one the list expects, each file matching, recording
-/// the files it finds in `walk`. A link, another kind of file, or an unexpected entry fails.
-fn entries_match(directory: &Path, relative: &str, walk: &mut Walk<'_>) -> io::Result<bool> {
-    for entry in fs::read_dir(directory)? {
-        let name = entry?.file_name();
-        let path = directory.join(&name);
-        let name = name.to_string_lossy();
-        let key = if relative.is_empty() {
-            name.into_owned()
-        } else {
-            format!("{relative}/{name}")
-        };
-        if let Some(file) = walk.files.get(key.as_str()).copied() {
-            walk.found.insert(key);
-            if !file_matches(&path, file)? {
-                return Ok(false);
+#[cfg(feature = "skills")]
+const EXECUTE_BITS: u32 = 0o111;
+
+/// Lists missing or differing wanted files and obsolete recorded files still held by the folder,
+/// in Unicode code-point order.
+#[cfg(feature = "skills")]
+pub(crate) fn stale_files(
+    path: &Path,
+    files: &[FolderFile],
+    recorded: &[FolderDigest],
+) -> io::Result<Vec<String>> {
+    let mut changed = BTreeSet::new();
+    for file in files {
+        let matches = match observe_in(path, &file.path)? {
+            Observed::File { digest, mode } => {
+                digest == digest_of(&file.content)
+                    && file.mode.is_none_or(|wanted| {
+                        (wanted & EXECUTE_BITS != 0) == (mode & EXECUTE_BITS != 0)
+                    })
             }
-            continue;
+            _ => false,
+        };
+        if !matches {
+            changed.insert(file.path.clone());
         }
-        let is_folder =
-            walk.directories.contains(&key) && fs::symlink_metadata(&path)?.file_type().is_dir();
-        if !is_folder || !entries_match(&path, &key, walk)? {
+    }
+    for file in recorded {
+        if !files.iter().any(|wanted| wanted.path == file.path)
+            && observe_in(path, &file.path)? != Observed::Absent
+        {
+            changed.insert(file.path.clone());
+        }
+    }
+    Ok(changed.into_iter().collect())
+}
+
+fn intended_matches(folder: &Path, files: &[FolderDigest]) -> io::Result<bool> {
+    for file in files {
+        if !matches!(observe_in(folder, &file.path)?, Observed::File { digest, .. } if digest == file.digest)
+        {
             return Ok(false);
         }
     }
     Ok(true)
 }
 
-/// Whether the folder at `path` holds exactly `files`: each file with its content and, when the
-/// list names one, its mode, and no other file or folder. Nothing is followed, so a symbolic link
-/// at the path or inside the folder, or a path that is not a directory, answers `false`.
-pub fn folder_holds_exactly(path: &Path, files: &[FolderFile]) -> io::Result<bool> {
-    if !disk::lstat(path)?.is_some_and(|metadata| metadata.is_dir()) {
-        return Ok(false);
-    }
-    let mut walk = Walk {
-        files: files
-            .iter()
-            .map(|file| (file.path.as_str(), file))
-            .collect(),
-        directories: expected_directories(files),
-        found: BTreeSet::new(),
+/// Keeps the intended digests after a completed swap, or the ownership that survives a stopped
+/// swap. A missing target keeps its intended record so the next update can finish writing it.
+pub(super) fn recovered_folder(
+    folder: &PendingFolder,
+) -> Result<Option<RecordedFolder>, InstallationError> {
+    let files = match (&folder.prior, &folder.intended) {
+        (None, _) => None,
+        (_, Some(intended)) if intended_matches(&folder.path, intended)? => Some(intended.clone()),
+        (Some(prior), _) if exists(&folder.path)? => match prior {
+            FolderPrior::Unrecorded => return Ok(None),
+            FolderPrior::Path => None,
+            FolderPrior::Files(files) => Some(files.clone()),
+        },
+        (_, Some(intended)) => Some(intended.clone()),
+        (_, None) => return Ok(None),
     };
-    Ok(entries_match(path, "", &mut walk)? && walk.found.len() == files.len())
+    Ok(Some(RecordedFolder {
+        path: folder.path.clone(),
+        files,
+    }))
 }

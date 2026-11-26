@@ -209,7 +209,7 @@ pub(super) fn option_cell(option: &OptionNode, help: &OptionHelp, context: &View
 /// The parts of one option's left cell, unstyled, for a renderer that styles them its own way:
 /// the short and long spellings, whether a counted option ends with `...`, and the value
 /// placeholder of an option that takes a value.
-#[cfg(feature = "manpage")]
+#[cfg(any(feature = "manpage", feature = "skills"))]
 pub(crate) struct OptionCellParts {
     pub(crate) short: Option<String>,
     pub(crate) long: Option<String>,
@@ -218,7 +218,7 @@ pub(crate) struct OptionCellParts {
 }
 
 /// The unstyled parts of an option's left cell.
-#[cfg(feature = "manpage")]
+#[cfg(any(feature = "manpage", feature = "skills"))]
 pub(crate) fn option_cell_parts(option: &OptionNode, help: &OptionHelp) -> OptionCellParts {
     let long = long_spelling(option);
     let value = value_option(option).map(|valued| {
@@ -537,7 +537,7 @@ pub(crate) fn unbound_option_facts(option: &OptionNode) -> Vec<Fact> {
 }
 
 /// The facts a help page prints for one option row, in the order the right-cell rule names them.
-pub(super) fn option_facts(option: &OptionNode, help: &OptionHelp) -> Vec<Fact> {
+pub(crate) fn option_facts(option: &OptionNode, help: &OptionHelp) -> Vec<Fact> {
     let mut facts = kind_facts(option);
     facts.extend(binding_facts(option, help));
     facts.extend(deprecated_facts(option.deprecated()));
@@ -563,72 +563,110 @@ pub(crate) fn argument_facts(argument: &ArgumentNode) -> Vec<Fact> {
     facts
 }
 
-/// One fact as help styles it. The names of a binding fact and its delimiter sit in `nowrap` on a
-/// terminal, so the wrap breaks between them and never inside one.
-fn styled_fact(fact: &Fact, context: &ViewContext) -> String {
-    let style = &context.style;
-    let tone = match fact.tone {
-        Tone::Dim => style.dim(),
-        Tone::Warning => style.warning(),
-    };
+/// Writes a fact's text and lets the caller keep each binding name and delimiter whole.
+fn write_fact(
+    fact: &Fact,
+    prose: impl Fn(&str) -> String,
+    whole: impl Fn(&str) -> String,
+) -> String {
     let Some(names) = &fact.names else {
-        return tone.apply(&style.escape(&fact.text));
-    };
-    let whole = |unit: &str| {
-        let styled = tone.apply(&style.escape(unit));
-        if on_terminal(context) {
-            nowrap(&styled)
-        } else {
-            styled
-        }
+        return prose(&fact.text);
     };
     let list = fact
         .delimiter
         .as_deref()
         .map_or_else(String::new, |delimiter| {
-            format!(
-                "{}{}",
-                tone.apply(" as a list separated by "),
-                whole(delimiter)
-            )
+            format!("{}{}", prose(" as a list separated by "), whole(delimiter))
         });
     let joined: Vec<String> = names.iter().map(|name| whole(name)).collect();
     format!(
         "{}{}{list}",
-        tone.apply(&style.escape(&format!("{} ", fact.text))),
-        joined.join(&tone.apply(" "))
+        prose(&format!("{} ", fact.text)),
+        joined.join(&prose(" "))
     )
+}
+
+/// Writes the parts of a right cell using the receiving surface's presentation.
+pub(crate) trait CellWriter {
+    /// Writes a fact, keeping binding names and delimiters whole where text wraps.
+    fn fact(&self, fact: &Fact) -> String;
+    /// Writes punctuation around and between facts.
+    fn mark(&self, mark: &str) -> String;
+    /// Writes the description or accepted-values sentence.
+    fn prose(&self, text: &str) -> String;
+}
+
+impl CellWriter for ViewContext {
+    fn fact(&self, fact: &Fact) -> String {
+        let style = &self.style;
+        let tone = match fact.tone {
+            Tone::Dim => style.dim(),
+            Tone::Warning => style.warning(),
+        };
+        let prose = |text: &str| tone.apply(&style.escape(text));
+        write_fact(fact, prose, |unit| {
+            let styled = prose(unit);
+            if on_terminal(self) {
+                nowrap(&styled)
+            } else {
+                styled
+            }
+        })
+    }
+
+    fn mark(&self, mark: &str) -> String {
+        self.style.dim().apply(mark)
+    }
+
+    fn prose(&self, text: &str) -> String {
+        self.style.primary().apply(&self.style.escape(text))
+    }
+}
+
+/// Writes the right cell as unstyled text for a command reference.
+#[cfg(feature = "skills")]
+pub(crate) struct PlainCell;
+
+#[cfg(feature = "skills")]
+impl CellWriter for PlainCell {
+    fn fact(&self, fact: &Fact) -> String {
+        write_fact(fact, str::to_owned, str::to_owned)
+    }
+
+    fn mark(&self, mark: &str) -> String {
+        mark.to_owned()
+    }
+
+    fn prose(&self, text: &str) -> String {
+        text.to_owned()
+    }
 }
 
 /// The right cell of one row: the description on one line, then the accepted-values sentence,
 /// then the facts that apply in one parenthesis. One space separates the description from the
 /// sentence and two spaces separate the text from the parenthesis; a member with no text has the
 /// parenthesis as its whole cell, and a member with none of the three has no right cell at all.
-pub(super) fn right_cell(
+pub(crate) fn right_cell(
     description: Option<&str>,
     accepts: Option<&str>,
     facts: &[Fact],
-    context: &ViewContext,
+    writer: &impl CellWriter,
 ) -> String {
-    let style = &context.style;
     let parenthesis = if facts.is_empty() {
         String::new()
     } else {
-        let listed: Vec<String> = facts
-            .iter()
-            .map(|fact| styled_fact(fact, context))
-            .collect();
+        let listed: Vec<String> = facts.iter().map(|fact| writer.fact(fact)).collect();
         format!(
             "{}{}{}",
-            style.dim().apply("("),
-            listed.join(&format!("{} ", style.dim().apply(","))),
-            style.dim().apply(")")
+            writer.mark("("),
+            listed.join(&format!("{} ", writer.mark(","))),
+            writer.mark(")")
         )
     };
     let written: Vec<String> = [description.map(single_line), accepts.map(str::to_owned)]
         .into_iter()
         .flatten()
-        .map(|part| style.primary().apply(&style.escape(&part)))
+        .map(|part| writer.prose(&part))
         .collect();
     if written.is_empty() {
         return parenthesis;

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use loomcli_core::{Error, Host};
 
-use crate::installation::{home_of, home_refusal, real_path};
+use crate::installation::{InstallationError, home_of, home_refusal, real_path};
 
 /// The agents the plugin installs for, in the order every child follows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,7 +84,7 @@ pub(super) fn global_places(
 /// kept as it is, because installing replaces a link at the folder and never follows it.
 pub(super) fn real_folder(folder: &Path) -> Result<PathBuf, Error> {
     let parent = folder.parent().unwrap_or(folder);
-    let resolved = real_path(parent)?;
+    let resolved = real_path(parent).map_err(InstallationError::from)?;
     Ok(folder
         .file_name()
         .map_or(resolved.clone(), |name| resolved.join(name)))
