@@ -137,6 +137,12 @@ Feature `background`; `background()`.
 
 - **Operator:** `--background dark` or `--background light` states the terminal's background, so the theme picks its colors without asking the terminal.
 
+### Plain
+
+Feature `plain`; `plain()`.
+
+- **Operator:** `--plain` turns off every redraw: progress prints plain start and end lines, and questions ask line by line. A nonempty `ACCESSIBLE` variable does the same, and core reads it even when the application leaves this plugin out.
+
 ## Inputs
 
 ### Interaction

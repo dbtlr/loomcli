@@ -72,6 +72,7 @@ impl UnitRun {
             Palette::new(),
             ViewRegistry::new(&[]),
             None,
+            false,
         ));
         let place = crate::signals::lane::Place::unentered(lane);
         output.use_place(place.clone());

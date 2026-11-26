@@ -30,7 +30,7 @@ fn manifest_option(short: Value) -> Value {
         "type": "boolean", "name": "manifest",
         "description": "Print this command's manifest as JSON.",
         "deprecated": null, "control": true, "long": "--manifest", "short": short,
-        "negative": null, "polarity": "positive", "interaction": false, "color": false,
+        "negative": null, "polarity": "positive", "interaction": false, "color": false, "plain": false,
         "schema": null, "env": [],
     })
 }
@@ -66,7 +66,7 @@ fn get_entry() -> Value {
             {
                 "type": "boolean", "name": "raw", "description": "Print raw.", "deprecated": null,
                 "control": false, "long": "--raw", "short": null, "negative": "--no-raw",
-                "polarity": "both", "interaction": false, "color": false, "schema": null,
+                "polarity": "both", "interaction": false, "color": false, "plain": false, "schema": null,
                 "env": ["APP_RAW"],
             },
             {

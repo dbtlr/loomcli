@@ -1074,3 +1074,154 @@ async fn file_creation_failure_escapes_control_characters_in_the_tmpdir_folder()
         ))
     );
 }
+
+#[tokio::test]
+async fn an_editor_in_plain_mode_prints_each_frame_once() {
+    use loomcli_core::{RenderingPolicy, Switch};
+    let folder = Folder::new();
+    let mock = editing(
+        &[
+            ("TMPDIR", folder.path()),
+            ("EDITOR", "nano"),
+            ("ACCESSIBLE", "1"),
+        ],
+        vec![entry("ignored\r")],
+        |_| Ok(ProgramAnswer::new()),
+    );
+    let app = Application::new("edit")
+        .rendering(
+            RenderingPolicy::new()
+                .color(Switch::Never)
+                .modifiers(Switch::Never),
+        )
+        .action(|ctx: Context| async move {
+            let value = editor(
+                &ctx,
+                EditorSettings::new("Release notes").default("seed"),
+                Verbatim,
+            )
+            .await?;
+            ctx.out.print(&value).await
+        });
+    assert_eq!(run(app, &mock).await, 0);
+    assert_eq!(mock.stdout_text(), "seed\n");
+    assert_eq!(
+        mock.stderr_text(),
+        concat!(
+            "? Release notes › Press Enter to open your editorignored\n",
+            "? Release notes › Waiting for your editor to close the file…\n",
+            "? Release notes · seed\n",
+        )
+    );
+    assert!(!mock.is_raw());
+}
+
+#[tokio::test]
+async fn a_resume_while_a_plain_editor_runs_asks_no_line_again() {
+    use loomcli_core::{RenderingPolicy, Switch};
+    let folder = Folder::new();
+    let cell: Arc<OnceLock<Arc<MockProcess>>> = Arc::new(OnceLock::new());
+    let held = Arc::clone(&cell);
+    let mock = editing(
+        &[
+            ("TMPDIR", folder.path()),
+            ("EDITOR", "nano"),
+            ("ACCESSIBLE", "1"),
+        ],
+        vec![entry("\r")],
+        move |call| {
+            if let Some(mock) = held.get() {
+                mock.raise(ProcessSignal::Tstp);
+                mock.raise(ProcessSignal::Cont);
+            }
+            std::fs::write(file_of(&call), "done").unwrap();
+            Ok(ProgramAnswer::new())
+        },
+    );
+    let _ = cell.set(Arc::clone(&mock));
+    let app = Application::new("edit")
+        .rendering(
+            RenderingPolicy::new()
+                .color(Switch::Never)
+                .modifiers(Switch::Never),
+        )
+        .action(|ctx: Context| async move {
+            let value = editor(&ctx, EditorSettings::new("Notes"), Verbatim).await?;
+            ctx.out.print(&value).await
+        });
+    assert_eq!(run(app, &mock).await, 0, "{:?}", mock.stderr_text());
+    assert_eq!(
+        mock.stderr_text(),
+        concat!(
+            "? Notes › Press Enter to open your editor\n",
+            "? Notes › Waiting for your editor to close the file…\n",
+            "? Notes · done\n",
+        )
+    );
+}
+
+#[tokio::test]
+async fn a_rejected_plain_editor_answer_prints_the_issue_and_reopens_without_controls() {
+    use loomcli_core::{RenderingPolicy, Switch, TerminalControls};
+
+    #[derive(Clone, Copy)]
+    struct Notes;
+
+    impl Validator for Notes {
+        type Output = String;
+
+        fn validate(&self, input: &str, _: &ValidationContext) -> Result<String, Vec<Issue>> {
+            if input == "draft" {
+                return Err(vec![Issue::new("Write the notes.")]);
+            }
+            Ok(input.to_owned())
+        }
+    }
+
+    for preserve in [false, true] {
+        let folder = Folder::new();
+        let calls = AtomicUsize::new(0);
+        let mock = editing(
+            &[
+                ("TMPDIR", folder.path()),
+                ("EDITOR", "nano"),
+                ("ACCESSIBLE", "1"),
+            ],
+            vec![entry("\r"), entry("\r")],
+            move |call| {
+                let answer = if calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                    "draft"
+                } else {
+                    "Final notes"
+                };
+                std::fs::write(file_of(&call), answer)?;
+                Ok(ProgramAnswer::new())
+            },
+        );
+        let policy = RenderingPolicy::new()
+            .color(Switch::Never)
+            .modifiers(Switch::Never);
+        let policy = if preserve {
+            policy.terminal_controls(TerminalControls::Preserve)
+        } else {
+            policy
+        };
+        let app = Application::new("edit")
+            .rendering(policy)
+            .action(|ctx: Context| async move {
+                let value = editor(&ctx, EditorSettings::new("Release notes"), Notes).await?;
+                ctx.out.print(&value).await
+            });
+        assert_eq!(run(app, &mock).await, 0);
+        assert_eq!(mock.stdout_text(), "Final notes\n");
+        let asking = "? Release notes › Press Enter to open your editor\n";
+        let editing = "? Release notes › Waiting for your editor to close the file…\n";
+        assert_eq!(
+            mock.stderr_text(),
+            format!(
+                "{asking}{editing}✘ Write the notes.\n{asking}{editing}? Release notes · Final notes\n"
+            )
+        );
+        assert!(!mock.is_raw());
+    }
+}

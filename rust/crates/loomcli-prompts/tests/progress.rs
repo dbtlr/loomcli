@@ -430,20 +430,18 @@ async fn a_question_asked_while_two_lines_run_holds_them_still_and_lets_each_cat
 }
 
 #[tokio::test]
-async fn on_a_terminal_stderr_whose_term_is_dumb_a_question_asked_beside_two_plain_lines_still_asks()
- {
-    let (mock, marks, asked) = question(&[("TERM", "dumb")]).await;
-    assert!(asked);
-    assert_eq!(
-        marks.screen(&mock, None)[..5],
-        [
-            "ℹ First",
-            "ℹ Second",
-            "? Continue · yes",
-            "✔ First moved",
-            "✔ Second"
-        ]
-    );
+async fn a_question_and_progress_lines_append_under_term_dumb_and_accessible() {
+    for (name, value, label) in [
+        ("TERM", "dumb", "Continue"),
+        ("ACCESSIBLE", "1", "\u{1b}[1mContinue\u{1b}[22m"),
+    ] {
+        let (mock, _, asked) = question(&[(name, value)]).await;
+        assert!(asked);
+        assert_eq!(
+            mock.stderr_text(),
+            format!("ℹ First\nℹ Second\n{label}: yes\n✔ First moved\n✔ Second\n"),
+        );
+    }
 }
 
 #[tokio::test]
@@ -650,22 +648,24 @@ async fn a_middlewares_line_stays_open_through_the_action_and_ends_once_the_chai
 
 /// The plain scenario: the documented example's lines and a failing line.
 fn plain_app() -> App {
-    Application::new("progress").action(|ctx: Context| async move {
-        let fetching = progress(&ctx, ProgressSettings::new("Fetching records").total(10.0));
-        for index in 0..10 {
-            fetching.update(ProgressUpdate::new().completed(f64::from(index + 1)));
-        }
-        fetching.end_with("Fetched 10 records").await?;
-        progress(&ctx, ProgressSettings::new("Building the index"))
-            .track(
-                async { Ok::<_, Error>(812) },
-                TrackMessages::new().done(|count: &i32| format!("Indexed {count} records")),
-            )
-            .await?;
-        progress(&ctx, ProgressSettings::new("Uploading"))
-            .fail()
-            .await
-    })
+    Application::new("progress")
+        .global_option("plain", loomcli_core::Opt::boolean().plain())
+        .action(|ctx: Context| async move {
+            let fetching = progress(&ctx, ProgressSettings::new("Fetching records").total(10.0));
+            for index in 0..10 {
+                fetching.update(ProgressUpdate::new().completed(f64::from(index + 1)));
+            }
+            fetching.end_with("Fetched 10 records").await?;
+            progress(&ctx, ProgressSettings::new("Building the index"))
+                .track(
+                    async { Ok::<_, Error>(812) },
+                    TrackMessages::new().done(|count: &i32| format!("Indexed {count} records")),
+                )
+                .await?;
+            progress(&ctx, ProgressSettings::new("Uploading"))
+                .fail()
+                .await
+        })
 }
 
 const PLAIN: &str = "ℹ Fetching records\n✔ Fetched 10 records\nℹ Building the index\n✔ Indexed 812 records\nℹ Uploading\n✘ Uploading\n";
@@ -678,12 +678,24 @@ async fn with_stderr_piped_the_run_writes_one_start_line_and_one_end_line_per_pr
 }
 
 #[tokio::test]
-async fn on_a_terminal_stderr_whose_term_is_dumb_or_under_ci_the_run_writes_the_plain_lines() {
-    for env in [("TERM", "dumb"), ("CI", "true")] {
+async fn on_a_terminal_stderr_that_does_not_redraw_the_run_writes_the_plain_lines() {
+    for env in [("TERM", "dumb"), ("CI", "true"), ("ACCESSIBLE", "1")] {
         let mock = mock_for(true, &[env], vec![]);
         assert_eq!(run_on(plain_app(), &mock, None).await, 0);
         assert_eq!(mock.stderr_text(), PLAIN, "{env:?}");
     }
+}
+
+#[tokio::test]
+async fn the_plain_flag_keeps_only_the_start_and_end_lines_on_a_terminal() {
+    let mock = mock_process(
+        MockFields::new()
+            .argv(["--plain"])
+            .env("NO_COLOR", "1")
+            .terminal(MockTerminal::new(80, 24)),
+    );
+    assert_eq!(run_on(plain_app(), &mock, None).await, 0);
+    assert_eq!(mock.stderr_text(), PLAIN);
 }
 
 /// The plain scenario under invocation by name: its messages and its progress events.

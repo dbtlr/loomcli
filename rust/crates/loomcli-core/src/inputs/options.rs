@@ -383,6 +383,7 @@ pub struct BooleanOpt {
     pub(crate) polarity: Polarity,
     pub(crate) interaction: bool,
     pub(crate) color: bool,
+    pub(crate) plain: bool,
 }
 
 impl BooleanOpt {
@@ -407,6 +408,13 @@ impl BooleanOpt {
     pub fn color(mut self) -> Self {
         self.facts.called("color", Vec::new());
         self.color = true;
+        self
+    }
+
+    /// Marks the global option whose positive long spellings turn the run's plain switch on.
+    pub fn plain(mut self) -> Self {
+        self.facts.called("plain", Vec::new());
+        self.plain = true;
         self
     }
 }
@@ -677,6 +685,9 @@ impl OptionDecl {
                 if option.color {
                     marks.push("color");
                 }
+                if option.plain {
+                    marks.push("plain");
+                }
             }
             OptionDecl::Count(option) => {
                 if option.verbose {
@@ -737,6 +748,32 @@ impl OptionDecl {
                         "env",
                         "declares color beside an environment binding".to_owned(),
                     ));
+                }
+                if option.plain {
+                    if option.color {
+                        return Some(("plain", "declares both color and plain".to_owned()));
+                    }
+                    if option.interaction {
+                        return Some(("plain", "declares both interaction and plain".to_owned()));
+                    }
+                    if option.polarity != Polarity::Positive {
+                        return Some((
+                            "polarity",
+                            "declares plain with a polarity other than positive".to_owned(),
+                        ));
+                    }
+                    if facts.short.is_some() {
+                        return Some((
+                            "short",
+                            "declares plain beside a short spelling".to_owned(),
+                        ));
+                    }
+                    if !facts.env.is_empty() {
+                        return Some((
+                            "env",
+                            "declares plain beside an environment binding".to_owned(),
+                        ));
+                    }
                 }
                 None
             }

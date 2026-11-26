@@ -501,6 +501,152 @@ impl ProgressLine {
     }
 }
 
+/// One enabled or disabled choice in a numbered list.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct NumberedChoice {
+    /// One-based position among the enabled choices.
+    pub number: Option<usize>,
+    /// Text shown for the choice.
+    pub label: String,
+    /// Description shown beside an enabled choice.
+    pub description: Option<String>,
+    /// Reason shown beside a disabled choice.
+    pub reason: Option<String>,
+}
+
+impl NumberedChoice {
+    /// Builds a choice row from its label and its number, if enabled.
+    #[must_use]
+    pub fn new(label: impl Into<String>, number: Option<usize>) -> Self {
+        Self {
+            number,
+            label: label.into(),
+            description: None,
+            reason: None,
+        }
+    }
+}
+
+/// One row of a numbered list.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum NumberedRow {
+    /// A choice.
+    Choice(NumberedChoice),
+    /// A separator with its text.
+    Separator(String),
+}
+
+/// A piece a line-based question prints through `question_line()`.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum QuestionLine {
+    /// A text question's message and optional prefill.
+    Text {
+        /// The question's message.
+        message: String,
+        /// The answer Enter alone accepts.
+        hint: Option<String>,
+    },
+    /// A secret question's message.
+    Secret(String),
+    /// A confirmation's message and legend.
+    Confirm {
+        /// The question's message.
+        message: String,
+        /// The case-sensitive legend, such as `Y/n`.
+        hint: String,
+    },
+    /// A heading above the list.
+    Title(String),
+    /// The rows of a numbered list.
+    List(Vec<NumberedRow>),
+    /// Asks for one number with an optional prefill.
+    Number(Option<String>),
+    /// Asks for several numbers with an optional prefill.
+    Numbers(Option<String>),
+    /// Asks for the first search term.
+    Search,
+    /// Asks for numbers or a new term, with optional prefill labels.
+    Refine(Option<String>),
+    /// The issue that refused the last answer.
+    Issue(String),
+}
+
+impl QuestionLine {
+    pub(crate) fn opens_row(&self) -> bool {
+        !matches!(self, Self::Title(_) | Self::List(_) | Self::Issue(_))
+    }
+}
+
+/// `@loomcli/prompts/question-line` draws each piece of a line-based question.
+pub fn question_line() -> DeclaredView<QuestionLine> {
+    view(
+        "@loomcli/prompts/question-line",
+        View::new(render_question_line),
+    )
+}
+
+fn render_question_line(data: &QuestionLine, context: &ViewContext) -> String {
+    let style = &context.style;
+    let row = |text: &str, hint: Option<&str>| {
+        let brackets = hint.map_or_else(String::new, |hint| {
+            format!(" {}", style.dim().apply(&format!("[{}]", literal(hint))))
+        });
+        format!("{text}{brackets}: ")
+    };
+    match data {
+        QuestionLine::Text { message, hint } => row(&style.bold().apply(message), hint.as_deref()),
+        QuestionLine::Secret(message) => row(&style.bold().apply(message), None),
+        QuestionLine::Confirm { message, hint } => row(&style.bold().apply(message), Some(hint)),
+        QuestionLine::Title(message) => format!("{}\n", style.bold().apply(message)),
+        QuestionLine::List(rows) if rows.is_empty() => {
+            format!("{}\n", style.dim().apply("  No matches"))
+        }
+        QuestionLine::List(rows) => rows
+            .iter()
+            .map(|entry| numbered_row(entry, context))
+            .collect(),
+        QuestionLine::Number(hint) => row("Enter a number", hint.as_deref()),
+        QuestionLine::Numbers(hint) => row("Enter numbers separated by commas", hint.as_deref()),
+        QuestionLine::Search => row("Search", None),
+        QuestionLine::Refine(hint) => {
+            row("Enter a number, or text to search again", hint.as_deref())
+        }
+        QuestionLine::Issue(issue) => format!(
+            "{}\n",
+            style
+                .error()
+                .apply(&format!("{} {}", glyph(Glyph::Cross), literal(issue)))
+        ),
+    }
+}
+
+fn numbered_row(row: &NumberedRow, context: &ViewContext) -> String {
+    let dim = context.style.dim();
+    match row {
+        NumberedRow::Separator(text) if text.is_empty() => "\n".to_owned(),
+        NumberedRow::Separator(text) => format!("{}\n", dim.apply(&format!("  {}", literal(text)))),
+        NumberedRow::Choice(choice) => {
+            let label = literal(&choice.label);
+            if let Some(number) = choice.number {
+                let description = choice
+                    .description
+                    .as_deref()
+                    .filter(|text| !text.is_empty())
+                    .map_or_else(String::new, |description| {
+                        format!("{}{}", dim.apply(" · "), literal(description))
+                    });
+                format!("  {number}. {label}{description}\n")
+            } else {
+                let reason = literal(choice.reason.as_deref().unwrap_or("disabled"));
+                format!("{}\n", dim.apply(&format!("  {label} ({reason})")))
+            }
+        }
+    }
+}
+
 /// `@loomcli/prompts/question-frame`.
 pub fn question_frame() -> DeclaredView<QuestionFrame> {
     view(

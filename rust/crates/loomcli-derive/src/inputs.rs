@@ -118,6 +118,7 @@ struct FieldAttributes {
     max: Option<Valued<Expr>>,
     interaction: Option<Span>,
     color: Option<Span>,
+    plain: Option<Span>,
     verbose: Option<Span>,
     quiet: Option<Span>,
     background: Option<Span>,
@@ -128,7 +129,7 @@ struct FieldAttributes {
 
 /// Every fact the grammar knows, and what it is a fact of, for the sentence that rejects it on a
 /// field of another kind.
-const FACTS: [(&str, &str); 29] = [
+const FACTS: [(&str, &str); 30] = [
     ("name", "an option or an argument"),
     ("description", "an input"),
     ("short", "an option"),
@@ -154,6 +155,7 @@ const FACTS: [(&str, &str); 29] = [
     ("max", "a `Vec` content input"),
     ("interaction", "a Boolean option"),
     ("color", "a Boolean option"),
+    ("plain", "a Boolean option"),
     ("verbose", "a counted option"),
     ("quiet", "a counted option"),
     ("background", "a string option"),
@@ -247,6 +249,7 @@ fn parse_fact(facts: &mut FieldAttributes, meta: &ParseNestedMeta<'_>) -> syn::R
         "max" => set_value(&mut facts.max, meta, &key),
         "interaction" => set_flag(&mut facts.interaction, meta, &key),
         "color" => set_flag(&mut facts.color, meta, &key),
+        "plain" => set_flag(&mut facts.plain, meta, &key),
         "verbose" => set_flag(&mut facts.verbose, meta, &key),
         "quiet" => set_flag(&mut facts.quiet, meta, &key),
         "background" => set_flag(&mut facts.background, meta, &key),
@@ -382,7 +385,9 @@ impl Kind {
     fn takes(self, fact: &str) -> bool {
         let option = OPTION_FACTS.contains(&fact);
         match self {
-            Kind::BooleanOption => option || ["polarity", "interaction", "color"].contains(&fact),
+            Kind::BooleanOption => {
+                option || ["polarity", "interaction", "color", "plain"].contains(&fact)
+            }
             Kind::CountOption => option || ["count", "verbose", "quiet"].contains(&fact),
             Kind::StringOption => {
                 option
@@ -726,6 +731,34 @@ fn reject_fact_pairs(kind: Kind, wrapper: Wrapper<'_>, facts: &FieldAttributes) 
             ));
         }
     }
+    if let Some(plain) = facts.plain {
+        if facts.color.is_some() || facts.interaction.is_some() {
+            return Err(syn::Error::new(
+                plain,
+                "a plain option takes no color or interaction mark",
+            ));
+        }
+        if let Some(polarity) = &facts.polarity
+            && polarity.value.value() != "positive"
+        {
+            return Err(syn::Error::new(
+                polarity.key,
+                "a plain option takes positive polarity",
+            ));
+        }
+        if let Some(short) = &facts.short {
+            return Err(syn::Error::new(
+                short.key,
+                "a plain option takes no short spelling",
+            ));
+        }
+        if let Some(env) = &facts.env {
+            return Err(syn::Error::new(
+                env.key,
+                "a plain option takes no environment binding",
+            ));
+        }
+    }
     if facts.verbose.is_some() || facts.quiet.is_some() {
         if let Some(env) = &facts.env {
             return Err(syn::Error::new(
@@ -1039,6 +1072,9 @@ fn expand_boolean(
     }
     if facts.color.is_some() {
         builder.extend(quote!(.color()));
+    }
+    if facts.plain.is_some() {
+        builder.extend(quote!(.plain()));
     }
     Expanded {
         declare: quote!(let declarations = declarations.option(#name, #builder);),

@@ -307,6 +307,8 @@ pub(crate) struct Output {
     shared: bool,
     /// Whether stderr is a terminal, which holds the live regions.
     stderr_tty: bool,
+    /// The plain switch, fixed from the captured argv and environment.
+    plain: bool,
     /// Whether stdout is a second terminal stream beside stderr, so both show on one screen.
     coordinated: bool,
     /// The turn the two terminal streams take to send, when they are coordinated.
@@ -486,10 +488,12 @@ impl Output {
         palette: Palette,
         registry: ViewRegistry,
         progress: Option<ProgressObserver>,
+        plain_spelling: bool,
     ) -> Self {
         let stdout = host.stdout();
         let stderr = host.stderr();
         let env = host.env.clone();
+        let plain = plain_spelling || crate::marks::plain::accessible(&env);
         let shared = std::ptr::addr_eq(Arc::as_ptr(&stdout), Arc::as_ptr(&stderr));
         let stderr_tty = host.terminal.stderr().is_tty;
         let coordinated = stderr_tty && host.terminal.stdout().is_tty && !shared;
@@ -509,6 +513,7 @@ impl Output {
             pipe_closed: AtomicBool::new(false),
             shared,
             stderr_tty,
+            plain,
             coordinated,
             send_turn: tokio::sync::Mutex::new(()),
             stdout_sequences: AtomicUsize::new(0),
@@ -742,17 +747,29 @@ impl Output {
         self.signal.is_cancelled()
     }
 
-    /// Whether a terminal stderr redraws a region in place: not under `TERM=dumb`, which cannot
-    /// move the cursor, and not under CI, where the terminal feeds a build log.
-    fn redraws(&self) -> bool {
-        let env = self.env();
-        env.get("TERM").map(String::as_str) != Some("dumb") && !under_ci(&*env)
+    fn moves_cursor(&self, env: &crate::host::Env) -> bool {
+        !self.plain && env.get("TERM").map(String::as_str) != Some("dumb")
     }
 
-    /// Whether a region opened now is live: stderr is a terminal, and the region takes input or the
-    /// run is not quiet and the terminal redraws in place.
+    /// Whether a terminal destination moves its cursor and is outside CI.
+    fn redraws(&self) -> bool {
+        let env = self.env();
+        self.moves_cursor(&env) && !under_ci(&*env)
+    }
+
+    /// Whether stderr is a terminal, whose input regions take turns even when they cannot draw.
+    pub(crate) fn terminal_input_regions(&self) -> bool {
+        self.stderr_tty
+    }
+
+    /// Whether a region opened now draws on stderr.
     pub(crate) fn region_live(&self, input: bool) -> bool {
-        self.stderr_tty && (input || (self.verbosity.load(Ordering::SeqCst) >= 0 && self.redraws()))
+        self.stderr_tty
+            && if input {
+                self.moves_cursor(&self.env())
+            } else {
+                self.verbosity.load(Ordering::SeqCst) >= 0 && self.redraws()
+            }
     }
 
     /// The run's regions.

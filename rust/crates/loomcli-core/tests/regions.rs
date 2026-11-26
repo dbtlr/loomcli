@@ -697,7 +697,7 @@ async fn at_verbosity_minus_1_a_region_without_input_is_not_live_and_an_input_re
 #[tokio::test]
 async fn on_a_terminal_stderr_each_environment_decides_whether_a_region_is_live() {
     let cases = [
-        (("TERM", "dumb"), true, false),
+        (("TERM", "dumb"), false, false),
         (("CI", "true"), true, false),
         (("CI", ""), true, true),
         (("CI", "false"), true, true),

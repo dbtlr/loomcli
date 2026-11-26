@@ -1952,3 +1952,48 @@ fn each_plugin_option_declaration_fault_reads_its_rule_sentence_and_correction()
         assert_eq!(fault(declare), parts, "{scenario}");
     }
 }
+
+#[test]
+fn a_plain_mark_cannot_carry_the_installed_configuration_binding() {
+    let parts = fault(|| {
+        let _ = Application::new("notes")
+            .plugins([config_plugin()])
+            .global_option("plain", Opt::boolean().plain().extend(binding()));
+    });
+    assert_eq!(
+        parts,
+        expected(
+            "plain-mark",
+            "Global option \"plain\" declares plain and carries configuration binding \"@loomcli/plugins/config/input\", a second source for the run's plain switch.",
+            "Remove the binding; the run reads its plain switch before configuration.",
+        )
+    );
+}
+
+#[test]
+fn plain_is_global_and_takes_only_positive_long_spellings() {
+    assert_eq!(
+        fault(|| {
+            let _ = Application::new("notes").option("flat", Opt::boolean().plain());
+        })
+        .rule,
+        "option-config",
+    );
+    for option in [
+        Opt::boolean().plain().polarity(Polarity::Negative),
+        Opt::boolean().plain().polarity(Polarity::Both),
+        Opt::boolean().plain().short('p'),
+        Opt::boolean().plain().short_only(),
+        Opt::boolean().plain().env(["FLAT"]),
+        Opt::boolean().plain().color(),
+        Opt::boolean().plain().interaction(),
+    ] {
+        assert_eq!(
+            fault(|| {
+                let _ = Application::new("notes").global_option("flat", option);
+            })
+            .rule,
+            "option-config",
+        );
+    }
+}

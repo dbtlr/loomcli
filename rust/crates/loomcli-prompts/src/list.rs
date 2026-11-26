@@ -1,6 +1,8 @@
 //! Select and multiselect: one list question, which moves a highlight through its choices, keeps a
 //! multiselect's selection, searches a list or reads it from a source, and resolves its prefill.
 
+mod lines;
+
 use crate::messages;
 use std::any::Any;
 use std::future::Future;
@@ -468,6 +470,29 @@ pub(crate) async fn run_list<
         link,
     } = run;
     let region = draw.signal();
+    if draw.is_line() {
+        let outcome = async {
+            let Some(line) = draw.start_line(context).await? else {
+                return Err(region_closed());
+            };
+            lines::AskingList {
+                context,
+                reader: &mut reader,
+                region: &region,
+                line: &line,
+                link: link.as_ref(),
+                convert,
+            }
+            .ask(&mut state)
+            .await
+        }
+        .await;
+        reader.close();
+        let ended = draw.finish_line(outcome.is_ok()).await;
+        let values = outcome?;
+        ended?;
+        return Ok(values);
+    }
     let outcome = match reader.start(context).await {
         Ok(()) => {
             asking_list(
@@ -567,6 +592,15 @@ async fn apply_prefill<I, R: 'static, T: Clone + PartialEq + Send + Sync + 'stat
                 .position(|entry| item(entry).is_some_and(|choice| value.matches(&choice.value)));
         }
     }
+    state.issue = prefill_issue(&missing, &limited, state.max);
+    Ok(())
+}
+
+fn prefill_issue<T: PartialEq + 'static>(
+    missing: &[Prefill<T>],
+    limited: &[Prefill<T>],
+    max: Option<usize>,
+) -> Option<String> {
     let mut sentences = Vec::new();
     if !missing.is_empty() {
         let shown: Vec<String> = missing.iter().map(Prefill::shown).collect();
@@ -574,10 +608,9 @@ async fn apply_prefill<I, R: 'static, T: Clone + PartialEq + Send + Sync + 'stat
     }
     if !limited.is_empty() {
         let shown: Vec<String> = limited.iter().map(Prefill::shown).collect();
-        sentences.push(messages::over_limit(&shown, state.max.unwrap_or_default()));
+        sentences.push(messages::over_limit(&shown, max.unwrap_or_default()));
     }
-    state.issue = (!sentences.is_empty()).then(|| sentences.join(" "));
-    Ok(())
+    (!sentences.is_empty()).then(|| sentences.join(" "))
 }
 
 /// Takes a settled source call's list: the highlight moves to its first choice, the first call
@@ -719,29 +752,15 @@ async fn asking_list<
             } else {
                 current.into_iter().collect()
             };
-            let mut outputs = Vec::new();
-            state.issue = None;
-            for choice in &chosen {
-                let output = convert(&choice.value, link)?;
-                context.signal.throw_if_cancelled()?;
-                match output {
-                    Ok(value) => outputs.push(value),
-                    Err(issues) => {
-                        let sentence = first_issue(&issues);
-                        state.issue = Some(if state.multiple {
-                            messages::choice_issue(&choice.row.label, &sentence)
-                        } else {
-                            sentence
-                        });
-                        break;
-                    }
+            let outputs = match validate_chosen(context, &chosen, state.multiple, link, convert)? {
+                Ok(outputs) => outputs,
+                Err(issue) => {
+                    state.issue = Some(issue);
+                    let frame = state.frame(context);
+                    draw.frame(context, frame).await?;
+                    continue;
                 }
-            }
-            if state.issue.is_some() {
-                let frame = state.frame(context);
-                draw.frame(context, frame).await?;
-                continue;
-            }
+            };
             state.answered = Some(Shown {
                 value: Some(
                     chosen
@@ -828,4 +847,34 @@ async fn asking_list<
         let frame = state.frame(context);
         draw.frame(context, frame).await?;
     }
+}
+
+fn validate_chosen<I, R: 'static, T, O, C>(
+    context: &Context<I, R>,
+    choices: &[Item<T>],
+    multiple: bool,
+    link: Option<&ValueLink>,
+    convert: &C,
+) -> Result<Result<Vec<O>, String>, Error>
+where
+    C: Fn(&T, Option<&ValueLink>) -> Result<Result<O, Vec<Issue>>, Error>,
+{
+    let mut outputs = Vec::with_capacity(choices.len());
+    for choice in choices {
+        let output = convert(&choice.value, link)?;
+        context.signal.throw_if_cancelled()?;
+        match output {
+            Ok(value) => outputs.push(value),
+            Err(issues) => {
+                let sentence = first_issue(&issues);
+                let issue = if multiple {
+                    messages::choice_issue(&choice.row.label, &sentence)
+                } else {
+                    sentence
+                };
+                return Ok(Err(issue));
+            }
+        }
+    }
+    Ok(Ok(outputs))
 }

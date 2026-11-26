@@ -82,3 +82,15 @@ pub(crate) fn over_limit(values: &[String], max: usize) -> String {
         if values.len() == 1 { "it" } else { "one" }
     )
 }
+
+pub(crate) fn choose_at_most(max: usize) -> String {
+    format!("Choose at most {max}.")
+}
+
+pub(crate) fn type_one_number(highest: usize) -> String {
+    format!("Type a number from 1 to {highest}.")
+}
+
+pub(crate) fn type_numbers(highest: usize) -> String {
+    format!("Type numbers from 1 to {highest}, separated by commas.")
+}

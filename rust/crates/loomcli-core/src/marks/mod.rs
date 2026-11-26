@@ -1,12 +1,13 @@
-//! The run-wide marks one global option carries: interaction, color, verbosity, and background.
+//! The run-wide marks one global option carries: interaction, color, plain, verbosity, and background.
 //!
 //! A mark is a setter on a global option builder ([`crate::BooleanOpt::interaction`],
-//! [`crate::BooleanOpt::color`], [`crate::CountOpt::verbose`], [`crate::CountOpt::quiet`],
+//! [`crate::BooleanOpt::color`], [`crate::BooleanOpt::plain`], [`crate::CountOpt::verbose`], [`crate::CountOpt::quiet`],
 //! [`crate::StringOpt::background`]). One option per Application carries each mark. Core settles
 //! each mark once per run, at the moment the reference names:
 //!
 //! - **Color** at host capture, from `host.argv`, before anything else prints, so a build fault
 //!   already honours `--no-color`.
+//! - **Plain** at host capture, from marked long spellings or a nonempty `ACCESSIBLE`.
 //! - **Background** at host capture, right after color, from `host.argv` or the bounded terminal
 //!   query, before graph build.
 //! - **Verbosity** right after graph build, from `host.argv` read with the parser's word reader,
@@ -16,6 +17,8 @@
 //!
 //! The context reads the result: `interactive`, the color decision inside the style, the verbosity
 //! that gates `out.debug` and `out.trace`, and the background a view context reports.
+
+pub(crate) mod plain;
 
 use serde::Serialize;
 
@@ -51,13 +54,19 @@ fn marked<'a>(application: &'a ApplicationDeclaration, mark: &str) -> Option<&'a
 }
 
 /// The marks the run settles before configuration, each with its rule, the run-wide fact a binding
-/// would be a second source for, and the correction: color, the verbosity pair, and background.
-const SETTLED_BEFORE_CONFIGURATION: [(&str, DiagnosticRule, &str, &str); 4] = [
+/// would be a second source for, and the correction: color, plain, the verbosity pair, and background.
+const SETTLED_BEFORE_CONFIGURATION: [(&str, DiagnosticRule, &str, &str); 5] = [
     (
         "color",
         rules::COLOR_MARK,
         "color",
         "Remove the binding; the run reads its color before configuration.",
+    ),
+    (
+        "plain",
+        rules::PLAIN_MARK,
+        "plain switch",
+        "Remove the binding; the run reads its plain switch before configuration.",
     ),
     (
         "verbose",
