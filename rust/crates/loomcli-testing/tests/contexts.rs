@@ -324,7 +324,7 @@ async fn an_actions_log_calls_reach_the_hooks_the_test_attached_in_order() {
 async fn a_middlewares_log_names_its_plugin_and_a_hooks_err_reaches_no_caller() {
     let recorded = Recorded::default();
     let hook = recorded.hook();
-    let (ctx, _next) = middleware_context(options(false).plugin("@fixture/dry-run").on_log(
+    let (ctx, _next, _) = middleware_context(options(false).plugin("@fixture/dry-run").on_log(
         move |event: &LogEvent, destination: &LogDestination| -> Outcome {
             hook(event, destination);
             Err(FatalError::new("The hook failed.").into())
@@ -385,7 +385,7 @@ fn options(dry_run: bool) -> MiddlewareValues<DryRunOptions> {
 #[tokio::test]
 async fn a_middleware_that_takes_over_runs_no_next() {
     let process = mock();
-    let (ctx, next) = middleware_context(
+    let (ctx, next, _) = middleware_context(
         options(true)
             .spelling("dry-run", "--dry-run")
             .outcome(ChainOutcome::Dispatched)
@@ -399,7 +399,7 @@ async fn a_middleware_that_takes_over_runs_no_next() {
 
 #[tokio::test]
 async fn the_context_keeps_the_last_view_the_middleware_selects() {
-    let (ctx, next) = middleware_context(
+    let (ctx, next, _) = middleware_context(
         options(false)
             .view("table")
             .outcome(ChainOutcome::Dispatched),
@@ -411,26 +411,66 @@ async fn the_context_keeps_the_last_view_the_middleware_selects() {
 }
 
 #[tokio::test]
-async fn a_middleware_context_reads_the_stated_media_type_and_keeps_the_last_assignment() {
-    let (ctx, _next) = middleware_context(options(false).view("table"));
-    assert_eq!(ctx.media_type(), None);
+async fn a_middleware_probe_reads_the_last_media_type_and_transform_after_the_call() {
+    async fn select(ctx: MiddlewareContext<DryRunOptions>, next: Next) -> Outcome {
+        assert_eq!(ctx.media_type().as_deref(), Some("application/jsonl"));
+        ctx.set_media_type("application/json");
+        ctx.set_transform(ResultTransform::new(|value: String| {
+            Ok(value.to_uppercase())
+        }));
+        assert_eq!(next.run().await?, ChainOutcome::Dispatched);
+        Ok(())
+    }
 
-    let (ctx, next) = middleware_context(
+    let (ctx, _next, probe) = middleware_context(options(false).view("table"));
+    assert_eq!(ctx.media_type(), None);
+    assert_eq!(probe.media_type(), None);
+    assert!(probe.transform().is_none());
+
+    let (ctx, next, probe) = middleware_context(
         options(false)
             .view("table")
             .media_type("application/jsonl")
             .outcome(ChainOutcome::Dispatched),
     );
-    assert_eq!(ctx.media_type().as_deref(), Some("application/jsonl"));
+    select(ctx, next).await.unwrap();
+    assert_eq!(probe.media_type().as_deref(), Some("application/json"));
+    assert!(probe.transform().is_some());
+}
 
-    ctx.set_media_type("application/json");
-    assert_eq!(next.run().await.unwrap(), ChainOutcome::Dispatched);
-    assert_eq!(ctx.media_type().as_deref(), Some("application/json"));
+#[tokio::test]
+async fn a_middleware_probe_reads_the_exit_code_after_a_takeover() {
+    use loomcli_core::ExitCode;
+
+    async fn take_over(ctx: MiddlewareContext<DryRunOptions>, _: Next) -> Outcome {
+        assert_eq!(ctx.invoked_by, InvokedBy::Name);
+        let held = ctx.unknown_command.as_deref().unwrap();
+        assert_eq!(held.word, "nope");
+        assert_eq!(held.rest, ["later", "--"]);
+        assert_eq!(ctx.exit_code(), Some(ExitCode::new(3)));
+        ctx.set_exit_code(ExitCode::new(4));
+        ctx.set_exit_code(ExitCode::new(5));
+        Ok(())
+    }
+
+    let (ctx, _next, probe) = middleware_context(options(false));
+    assert!(ctx.unknown_command.is_none());
+    assert_eq!(ctx.exit_code(), None);
+    assert_eq!(probe.exit_code(), None);
+
+    let (ctx, next, probe) = middleware_context(
+        MiddlewareValues::<DryRunOptions>::new(None)
+            .unknown_command("nope", &["later", "--"])
+            .invoked_by(InvokedBy::Name)
+            .exit_code(ExitCode::new(3)),
+    );
+    take_over(ctx, next).await.unwrap();
+    assert_eq!(probe.exit_code(), Some(ExitCode::new(5)));
 }
 
 #[tokio::test]
 async fn an_unstated_outcome_makes_next_fail_with_a_sentence_that_shows_a_stated_one() {
-    let (ctx, next) = middleware_context(options(false));
+    let (ctx, next, _) = middleware_context(options(false));
     let error = dry_run(ctx, next).await.unwrap_err();
     assert_eq!(
         error.foreign().unwrap().to_string(),
@@ -440,19 +480,19 @@ async fn an_unstated_outcome_makes_next_fail_with_a_sentence_that_shows_a_stated
 
 #[test]
 fn a_middleware_context_defaults_to_argv_and_reads_a_stated_invocation_by_name() {
-    let (ctx, _next) = middleware_context(options(false));
+    let (ctx, _next, _) = middleware_context(options(false));
     assert_eq!(ctx.invoked_by, InvokedBy::Argv);
 
-    let (ctx, _next) = middleware_context(options(false).invoked_by(InvokedBy::Name));
+    let (ctx, _next, _) = middleware_context(options(false).invoked_by(InvokedBy::Name));
     assert_eq!(ctx.invoked_by, InvokedBy::Name);
 }
 
 #[tokio::test]
 async fn a_middleware_context_reads_a_stated_transform_without_discarding_it_at_next() {
-    let (ctx, _next) = middleware_context(options(false));
+    let (ctx, _next, _) = middleware_context(options(false));
     assert!(ctx.transform().is_none());
 
-    let (ctx, next) = middleware_context(
+    let (ctx, next, _) = middleware_context(
         options(false)
             .transform(ResultTransform::new(|value: String| {
                 Ok(value.to_uppercase())
@@ -466,7 +506,7 @@ async fn a_middleware_context_reads_a_stated_transform_without_discarding_it_at_
 
 #[tokio::test]
 async fn the_request_the_own_options_and_a_held_fault_read_as_stated() {
-    let (ctx, _next) = middleware_context(
+    let (ctx, _next, _) = middleware_context(
         MiddlewareValues::<DryRunOptions>::new(None)
             .own_options(InputValues::new().with_option("dry-run", true))
             .request(InputValues::new().with_argument("path", Some("name".to_owned()))),
@@ -490,7 +530,7 @@ async fn a_middleware_context_reads_the_stated_graph_at_the_stated_command() {
         .plugins((Plugin::new("@fixture/dry-run").options::<DryRunOptions>(),))
         .command(loomcli_core::Command::new("sync").action(|_ctx: Context| async { Ok(()) }));
     let graph = application.inspect().unwrap();
-    let (ctx, _next) = middleware_context(options(false).graph(graph).command(&["sync"]));
+    let (ctx, _next, _) = middleware_context(options(false).graph(graph).command(&["sync"]));
     assert_eq!(ctx.command.path, ["sync"]);
     assert_eq!(ctx.graph.globals[0].name(), "dry-run");
 }

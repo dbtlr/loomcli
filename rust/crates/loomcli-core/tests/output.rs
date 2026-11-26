@@ -1231,7 +1231,10 @@ async fn an_invocation_by_name_reads_no_columns_with_columns_set() {
             Some(mock as _),
         )
         .await;
-    let InvocationOutcome::Completed { output, messages } = outcome else {
+    let InvocationOutcome::Completed {
+        output, messages, ..
+    } = outcome
+    else {
         panic!("the invocation completes");
     };
     assert_eq!(

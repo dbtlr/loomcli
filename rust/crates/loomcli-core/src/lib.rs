@@ -100,7 +100,7 @@ pub use plugins::{
     ExtensionTarget, ExtensionValue, FailureHookContext, Hints, IntoHints, Lifetime,
     MiddlewareContext, Next, NoOptions, OptionTarget, OwnOptions, Persistent, PersistentProvider,
     Plugin, Provider, ProviderContext, Request, Single, SourceAnswer, SourceContext, SourceValue,
-    Spellings, read_extension,
+    Spellings, UnknownCommand, read_extension,
 };
 pub use shipping::{
     ApplicationDirectory, Build, DirectoryFacts, DirectoryLookup, Installation, Release,

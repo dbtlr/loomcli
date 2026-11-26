@@ -85,7 +85,9 @@ fn failed(exit_code: u8, messages: &str) -> Read {
 
 fn read_outcome<M>(outcome: &InvocationOutcome<M>) -> Read {
     match outcome {
-        InvocationOutcome::Completed { output, messages } => Read::Completed {
+        InvocationOutcome::Completed {
+            output, messages, ..
+        } => Read::Completed {
             output: output.clone(),
             messages: messages.clone(),
         },

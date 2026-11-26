@@ -382,8 +382,10 @@ impl<M> InvokeOptions<M> {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum InvocationOutcome<M = Error> {
-    /// The action completed.
+    /// The invocation completed, either by dispatching the action or through a middleware takeover.
     Completed {
+        /// The completion code. Ordinary completion resolves to zero.
+        exit_code: crate::failures::ExitCode,
         /// What it wrote to stdout, as plain text.
         output: String,
         /// What it wrote to stderr, as plain text.

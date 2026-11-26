@@ -19,7 +19,7 @@ use crate::__private::{ActionCall, RawValue, RunState};
 use crate::application::declaration::ApplicationDeclaration;
 use crate::commands::declaration::{DeclaredResult, ErasedAction};
 use crate::diagnostics::{DiagnosticParts, rules};
-use crate::failures::{Error, InternalError, ResultError, ResultFault};
+use crate::failures::{Error, ExitCode, InternalError, ResultError, ResultFault};
 use crate::inputs::{InputIdentity, InputKind, InputValues, NoInputs};
 use crate::inspection::{CommandGraph, CommandNode};
 use crate::output::emit::{Channel, ResultBinding, is_echo};
@@ -30,7 +30,7 @@ use crate::plugins::middleware::{
 use crate::plugins::plugin::{MiddlewareHandler, plugin_sentence};
 use crate::plugins::provided::{BuildOutcome, OpenerScope, PersistentValues, RunValues};
 use crate::plugins::provider::ProvidedValues;
-use crate::plugins::{Activation, AnyProvider};
+use crate::plugins::{Activation, AnyProvider, UnknownCommand};
 use crate::signals::RunSignal;
 use crate::support::BoxFuture;
 
@@ -162,11 +162,13 @@ pub(crate) struct Chain {
     options: Option<InputValues>,
     globals: InputValues,
     request: Option<Request>,
+    unknown_command: Option<Arc<UnknownCommand>>,
     graph: Arc<CommandGraph>,
     command: Arc<CommandNode>,
     state: Arc<RunState>,
     signal: RunSignal,
     selection: Arc<Mutex<ViewSelection>>,
+    stated_exit_code: Arc<Mutex<Option<ExitCode>>>,
     boundary: Mutex<Option<Reaching>>,
     invoked: AtomicBool,
     /// A failure core reports after the chain settles: an opener's error after the run was
@@ -193,8 +195,9 @@ pub(crate) struct ChainRun<'a> {
 
 /// Runs the chain of one invocation: each activated middleware in installation order, then the
 /// dispatch boundary. Resolves with the failure the outermost middleware, or the boundary when no
-/// middleware wraps it, settled with, else with a failure core holds for after the chain.
-pub(crate) async fn run_chain(run: ChainRun<'_>, prepared: Prepared) -> Result<(), Error> {
+/// middleware wraps it, settled with, a failure core holds for after the chain, or the
+/// completion code. A middleware assignment applies only to a takeover before dispatch.
+pub(crate) async fn run_chain(run: ChainRun<'_>, prepared: Prepared) -> Result<ExitCode, Error> {
     let Prepared {
         boundary, chain, ..
     } = prepared;
@@ -212,11 +215,13 @@ pub(crate) async fn run_chain(run: ChainRun<'_>, prepared: Prepared) -> Result<(
         options,
         globals,
         request: chain.request,
+        unknown_command: chain.unknown_command,
         graph: Arc::clone(run.graph),
         command: run.command,
         state: run.state,
         signal: run.signal,
         selection: run.selection,
+        stated_exit_code: Arc::default(),
         boundary: Mutex::new(Some(reaching)),
         invoked: AtomicBool::new(false),
         handed: Mutex::new(None),
@@ -236,7 +241,10 @@ pub(crate) async fn run_chain(run: ChainRun<'_>, prepared: Prepared) -> Result<(
     match (settled, handed) {
         (Err(error), _) => Err(error),
         (Ok(_), Some(error)) => Err(error),
-        (Ok(_), None) => Ok(()),
+        (Ok(ChainOutcome::TakenOver), None) if !shared.invoked.load(Ordering::SeqCst) => {
+            Ok(locked(&shared.stated_exit_code).unwrap_or(ExitCode::SUCCESS))
+        }
+        (Ok(_), None) => Ok(ExitCode::SUCCESS),
     }
 }
 
@@ -387,6 +395,7 @@ impl Chain {
             graph: Arc::clone(&self.graph),
             command: Arc::clone(&self.command),
             request: self.request.clone(),
+            unknown_command: self.unknown_command.clone(),
             invoked_by: self.invoked_by,
             host: Arc::clone(&self.state.host),
             out: Out {
@@ -398,6 +407,7 @@ impl Chain {
             log: self.state.log.bind(Some(Arc::clone(&entry.identity))),
             run: Arc::clone(&self.state),
             selection: Arc::clone(&self.selection),
+            stated_exit_code: Arc::clone(&self.stated_exit_code),
             identity: Arc::clone(&entry.identity),
         }
     }
@@ -457,7 +467,6 @@ impl Chain {
                         selection.transform.clone(),
                     )
                 };
-                self.invoked.store(true, Ordering::SeqCst);
                 self.dispatch(*dispatch, view, transform).await
             }
             // Each `Next` is consumed by its run and only the last entry's reaches the boundary,
@@ -562,6 +571,7 @@ impl Chain {
             provided: Arc::new(ProvidedValues::of(&uses, &built, "The action".to_owned())),
             values: Arc::new(ready.values.clone()),
         };
+        self.invoked.store(true, Ordering::SeqCst);
         let settled = action(ActionCall {
             context,
             values: ready.values.locals,

@@ -12,13 +12,13 @@
 use std::sync::Arc;
 
 use loomcli_core::__private::unit::{
-    self, ActionParts, FailureHookParts, MiddlewareParts, ReceivedReader, UnitLog, UnitLogHook,
-    UnitProvided, UnitResult, UnitRun,
+    self, ActionParts, FailureHookParts, MiddlewareParts, MiddlewareProbe, ReceivedReader, UnitLog,
+    UnitLogHook, UnitProvided, UnitResult, UnitRun,
 };
 use loomcli_core::{
     Application, Background, ChainOutcome, CommandGraph, CommandNode, Content, Context,
-    EnvironmentContext, FailureFacts, FailureHookContext, InputProblem, InputValues, Inputs,
-    IntoOutcome, InvokedBy, Lifetime, LogDestination, LogEvent, MiddlewareContext, Next,
+    EnvironmentContext, ExitCode, FailureFacts, FailureHookContext, InputProblem, InputValues,
+    Inputs, IntoOutcome, InvokedBy, Lifetime, LogDestination, LogEvent, MiddlewareContext, Next,
     ProcessHandle, Provider, ProviderContext, ResultTransform, SuppliedValue, ViewContext,
 };
 
@@ -294,6 +294,8 @@ pub struct MiddlewareValues<O> {
     pub(crate) own_options: Option<InputValues>,
     pub(crate) request: Option<InputValues>,
     pub(crate) invoked_by: InvokedBy,
+    pub(crate) unknown_command: Option<(String, Vec<String>)>,
+    pub(crate) exit_code: Option<ExitCode>,
     pub(crate) outcome: Option<ChainOutcome>,
     pub(crate) process: Option<Arc<dyn ProcessHandle>>,
     pub(crate) graph: Option<Arc<CommandGraph>>,
@@ -314,6 +316,8 @@ impl<O: Inputs> MiddlewareValues<O> {
             own_options: None,
             request: None,
             invoked_by: InvokedBy::Argv,
+            unknown_command: None,
+            exit_code: None,
             outcome: None,
             process: None,
             graph: None,
@@ -351,6 +355,21 @@ impl<O: Inputs> MiddlewareValues<O> {
     /// Sets how the run received its inputs. Unstated, it reads as [`InvokedBy::Argv`].
     pub fn invoked_by(mut self, invoked_by: InvokedBy) -> Self {
         self.invoked_by = invoked_by;
+        self
+    }
+
+    /// Supplies the unmatched command word and the words routing left unread.
+    pub fn unknown_command(mut self, word: &str, rest: &[&str]) -> Self {
+        self.unknown_command = Some((
+            word.to_owned(),
+            rest.iter().map(|word| (*word).to_owned()).collect(),
+        ));
+        self
+    }
+
+    /// Supplies a previously assigned exit code. Unstated, the context reads `None`.
+    pub fn exit_code(mut self, code: ExitCode) -> Self {
+        self.exit_code = Some(code);
         self
     }
 
@@ -423,17 +442,19 @@ impl<O: Inputs> MiddlewareValues<O> {
 /// The sentence a `next.run()` resolves with when the test stated no outcome.
 const UNSTATED_NEXT: &str = "middleware_context has no outcome for this middleware's next to resolve. Add one to its values, such as .outcome(ChainOutcome::Dispatched).";
 
-/// Builds the context and the rest of the chain a middleware receives.
+/// Builds the context and continuation a middleware receives, and a probe the test keeps.
 ///
-/// The context keeps the last media type and result transform the middleware assigns. The test's
-/// `Next` resolves with the stated outcome without reaching a dispatch boundary.
+/// The probe reads the last exit code, media type, and result transform the middleware assigns.
+/// The test's `Next` resolves with the stated outcome without reaching a dispatch boundary.
 ///
 /// # Panics
 ///
 /// When the graph holds no Command at the stated path, or the options' `extract` cannot read what
 /// their `into_values` wrote.
 #[track_caller]
-pub fn middleware_context<O: Inputs>(values: MiddlewareValues<O>) -> (MiddlewareContext<O>, Next) {
+pub fn middleware_context<O: Inputs>(
+    values: MiddlewareValues<O>,
+) -> (MiddlewareContext<O>, Next, MiddlewareProbe) {
     let (options, globals) = match values.options {
         Some(options) => {
             let (options, globals) =
@@ -455,6 +476,8 @@ pub fn middleware_context<O: Inputs>(values: MiddlewareValues<O>) -> (Middleware
             own_options,
             request: values.request.map(|values| (values, Vec::new(), None)),
             invoked_by: values.invoked_by,
+            unknown_command: values.unknown_command,
+            exit_code: values.exit_code,
             spellings: values.spellings,
             outcome: values.outcome,
             unstated: UNSTATED_NEXT.to_owned(),

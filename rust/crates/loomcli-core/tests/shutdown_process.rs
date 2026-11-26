@@ -105,8 +105,9 @@ mod probe {
             "closing" => closing(),
             "stalled-stdout" => stalled_stdout(true),
             "drained-stdout" => stalled_stdout(false),
-            "queued-stdout" => queued_stdout(false),
-            "oversized-stdout" => queued_stdout(true),
+            "queued-stdout" => queued_stdout(QueuedStdout::Small),
+            "oversized-stdout" => queued_stdout(QueuedStdout::Oversized),
+            "handler-stdout" => queued_stdout(QueuedStdout::Handler),
             _ => watching(case == "ignoring"),
         }
     }
@@ -160,22 +161,57 @@ mod probe {
         }
     }
 
-    fn queued_stdout(oversized: bool) -> std::process::ExitCode {
+    #[derive(Clone, Copy)]
+    enum QueuedStdout {
+        Small,
+        Oversized,
+        Handler,
+    }
+
+    fn queued_stdout(case: QueuedStdout) -> std::process::ExitCode {
+        let records = Plugin::new("@fixture/records").on_log(|event, destination| {
+            if event.message == "handler record"
+                && let Some(stderr) = &destination.stderr
+            {
+                let mut record = stderr.write(b"handler record\n");
+                let mut task = std::task::Context::from_waker(std::task::Waker::noop());
+                assert!(matches!(
+                    record.as_mut().poll(&mut task),
+                    Poll::Ready(Ok(()))
+                ));
+            }
+        });
         Application::new("probe")
+            .plugins([records])
             .shutdown_timeout(PIPE_BUDGET_MS)
             .action(move |ctx: Context| async move {
                 let rows = RowSource::stream(WaitingRows);
                 let view = RowView::new(|_: &(), _, _| String::new());
                 let mut sequence = std::pin::pin!(ctx.out.render(rows, &view));
                 start(sequence.as_mut()).await;
-                let text = if oversized {
-                    "x".repeat(LARGE_WRITE)
-                } else {
+                let text = if matches!(case, QueuedStdout::Small) {
                     "pending stdout".to_owned()
+                } else {
+                    "x".repeat(LARGE_WRITE)
                 };
                 let mut queued = std::pin::pin!(ctx.out.print(&text));
                 start(queued.as_mut()).await;
-                let _kept = ctx.on_shutdown(|event| eprintln!("{}", described("handler", event)));
+                let flags = rustix::fs::fcntl_getfl(std::io::stdout()).unwrap();
+                let (out, log) = (ctx.out.clone(), ctx.log.clone());
+                let _kept = ctx.on_shutdown(move |event| {
+                    assert_eq!(rustix::fs::fcntl_getfl(std::io::stdout()).unwrap(), flags);
+                    if matches!(case, QueuedStdout::Handler) {
+                        use std::io::Read;
+
+                        eprintln!("drained");
+                        std::io::stdin().read_exact(&mut [0]).unwrap();
+                        let mut late = std::pin::pin!(out.print("late stdout"));
+                        let mut task = std::task::Context::from_waker(std::task::Waker::noop());
+                        assert!(late.as_mut().poll(&mut task).is_pending());
+                        log.info("handler record", ());
+                    }
+                    eprintln!("{}", described("handler", event));
+                });
                 eprintln!("ready");
                 pending().await
             })
@@ -291,6 +327,8 @@ mod probe {
 #[cfg(unix)]
 mod parent {
     use std::io::{BufRead, BufReader, Read, Write};
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
     use std::os::unix::process::ExitStatusExt;
     use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio};
     use std::sync::mpsc;
@@ -477,37 +515,61 @@ mod parent {
     }
 
     fn stdout_probe(case: &str, in_flight: bool) -> (Child, ChildStdout, BufReader<ChildStderr>) {
-        let mut child = Command::new(std::env::current_exe().unwrap())
-            .env(super::probe::CASE, case)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+        let mut child = spawn_stdout_probe(case, Stdio::piped(), Stdio::piped());
         let mut stdout = child.stdout.take().unwrap();
-        let mut stderr = BufReader::new(child.stderr.take().unwrap());
         let mut stdin = child.stdin.take().unwrap();
-        let (sender, ready) = mpsc::channel();
-        let reading = std::thread::spawn(move || {
+        let (child, stdout, stderr) = ready_stdout_probe(child, move || {
             if in_flight {
                 let mut first = [0];
                 stdout.read_exact(&mut first).unwrap();
                 assert_eq!(first, *b"x");
                 stdin.write_all(b"1").unwrap();
             }
+            stdout
+        });
+        (child, stdout, stderr)
+    }
+
+    fn spawn_stdout_probe(case: &str, stdin: Stdio, stdout: Stdio) -> Child {
+        Command::new(std::env::current_exe().unwrap())
+            .env(super::probe::CASE, case)
+            .stdin(stdin)
+            .stdout(stdout)
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap()
+    }
+
+    fn ready_stdout_probe<T: Send + 'static>(
+        mut child: Child,
+        before_ready: impl FnOnce() -> T + Send + 'static,
+    ) -> (Child, T, BufReader<ChildStderr>) {
+        let stderr = BufReader::new(child.stderr.take().unwrap());
+        wait_for_probe_line(child, stderr, "ready\n", before_ready)
+    }
+
+    fn wait_for_probe_line<T: Send + 'static>(
+        mut child: Child,
+        mut stderr: BufReader<ChildStderr>,
+        expected: &str,
+        before_read: impl FnOnce() -> T + Send + 'static,
+    ) -> (Child, T, BufReader<ChildStderr>) {
+        let (sender, ready) = mpsc::channel();
+        let reading = std::thread::spawn(move || {
+            let value = before_read();
             let mut line = String::new();
             stderr.read_line(&mut line).unwrap();
             sender.send(line).unwrap();
-            (stdout, stderr)
+            (value, stderr)
         });
         let announced = ready.recv_timeout(Duration::from_secs(30));
-        if announced.as_deref() != Ok("ready\n") {
+        if announced.as_deref() != Ok(expected) {
             let _ = child.kill();
             child.wait().unwrap();
-            panic!("the probe never queued its pending write: {announced:?}");
+            panic!("the probe did not report {expected:?}: {announced:?}");
         }
-        let (stdout, stderr) = reading.join().unwrap();
-        (child, stdout, stderr)
+        let (value, stderr) = reading.join().unwrap();
+        (child, value, stderr)
     }
 
     fn wait_for_probe(child: &mut Child, timeout: Duration, failure: &str) -> ExitStatus {
@@ -527,25 +589,36 @@ mod parent {
 
     fn signal_stdout_probe(case: &str, signal: Signal, name: &str) -> Vec<u8> {
         let (mut child, mut stdout, mut stderr) = stdout_probe(case, case == "stalled-stdout");
+        end_stdout_probe(&mut child, &mut stderr, signal, name, case);
+
+        // Keep the reader open and stalled until after the child's re-raise.
+        let mut rest = Vec::new();
+        stdout.read_to_end(&mut rest).unwrap();
+        rest
+    }
+
+    fn end_stdout_probe(
+        child: &mut Child,
+        mut stderr: impl Read,
+        signal: Signal,
+        name: &str,
+        case: &str,
+    ) {
         let number = signal.as_raw();
         let budget = Duration::from_millis(u64::from(super::probe::PIPE_BUDGET_MS));
         let sent = Instant::now();
-        kill_process(Pid::from_child(&child), signal).unwrap();
+        kill_process(Pid::from_child(child), signal).unwrap();
         let status = wait_for_probe(
-            &mut child,
+            child,
             budget + Duration::from_secs(2),
             &format!("the {case} probe outlived its shutdown budget after {name}"),
         );
         assert_eq!(status.signal(), Some(number), "{name}: {status}");
         assert!(sent.elapsed() >= budget.saturating_sub(Duration::from_millis(50)));
 
-        // Keep the reader open and stalled until after the child's re-raise.
-        let mut rest = Vec::new();
-        stdout.read_to_end(&mut rest).unwrap();
         let mut report = String::new();
         stderr.read_to_string(&mut report).unwrap();
         assert_eq!(report, format!("handler:{name}:{}\n", 128 + number));
-        rest
     }
 
     fn signals_end_the_process_when_the_stdout_reader_stalls() {
@@ -555,16 +628,172 @@ mod parent {
         }
     }
 
+    fn signals_end_the_process_when_the_stdout_socket_reader_stalls() {
+        let (mut reader, writer) = UnixStream::pair().unwrap();
+        rustix::net::sockopt::set_socket_send_buffer_size(&writer, 4096).unwrap();
+        let child = spawn_stdout_probe(
+            "oversized-stdout",
+            Stdio::null(),
+            Stdio::from(OwnedFd::from(writer)),
+        );
+        let (mut child, (), stderr) = ready_stdout_probe(child, || ());
+        end_stdout_probe(
+            &mut child,
+            stderr,
+            Signal::TERM,
+            "SIGTERM",
+            "stalled socket",
+        );
+
+        // Keep the socket open and unread until the child re-raises the signal.
+        let mut stdout = Vec::new();
+        reader.read_to_end(&mut stdout).unwrap();
+        assert!(!stdout.is_empty());
+        assert!(stdout.len() < super::probe::LARGE_WRITE);
+        assert!(stdout.iter().all(|byte| *byte == b'x'));
+    }
+
+    fn shutdown_keeps_stdout_a_prefix_after_a_handler_logs() {
+        let (mut reader, writer) = UnixStream::pair().unwrap();
+        rustix::net::sockopt::set_socket_send_buffer_size(&writer, 4096).unwrap();
+        let mut child = spawn_stdout_probe(
+            "handler-stdout",
+            Stdio::piped(),
+            Stdio::from(OwnedFd::from(writer)),
+        );
+        let mut stdin = child.stdin.take().unwrap();
+        let (child, (), stderr) = ready_stdout_probe(child, || ());
+        kill_process(Pid::from_child(&child), Signal::TERM).unwrap();
+        let (mut child, (), mut stderr) = wait_for_probe_line(child, stderr, "drained\n", || ());
+
+        // Make room for the handler's later write after the original drain hit backpressure.
+        let mut stdout = Vec::new();
+        reader.set_nonblocking(true).unwrap();
+        let result = reader.read_to_end(&mut stdout);
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
+        reader.set_nonblocking(false).unwrap();
+        assert!(!stdout.is_empty());
+        assert!(stdout.len() < super::probe::LARGE_WRITE);
+        stdin.write_all(b"1").unwrap();
+        let status = wait_for_probe(
+            &mut child,
+            Duration::from_secs(2),
+            "the probe never finished after its shutdown handler logged",
+        );
+        assert_eq!(status.signal(), Some(Signal::TERM.as_raw()));
+        let mut report = String::new();
+        stderr.read_to_string(&mut report).unwrap();
+        assert_eq!(report, "handler record\nhandler:SIGTERM:143\n");
+        assert_eq!(reader.read_to_end(&mut stdout).unwrap(), 0);
+        assert!(stdout.iter().all(|byte| *byte == b'x'));
+    }
+
     fn shutdown_does_not_block_on_a_fresh_stdout_write() {
         let stdout = signal_stdout_probe("oversized-stdout", Signal::TERM, "SIGTERM");
         assert!(stdout.len() < super::probe::LARGE_WRITE);
         assert!(stdout.iter().all(|byte| *byte == b'x'));
     }
 
-    #[cfg(target_os = "linux")]
     fn shutdown_sends_queued_bytes_that_fit_in_the_stdout_pipe() {
         let stdout = signal_stdout_probe("queued-stdout", Signal::TERM, "SIGTERM");
         assert_eq!(stdout, b"pending stdout\n");
+    }
+
+    fn shutdown_restores_stdout_flags_when_the_pipe_cannot_be_reopened() {
+        use rustix::fs::{OFlags, fcntl_getfl};
+        use rustix::io::{FdFlags, fcntl_setfd};
+
+        for (case, closed) in [
+            ("queued-stdout", false),
+            ("oversized-stdout", false),
+            ("queued-stdout", true),
+        ] {
+            let (reader, writer) = rustix::pipe::pipe().unwrap();
+            fcntl_setfd(&reader, FdFlags::CLOEXEC).unwrap();
+            fcntl_setfd(&writer, FdFlags::CLOEXEC).unwrap();
+            // An unprivileged Linux process can write the inherited pipe, but cannot reopen it.
+            #[cfg(target_os = "linux")]
+            rustix::fs::fchmod(&writer, rustix::fs::Mode::empty()).unwrap();
+            let mut reader = (!closed).then_some(std::fs::File::from(reader));
+            let saved = fcntl_getfl(&writer).unwrap();
+            assert!(!saved.contains(OFlags::NONBLOCK));
+            let child = spawn_stdout_probe(
+                case,
+                Stdio::null(),
+                Stdio::from(writer.try_clone().unwrap()),
+            );
+            let (mut child, (), stderr) = ready_stdout_probe(child, || ());
+            end_stdout_probe(&mut child, stderr, Signal::TERM, "SIGTERM", case);
+            assert_eq!(fcntl_getfl(&writer).unwrap(), saved);
+            drop(writer);
+            if let Some(reader) = &mut reader {
+                let mut bytes = Vec::new();
+                reader.read_to_end(&mut bytes).unwrap();
+                if case == "oversized-stdout" {
+                    assert!(!bytes.is_empty());
+                    assert!(bytes.len() < super::probe::LARGE_WRITE);
+                    assert!(bytes.iter().all(|byte| *byte == b'x'));
+                } else {
+                    assert_eq!(bytes, b"pending stdout\n");
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn shutdown_waits_for_in_flight_terminal_stdout() {
+        use rustix::pty::{OpenptFlags, ioctl_tiocgptpeer, openpt, unlockpt};
+        use rustix::termios::{OptionalActions, tcgetattr, tcsetattr};
+
+        let flags = OpenptFlags::RDWR | OpenptFlags::NOCTTY | OpenptFlags::CLOEXEC;
+        let master = openpt(flags).unwrap();
+        unlockpt(&master).unwrap();
+        let terminal = ioctl_tiocgptpeer(&master, flags).unwrap();
+        let mut mode = tcgetattr(&terminal).unwrap();
+        mode.make_raw();
+        tcsetattr(&terminal, OptionalActions::Now, &mode).unwrap();
+        let mut reader = std::fs::File::from(master);
+        let mut child = spawn_stdout_probe("stalled-stdout", Stdio::piped(), Stdio::from(terminal));
+        let mut stdin = child.stdin.take().unwrap();
+        let (mut child, mut reader, mut stderr) = ready_stdout_probe(child, move || {
+            let mut first = [0];
+            reader.read_exact(&mut first).unwrap();
+            assert_eq!(first, *b"x");
+            stdin.write_all(b"1").unwrap();
+            reader
+        });
+
+        kill_process(Pid::from_child(&child), Signal::TERM).unwrap();
+        let budget = Duration::from_millis(u64::from(super::probe::PIPE_BUDGET_MS));
+        std::thread::sleep(budget + Duration::from_millis(500));
+        let reading = std::thread::spawn(move || {
+            let mut stdout = Vec::new();
+            // Linux reports a terminal hangup as EIO on the master.
+            if let Err(error) = reader.read_to_end(&mut stdout) {
+                assert_eq!(
+                    error.raw_os_error(),
+                    Some(rustix::io::Errno::IO.raw_os_error())
+                );
+            }
+            stdout
+        });
+        let status = wait_for_probe(
+            &mut child,
+            Duration::from_secs(10),
+            "the terminal probe never finished after stdout resumed",
+        );
+        assert_eq!(status.signal(), Some(Signal::TERM.as_raw()));
+        let mut report = String::new();
+        stderr.read_to_string(&mut report).unwrap();
+        assert_eq!(report, "handler:SIGTERM:143\n");
+        let stdout = reading.join().unwrap();
+        assert_eq!(
+            stdout.len(),
+            super::probe::LARGE_WRITE + b"pending stdout\n".len()
+        );
+        let (first, rest) = stdout.split_at(super::probe::LARGE_WRITE - 1);
+        assert!(first.iter().all(|byte| *byte == b'x'));
+        assert_eq!(rest, b"\npending stdout\n");
     }
 
     fn a_normal_run_finishes_queued_stdout_after_the_reader_resumes() {
@@ -625,13 +854,29 @@ mod parent {
                 signals_end_the_process_when_the_stdout_reader_stalls,
             ),
             (
+                "signals_end_the_process_when_the_stdout_socket_reader_stalls",
+                signals_end_the_process_when_the_stdout_socket_reader_stalls,
+            ),
+            (
+                "shutdown_keeps_stdout_a_prefix_after_a_handler_logs",
+                shutdown_keeps_stdout_a_prefix_after_a_handler_logs,
+            ),
+            (
                 "shutdown_does_not_block_on_a_fresh_stdout_write",
                 shutdown_does_not_block_on_a_fresh_stdout_write,
             ),
-            #[cfg(target_os = "linux")]
             (
                 "shutdown_sends_queued_bytes_that_fit_in_the_stdout_pipe",
                 shutdown_sends_queued_bytes_that_fit_in_the_stdout_pipe,
+            ),
+            (
+                "shutdown_restores_stdout_flags_when_the_pipe_cannot_be_reopened",
+                shutdown_restores_stdout_flags_when_the_pipe_cannot_be_reopened,
+            ),
+            #[cfg(target_os = "linux")]
+            (
+                "shutdown_waits_for_in_flight_terminal_stdout",
+                shutdown_waits_for_in_flight_terminal_stdout,
             ),
             (
                 "a_normal_run_finishes_queued_stdout_after_the_reader_resumes",

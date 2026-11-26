@@ -3,19 +3,19 @@
 //!
 //! This is the reference's `lower.ts`. A value no token spells supplies nothing and is the input's
 //! problem, with the sentence that says what the input takes. The first held fault is the first in
-//! the order `options` keys, then `exclude` names, then `args` keys arrive; only an unknown Command
-//! is raised at once.
+//! the order `options` keys, then `exclude` names, then `args` keys arrive. An unknown Command
+//! stops lowering before any named values are read.
 
 use serde_json::Value;
 
-use crate::failures::{Error, UnexpectedArgumentError, UnknownCommandError, UnknownOptionError};
+use crate::failures::{Error, UnexpectedArgumentError, UnknownOptionError};
 use crate::inputs::table::{Form, Role};
 use crate::inputs::{InputIdentity, InputKind, SuppliedValue};
 use crate::support::js_number_text;
 
 use super::messages;
 use super::parse::{
-    Entry, Grammar, GrammarCommand, ParsedInvocation, ScopeValues, Slot, Supplied, candidates_of,
+    Entry, Grammar, GrammarCommand, ParsedInvocation, RoutingFailure, ScopeValues, Slot, Supplied,
 };
 
 /// What an invocation by name names: the path from the root, the values keyed by declared name in
@@ -231,17 +231,17 @@ fn argument_tokens(slot: &Slot, value: &Value) -> Lowering<SuppliedValue> {
 fn route_by_name<'g>(
     grammar: &'g Grammar,
     path: &[String],
-) -> Result<(&'g GrammarCommand, Vec<String>), Error> {
+) -> Result<(&'g GrammarCommand, Vec<String>), RoutingFailure<'g>> {
     let mut command: &'g GrammarCommand = &grammar.root;
     let mut routed = Vec::new();
-    for name in path {
+    for (index, name) in path.iter().enumerate() {
         let Some((canonical, child)) = command.route(name) else {
-            let candidates = if command.children.is_empty() {
-                Vec::new()
-            } else {
-                candidates_of(command)
-            };
-            return Err(UnknownCommandError::new(name.clone(), candidates).into());
+            return Err(RoutingFailure::new(
+                command,
+                routed,
+                name,
+                &path[index + 1..],
+            ));
         };
         routed.push(canonical.clone());
         command = child.as_ref();
@@ -249,12 +249,12 @@ fn route_by_name<'g>(
     Ok((command, routed))
 }
 
-/// An invocation by name read into the result the parser produces for argv words. Only an
-/// unknown Command is an `Err`; every other fault is held in the result.
+/// An invocation by name read into the result the parser produces for argv words, or an unknown
+/// command held before lowering any values.
 pub(crate) fn lower_invocation<'g>(
     grammar: &'g Grammar,
     call: &NamedCall<'_>,
-) -> Result<ParsedInvocation<'g>, Error> {
+) -> Result<ParsedInvocation<'g>, RoutingFailure<'g>> {
     let (command, path) = route_by_name(grammar, call.path)?;
     let mut fault: Option<Error> = None;
     let mut values = ScopeValues::default();
@@ -413,8 +413,8 @@ mod tests {
             passthrough: &[],
         };
         match lower_invocation(&graph.link.grammar, &call) {
-            Err(error) => {
-                json!({ "raised": error.failure().map(|failure| failure.message().to_owned()) })
+            Err(held) => {
+                json!({ "unknown": held.error().failure().map(|failure| failure.message().to_owned()) })
             }
             Ok(parsed) => {
                 let scope = |values: &crate::invocation::parse::OptionValues| {
@@ -616,13 +616,13 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_command_is_raised_at_once() {
+    fn an_unknown_command_is_held_before_lowering() {
         assert_eq!(
-            lowered(&["nope"], json!({}), json!({}), &[])["raised"],
+            lowered(&["nope"], json!({}), json!({}), &[])["unknown"],
             json!("Unknown command \"nope\". Use one of: show.")
         );
         assert_eq!(
-            lowered(&["show", "deeper"], json!({}), json!({}), &[])["raised"],
+            lowered(&["show", "deeper"], json!({}), json!({}), &[])["unknown"],
             json!("Unknown command \"deeper\". Supply the name of a declared command.")
         );
     }

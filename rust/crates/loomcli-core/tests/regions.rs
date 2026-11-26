@@ -1414,7 +1414,10 @@ async fn a_region_is_not_live_under_an_invocation_by_name_and_its_draw_calls_no_
             Some(Arc::clone(&fixture.process) as _),
         )
         .await;
-    let loomcli_core::InvocationOutcome::Completed { output, messages } = outcome else {
+    let loomcli_core::InvocationOutcome::Completed {
+        output, messages, ..
+    } = outcome
+    else {
         panic!("the call completes");
     };
     assert_eq!((output.as_str(), messages.as_str()), ("", ""));

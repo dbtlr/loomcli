@@ -188,7 +188,10 @@ async fn a_supplied_cwd_replaces_the_capture_at_both_doors_so_neither_reads_the_
             Some(named as _),
         )
         .await;
-    let InvocationOutcome::Completed { output, messages } = outcome else {
+    let InvocationOutcome::Completed {
+        output, messages, ..
+    } = outcome
+    else {
         panic!("the invocation completes");
     };
     assert_eq!((output.as_str(), messages.as_str()), ("/srv/named\n", ""));

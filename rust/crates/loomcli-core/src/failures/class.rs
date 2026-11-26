@@ -63,7 +63,7 @@ pub const EX_NOPERM: FailureExitCode = FailureExitCode::new(77);
 /// `EX_CONFIG`: the configuration is wrong.
 pub const EX_CONFIG: FailureExitCode = FailureExitCode::new(78);
 
-/// The exit code a run resolves: 0, a failure's code, or a signal's (129, 130, 131, 141, 143).
+/// The exit code a run resolves, from 0 through 255.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ExitCode(u8);
 
@@ -81,19 +81,16 @@ impl ExitCode {
     /// `SIGTERM` ended the run.
     pub const TERMINATE: ExitCode = ExitCode(143);
 
+    /// The exit code for this byte.
+    #[must_use]
+    pub const fn new(code: u8) -> Self {
+        Self(code)
+    }
+
     /// The number.
     #[must_use]
     pub const fn get(self) -> u8 {
         self.0
-    }
-}
-
-impl FailureExitCode {
-    /// The failure code an exit code is, or `None` for success and the cancellation codes.
-    pub(crate) fn of(code: ExitCode) -> Option<FailureExitCode> {
-        (1..=125)
-            .contains(&code.0)
-            .then_some(FailureExitCode(code.0))
     }
 }
 

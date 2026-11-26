@@ -7,7 +7,7 @@
 //! children, against that Command's whole table, whose own options bind once routing ends. The
 //! routed Command then reads its own words against the one table it holds, its own options beside
 //! the global ones. Parsing continues past a fault, so every global option is found wherever it
-//! sits, and only the first fault in word order is held. Only an unknown Command is raised at once.
+//! sits, and only the first fault in word order is held. An unknown Command stops the walk.
 //! `locate` reads the earlier words of an unfinished invocation through the same walk.
 
 use std::sync::Arc;
@@ -21,6 +21,7 @@ use crate::failures::{
 use crate::inputs::SuppliedValue;
 use crate::inputs::table::{Form, Table};
 use crate::inspection::{CommandNode, TypedInputs};
+use crate::plugins::UnknownCommand;
 
 /// One entry of a spelling table: the option a spelling binds, whether that option is global, and
 /// how the spelling reads its value.
@@ -1174,10 +1175,34 @@ pub(crate) fn argument_slot(slots: &[Slot], position: usize) -> Option<(usize, &
     slots.get(position).map(|slot| (position, slot))
 }
 
-/// An unknown Command, raised as routing reads it, with the path routing walked to it.
-pub(crate) struct RoutingFailure {
+/// The held unknown command and the node and path routing reached before it.
+pub(crate) struct RoutingFailure<'g> {
+    pub(crate) command: &'g GrammarCommand,
     pub(crate) path: Vec<String>,
-    pub(crate) error: Error,
+    pub(crate) unknown: Arc<UnknownCommand>,
+}
+
+impl<'g> RoutingFailure<'g> {
+    pub(crate) fn new(
+        command: &'g GrammarCommand,
+        path: Vec<String>,
+        word: &str,
+        rest: &[String],
+    ) -> Self {
+        Self {
+            command,
+            path,
+            unknown: Arc::new(UnknownCommand {
+                word: word.to_owned(),
+                rest: rest.to_vec(),
+            }),
+        }
+    }
+
+    /// Builds the error for the chain. Completion and the verbosity scan need only the route.
+    pub(crate) fn error(&self) -> Error {
+        UnknownCommandError::new(&self.unknown.word, candidates_of(self.command)).into()
+    }
 }
 
 /// Every word the reading of one word list found, which may stop short of a complete invocation.
@@ -1277,7 +1302,7 @@ pub(crate) fn read_words<'g>(
     grammar: &'g Grammar,
     words: &[String],
     partial: bool,
-) -> Result<WordsRead<'g>, RoutingFailure> {
+) -> Result<WordsRead<'g>, RoutingFailure<'g>> {
     let mut state = ReadState {
         at: 0,
         awaiting: None,
@@ -1350,12 +1375,12 @@ pub(crate) fn read_words<'g>(
 
 /// Routing: the words before the first bare `--`, read from the root against the global options,
 /// and at a Command with children against its whole table. Answers the index of the
-/// first word it did not read; an unknown Command is the one fault raised here.
+/// first word it did not read, or the unknown command it held.
 fn route<'g>(
     grammar: &'g Grammar,
     state: &mut ReadState<'g>,
     words: &[String],
-) -> Result<usize, RoutingFailure> {
+) -> Result<usize, RoutingFailure<'g>> {
     let mut index = 0;
     while let Some(word) = words.get(index) {
         if word == "--" {
@@ -1388,10 +1413,12 @@ fn route<'g>(
                 if !command.arguments.is_empty() {
                     break;
                 }
-                return Err(RoutingFailure {
-                    path: state.path.clone(),
-                    error: UnknownCommandError::new(word, candidates_of(command)).into(),
-                });
+                return Err(RoutingFailure::new(
+                    command,
+                    std::mem::take(&mut state.path),
+                    word,
+                    &words[index + 1..],
+                ));
             };
             // An alias routes like the canonical name, and the path reports that name alone.
             state.escapable = (!command.arguments.is_empty() && command.node.passthrough.is_none())
@@ -1467,7 +1494,7 @@ fn bind_arguments(
 pub(crate) fn parse_invocation<'g>(
     grammar: &'g Grammar,
     argv: &[String],
-) -> Result<ParsedInvocation<'g>, RoutingFailure> {
+) -> Result<ParsedInvocation<'g>, RoutingFailure<'g>> {
     let read = read_words(grammar, argv, false)?;
     let missing = read.awaiting.as_ref().map(|awaiting| HeldFault {
         at: read.read,

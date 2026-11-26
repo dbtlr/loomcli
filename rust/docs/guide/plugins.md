@@ -177,6 +177,26 @@ Feature `suggestions`; `suggestions()`.
   Run "jsonkit --help" to see the usage.
   ```
 
+### External commands
+
+Enable the `external-commands` feature and install `external_commands()`.
+
+When the first word of argv is an unknown Command, the plugin looks for an executable
+named `<app>-<word>` on `PATH`. For example, `notes sync --all` runs `notes-sync` with
+`--all` and uses its exit code. On Linux, if an executable script without a shebang fails
+to start with `ENOEXEC`, the plugin runs it through `/bin/sh` with the same separate arguments.
+
+```rust
+use loomcli_core::{Application, Command, Context};
+use loomcli_plugins::external_commands::external_commands;
+
+let notes = Application::new("notes")
+    .plugins([external_commands()])
+    .command(Command::new("list").action(|_: Context| async { Ok(()) }));
+
+loomcli_testing::assert_assembles(&notes);
+```
+
 ## Projections for agents and tools
 
 The [agents guide](agents.md) shows each of these with captured output.
