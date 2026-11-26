@@ -47,6 +47,7 @@ pub mod interaction;
     feature = "prose",
     feature = "records",
     feature = "rule",
+    feature = "step",
     feature = "table"
 ))]
 // Each view reads the parts of the layout it draws with, so a build of fewer views leaves some unread.
@@ -97,6 +98,8 @@ pub mod self_update;
 pub mod service;
 #[cfg(feature = "skills")]
 pub mod skills;
+#[cfg(feature = "step")]
+pub mod step;
 #[cfg(feature = "suggestions")]
 pub mod suggestions;
 #[cfg(feature = "table")]

@@ -687,7 +687,7 @@ async fn app_invoke_and_an_actions_invoke_read_the_handles_folders() {
     };
     for (path, expected) in [
         ("where", "/home/me /var/tmp\n"),
-        ("outer", "/home/me /var/tmp\n\n"),
+        ("outer", "/home/me /var/tmp\n"),
     ] {
         let outcome = app
             .invoke(

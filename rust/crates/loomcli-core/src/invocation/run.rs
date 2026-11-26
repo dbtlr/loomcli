@@ -82,7 +82,7 @@ impl Entered {
             }),
             flush: Box::new(move || {
                 if let Some(output) = locked(&flushed).upgrade() {
-                    output.flush_terminal();
+                    output.flush_at_end();
                 }
             }),
             listens,

@@ -1041,3 +1041,49 @@ fn tokens_compose_in_chain_order() {
         "\u{1b}[31mx\u{1b}[39m"
     );
 }
+
+#[test]
+fn raw_underline_color_parameters_follow_terminal_control_policy_as_a_unit() {
+    let strip = Facts::new().rendering(always_both().terminal_controls(TerminalControls::Strip));
+    let preserve =
+        Facts::new().rendering(always_both().terminal_controls(TerminalControls::Preserve));
+    for (text, stripped, preserved) in [
+        (
+            "a\u{1b}[58;5;3mb\u{1b}[59mc",
+            "abc",
+            "a\u{1b}[58;5;3mb\u{1b}[59mc\u{1b}[0m",
+        ),
+        (
+            "a\u{1b}[58;2;1;3;4mb",
+            "ab",
+            "a\u{1b}[58;2;1;3;4mb\u{1b}[0m",
+        ),
+        ("\u{1b}[58:5:3mX", "X", "\u{1b}[58:5:3mX\u{1b}[0m"),
+        ("\u{1b}[58:2::1:3:4mX", "X", "\u{1b}[58:2::1:3:4mX\u{1b}[0m"),
+        (
+            "\u{1b}[1;58;5;3;4mX",
+            "\u{1b}[1;4mX\u{1b}[22;24m",
+            "\u{1b}[1;4m\u{1b}[58;5;3mX\u{1b}[22;24m\u{1b}[0m",
+        ),
+        ("\u{1b}[58;5mX", "X", "\u{1b}[58;5mX\u{1b}[0m"),
+        ("\u{1b}[58;2;1mX", "X", "\u{1b}[58;2;1mX\u{1b}[0m"),
+    ] {
+        assert_eq!(strip.resolve(text), stripped, "{text:?}");
+        assert_eq!(preserve.resolve(text), preserved, "{text:?}");
+    }
+}
+
+#[test]
+fn the_colon_form_of_underline_reads_its_style() {
+    let facts = Facts::new().rendering(always_both());
+    for (text, expected) in [
+        ("\u{1b}[4mA\u{1b}[4:0mB", "\u{1b}[4mA\u{1b}[24mB"),
+        ("\u{1b}[4:0mX", "X"),
+        ("\u{1b}[4mA\u{1b}[4:00mB", "\u{1b}[4mA\u{1b}[24mB"),
+        ("\u{1b}[4mA\u{1b}[4:mB", "\u{1b}[4mAB\u{1b}[24m"),
+        ("\u{1b}[4mA\u{1b}[4::0mB", "\u{1b}[4mAB\u{1b}[24m"),
+        ("\u{1b}[4:3mA\u{1b}[24mB", "\u{1b}[4mA\u{1b}[24mB"),
+    ] {
+        assert_eq!(facts.resolve(text), expected, "{text:?}");
+    }
+}

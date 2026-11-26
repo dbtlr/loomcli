@@ -1,12 +1,6 @@
 {
   "behind": [
     {
-      "id": "jsonkit-color-forced-control-chars-escaped",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
       "id": "jsonkit-color-forced-help",
       "parts": [
         "stdout"

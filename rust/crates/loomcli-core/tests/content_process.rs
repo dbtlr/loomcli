@@ -313,7 +313,7 @@ fn argv_content_paths_can_still_name_process_stdin() {
     let report = child("sh", PIPED, "scalar", &[], Some("/dev/stdin"));
     assert_eq!(
         report,
-        json!({ "code": 0, "stdout": "transport sentinel\n\n" })
+        json!({ "code": 0, "stdout": "transport sentinel\n" })
     );
 }
 
@@ -326,8 +326,5 @@ fn argv_content_paths_accept_process_substitution() {
         &[],
         None,
     );
-    assert_eq!(
-        report,
-        json!({ "code": 0, "stdout": "source sentinel\n\n" })
-    );
+    assert_eq!(report, json!({ "code": 0, "stdout": "source sentinel\n" }));
 }

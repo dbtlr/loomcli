@@ -81,6 +81,7 @@ list = []
 prose = []
 records = []
 rule = []
+step = []
 table = []
 
 # The completion plugin asks the system whether the process may write or run a path, as access(2) does.

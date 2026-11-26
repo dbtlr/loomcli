@@ -421,8 +421,11 @@ pub struct EnvironmentContext {
 }
 
 impl EnvironmentContext {
-    /// Writes a warning to stderr.
-    pub async fn warn(&self, message: &str) -> Result<(), crate::Error> {
-        self.out.warn(message).await
+    /// Writes a warning to stderr. A [`crate::Message`] can carry its own view.
+    pub fn warn<'a>(
+        &'a self,
+        message: impl Into<crate::Message<'a>>,
+    ) -> impl std::future::Future<Output = Result<(), crate::Error>> + Send + 'a {
+        self.out.warn(message)
     }
 }

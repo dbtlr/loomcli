@@ -17,10 +17,10 @@
 //! stderr's turn and ahead of every write called after them. The first caller to take stderr's turn
 //! from a later place sends them, or a task core spawns does.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::io;
-use std::sync::atomic::{AtomicBool, AtomicI8, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde::Serialize;
@@ -38,9 +38,9 @@ use super::messages;
 use super::region::{CloseWork, ProgressEvent, RegionCloser, Regions, ScreenOp};
 use super::registry::ViewRegistry;
 use super::results::{ResultView, RowSource, RowViewEntry};
-use super::screen::{Frame, Measure, Screen};
+use super::screen::{Frame, Measure, Screen, ends_line};
 use super::view::{IncompleteResult, incomplete_result, lanes};
-use super::{DeclaredView, RowView, View, ViewContext};
+use super::{DeclaredView, Message, RowView, View, ViewContext, WholeView};
 
 /// Whoever observes a run's progress events.
 pub(crate) type ProgressObserver = Arc<dyn Fn(&ProgressEvent) + Send + Sync>;
@@ -52,7 +52,7 @@ pub(crate) enum Stream {
     Stderr,
 }
 
-/// The seven semantic methods, each rendering through its lane view.
+/// The level of each semantic method, with its default view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Lane {
     Print,
@@ -273,12 +273,8 @@ pub(crate) struct Output {
     stdout_sequences: AtomicUsize,
     /// The stack of open live regions as stderr shows it.
     screen: Mutex<Screen>,
-    /// The writes queued on stderr at their call, each with the place in stderr's order it took
-    /// then, in that order.
-    queued: Mutex<VecDeque<(u64, Queued)>>,
-    /// The next place in stderr's order: a queued write takes one at its call, and a caller of
-    /// stderr's turn takes one as it starts to wait.
-    places: AtomicU64,
+    queue: Mutex<WriteQueue>,
+    end_flushed: tokio::sync::Notify,
     /// The live regions this run opened.
     regions: Mutex<Regions>,
     /// How many lends of the terminal have not settled.
@@ -303,15 +299,75 @@ struct LiveHold {
 /// The bytes that show the cursor again.
 const SHOW_CURSOR: &str = "\u{1b}[?25h";
 
-/// A write queued on stderr at its call.
-enum Queued {
-    /// Text written above the stack, as every text write to stderr is.
+/// Output remains pending until each part is handed to its stream. Detached work is owned by
+/// the stderr queue. The other writes are owned by their polled futures.
+#[derive(Default)]
+struct WriteQueue {
+    next: u64,
+    pending: BTreeMap<u64, WriteWork>,
+    detached: VecDeque<u64>,
+    draining: bool,
+}
+
+impl WriteQueue {
+    fn place(&mut self) -> u64 {
+        let place = self.next;
+        self.next += 1;
+        place
+    }
+
+    fn insert(&mut self, work: WriteWork) -> u64 {
+        let place = self.place();
+        self.pending.insert(place, work);
+        place
+    }
+}
+
+struct WriteWork {
+    stream: Stream,
+    job: WriteJob,
+    close: Option<CloseWork>,
+}
+
+enum WriteJob {
     Text(String),
-    /// Screen work, whose bytes are composed when it reaches stderr, and the regions whose draws
-    /// resolve once it is written.
-    Screen(CloseWork),
-    /// A lend whose caller dropped it before it ended: the stack it held is drawn again.
+    Screen(Vec<ScreenOp>),
     Reclaim,
+    Parts(VecDeque<(Stream, String)>),
+}
+
+/// A dropped write future releases its unsent work. When the process-end flush has already
+/// drained the work, the future's turn finds it gone.
+struct WritePlace<'a> {
+    output: &'a Output,
+    number: u64,
+}
+
+impl Drop for WritePlace<'_> {
+    fn drop(&mut self) {
+        locked(&self.output.queue).pending.remove(&self.number);
+    }
+}
+
+/// Keeps writes queued during the end behind the draining writes, even on an embedding host
+/// that keeps its runtime alive after the exit event.
+struct EndDrain<'a>(&'a Output);
+
+impl Drop for EndDrain<'_> {
+    fn drop(&mut self) {
+        locked(&self.0.queue).draining = false;
+        self.0.end_flushed.notify_waiters();
+    }
+}
+
+/// Acknowledge a region close after the bytes have reached stderr.
+fn wake_close(work: CloseWork, result: Result<(), Error>) {
+    for cell in &work.wake {
+        cell.wake();
+    }
+    if let Some(written) = work.written {
+        let _ = written.send(result);
+    }
 }
 
 /// The bytes a run of screen operations writes, applied to the screen in order.
@@ -367,7 +423,7 @@ struct LendPlace {
 impl Drop for LendPlace {
     fn drop(&mut self) {
         if self.begun && !self.ended {
-            self.output.enqueue(Queued::Reclaim);
+            self.output.enqueue(WriteJob::Reclaim, None);
             self.output.wake_drainer();
         }
         let mut lends = locked(&self.output.lends);
@@ -415,8 +471,8 @@ impl Output {
             send_turn: tokio::sync::Mutex::new(()),
             stdout_sequences: AtomicUsize::new(0),
             screen: Mutex::new(Screen::default()),
-            queued: Mutex::new(VecDeque::new()),
-            places: AtomicU64::new(0),
+            queue: Mutex::new(WriteQueue::default()),
+            end_flushed: tokio::sync::Notify::new(),
             regions: Mutex::new(Regions::default()),
             lends: Mutex::new(0),
             lends_settled: tokio::sync::Notify::new(),
@@ -496,21 +552,45 @@ impl Output {
     /// A resume: the regions are drawn again in stderr's order, after every write queued before
     /// it, starting at the start of a row.
     fn resume_regions(self: &Arc<Self>) {
-        self.enqueue(Queued::Screen(CloseWork {
+        self.queue_screen(CloseWork {
             ops: vec![ScreenOp::Resume],
             ..CloseWork::default()
-        }));
+        });
         self.wake_drainer();
     }
 
-    /// Writes every region frame still in stderr's write queue straight to the terminal and shows
-    /// the cursor, synchronously, which a shutdown does at its end. Only a terminal stderr holds
-    /// regions.
-    pub(crate) fn flush_terminal(&self) {
+    /// Sends the rest of each pending write in its queue order before restoring the terminal.
+    pub(crate) fn flush_at_end(&self) {
+        let pending = {
+            let mut queue = locked(&self.queue);
+            queue.draining = true;
+            queue.detached.clear();
+            std::mem::take(&mut queue.pending)
+        };
+        let _drain = EndDrain(self);
+        let mut closed = Vec::new();
+        for (_, mut work) in pending {
+            let measure = self.stderr_tty.then(|| self.measure());
+            for (stream, text) in self.parts(work.stream, work.job, measure.as_ref()) {
+                self.send_at_end(stream, &text);
+            }
+            closed.extend(work.close.take());
+        }
         if self.stderr_tty {
-            self.flush_composed(|screen, measure| {
-                format!("{}{}", screen.finish_lends(measure), self.cursor_shown())
-            });
+            let measure = self.measure();
+            let text = locked(&self.screen).finish_lends(&measure);
+            self.send_at_end(Stream::Stderr, &format!("{text}{}", self.cursor_shown()));
+        }
+        for work in closed {
+            wake_close(work, Ok(()));
+        }
+    }
+
+    /// The stream is offered each part just once. An end cannot wait for a stream to become ready.
+    fn send_at_end(&self, stream: Stream, text: &str) {
+        let destination = self.destination(stream);
+        if !text.is_empty() && destination.refusal().is_none() {
+            let _ = crate::support::poll_once(destination.stream.write(text.as_bytes()));
         }
     }
 
@@ -526,49 +606,38 @@ impl Output {
         }
     }
 
-    /// Writes every screen composition still queued straight to stderr, in the order it was
-    /// queued, then what `after` composes, synchronously. Each draw the compositions held resolves.
-    /// The write is best effort: a stream that refused one before, or is not ready at once, drops
-    /// it, as a terminal that has hung up does.
+    /// A suspend sends detached screen work before its final screen change. Other writes retain
+    /// their turns.
     fn flush_composed(&self, after: impl FnOnce(&mut Screen, &dyn Measure) -> String) {
-        let works: Vec<Queued> = {
-            let mut queued = locked(&self.queued);
-            let (works, kept): (VecDeque<_>, VecDeque<_>) = std::mem::take(&mut *queued)
-                .into_iter()
-                .partition(|(_, write)| !matches!(write, Queued::Text(_)));
-            *queued = kept;
-            works.into_iter().map(|(_, write)| write).collect()
-        };
-        let mut wakes = Vec::new();
-        let text = {
-            let measure = self.measure();
-            let mut screen = locked(&self.screen);
-            let mut text = String::new();
-            for work in works {
-                match work {
-                    Queued::Screen(work) => {
-                        text.push_str(&apply_ops(&mut screen, &measure, work.ops));
-                        wakes.push((work.wake, work.written));
-                    }
-                    Queued::Reclaim => text.push_str(&screen.reclaim(&measure)),
-                    Queued::Text(_) => {}
+        let works = {
+            let mut queue = locked(&self.queue);
+            let mut works = Vec::new();
+            for place in std::mem::take(&mut queue.detached) {
+                let screen = queue.pending.get(&place).is_some_and(|work| {
+                    matches!(work.job, WriteJob::Screen(_) | WriteJob::Reclaim)
+                });
+                if screen {
+                    works.extend(queue.pending.remove(&place));
+                } else {
+                    queue.detached.push_back(place);
                 }
             }
-            text.push_str(&after(&mut screen, &measure));
-            text
+            works
         };
-        for (wake, written) in wakes {
-            for cell in &wake {
-                cell.wake();
+        let measure = self.measure();
+        let mut closed = Vec::new();
+        let mut text = String::new();
+        for work in works {
+            for (_, part) in self.parts(work.stream, work.job, Some(&measure)) {
+                text.push_str(&part);
             }
-            if let Some(written) = written {
-                let _ = written.send(Ok(()));
-            }
+            closed.extend(work.close);
         }
-        if text.is_empty() || self.stderr.refusal().is_some() {
-            return;
+        text.push_str(&after(&mut locked(&self.screen), &measure));
+        self.send_at_end(Stream::Stderr, &text);
+        for work in closed {
+            wake_close(work, Ok(()));
         }
-        let _ = crate::support::poll_once(self.stderr.stream.write(text.as_bytes()));
     }
 
     /// The registry declared views resolve through now.
@@ -695,40 +764,68 @@ impl Output {
 
     /// Queues a region's screen work on stderr. A close with nothing to write wakes its waiting
     /// draws at once.
-    pub(crate) fn queue_screen(&self, work: CloseWork) {
+    pub(crate) fn queue_screen(&self, mut work: CloseWork) {
         if work.ops.is_empty() {
-            for cell in &work.wake {
-                cell.wake();
-            }
-            if let Some(written) = work.written {
-                let _ = written.send(Ok(()));
-            }
-            return;
+            wake_close(work, Ok(()));
+        } else {
+            let ops = std::mem::take(&mut work.ops);
+            self.enqueue(WriteJob::Screen(ops), Some(work));
         }
-        self.enqueue(Queued::Screen(work));
     }
 
-    /// Queues one write on stderr at the place in stderr's order it takes now.
-    fn enqueue(&self, write: Queued) {
-        let mut queued = locked(&self.queued);
-        let place = self.places.fetch_add(1, Ordering::SeqCst);
-        queued.push_back((place, write));
+    /// Queues work on stderr that no caller drives.
+    fn enqueue(&self, job: WriteJob, close: Option<CloseWork>) {
+        let mut queue = locked(&self.queue);
+        let place = queue.insert(WriteWork {
+            stream: Stream::Stderr,
+            job,
+            close,
+        });
+        queue.detached.push_back(place);
     }
 
-    /// Text a log hook wrote to its destination's stderr: queued in stderr's order at the call, so
-    /// records a hook writes together stay together, ahead of any write core queues after them.
+    /// Keeps a polled write's work available for process-end draining while it waits for its turn.
+    fn track(&self, stream: Stream, job: WriteJob) -> WritePlace<'_> {
+        let number = locked(&self.queue).insert(WriteWork {
+            stream,
+            job,
+            close: None,
+        });
+        WritePlace {
+            output: self,
+            number,
+        }
+    }
+
+    /// Once a row is ready, it takes the position of its sequence, ahead of writes waiting for
+    /// the sequence's turn. The queue still contains only the bytes the view already rendered.
+    fn track_piece(&self, number: u64, stream: Stream, text: String) -> WritePlace<'_> {
+        locked(&self.queue).pending.insert(
+            number,
+            WriteWork {
+                stream,
+                job: WriteJob::Text(text),
+                close: None,
+            },
+        );
+        WritePlace {
+            output: self,
+            number,
+        }
+    }
+
+    /// Text a log hook wrote to its destination's stderr.
     pub(crate) fn carry(self: &Arc<Self>, text: String) {
         if text.is_empty() {
             return;
         }
-        self.enqueue(Queued::Text(text));
+        self.enqueue(WriteJob::Text(text), None);
         self.wake_drainer();
     }
 
-    /// Sends what is queued on stderr soon, even when no other write follows: a task takes stderr's
-    /// turn when the runtime has room for one.
+    /// Lets a task send detached work even when no other write follows.
     pub(crate) fn wake_drainer(self: &Arc<Self>) {
-        if locked(&self.queued).is_empty() {
+        if locked(&self.queue).detached.is_empty() {
             return;
         }
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
@@ -742,45 +839,32 @@ impl Output {
         let _turn = self.stderr_turn().await;
     }
 
-    /// Takes stderr's turn, and first sends every write queued on stderr at a place ahead of the
-    /// caller's, which it takes as it starts to wait. A write queued after that waits for a later
-    /// caller, so it never overtakes a write called before it.
     async fn stderr_turn(&self) -> tokio::sync::MutexGuard<'_, ()> {
-        let place = self.places.fetch_add(1, Ordering::SeqCst);
+        let place = locked(&self.queue).place();
+        self.stderr_turn_before(place).await
+    }
+
+    /// Takes stderr's turn and sends the detached work that queued ahead of this place.
+    async fn stderr_turn_before(&self, place: u64) -> tokio::sync::MutexGuard<'_, ()> {
         let turn = self.stderr.turn.lock().await;
         loop {
             let next = {
-                let mut queued = locked(&self.queued);
-                if queued.front().is_some_and(|(at, _)| *at < place) {
-                    queued.pop_front().map(|(_, write)| write)
+                let mut queue = locked(&self.queue);
+                if queue.detached.front().is_some_and(|at| *at < place) {
+                    queue.detached.pop_front()
                 } else {
                     None
                 }
             };
-            let Some(next) = next else {
+            let Some(number) = next else {
                 break;
             };
-            match next {
-                Queued::Text(text) => {
-                    let _ = self.pass_stderr(&text).await;
-                }
-                Queued::Screen(work) => {
-                    let sent = self
-                        .compose(|screen, measure| apply_ops(screen, measure, work.ops))
-                        .await;
-                    for cell in &work.wake {
-                        cell.wake();
-                    }
-                    if let Some(written) = work.written {
-                        let _ = written.send(sent);
-                    }
-                }
-                Queued::Reclaim => {
-                    let _ = self
-                        .compose(|screen, measure| screen.reclaim(measure))
-                        .await;
-                }
-            }
+            let _ = self
+                .deliver(WritePlace {
+                    output: self,
+                    number,
+                })
+                .await;
         }
         turn
     }
@@ -811,66 +895,132 @@ impl Output {
         self.send(&self.stderr, &text).await
     }
 
-    /// One text write to stderr, inside stderr's turn: on a terminal the live regions are erased
-    /// before it and drawn again after it.
-    async fn pass_stderr(&self, text: &str) -> Result<(), Error> {
-        let _send = self.send_turn().await;
-        if !self.stderr_tty || text.is_empty() {
-            return self.send(&self.stderr, text).await;
-        }
-        let (before, after) = {
-            let measure = self.measure();
-            locked(&self.screen).around(&measure, text)
-        };
-        self.send(&self.stderr, &format!("{before}{text}{after}"))
-            .await
-    }
-
-    /// One text write to stdout, inside stdout's turn. On a terminal beside a terminal stderr, a
-    /// write while a region is open erases the regions before it and draws them after it, and one
-    /// with no region open still moves the row the next stack starts on.
-    async fn pass_stdout(&self, text: &str) -> Result<(), Error> {
-        if !self.coordinated || text.is_empty() {
-            return self.send(&self.stdout, text).await;
-        }
-        let _send = self.send_turn.lock().await;
-        let around = {
-            let measure = self.measure();
-            let mut screen = locked(&self.screen);
-            if screen.holding() {
-                Some(screen.around(&measure, text))
-            } else {
-                screen.note(&measure, text);
-                None
+    /// Lays out a write for its stream. On a shared terminal, a stdout write keeps its erase
+    /// and redraw on stderr, with only the message itself on stdout.
+    fn parts(
+        &self,
+        stream: Stream,
+        job: WriteJob,
+        measure: Option<&StderrMeasure>,
+    ) -> VecDeque<(Stream, String)> {
+        match job {
+            WriteJob::Text(text) => {
+                let Some(measure) = measure
+                    .filter(|_| !text.is_empty() && (stream == Stream::Stderr || self.coordinated))
+                else {
+                    return [(stream, text)].into();
+                };
+                let mut screen = locked(&self.screen);
+                if stream == Stream::Stderr {
+                    let (before, after) = screen.around(measure, &text);
+                    [(stream, format!("{before}{text}{after}"))].into()
+                } else if screen.holding() {
+                    let (before, after) = screen.around(measure, &text);
+                    [
+                        (Stream::Stderr, before),
+                        (stream, text),
+                        (Stream::Stderr, after),
+                    ]
+                    .into()
+                } else {
+                    screen.note(measure, &text);
+                    [(stream, text)].into()
+                }
             }
-        };
-        let Some((before, after)) = around else {
-            return self.send(&self.stdout, text).await;
-        };
-        self.send_quietly(&before).await;
-        let sent = self.send(&self.stdout, text).await;
-        self.send_quietly(&after).await;
-        sent
+            WriteJob::Screen(ops) => {
+                let text = measure.map_or_else(String::new, |measure| {
+                    apply_ops(&mut locked(&self.screen), measure, ops)
+                });
+                [(Stream::Stderr, text)].into()
+            }
+            WriteJob::Reclaim => {
+                let text = measure
+                    .map_or_else(String::new, |measure| locked(&self.screen).reclaim(measure));
+                [(Stream::Stderr, text)].into()
+            }
+            WriteJob::Parts(parts) => parts,
+        }
     }
 
-    /// Sends text to stderr now, inside an operation core is running, recording any failure.
-    async fn send_quietly(&self, text: &str) {
-        let _ = self.send(&self.stderr, text).await;
+    /// Composes the terminal operations at the write's turn. An exit that claimed the work has
+    /// already taken responsibility for composing and writing it.
+    async fn begin_delivery(&self, place: u64) -> Option<Stream> {
+        loop {
+            let flushed = self.end_flushed.notified();
+            let measure = self.stderr_tty.then(|| self.measure());
+            {
+                let mut queue = locked(&self.queue);
+                let draining = queue.draining;
+                let work = queue.pending.get_mut(&place)?;
+                if !draining {
+                    let job = std::mem::replace(&mut work.job, WriteJob::Parts(VecDeque::new()));
+                    work.job = WriteJob::Parts(
+                        if work.stream == Stream::Stderr && self.stderr.refusal().is_some() {
+                            [(work.stream, String::new())].into()
+                        } else {
+                            self.parts(work.stream, job, measure.as_ref())
+                        },
+                    );
+                    return Some(work.stream);
+                }
+            }
+            flushed.await;
+        }
     }
 
-    /// One text write through the passage of its stream, inside that stream's turn.
-    async fn pass(&self, stream: Stream, text: &str) -> Result<(), Error> {
-        match self.lane(stream) {
-            Stream::Stderr => self.pass_stderr(text).await,
-            Stream::Stdout => self.pass_stdout(text).await,
+    /// Takes one part at handoff, leaving the rest in the queue if the stream holds its answer.
+    /// When the end already sent the work, the place is gone and the write has nothing to send.
+    async fn deliver(&self, place: WritePlace<'_>) -> Result<(), Error> {
+        let _send = self.send_turn().await;
+        let Some(stream) = self.begin_delivery(place.number).await else {
+            return Ok(());
+        };
+        let mut result = Ok(());
+        loop {
+            let next = locked(&self.queue)
+                .pending
+                .get_mut(&place.number)
+                .and_then(|work| {
+                    if let WriteJob::Parts(parts) = &mut work.job {
+                        parts.pop_front()
+                    } else {
+                        None
+                    }
+                });
+            let Some((destination, text)) = next else {
+                break;
+            };
+            let sent = self.send(self.destination(destination), &text).await;
+            if destination == stream {
+                result = sent;
+            }
+        }
+        let close = locked(&self.queue)
+            .pending
+            .remove(&place.number)
+            .and_then(|work| work.close);
+        if let Some(close) = close {
+            wake_close(close, result);
+            return Ok(());
+        }
+        result
+    }
+
+    fn destination(&self, stream: Stream) -> &Destination {
+        match stream {
+            Stream::Stdout => &self.stdout,
+            Stream::Stderr => &self.stderr,
         }
     }
 
     /// One region frame, written in stderr's order.
     pub(crate) async fn draw_region(&self, id: u64, frame: Frame) -> Result<(), Error> {
-        let _turn = self.stderr_turn().await;
-        self.compose(|screen, measure| screen.draw(measure, id, frame))
-            .await
+        let place = self.track(
+            Stream::Stderr,
+            WriteJob::Screen(vec![ScreenOp::Draw(id, frame)]),
+        );
+        let _turn = self.stderr_turn_before(place.number).await;
+        self.deliver(place).await
     }
 
     /// Lends the terminal to `work`. The lend counts from the call, so a report waits for it even
@@ -1001,25 +1151,29 @@ impl Output {
         self.views().rows(identity, view)
     }
 
-    /// One semantic message, one line on its destination. The lane view returns no line break and
-    /// this call appends one, so an override that returns the empty string still writes one. A call
-    /// the run's verbosity hides calls no lane view and writes nothing.
+    /// Writes a semantic message, adding a line break if the view's drawn text lacks one.
+    /// A call the run's verbosity hides never renders its view.
     pub(crate) async fn emit(
         &self,
         lane: Lane,
-        message: &str,
+        message: Message<'_>,
         stream: Stream,
     ) -> Result<(), Error> {
         if self.verbosity.load(Ordering::SeqCst) < lane.shown_from() {
             return Ok(());
         }
-        let declared = lane.view();
-        let view = self
-            .views()
-            .whole(Some(declared.identity()), &declared.view);
-        let marked = (view.render)(message, &self.context(stream))?;
-        let text = self.resolve(stream, &format!("{marked}\n"));
-        self.write(stream, &text).await
+        let default;
+        let (identity, view) = if let Some(look) = message.look {
+            look
+        } else {
+            default = lane.view();
+            default.whole()
+        };
+        let mut text = self.render_whole(stream, identity, view, message.text)?;
+        if !ends_line(&text) {
+            text.push('\n');
+        }
+        self.write(stream, text).await
     }
 
     /// One `out.draw` call: rendered with stderr's context, its control sequences kept when stderr
@@ -1045,18 +1199,20 @@ impl Output {
                 renderer.drawn_rows(&marked, terminal.columns.map(usize::from)),
             )
         };
-        self.write(Stream::Stderr, &text).await?;
+        self.write(Stream::Stderr, text).await?;
         Ok(rows)
     }
 
     /// One text write, queued in `stream`'s order. A stdout write issued while a region is open on
     /// the same screen joins stderr's order too, unless a sequence holds a place in stdout's order,
     /// which a stdout write then waits behind alone.
-    pub(crate) async fn write(&self, stream: Stream, text: &str) -> Result<(), Error> {
-        match self.lane(stream) {
+    pub(crate) async fn write(&self, stream: Stream, text: String) -> Result<(), Error> {
+        let stream = self.lane(stream);
+        let place = self.track(stream, WriteJob::Text(text));
+        match stream {
             Stream::Stderr => {
-                let _turn = self.stderr_turn().await;
-                self.pass_stderr(text).await
+                let _turn = self.stderr_turn_before(place.number).await;
+                self.deliver(place).await
             }
             Stream::Stdout => {
                 let joins = self.coordinated
@@ -1064,11 +1220,11 @@ impl Output {
                     && locked(&self.screen).holding();
                 let _turn = self.stdout.turn.lock().await;
                 let _joined = if joins {
-                    Some(self.stderr_turn().await)
+                    Some(self.stderr_turn_before(place.number).await)
                 } else {
                     None
                 };
-                self.pass_stdout(text).await
+                self.deliver(place).await
             }
         }
     }
@@ -1126,13 +1282,13 @@ impl Output {
     /// own failure is recorded on the destination.
     pub(crate) async fn report(&self, text: &str) {
         let resolved = self.resolve(Stream::Stderr, text);
-        let _ = self.write(Stream::Stderr, &resolved).await;
+        let _ = self.write(Stream::Stderr, resolved).await;
     }
 
     /// A failure encoder's text, written to stderr in its order as it is: no markup is resolved and
     /// nothing is escaped or appended. Its own failure is recorded on the destination.
     pub(crate) async fn encoded(&self, text: &str) {
-        let _ = self.write(Stream::Stderr, text).await;
+        let _ = self.write(Stream::Stderr, text.to_owned()).await;
     }
 
     /// Drops the incomplete-result lines the run holds: a failure an encoder wrote is the only
@@ -1179,7 +1335,7 @@ impl Output {
                 &facts,
             ) {
                 Ok(text) => {
-                    let _ = self.write(Stream::Stderr, &text).await;
+                    let _ = self.write(Stream::Stderr, text).await;
                 }
                 Err(error) => {
                     fault.get_or_insert(error);
@@ -1209,12 +1365,15 @@ impl Output {
             self.stdout_sequences.fetch_add(1, Ordering::SeqCst);
             &self.stdout_sequences
         }));
+        let number = locked(&self.queue).place();
         let turn = match lane {
-            Stream::Stderr => self.stderr_turn().await,
+            Stream::Stderr => self.stderr_turn_before(number).await,
             Stream::Stdout => self.stdout.turn.lock().await,
         };
         let mut counts = Counts::default();
-        let outcome = self.pieces(stream, &mut source, view, &mut counts).await;
+        let outcome = self
+            .pieces(stream, &mut source, view, number, &mut counts)
+            .await;
         // The source is told the writer wants no more rows: dropping it runs its own cleanup.
         drop(source);
         drop(turn);
@@ -1237,6 +1396,7 @@ impl Output {
         stream: Stream,
         source: &mut RowSource<R>,
         view: SequenceView<R>,
+        number: u64,
         counts: &mut Counts,
     ) -> Result<bool, Error> {
         if self.halted() {
@@ -1250,7 +1410,7 @@ impl Output {
             SequenceView::Rows(view) => {
                 if let Some(head) = &view.head {
                     let marked = head(&context());
-                    self.piece(&renderer, stream, marked).await?;
+                    self.piece(&renderer, stream, number, marked).await?;
                 }
                 loop {
                     if self.halted() {
@@ -1266,7 +1426,7 @@ impl Output {
                         return Ok(false);
                     }
                     let marked = (view.row)(&row, counts.yielded - 1, &context());
-                    self.piece(&renderer, stream, marked).await?;
+                    self.piece(&renderer, stream, number, marked).await?;
                     counts.written += 1;
                 }
                 if self.halted() {
@@ -1274,7 +1434,7 @@ impl Output {
                 }
                 if let Some(tail) = &view.tail {
                     let marked = tail(counts.written, &context());
-                    self.piece(&renderer, stream, marked).await?;
+                    self.piece(&renderer, stream, number, marked).await?;
                 }
             }
             SequenceView::Whole(view) => {
@@ -1282,14 +1442,14 @@ impl Output {
                     return Ok(false);
                 };
                 let marked = (view.render)(rows.as_slice(), &context());
-                self.piece(&renderer, stream, marked).await?;
+                self.piece(&renderer, stream, number, marked).await?;
             }
             SequenceView::WholeOwned(render) => {
                 let Some(rows) = self.collect(source, counts).await? else {
                     return Ok(false);
                 };
                 let marked = render(rows, &context());
-                self.piece(&renderer, stream, marked).await?;
+                self.piece(&renderer, stream, number, marked).await?;
             }
         }
         Ok(true)
@@ -1328,10 +1488,12 @@ impl Output {
         &self,
         renderer: &Renderer,
         stream: Stream,
+        number: u64,
         marked: Result<String, Error>,
     ) -> Result<(), Error> {
         let text = renderer.resolve(&marked?);
-        self.pass(stream, &text).await
+        let place = self.track_piece(number, self.lane(stream), text);
+        self.deliver(place).await
     }
 
     /// The view an emission renders through: the one a middleware selected, else the declaration's
@@ -1381,7 +1543,7 @@ impl Output {
                 }
             }
         };
-        self.write(Stream::Stdout, &text).await
+        self.write(Stream::Stdout, text).await
     }
 
     /// One `out.results` call under a rows result: a sequence on stdout through the selected view,

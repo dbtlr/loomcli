@@ -110,7 +110,7 @@ Feature `format`; `format()`, with `.short(letter)`.
 
 ### Pack views
 
-Features `table`, `records`, `list`, `heading`, `rule`, `prose`, and `box`. Each is a view value that installs nothing: `table(TableConfig)`, `records(RecordsConfig)`, `list(ListConfig)`, `heading(HeadingConfig)`, `rule()`, `prose()`, and `boxed(BoxConfig)` (`box` is a Rust keyword). A result lists them among its views, or an action writes data through one with `out.render`. Each fits the destination: the table shrinks and wraps its columns to the terminal's width and falls back to records when even the narrowest columns do not fit, and every one prints plain text in a pipe.
+Features `table`, `records`, `list`, `heading`, `rule`, `prose`, `step`, and `box`. Each is a view value that installs nothing: `table(TableConfig)`, `records(RecordsConfig)`, `list(ListConfig)`, `heading(HeadingConfig)`, `rule()`, `prose()`, `step()`, and `boxed(BoxConfig)` (`box` is a Rust keyword). A result lists them among its views, or an action writes data through one with `out.render`. Each fits the destination: the table shrinks and wraps its columns to the terminal's width and falls back to records when even the narrowest columns do not fit, and every one prints plain text in a pipe. A semantic message can use a text view through `Message::new(text).view(&step())`. The output method still sets the destination and verbosity.
 
 ### Theme
 
