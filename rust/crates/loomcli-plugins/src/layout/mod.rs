@@ -4,7 +4,7 @@
 //! same wherever they print. The table, the records layout, the list, the heading, the rule, prose,
 //! and the box have to agree on how text wraps and continues, so each of them reads it from here.
 
-#[cfg(any(feature = "table", feature = "records"))]
+#[cfg(any(feature = "table", feature = "records", feature = "version-views"))]
 pub(crate) mod block;
 #[cfg(any(feature = "table", feature = "records", feature = "list"))]
 pub(crate) mod data;

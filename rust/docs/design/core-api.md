@@ -679,6 +679,7 @@ Entry points: `run(RunOptions) -> BoxFuture<'static, ExitCode>`, which enters it
 | `cwd() -> io::Result<PathBuf>` | `cwd()` |
 | `ceiling() -> io::Result<Option<PathBuf>>` | `ceiling` |
 | `home()`, `tmpdir()`, `platform()`, `arch()`, `libc()`, `uid()`, `time_zone()` | same |
+| `runtime() -> Option<String>` | `runtime`, the build's Cargo target triple in Rust. The default trait method returns `None`. |
 | `release_for(application, &DirectoryFacts) -> ReleaseFacts` | the capture's `handleRelease`: `release()` with the installation the record holds, which only the real handle given no `release` reads |
 | `release() -> ReleaseFacts` | `release` |
 | `read_source(path, cwd)` | `readSource` |
@@ -690,6 +691,8 @@ Entry points: `run(RunOptions) -> BoxFuture<'static, ExitCode>`, which enters it
 | `publish_env(name, value)` | `publishEnv` |
 
 `process_handle(ProcessFields::new().argv(…).stdout(…))` is the real process with fields replaced, and the one place core reads `std::env`, the real streams, real signals, and termios. `ProcessFields` replaces every member the reference's `ProcessFields` does: argv, program, env, cwd (`cwd(path)`, or `cwd_with(read)` for the reference's `cwd` function), ceiling, home, tmpdir, platform, arch, libc, uid, time zone, `read_source`, the three streams, the terminal facts, and release. Each fact not given reads the process when asked: `program` is the running executable, `libc` is the C library the binary was compiled against, the time zone is the IANA zone `TZ` names in the time zone database (an empty or unknown `TZ` reads `UTC`) else the system's, and the user database home is the one `/etc/passwd` lists. A handle implementor builds the facts it reports with `InputTerminal::new`, `OutputTerminal::new`, and `ChildOutput::new`, reads a request through `SpawnRequest`'s fields and `SpawnOptions`' accessors (`stdout_stream`, `stderr_stream`, `cancellation`, `stdin_input`, `inherits_stdin`), and answers `spawn` with a type of its own that implements `ChildProcess { exited(), kill(signal), abandon() }`, or `Child::unstarted(error)`. `SpawnRequest::attached` and `SpawnRequest::detached` build a request, as a test that calls a handle's `spawn` directly does.
+
+**Runtime.** `Host::runtime` holds the optional target triple copied from the process handle at capture. The real handle reads the target triple `loomcli-core`'s build script bakes from Cargo's `TARGET`. `ProcessFields::runtime(Option<String>)` replaces that fact. `MockFields::runtime(Option<String>)` replaces the mock's default of `x86_64-unknown-linux-gnu`. Both builders accept `None` to report an absent fact.
 
 **Raw mode.** Every raw-mode switch, in core's background query, in a question of `loomcli-prompts`, and in the resume after Ctrl-Z, goes through `InputStream::set_raw_mode` on the run's stdin or the signal source's terminal. A stream with no raw mode answers `Unsupported`, which skips the background query and fails a question. The real handle switches termios through `rustix` to libuv's raw mode, the one Node's terminal stream sets (output translation kept), and restores the settings it found; the mock keyboard hands over its next `keys` entry at the first read after each switch. The real stdin is read by one thread that reads descriptor 0 only when a read asks, so a child that inherits stdin sees every key no reader asked for.
 
@@ -804,10 +807,14 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | `help` | `help` | `help-extension`, `help-views` |
 | `manifest` | `manifest` | `manifest-extension` |
 | `mcp` | `mcp` | `mcp-extension` |
-| `version` | `version` | `version-views` |
+| `version` | `version` | `version-views`, `format-views` |
 | `config-extension`, `help-extension`, `manifest-extension`, `mcp-extension` | `<plugin>::extension` | |
 | `format-views`, `help-views`, `version-views` | `<plugin>::views` | |
 | `box`, `heading`, `list`, `prose`, `records`, `rule`, `step`, `table` | the pack view (`box` is module `boxed`) | |
+
+<a name="extended-version-facts"></a>
+
+**Version.** `version().extended(true)` adds the six extended facts to `--version` and `-V`. The declared `version::views::version_facts()` view reads `VersionFacts { channel: Option<String>, build: Build, asset: Option<String>, installation_method: Option<String>, runtime: Option<String>, platform: String }`. Text renders the version line and then the facts through their declared views. With `application/json` or `application/jsonl` selected when the version middleware runs, a bare formatter view writes the name, declared version, and six facts as one object. The default `extended(false)` prints the version line in every media type.
 
 **Dependencies.**
 

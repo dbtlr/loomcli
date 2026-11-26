@@ -56,7 +56,7 @@ skills = ["installation", "format-views", "help-views", "dep:loomcli-validators"
 suggestions = ["dep:unicode-normalization"]
 theme = []
 verbose = []
-version = ["version-views"]
+version = ["version-views", "format-views"]
 # Internal, not a plugin: the Markdown subset parser that the help and manpage features share. It
 # reads \p{L} and \p{N} through regex, which only this feature compiles.
 markdown = ["dep:regex"]

@@ -1,14 +1,16 @@
-//! The version plugin: `-V` and `--version` print the application's version line.
+//! The version plugin: `-V` and `--version` print the application's version and optional facts.
 
 #[cfg(feature = "version")]
 mod plugin {
     use loomcli_core::{
-        Activation, AnyPlugin, DeclarationError, DiagnosticParts, Finding, Inputs,
-        MiddlewareContext, Next, Outcome, Plugin, diagnostic_rule, is_prose_line,
+        Activation, AnyPlugin, Build, CommandGraph, DeclarationError, DiagnosticParts, Finding,
+        Host, Inputs, MiddlewareContext, Next, Outcome, Plugin, diagnostic_rule, is_prose_line,
     };
+    use serde::Serialize;
 
-    use super::views::{VersionLine, version_line};
+    use super::views::{VersionFacts, VersionLine, version_facts, version_line};
     use crate::PACKAGE_NAME;
+    use crate::format::views::{json, jsonl};
 
     /// The version plugin's options.
     #[derive(Inputs)]
@@ -28,12 +30,16 @@ mod plugin {
     #[must_use]
     pub struct Version {
         postfix: Option<String>,
+        extended: bool,
     }
 
-    /// The version plugin: `-V` and `--version` print `<name> v<version>`, then the postfix when
-    /// the application set one, and end the invocation with exit 0.
+    /// The version plugin: `-V` and `--version` print `<name> v<version>` by default, with the
+    /// postfix when supplied. [`Version::extended`] adds the running copy's facts.
     pub fn version() -> Version {
-        Version { postfix: None }
+        Version {
+            postfix: None,
+            extended: false,
+        }
     }
 
     impl Version {
@@ -55,16 +61,25 @@ mod plugin {
             }
             Version {
                 postfix: Some(postfix.to_owned()),
+                ..self
             }
         }
 
-        /// The plugin. Its middleware renders the version line and returns without calling the
-        /// rest of the chain, so nothing after routing runs and the exit code is 0.
+        /// Whether to print release, installation, runtime, and platform facts. Defaults to `false`.
+        /// With `application/json` or `application/jsonl` selected, the extended output is a
+        /// single object containing the name, declared version, and facts.
+        pub fn extended(self, extended: bool) -> Self {
+            Self { extended, ..self }
+        }
+
+        /// The plugin. Its middleware renders the version output and returns without calling the
+        /// rest of the chain, so the action does not run.
         pub fn plugin(self) -> Plugin<VersionOptions> {
             let postfix = self.postfix;
+            let extended = self.extended;
             Plugin::new(format!("{PACKAGE_NAME}/version"))
                 .options::<VersionOptions>()
-                .views([version_line()])
+                .views((version_line(), version_facts()))
                 .middleware(
                     Activation::options(["version"]),
                     move |context: MiddlewareContext<VersionOptions>, _next: Next| {
@@ -72,15 +87,79 @@ mod plugin {
                             std::sync::Arc::clone(&context.graph),
                             postfix.clone(),
                         );
-                        async move { render(context, line).await }
+                        async move { render(context, line, extended).await }
                     },
                 )
         }
     }
 
-    /// Renders the line to stdout.
-    async fn render(context: MiddlewareContext<VersionOptions>, line: VersionLine) -> Outcome {
-        context.out.render(&line, &version_line()).await
+    async fn render(
+        context: MiddlewareContext<VersionOptions>,
+        line: VersionLine,
+        extended: bool,
+    ) -> Outcome {
+        if !extended {
+            return context.out.render(&line, &version_line()).await;
+        }
+
+        let facts = host_facts(&context.host);
+        let document_view = match context.media_type().as_deref() {
+            Some("application/json") => Some(json::<VersionDocument>()),
+            Some("application/jsonl") => Some(jsonl::<VersionDocument>()),
+            _ => None,
+        };
+        if let Some(view) = document_view {
+            let document = VersionDocument::new(&line.graph, facts);
+            return context.out.render(&document, &view).await;
+        }
+
+        context.out.render(&line, &version_line()).await?;
+        context.out.render(&facts, &version_facts()).await
+    }
+
+    fn host_facts(host: &Host) -> VersionFacts {
+        let release = host.release.release.as_ref();
+        VersionFacts {
+            channel: release.map(|release| release.channel.clone()),
+            build: host.release.build,
+            asset: release.and_then(|release| release.asset.clone()),
+            installation_method: host
+                .release
+                .installation
+                .as_ref()
+                .map(|installation| installation.method.clone()),
+            runtime: host.runtime.clone(),
+            platform: format!("{}-{}", host.platform, host.arch),
+        }
+    }
+
+    // The document's field order is part of its JSON contract. Absent values serialize as null.
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct VersionDocument {
+        name: String,
+        version: String,
+        channel: Option<String>,
+        build: Build,
+        asset: Option<String>,
+        installation_method: Option<String>,
+        runtime: Option<String>,
+        platform: String,
+    }
+
+    impl VersionDocument {
+        fn new(graph: &CommandGraph, facts: VersionFacts) -> Self {
+            Self {
+                name: graph.name.clone(),
+                version: graph.version.clone(),
+                channel: facts.channel,
+                build: facts.build,
+                asset: facts.asset,
+                installation_method: facts.installation_method,
+                runtime: facts.runtime,
+                platform: facts.platform,
+            }
+        }
     }
 
     impl From<Version> for AnyPlugin {
@@ -98,9 +177,10 @@ pub use plugin::{Version, VersionOptions, version};
 pub mod views {
     use std::sync::Arc;
 
-    use loomcli_core::{CommandGraph, DeclaredView, View, escape, view};
+    use loomcli_core::{Alignment, Build, CommandGraph, DeclaredView, View, escape, view};
 
     use crate::PACKAGE_NAME;
+    use crate::layout::block::{RecordEntry, record_block};
 
     /// The data the version line renders: the application's graph and the postfix the
     /// `version()` call took. An override of the line reads both.
@@ -147,6 +227,53 @@ pub mod views {
                         format!("{line} {}\n", style.dim().apply(&escape(postfix)))
                     }
                 }
+            }),
+        )
+    }
+
+    /// The release, installation, runtime, and platform facts from the run's host.
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub struct VersionFacts {
+        /// The release channel, such as `stable` or `next`, when there is a release.
+        pub channel: Option<String>,
+        /// How the running copy was built.
+        pub build: Build,
+        /// The release asset name, when the release has one.
+        pub asset: Option<String>,
+        /// The installation method, such as `script`, when the host has installation facts.
+        pub installation_method: Option<String>,
+        /// The Cargo target triple, when the process handle reports one.
+        pub runtime: Option<String>,
+        /// The operating system and architecture joined by a hyphen, such as `linux-x64`.
+        pub platform: String,
+    }
+
+    /// The extended facts, `@loomcli/plugins/version/facts`. The records layout renders six rows
+    /// with dim labels and escaped primary values. An absent fact has an empty value.
+    pub fn version_facts() -> DeclaredView<VersionFacts> {
+        view(
+            &format!("{PACKAGE_NAME}/version/facts"),
+            View::new(|facts: &VersionFacts, context| {
+                let build = match facts.build {
+                    Build::Source => "source",
+                    Build::Development => "development",
+                    Build::Distributed => "distributed",
+                };
+                let rows = [
+                    ("channel", facts.channel.as_deref()),
+                    ("build", Some(build)),
+                    ("asset", facts.asset.as_deref()),
+                    ("installation method", facts.installation_method.as_deref()),
+                    ("runtime", facts.runtime.as_deref()),
+                    ("platform", Some(facts.platform.as_str())),
+                ];
+                let entries = rows.map(|(label, value)| RecordEntry {
+                    align: Alignment::Left,
+                    label: label.to_owned(),
+                    value: context.style.primary().apply(&escape(value.unwrap_or(""))),
+                });
+                record_block(&entries, context)
             }),
         )
     }

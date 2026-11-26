@@ -57,6 +57,18 @@ fn a_cwd_read_that_fails_fails_the_read_with_its_error() {
 }
 
 #[test]
+fn the_handle_reports_the_baked_target_triple_unless_given_a_runtime_fact() {
+    let handle = process_handle(ProcessFields::new());
+    assert_eq!(handle.runtime().as_deref(), Some(env!("LOOM_BUILD_TARGET")));
+
+    let supplied = "aarch64-apple-darwin".to_owned();
+    let handle = process_handle(ProcessFields::new().runtime(Some(supplied.clone())));
+    assert_eq!(handle.runtime(), Some(supplied));
+    let handle = process_handle(ProcessFields::new().runtime(None));
+    assert_eq!(handle.runtime(), None);
+}
+
+#[test]
 fn the_handle_reads_the_processs_own_architecture_and_user_unless_given_them() {
     let handle = process_handle(ProcessFields::new());
     let arch = match std::env::consts::ARCH {

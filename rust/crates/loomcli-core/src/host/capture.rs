@@ -83,6 +83,7 @@ pub(crate) fn capture_parts(
         tmpdir: handle.tmpdir(),
         platform,
         arch: handle.arch(),
+        runtime: handle.runtime(),
         libc: handle.libc(),
         uid: handle.uid(),
         time_zone: handle.time_zone(),

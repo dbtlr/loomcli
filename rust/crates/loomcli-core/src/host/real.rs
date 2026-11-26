@@ -142,6 +142,13 @@ impl ProcessHandle for RealProcess {
         }
     }
 
+    fn runtime(&self) -> Option<String> {
+        match &self.fields.runtime {
+            Some(runtime) => runtime.clone(),
+            None => option_env!("LOOM_BUILD_TARGET").map(str::to_owned),
+        }
+    }
+
     fn libc(&self) -> Option<Libc> {
         match self.fields.libc {
             Some(libc) => libc,

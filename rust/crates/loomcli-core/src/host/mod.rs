@@ -608,6 +608,10 @@ pub trait ProcessHandle: Send + Sync + 'static {
     fn platform(&self) -> String;
     /// The CPU architecture, in the reference's spelling (`x64`, `arm64`).
     fn arch(&self) -> String;
+    /// The build's Cargo target triple, when the handle reports one.
+    fn runtime(&self) -> Option<String> {
+        None
+    }
     /// The C library, on Linux.
     fn libc(&self) -> Option<Libc>;
     /// The user id, on Unix.
@@ -669,6 +673,7 @@ pub struct ProcessFields {
     pub(crate) tmpdir: Option<PathBuf>,
     pub(crate) platform: Option<String>,
     pub(crate) arch: Option<String>,
+    pub(crate) runtime: Option<Option<String>>,
     pub(crate) libc: Option<Option<Libc>>,
     pub(crate) uid: Option<Option<u32>>,
     pub(crate) time_zone: Option<String>,
@@ -746,6 +751,14 @@ impl ProcessFields {
     pub fn arch(self, arch: impl Into<String>) -> Self {
         Self {
             arch: Some(arch.into()),
+            ..self
+        }
+    }
+
+    /// Replaces the Cargo target triple. `None` reports no runtime fact.
+    pub fn runtime(self, runtime: Option<String>) -> Self {
+        Self {
+            runtime: Some(runtime),
             ..self
         }
     }
@@ -995,6 +1008,8 @@ pub struct Host {
     pub platform: String,
     /// The architecture.
     pub arch: String,
+    /// The build's Cargo target triple, when the process handle reports one.
+    pub runtime: Option<String>,
     /// The C library, on Linux.
     pub libc: Option<Libc>,
     /// The user id, on Unix.
