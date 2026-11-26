@@ -161,7 +161,7 @@ fn show() -> Command<NoInputs, NoResult, loomcli_core::Done> {
 }
 
 /// An application that installs neither help nor the configuration plugin.
-fn kit() -> CommandGraph {
+fn kit() -> Arc<CommandGraph> {
     Application::new("kit")
         .plugins((manpage(),))
         .description("A kit.")

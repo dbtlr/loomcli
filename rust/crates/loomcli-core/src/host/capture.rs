@@ -25,7 +25,7 @@ pub(crate) struct OwnStreams {
     pub(crate) stderr: Option<Arc<dyn OutputStream>>,
 }
 
-/// One host capture: the run's host, and the error its working directory read raised, if it did.
+/// One host capture: the run's host, and the error its working directory or ceiling read raised.
 /// A failed read leaves the host's `cwd` empty and `cwd_read` false, so the failure path writes
 /// through this host and never captures again, and a child it starts never starts.
 pub(crate) struct HostCapture {
@@ -63,9 +63,12 @@ pub(crate) fn capture_parts(
     let env = handle.env();
     let home = handle.home();
     let platform = handle.platform();
-    let (cwd, unreadable_cwd) = match handle.cwd() {
-        Ok(cwd) => (cwd, None),
-        Err(error) => (PathBuf::new(), Some(error)),
+    let directory = handle
+        .cwd()
+        .and_then(|cwd| handle.ceiling().map(|ceiling| (cwd, ceiling)));
+    let (cwd, ceiling, unreadable_cwd) = match directory {
+        Ok((cwd, ceiling)) => (cwd, ceiling, None),
+        Err(error) => (PathBuf::new(), None, Some(error)),
     };
     let directories = DirectoryFacts::new(env.clone(), home.clone(), platform.clone());
     let release = handle.release_for(application, &directories);
@@ -74,6 +77,7 @@ pub(crate) fn capture_parts(
         program: handle.program(),
         cwd_read: unreadable_cwd.is_none(),
         cwd,
+        ceiling,
         env,
         home,
         tmpdir: handle.tmpdir(),

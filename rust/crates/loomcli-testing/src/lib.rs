@@ -1,18 +1,23 @@
 //! Testing support for Loom CLI applications: the assembly check, the mock process, and the
-//! context builders a unit test hands to one function.
+//! context and value builders a unit test hands to one function.
 //!
 //! A test runs an application through its public surface on a [`MockProcess`] and asserts the exact
 //! stdout, stderr, and exit code, reading nothing from the real environment, terminal, clock, or
 //! home folder.
 
 mod contexts;
+mod hook_values;
 pub mod key;
 mod mock;
 
 pub use contexts::{
-    ActionValues, FailureHookValues, MiddlewareValues, ProviderValues, ViewValues, action_context,
-    failure_hook_context, file_content, middleware_context, piped_content, provider_context,
-    view_context,
+    ActionValues, EnvironmentValues, FailureHookValues, MiddlewareValues, ProviderValues,
+    ViewValues, action_context, environment_context, failure_hook_context, file_content,
+    middleware_context, piped_content, provider_context, view_context,
+};
+pub use hook_values::{
+    LogDestinationValues, LogEventValues, ProgressEventValues, log_destination, log_event,
+    progress_event,
 };
 pub use mock::{
     KeyEntry, MockFields, MockProcess, MockTerminal, Program, ProgramAnswer, ProgramCall,
@@ -140,7 +145,7 @@ fn assembly_report(faults: &[DeclarationError]) -> String {
     sections.join("\n\n")
 }
 
-/// Builds the application's graph with every development check and panics with each declaration
+/// Builds a fresh graph and panics with each declaration
 /// fault's Developer Diagnostic, so one test proves the application assembles. It reads
 /// `Application::check`, so a declared default its validator would reject on some machine is not
 /// judged here; `run` reports it.

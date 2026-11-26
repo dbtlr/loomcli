@@ -300,7 +300,7 @@ async fn an_actions_log_calls_reach_the_hooks_the_test_attached_in_order() {
     let second = Recorded::default();
     let application = Application::new("notes")
         .command(loomcli_core::Command::new("list").action(|_ctx: Context| async { Ok(()) }));
-    let graph = Arc::new(application.inspect().unwrap());
+    let graph = application.inspect().unwrap();
     let ctx: Context<GetInputs> = action_context(
         values("name")
             .graph(graph)
@@ -444,7 +444,7 @@ async fn a_middleware_context_reads_the_stated_graph_at_the_stated_command() {
     let application = Application::new("app")
         .plugins((Plugin::new("@fixture/dry-run").options::<DryRunOptions>(),))
         .command(loomcli_core::Command::new("sync").action(|_ctx: Context| async { Ok(()) }));
-    let graph = Arc::new(application.inspect().unwrap());
+    let graph = application.inspect().unwrap();
     let (ctx, _next) = middleware_context(options(false).graph(graph).command(&["sync"]));
     assert_eq!(ctx.command.path, ["sync"]);
     assert_eq!(ctx.graph.globals[0].name(), "dry-run");
@@ -508,7 +508,7 @@ fn received_defaults_to_absence_and_accepts_the_reader_a_test_states() {
 fn a_failure_hook_context_reads_the_node_at_its_path_or_the_root() {
     let application = Application::new("notes")
         .command(loomcli_core::Command::new("list").action(|_ctx: Context| async { Ok(()) }));
-    let graph = Arc::new(application.inspect().unwrap());
+    let graph = application.inspect().unwrap();
     let routed =
         failure_hook_context(FailureHookValues::new("notes", &["list"]).graph(graph.clone()));
     assert_eq!(routed.command.path, ["list"]);

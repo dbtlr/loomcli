@@ -16,7 +16,7 @@ use loomcli_core::{
     ReleaseFacts, SignalSource, SpawnRequest,
 };
 use loomcli_testing::MockProcess;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::watch;
 
 /// What a deaf call is: its exact words, the signals it received, and whether the run is sent
 /// `SIGTERM` shortly after it starts.
@@ -34,27 +34,50 @@ pub struct Deaf {
 
 /// A child that exits with 137 only when it is killed with `SIGKILL`.
 struct DeafChild {
-    killed: CancellationToken,
+    exit: watch::Sender<Option<ChildExit>>,
     kills: Arc<Mutex<Vec<KillSignal>>>,
 }
 
 impl ChildProcess for DeafChild {
     fn exited(&self) -> BoxFuture<'_, ChildExit> {
+        let mut exit = self.exit.subscribe();
         Box::pin(async move {
-            self.killed.cancelled().await;
-            ChildExit::Exited {
-                code: 137,
-                stdout: ChildOutput::default(),
-                stderr: ChildOutput::default(),
-            }
+            exit.wait_for(Option::is_some)
+                .await
+                .unwrap()
+                .clone()
+                .unwrap()
         })
     }
 
     fn kill(&self, signal: KillSignal) {
         self.kills.lock().unwrap().push(signal);
         if signal == KillSignal::Kill {
-            self.killed.cancel();
+            self.settle(ChildExit::Exited {
+                code: 137,
+                stdout: ChildOutput::default(),
+                stderr: ChildOutput::default(),
+            });
         }
+    }
+
+    fn abandon(&self) {
+        self.settle(ChildExit::Abandoned {
+            stdout: ChildOutput::default(),
+            stderr: ChildOutput::default(),
+        });
+    }
+}
+
+impl DeafChild {
+    fn settle(&self, answer: ChildExit) {
+        self.exit.send_if_modified(|exit| {
+            if exit.is_some() {
+                return false;
+            }
+            *exit = Some(answer);
+            true
+        });
     }
 }
 
@@ -132,7 +155,7 @@ impl ProcessHandle for Deaf {
             });
         }
         Child::new(DeafChild {
-            killed: CancellationToken::new(),
+            exit: watch::Sender::new(None),
             kills: Arc::clone(&self.deafness.kills),
         })
     }

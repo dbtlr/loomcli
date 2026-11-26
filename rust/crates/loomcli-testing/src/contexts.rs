@@ -17,9 +17,9 @@ use loomcli_core::__private::unit::{
 };
 use loomcli_core::{
     Application, Background, ChainOutcome, CommandGraph, CommandNode, Content, Context,
-    FailureFacts, FailureHookContext, InputProblem, InputValues, Inputs, IntoOutcome, InvokedBy,
-    Lifetime, LogDestination, LogEvent, MiddlewareContext, Next, ProcessHandle, Provider,
-    ProviderContext, SuppliedValue, ViewContext,
+    EnvironmentContext, FailureFacts, FailureHookContext, InputProblem, InputValues, Inputs,
+    IntoOutcome, InvokedBy, Lifetime, LogDestination, LogEvent, MiddlewareContext, Next,
+    ProcessHandle, Provider, ProviderContext, SuppliedValue, ViewContext,
 };
 
 use crate::{MockFields, mock_process};
@@ -29,7 +29,7 @@ use crate::{MockFields, mock_process};
 fn default_graph() -> Arc<CommandGraph> {
     let application = Application::new("app").action(|_ctx: Context| async { Ok(()) });
     match application.inspect() {
-        Ok(graph) => Arc::new(graph),
+        Ok(graph) => graph,
         // A root with an action and no declaration always builds.
         Err(fault) => unreachable!("the default graph builds: {}", fault.message()),
     }
@@ -67,6 +67,52 @@ where
     H: Fn(&LogEvent, &LogDestination) -> T + Send + Sync + 'static,
 {
     Arc::new(move |event, destination| hook(event, destination).into_outcome())
+}
+
+/// Supplies the process facts and observed log hooks for an environment hook's context.
+#[derive(Default)]
+#[must_use]
+pub struct EnvironmentValues {
+    process: Option<Arc<dyn ProcessHandle>>,
+    logs: Vec<UnitLogHook>,
+}
+
+impl EnvironmentValues {
+    /// Uses a fresh mock with an empty environment and no log observers.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Reads the working directory and environment from this handle and writes warnings to it.
+    pub fn process(mut self, process: Arc<dyn ProcessHandle>) -> Self {
+        self.process = Some(process);
+        self
+    }
+
+    /// Adds a hook that receives the environment hook's log events in call order.
+    pub fn on_log<T, H>(mut self, hook: H) -> Self
+    where
+        T: IntoOutcome,
+        H: Fn(&LogEvent, &LogDestination) -> T + Send + Sync + 'static,
+    {
+        self.logs.push(log_hook(hook));
+        self
+    }
+}
+
+/// Builds the context a test passes to one `on_environment` hook. The default mock has an empty
+/// environment and working directory `/loom-test`. Provide a mock to observe warnings on stderr.
+#[must_use]
+pub fn environment_context(values: EnvironmentValues) -> EnvironmentContext {
+    let run = UnitRun::new(
+        process_or_mock(values.process),
+        UnitLog {
+            application: "app".to_owned(),
+            path: Vec::new(),
+            hooks: values.logs,
+        },
+    );
+    unit::environment_context(&run)
 }
 
 /// The log a context built for `graph` at `path` publishes to `hooks`.

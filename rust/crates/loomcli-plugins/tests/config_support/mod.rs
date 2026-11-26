@@ -271,18 +271,26 @@ impl Validator for PathValue {
     type Output = String;
 
     fn validate(&self, input: &str, context: &ValidationContext) -> Result<String, Vec<Issue>> {
-        let mut resolved = PathBuf::new();
-        for component in context.host.cwd.join(input).components() {
-            match component {
-                std::path::Component::CurDir => {}
-                std::path::Component::ParentDir => {
-                    resolved.pop();
-                }
-                other => resolved.push(other.as_os_str()),
-            }
-        }
-        Ok(resolved.to_string_lossy().into_owned())
+        Ok(lexically_resolved(&context.host.cwd.join(input))
+            .to_string_lossy()
+            .into_owned())
     }
+}
+
+/// `path` with `.` dropped and each `..` taking off the component before it, without reading
+/// the disk, as the reference's `path.resolve` does.
+pub fn lexically_resolved(path: &Path) -> PathBuf {
+    let mut resolved = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                resolved.pop();
+            }
+            other => resolved.push(other.as_os_str()),
+        }
+    }
+    resolved
 }
 
 /// The help plugin's options, which the stand-in declares.
@@ -675,6 +683,7 @@ pub fn json_text(value: &Value) -> String {
 pub struct Run {
     pub argv: Vec<String>,
     pub cwd: PathBuf,
+    pub ceiling: PathBuf,
     /// The home folder, or `None` for one that is unset, empty, or relative.
     pub home: Option<PathBuf>,
     pub env: Vec<(String, String)>,
@@ -745,6 +754,7 @@ impl Run {
         let mut fields = MockFields::new()
             .argv(self.argv.iter().cloned())
             .cwd(&self.cwd)
+            .ceiling(&self.ceiling)
             .home(self.home.clone().unwrap_or_default());
         for (name, value) in &self.env {
             fields = fields.env(name, value);
@@ -825,7 +835,10 @@ impl Workspace {
             std::process::id(),
             COUNTER.fetch_add(1, Ordering::SeqCst)
         );
-        let root = std::env::temp_dir().join(unique);
+        // The lookup resolves `..` out of the paths it names, as the reference's `path.resolve`
+        // does, so the sandbox root is resolved the same way: a target directory such as
+        // `../.scratch/target` would otherwise leave `rust/..` in the expected messages.
+        let root = lexically_resolved(&Path::new(env!("CARGO_TARGET_TMPDIR")).join(unique));
         let project = root.join("project");
         let home = root.join("home");
         let elsewhere = root.join("elsewhere");
@@ -845,6 +858,7 @@ impl Workspace {
         Run {
             argv: Vec::new(),
             cwd: self.project.clone(),
+            ceiling: self.root.clone(),
             home: Some(self.home.clone()),
             env: Vec::new(),
             columns: None,

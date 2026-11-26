@@ -23,7 +23,8 @@ pub use crate::plugins::hooks::ReceivedReader;
 use crate::plugins::middleware::{OwnOptions, Request, Spellings, ViewSelection};
 use crate::plugins::provider::{ErasedValue, ProvidedValues, ProviderKey};
 use crate::plugins::{
-    ChainOutcome, FailureHookContext, Lifetime, MiddlewareContext, Next, Provider, ProviderContext,
+    ChainOutcome, EnvironmentContext, FailureHookContext, Lifetime, MiddlewareContext, Next,
+    Provider, ProviderContext,
 };
 use crate::signals::RunSignal;
 use crate::style::{Palette, RenderingPolicy};
@@ -111,6 +112,79 @@ impl UnitRun {
             run: Arc::clone(&self.state),
             plugin: plugin.map(Arc::from),
         }
+    }
+}
+
+/// The context one environment hook reads, over the test's captured process facts.
+#[must_use]
+pub fn environment_context(run: &UnitRun) -> EnvironmentContext {
+    EnvironmentContext {
+        cwd: run.state.host.cwd.clone(),
+        env: run.state.host.env.clone(),
+        log: run.log(None),
+        out: run.out(Channel::plain()),
+    }
+}
+
+/// The fixed starting value for the testing crate's log event builder.
+#[must_use]
+pub fn log_event() -> crate::LogEvent {
+    crate::LogEvent {
+        time: "2026-01-01T00:00:00.000Z".to_owned(),
+        level: crate::LogLevel::Info,
+        message: String::new(),
+        fields: serde_json::Map::new(),
+        application: crate::LogApplication {
+            name: "app".to_owned(),
+            version: "0.0.0".to_owned(),
+        },
+        run: "0".repeat(32),
+        path: Vec::new(),
+        plugin: None,
+        failure: None,
+        defect: None,
+    }
+}
+
+/// Replaces the event's fields with the test's copied log fields.
+pub fn set_log_fields(event: &mut crate::LogEvent, fields: crate::LogFields) {
+    event.fields = fields.0;
+}
+
+/// Adds defect facts the test stated to an event.
+pub fn set_log_defect(
+    event: &mut crate::LogEvent,
+    name: String,
+    message: String,
+    stack: Option<String>,
+) {
+    event.defect = Some(crate::LogDefect {
+        name,
+        message,
+        stack,
+    });
+}
+
+/// The fixed starting value for the testing crate's destination builder, with the mock's defaults.
+#[must_use]
+pub fn log_destination(home: std::path::PathBuf, platform: String) -> crate::LogDestination {
+    crate::LogDestination {
+        env: crate::Env::new(),
+        home,
+        platform,
+        stderr: None,
+    }
+}
+
+/// The fixed starting value for the testing crate's progress event builder.
+#[must_use]
+pub fn progress_event() -> crate::ProgressEvent {
+    crate::ProgressEvent {
+        id: 1,
+        label: String::new(),
+        state: crate::ProgressState::Updated,
+        completed: None,
+        total: None,
     }
 }
 

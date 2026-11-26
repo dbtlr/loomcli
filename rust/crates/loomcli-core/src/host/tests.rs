@@ -474,6 +474,7 @@ async fn host_spawn_starts_a_real_child_through_the_real_handle_in_the_captured_
             assert_eq!(stderr.bytes, b"");
         }
         ChildExit::Unstarted { error } => panic!("the child started: {error}"),
+        ChildExit::Abandoned { .. } => panic!("the child was not abandoned"),
     }
 }
 

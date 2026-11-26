@@ -46,7 +46,7 @@ const SUCCEEDED: i32 = 0;
 /// input, and its output written to the host's streams, so the child reads neither as a terminal,
 /// and the run's signal ending it. A child that exits with another code adds the `warn` event with
 /// `code` and `path`; one that cannot start writes the refresh's line to the host's stderr and
-/// adds the event with `error` and `path`. Either way it returns.
+/// adds the event with `error` and `path`. An abandoned child logs just `path`.
 pub async fn refresh_by_running(context: RefreshContext<'_>, refresh: &Refresh) {
     let RefreshContext {
         path,
@@ -87,6 +87,10 @@ pub async fn refresh_by_running(context: RefreshContext<'_>, refresh: &Refresh) 
                     .field("path", command.as_ref()),
             );
         }
+        ChildExit::Abandoned { .. } => log.warn(
+            refresh.warning,
+            LogFields::new().field("path", command.as_ref()),
+        ),
         // An exit core adds later is no failure the refresh can name.
         _ => {}
     }

@@ -60,6 +60,7 @@ mod the_sealed_defaults {
         assert_eq!(mock.argv(), Vec::<String>::new());
         assert_eq!(mock.env(), Env::new());
         assert_eq!(mock.cwd().unwrap(), PathBuf::from("/loom-test"));
+        assert_eq!(mock.ceiling().unwrap(), Some(PathBuf::from("/loom-test")));
         assert_eq!(mock.home(), PathBuf::from("/loom-test/home"));
         assert_eq!(mock.tmpdir(), PathBuf::from("/loom-test/tmp"));
         assert_eq!(mock.platform(), "linux");
@@ -436,6 +437,134 @@ mod child_programs {
             let child = spawned(&mock, "git", SpawnOptions::new().signal(signal.clone()));
             assert_eq!(ended(&child).await, "143 [] []");
         }
+    }
+
+    #[tokio::test]
+    async fn abandonment_discards_a_later_answer_to_inherited_and_custom_streams() {
+        for fails in [false, true] {
+            let release = Arc::new(tokio::sync::Notify::new());
+            let finished = Arc::new(tokio::sync::Notify::new());
+            let mock = mock_process(MockFields::new().script("git", {
+                let release = Arc::clone(&release);
+                let finished = Arc::clone(&finished);
+                move |_| {
+                    let release = Arc::clone(&release);
+                    let finished = Arc::clone(&finished);
+                    async move {
+                        release.notified().await;
+                        finished.notify_one();
+                        if fails {
+                            Err(io::Error::other("the script could not start"))
+                        } else {
+                            Ok(ProgramAnswer::new()
+                                .code(7)
+                                .stdout("late")
+                                .stderr("late error"))
+                        }
+                    }
+                }
+            }));
+            let custom = mock_process(MockFields::new());
+            let child = spawned(
+                &mock,
+                "git",
+                SpawnOptions::new()
+                    .stdout(ChildStream::Inherit)
+                    .stderr(ChildStream::Stream(custom.stderr())),
+            );
+            child.abandon();
+            child.abandon();
+            assert!(
+                matches!(child.exited().await, ChildExit::Abandoned { stdout, stderr }
+                if stdout.bytes.is_empty() && stderr.bytes.is_empty())
+            );
+            let signal = mock.calls()[0].signal.clone();
+            assert!(!signal.is_cancelled());
+            release.notify_one();
+            tokio::time::timeout(Duration::from_secs(5), finished.notified())
+                .await
+                .unwrap();
+            child.kill(KillSignal::Kill);
+            assert!(!signal.is_cancelled());
+            assert!(mock.transcript().is_empty());
+            assert!(custom.transcript().is_empty());
+            assert!(matches!(child.exited().await, ChildExit::Abandoned { .. }));
+        }
+    }
+
+    #[tokio::test]
+    async fn an_abandoned_script_can_still_observe_kill_or_spawn_cancellation() {
+        for cancel in [false, true] {
+            let answered = Arc::new(tokio::sync::Notify::new());
+            let mock = mock_process(MockFields::new().script("git", {
+                let answered = Arc::clone(&answered);
+                move |call| {
+                    let answered = Arc::clone(&answered);
+                    async move {
+                        call.signal.cancelled().await;
+                        answered.notify_one();
+                        Ok(ProgramAnswer::new().stdout("late"))
+                    }
+                }
+            }));
+            let signal = CancellationToken::new();
+            let child = spawned(
+                &mock,
+                "git",
+                SpawnOptions::new()
+                    .stdout(ChildStream::Inherit)
+                    .signal(signal.clone()),
+            );
+            child.abandon();
+            child.kill(KillSignal::Signal(ProcessSignal::Cont));
+            let child_signal = mock.calls()[0].signal.clone();
+            assert!(!child_signal.is_cancelled());
+            if cancel {
+                signal.cancel();
+            } else {
+                child.kill(KillSignal::Kill);
+            }
+            tokio::time::timeout(Duration::from_secs(5), answered.notified())
+                .await
+                .unwrap();
+            assert!(child_signal.is_cancelled());
+            assert!(matches!(child.exited().await, ChildExit::Abandoned { .. }));
+            assert!(mock.transcript().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn an_abandoned_script_that_yields_after_spawn_cancellation_still_finishes() {
+        let answered = Arc::new(tokio::sync::Notify::new());
+        let mock = mock_process(MockFields::new().script("git", {
+            let answered = Arc::clone(&answered);
+            move |call| {
+                let answered = Arc::clone(&answered);
+                async move {
+                    call.signal.cancelled().await;
+                    for _ in 0..3 {
+                        tokio::task::yield_now().await;
+                    }
+                    answered.notify_one();
+                    Ok(ProgramAnswer::new().stdout("late"))
+                }
+            }
+        }));
+        let signal = CancellationToken::new();
+        let child = spawned(
+            &mock,
+            "git",
+            SpawnOptions::new()
+                .stdout(ChildStream::Inherit)
+                .signal(signal.clone()),
+        );
+        child.abandon();
+        signal.cancel();
+        tokio::time::timeout(Duration::from_secs(5), answered.notified())
+            .await
+            .unwrap();
+        assert!(matches!(child.exited().await, ChildExit::Abandoned { .. }));
+        assert!(mock.transcript().is_empty());
     }
 
     #[tokio::test]
