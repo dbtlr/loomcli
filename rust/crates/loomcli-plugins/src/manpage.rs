@@ -115,12 +115,8 @@ pub fn manpage() -> Plugin {
 /// What the man page refresh runs and says.
 const REFRESH: Refresh = Refresh {
     words: &["manpage", "update"],
-    warning: "Man pages were not refreshed after the update.",
-    not_started: |path, name| {
-        format!(
-            "The man pages were not refreshed because {path} could not start. Run {name} manpage update.\n"
-        )
-    },
+    warning: messages::MAN_PAGES_REFRESH_FAILED,
+    not_started: messages::man_pages_not_refreshed,
 };
 
 /// An `after_replace` function for the self-update plugin: a page is fixed text and the replaced

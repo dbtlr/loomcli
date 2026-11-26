@@ -5,6 +5,8 @@ use loomcli_core::{
 };
 use serde_json::{Map, json};
 
+mod messages;
+
 use crate::PACKAGE_NAME;
 
 /// Accepts `dark` or `light` and publishes the closed set as its input schema. Anything else is
@@ -17,7 +19,7 @@ impl Validator for BackgroundInput {
     fn validate(&self, input: &str, _: &ValidationContext) -> Result<String, Vec<Issue>> {
         match input {
             "dark" | "light" => Ok(input.to_owned()),
-            _ => Err(vec![Issue::new("Supply dark or light.")]),
+            _ => Err(vec![Issue::new(messages::BACKGROUND_ISSUE)]),
         }
     }
 

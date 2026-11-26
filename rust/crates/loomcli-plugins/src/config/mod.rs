@@ -47,6 +47,8 @@ mod links;
 #[cfg(feature = "config")]
 mod lookup;
 #[cfg(feature = "config")]
+mod messages;
+#[cfg(feature = "config")]
 mod number;
 #[cfg(feature = "config")]
 mod pointer;

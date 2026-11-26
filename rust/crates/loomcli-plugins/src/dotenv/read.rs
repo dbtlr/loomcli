@@ -7,6 +7,7 @@ use std::path::Path;
 use loomcli_core::{EnvironmentAdditions, EnvironmentContext, Error};
 
 use super::expand::expand_value;
+use super::messages;
 use super::parse::{DotenvAssignment, parse_dotenv};
 
 /// The environment variable that names the mode. The reference reads `NODE_ENV`, and an operator
@@ -90,22 +91,14 @@ fn read_layer(
         FileText::Text(text) => text,
         FileText::Absent => return (BTreeMap::new(), Vec::new()),
         FileText::Unreadable => {
-            let warning = format!(
-                "Skipped {file}: the file could not be read. Make it readable, or remove it."
-            );
-            return (BTreeMap::new(), vec![warning]);
+            return (BTreeMap::new(), vec![messages::file_unreadable(file)]);
         }
     };
     let parsed = parse_dotenv(&text, imports);
     let warnings = parsed
         .malformed
         .iter()
-        .map(|malformed| {
-            format!(
-                "Skipped {} on line {} of {file}: the line is not a valid assignment. Correct the line, or remove it.",
-                malformed.name, malformed.line
-            )
-        })
+        .map(|malformed| messages::line_malformed(&malformed.name, malformed.line, file))
         .collect();
     (expand_file(&parsed.assignments, outer), warnings)
 }

@@ -6,7 +6,7 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-use loomcli_core::{Error, InputError, InputIdentity, InputKind, InputProblem, Issue};
+use loomcli_core::{Error, FatalError, InputError, InputIdentity, InputKind, InputProblem, Issue};
 
 use super::Declared;
 use super::global::ChildRun;
@@ -134,7 +134,7 @@ fn guard_global(
 ) -> Result<(), Error> {
     for target in selected_targets(agent) {
         if let Some(clash) = clash_of(run, root, target, names)? {
-            return Err(messages::never_global(run.name, &clash).into());
+            return Err(FatalError::new(messages::never_global(run.name, &clash)).into());
         }
     }
     Ok(())

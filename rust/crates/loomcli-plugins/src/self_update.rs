@@ -74,12 +74,12 @@ use std::sync::Arc;
 
 use loomcli_core::{
     Activation, AnyPlugin, BoxFuture, Command, Context, DeclarationError, DiagnosticParts,
-    DiagnosticRule, Error, FailureFacts, Finding, Host, InputError, InputIdentity, InputKind,
-    InputProblem, Inputs, Issue, Literal, Log, Plugin, RunSignal, diagnostic_rule,
+    DiagnosticRule, Error, FailureFacts, FatalError, Finding, Host, InputError, InputIdentity,
+    InputKind, InputProblem, Inputs, Issue, Literal, Log, Plugin, RunSignal, diagnostic_rule,
 };
 use loomcli_validators::create_validator;
 
-use self::request::{Client, Stop};
+use self::request::{Client, RequestError, Stop};
 use self::version::{is_channel_name, version_of_argument};
 use crate::PACKAGE_NAME;
 pub use crate::installation::RefreshContext;
@@ -411,7 +411,12 @@ async fn run(
         }
         Err(Stop::Request(failure)) => {
             let named = named.as_ref().map(|version| version.text.as_str());
-            Err(messages::request_failed(&name, failure, named).into())
+            let sentence = messages::request_failed(&name, &failure, named);
+            Err(match failure {
+                RequestError::NoResponse { cause, .. } => FatalError::with_cause(sentence, cause),
+                _ => FatalError::new(sentence),
+            }
+            .into())
         }
     }
 }

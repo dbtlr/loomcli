@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use loomcli_core::Error;
+use loomcli_core::{Error, FatalError};
 
-use super::messages::{Verb, lines, refusals};
+use super::messages::{self, Verb};
 use super::run::{
     ChildRun, LineReport, ShellRecord, has_plugin_file, read_shell, refuse_windows, remove_notice,
     report_lines, shell_record, write_notices,
@@ -42,12 +42,12 @@ async fn report_scripts(
 ) -> Result<(), Error> {
     for file in &recorded.files {
         if outcome.removed.contains(&file.path) {
-            run.info(&lines::removed(&file.path)).await?;
+            run.info(&messages::removed_file(&file.path)).await?;
         } else if outcome.kept.contains(&file.path) {
-            run.warn(&lines::left_in_place(&run.name, &file.path))
+            run.warn(&messages::script_left_in_place(&run.name, &file.path))
                 .await?;
         } else {
-            run.info(&lines::gone(&file.path)).await?;
+            run.info(&messages::script_gone(&file.path)).await?;
         }
     }
     Ok(())
@@ -69,7 +69,12 @@ async fn remove_shell(run: &ChildRun, record: &Path, planned: &Planned) -> Resul
             let path = refused
                 .first()
                 .map_or_else(|| record.to_path_buf(), |first| first.path.clone());
-            return Err(refusals::record(&run.name, &path, Verb::Uninstall).into());
+            return Err(FatalError::new(messages::record_unreadable(
+                &run.name,
+                &path,
+                Verb::Uninstall,
+            ))
+            .into());
         }
     };
     report_scripts(run, recorded, &outcome).await?;
@@ -167,7 +172,8 @@ pub(super) async fn uninstall_shells(run: &ChildRun, argument: Option<Shell>) ->
         remove_shell(run, &record, entry).await?;
     }
     if nothing {
-        run.success(&lines::none_to_remove(&run.name)).await?;
+        run.success(&messages::no_completion_to_remove(&run.name))
+            .await?;
     }
     Ok(())
 }

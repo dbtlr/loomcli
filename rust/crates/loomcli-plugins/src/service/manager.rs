@@ -10,8 +10,8 @@ use std::task::Poll;
 use std::time::Duration;
 
 use loomcli_core::{
-    Child, ChildExit, ChildStream, Env, Error, Host, KillSignal, Registration, RunSignal,
-    ShutdownEvent, SpawnOptions,
+    Child, ChildExit, ChildStream, Env, Error, FatalError, Host, KillSignal, Registration,
+    RunSignal, ShutdownEvent, SpawnOptions,
 };
 
 use super::messages;
@@ -133,12 +133,16 @@ impl Manager<'_> {
         accepted: &[i32],
     ) -> Result<(i32, String), Error> {
         match self.run(call).await? {
-            Answer::Missing(error) => Err(messages::missing(self.name, call.program, &error)),
+            Answer::Missing(error) => Err(FatalError::with_cause(
+                messages::missing_sentence(self.name, call.program),
+                Error::from(error),
+            )
+            .into()),
             Answer::Exited { code, stdout } => {
                 if accepted.contains(&code) {
                     Ok((code, stdout))
                 } else {
-                    Err(messages::exited(&call.text(), code, &call.report).into())
+                    Err(FatalError::new(messages::exited(&call.text(), code, &call.report)).into())
                 }
             }
         }

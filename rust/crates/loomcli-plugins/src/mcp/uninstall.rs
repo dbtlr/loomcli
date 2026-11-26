@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use loomcli_core::Error;
+use loomcli_core::{Error, FatalError};
 
 use super::messages::{self, Child};
 use super::registration::{Agent, ChildRun, selected_agents};
@@ -73,7 +73,9 @@ pub(super) async fn uninstall_registrations(
         }
     }
     if !unstarted.is_empty() {
-        return Err(messages::uninstall_incomplete(&run.names(), &unstarted));
+        return Err(
+            FatalError::new(messages::uninstall_incomplete(&run.names(), &unstarted)).into(),
+        );
     }
     Ok(())
 }

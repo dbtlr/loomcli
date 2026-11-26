@@ -77,33 +77,6 @@ impl Clause {
             Clause::NotYamlMapping => "does not hold a YAML mapping",
         }
     }
-
-    /// What the operator does about the file `--config` named.
-    pub(crate) fn named_fix(self) -> &'static str {
-        match self {
-            Clause::DoesNotExist => "Supply the path of an existing file.",
-            Clause::CouldNotBeRead => "Supply a file this process can read.",
-            Clause::NotJsonObject => "Write its settings as one JSON object.",
-            Clause::NotYamlMapping => "Write its settings as one YAML mapping.",
-            Clause::InvalidJson | Clause::InvalidToml | Clause::InvalidYaml => {
-                "Correct its syntax, or supply another file."
-            }
-        }
-    }
-
-    /// What the operator does about a discovered file, or `None` for a clause a discovered file is
-    /// silent about.
-    pub(crate) fn discovered_fix(self) -> Option<&'static str> {
-        match self {
-            Clause::DoesNotExist => None,
-            Clause::CouldNotBeRead => Some("Make it readable, or remove it."),
-            Clause::NotJsonObject => Some("Write its settings as one JSON object, or remove it."),
-            Clause::NotYamlMapping => Some("Write its settings as one YAML mapping, or remove it."),
-            Clause::InvalidJson | Clause::InvalidToml | Clause::InvalidYaml => {
-                Some("Correct its syntax, or remove it.")
-            }
-        }
-    }
 }
 
 /// What reading one file found: its top-level object, or the clause that says why it is skipped,

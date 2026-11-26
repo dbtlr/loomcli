@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use loomcli_core::Error;
 
-use super::messages::{Verb, lines};
+use super::messages::{self, Verb};
 use super::run::{
     ChildRun, DIRECTORY_MODE, ScriptState, ShellRecord, Wanted, Written, installed_or_failure,
     read_shell, record_name, refuse_in_the_way, refuse_windows, report_written, script_file,
@@ -123,14 +123,14 @@ async fn update_shell(run: &ChildRun, record: &Path, planned: &Planned) -> Resul
     let content = script_content(recorded.shell, &run.name);
     let state = script_state(recorded, script, &content)?;
     if state == ScriptState::Steady && steps.iter().all(|step| step.steady) {
-        return run.info(&lines::unchanged(script)).await;
+        return run.info(&messages::script_unchanged(script)).await;
     }
     let outcome = rewrite(run, record, planned, &content)?;
     if state == ScriptState::Changed {
-        run.success(&lines::updated(recorded.shell.name(), script))
+        run.success(&messages::updated_script(recorded.shell.name(), script))
             .await?;
     } else {
-        run.info(&lines::unchanged(script)).await?;
+        run.info(&messages::script_unchanged(script)).await?;
     }
     let notices: Vec<_> = steps
         .iter()
@@ -170,7 +170,9 @@ pub(super) async fn update_shells(run: &ChildRun) -> Result<(), Error> {
     let record = record_directory(&run.name, &run.host)?;
     let found = recorded_shells(run, &record)?;
     if found.is_empty() {
-        return run.success(&lines::none_to_update(&run.name)).await;
+        return run
+            .success(&messages::no_completion_to_update(&run.name))
+            .await;
     }
     let wanted: Vec<Wanted<'_>> = found
         .iter()

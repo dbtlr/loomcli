@@ -18,6 +18,7 @@ use loomcli_mcp::{
 use serde_json::{Map, Value, json};
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, ReadBuf};
 
+use super::messages;
 use super::progress::progress_relay;
 use super::tools::{
     Property, ToolEntry, excluded_names, listed_tool, properties_of, single_line, tool_entries,
@@ -105,10 +106,7 @@ struct Tools {
 fn unlisted_key(served: &Served, received: &Map<String, Value>) -> Option<ToolResult> {
     let unlisted = received.keys().find(|key| !served.listed.contains(*key))?;
     Some(ToolResult {
-        messages: format!(
-            "Tool \"{}\" takes no argument \"{unlisted}\". Use a property its input schema lists.",
-            served.entry.name
-        ),
+        messages: messages::unlisted_argument(&served.entry.name, unlisted),
         is_error: true,
         ..ToolResult::default()
     })
@@ -172,10 +170,7 @@ impl Tools {
             Some(_) => {
                 return Err(ProtocolError::new(
                     error_codes::INVALID_PARAMS,
-                    format!(
-                        "Tool \"{}\" arguments must be an object. Supply a JSON object of named inputs.",
-                        served.entry.name
-                    ),
+                    messages::arguments_not_object(&served.entry.name),
                 ));
             }
         };
@@ -221,10 +216,7 @@ impl ToolSource for Tools {
         let Some(served) = self.served.get(&call.name) else {
             return Err(ProtocolError::new(
                 error_codes::INVALID_PARAMS,
-                format!(
-                    "Unknown tool \"{}\". Call tools/list for the tool names.",
-                    call.name
-                ),
+                messages::unknown_tool(&call.name),
             ));
         };
         self.call(served, call).await

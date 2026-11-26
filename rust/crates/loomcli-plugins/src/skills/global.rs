@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use loomcli_core::{Error, Host, Out, RunSignal};
+use loomcli_core::{Error, FatalError, Host, Out, RunSignal};
 
 use super::Declared;
 use super::load::{LoadedSkill, load_skills};
@@ -94,7 +94,7 @@ fn recorded_by(
             let file = PluginRecord::new(record, record_name(place.target));
             match file.read()? {
                 RecordedRead::Refused(refused) => {
-                    Err(messages::record(run.name, &refused.path, verb).into())
+                    Err(FatalError::new(messages::record(run.name, &refused.path, verb)).into())
                 }
                 RecordedRead::Read { folders, .. } => Ok(Recorded {
                     folders: folders.into_iter().map(|folder| folder.path).collect(),
@@ -157,10 +157,10 @@ fn failure_of(run: &ChildRun<'_>, verb: WritingVerb, refused: &[Refusal]) -> Err
             first.reason,
             RefusalReason::Damaged | RefusalReason::UnknownFormat
         ) {
-            return messages::record(run.name, &first.path, "install").into();
+            return FatalError::new(messages::record(run.name, &first.path, "install")).into();
         }
     }
-    messages::in_the_way(run.name, verb).into()
+    FatalError::new(messages::in_the_way(run.name, verb)).into()
 }
 
 /// What `install` and `update` read from the command line.
@@ -262,7 +262,7 @@ async fn refuse_unrecorded(
     if refused.is_empty() {
         Ok(())
     } else {
-        Err(messages::in_the_way(run.name, facts.verb).into())
+        Err(FatalError::new(messages::in_the_way(run.name, facts.verb)).into())
     }
 }
 
@@ -292,7 +292,7 @@ async fn remove_target(run: &ChildRun<'_>, record: &Path, entry: &Recorded) -> R
     match file.uninstall(&[], run.signal)? {
         UninstallOutcome::Refused(refused) => {
             let path = refused.first().map_or(record, |refusal| &refusal.path);
-            Err(messages::record(run.name, path, "uninstall").into())
+            Err(FatalError::new(messages::record(run.name, path, "uninstall")).into())
         }
         UninstallOutcome::Uninstalled(done) => {
             for folder in &entry.folders {

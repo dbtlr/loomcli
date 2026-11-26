@@ -1,11 +1,8 @@
-//! The sentences the completion Commands write and the failures they report, pinned by the
-//! reference.
+//! The sentences of the completion plugin.
 
 use std::path::Path;
 
-use loomcli_core::{
-    FatalError, InputIdentity, InputKind, InputProblem, escape_control_characters, nowrap,
-};
+use loomcli_core::{escape_control_characters, nowrap};
 
 /// Every path, name, and answer a sentence repeats, escaped as a failure message quotes text.
 fn shown(text: &str) -> String {
@@ -55,177 +52,173 @@ impl Verb {
     }
 }
 
-/// The failures a child reports, which exit 1 except `unknown_shell`.
-pub(super) mod refusals {
-    use super::*;
-
-    pub fn in_the_way(name: &str, verb: Verb, shell: &str) -> FatalError {
-        FatalError::new(format!(
-            "{n} completion {v} changed nothing, because files it did not install are in the way. Remove them, then run {n} completion install {shell} again.",
-            n = shown(name),
-            v = verb.word(),
-        ))
-    }
-
-    pub fn not_a_file(name: &str, startup: &Path) -> FatalError {
-        FatalError::new(format!(
-            "{} is not a file, so {} cannot add its startup line. Remove it, then run {} completion install again.",
-            shown_path(startup),
-            shown(name),
-            shown(name),
-        ))
-    }
-
-    pub fn not_on_windows(name: &str, printer: &str) -> FatalError {
-        FatalError::new(format!(
-            "{n} completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with {n} completion {printer} and load it yourself.",
-            n = shown(name),
-        ))
-    }
-
-    pub fn profile(name: &str, shell: &str, fault: &ProfileFault) -> FatalError {
-        FatalError::new(format!(
-            "{} cannot find the profile of {shell}, because {}",
-            shown(name),
-            profile_fault(shell, fault)
-        ))
-    }
-
-    pub fn record(name: &str, record: &Path, verb: Verb) -> FatalError {
-        FatalError::new(format!(
-            "{} cannot be read, so {n} will not change the files and line it lists. Remove it, the files it lists, and the line it added, then run {n} completion {v} again.",
-            shown_path(record),
-            n = shown(name),
-            v = verb.word(),
-        ))
-    }
-
-    pub fn unknown_shell(name: &str, login: Option<&str>) -> loomcli_core::InputError {
-        let value = login.map_or_else(|| "(unset)".to_owned(), shown);
-        loomcli_core::InputError::new(
-            format!(
-                "{n} cannot tell your shell from SHELL ({value}). Name it: {n} completion install bash, zsh, fish, or pwsh.",
-                n = shown(name),
-            ),
-            vec![InputProblem::Missing {
-                input: InputIdentity::new(false, InputKind::Argument, "shell"),
-                spelling: "shell".to_owned(),
-            }],
-        )
-    }
+pub(super) fn scripts_in_the_way(name: &str, verb: Verb, shell: &str) -> String {
+    format!(
+        "{n} completion {v} changed nothing, because files it did not install are in the way. Remove them, then run {n} completion install {shell} again.",
+        n = shown(name),
+        v = verb.word(),
+    )
 }
 
-/// The lines each child writes about its work.
-pub(super) mod lines {
-    use super::*;
-
-    pub fn add_in_place(startup: &Path) -> String {
-        format!("Add this line to {} in its place:", shown_path(startup))
-    }
-
-    pub fn add_yourself(name: &str, startup: &Path) -> String {
-        format!(
-            "{} cannot change {}, so add this line to it yourself:",
-            shown(name),
-            shown_path(startup)
-        )
-    }
-
-    pub fn added(startup: &Path) -> String {
-        format!("Added a line to {} that loads it.", shown_path(startup))
-    }
-
-    pub fn already_loads(startup: &Path) -> String {
-        format!("{} already loads it.", shown_path(startup))
-    }
-
-    pub fn changed(name: &str, script: &Path) -> String {
-        format!(
-            "{} changed since {} completion install wrote it.",
-            shown_path(script),
-            shown(name)
-        )
-    }
-
-    pub fn gone(script: &Path) -> String {
-        format!("{} was already gone.", shown_path(script))
-    }
-
-    pub fn installed(shell: &str, script: &Path) -> String {
-        format!(
-            "Installed the {shell} completion script in {}.",
-            shown_path(script)
-        )
-    }
-
-    pub fn left_in_place(name: &str, script: &Path) -> String {
-        format!(
-            "{} changed since {} completion install wrote it, so it was left in place.",
-            shown_path(script),
-            shown(name)
-        )
-    }
-
-    pub fn no_longer_holds(name: &str, startup: &Path) -> String {
-        format!(
-            "{} no longer holds the line {} completion install added, so it was left as it is.",
-            shown_path(startup),
-            shown(name)
-        )
-    }
-
-    pub fn none_to_remove(name: &str) -> String {
-        format!(
-            "{} has no completion installed, so there is nothing to remove.",
-            shown(name)
-        )
-    }
-
-    pub fn none_to_update(name: &str) -> String {
-        format!(
-            "{n} has no completion installed, so there is nothing to update. Run {n} completion install to install it.",
-            n = shown(name)
-        )
-    }
-
-    pub fn not_installed(name: &str, script: &Path) -> String {
-        format!(
-            "{} was not installed by {} completion install.",
-            shown_path(script),
-            shown(name)
-        )
-    }
-
-    pub const OPEN_SHELL: &str = "Open a new shell to use it.";
-
-    pub fn remove_yourself(name: &str, startup: &Path) -> String {
-        format!(
-            "{} cannot change {}, so remove this line from it yourself:",
-            shown(name),
-            shown_path(startup)
-        )
-    }
-
-    pub fn removed(path: &Path) -> String {
-        format!("Removed {}.", shown_path(path))
-    }
-
-    pub fn removed_line(startup: &Path) -> String {
-        format!("Removed the line from {}.", shown_path(startup))
-    }
-
-    pub fn unchanged(script: &Path) -> String {
-        format!("{} is unchanged.", shown_path(script))
-    }
-
-    pub fn updated(shell: &str, script: &Path) -> String {
-        format!(
-            "Updated the {shell} completion script in {}.",
-            shown_path(script)
-        )
-    }
-
-    pub fn updated_line(startup: &Path) -> String {
-        format!("Updated the line in {}.", shown_path(startup))
-    }
+pub(super) fn startup_not_a_file(name: &str, startup: &Path) -> String {
+    format!(
+        "{} is not a file, so {} cannot add its startup line. Remove it, then run {} completion install again.",
+        shown_path(startup),
+        shown(name),
+        shown(name),
+    )
 }
+
+pub(super) fn installs_not_on_windows(name: &str, printer: &str) -> String {
+    format!(
+        "{n} completion installs bash, zsh, fish, and pwsh completion on Linux and macOS. Print the script with {n} completion {printer} and load it yourself.",
+        n = shown(name),
+    )
+}
+
+pub(super) fn profile_not_found(name: &str, shell: &str, fault: &ProfileFault) -> String {
+    format!(
+        "{} cannot find the profile of {shell}, because {}",
+        shown(name),
+        profile_fault(shell, fault)
+    )
+}
+
+pub(super) fn record_unreadable(name: &str, record: &Path, verb: Verb) -> String {
+    format!(
+        "{} cannot be read, so {n} will not change the files and line it lists. Remove it, the files it lists, and the line it added, then run {n} completion {v} again.",
+        shown_path(record),
+        n = shown(name),
+        v = verb.word(),
+    )
+}
+
+pub(super) fn shell_unknown(name: &str, login: Option<&str>) -> String {
+    let value = login.map_or_else(|| "(unset)".to_owned(), shown);
+    format!(
+        "{n} cannot tell your shell from SHELL ({value}). Name it: {n} completion install bash, zsh, fish, or pwsh.",
+        n = shown(name),
+    )
+}
+
+pub(super) fn add_line_in_place(startup: &Path) -> String {
+    format!("Add this line to {} in its place:", shown_path(startup))
+}
+
+pub(super) fn add_line_yourself(name: &str, startup: &Path) -> String {
+    format!(
+        "{} cannot change {}, so add this line to it yourself:",
+        shown(name),
+        shown_path(startup)
+    )
+}
+
+pub(super) fn added_line(startup: &Path) -> String {
+    format!("Added a line to {} that loads it.", shown_path(startup))
+}
+
+pub(super) fn already_loads(startup: &Path) -> String {
+    format!("{} already loads it.", shown_path(startup))
+}
+
+pub(super) fn script_changed(name: &str, script: &Path) -> String {
+    format!(
+        "{} changed since {} completion install wrote it.",
+        shown_path(script),
+        shown(name)
+    )
+}
+
+pub(super) fn script_gone(script: &Path) -> String {
+    format!("{} was already gone.", shown_path(script))
+}
+
+pub(super) fn installed_script(shell: &str, script: &Path) -> String {
+    format!(
+        "Installed the {shell} completion script in {}.",
+        shown_path(script)
+    )
+}
+
+pub(super) fn script_left_in_place(name: &str, script: &Path) -> String {
+    format!(
+        "{} changed since {} completion install wrote it, so it was left in place.",
+        shown_path(script),
+        shown(name)
+    )
+}
+
+pub(super) fn line_no_longer_held(name: &str, startup: &Path) -> String {
+    format!(
+        "{} no longer holds the line {} completion install added, so it was left as it is.",
+        shown_path(startup),
+        shown(name)
+    )
+}
+
+pub(super) fn no_completion_to_remove(name: &str) -> String {
+    format!(
+        "{} has no completion installed, so there is nothing to remove.",
+        shown(name)
+    )
+}
+
+pub(super) fn no_completion_to_update(name: &str) -> String {
+    format!(
+        "{n} has no completion installed, so there is nothing to update. Run {n} completion install to install it.",
+        n = shown(name)
+    )
+}
+
+pub(super) fn script_not_installed(name: &str, script: &Path) -> String {
+    format!(
+        "{} was not installed by {} completion install.",
+        shown_path(script),
+        shown(name)
+    )
+}
+
+pub(super) const OPEN_NEW_SHELL: &str = "Open a new shell to use it.";
+
+pub(super) fn remove_line_yourself(name: &str, startup: &Path) -> String {
+    format!(
+        "{} cannot change {}, so remove this line from it yourself:",
+        shown(name),
+        shown_path(startup)
+    )
+}
+
+pub(super) fn removed_file(path: &Path) -> String {
+    format!("Removed {}.", shown_path(path))
+}
+
+pub(super) fn removed_line(startup: &Path) -> String {
+    format!("Removed the line from {}.", shown_path(startup))
+}
+
+pub(super) fn script_unchanged(script: &Path) -> String {
+    format!("{} is unchanged.", shown_path(script))
+}
+
+pub(super) fn updated_script(shell: &str, script: &Path) -> String {
+    format!(
+        "Updated the {shell} completion script in {}.",
+        shown_path(script)
+    )
+}
+
+pub(super) fn updated_line(startup: &Path) -> String {
+    format!("Updated the line in {}.", shown_path(startup))
+}
+
+/// The stderr line of a refresh whose binary could not start, ending with a line feed.
+pub(super) fn completion_not_refreshed(path: &str, name: &str) -> String {
+    format!(
+        "Completion was not refreshed because {} could not start. Run {} completion update.\n",
+        shown(path),
+        shown(name)
+    )
+}
+
+/// The `warn` log event of a refresh whose child failed or could not start.
+pub(super) const COMPLETION_REFRESH_FAILED: &str = "Completion was not refreshed after the update.";

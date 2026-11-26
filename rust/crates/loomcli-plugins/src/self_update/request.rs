@@ -120,7 +120,9 @@ fn cancellation(signal: &RunSignal) -> Stop {
     match signal.throw_if_cancelled() {
         Err(echo) => Stop::Failed(echo),
         // The signal resolved `cancelled`, so it reads cancelled; this arm is unreachable.
-        Ok(()) => Stop::Failed(Error::from(io::Error::other("The run was cancelled."))),
+        Ok(()) => Stop::Failed(Error::from(io::Error::other(
+            super::messages::RUN_CANCELLED,
+        ))),
     }
 }
 

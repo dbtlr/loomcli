@@ -20,6 +20,8 @@ mod details;
 pub mod extension;
 #[cfg(feature = "help-views")]
 mod layout;
+#[cfg(feature = "help")]
+mod messages;
 #[cfg(feature = "help-views")]
 pub(crate) mod page;
 #[cfg(feature = "help")]
@@ -168,7 +170,7 @@ mod plugin {
             .chain(context.path.iter().map(String::as_str))
             .chain(std::iter::once("--help"))
             .collect();
-        Some(format!("Run \"{}\" to see the usage.", command.join(" ")))
+        Some(super::messages::usage_hint(&command))
     }
 
     /// The canonical names of the children an operator may be pointed at, in authoring order.

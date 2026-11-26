@@ -3,6 +3,8 @@
 use loomcli_core::{InputSchema, Issue, ValidationContext, Validator, with_schema_dialect};
 use serde_json::{Map, json};
 
+use super::messages;
+
 /// The unadvertised alias `--format` accepts for `jsonl`, unless a record names it directly.
 const NDJSON: &str = "ndjson";
 
@@ -33,10 +35,7 @@ impl Validator for FormatName {
         };
         match self.names.iter().find(|each| each.as_str() == name) {
             Some(found) => Ok(found.clone()),
-            None => Err(vec![Issue::new(format!(
-                "Supply one of {}.",
-                self.names.join(", ")
-            ))]),
+            None => Err(vec![Issue::new(messages::format_issue(&self.names))]),
         }
     }
 

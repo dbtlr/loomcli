@@ -11,7 +11,7 @@ use loomcli_core::Error;
 use rustix::fs::{Access, access};
 use rustix::io::Errno;
 
-use super::messages::lines;
+use super::messages;
 use super::paths::dirname;
 use super::run::{ChildRun, Notice, remove_notice};
 use crate::installation::{InstalledLine, StartupFileState, exists, inspect_startup_file};
@@ -219,9 +219,9 @@ pub(super) fn place_line(
         });
     }
     let sentence = if notices.is_empty() {
-        lines::add_yourself(&run.name, path)
+        messages::add_line_yourself(&run.name, path)
     } else {
-        lines::add_in_place(path)
+        messages::add_line_in_place(path)
     };
     notices.push(Notice {
         sentence,

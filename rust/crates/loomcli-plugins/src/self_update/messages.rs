@@ -1,15 +1,11 @@
-//! Every sentence the self-update Command and the update notices write, as the reference pins them.
-//! Each path, URL, and version a sentence repeats passes through the control-character escape, and
-//! a path or URL is kept whole when the message wraps.
+//! The sentences of the self-update plugin.
 
-use std::io;
-
-use loomcli_core::{Error, FatalError, escape_control_characters, nowrap};
+use loomcli_core::{escape_control_characters, nowrap};
 
 use super::request::{NOT_FOUND, RequestError};
 
 /// A value a sentence repeats, escaped as a failure message quotes text.
-pub(crate) fn shown(text: &str) -> String {
+fn shown(text: &str) -> String {
     escape_control_characters(text)
 }
 
@@ -18,89 +14,87 @@ fn shown_place(place: &str) -> String {
     nowrap(&shown(place))
 }
 
-/// A failure with no cause.
-fn fatal(sentence: String) -> FatalError {
-    FatalError::new(sentence)
-}
-
-/// A failure that keeps the runtime's error as its cause, never printed.
-fn fatal_with(sentence: String, cause: impl Into<Error>) -> FatalError {
-    FatalError::with_cause(sentence, cause)
-}
-
-/// `<name> was not built as a release binary, ...`
-pub(crate) fn not_built(name: &str) -> FatalError {
-    fatal(format!(
-        "{name} was not built as a release binary, so it cannot update itself. Update it the way you installed it."
-    ))
+/// The sentence of a binary that was not built as a release binary.
+pub(super) fn not_built(name: &str) -> String {
+    format!(
+        "{} was not built as a release binary, so it cannot update itself. Update it the way you installed it.",
+        shown(name)
+    )
 }
 
 /// The installation record's directory cannot be resolved because of `variable`.
-pub(crate) fn record_unresolved(name: &str, variable: &str) -> FatalError {
-    fatal(format!(
-        "{name} cannot find its installation record because {variable} is not an absolute path. Set {variable} to an absolute path, then run self-update again."
-    ))
+pub(super) fn record_unresolved(name: &str, variable: &str) -> String {
+    let variable = shown(variable);
+    format!(
+        "{} cannot find its installation record because {variable} is not an absolute path. Set {variable} to an absolute path, then run self-update again.",
+        shown(name)
+    )
 }
 
 /// The cache directory cannot be resolved because of `variable`.
-pub(crate) fn cache_unresolved(name: &str, variable: &str) -> FatalError {
-    fatal(format!(
-        "{name} cannot find its cache directory because {variable} is not an absolute path. Set {variable} to an absolute path."
-    ))
+pub(super) fn cache_unresolved(name: &str, variable: &str) -> String {
+    let variable = shown(variable);
+    format!(
+        "{} cannot find its cache directory because {variable} is not an absolute path. Set {variable} to an absolute path.",
+        shown(name)
+    )
 }
 
 /// No installation, or one another installer owns.
-pub(crate) fn other_installer(name: &str) -> FatalError {
-    fatal(format!(
-        "{name} was installed some other way, so self-update cannot replace it. Update it the way you installed it."
-    ))
+pub(super) fn other_installer(name: &str) -> String {
+    format!(
+        "{} was installed some other way, so self-update cannot replace it. Update it the way you installed it.",
+        shown(name)
+    )
 }
 
 /// Nothing at the recorded path, or something other than a regular file or a symbolic link.
-pub(crate) fn missing(name: &str, path: &str) -> FatalError {
-    fatal(format!(
-        "{name} cannot find its binary at {}. Install it again with install.sh.",
+pub(super) fn missing(name: &str, path: &str) -> String {
+    format!(
+        "{} cannot find its binary at {}. Install it again with install.sh.",
+        shown(name),
         shown_place(path)
-    ))
+    )
 }
 
 /// A symbolic link at the recorded path.
-pub(crate) fn link(name: &str, path: &str) -> FatalError {
-    fatal(format!(
-        "{name} at {} is a symbolic link, so self-update will not replace what it points to. Install it again with install.sh.",
+pub(super) fn link(name: &str, path: &str) -> String {
+    format!(
+        "{} at {} is a symbolic link, so self-update will not replace what it points to. Install it again with install.sh.",
+        shown(name),
         shown_place(path)
-    ))
+    )
 }
 
 /// A binary whose digest changed since it was recorded.
-pub(crate) fn changed(name: &str, path: &str) -> FatalError {
-    fatal(format!(
-        "{name} at {} changed since it was installed, so self-update will not replace it. Install it again with install.sh.",
+pub(super) fn changed(name: &str, path: &str) -> String {
+    format!(
+        "{} at {} changed since it was installed, so self-update will not replace it. Install it again with install.sh.",
+        shown(name),
         shown_place(path)
-    ))
+    )
 }
 
 /// A directory the process cannot write to.
-pub(crate) fn unwritable(name: &str, directory: &str, cause: io::Error) -> FatalError {
-    fatal_with(
-        format!(
-            "{name} cannot write to {}. Run self-update as the user who installed {name}.",
-            shown_place(directory)
-        ),
-        cause,
+pub(super) fn unwritable(name: &str, directory: &str) -> String {
+    format!(
+        "{name} cannot write to {}. Run self-update as the user who installed {name}.",
+        shown_place(directory),
+        name = shown(name)
     )
 }
 
 /// The sentence for a request that failed, with the correction a named version's `404` reads.
-pub(crate) fn request_failed(name: &str, failure: RequestError, named: Option<&str>) -> FatalError {
+pub(super) fn request_failed(name: &str, failure: &RequestError, named: Option<&str>) -> String {
+    let name = shown(name);
     let url = shown_place(failure.url());
     match failure {
-        RequestError::Insecure { .. } => fatal(format!(
+        RequestError::Insecure { .. } => format!(
             "{name} was redirected away from HTTPS while downloading {url}. Run self-update again later."
-        )),
-        RequestError::TooMany { .. } => fatal(format!(
+        ),
+        RequestError::TooMany { .. } => format!(
             "{name} was redirected too many times while downloading {url}. Run self-update again later."
-        )),
+        ),
         RequestError::Status { status, .. } => {
             let correction = match (named, status) {
                 (Some(named), Some(NOT_FOUND)) => format!(
@@ -110,85 +104,165 @@ pub(crate) fn request_failed(name: &str, failure: RequestError, named: Option<&s
                 _ => "Run self-update again later.".to_owned(),
             };
             let status = status.map_or_else(|| "no response".to_owned(), |code| code.to_string());
-            fatal(format!(
-                "{name} could not download {url} ({status}). {correction}"
-            ))
+            format!("{name} could not download {url} ({status}). {correction}")
         }
-        RequestError::NoResponse { cause, .. } => fatal_with(
-            format!("{name} could not download {url} (no response). Run self-update again later."),
-            cause,
-        ),
+        RequestError::NoResponse { .. } => {
+            format!("{name} could not download {url} (no response). Run self-update again later.")
+        }
     }
 }
 
 /// The cache could not be written.
-pub(crate) fn cache_write(name: &str, directory: &str, cause: impl Into<Error>) -> FatalError {
-    fatal_with(
-        format!(
-            "{name} could not write its update cache to {}. Free space there or check its permissions, then run self-update --refresh-notice again.",
-            shown_place(directory)
-        ),
-        cause,
+pub(super) fn cache_write(name: &str, directory: &str) -> String {
+    format!(
+        "{} could not write its update cache to {}. Free space there or check its permissions, then run self-update --refresh-notice again.",
+        shown(name),
+        shown_place(directory)
     )
 }
 
 /// `SHA256SUMS` lists the asset twice with different digests.
-pub(crate) fn conflict(asset: &str, tag: &str, repository: &str) -> FatalError {
-    fatal(format!(
+pub(super) fn conflict(asset: &str, tag: &str, repository: &str) -> String {
+    format!(
         "Release {} of {} lists {} twice in its SHA256SUMS with different digests. Run self-update again once the release is fixed.",
         shown(tag),
         shown(repository),
         shown(asset)
-    ))
+    )
 }
 
 /// A download whose digest differs from the listed one.
-pub(crate) fn mismatch(asset: &str, tag: &str, repository: &str) -> FatalError {
-    fatal(format!(
+pub(super) fn mismatch(asset: &str, tag: &str, repository: &str) -> String {
+    format!(
         "{} from {} of {} does not match its SHA256SUMS digest. Run self-update again later.",
         shown(asset),
         shown(tag),
         shown(repository)
-    ))
+    )
 }
 
 /// A channel with no release.
-pub(crate) fn no_release(name: &str, channel: &str, repository: &str) -> FatalError {
-    fatal(format!(
+pub(super) fn no_release(name: &str, channel: &str, repository: &str) -> String {
+    format!(
         "{name} found no release on the {} channel of {}. Name a version to install, such as {name} self-update 1.4.0.",
         shown(channel),
-        shown(repository)
-    ))
+        shown(repository),
+        name = shown(name)
+    )
 }
 
 /// `SHA256SUMS` lists no line for the asset.
-pub(crate) fn not_listed(asset: &str, tag: &str, repository: &str) -> FatalError {
-    fatal(format!(
+pub(super) fn not_listed(asset: &str, tag: &str, repository: &str) -> String {
+    format!(
         "Release {} of {} has no {} in its SHA256SUMS. Install a release that lists it, or ask its maintainers to publish one.",
         shown(tag),
         shown(repository),
         shown(asset)
-    ))
+    )
 }
 
 /// The record could not be written after the binary was replaced.
-pub(crate) fn record_write(name: &str, version: &str, cause: impl Into<Error>) -> FatalError {
-    fatal_with(
-        format!(
-            "{name} was updated to {}, but its installation record could not be written. Install it again with install.sh.",
-            shown(version)
-        ),
-        cause,
+pub(super) fn record_write(name: &str, version: &str) -> String {
+    format!(
+        "{} was updated to {}, but its installation record could not be written. Install it again with install.sh.",
+        shown(name),
+        shown(version)
     )
 }
 
 /// The staging write or the rename failed.
-pub(crate) fn binary_write(name: &str, directory: &str, cause: impl Into<Error>) -> FatalError {
-    fatal_with(
-        format!(
-            "{name} could not write the new binary to {}. Free space there or check its permissions, then run self-update again.",
-            shown_place(directory)
-        ),
-        cause,
+pub(super) fn binary_write(name: &str, directory: &str) -> String {
+    format!(
+        "{} could not write the new binary to {}. Free space there or check its permissions, then run self-update again.",
+        shown(name),
+        shown_place(directory)
     )
 }
+
+/// The line a run that named the running version prints, which replaces nothing.
+pub(super) fn installed_line(name: &str, running: &str) -> String {
+    format!("{} {} is already installed.", shown(name), shown(running))
+}
+
+/// The line of a run whose version is the newest release on the channel.
+pub(super) fn newest_line(name: &str, running: &str, channel: &str) -> String {
+    format!(
+        "{} {} is the newest release on the {} channel.",
+        shown(name),
+        shown(running),
+        shown(channel)
+    )
+}
+
+/// The line of a run whose version is newer than the newest release on the channel.
+pub(super) fn newer_than_newest_line(
+    name: &str,
+    running: &str,
+    found: &str,
+    channel: &str,
+) -> String {
+    format!(
+        "{name} {} is newer than the newest release on the {} channel, {}. Name that version to install it: {name} self-update {}.",
+        shown(running),
+        shown(channel),
+        shown(found),
+        shown(found),
+        name = shown(name)
+    )
+}
+
+/// The `--check` line for a named version, which would replace the running one.
+pub(super) fn can_install_line(name: &str, named: &str, running: &str) -> String {
+    format!(
+        "{} can install {} in place of {}.",
+        shown(name),
+        shown(named),
+        shown(running)
+    )
+}
+
+/// The `--check` line for a newer release on the channel.
+pub(super) fn can_update_line(name: &str, running: &str, found: &str, channel: &str) -> String {
+    format!(
+        "{} can update from {} to {} on the {} channel.",
+        shown(name),
+        shown(running),
+        shown(found),
+        shown(channel)
+    )
+}
+
+/// The line before the download starts.
+pub(super) fn downloading_line(asset: &str, version: &str, repository: &str) -> String {
+    format!(
+        "Downloading {} from v{} of {}.",
+        shown(asset),
+        shown(version),
+        shown(repository)
+    )
+}
+
+/// The line after the binary was replaced.
+pub(super) fn updated_line(name: &str, from: &str, to: &str) -> String {
+    format!(
+        "Updated {} from {} to {}.",
+        shown(name),
+        shown(from),
+        shown(to)
+    )
+}
+
+/// The notice that a newer release is available.
+pub(super) fn notice_line(name: &str, newer: &str, channel: &str, running: &str) -> String {
+    format!(
+        "{} {} is available on the {} channel. Run {} self-update to update from {}.",
+        shown(name),
+        shown(newer),
+        shown(channel),
+        shown(name),
+        shown(running)
+    )
+}
+
+/// The cancellation's text when the run's signal cannot say it.
+pub(super) const RUN_CANCELLED: &str = "The run was cancelled.";

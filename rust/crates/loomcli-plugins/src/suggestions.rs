@@ -9,13 +9,15 @@
 //! The hook and the view correlate through the failure's address: core boxes each reported
 //! failure once and moves it no more until its report is written, so both receive the same object.
 
+mod messages;
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 use loomcli_core::{
     CommandGraph, CommandNode, Failure, FailureFacts, FailureHookContext, FailureView,
     FailureViewContext, InvokedBy, OptionNode, Plugin, UnknownCommandError, UnknownOptionError,
-    escape_control_characters, failure, override_view,
+    failure, override_view,
 };
 
 use crate::PACKAGE_NAME;
@@ -177,25 +179,6 @@ fn option_names(graph: &CommandGraph, command: &CommandNode) -> Vec<Vec<String>>
         .collect()
 }
 
-/// The sentence that names what the operator typed and offers the matches as its fix, or `None`
-/// when nothing matched. Every quoted text is escaped, a declared option name included, because
-/// the declared-name rule allows a control character.
-fn sentence(kind: &str, typed: &str, names: &[String]) -> Option<String> {
-    let quoted: Vec<String> = names
-        .iter()
-        .map(|name| escape_control_characters(name))
-        .collect();
-    let fix = match quoted.as_slice() {
-        [] => return None,
-        [only] => format!("Did you mean \"{only}\"?"),
-        _ => format!("Did you mean one of these: {}?", quoted.join(", ")),
-    };
-    Some(format!(
-        "Unknown {kind} \"{}\". {fix}",
-        escape_control_characters(typed)
-    ))
-}
-
 /// The word the failure holds and the sentence that offers its nearest names, if any is near.
 fn suggestion(
     failure: &dyn Failure,
@@ -204,7 +187,7 @@ fn suggestion(
     let command = &*context.command;
     if let Some(unknown) = failure.downcast_ref::<UnknownCommandError>() {
         let names = nearest(unknown.token(), &command_names(command), Spelled::Command);
-        return sentence("command", unknown.token(), &names)
+        return messages::unknown_with_suggestion("command", unknown.token(), &names)
             .map(|written| (address_of(unknown), unknown.token().to_owned(), written));
     }
     if let Some(unknown) = failure.downcast_ref::<UnknownOptionError>() {
@@ -223,7 +206,7 @@ fn suggestion(
                 Spelled::Option,
             )
         };
-        return sentence("option", unknown.spelling(), &names)
+        return messages::unknown_with_suggestion("option", unknown.spelling(), &names)
             .map(|written| (address_of(unknown), unknown.spelling().to_owned(), written));
     }
     None

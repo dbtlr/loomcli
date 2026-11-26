@@ -1,10 +1,8 @@
-//! The sentences the skills Commands write: the refusals they fail with and the lines they print.
-//! Every path, folder, and name a sentence repeats is escaped as a failure message quotes text, and
-//! a path is kept whole when a lane wraps.
+//! The sentences of the skills plugin.
 
 use std::path::Path;
 
-use loomcli_core::{FatalError, escape_control_characters, nowrap};
+use loomcli_core::{escape_control_characters, nowrap};
 
 /// Text escaped as a failure message quotes it.
 pub(super) fn shown(text: &str) -> String {
@@ -35,30 +33,30 @@ impl WritingVerb {
 }
 
 /// The failure of folders the record does not list that are in the way.
-pub(super) fn in_the_way(name: &str, verb: WritingVerb) -> FatalError {
-    FatalError::new(format!(
+pub(super) fn in_the_way(name: &str, verb: WritingVerb) -> String {
+    format!(
         "{name} skills {verb} changed nothing, because folders it did not install are in the way. Remove them, or run {name} skills install --force to replace them.",
         name = shown(name),
         verb = verb.word()
-    ))
+    )
 }
 
 /// The failure of a project folder that is the target's global folder.
-pub(super) fn never_global(name: &str, folder: &Path) -> FatalError {
-    FatalError::new(format!(
+pub(super) fn never_global(name: &str, folder: &Path) -> String {
+    format!(
         "{name} skills install --project would write to {folder}, the folder {name} skills install keeps for your home folder. Run it inside a repository, name one with --directory, or leave out --project.",
         name = shown(name),
         folder = shown_path(folder)
-    ))
+    )
 }
 
 /// The failure of a plugin's file that cannot be read.
-pub(super) fn record(name: &str, record: &Path, verb: &str) -> FatalError {
-    FatalError::new(format!(
+pub(super) fn record(name: &str, record: &Path, verb: &str) -> String {
+    format!(
         "{record} cannot be read, so {name} will not change the folders it lists. Remove it and the folders it lists, then run {name} skills {verb} again.",
         record = shown_path(record),
         name = shown(name)
-    ))
+    )
 }
 
 /// `<folder> was already gone.`
@@ -146,3 +144,15 @@ pub(super) fn updated(name: &str, target: &str, folder: &Path) -> String {
         shown_path(folder)
     )
 }
+
+/// The stderr line of a refresh whose binary could not start, ending with a line feed.
+pub(super) fn skills_not_refreshed(path: &str, name: &str) -> String {
+    format!(
+        "The skills were not refreshed because {} could not start. Run {} skills update.\n",
+        shown(path),
+        shown(name)
+    )
+}
+
+/// The `warn` log event of a refresh whose child failed or could not start.
+pub(super) const SKILLS_REFRESH_FAILED: &str = "Skills were not refreshed after the update.";

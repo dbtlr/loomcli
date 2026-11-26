@@ -9,10 +9,10 @@ use std::sync::Arc;
 use loomcli_core::{
     ApplicationDirectory, ChainOutcome, DetachedSpawnOptions, DirectoryFacts, DirectoryLookup, Env,
     Host, MiddlewareContext, Next, NoOptions, Out, Outcome, application_directory,
-    escape_control_characters,
 };
 
 use super::cache::{CacheEntry, CacheReading, Lookup, now, read_cache, write_cache};
+use super::messages;
 use super::update::{release_binary, script_installation};
 use super::version::{Version, compare_versions, parse_version};
 
@@ -103,17 +103,9 @@ fn newer_version(reading: &CacheReading, running: &Version) -> Option<Version> {
     parse_version(latest).filter(|latest| compare_versions(latest, running) == Ordering::Greater)
 }
 
-/// The notice line, each value it repeats passed through the control-character escape.
+/// The notice line for a newer release.
 fn notice_line(run: &Qualified, newer: &Version) -> String {
-    let shown = escape_control_characters;
-    format!(
-        "{} {} is available on the {} channel. Run {} self-update to update from {}.",
-        shown(&run.name),
-        shown(&newer.text),
-        shown(&run.channel),
-        shown(&run.name),
-        shown(&run.running.text)
-    )
+    messages::notice_line(&run.name, &newer.text, &run.channel, &run.running.text)
 }
 
 /// Starts `[...program, 'self-update', '--refresh-notice']` as a detached child in the cache
