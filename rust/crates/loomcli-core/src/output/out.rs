@@ -9,7 +9,7 @@ use crate::failures::{Error, FatalError};
 use super::emit::{Channel, Lane, Output, Stream};
 use super::region::{Region, RegionOptions};
 use super::results::{RowSource, RowsResult, ValueResult};
-use super::{NoResult, Render, View, WholeView};
+use super::{NoResult, Render, StreamedMessage, View, WholeView};
 
 /// A borrowed text message with an optional whole view over its text.
 #[must_use]
@@ -37,6 +37,36 @@ impl<'a, T: AsRef<str> + ?Sized> From<&'a T> for Message<'a> {
     }
 }
 
+/// The arguments to a semantic method. Whole messages may carry a view and streamed messages
+/// always use the lane view. Accept `impl Into<MessageArguments<'a>>` to forward either form.
+///
+/// ```compile_fail
+/// use loomcli_core::Out;
+///
+/// async fn plain_iterator(out: &Out) {
+///     out.info(["one", "two"]).await.unwrap();
+/// }
+/// ```
+#[non_exhaustive]
+pub enum MessageArguments<'a> {
+    /// Borrowed text with an optional whole view.
+    Whole(Message<'a>),
+    /// The lane's text supplied as it arrives.
+    Streamed(StreamedMessage),
+}
+
+impl<'a, T: Into<Message<'a>>> From<T> for MessageArguments<'a> {
+    fn from(message: T) -> Self {
+        Self::Whole(message.into())
+    }
+}
+
+impl From<StreamedMessage> for MessageArguments<'_> {
+    fn from(message: StreamedMessage) -> Self {
+        Self::Streamed(message)
+    }
+}
+
 /// Writes a run's output. Every method resolves through the view registry, under the destination's
 /// rendering policy.
 ///
@@ -53,8 +83,9 @@ impl<'a, T: AsRef<str> + ?Sized> From<&'a T> for Message<'a> {
 /// | `fatal` | the failure path |
 ///
 /// `print`, `info`, `success`, `warn`, and `error` accept borrowed text or a [`Message`] with its
-/// own view. The method sets the message's destination and verbosity. A message whose drawn text
-/// lacks a final line break gains one.
+/// own view, or a [`StreamedMessage`] that starts at the call and draws through the lane view. The
+/// method sets the destination and verbosity. A message whose drawn text lacks a final line break
+/// gains one.
 ///
 /// `R` is the result the Command declares, so `results` takes exactly its type. Writes to one
 /// destination keep the order their calls were made in. A write the run's stdout refuses because its
@@ -85,46 +116,68 @@ impl<R> Out<R> {
     /// Prints a message to stdout, or to stderr from the action of a Command that declares a result.
     pub fn print<'a>(
         &'a self,
-        message: impl Into<Message<'a>>,
+        message: impl Into<MessageArguments<'a>>,
     ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
-        self.output()
-            .emit(Lane::Print, message.into(), self.channel.destination)
+        self.message(Lane::Print, message.into(), self.channel.destination)
     }
 
     /// Writes an informational message to stderr, hidden at verbosity -1.
     pub fn info<'a>(
         &'a self,
-        message: impl Into<Message<'a>>,
+        message: impl Into<MessageArguments<'a>>,
     ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
-        self.output()
-            .emit(Lane::Info, message.into(), Stream::Stderr)
+        self.message(Lane::Info, message.into(), Stream::Stderr)
     }
 
     /// Writes a success message to stderr, hidden at verbosity -1.
     pub fn success<'a>(
         &'a self,
-        message: impl Into<Message<'a>>,
+        message: impl Into<MessageArguments<'a>>,
     ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
-        self.output()
-            .emit(Lane::Success, message.into(), Stream::Stderr)
+        self.message(Lane::Success, message.into(), Stream::Stderr)
     }
 
     /// Writes a warning to stderr at every verbosity.
     pub fn warn<'a>(
         &'a self,
-        message: impl Into<Message<'a>>,
+        message: impl Into<MessageArguments<'a>>,
     ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
-        self.output()
-            .emit(Lane::Warn, message.into(), Stream::Stderr)
+        self.message(Lane::Warn, message.into(), Stream::Stderr)
     }
 
     /// Writes an error message to stderr at every verbosity.
     pub fn error<'a>(
         &'a self,
-        message: impl Into<Message<'a>>,
+        message: impl Into<MessageArguments<'a>>,
     ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
-        self.output()
-            .emit(Lane::Error, message.into(), Stream::Stderr)
+        self.message(Lane::Error, message.into(), Stream::Stderr)
+    }
+
+    fn message<'a>(
+        &'a self,
+        lane: Lane,
+        message: MessageArguments<'a>,
+        destination: Stream,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
+        enum Write<'a> {
+            Whole(Message<'a>),
+            Streamed(crate::BoxFuture<'static, Result<(), Error>>),
+        }
+
+        let write =
+            match message {
+                MessageArguments::Whole(message) => Write::Whole(message),
+                MessageArguments::Streamed(message) => Write::Streamed(
+                    self.output()
+                        .stream_message(&self.channel, lane, message, destination),
+                ),
+            };
+        async move {
+            match write {
+                Write::Whole(message) => self.output().emit(lane, message, destination).await,
+                Write::Streamed(done) => done.await,
+            }
+        }
     }
 
     /// Renders `data` where `print` writes, adding no line break: a whole view with a reference to

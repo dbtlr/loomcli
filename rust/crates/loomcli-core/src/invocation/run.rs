@@ -107,6 +107,7 @@ impl Entered {
         let closing = Arc::downgrade(output);
         self.signal.on_abort(move || {
             if let Some(output) = closing.upgrade() {
+                output.stop_messages();
                 output.close_regions(RegionCloser::Cancellation, None);
             }
         });
@@ -115,6 +116,10 @@ impl Entered {
 
 impl Drop for Entered {
     fn drop(&mut self) {
+        let output = locked(&self.output).upgrade();
+        if let Some(output) = output {
+            output.stop_messages();
+        }
         self.place.leave();
     }
 }
@@ -671,7 +676,7 @@ async fn execute(
         }),
         invoked_by,
     };
-    settle(&scene, signal, &reached, outcome).await
+    closing_on_cancellation(&output, signal, settle(&scene, signal, &reached, outcome)).await
 }
 
 /// How far a run got: the graph once its build finished, so the failures it reports run hooks and
@@ -747,6 +752,7 @@ async fn closing_on_cancellation<T>(
         if !closed && cancelled.as_mut().poll(context).is_ready() {
             closed = true;
             signal.fire();
+            output.stop_messages();
             output.close_regions(RegionCloser::Cancellation, None);
         }
         work.as_mut().poll(context)
@@ -1125,7 +1131,12 @@ async fn settle(
         }
         decisive = Some((failure, form));
     }
-    for error in output.take_log_view_errors() {
+    for error in output
+        .settle_messages()
+        .await
+        .into_iter()
+        .chain(output.take_log_view_errors())
+    {
         if cancelled().is_some() && is_echo(&error) {
             continue;
         }

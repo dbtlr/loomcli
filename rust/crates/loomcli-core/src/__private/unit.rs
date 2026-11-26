@@ -75,6 +75,12 @@ impl UnitRun {
             None,
             false,
         ));
+        let closing = Arc::downgrade(&output);
+        signal.on_abort(move || {
+            if let Some(output) = closing.upgrade() {
+                output.stop_messages();
+            }
+        });
         let place = crate::signals::lane::Place::unentered(lane);
         output.use_place(place.clone());
         output.set_route(log.path);

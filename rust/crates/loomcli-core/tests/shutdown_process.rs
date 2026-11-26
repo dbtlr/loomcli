@@ -38,8 +38,9 @@ mod probe {
     use std::task::Poll;
 
     use loomcli_core::{
-        Activation, Application, CancellationSource, Context, EndingSignal, Error, Plugin,
+        Activation, Application, CancellationSource, Context, EndingSignal, Error, Opt, Plugin,
         Provider, ProviderContext, RowSource, RowView, ShutdownCause, ShutdownEvent, Stream,
+        StreamedMessage,
     };
 
     /// The variable that names the case the probe runs.
@@ -108,6 +109,10 @@ mod probe {
             "queued-stdout" => queued_stdout(QueuedStdout::Small),
             "oversized-stdout" => queued_stdout(QueuedStdout::Oversized),
             "handler-stdout" => queued_stdout(QueuedStdout::Handler),
+            "stalled-stderr" => streamed_stderr(true),
+            "drained-stderr" => streamed_stderr(false),
+            "unfinished-stderr-with-stdout-write" => unfinished_stderr(false),
+            "unfinished-stderr-with-warning" => unfinished_stderr(true),
             _ => watching(case == "ignoring"),
         }
     }
@@ -147,6 +152,89 @@ mod probe {
             .main()
     }
 
+    struct StderrChunk {
+        text: Option<String>,
+        stays_open: bool,
+        received: Option<tokio::sync::oneshot::Sender<()>>,
+    }
+
+    impl Stream for StderrChunk {
+        type Item = Result<String, Error>;
+
+        fn poll_next(
+            mut self: Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> Poll<Option<Self::Item>> {
+            match self.text.take() {
+                Some(text) => Poll::Ready(Some(Ok(text))),
+                None => {
+                    if let Some(received) = self.received.take() {
+                        received.send(()).unwrap();
+                    }
+                    if self.stays_open {
+                        Poll::Pending
+                    } else {
+                        Poll::Ready(None)
+                    }
+                }
+            }
+        }
+    }
+
+    fn streamed_stderr(signalled: bool) -> std::process::ExitCode {
+        Application::new("probe")
+            .plugins([handler_records()])
+            .shutdown_timeout(PIPE_BUDGET_MS)
+            .action(move |ctx: Context| async move {
+                let message = StreamedMessage::new(StderrChunk {
+                    text: Some(format!("{}\nmore\npartial", "x".repeat(LARGE_WRITE))),
+                    stays_open: signalled,
+                    received: None,
+                });
+                if signalled {
+                    // Leave stdout pending too, so both drains run when the shell merges them.
+                    let view = RowView::new(|_: &(), _, _| String::new());
+                    let mut sequence =
+                        std::pin::pin!(ctx.out.render(RowSource::stream(WaitingRows), &view));
+                    start(sequence.as_mut()).await;
+                    let mut queued = std::pin::pin!(ctx.out.print("pending stdout"));
+                    start(queued.as_mut()).await;
+                    let log = ctx.log.clone();
+                    let _kept = ctx.on_shutdown(move |_| log.info("handler record", ()));
+                    ctx.out.info(message).await?;
+                    pending().await
+                } else {
+                    ctx.out.info(message).await
+                }
+            })
+            .main()
+    }
+
+    fn unfinished_stderr(block_stderr: bool) -> std::process::ExitCode {
+        Application::new("probe")
+            .global_option("verbose", Opt::count().short('v').verbose())
+            .shutdown_timeout(PIPE_BUDGET_MS)
+            .action(move |ctx: Context| async move {
+                let (received, wait_for_fragment) = tokio::sync::oneshot::channel();
+                let _partial = ctx.out.info(StreamedMessage::new(StderrChunk {
+                    text: Some("partial ".to_owned()),
+                    stays_open: true,
+                    received: Some(received),
+                }));
+                // The reader asks for the next chunk after it has laid out the fragment.
+                // Start filling the pipe then, before the fragment reaches stderr at shutdown.
+                wait_for_fragment.await.unwrap();
+                if block_stderr {
+                    ctx.out.print("x").await?;
+                    ctx.out.warn(&"y".repeat(LARGE_WRITE)).await?;
+                } else {
+                    ctx.out.print(&"x".repeat(LARGE_WRITE)).await?;
+                }
+                pending().await
+            })
+            .main()
+    }
+
     /// Holds stdout's queue turn without writing to the pipe.
     struct WaitingRows;
 
@@ -168,8 +256,8 @@ mod probe {
         Handler,
     }
 
-    fn queued_stdout(case: QueuedStdout) -> std::process::ExitCode {
-        let records = Plugin::new("@fixture/records").on_log(|event, destination| {
+    fn handler_records() -> Plugin {
+        Plugin::new("@fixture/records").on_log(|event, destination| {
             if event.message == "handler record"
                 && let Some(stderr) = &destination.stderr
             {
@@ -180,9 +268,12 @@ mod probe {
                     Poll::Ready(Ok(()))
                 ));
             }
-        });
+        })
+    }
+
+    fn queued_stdout(case: QueuedStdout) -> std::process::ExitCode {
         Application::new("probe")
-            .plugins([records])
+            .plugins([handler_records()])
             .shutdown_timeout(PIPE_BUDGET_MS)
             .action(move |ctx: Context| async move {
                 let rows = RowSource::stream(WaitingRows);
@@ -199,7 +290,15 @@ mod probe {
                 let flags = rustix::fs::fcntl_getfl(std::io::stdout()).unwrap();
                 let (out, log) = (ctx.out.clone(), ctx.log.clone());
                 let _kept = ctx.on_shutdown(move |event| {
-                    assert_eq!(rustix::fs::fcntl_getfl(std::io::stdout()).unwrap(), flags);
+                    // The drain changes only O_NONBLOCK. Compare that bit alone: macOS sets a
+                    // kernel bit in F_GETFL once a descriptor has been written.
+                    let nonblock = rustix::fs::OFlags::NONBLOCK;
+                    assert_eq!(
+                        rustix::fs::fcntl_getfl(std::io::stdout())
+                            .unwrap()
+                            .contains(nonblock),
+                        flags.contains(nonblock),
+                    );
                     if matches!(case, QueuedStdout::Handler) {
                         use std::io::Read;
 
@@ -335,6 +434,8 @@ mod parent {
     use std::time::{Duration, Instant};
 
     use rustix::process::{Pid, Signal, kill_process};
+
+    const INFO_PREFIX: &[u8] = "ℹ ".as_bytes();
 
     /// What the probe printed and how it ended: the status a shell reports, and the time from the
     /// signal to its end.
@@ -724,7 +825,8 @@ mod parent {
             );
             let (mut child, (), stderr) = ready_stdout_probe(child, || ());
             end_stdout_probe(&mut child, stderr, Signal::TERM, "SIGTERM", case);
-            assert_eq!(fcntl_getfl(&writer).unwrap(), saved);
+            // The drain changes only O_NONBLOCK; macOS also sets a kernel bit once written.
+            assert!(!fcntl_getfl(&writer).unwrap().contains(OFlags::NONBLOCK));
             drop(writer);
             if let Some(reader) = &mut reader {
                 let mut bytes = Vec::new();
@@ -815,6 +917,157 @@ mod parent {
         assert_eq!(rest, b"\npending stdout\n");
     }
 
+    fn spawn_stderr_probe(case: &str, stdout: Stdio, stderr: Stdio) -> Child {
+        Command::new(std::env::current_exe().unwrap())
+            .env(super::probe::CASE, case)
+            .env("TERM", "dumb")
+            .env_remove("FORCE_COLOR")
+            .args((case == "unfinished-stderr-with-warning").then_some("-v"))
+            .stdin(Stdio::null())
+            .stdout(stdout)
+            .stderr(stderr)
+            .spawn()
+            .unwrap()
+    }
+
+    fn wait_for_probe_byte<R: Read + Send + 'static>(
+        child: &mut Child,
+        mut reader: R,
+        expected: u8,
+    ) -> R {
+        let (sender, started) = mpsc::channel();
+        let reading = std::thread::spawn(move || {
+            let mut first = [0];
+            sender
+                .send(reader.read_exact(&mut first).map(|()| first))
+                .unwrap();
+            reader
+        });
+        let first = started.recv_timeout(Duration::from_secs(30));
+        if !matches!(first, Ok(Ok([byte])) if byte == expected) {
+            let _ = child.kill();
+            child.wait().unwrap();
+            panic!("the probe write did not start with byte {expected:#x}: {first:?}");
+        }
+        reading.join().unwrap()
+    }
+
+    fn end_stderr_probe(
+        child: &mut Child,
+        reader: impl Read + Send + 'static,
+        expected: u8,
+        case: &str,
+    ) {
+        let _stalled = wait_for_probe_byte(child, reader, expected);
+        let budget = Duration::from_millis(u64::from(super::probe::PIPE_BUDGET_MS));
+        let sent = Instant::now();
+        kill_process(Pid::from_child(child), Signal::TERM).unwrap();
+        let status = wait_for_probe(
+            child,
+            budget + Duration::from_secs(2),
+            &format!("the {case} probe outlived its shutdown budget after SIGTERM"),
+        );
+        assert_eq!(status.signal(), Some(Signal::TERM.as_raw()), "{status}");
+        assert!(sent.elapsed() >= budget.saturating_sub(Duration::from_millis(50)));
+    }
+
+    fn open_probe_fifo() -> (std::fs::File, OwnedFd) {
+        use rustix::fs::{Mode, OFlags, open};
+
+        let fifo = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("shutdown-stderr-{}.fifo", std::process::id()));
+        assert!(
+            Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let reader = open(
+            &fifo,
+            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .unwrap();
+        let writer = open(&fifo, OFlags::WRONLY | OFlags::CLOEXEC, Mode::empty()).unwrap();
+        std::fs::remove_file(&fifo).unwrap();
+        rustix::fs::fcntl_setfl(&reader, OFlags::empty()).unwrap();
+        (std::fs::File::from(reader), writer)
+    }
+
+    fn sigterm_ends_the_process_when_the_stderr_fifo_reader_stalls() {
+        let (reader, writer) = open_probe_fifo();
+        let mut child = spawn_stderr_probe("stalled-stderr", Stdio::null(), Stdio::from(writer));
+        end_stderr_probe(&mut child, reader, INFO_PREFIX[0], "stalled stderr FIFO");
+    }
+
+    fn sigterm_ends_the_process_when_a_reader_of_merged_stdout_and_stderr_stalls() {
+        use rustix::io::{FdFlags, fcntl_setfd};
+
+        let (reader, writer) = rustix::pipe::pipe().unwrap();
+        fcntl_setfd(&reader, FdFlags::CLOEXEC).unwrap();
+        fcntl_setfd(&writer, FdFlags::CLOEXEC).unwrap();
+        let mut child = spawn_stderr_probe(
+            "stalled-stderr",
+            Stdio::from(writer.try_clone().unwrap()),
+            Stdio::from(writer),
+        );
+        end_stderr_probe(
+            &mut child,
+            std::fs::File::from(reader),
+            INFO_PREFIX[0],
+            "stalled merged pipe",
+        );
+    }
+
+    fn sigterm_ends_the_process_when_stdout_holds_the_shared_fifo() {
+        let (reader, writer) = open_probe_fifo();
+        let mut child = spawn_stderr_probe(
+            "unfinished-stderr-with-stdout-write",
+            Stdio::from(writer.try_clone().unwrap()),
+            Stdio::from(writer),
+        );
+        end_stderr_probe(&mut child, reader, b'x', "stdout write to the shared FIFO");
+    }
+
+    fn sigterm_ends_the_process_when_a_warning_blocks_stderr() {
+        let mut child = spawn_stderr_probe(
+            "unfinished-stderr-with-warning",
+            Stdio::null(),
+            Stdio::piped(),
+        );
+        let reader = child.stderr.take().unwrap();
+        end_stderr_probe(
+            &mut child,
+            reader,
+            "⚠ ".as_bytes()[0],
+            "stalled stderr warning",
+        );
+    }
+
+    fn a_normal_run_finishes_streamed_stderr_after_the_reader_resumes() {
+        let mut child = spawn_stderr_probe("drained-stderr", Stdio::null(), Stdio::piped());
+        let reader = child.stderr.take().unwrap();
+        let mut reader = wait_for_probe_byte(&mut child, reader, INFO_PREFIX[0]);
+        assert!(child.try_wait().unwrap().is_none());
+        let reading = std::thread::spawn(move || {
+            let mut bytes = vec![INFO_PREFIX[0]];
+            reader.read_to_end(&mut bytes).unwrap();
+            bytes
+        });
+        let status = wait_for_probe(
+            &mut child,
+            Duration::from_secs(30),
+            "the probe never finished after stderr resumed",
+        );
+        assert!(status.success(), "{status}");
+        let bytes = reading.join().unwrap();
+        let message = bytes.strip_prefix(INFO_PREFIX).unwrap();
+        let (first, rest) = message.split_at(super::probe::LARGE_WRITE);
+        assert!(first.iter().all(|byte| *byte == b'x'));
+        assert_eq!(rest, b"\n  more\n  partial\n");
+    }
+
     pub fn run_all() {
         let cases: &[(&str, fn())] = &[
             (
@@ -881,6 +1134,26 @@ mod parent {
             (
                 "a_normal_run_finishes_queued_stdout_after_the_reader_resumes",
                 a_normal_run_finishes_queued_stdout_after_the_reader_resumes,
+            ),
+            (
+                "a_normal_run_finishes_streamed_stderr_after_the_reader_resumes",
+                a_normal_run_finishes_streamed_stderr_after_the_reader_resumes,
+            ),
+            (
+                "sigterm_ends_the_process_when_the_stderr_fifo_reader_stalls",
+                sigterm_ends_the_process_when_the_stderr_fifo_reader_stalls,
+            ),
+            (
+                "sigterm_ends_the_process_when_a_reader_of_merged_stdout_and_stderr_stalls",
+                sigterm_ends_the_process_when_a_reader_of_merged_stdout_and_stderr_stalls,
+            ),
+            (
+                "sigterm_ends_the_process_when_stdout_holds_the_shared_fifo",
+                sigterm_ends_the_process_when_stdout_holds_the_shared_fifo,
+            ),
+            (
+                "sigterm_ends_the_process_when_a_warning_blocks_stderr",
+                sigterm_ends_the_process_when_a_warning_blocks_stderr,
             ),
         ];
         for (name, case) in cases {

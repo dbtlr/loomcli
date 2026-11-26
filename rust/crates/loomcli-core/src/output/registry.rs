@@ -90,6 +90,13 @@ impl ViewRegistry {
             })
     }
 
+    pub(super) fn overrides<D: ?Sized + 'static>(&self, identity: Option<&str>) -> bool {
+        identity.is_some_and(|identity| {
+            self.replacement(identity, TypeId::of::<View<D>>())
+                .is_some()
+        })
+    }
+
     /// The whole view `view` resolves to: the first contributor's replacement of the declared view
     /// `identity`, else its own function. A bare view, with no identity, is never replaced.
     pub(crate) fn whole<D: ?Sized + 'static>(

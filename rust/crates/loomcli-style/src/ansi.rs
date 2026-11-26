@@ -124,6 +124,11 @@ pub(crate) fn is_control(character: char) -> bool {
     code < 32 || (127..=159).contains(&code)
 }
 
+/// Controls other than the characters line layout treats as separators.
+pub(crate) fn is_control_except_layout(character: char) -> bool {
+    !matches!(character, '\n' | '\r' | '\t') && is_control(character)
+}
+
 /// The ANSI command starting at `cursor`, or `None` when the character there is text.
 pub(crate) fn command(text: &[char], cursor: usize) -> Option<AnsiCommand> {
     let character = code(text, cursor)?;
