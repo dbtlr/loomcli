@@ -360,12 +360,8 @@ impl From<Skills> for AnyPlugin {
 /// What the skills refresh runs and says.
 const REFRESH: Refresh = Refresh {
     words: &["skills", "update"],
-    warning: "Skills were not refreshed after the update.",
-    not_started: |path, name| {
-        format!(
-            "The skills were not refreshed because {path} could not start. Run {name} skills update.\n"
-        )
-    },
+    warning: messages::SKILLS_REFRESH_FAILED,
+    not_started: messages::skills_not_refreshed,
 };
 
 /// An `after_replace` function for the self-update plugin: it runs the new binary with

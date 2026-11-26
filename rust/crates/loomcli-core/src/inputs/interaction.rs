@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use crate::commands::declaration::CommandDeclaration;
 use crate::diagnostics::{DiagnosticParts, rules};
-use crate::failures::sentences::quoted;
+use crate::failures::messages::quoted;
 use crate::failures::{DeclarationError, Error, InputError};
 use crate::host::{Env, Host};
 use crate::inspection::{OptionNode, reported_spelling};
 use crate::invocation::{Context, InvokedBy};
 
 use super::declared::Declared;
+use super::messages;
 use super::typed::input_read;
 use super::{InputIdentity, InputKind, InputProblem, Issue, ValidationContext, ValidationPhase};
 
@@ -117,11 +118,7 @@ fn missing_input_name(kind: &str, name: &str, command: Option<&str>) -> Error {
 pub fn missing_input_error<I, R>(context: &Context<I, R>, link: &ValueLink) -> Error {
     let command = &context.command;
     let named = context.values.invoked_by == InvokedBy::Name;
-    let conditional = if context.interactive {
-        ""
-    } else {
-        " when input is not interactive"
-    };
+    let conditional = !context.interactive;
     match link {
         ValueLink::Option { name, .. } => {
             let Some(option) = command.options.iter().find(|option| option.name() == name) else {
@@ -148,26 +145,18 @@ pub fn missing_input_error<I, R>(context: &Context<I, R>, link: &ValueLink) -> E
                 }
                 _ => Vec::new(),
             };
-            let value_fix = match option.as_ref() {
-                OptionNode::String(string) if string.multiple => "Supply at least one value.",
-                _ => "Supply a value.",
-            };
+            let collected =
+                matches!(option.as_ref(), OptionNode::String(string) if string.multiple);
             let fix = if !named && !forms.is_empty() {
-                format!(
-                    "Supply {}.",
-                    forms
-                        .iter()
-                        .map(|form| quoted(form))
-                        .collect::<Vec<_>>()
-                        .join(" or ")
-                )
+                messages::OptionFix::Spellings(&forms)
             } else {
-                value_fix.to_owned()
+                messages::OptionFix::Value { collected }
             };
             InputError::new(
-                format!(
-                    "Option {} is required{conditional}. {fix}",
-                    quoted(&spelling)
+                messages::required_option(
+                    &messages::option_subject(&spelling, None),
+                    conditional,
+                    &fix,
                 ),
                 vec![InputProblem::Missing {
                     input: link.identity(),
@@ -184,17 +173,8 @@ pub fn missing_input_error<I, R>(context: &Context<I, R>, link: &ValueLink) -> E
             else {
                 return missing_input_name("argument", name, command.name.as_deref());
             };
-            let amount = if argument.variadic {
-                "at least one value"
-            } else {
-                "a value"
-            };
             InputError::new(
-                format!(
-                    "Argument {} requires {amount}{conditional}. Supply a value for {}.",
-                    quoted(name),
-                    quoted(name)
-                ),
+                messages::required_argument(name, argument.variadic, conditional),
                 vec![InputProblem::Missing {
                     input: link.identity(),
                     spelling: name.clone(),

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::commands::AnyCommand;
 use crate::commands::declaration::{CommandDeclaration, OptionInput, option_extensions, raise};
 use crate::diagnostics::{DiagnosticParts, Finding, Literal, rules};
-use crate::failures::sentences::{mid_sentence, quoted};
+use crate::failures::messages::{mid_sentence, quoted};
 use crate::failures::{DeclarationError, Failure, FailureEncoding, Translation};
 use crate::inputs::table::{self, InputSite, ScopeOption, check_option_config, check_option_name};
 use crate::inputs::{

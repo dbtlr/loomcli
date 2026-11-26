@@ -8,11 +8,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use loomcli_core::{
-    ApplicationDirectory, DirectoryFacts, DirectoryLookup, Error, Host, Installation, Log, Out,
-    RunSignal, application_directory,
+    ApplicationDirectory, DirectoryFacts, DirectoryLookup, Error, FatalError, Host, Installation,
+    Log, Out, RunSignal, application_directory,
 };
 
-use super::messages::{self, shown};
+use super::messages;
 use super::request::{Client, Stop};
 use super::resolve::{Release, download_url, fetch_sums, latest_release};
 use super::sums::{Listing, listing_of};
@@ -114,7 +114,7 @@ fn unwritable(directories: &[&Path]) -> Option<(String, io::Error)> {
 /// path that holds no regular file, a binary changed since it was recorded, and a directory the
 /// process cannot write to.
 fn check(name: &str, host: &Host) -> Result<Checked, Error> {
-    let binary = release_binary(host).ok_or_else(|| messages::not_built(name))?;
+    let binary = release_binary(host).ok_or_else(|| FatalError::new(messages::not_built(name)))?;
     let record = match application_directory(
         ApplicationDirectory::Installation,
         name,
@@ -122,26 +122,27 @@ fn check(name: &str, host: &Host) -> Result<Checked, Error> {
     ) {
         DirectoryLookup::Path(path) => path,
         DirectoryLookup::Variable(variable) => {
-            return Err(messages::record_unresolved(name, &variable).into());
+            return Err(FatalError::new(messages::record_unresolved(name, &variable)).into());
         }
         // A lookup core adds later names no directory the record can be found in.
-        _ => return Err(messages::record_unresolved(name, "HOME").into()),
+        _ => return Err(FatalError::new(messages::record_unresolved(name, "HOME")).into()),
     };
-    let installation = script_installation(host).ok_or_else(|| messages::other_installer(name))?;
+    let installation = script_installation(host)
+        .ok_or_else(|| FatalError::new(messages::other_installer(name)))?;
     let path = installation.path.clone();
     let mode = match observe(Path::new(&path))? {
-        Observed::Link => return Err(messages::link(name, &path).into()),
+        Observed::Link => return Err(FatalError::new(messages::link(name, &path)).into()),
         Observed::File { digest, mode } => {
             if digest != installation.digest {
-                return Err(messages::changed(name, &path).into());
+                return Err(FatalError::new(messages::changed(name, &path)).into());
             }
             mode
         }
-        _ => return Err(messages::missing(name, &path).into()),
+        _ => return Err(FatalError::new(messages::missing(name, &path)).into()),
     };
     let directory = directory_of(&path);
     if let Some((blocked, cause)) = unwritable(&[Path::new(&directory), &record]) {
-        return Err(messages::unwritable(name, &blocked, cause).into());
+        return Err(FatalError::with_cause(messages::unwritable(name, &blocked), cause).into());
     }
     Ok(Checked {
         binary,
@@ -181,30 +182,16 @@ impl Request {
 
     /// The line a run that named the running version prints, which replaces nothing.
     fn installed_line(&self, checked: &Checked) -> String {
-        format!(
-            "{} {} is already installed.",
-            self.name,
-            shown(&checked.binary.running.text)
-        )
+        messages::installed_line(&self.name, &checked.binary.running.text)
     }
 }
 
 /// The line a resolved release that is not newer prints, which replaces nothing.
 fn not_newer_line(name: &str, running: &Version, found: &Version, channel: &str) -> String {
     if compare_versions(found, running) == Ordering::Equal {
-        format!(
-            "{name} {} is the newest release on the {} channel.",
-            shown(&running.text),
-            shown(channel)
-        )
+        messages::newest_line(name, &running.text, channel)
     } else {
-        format!(
-            "{name} {} is newer than the newest release on the {} channel, {}. Name that version to install it: {name} self-update {}.",
-            shown(&running.text),
-            shown(channel),
-            shown(&found.text),
-            shown(&found.text)
-        )
+        messages::newer_than_newest_line(name, &running.text, &found.text, channel)
     }
 }
 
@@ -234,11 +221,11 @@ async fn target(request: &Request, checked: &Checked) -> Result<Release, Stop> {
     latest_release(&request.client, &checked.binary.repository, channel)
         .await?
         .ok_or_else(|| {
-            Stop::from(messages::no_release(
+            Stop::from(FatalError::new(messages::no_release(
                 &request.name,
                 channel,
                 &checked.binary.repository,
-            ))
+            )))
         })
 }
 
@@ -263,8 +250,12 @@ fn listed_digest(asset: &str, release: &Release, sums: &str) -> Result<String, E
     let tag = format!("v{}", release.version.text);
     match listing_of(sums, asset) {
         Listing::Digest(digest) => Ok(digest),
-        Listing::Missing => Err(messages::not_listed(asset, &tag, &release.repository).into()),
-        Listing::Conflict => Err(messages::conflict(asset, &tag, &release.repository).into()),
+        Listing::Missing => {
+            Err(FatalError::new(messages::not_listed(asset, &tag, &release.repository)).into())
+        }
+        Listing::Conflict => {
+            Err(FatalError::new(messages::conflict(asset, &tag, &release.repository)).into())
+        }
     }
 }
 
@@ -303,24 +294,13 @@ fn check_line(request: &Request, checked: &Checked, found: &Version) -> String {
         return request.installed_line(checked);
     }
     if let Some(named) = &request.named {
-        return format!(
-            "{} can install {} in place of {}.",
-            request.name,
-            shown(&named.text),
-            shown(&running.text)
-        );
+        return messages::can_install_line(&request.name, &named.text, &running.text);
     }
     let channel = request.channel_for(checked);
     if is_not_newer(found, running) {
         return not_newer_line(&request.name, running, found, channel);
     }
-    format!(
-        "{} can update from {} to {} on the {} channel.",
-        request.name,
-        shown(&running.text),
-        shown(&found.text),
-        shown(channel)
-    )
+    messages::can_update_line(&request.name, &running.text, &found.text, channel)
 }
 
 /// Downloads the asset and returns its bytes once their digest matches the listed one.
@@ -333,11 +313,11 @@ async fn download(
     let url = download_url(&release.repository, &release.version, &checked.binary.asset)?;
     let bytes = request.client.fetch_bytes(&url).await?;
     if digest_of(&bytes) != format!("sha256:{}", resolved.digest) {
-        return Err(messages::mismatch(
+        return Err(FatalError::new(messages::mismatch(
             &checked.binary.asset,
             &format!("v{}", release.version.text),
             &release.repository,
-        )
+        ))
         .into());
     }
     Ok(bytes)
@@ -372,10 +352,9 @@ fn place_binary(request: &Request, checked: &Checked, bytes: &[u8]) -> Result<()
             .signal
             .throw_if_cancelled()
             .err()
-            .unwrap_or_else(|| Error::from(io::Error::other("The run was cancelled.")))),
-        Err(error) => Err(messages::binary_write(
-            &request.name,
-            &directory_of(&checked.path),
+            .unwrap_or_else(|| Error::from(io::Error::other(super::messages::RUN_CANCELLED)))),
+        Err(error) => Err(FatalError::with_cause(
+            messages::binary_write(&request.name, &directory_of(&checked.path)),
             Error::from(error),
         )
         .into()),
@@ -400,7 +379,10 @@ fn write_record(
                 ReplaceOptions::new().durable().mode(RECORD_MODE),
             )
         })
-        .map_err(|error| messages::record_write(&request.name, &version.text, error).into())
+        .map_err(|error| {
+            FatalError::with_cause(messages::record_write(&request.name, &version.text), error)
+                .into()
+        })
 }
 
 /// Downloads the resolved release, places it, rewrites the record, and reports the update. From
@@ -410,11 +392,10 @@ async fn install(request: &Request, checked: &Checked, resolved: &Resolved) -> R
     let release = &resolved.release;
     request
         .out
-        .info(&format!(
-            "Downloading {} from v{} of {}.",
-            shown(&checked.binary.asset),
-            shown(&release.version.text),
-            shown(&release.repository)
+        .info(&messages::downloading_line(
+            &checked.binary.asset,
+            &release.version.text,
+            &release.repository,
         ))
         .await?;
     let bytes = download(request, checked, resolved).await?;
@@ -422,11 +403,10 @@ async fn install(request: &Request, checked: &Checked, resolved: &Resolved) -> R
     write_record(request, checked, &release.version, &bytes)?;
     request
         .out
-        .success(&format!(
-            "Updated {} from {} to {}.",
-            request.name,
-            shown(&checked.binary.running.text),
-            shown(&release.version.text)
+        .success(&messages::updated_line(
+            &request.name,
+            &checked.binary.running.text,
+            &release.version.text,
         ))
         .await?;
     Ok(())

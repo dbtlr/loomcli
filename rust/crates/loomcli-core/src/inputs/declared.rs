@@ -9,12 +9,12 @@ use crate::commands::declaration::{
 };
 use crate::diagnostics::{DiagnosticParts, DiagnosticRule, rules};
 use crate::failures::DeclarationError;
-use crate::failures::sentences::quoted;
+use crate::failures::messages::quoted;
 use crate::host::Host;
 use crate::plugins::plugin::plugin_option_site;
-use crate::support::escape_control_characters;
 
 use super::content::ContentSettings;
+use super::messages;
 use super::options::{ErasedOutput, ErasedValidator};
 use super::table::InputSite;
 use super::{
@@ -245,9 +245,7 @@ impl DeclaredValues {
 /// core's placeholder stands in for its silence.
 pub(crate) fn reported(issues: Vec<Issue>) -> Vec<Issue> {
     if issues.is_empty() {
-        vec![Issue::new(
-            "The validator rejected this value without an explanation. Supply a different value.",
-        )]
+        vec![Issue::new(messages::SILENT_REJECTION)]
     } else {
         issues
     }
@@ -258,12 +256,7 @@ pub(crate) fn reported(issues: Vec<Issue>) -> Vec<Issue> {
 pub(crate) fn messages(subject: &str, issues: &[Issue]) -> Vec<String> {
     issues
         .iter()
-        .map(|issue| {
-            let position = issue_path(issue)
-                .map(|path| format!(" at {}", escape_control_characters(&path)))
-                .unwrap_or_default();
-            format!("{subject}{position}: {}", issue.message)
-        })
+        .map(|issue| messages::issue_line(subject, issue_path(issue).as_deref(), &issue.message))
         .collect()
 }
 

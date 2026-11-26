@@ -9,6 +9,7 @@ pub(crate) mod content;
 pub(crate) mod declared;
 pub(crate) mod groups;
 pub(crate) mod interaction;
+pub(crate) mod messages;
 mod options;
 pub(crate) mod pass;
 pub(crate) mod sources;

@@ -83,6 +83,10 @@ fn setup(scenario: &'static str) -> App {
                     text(&ctx, TextSettings::new("Name"), Verbatim).await?;
                     Ok(())
                 }
+                "hostile" => {
+                    text(&ctx, TextSettings::new("Na\u{1b}[31mme\u{202e}"), Verbatim).await?;
+                    Ok(())
+                }
                 _ => {
                     let value = text(
                         &ctx,
@@ -273,6 +277,23 @@ async fn an_unlinked_question_cannot_resolve_without_interaction() {
     assert!(mock.stderr_text().contains(
         "The question \"Name\" needs an interactive terminal, and this run is not interactive. Run \"setup\" at a terminal."
     ));
+}
+
+#[tokio::test]
+async fn an_unavailable_question_escapes_control_characters_in_its_text() {
+    let (code, mock) = run_setup("hostile", &[]).await;
+    assert_eq!(
+        (
+            code,
+            mock.stdout_text().as_str(),
+            mock.stderr_text().as_str()
+        ),
+        (
+            1,
+            "",
+            "The question \"Na\\u001b[31mme\\u202e\" needs an interactive terminal, and this run is not interactive. Run \"setup\" at a terminal.\n"
+        )
+    );
 }
 
 #[tokio::test]

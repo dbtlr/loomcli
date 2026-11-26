@@ -70,7 +70,7 @@ fn generate_command() -> Command {
         .action(|context: Context| async move {
             // `required` means validation rejected a run without it, so the action always has it.
             let out: Option<String> = context.option("out")?;
-            let out = out.ok_or_else(|| FatalError::new("--out is required."))?;
+            let out = out.ok_or_else(|| FatalError::new(messages::OUT_REQUIRED))?;
             generate_pages(&child_run(&context), &out).await
         })
 }
@@ -115,12 +115,8 @@ pub fn manpage() -> Plugin {
 /// What the man page refresh runs and says.
 const REFRESH: Refresh = Refresh {
     words: &["manpage", "update"],
-    warning: "Man pages were not refreshed after the update.",
-    not_started: |path, name| {
-        format!(
-            "The man pages were not refreshed because {path} could not start. Run {name} manpage update.\n"
-        )
-    },
+    warning: messages::MAN_PAGES_REFRESH_FAILED,
+    not_started: messages::man_pages_not_refreshed,
 };
 
 /// An `after_replace` function for the self-update plugin: a page is fixed text and the replaced

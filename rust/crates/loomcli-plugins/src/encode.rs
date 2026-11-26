@@ -8,10 +8,7 @@ use std::io;
 use serde::Serialize;
 use serde_json::ser::{CompactFormatter, Formatter, PrettyFormatter};
 
-/// The sentence both encode failures start with. The engine's reason differs between libraries and
-/// can hold data, so it stays on the error's source and out of the message.
-const ENCODE_FAILURE: &str =
-    "The value cannot be encoded as JSON. Emit plain JSON data from the action.";
+use crate::messages::ENCODE_FAILURE;
 
 /// The failure of a value that cannot be written as JSON, such as a map keyed by a non-string. Its
 /// message is fixed; the serializer's error is its `source`.

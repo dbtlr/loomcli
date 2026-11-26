@@ -12,11 +12,12 @@ use std::path::{Component, Path, PathBuf};
 
 use loomcli_core::{
     ContextualStyle, Host, InputError, InputIdentity, InputKind, InputProblem, InvokedBy, Issue,
-    OptionGroupKind, escape_control_characters, nowrap,
+    OptionGroupKind, escape_control_characters,
 };
 
 use super::document::Value;
-use super::reading::{Clause, Position, Reading, parse_file, split_extension};
+use super::messages;
+use super::reading::{Clause, Reading, parse_file, split_extension};
 
 /// One line the lookup or the drop writes, by its level.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -211,13 +212,6 @@ fn read(file: &ConfigFile) -> Reading {
     }
 }
 
-/// Where a file stops parsing, as a sentence names it, or nothing when the parser named no place.
-fn place(at: Option<Position>) -> String {
-    at.map_or_else(String::new, |at| {
-        format!(" at line {}, column {}", at.line, at.column)
-    })
-}
-
 /// How a run that cannot use its configuration fails.
 #[derive(Clone, Debug)]
 pub(crate) enum LookupFault {
@@ -244,7 +238,7 @@ impl LookupFault {
             LookupFault::Named(message) => {
                 let spelling = spelling("config");
                 InputError::new(
-                    format!("Option \"{spelling}\": {message}"),
+                    messages::named_file_failure(&spelling, message),
                     vec![InputProblem::Invalid {
                         input: identity("config"),
                         spelling,
@@ -255,10 +249,7 @@ impl LookupFault {
             LookupFault::Both => {
                 let spellings = vec![spelling("config"), spelling("no-config")];
                 InputError::new(
-                    format!(
-                        "Options \"{}\" and \"{}\" cannot be used together. Supply only one of them.",
-                        spellings[0], spellings[1]
-                    ),
+                    messages::exclusive_file_options(&spellings),
                     vec![InputProblem::Group {
                         reason: OptionGroupKind::Exclusive,
                         inputs: vec![identity("config"), identity("no-config")],
@@ -294,11 +285,6 @@ impl Lookup<'_> {
     /// The directory the walk starts in: the directory option's value, or else `host.cwd`.
     fn start(&self) -> PathBuf {
         resolve(&self.cwd(), Path::new(self.directory.unwrap_or(".")))
-    }
-
-    /// A message's file, escaped for the terminal and kept whole.
-    fn quoted(&self, file: &ConfigFile) -> String {
-        nowrap(&self.style.escape(&file.shown))
     }
 
     /// The candidates in one directory, in candidate order. A file the walk finds in the working
@@ -359,12 +345,13 @@ impl Lookup<'_> {
         match read(&file) {
             Reading::Usable(object) => Some(Outcome::File(UsableFile { file, object })),
             Reading::Unusable { clause, at } => {
-                let fix = clause.discovered_fix()?;
-                lines.push(Line::Warn(format!(
-                    "Skipped {}: the file {}{}, so this run reads no configuration. {fix}",
-                    self.quoted(&file),
-                    clause.text(),
-                    place(at)
+                let step = messages::discovered_step(clause)?;
+                lines.push(Line::Warn(messages::skipped_unusable(
+                    &file.shown,
+                    clause,
+                    at,
+                    step,
+                    self.style,
                 )));
                 Some(Outcome::Ended)
             }
@@ -380,12 +367,13 @@ impl Lookup<'_> {
             .into_iter()
             .filter(|file| is_present(&file.path));
         let found = present.next()?;
-        let skipped: Vec<String> = present.map(|file| self.quoted(&file)).collect();
+        let skipped: Vec<ConfigFile> = present.collect();
         if !skipped.is_empty() {
-            lines.push(Line::Warn(format!(
-                "Skipped {}: {} matches the same pattern first. Keep one of the files, and remove the others.",
-                skipped.join(", "),
-                self.quoted(&found)
+            let names: Vec<&str> = skipped.iter().map(|file| file.shown.as_str()).collect();
+            lines.push(Line::Warn(messages::skipped_candidates(
+                &names,
+                &found.shown,
+                self.style,
             )));
         }
         self.discovered(found, lines)
@@ -440,10 +428,10 @@ impl Lookup<'_> {
             }
         })?;
         let first = self.files_in(&step).into_iter().next()?;
-        Some(Line::Info(format!(
-            "Found no configuration file. Create {} to configure {}.",
-            self.quoted(&first),
-            self.app
+        Some(Line::Info(messages::no_file_notice(
+            &first.shown,
+            self.app,
+            self.style,
         )))
     }
 
@@ -463,13 +451,9 @@ impl Lookup<'_> {
             let file = ConfigFile::new(resolve(&self.cwd(), Path::new(named)), named);
             return match read(&file) {
                 Reading::Usable(object) => Ok(Some(UsableFile { file, object })),
-                Reading::Unusable { clause, at } => Err(LookupFault::Named(format!(
-                    "File \"{}\" {}{}. {}",
-                    file.shown,
-                    clause.text(),
-                    place(at),
-                    clause.named_fix()
-                ))),
+                Reading::Unusable { clause, at } => Err(LookupFault::Named(
+                    messages::named_file_issue(&file.shown, clause, at),
+                )),
             };
         }
         let outcome = match self.from_variable.filter(|value| !value.is_empty()) {

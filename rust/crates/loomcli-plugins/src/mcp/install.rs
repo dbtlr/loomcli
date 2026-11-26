@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use loomcli_core::{Build, Error};
+use loomcli_core::{Build, Error, FatalError};
 
 use super::messages::{self, BuildNote, Child};
 use super::registration::{Agent, Answer, ChildRun, command_line, selected_agents};
@@ -50,8 +50,8 @@ async fn started_agents(
     }
     if started.is_empty() {
         return Err(match named {
-            None => messages::no_agent(run.name),
-            Some(agent) => messages::agent_missing(run.name, agent.name()),
+            None => FatalError::new(messages::no_agent(run.name)).into(),
+            Some(agent) => FatalError::new(messages::agent_missing(run.name, agent.name())).into(),
         });
     }
     Ok(started)
@@ -70,7 +70,7 @@ async fn holds_name(run: &ChildRun<'_>, agent: Agent) -> Result<bool, Error> {
         Some(NOT_HELD) => Ok(false),
         code => {
             run.warn_output(&answer).await?;
-            Err(messages::cannot_tell(&run.names(), agent.name(), code))
+            Err(FatalError::new(messages::cannot_tell(&run.names(), agent.name(), code)).into())
         }
     }
 }
@@ -107,7 +107,7 @@ async fn refuse_name_in_the_way(
             .await?;
     }
     if !held.is_empty() {
-        return Err(messages::in_the_way(&run.names()));
+        return Err(FatalError::new(messages::in_the_way(&run.names())).into());
     }
     Ok(())
 }
@@ -182,11 +182,12 @@ async fn register_with(
     }
     run.warn_output(&answer).await?;
     restore_record(registering, removed)?;
-    Err(messages::add_failed(
+    Err(FatalError::new(messages::add_failed(
         &run.names(),
         agent.name(),
         answer.code(),
     ))
+    .into())
 }
 
 /// The build note of a build that is not distributed, none for a distributed one.
@@ -214,7 +215,7 @@ pub(super) async fn install_registrations(
         .iter()
         .any(|word| word.chars().any(char::is_control))
     {
-        return Err(messages::control_character(run.name));
+        return Err(FatalError::new(messages::control_character(run.name)).into());
     }
     let record = run.record_directory()?;
     let agents = selected_agents(request.agent);

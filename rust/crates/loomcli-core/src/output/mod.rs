@@ -7,6 +7,7 @@
 
 pub(crate) mod emit;
 mod log;
+mod messages;
 mod out;
 mod progress;
 mod region;

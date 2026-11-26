@@ -1,12 +1,13 @@
 //! Select and multiselect: one list question, which moves a highlight through its choices, keeps a
 //! multiselect's selection, searches a list or reads it from a source, and resolves its prefill.
 
+use crate::messages;
 use std::any::Any;
 use std::future::Future;
 use std::pin::{Pin, pin};
 use std::task::Poll;
 
-use loomcli_core::{Context, Error, Issue, SuppliedValue, ValueLink, escape_control_characters};
+use loomcli_core::{Context, Error, Issue, SuppliedValue, ValueLink};
 use tokio_util::sync::CancellationToken;
 
 use crate::line::TypedLine;
@@ -51,13 +52,11 @@ impl<T: PartialEq + 'static> Prefill<T> {
         }
     }
 
-    fn quoted(&self) -> String {
+    /// The text a sentence repeats for this prefill.
+    fn shown(&self) -> String {
         match self {
-            Prefill::Raw(raw) => format!("\"{}\"", escape_control_characters(raw)),
-            Prefill::Value(value) => format!(
-                "\"{}\"",
-                escape_control_characters(text_of(value).unwrap_or_default())
-            ),
+            Prefill::Raw(raw) => raw.clone(),
+            Prefill::Value(value) => text_of(value).unwrap_or_default().to_owned(),
         }
     }
 }
@@ -570,26 +569,12 @@ async fn apply_prefill<I, R: 'static, T: Clone + PartialEq + Send + Sync + 'stat
     }
     let mut sentences = Vec::new();
     if !missing.is_empty() {
-        sentences.push(format!(
-            "Cannot select {}. Choose from the list.",
-            missing
-                .iter()
-                .map(Prefill::quoted)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+        let shown: Vec<String> = missing.iter().map(Prefill::shown).collect();
+        sentences.push(messages::unselectable(&shown));
     }
     if !limited.is_empty() {
-        sentences.push(format!(
-            "Cannot select {}: at most {} can be selected. Deselect a choice to select {}.",
-            limited
-                .iter()
-                .map(Prefill::quoted)
-                .collect::<Vec<_>>()
-                .join(", "),
-            state.max.unwrap_or_default(),
-            if limited.len() == 1 { "it" } else { "one" }
-        ));
+        let shown: Vec<String> = limited.iter().map(Prefill::shown).collect();
+        sentences.push(messages::over_limit(&shown, state.max.unwrap_or_default()));
     }
     state.issue = (!sentences.is_empty()).then(|| sentences.join(" "));
     Ok(())
@@ -718,13 +703,13 @@ async fn asking_list<
                 .and_then(item)
                 .filter(|item| !item.row.disabled);
             if !state.multiple && current.is_none() {
-                state.issue = Some("No choice can be selected. Change the search.".to_owned());
+                state.issue = Some(messages::NO_SELECTABLE_CHOICE.to_owned());
                 let frame = state.frame(context);
                 draw.frame(context, frame).await?;
                 continue;
             }
             if state.multiple && state.selection.len() < state.min {
-                state.issue = Some(format!("Choose at least {}.", state.min));
+                state.issue = Some(messages::choose_at_least(state.min));
                 let frame = state.frame(context);
                 draw.frame(context, frame).await?;
                 continue;
@@ -742,12 +727,12 @@ async fn asking_list<
                 match output {
                     Ok(value) => outputs.push(value),
                     Err(issues) => {
-                        let prefix = if state.multiple {
-                            format!("{}: ", choice.row.label)
+                        let sentence = first_issue(&issues);
+                        state.issue = Some(if state.multiple {
+                            messages::choice_issue(&choice.row.label, &sentence)
                         } else {
-                            String::new()
-                        };
-                        state.issue = Some(format!("{prefix}{}", first_issue(&issues)));
+                            sentence
+                        });
                         break;
                     }
                 }

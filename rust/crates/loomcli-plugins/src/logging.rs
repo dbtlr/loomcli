@@ -9,6 +9,7 @@
 mod directory;
 mod error;
 mod file;
+mod messages;
 mod record;
 
 use std::sync::Arc;

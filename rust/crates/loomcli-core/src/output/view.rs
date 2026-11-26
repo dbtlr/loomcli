@@ -7,7 +7,7 @@ use crate::failures::{Error, Failure, FailureClass, FailureKey, FailureView, Fai
 use crate::marks::Background;
 use crate::style::{ContextualStyle, Glyph, Renderer};
 
-use super::RowSource;
+use super::{RowSource, messages};
 
 /// What a view reads beside its data: the destination's width, background, and style, and the
 /// measuring and laying-out operations of the destination it renders for.
@@ -745,10 +745,8 @@ static INCOMPLETE: std::sync::LazyLock<DeclaredView<IncompleteResult>> =
     std::sync::LazyLock::new(|| {
         View::new(|facts: &IncompleteResult, _: &ViewContext| {
             format!(
-                "Output is incomplete: {} stopped after {} rows, {} written.\n",
-                crate::failures::sentences::routed_subject(&facts.path),
-                facts.yielded,
-                facts.written
+                "{}\n",
+                messages::incomplete_output(&facts.path, facts.yielded, facts.written)
             )
         })
         .declare(&format!("{CORE}/results/incomplete"))

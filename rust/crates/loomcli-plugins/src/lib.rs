@@ -81,6 +81,10 @@ pub mod manpage;
 mod markdown;
 #[cfg(any(feature = "mcp", feature = "mcp-extension"))]
 pub mod mcp;
+// The sentences of the files at the top of `src`; a build of fewer plugins leaves some unread.
+#[cfg(any(feature = "format-views", feature = "manifest"))]
+#[cfg_attr(not(feature = "format-views"), allow(dead_code))]
+mod messages;
 #[cfg(feature = "prose")]
 pub mod prose;
 #[cfg(feature = "records")]

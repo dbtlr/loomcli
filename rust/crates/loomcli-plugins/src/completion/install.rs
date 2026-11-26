@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use loomcli_core::Error;
+use loomcli_core::{Error, FatalError};
 
-use super::messages::{Verb, lines, refusals};
+use super::messages::{self, Verb};
 use super::paths::normalize;
 use super::profile::{ProfileRequest, ask_profile};
 use super::run::{
@@ -156,7 +156,7 @@ fn plan_lines(
     };
     let judgement = judge_startup(&startup.path, &startup.line, run.uid())?;
     let StartupJudgement::File { changeable, holds } = judgement else {
-        return Err(refusals::not_a_file(&run.name, &startup.path).into());
+        return Err(FatalError::new(messages::startup_not_a_file(&run.name, &startup.path)).into());
     };
     let others: Vec<&StartupLine> = recorded
         .iter()
@@ -209,7 +209,8 @@ struct Writing {
 
 /// States a script and line that are already in place, and the line the operator adds by hand.
 async fn report_steady(run: &ChildRun, writing: &Writing) -> Result<(), Error> {
-    run.info(&lines::unchanged(writing.place.script())).await?;
+    run.info(&messages::script_unchanged(writing.place.script()))
+        .await?;
     let placement = &writing.plan.placement;
     for path in placement
         .lines
@@ -217,7 +218,7 @@ async fn report_steady(run: &ChildRun, writing: &Writing) -> Result<(), Error> {
         .map(|entry| &entry.path)
         .chain(&placement.loaded)
     {
-        run.info(&lines::already_loads(path)).await?;
+        run.info(&messages::already_loads(path)).await?;
     }
     write_notices(run, &placement.notices).await
 }
@@ -265,10 +266,14 @@ async fn report_installed(
 ) -> Result<(), Error> {
     let place = &writing.place;
     if script_changed {
-        run.success(&lines::installed(place.shell().name(), place.script()))
-            .await?;
+        run.success(&messages::installed_script(
+            place.shell().name(),
+            place.script(),
+        ))
+        .await?;
     } else {
-        run.info(&lines::unchanged(place.script())).await?;
+        run.info(&messages::script_unchanged(place.script()))
+            .await?;
     }
     report_written(
         run,
@@ -281,7 +286,7 @@ async fn report_installed(
     )
     .await?;
     if changed_anything(script_changed, outcome) {
-        run.info(lines::OPEN_SHELL).await?;
+        run.info(messages::OPEN_NEW_SHELL).await?;
     }
     Ok(())
 }

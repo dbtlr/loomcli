@@ -10,7 +10,7 @@ use crate::commands::declaration::{
 };
 use crate::diagnostics::{DiagnosticParts, Finding, rules};
 use crate::failures::DeclarationError;
-use crate::failures::sentences::{command_sentence, command_subject, quoted};
+use crate::failures::messages::{command_sentence, command_subject, quoted};
 use crate::host::Env;
 use crate::inputs::table::{self, ScopeOption, check_option_config, check_option_name};
 use crate::inputs::{ArgumentDecl, OptionDecl};

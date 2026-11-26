@@ -3,6 +3,8 @@
 use std::fmt;
 use std::path::PathBuf;
 
+use super::messages;
+
 /// The step of writing a record that failed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -73,22 +75,15 @@ impl fmt::Display for LoggingError {
             .as_ref()
             .map(|path| path.display().to_string())
             .unwrap_or_default();
-        match self.kind {
-            LoggingErrorKind::UnresolvedDirectory => write!(
-                formatter,
-                "Cannot resolve the log directory because {} is not set.",
-                self.variable.as_deref().unwrap_or("a variable")
-            ),
-            LoggingErrorKind::CreateDirectory => {
-                write!(formatter, "Cannot create the log directory \"{path}\".")
+        let sentence = match self.kind {
+            LoggingErrorKind::UnresolvedDirectory => {
+                messages::unresolved_directory(self.variable.as_deref().unwrap_or("a variable"))
             }
-            LoggingErrorKind::Append => {
-                write!(formatter, "Cannot append to the log file \"{path}\".")
-            }
-            LoggingErrorKind::Rotate => {
-                write!(formatter, "Cannot rotate the log file \"{path}\".")
-            }
-        }
+            LoggingErrorKind::CreateDirectory => messages::create_directory(&path),
+            LoggingErrorKind::Append => messages::append(&path),
+            LoggingErrorKind::Rotate => messages::rotate(&path),
+        };
+        formatter.write_str(&sentence)
     }
 }
 

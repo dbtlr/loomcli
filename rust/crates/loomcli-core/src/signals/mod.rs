@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
 pub(crate) mod lane;
+mod messages;
 
 /// A signal that ends the process.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

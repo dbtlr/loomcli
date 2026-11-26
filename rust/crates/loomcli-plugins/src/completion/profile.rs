@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use loomcli_core::{ChildExit, ChildStream, Error, Host, RunSignal, SpawnOptions};
+use loomcli_core::{ChildExit, ChildStream, Error, FatalError, Host, RunSignal, SpawnOptions};
 
-use super::messages::{ProfileFault, refusals};
+use super::messages::{self, ProfileFault};
 use super::paths::{join, normalize};
 use super::startup::may_execute;
 
@@ -133,10 +133,18 @@ async fn answer_of(request: &ProfileRequest<'_>, program: &Path) -> Result<Strin
                 None => text,
             })
         }
-        ChildExit::Exited { code, .. } => {
-            Err(refusals::profile(name, SHELL, &ProfileFault::Exited(code)).into())
-        }
-        _ => Err(refusals::profile(name, SHELL, &ProfileFault::NotStarted).into()),
+        ChildExit::Exited { code, .. } => Err(FatalError::new(messages::profile_not_found(
+            name,
+            SHELL,
+            &ProfileFault::Exited(code),
+        ))
+        .into()),
+        _ => Err(FatalError::new(messages::profile_not_found(
+            name,
+            SHELL,
+            &ProfileFault::NotStarted,
+        ))
+        .into()),
     }
 }
 
@@ -144,11 +152,21 @@ async fn answer_of(request: &ProfileRequest<'_>, program: &Path) -> Result<Strin
 /// with any code but 0, and an answer of any other shape each are the pinned failure.
 pub(super) async fn ask_profile(request: &ProfileRequest<'_>) -> Result<PathBuf, Error> {
     let Some(program) = program_of(request.host) else {
-        return Err(refusals::profile(request.name, SHELL, &ProfileFault::NotStarted).into());
+        return Err(FatalError::new(messages::profile_not_found(
+            request.name,
+            SHELL,
+            &ProfileFault::NotStarted,
+        ))
+        .into());
     };
     let answer = answer_of(request, &program).await?;
     match profile_of(&answer) {
         Some(profile) => Ok(PathBuf::from(normalize(&profile))),
-        None => Err(refusals::profile(request.name, SHELL, &ProfileFault::Reported(answer)).into()),
+        None => Err(FatalError::new(messages::profile_not_found(
+            request.name,
+            SHELL,
+            &ProfileFault::Reported(answer),
+        ))
+        .into()),
     }
 }

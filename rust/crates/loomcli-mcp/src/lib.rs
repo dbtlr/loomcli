@@ -37,6 +37,7 @@
 //! ```
 
 mod json_rpc;
+mod messages;
 mod protocol;
 mod revision;
 mod server;

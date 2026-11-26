@@ -6,12 +6,12 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-use loomcli_core::{Error, InputError, InputIdentity, InputKind, InputProblem, Issue};
+use loomcli_core::{Error, FatalError, InputError, InputIdentity, InputKind, InputProblem, Issue};
 
 use super::Declared;
 use super::global::ChildRun;
 use super::load::{LoadedSkill, load_skills};
-use super::messages::{self, shown};
+use super::messages;
 use super::targets::{Target, real_folder, selected_targets, skills_directory};
 use crate::installation::{exists, write_folder};
 
@@ -30,9 +30,8 @@ fn directory_problem(message: String, issue: &str) -> InputError {
 /// The refusal of `--directory` without `--project`, which the action returns before anything else.
 pub(super) fn directory_needs_project() -> InputError {
     directory_problem(
-        "Option \"--directory\" needs --project. Add --project, or leave out --directory."
-            .to_owned(),
-        "Add --project, or leave out --directory.",
+        messages::DIRECTORY_WITHOUT_PROJECT.to_owned(),
+        messages::DIRECTORY_WITHOUT_PROJECT_ISSUE,
     )
 }
 
@@ -62,11 +61,8 @@ fn start_of(run: &ChildRun<'_>, directory: Option<&str>) -> Result<PathBuf, Erro
         return Ok(start);
     }
     Err(directory_problem(
-        format!(
-            "Option \"--directory\" names {}, which is not a directory. Name a directory that exists.",
-            shown(&start.to_string_lossy())
-        ),
-        "Name a directory that exists.",
+        messages::directory_missing(&start.to_string_lossy()),
+        messages::DIRECTORY_MISSING_ISSUE,
     )
     .into())
 }
@@ -134,7 +130,7 @@ fn guard_global(
 ) -> Result<(), Error> {
     for target in selected_targets(agent) {
         if let Some(clash) = clash_of(run, root, target, names)? {
-            return Err(messages::never_global(run.name, &clash).into());
+            return Err(FatalError::new(messages::never_global(run.name, &clash)).into());
         }
     }
     Ok(())

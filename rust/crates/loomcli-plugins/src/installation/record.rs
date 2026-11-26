@@ -333,12 +333,9 @@ pub(super) fn read_plugin_file(path: &Path) -> io::Result<PluginFileRead> {
 
 /// A path as the record spells it: its text, which must be UTF-8 for JSON to hold it.
 fn path_text(path: &Path) -> io::Result<Value> {
-    path.to_str().map(Value::from).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "The installation record holds UTF-8 paths, and a path is not UTF-8.",
-        )
-    })
+    path.to_str()
+        .map(Value::from)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, super::messages::PATH_NOT_UTF8))
 }
 
 /// An object of members in the order given.

@@ -787,6 +787,17 @@ fn a_key_value_code_names_its_separator() {
 }
 
 #[test]
+fn a_url_scheme_code_escapes_control_characters_in_its_protocols() {
+    let issue = URL_SCHEME_ISSUE.issue(Protocols {
+        protocols: vec!["a\u{1b}[31mb".into(), "c\u{202e}d".into()],
+    });
+    assert_eq!(
+        issue.message,
+        "Expected an absolute URL with the scheme a\\u001b[31mb or c\\u202ed."
+    );
+}
+
+#[test]
 fn each_path_kind_reads_its_own_words() {
     for (kind, readable, writable) in [
         (

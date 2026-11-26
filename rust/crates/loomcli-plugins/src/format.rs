@@ -4,6 +4,8 @@
 //! [`json`] and [`jsonl`], which install nothing and render as ordinary views.
 
 #[cfg(feature = "format")]
+mod messages;
+#[cfg(feature = "format")]
 mod name;
 #[cfg(feature = "format-views")]
 pub mod views;

@@ -137,6 +137,7 @@ mod disk;
 mod files;
 mod folders;
 mod lines;
+mod messages;
 mod record;
 mod refresh;
 mod startup;
@@ -232,23 +233,17 @@ pub enum InstallationError {
 impl fmt::Display for InstallationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InstallationError::Cancelled(_) => formatter.write_str("The run was cancelled."),
+            InstallationError::Cancelled(_) => formatter.write_str(messages::RUN_CANCELLED),
             InstallationError::Io(error) => error.fmt(formatter),
-            InstallationError::UnreadableStartupFile(path) => write!(
-                formatter,
-                "Startup file \"{}\" is one the process may not read.",
-                path.display()
-            ),
-            InstallationError::UnknownStartupEncoding(path) => write!(
-                formatter,
-                "Startup file \"{}\" is not in an encoding the module reads.",
-                path.display()
-            ),
-            InstallationError::StartupFileChanged(path) => write!(
-                formatter,
-                "Startup file \"{}\" changed while its line was added.",
-                path.display()
-            ),
+            InstallationError::UnreadableStartupFile(path) => {
+                formatter.write_str(&messages::startup_file_unreadable(&path.to_string_lossy()))
+            }
+            InstallationError::UnknownStartupEncoding(path) => {
+                formatter.write_str(&messages::startup_file_encoding(&path.to_string_lossy()))
+            }
+            InstallationError::StartupFileChanged(path) => {
+                formatter.write_str(&messages::startup_file_changed(&path.to_string_lossy()))
+            }
         }
     }
 }

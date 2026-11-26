@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use serde::Serialize;
 
 use crate::diagnostics::defect::defect_detail;
-use crate::failures::sentences::is_author_fault;
+use crate::failures::messages::is_author_fault;
 use crate::failures::{Error, Failure, FailureForm};
 use crate::host::{Env, Host, OutputStream};
 use crate::invocation::Outcome;

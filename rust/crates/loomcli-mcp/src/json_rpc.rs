@@ -6,6 +6,8 @@ use std::io;
 use serde::Serialize;
 use serde_json::{Map, Number, Value, json};
 
+use crate::messages;
+
 /// The JSON-RPC error codes the server answers, and the protocol's unsupported-version code.
 pub mod error_codes {
     /// The server failed while handling a request.
@@ -196,9 +198,7 @@ impl ProtocolError {
     pub(crate) fn internal(method: &str) -> Self {
         Self::new(
             error_codes::INTERNAL_ERROR,
-            format!(
-                "The server failed while handling {method}. The failure is a defect in the server; report it to the server's author."
-            ),
+            messages::handler_failed(method),
         )
     }
 }
@@ -227,24 +227,15 @@ pub(crate) enum Incoming {
 }
 
 fn not_json() -> ProtocolError {
-    ProtocolError::new(
-        error_codes::PARSE_ERROR,
-        "The line is not JSON. Send one JSON-RPC message as one line of JSON.",
-    )
+    ProtocolError::new(error_codes::PARSE_ERROR, messages::LINE_NOT_JSON)
 }
 
 fn batch() -> ProtocolError {
-    ProtocolError::new(
-        error_codes::INVALID_REQUEST,
-        "A batch is not a message this server reads. Send each JSON-RPC message as its own line.",
-    )
+    ProtocolError::new(error_codes::INVALID_REQUEST, messages::BATCH_UNSUPPORTED)
 }
 
 fn not_request() -> ProtocolError {
-    ProtocolError::new(
-        error_codes::INVALID_REQUEST,
-        "The message is not a JSON-RPC 2.0 request or notification. Send an object with \"jsonrpc\": \"2.0\", a \"method\", and an \"id\" for a request.",
-    )
+    ProtocolError::new(error_codes::INVALID_REQUEST, messages::NOT_JSON_RPC_REQUEST)
 }
 
 /// Sorts one parsed object: a client's response, a notification, a request, or neither.

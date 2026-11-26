@@ -1,6 +1,6 @@
-//! The sentences `mcp install` and `mcp uninstall` write and fail with.
+//! The sentences of the MCP plugin.
 
-use loomcli_core::{Error, FatalError, escape_control_characters, nowrap};
+use loomcli_core::{escape_control_characters, nowrap};
 
 /// Every path, name, agent, and line of agent output a sentence repeats, escaped as a failure
 /// quotes text.
@@ -45,9 +45,9 @@ impl Child {
     }
 }
 
-/// One failure a child reports, which exits 1.
-fn fatal(sentences: &[String]) -> Error {
-    FatalError::new(sentences.join(" ")).into()
+/// The sentences of one failure, read as one message.
+fn joined(sentences: &[String]) -> String {
+    sentences.join(" ")
 }
 
 /// The call that failed, such as `claude mcp add`, and how it ended.
@@ -59,7 +59,7 @@ fn call_ended(agent: &str, verb: &str, code: Option<i32>) -> String {
 }
 
 /// An `add` that exited with a code or could not start.
-pub(super) fn add_failed(names: &Names<'_>, agent: &str, code: Option<i32>) -> Error {
+pub(super) fn add_failed(names: &Names<'_>, agent: &str, code: Option<i32>) -> String {
     let app = shown(names.app);
     let registration = shown(names.registration);
     let correction = if agent == "claude" {
@@ -69,7 +69,7 @@ pub(super) fn add_failed(names: &Names<'_>, agent: &str, code: Option<i32>) -> E
     } else {
         format!("Fix what {agent} reported, then run {app} mcp install again.")
     };
-    fatal(&[
+    joined(&[
         format!(
             "{app} could not register with {agent}, because {}.",
             call_ended(agent, "add", code)
@@ -79,8 +79,8 @@ pub(super) fn add_failed(names: &Names<'_>, agent: &str, code: Option<i32>) -> E
 }
 
 /// An `--agent` that cannot start.
-pub(super) fn agent_missing(name: &str, agent: &str) -> Error {
-    fatal(&[
+pub(super) fn agent_missing(name: &str, agent: &str) -> String {
+    joined(&[
         format!(
             "{} mcp install cannot register with {agent}, because {agent} could not start.",
             shown(name)
@@ -90,9 +90,9 @@ pub(super) fn agent_missing(name: &str, agent: &str) -> Error {
 }
 
 /// A name check that answered neither 0 nor 1, or could not start.
-pub(super) fn cannot_tell(names: &Names<'_>, agent: &str, code: Option<i32>) -> Error {
+pub(super) fn cannot_tell(names: &Names<'_>, agent: &str, code: Option<i32>) -> String {
     let app = shown(names.app);
-    fatal(&[
+    joined(&[
         format!(
             "{app} cannot tell whether {agent} already has a server named {}, because {}.",
             shown(names.registration),
@@ -103,9 +103,9 @@ pub(super) fn cannot_tell(names: &Names<'_>, agent: &str, code: Option<i32>) -> 
 }
 
 /// A command line word that holds a control character.
-pub(super) fn control_character(name: &str) -> Error {
+pub(super) fn control_character(name: &str) -> String {
     let name = shown(name);
-    fatal(&[
+    joined(&[
         format!(
             "{name} cannot register its MCP server because its path holds a control character."
         ),
@@ -114,9 +114,9 @@ pub(super) fn control_character(name: &str) -> Error {
 }
 
 /// A registration the record does not list, in the way without `--force`.
-pub(super) fn in_the_way(names: &Names<'_>) -> Error {
+pub(super) fn in_the_way(names: &Names<'_>) -> String {
     let app = shown(names.app);
-    fatal(&[
+    joined(&[
         format!(
             "{app} mcp install changed nothing, because a registration it did not make is in the way."
         ),
@@ -128,9 +128,9 @@ pub(super) fn in_the_way(names: &Names<'_>) -> Error {
 }
 
 /// No agent that starts.
-pub(super) fn no_agent(name: &str) -> Error {
+pub(super) fn no_agent(name: &str) -> String {
     let name = shown(name);
-    fatal(&[
+    joined(&[
         format!(
             "{name} mcp install found no agent to register with, because neither claude nor codex could start."
         ),
@@ -139,9 +139,9 @@ pub(super) fn no_agent(name: &str) -> Error {
 }
 
 /// A child on `win32`.
-pub(super) fn not_on_windows(name: &str, child: Child) -> Error {
+pub(super) fn not_on_windows(name: &str, child: Child) -> String {
     let name = shown(name);
-    fatal(&[
+    joined(&[
         format!(
             "{name} mcp {} registers with claude and codex on Linux and macOS.",
             child.word()
@@ -153,9 +153,9 @@ pub(super) fn not_on_windows(name: &str, child: Child) -> Error {
 }
 
 /// A plugin's file the child cannot read.
-pub(super) fn record(name: &str, record: &str, child: Child) -> Error {
+pub(super) fn record(name: &str, record: &str, child: Child) -> String {
     let name = shown(name);
-    fatal(&[
+    joined(&[
         format!(
             "{} cannot be read, so {name} will not change the registration it lists.",
             shown_path(record)
@@ -165,14 +165,14 @@ pub(super) fn record(name: &str, record: &str, child: Child) -> Error {
 }
 
 /// The agents an uninstall could not start.
-pub(super) fn uninstall_incomplete(names: &Names<'_>, agents: &[&str]) -> Error {
+pub(super) fn uninstall_incomplete(names: &Names<'_>, agents: &[&str]) -> String {
     let app = shown(names.app);
     let configurations = agents
         .iter()
         .map(|agent| format!("{agent}'s"))
         .collect::<Vec<_>>()
         .join(" and ");
-    fatal(&[
+    joined(&[
         format!("{app} mcp uninstall could not remove every registration."),
         format!(
             "Make {} available and run {app} mcp uninstall again, or remove {} from {configurations} MCP configuration yourself.",
@@ -261,5 +261,30 @@ pub(super) fn stays_registered(names: &Names<'_>, agent: &str) -> String {
     format!(
         "{agent} could not start, so {} stays registered with it.",
         shown(names.registration)
+    )
+}
+
+/// A tool call whose arguments are not an object.
+pub(super) fn arguments_not_object(tool: &str) -> String {
+    format!(
+        "Tool \"{}\" arguments must be an object. Supply a JSON object of named inputs.",
+        shown(tool)
+    )
+}
+
+/// A tool call that sends a key the tool's input schema does not list.
+pub(super) fn unlisted_argument(tool: &str, key: &str) -> String {
+    format!(
+        "Tool \"{}\" takes no argument \"{}\". Use a property its input schema lists.",
+        shown(tool),
+        shown(key)
+    )
+}
+
+/// A tool call that names no tool the server serves.
+pub(super) fn unknown_tool(tool: &str) -> String {
+    format!(
+        "Unknown tool \"{}\". Call tools/list for the tool names.",
+        shown(tool)
     )
 }

@@ -23,7 +23,7 @@ use crate::application::declaration::ApplicationDeclaration;
 use crate::commands::declaration::OptionInput;
 use crate::diagnostics::{DiagnosticParts, DiagnosticRule, rules};
 use crate::failures::DeclarationError;
-use crate::failures::sentences::quoted;
+use crate::failures::messages::quoted;
 use crate::inputs::table::{Form, InputSite, Role};
 use crate::invocation::parse::{Grammar, read_words, refuses_value};
 use crate::style::ColorChoice;

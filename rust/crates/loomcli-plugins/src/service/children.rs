@@ -55,12 +55,12 @@ fn manager_env(host: &Host, uid: u32) -> Env {
 /// which selects the backend, and an absolute home.
 pub(super) fn prepare<'a>(run: &'a ChildRun<'a>) -> Result<Prepared<'a>, FatalError> {
     let host = run.host;
-    let backend =
-        Backend::of(&host.platform).ok_or_else(|| messages::platform(run.name, &host.platform))?;
-    let home = home_of(&host.home).ok_or_else(|| messages::home(run.name))?;
+    let backend = Backend::of(&host.platform)
+        .ok_or_else(|| FatalError::new(messages::platform(run.name, &host.platform)))?;
+    let home = home_of(&host.home).ok_or_else(|| FatalError::new(messages::home(run.name)))?;
     let uid = host
         .uid
-        .ok_or_else(|| messages::platform(run.name, &host.platform))?;
+        .ok_or_else(|| FatalError::new(messages::platform(run.name, &host.platform)))?;
     let manager = Manager {
         name: run.name,
         env: manager_env(host, uid),
@@ -69,7 +69,8 @@ pub(super) fn prepare<'a>(run: &'a ChildRun<'a>) -> Result<Prepared<'a>, FatalEr
         on_shutdown: run.on_shutdown,
     };
     let path = backend.unit_path(run.label, home, &host.env);
-    let record = record_directory(run.name, host).map_err(|_| messages::home(run.name))?;
+    let record =
+        record_directory(run.name, host).map_err(|_| FatalError::new(messages::home(run.name)))?;
     Ok(Prepared {
         unit: Unit {
             name: run.name,
@@ -88,7 +89,10 @@ pub(super) fn prepare<'a>(run: &'a ChildRun<'a>) -> Result<Prepared<'a>, FatalEr
 fn require_distributed(run: &ChildRun<'_>) -> Result<(), FatalError> {
     match run.host.release.build {
         Build::Distributed => Ok(()),
-        build => Err(messages::build(run.name, build == Build::Development)),
+        build => Err(FatalError::new(messages::build(
+            run.name,
+            build == Build::Development,
+        ))),
     }
 }
 
@@ -97,7 +101,7 @@ fn recorded_files(prepared: &Prepared<'_>, child: Child) -> Result<Vec<Committed
     let file = PluginRecord::new(&prepared.record, RECORD_NAME);
     match file.read()? {
         RecordedRead::Refused(refused) => {
-            Err(messages::record(prepared.unit.name, &refused.path, child).into())
+            Err(FatalError::new(messages::record(prepared.unit.name, &refused.path, child)).into())
         }
         RecordedRead::Read { files, .. } => Ok(files),
     }
@@ -106,12 +110,12 @@ fn recorded_files(prepared: &Prepared<'_>, child: Child) -> Result<Vec<Committed
 /// The sentence one refusal of the unit's path states.
 fn refusal_of(name: &str, refusal: &Refusal) -> FatalError {
     match refusal.reason {
-        RefusalReason::Unrecorded => messages::unrecorded(name, &refusal.path),
-        RefusalReason::Changed => messages::changed(name, &refusal.path),
+        RefusalReason::Unrecorded => FatalError::new(messages::unrecorded(name, &refusal.path)),
+        RefusalReason::Changed => FatalError::new(messages::changed(name, &refusal.path)),
         RefusalReason::Damaged | RefusalReason::UnknownFormat => {
-            messages::record(name, &refusal.path, Child::Install)
+            FatalError::new(messages::record(name, &refusal.path, Child::Install))
         }
-        _ => messages::irregular(name, &refusal.path),
+        _ => FatalError::new(messages::irregular(name, &refusal.path)),
     }
 }
 
@@ -143,7 +147,7 @@ fn render_unit(
         .chain([description.as_str(), &home])
         .any(|text| text.chars().any(char::is_control));
     if holds {
-        return Err(messages::control_character(run.name));
+        return Err(FatalError::new(messages::control_character(run.name)));
     }
     Ok(prepared.backend.render(&UnitValues {
         label: run.label,
@@ -258,7 +262,9 @@ async fn remove_units(
             let path = refused
                 .first()
                 .map_or_else(|| prepared.record.clone(), |refusal| refusal.path.clone());
-            return Err(messages::record(run.name, &path, Child::Uninstall).into());
+            return Err(
+                FatalError::new(messages::record(run.name, &path, Child::Uninstall)).into(),
+            );
         }
         UninstallOutcome::Uninstalled(done) => done,
     };
@@ -282,7 +288,7 @@ pub(super) async fn uninstall_child(run: &ChildRun<'_>, out: &Out) -> Result<(),
     let files = recorded_files(&prepared, Child::Uninstall)?;
     let path = &prepared.unit.path;
     if exists(path)? && !files.iter().any(|file| &file.path == path) {
-        return Err(messages::unrecorded_uninstall(run.name, path).into());
+        return Err(FatalError::new(messages::unrecorded_uninstall(run.name, path)).into());
     }
     if files.is_empty() {
         return out.success(&messages::nothing_to_remove(run.label)).await;
@@ -302,7 +308,7 @@ pub(super) enum Control {
 pub(super) async fn control(run: &ChildRun<'_>, out: &Out, verb: Control) -> Result<(), Error> {
     let prepared = prepare(run)?;
     if !exists(&prepared.unit.path)? {
-        return Err(messages::not_installed(run.name, run.label).into());
+        return Err(FatalError::new(messages::not_installed(run.name, run.label)).into());
     }
     let (unit, backend) = (&prepared.unit, prepared.backend);
     let line = match verb {

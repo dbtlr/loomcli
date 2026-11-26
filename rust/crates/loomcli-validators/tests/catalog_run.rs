@@ -20,7 +20,7 @@ use loomcli_core::{
 use loomcli_testing::{MockFields, mock_process};
 use loomcli_validators::{
     IpVersion, KeyValuePair, bytes, create_validator, date, date_time, integer, ip, key_value,
-    path, pipe, time,
+    one_of, path, pipe, time,
 };
 use serde_json::{Value, json};
 
@@ -364,4 +364,25 @@ async fn an_omission_aware_first_sits_beside_validate_omitted_through_a_pipe() {
     );
     let given = run(&app, args(&["--name", "ada"])).await;
     assert_eq!((given.status, given.stdout.as_str()), (0, "hello ADA\n"));
+}
+
+#[tokio::test]
+async fn a_run_rejecting_a_one_of_option_escapes_control_characters_in_the_declared_values() {
+    let app: App = Application::new("probe")
+        .option(
+            "mode",
+            Opt::string()
+                .required()
+                .validate(one_of(["a\u{1b}[31mb", "c\u{202e}d"])),
+        )
+        .action(|ctx: Context| async move { ctx.out.print("unreached").await });
+    let ran = run(&app, args(&["--mode", "other"])).await;
+    assert_eq!(
+        (ran.status, ran.stdout.as_str(), ran.stderr.as_str()),
+        (
+            2,
+            "",
+            "probe: Option \"--mode\": Expected one of: a\\u001b[31mb, c\\u202ed.\n"
+        )
+    );
 }

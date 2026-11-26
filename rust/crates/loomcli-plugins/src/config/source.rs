@@ -14,6 +14,7 @@ use loomcli_core::{
 use super::document::Value;
 use super::extension::CONFIG_INPUT;
 use super::lookup::UsableFile;
+use super::messages;
 use super::number::js_number_text;
 use super::shared::directory_of;
 
@@ -63,8 +64,9 @@ fn shape_list(items: &[super::document::Item]) -> Shaped {
     for (position, item) in items.iter().enumerate() {
         match text_of(&item.value) {
             Some(text) => texts.push(text),
-            None => issues
-                .push(Issue::new("Use a string or a number.").at(PathSegment::Index(position))),
+            None => issues.push(
+                Issue::new(messages::STRING_OR_NUMBER_ISSUE).at(PathSegment::Index(position)),
+            ),
         }
     }
     if issues.is_empty() {
@@ -82,16 +84,16 @@ fn shape(request: &OptionNode, value: &Value) -> Shaped {
     match request {
         OptionNode::Boolean(_) => match value {
             Value::Bool(flag) => Shaped::Value(SourceValue::Bool(*flag)),
-            _ => wrong("Use true or false."),
+            _ => wrong(messages::BOOLEAN_ISSUE),
         },
         OptionNode::Count(_) => count_of(value).map_or_else(
-            || wrong("Use a whole number of 0 or more."),
+            || wrong(messages::COUNT_ISSUE),
             |count| Shaped::Value(SourceValue::Number(count)),
         ),
         OptionNode::String(node) if node.multiple => list_of(value),
         OptionNode::Content(node) if node.multiple => list_of(value),
         _ => text_of(value).map_or_else(
-            || wrong("Use a string or a number."),
+            || wrong(messages::STRING_OR_NUMBER_ISSUE),
             |text| Shaped::Value(SourceValue::String(text)),
         ),
     }
@@ -100,7 +102,7 @@ fn shape(request: &OptionNode, value: &Value) -> Shaped {
 fn list_of(value: &Value) -> Shaped {
     match value {
         Value::Array(items) => shape_list(items),
-        _ => Shaped::Wrong(vec![Issue::new("Use an array of strings or numbers.")]),
+        _ => Shaped::Wrong(vec![Issue::new(messages::STRING_LIST_ISSUE)]),
     }
 }
 
@@ -122,13 +124,12 @@ fn ignored_lines(
     issues
         .iter()
         .map(|issue| {
-            let position = issue_path(issue).map_or_else(String::new, |path| {
-                format!(" at {}", escape_control_characters(&path))
-            });
-            format!(
-                "Ignored option \"{spelling}\"{position} from {}: {}",
-                style.escape(label),
-                issue.message
+            messages::ignored_option(
+                &spelling,
+                issue_path(issue).as_deref(),
+                label,
+                &issue.message,
+                style,
             )
         })
         .collect()

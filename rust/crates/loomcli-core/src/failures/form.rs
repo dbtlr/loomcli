@@ -10,7 +10,7 @@ use crate::output::ViewContext;
 
 use crate::output::IntoRendered;
 
-use super::sentences::{GENERIC_MESSAGE, is_author_fault, marked_sentence};
+use super::messages::{GENERIC_MESSAGE, is_author_fault, marked_sentence};
 use super::{DeclarationError, Failure, FailureExitCode, FailureFacts, InternalError};
 
 /// One failure as plain data, for a reader that cannot parse prose: `invoke`'s outcome, a failure

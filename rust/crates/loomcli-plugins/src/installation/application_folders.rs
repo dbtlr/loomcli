@@ -6,18 +6,16 @@ use std::path::{Path, PathBuf};
 
 use loomcli_core::{
     ApplicationDirectory, DirectoryFacts, DirectoryLookup, FatalError, Host, application_directory,
-    escape_control_characters,
 };
+
+use super::messages;
 
 /// The refusal of a home folder that is not an absolute path, which exits 1:
 /// `<name> cannot find your home folder because HOME is not an absolute path. Set HOME to an
 /// absolute path, then run the command again.`
 #[must_use]
 pub fn home_refusal(name: &str) -> FatalError {
-    FatalError::new(format!(
-        "{} cannot find your home folder because HOME is not an absolute path. Set HOME to an absolute path, then run the command again.",
-        escape_control_characters(name)
-    ))
+    FatalError::new(messages::home_not_absolute(name))
 }
 
 /// The absolute path a variable of the host's environment holds, or none.
@@ -60,10 +58,9 @@ pub fn record_directory(name: &str, host: &Host) -> Result<PathBuf, FatalError> 
         &DirectoryFacts::from(host),
     ) {
         DirectoryLookup::Path(path) => Ok(path),
-        DirectoryLookup::Variable(variable) => Err(FatalError::new(format!(
-            "{} cannot find its installation record because {variable} is not an absolute path. Set {variable} to an absolute path, then run the command again.",
-            escape_control_characters(name)
-        ))),
+        DirectoryLookup::Variable(variable) => Err(FatalError::new(
+            messages::record_directory_not_absolute(name, &variable),
+        )),
         // A lookup core adds later names no directory this module can write to.
         _ => Err(home_refusal(name)),
     }

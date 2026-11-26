@@ -4,9 +4,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use loomcli_core::{Error, Host, Out, RunSignal};
+use loomcli_core::{Error, FatalError, Host, Out, RunSignal};
 
-use super::messages::{Verb, lines, refusals};
+use super::messages::{self, Verb};
 use super::shells::Shell;
 use crate::installation::{
     CommittedFile, InstallOutcome, Installed, InstalledFile, PluginRecord, RecordedRead, Refusal,
@@ -61,7 +61,7 @@ pub(super) fn refuse_windows(run: &ChildRun, shell: Option<Shell>) -> Result<(),
             None | Some(Shell::Pwsh) => "powershell",
             Some(shell) => shell.name(),
         };
-        return Err(refusals::not_on_windows(&run.name, printer).into());
+        return Err(FatalError::new(messages::installs_not_on_windows(&run.name, printer)).into());
     }
     Ok(())
 }
@@ -92,7 +92,7 @@ pub(super) fn read_shell(
     let file = shell_record(record, shell);
     match file.read()? {
         RecordedRead::Refused(refused) => {
-            Err(refusals::record(&run.name, &refused.path, verb).into())
+            Err(FatalError::new(messages::record_unreadable(&run.name, &refused.path, verb)).into())
         }
         RecordedRead::Read { files, lines, .. } => Ok(ShellRecord {
             files,
@@ -165,16 +165,18 @@ pub(super) async fn refuse_in_the_way(
     for entry in wanted {
         for refusal in target_refusals(&[entry.script], entry.files)? {
             let sentence = if refusal.reason == RefusalReason::Changed {
-                lines::changed(&run.name, &refusal.path)
+                messages::script_changed(&run.name, &refusal.path)
             } else {
-                lines::not_installed(&run.name, &refusal.path)
+                messages::script_not_installed(&run.name, &refusal.path)
             };
             run.warn(&sentence).await?;
             first.get_or_insert(entry.shell);
         }
     }
     match first {
-        Some(shell) => Err(refusals::in_the_way(&run.name, verb, shell.name()).into()),
+        Some(shell) => {
+            Err(FatalError::new(messages::scripts_in_the_way(&run.name, verb, shell.name())).into())
+        }
         None => Ok(()),
     }
 }
@@ -194,9 +196,14 @@ pub(super) fn outcome_failure(
                 RefusalReason::Damaged | RefusalReason::UnknownFormat
             ) =>
         {
-            refusals::record(&run.name, &first.path, Verb::Install).into()
+            FatalError::new(messages::record_unreadable(
+                &run.name,
+                &first.path,
+                Verb::Install,
+            ))
+            .into()
         }
-        _ => refusals::in_the_way(&run.name, verb, shell.name()).into(),
+        _ => FatalError::new(messages::scripts_in_the_way(&run.name, verb, shell.name())).into(),
     }
 }
 
@@ -220,7 +227,7 @@ pub(super) async fn write_notices(run: &ChildRun, notices: &[Notice]) -> Result<
 /// The notice of a recorded line the plugin released and the operator removes by hand.
 pub(super) fn remove_notice(run: &ChildRun, path: &Path, line: &str) -> Notice {
     Notice {
-        sentence: lines::remove_yourself(&run.name, path),
+        sentence: messages::remove_line_yourself(&run.name, path),
         line: line.to_owned(),
     }
 }
@@ -266,21 +273,21 @@ pub(super) async fn report_lines(
     held: bool,
 ) -> Result<(), Error> {
     for line in report.removed {
-        run.info(&lines::removed_line(&line.path)).await?;
+        run.info(&messages::removed_line(&line.path)).await?;
     }
     for line in report.no_longer_held {
-        run.info(&lines::no_longer_holds(&run.name, &line.path))
+        run.info(&messages::line_no_longer_held(&run.name, &line.path))
             .await?;
     }
     for line in report.added {
-        run.success(&lines::added(&line.path)).await?;
+        run.success(&messages::added_line(&line.path)).await?;
     }
     for line in report.replaced {
-        run.success(&lines::updated_line(&line.path)).await?;
+        run.success(&messages::updated_line(&line.path)).await?;
     }
     if held {
         for line in report.held {
-            run.info(&lines::already_loads(&line.path)).await?;
+            run.info(&messages::already_loads(&line.path)).await?;
         }
     }
     Ok(())
@@ -308,15 +315,16 @@ pub(super) async fn report_written(run: &ChildRun, written: &Written<'_>) -> Res
         notices,
     } = written;
     for path in &outcome.removed {
-        run.info(&lines::removed(path)).await?;
+        run.info(&messages::removed_file(path)).await?;
     }
     for path in &outcome.kept {
-        run.warn(&lines::left_in_place(&run.name, path)).await?;
+        run.warn(&messages::script_left_in_place(&run.name, path))
+            .await?;
     }
     let report = outcome.lines.as_ref().map(LineReport::from);
     report_lines(run, &report.unwrap_or_default(), *held).await?;
     for path in *loaded {
-        run.info(&lines::already_loads(path)).await?;
+        run.info(&messages::already_loads(path)).await?;
     }
     write_notices(run, notices).await
 }

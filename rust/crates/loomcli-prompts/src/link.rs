@@ -1,6 +1,7 @@
 //! A question's link to an input of the routed Command, checked at the call, and the interaction
 //! decision that resolves it.
 
+use crate::messages;
 use loomcli_core::{
     Context, DeclarationError, DiagnosticParts, DiagnosticRule, Error, Failure, FatalError,
     OptionNode, SuppliedValue, ValueLink, diagnostic_rule, is_prose_line, missing_input_error,
@@ -36,9 +37,7 @@ impl InteractionUnavailableError {
     #[must_use]
     pub fn new(message: &str, command: &str) -> Self {
         Self {
-            base: FatalError::new(format!(
-                "The question \"{message}\" needs an interactive terminal, and this run is not interactive. Run \"{command}\" at a terminal."
-            )),
+            base: FatalError::new(messages::interaction_unavailable(message, command)),
         }
     }
 }

@@ -1,0 +1,28 @@
+//! The operator sentences core's output writes.
+
+use crate::failures::messages::{quoted, routed_subject};
+
+/// The sentence a sequence that stopped early leaves on stderr, without its line end.
+pub(super) fn incomplete_output(path: &[String], yielded: usize, written: usize) -> String {
+    format!(
+        "Output is incomplete: {} stopped after {yielded} rows, {written} written.",
+        routed_subject(path)
+    )
+}
+
+/// The text of the cancellation echo a write rejects with once a closed reader cancelled the run.
+pub(super) const RUN_CANCELLED: &str = "The run was cancelled.";
+
+pub(super) const RESULTS_NOT_DECLARED: &str =
+    "Only the action of a Command that declares a result calls out.results().";
+
+pub(super) fn view_not_declared(name: &str) -> String {
+    format!("The view {} is not declared.", quoted(name))
+}
+
+pub(super) const VIEW_RENDERS_ROWS: &str = "The selected view renders rows, not a value.";
+
+pub(super) const VIEW_RENDERS_VALUE: &str = "The selected view renders a value, not rows.";
+
+pub(super) const NOT_JSON_DATA: &str =
+    "The value cannot be encoded as JSON. Emit plain JSON data from the action.";

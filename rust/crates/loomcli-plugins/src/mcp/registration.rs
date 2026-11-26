@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use loomcli_core::{ChildExit, Error, Host, NoResult, Out, RunSignal, SpawnOptions};
+use loomcli_core::{ChildExit, Error, FatalError, Host, NoResult, Out, RunSignal, SpawnOptions};
 
 use super::messages::{self, Child, Names, shown};
 use crate::installation::{PluginRecord, RecordedRegistration, RegistrationRead, record_directory};
@@ -214,7 +214,7 @@ impl<'a> ChildRun<'a> {
     /// Refuses a child on `win32`, before it reads anything.
     pub(super) fn refuse_windows(&self, child: Child) -> Result<(), Error> {
         if self.host.platform == "win32" {
-            return Err(messages::not_on_windows(self.name, child));
+            return Err(FatalError::new(messages::not_on_windows(self.name, child)).into());
         }
         Ok(())
     }
@@ -236,11 +236,12 @@ impl<'a> ChildRun<'a> {
         for agent in agents {
             match PluginRecord::new(record, agent.record_name()).read_registration()? {
                 RegistrationRead::Refused(refused) => {
-                    return Err(messages::record(
+                    return Err(FatalError::new(messages::record(
                         self.name,
                         &refused.path.to_string_lossy(),
                         child,
-                    ));
+                    ))
+                    .into());
                 }
                 RegistrationRead::Read(registration) => {
                     recorded.insert(*agent, registration);

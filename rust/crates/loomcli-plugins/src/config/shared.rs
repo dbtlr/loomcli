@@ -8,13 +8,14 @@ use std::sync::{Arc, Mutex, Weak};
 
 use loomcli_core::{
     CommandGraph, ContextualStyle, DeclarationError, DiagnosticParts, DiagnosticRule, Error, Host,
-    InvokedBy, Out, diagnostic_rule, escape_control_characters, nowrap,
+    InvokedBy, Out, diagnostic_rule, escape_control_characters,
 };
 use serde::de::DeserializeOwned;
 
 use super::document::Value;
-use super::drop::{Dropped, Removal, drop_until_passes, shown_path};
+use super::drop::{Dropped, drop_until_passes, shown_path};
 use super::lookup::{Line, Lookup, LookupFault, Reach, UsableFile};
+use super::messages;
 
 /// A configuration schema that rejects an empty file, which no type check can see.
 pub(crate) const EMPTY_FILE: DiagnosticRule = diagnostic_rule(
@@ -108,20 +109,6 @@ pub(crate) struct Scene<'a> {
     pub(crate) directory: Option<&'a str>,
 }
 
-/// The `-v` line for one removed value, each piece of raw data escaped.
-fn removal_line(removal: &Removal, file: Option<&str>, style: &ContextualStyle) -> String {
-    let raw = |text: &str| style.escape(&escape_control_characters(text));
-    let place = file.map_or_else(String::new, |file| {
-        format!(" in {}", nowrap(&style.escape(file)))
-    });
-    let subject = if removal.path.is_empty() {
-        "every key".to_owned()
-    } else {
-        nowrap(&raw(&shown_path(&removal.path)))
-    };
-    format!("Ignored {subject}{place}: {}", raw(&removal.message))
-}
-
 impl<T: DeserializeOwned + Send + Sync + 'static> Shared<T> {
     pub(crate) fn new(
         candidates: Option<Vec<String>>,
@@ -177,9 +164,11 @@ impl<T: DeserializeOwned + Send + Sync + 'static> Shared<T> {
         });
         let shown = found.as_ref().map(|usable| usable.file.shown.clone());
         let dropped = drop_until_passes::<T>(object, &mut |removal| {
-            lines.push(Line::Debug(removal_line(
-                &removal,
+            let path = shown_path(&removal.path);
+            lines.push(Line::Debug(messages::ignored_value(
+                (!removal.path.is_empty()).then_some(path.as_str()),
                 shown.as_deref(),
+                &removal.message,
                 scene.style,
             )));
         });

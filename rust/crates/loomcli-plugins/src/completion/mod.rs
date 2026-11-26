@@ -58,12 +58,8 @@ pub async fn refresh_completion(context: RefreshContext<'_>) -> Result<(), Error
 /// The words, warning, and sentence of this plugin's refresh.
 const REFRESH: crate::installation::Refresh = crate::installation::Refresh {
     words: &["completion", "update"],
-    warning: "Completion was not refreshed after the update.",
-    not_started: |path, name| {
-        format!(
-            "Completion was not refreshed because {path} could not start. Run {name} completion update.\n"
-        )
-    },
+    warning: messages::COMPLETION_REFRESH_FAILED,
+    not_started: messages::completion_not_refreshed,
 };
 
 /// The text as it is, with no markup resolved and no newline added, because another program reads
@@ -83,12 +79,10 @@ impl Validator for ShellInput {
         if SHELL_NAMES.contains(&input) {
             return Ok(input.to_owned());
         }
-        Err(vec![
-            Issue::new(format!("Expected one of: {}.", SHELL_NAMES.join(", "))).code(
-                "@loomcli/validators/one-of",
-                serde_json::json!({ "values": SHELL_NAMES }),
-            ),
-        ])
+        Err(vec![Issue::new(messages::shell_issue(&SHELL_NAMES)).code(
+            "@loomcli/validators/one-of",
+            serde_json::json!({ "values": SHELL_NAMES }),
+        )])
     }
 
     fn input_schema(&self) -> loomcli_core::InputSchema {

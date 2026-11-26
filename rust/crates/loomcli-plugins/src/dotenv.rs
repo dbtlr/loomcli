@@ -7,6 +7,7 @@
 //! A variable the environment holds, an empty one included, beats every file.
 
 mod expand;
+mod messages;
 mod parse;
 mod read;
 

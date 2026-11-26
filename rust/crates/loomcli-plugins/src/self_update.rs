@@ -74,12 +74,12 @@ use std::sync::Arc;
 
 use loomcli_core::{
     Activation, AnyPlugin, BoxFuture, Command, Context, DeclarationError, DiagnosticParts,
-    DiagnosticRule, Error, FailureFacts, Finding, Host, InputError, InputIdentity, InputKind,
-    InputProblem, Inputs, Issue, Literal, Log, Plugin, RunSignal, diagnostic_rule,
+    DiagnosticRule, Error, FailureFacts, FatalError, Finding, Host, InputError, InputIdentity,
+    InputKind, InputProblem, Inputs, Issue, Literal, Log, Plugin, RunSignal, diagnostic_rule,
 };
 use loomcli_validators::create_validator;
 
-use self::request::{Client, Stop};
+use self::request::{Client, RequestError, Stop};
 use self::version::{is_channel_name, version_of_argument};
 use crate::PACKAGE_NAME;
 pub use crate::installation::RefreshContext;
@@ -293,16 +293,13 @@ fn string_input(
 fn version_input() -> impl loomcli_core::Validator<Output = String> {
     string_input(
         |text| version_of_argument(text).is_some(),
-        "Supply a semantic version, such as 1.4.0.",
+        messages::VERSION_ISSUE,
     )
 }
 
 /// The `--channel` option's validator.
 fn channel_input() -> impl loomcli_core::Validator<Output = String> {
-    string_input(
-        is_channel_name,
-        "Supply stable or a prerelease identifier, such as next.",
-    )
+    string_input(is_channel_name, messages::CHANNEL_ISSUE)
 }
 
 /// The inputs of `self-update`.
@@ -323,13 +320,13 @@ struct SelfUpdateInputs {
 }
 
 /// The usage error for an option given beside an input it cannot be given with.
-fn conflict(option: &str, sentence: &str, correction: &str) -> Error {
+fn conflict(option: &str, sentence: &str, issue: &str) -> Error {
     InputError::new(
-        format!("{sentence} {correction}"),
+        sentence,
         vec![InputProblem::Invalid {
             input: InputIdentity::new(false, InputKind::Option, option),
             spelling: format!("--{option}"),
-            issues: vec![Issue::new(correction)],
+            issues: vec![Issue::new(issue)],
         }],
     )
     .into()
@@ -343,15 +340,15 @@ fn refuse_conflicts(inputs: &SelfUpdateInputs) -> Result<(), Error> {
     {
         return Err(conflict(
             "refresh-notice",
-            "Option \"--refresh-notice\" cannot be given with other inputs.",
-            "Leave out the other inputs.",
+            messages::REFRESH_NOTICE_CONFLICT,
+            messages::REFRESH_NOTICE_CONFLICT_ISSUE,
         ));
     }
     if inputs.channel.is_some() && inputs.version.is_some() {
         return Err(conflict(
             "channel",
-            "Option \"--channel\" cannot be given with a version.",
-            "Leave out --channel, or the version.",
+            messages::CHANNEL_CONFLICT,
+            messages::CHANNEL_CONFLICT_ISSUE,
         ));
     }
     Ok(())
@@ -411,7 +408,12 @@ async fn run(
         }
         Err(Stop::Request(failure)) => {
             let named = named.as_ref().map(|version| version.text.as_str());
-            Err(messages::request_failed(&name, failure, named).into())
+            let sentence = messages::request_failed(&name, &failure, named);
+            Err(match failure {
+                RequestError::NoResponse { cause, .. } => FatalError::with_cause(sentence, cause),
+                _ => FatalError::new(sentence),
+            }
+            .into())
         }
     }
 }

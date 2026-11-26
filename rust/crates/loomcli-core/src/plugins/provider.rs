@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::diagnostics::{DiagnosticParts, Finding, Literal, rules};
 use crate::failures::Error;
-use crate::failures::sentences::quoted;
+use crate::failures::messages::quoted;
 use crate::host::Host;
 use crate::inputs::{InputValues, Inputs};
 use crate::inspection::CommandGraph;

@@ -3,9 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use loomcli_core::{Error, Host};
+use loomcli_core::{Error, Host, InputError, InputIdentity, InputKind, InputProblem};
 
-use super::messages::refusals;
+use super::messages;
 use super::name::{identifier, posix_quoted, powershell_quoted};
 use super::paths::{dirname, join};
 use super::scripts::{bash_script, fish_script, powershell_script, zsh_installed_script};
@@ -60,8 +60,20 @@ fn login_shell(name: &str, host: &Host) -> Result<Option<Shell>, Error> {
     let last = login.rsplit('/').next().unwrap_or_default();
     match Shell::named(last) {
         Some(shell) => Ok(Some(shell)),
-        None => Err(refusals::unknown_shell(name, Some(login)).into()),
+        None => Err(unknown_shell(name, Some(login)).into()),
     }
+}
+
+/// The usage error of a login shell that names none of the four, or none at all: the `shell`
+/// argument is missing.
+fn unknown_shell(name: &str, login: Option<&str>) -> InputError {
+    InputError::new(
+        messages::shell_unknown(name, login),
+        vec![InputProblem::Missing {
+            input: InputIdentity::new(false, InputKind::Argument, "shell"),
+            spelling: "shell".to_owned(),
+        }],
+    )
 }
 
 /// The shell `install` acts on: its argument, else the last segment of `SHELL` when it names one of
@@ -75,7 +87,7 @@ pub(super) fn selected_shell(
         Some(shell) => Some(shell),
         None => login_shell(name, host)?,
     };
-    shell.ok_or_else(|| refusals::unknown_shell(name, None).into())
+    shell.ok_or_else(|| unknown_shell(name, None).into())
 }
 
 fn home_text(name: &str, host: &Host) -> Result<String, Error> {

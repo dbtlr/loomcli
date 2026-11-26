@@ -1029,3 +1029,48 @@ async fn the_editor_answered_line_keeps_its_styles_as_it_clips() {
         assert_eq!(mock.stderr_text(), expected, "{columns} {answer:?}");
     }
 }
+
+#[tokio::test]
+async fn editor_failures_escape_control_characters_in_the_editor_command() {
+    let hostile = "ed\u{1b}[31m\u{202e}x";
+    for (status, sentence) in [
+        (
+            127,
+            "The editor \"ed\\u001b[31m\\u202ex\" could not start. Set VISUAL or EDITOR to an editor you have installed, then run the command again.",
+        ),
+        (
+            3,
+            "The editor \"ed\\u001b[31m\\u202ex\" exited with code 3, so the question has no answer. To answer it, set VISUAL or EDITOR to another editor if you need one, then run the command again.",
+        ),
+    ] {
+        let folder = Folder::new();
+        let mock = editing(
+            &[("EDITOR", hostile), ("TMPDIR", folder.path())],
+            vec![entry("\r")],
+            move |_| Ok(ProgramAnswer::new().code(status)),
+        );
+        let (app, answer) = asking("edit", || EditorSettings::new("Notes"));
+        assert_eq!(run(app, &mock).await, 1);
+        assert_eq!(
+            answered(&answer),
+            Some(Err(format!("{hostile}|Some({status})|{sentence}")))
+        );
+    }
+}
+
+#[tokio::test]
+async fn file_creation_failure_escapes_control_characters_in_the_tmpdir_folder() {
+    let mock = mock_process(
+        MockFields::new()
+            .env("TMPDIR", "/loom-missing\u{1b}[31m\u{202e}")
+            .terminal(MockTerminal::new(80, 24).keys([entry("\r")])),
+    );
+    let (app, answer) = asking("edit", || EditorSettings::new("Notes"));
+    assert_eq!(run(app, &mock).await, 1);
+    assert_eq!(
+        answered(&answer),
+        Some(Err(
+            "vi|None|Cannot write the editor's file in \"/loom-missing\\u001b[31m\\u202e\" (ENOENT). Set TMPDIR to a folder you can write to, then run the command again.".to_owned()
+        ))
+    );
+}

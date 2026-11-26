@@ -227,3 +227,11 @@ fn email_publishes_the_whatwg_production_as_a_pattern() {
         assert!(!conforms(&email(), &json!(token)), "refuses {token:?}");
     }
 }
+
+#[test]
+fn key_value_escapes_a_declared_separator_control_character_in_its_sentence() {
+    assert_eq!(
+        rejection(&key_value().separator("\u{1b}"), "ab"),
+        rejected_with("Expected a key and a value as key\\u001bvalue.")
+    );
+}

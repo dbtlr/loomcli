@@ -12,7 +12,7 @@ use std::sync::Arc;
 use crate::__private::{RawValue, RunState};
 use crate::commands::declaration::OptionInput;
 use crate::diagnostics::{DiagnosticParts, rules};
-use crate::failures::sentences::{as_sentence, quoted, reason_of};
+use crate::failures::messages::{as_sentence, quoted, reason_of};
 use crate::failures::{Error, InternalError};
 use crate::host::{Env, Host};
 use crate::inspection::{CommandGraph, OptionGroup, OptionNode};

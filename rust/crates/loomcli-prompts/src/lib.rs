@@ -16,6 +16,7 @@ mod editor;
 mod line;
 mod link;
 mod list;
+mod messages;
 mod progress;
 mod question;
 mod questions;

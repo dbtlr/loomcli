@@ -431,7 +431,7 @@ fn undeclared(read: &Read<'_>) -> Error {
     input_read(format!(
         "The inputs read {} {}, which the routed Command does not declare.",
         read.kind,
-        crate::failures::sentences::quoted(read.name)
+        crate::failures::messages::quoted(read.name)
     ))
 }
 
@@ -439,7 +439,7 @@ fn mismatched(read: &Read<'_>) -> Error {
     input_read(format!(
         "The inputs read {} {} as another type than its declaration produces.",
         read.kind,
-        crate::failures::sentences::quoted(read.name)
+        crate::failures::messages::quoted(read.name)
     ))
 }
 
@@ -453,7 +453,7 @@ fn unheld(read: &Read<'_>) -> Error {
         crate::diagnostics::DiagnosticParts::new(format!(
             "The inputs read {} {} as a type that always holds a value, and the run holds none for it.",
             read.kind,
-            crate::failures::sentences::quoted(read.name)
+            crate::failures::messages::quoted(read.name)
         ))
         .correction(ABSENT_CORRECTION),
     )
@@ -482,7 +482,7 @@ fn read_present<T: Clone + Send + Sync + 'static>(
         RawValue::Absent => Err(input_read(format!(
             "The inputs read {} {} as required, which the run did not supply.",
             read.kind,
-            crate::failures::sentences::quoted(read.name)
+            crate::failures::messages::quoted(read.name)
         ))),
         _ => Err(mismatched(&read)),
     }

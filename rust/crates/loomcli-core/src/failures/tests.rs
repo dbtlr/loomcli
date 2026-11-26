@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use super::form::{FormScene, failure_form};
-use super::sentences::{
+use super::messages::{
     as_sentence, command_sentence, core_text, default_text, foreign_failure, is_author_fault,
     marked_sentence, mid_sentence, reason_of, to_failure,
 };

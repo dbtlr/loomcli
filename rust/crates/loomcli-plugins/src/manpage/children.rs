@@ -7,7 +7,7 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-use loomcli_core::{CommandGraph, Error, Host, Out, RunSignal};
+use loomcli_core::{CommandGraph, Error, FatalError, Host, Out, RunSignal};
 
 use super::advice::advice;
 use super::messages::{self, WritingVerb};
@@ -101,7 +101,7 @@ pub(super) fn resolve(base: &Path, target: &str) -> PathBuf {
 fn out_folder(run: &ChildRun<'_>, out: &str) -> Result<PathBuf, Error> {
     let folder = resolve(&run.host.cwd, out);
     if is_not_folder(&folder)? {
-        return Err(messages::not_folder(&run.graph.name, &folder).into());
+        return Err(FatalError::new(messages::not_folder(&run.graph.name, &folder)).into());
     }
     Ok(folder)
 }
@@ -138,7 +138,9 @@ fn read_record(run: &ChildRun<'_>, verb: &str) -> Result<Recorded, Error> {
     let record = record_directory(name, run.host)?;
     let file = PluginRecord::new(record, PLUGIN);
     match file.read()? {
-        RecordedRead::Refused(refused) => Err(messages::record(name, &refused.path, verb).into()),
+        RecordedRead::Refused(refused) => {
+            Err(FatalError::new(messages::record(name, &refused.path, verb)).into())
+        }
         RecordedRead::Read { files, .. } => Ok(Recorded {
             files: files
                 .into_iter()
@@ -180,13 +182,13 @@ async fn refuse(run: &ChildRun<'_>, verb: WritingVerb, refused: &[Refusal]) -> R
     for Refusal { path, reason } in refused {
         match reason {
             RefusalReason::Damaged | RefusalReason::UnknownFormat => {
-                return Err(messages::record(name, path, "install").into());
+                return Err(FatalError::new(messages::record(name, path, "install")).into());
             }
             RefusalReason::Changed => run.out.warn(&messages::changed(name, path)).await?,
             _ => run.out.warn(&messages::not_installed(name, path)).await?,
         }
     }
-    Err(messages::in_the_way(name, verb).into())
+    Err(FatalError::new(messages::in_the_way(name, verb)).into())
 }
 
 /// States each recorded page the set no longer holds: removed when unchanged, left in place when
@@ -278,7 +280,7 @@ pub(super) async fn update_pages(run: &ChildRun<'_>) -> Result<(), Error> {
         return run.out.success(&messages::none_to_update(name)).await;
     };
     if !others.is_empty() {
-        return Err(messages::many_folders(name, &recorded.file.path()).into());
+        return Err(FatalError::new(messages::many_folders(name, &recorded.file.path())).into());
     }
     write_set(run, &recorded, folder, WritingVerb::Update).await
 }
@@ -292,7 +294,7 @@ pub(super) async fn uninstall_pages(run: &ChildRun<'_>) -> Result<(), Error> {
             let path = refused
                 .first()
                 .map_or_else(|| recorded.file.path(), |refusal| refusal.path.clone());
-            return Err(messages::record(name, &path, "uninstall").into());
+            return Err(FatalError::new(messages::record(name, &path, "uninstall")).into());
         }
         UninstallOutcome::Uninstalled(done) => done,
     };

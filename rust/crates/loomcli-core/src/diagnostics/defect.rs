@@ -3,7 +3,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::failures::sentences::failure_reason;
+use crate::failures::messages::failure_reason;
 use crate::output::LogDefect;
 use crate::style::escape_control_characters;
 use crate::{DeclarationError, Error, Failure, FailureFacts, InternalError};

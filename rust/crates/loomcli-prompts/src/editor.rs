@@ -1,14 +1,14 @@
 //! The editor question: Enter opens the operator's editor on a private temporary file, and the
 //! text the file holds when the editor exits is the answer.
 
+use crate::messages;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use loomcli_core::{
     ChildExit, ChildStream, Context, Error, Failure, FatalError, KillSignal, ProcessSignal,
-    SpawnOptions, ValidationContext, ValueLink, escape_control_characters,
-    question_validation_context,
+    SpawnOptions, ValidationContext, ValueLink, question_validation_context,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -189,7 +189,6 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
     .find(|value| !value.trim().is_empty())
     .cloned()
     .unwrap_or_else(|| "vi".to_owned());
-    let quoted = escape_control_characters(&command);
     let Begun {
         mut reader,
         mut draw,
@@ -245,7 +244,10 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
             }
             issue = None;
             let created = (|| -> io::Result<()> {
-                let existing = folder.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                let existing = folder
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone();
                 match existing {
                     None => {
                         let made = private_folder(&context.host.tmpdir, &context.graph.name)?;
@@ -270,10 +272,9 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
             })();
             if let Err(error) = created {
                 return Err(EditorError::new(
-                    format!(
-                        "Cannot write the editor's file in \"{}\" ({}). Set TMPDIR to a folder you can write to, then run the command again.",
-                        escape_control_characters(&context.host.tmpdir.to_string_lossy()),
-                        system_code(&error)
+                    messages::editor_file_unwritable(
+                        &context.host.tmpdir.to_string_lossy(),
+                        system_code(&error),
                     ),
                     &command,
                     None,
@@ -299,7 +300,9 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
                         let mut run = std::pin::pin!(run);
                         let mut closed = std::pin::pin!(closed);
                         std::future::poll_fn(|cx| {
-                            if run.as_mut().poll(cx).is_ready() || closed.as_mut().poll(cx).is_ready() {
+                            if run.as_mut().poll(cx).is_ready()
+                                || closed.as_mut().poll(cx).is_ready()
+                            {
                                 std::task::Poll::Ready(())
                             } else {
                                 std::task::Poll::Pending
@@ -317,8 +320,10 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
                     let running = Arc::clone(&running);
                     let cleanup = cleanup.clone();
                     context.on_shutdown(move |_| {
-                        if let Some(child) =
-                            running.lock().unwrap_or_else(PoisonError::into_inner).as_ref()
+                        if let Some(child) = running
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .as_ref()
                         {
                             child.kill(KillSignal::Signal(ProcessSignal::Term));
                         }
@@ -360,9 +365,7 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
             match status {
                 None | Some(126 | 127) => {
                     return Err(EditorError::new(
-                        format!(
-                            "The editor \"{quoted}\" could not start. Set VISUAL or EDITOR to an editor you have installed, then run the command again."
-                        ),
+                        messages::editor_not_started(&command),
                         &command,
                         status,
                     )
@@ -371,9 +374,7 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
                 Some(0) => {}
                 Some(code) => {
                     return Err(EditorError::new(
-                        format!(
-                            "The editor \"{quoted}\" exited with code {code}, so the question has no answer. To answer it, set VISUAL or EDITOR to another editor if you need one, then run the command again."
-                        ),
+                        messages::editor_exited(&command, code),
                         &command,
                         status,
                     )
@@ -386,11 +387,9 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
                     lost = true;
                     let code = system_code(&error);
                     issue = Some(if code == "ENOENT" {
-                        "The editor removed the answer's file. Save the answer before you close the editor.".to_owned()
+                        messages::ANSWER_FILE_REMOVED.to_owned()
                     } else {
-                        format!(
-                            "The question cannot read the answer's file ({code}). Save the answer as a file before you close the editor."
-                        )
+                        messages::answer_file_unreadable(code)
                     });
                 }
                 Ok(bytes) => {
@@ -398,7 +397,7 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
                     match String::from_utf8(bytes) {
                         Ok(text) => saved = text,
                         Err(_) => {
-                            issue = Some("The saved answer is not UTF-8 text. Save it as UTF-8.".to_owned());
+                            issue = Some(messages::ANSWER_NOT_UTF8.to_owned());
                         }
                     }
                 }

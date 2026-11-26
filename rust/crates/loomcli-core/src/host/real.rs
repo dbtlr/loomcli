@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::watch;
 
+use super::messages;
 use super::{
     Child, ChildExit, ChildOutput, ChildProcess, ChildStream, CwdField, Env, InputStream,
     InputTerminal, KillSignal, Libc, OutputStream, OutputTerminal, ProcessFields, ProcessHandle,
@@ -907,9 +908,7 @@ impl ChildProcess for RealChild {
                 Err(_) => None,
             };
             settled.unwrap_or_else(|| ChildExit::Unstarted {
-                error: Arc::new(io::Error::other(
-                    "The runtime that ran the child program shut down.",
-                )),
+                error: Arc::new(io::Error::other(messages::RUNTIME_SHUT_DOWN)),
             })
         })
     }
@@ -976,9 +975,7 @@ fn output_stdio(choice: &ChildStream, process_own: bool) -> std::process::Stdio 
 /// `exited` as unstarted, so it never fails at the call.
 fn start_child(request: SpawnRequest, own: &HandleStreams) -> Child {
     let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-        return Child::unstarted(io::Error::other(
-            "A child program starts only inside a tokio runtime.",
-        ));
+        return Child::unstarted(io::Error::other(messages::NO_RUNTIME));
     };
     let mut command = tokio::process::Command::new(&request.command);
     command

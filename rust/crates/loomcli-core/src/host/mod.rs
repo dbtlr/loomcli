@@ -7,6 +7,7 @@
 mod background;
 pub(crate) mod capture;
 mod keys;
+mod messages;
 pub(crate) mod real;
 #[cfg(test)]
 mod tests;
@@ -1126,7 +1127,7 @@ impl Host {
 fn unreadable_directory() -> io::Error {
     io::Error::new(
         io::ErrorKind::NotFound,
-        "The current working directory cannot be read.",
+        messages::WORKING_DIRECTORY_UNREADABLE,
     )
 }
 

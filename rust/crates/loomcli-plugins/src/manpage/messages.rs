@@ -1,10 +1,8 @@
-//! The sentences the man page Commands write: the refusals they fail with and the lines they
-//! print. Every path and name a sentence repeats is escaped as a failure message quotes text, and a
-//! path is kept whole when a lane wraps.
+//! The sentences of the man page plugin.
 
 use std::path::Path;
 
-use loomcli_core::{FatalError, escape_control_characters, nowrap};
+use loomcli_core::{escape_control_characters, nowrap};
 
 /// Text escaped as a failure message quotes it.
 fn shown(text: &str) -> String {
@@ -42,39 +40,39 @@ impl WritingVerb {
 }
 
 /// Files that were not installed by the plugin are in the way.
-pub(super) fn in_the_way(name: &str, verb: WritingVerb) -> FatalError {
-    FatalError::new(format!(
+pub(super) fn in_the_way(name: &str, verb: WritingVerb) -> String {
+    format!(
         "{name} manpage {verb} changed nothing, because files it did not install are in the way. Remove them, then run {name} manpage install again.",
         name = shown(name),
         verb = verb.word()
-    ))
+    )
 }
 
 /// A record that lists pages in more than one folder.
-pub(super) fn many_folders(name: &str, record: &Path) -> FatalError {
-    FatalError::new(format!(
+pub(super) fn many_folders(name: &str, record: &Path) -> String {
+    format!(
         "{record} lists man pages in more than one folder, so {name} manpage update cannot tell where they belong. Run {name} manpage install to put them in one folder.",
         record = shown_path(record),
         name = shown(name)
-    ))
+    )
 }
 
 /// A `--out` that names anything but a folder.
-pub(super) fn not_folder(name: &str, folder: &Path) -> FatalError {
-    FatalError::new(format!(
+pub(super) fn not_folder(name: &str, folder: &Path) -> String {
+    format!(
         "{folder} is not a folder. Name a folder, or a path where {name} can create one.",
         folder = shown_path(folder),
         name = shown(name)
-    ))
+    )
 }
 
 /// The plugin's file cannot be read.
-pub(super) fn record(name: &str, record: &Path, verb: &str) -> FatalError {
-    FatalError::new(format!(
+pub(super) fn record(name: &str, record: &Path, verb: &str) -> String {
+    format!(
         "{record} cannot be read, so {name} will not change the man pages it lists. Remove it and the pages it lists, then run {name} manpage {verb} again.",
         record = shown_path(record),
         name = shown(name)
-    ))
+    )
 }
 
 /// The advice line that leads the `MANPATH` export.
@@ -159,3 +157,18 @@ pub(super) fn updated(count: usize, folder: &Path) -> String {
 pub(super) fn wrote(count: usize, folder: &Path) -> String {
     format!("Wrote {} to {}.", pages(count), shown_path(folder))
 }
+
+/// The stderr line of a refresh whose binary could not start, ending with a line feed.
+pub(super) fn man_pages_not_refreshed(path: &str, name: &str) -> String {
+    format!(
+        "The man pages were not refreshed because {} could not start. Run {} manpage update.\n",
+        shown(path),
+        shown(name)
+    )
+}
+
+/// The `warn` log event of a refresh whose child failed or could not start.
+pub(super) const MAN_PAGES_REFRESH_FAILED: &str = "Man pages were not refreshed after the update.";
+
+/// The failure of a `generate` run without `--out`, which validation rejects first.
+pub(super) const OUT_REQUIRED: &str = "--out is required.";
