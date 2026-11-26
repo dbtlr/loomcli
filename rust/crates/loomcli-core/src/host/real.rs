@@ -407,6 +407,10 @@ struct RealOutput {
     stderr: bool,
 }
 
+/// Serializes Loom's real stdout writes so the shutdown drain can detect a write in flight
+/// without waiting for the standard library's blocking lock.
+static STDOUT_WRITE: Mutex<()> = Mutex::new(());
+
 impl OutputStream for RealOutput {
     fn write<'a>(&'a self, bytes: &'a [u8]) -> BoxFuture<'a, io::Result<()>> {
         Box::pin(async move {
@@ -415,12 +419,82 @@ impl OutputStream for RealOutput {
                 stream.write_all(bytes)?;
                 stream.flush()
             } else {
+                let _write = locked(&STDOUT_WRITE);
                 let mut stream = io::stdout().lock();
                 stream.write_all(bytes)?;
                 stream.flush()
             }
         })
     }
+}
+
+/// The real stdout writes of a signal shutdown drain. A stalled write drops the rest of stdout
+/// so the reader sees a prefix of the queued bytes.
+#[derive(Default)]
+pub(crate) struct ShutdownStdout {
+    stalled: bool,
+}
+
+impl ShutdownStdout {
+    /// Handles real stdout only. Other streams keep their ordinary write behavior.
+    pub(crate) fn write(&mut self, stream: &Arc<dyn OutputStream>, bytes: &[u8]) -> bool {
+        if !is_process_stdout(stream) {
+            return false;
+        }
+        self.stalled = self.stalled || try_write_stdout(bytes).is_err();
+        true
+    }
+}
+
+fn try_write_stdout(bytes: &[u8]) -> io::Result<()> {
+    let _write = match STDOUT_WRITE.try_lock() {
+        Ok(guard) => guard,
+        Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return Err(io::ErrorKind::WouldBlock.into()),
+    };
+    let stdout = io::stdout();
+    #[cfg(unix)]
+    if rustix::fs::FileType::from_raw_mode(rustix::fs::fstat(&stdout)?.st_mode)
+        == rustix::fs::FileType::Fifo
+    {
+        return write_shutdown_pipe(&stdout, bytes);
+    }
+    let mut stdout = stdout.lock();
+    stdout.write_all(bytes)?;
+    stdout.flush()
+}
+
+#[cfg(unix)]
+fn write_shutdown_pipe(stdout: &io::Stdout, bytes: &[u8]) -> io::Result<()> {
+    use rustix::fs::{OFlags, fcntl_getfl};
+
+    if fcntl_getfl(stdout)?.contains(OFlags::NONBLOCK) {
+        return write_nonblocking(stdout, bytes);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // Reopen the pipe rather than changing the inherited file description's flags.
+        let pipe = rustix::fs::open(
+            "/proc/self/fd/1",
+            OFlags::WRONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )?;
+        write_nonblocking(&pipe, bytes)
+    }
+    #[cfg(not(target_os = "linux"))]
+    Err(io::ErrorKind::WouldBlock.into())
+}
+
+#[cfg(unix)]
+fn write_nonblocking(fd: &impl std::os::fd::AsFd, mut bytes: &[u8]) -> io::Result<()> {
+    while !bytes.is_empty() {
+        match rustix::io::write(fd, bytes) {
+            Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
+            Ok(written) => bytes = &bytes[written..],
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }
 
 /// The real stdout, one value for the process, so a handle can tell it is the process's own.

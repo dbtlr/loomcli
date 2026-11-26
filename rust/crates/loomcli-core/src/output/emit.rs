@@ -31,8 +31,8 @@ use crate::diagnostics::{
     rules::{RESULT_TRANSFORM, RESULT_TRANSFORM_CORRECTION},
 };
 use crate::failures::{Error, InternalError, ResultError, ResultFault};
-use crate::host::{Host, OutputStream};
-use crate::signals::{CancellationSource, RunSignal};
+use crate::host::{Host, OutputStream, ShutdownStdout};
+use crate::signals::{CancellationSource, RunSignal, ShutdownCause};
 use crate::style::{
     Capabilities, Palette, Renderer, RenderingPolicy, Style, capabilities, effective_columns,
     under_ci,
@@ -348,7 +348,7 @@ struct WriteQueue {
     pending: BTreeMap<u64, WriteWork>,
     detached: VecDeque<u64>,
     draining: bool,
-    ended: bool,
+    end: Option<ShutdownCause>,
     post_end_log: bool,
 }
 
@@ -607,31 +607,36 @@ impl Output {
         self.wake_drainer();
     }
 
-    /// Sends the rest of each pending write in its queue order before restoring the terminal.
-    pub(crate) fn flush_at_end(&self) {
+    /// Offers pending writes in queue order before restoring the terminal.
+    pub(crate) fn flush_at_end(&self, cause: ShutdownCause) {
         let pending = {
             let mut queue = locked(&self.queue);
-            if queue.ended || queue.draining {
+            if queue.end.is_some() || queue.draining {
                 return;
             }
             queue.draining = true;
-            queue.ended = true;
+            queue.end = Some(cause);
             queue.detached.clear();
             std::mem::take(&mut queue.pending)
         };
         let drain = EndDrain(self);
+        let mut stdout = matches!(cause, ShutdownCause::Signal(_)).then(ShutdownStdout::default);
         let mut closed = Vec::new();
         for (_, mut work) in pending {
             let measure = self.stderr_tty.then(|| self.measure());
             for (stream, text) in self.parts(work.stream, work.job, measure.as_ref()) {
-                self.send_at_end(stream, &text);
+                self.send_at_end(stream, &text, stdout.as_mut());
             }
             closed.extend(work.close.take());
         }
         if self.stderr_tty {
             let measure = self.measure();
             let text = locked(&self.screen).finish_lends(&measure);
-            self.send_at_end(Stream::Stderr, &format!("{text}{}", self.cursor_shown()));
+            self.send_at_end(
+                Stream::Stderr,
+                &format!("{text}{}", self.cursor_shown()),
+                stdout.as_mut(),
+            );
         }
         for work in closed {
             wake_close(work, Ok(()));
@@ -644,7 +649,7 @@ impl Output {
     /// drain. The terminal's last frame is already on screen and the cursor is visible.
     fn flush_after_end(&self) {
         loop {
-            let pending = {
+            let (pending, cause) = {
                 let mut queue = locked(&self.queue);
                 if queue.draining || !queue.post_end_log {
                     return;
@@ -652,12 +657,14 @@ impl Output {
                 queue.post_end_log = false;
                 queue.draining = true;
                 queue.detached.clear();
-                std::mem::take(&mut queue.pending)
+                (std::mem::take(&mut queue.pending), queue.end)
             };
             let _drain = EndDrain(self);
+            let mut stdout =
+                matches!(cause, Some(ShutdownCause::Signal(_))).then(ShutdownStdout::default);
             for (_, work) in pending {
                 for (stream, text) in self.parts(work.stream, work.job, None) {
-                    self.send_at_end(stream, &text);
+                    self.send_at_end(stream, &text, stdout.as_mut());
                 }
                 if let Some(close) = work.close {
                     wake_close(close, Ok(()));
@@ -667,9 +674,12 @@ impl Output {
     }
 
     /// The stream is offered each part just once. An end cannot wait for a stream to become ready.
-    fn send_at_end(&self, stream: Stream, text: &str) {
+    fn send_at_end(&self, stream: Stream, text: &str, stdout: Option<&mut ShutdownStdout>) {
         let destination = self.destination(stream);
-        if !text.is_empty() && destination.refusal().is_none() {
+        if !text.is_empty()
+            && destination.refusal().is_none()
+            && !stdout.is_some_and(|stdout| stdout.write(&destination.stream, text.as_bytes()))
+        {
             let _ = crate::support::poll_once(destination.stream.write(text.as_bytes()));
         }
     }
@@ -714,7 +724,7 @@ impl Output {
             closed.extend(work.close);
         }
         text.push_str(&after(&mut locked(&self.screen), &measure));
-        self.send_at_end(Stream::Stderr, &text);
+        self.send_at_end(Stream::Stderr, &text, None);
         for work in closed {
             wake_close(work, Ok(()));
         }
@@ -951,8 +961,9 @@ impl Output {
                 close: None,
             });
             queue.detached.push_back(place);
-            queue.post_end_log |= queue.ended;
-            (queue.ended, idle)
+            let ended = queue.end.is_some();
+            queue.post_end_log |= ended;
+            (ended, idle)
         };
         if ended {
             self.flush_after_end();

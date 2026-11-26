@@ -83,9 +83,9 @@ impl Entered {
             cancel: Box::new(move |ending| {
                 cancelled.abort(CancellationSource::Signal(ending), None);
             }),
-            flush: Box::new(move || {
+            flush: Box::new(move |cause| {
                 if let Some(output) = locked(&flushed).upgrade() {
-                    output.flush_at_end();
+                    output.flush_at_end(cause);
                 }
             }),
             listens,

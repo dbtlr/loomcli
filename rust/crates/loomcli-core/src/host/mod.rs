@@ -44,7 +44,7 @@ pub(crate) use background::{QueryRun, ask_terminal};
 pub(crate) use capture::{HostCapture, OwnStreams, RunStreams, capture_host, capture_parts};
 pub use keys::raise_interrupt_keys;
 #[allow(unused_imports)]
-pub(crate) use real::process_exiting;
+pub(crate) use real::{ShutdownStdout, process_exiting};
 
 /// The environment: variable names and their values.
 pub type Env = BTreeMap<String, String>;
