@@ -355,14 +355,7 @@ fn zone_of(tz: Option<String>) -> String {
     match tz {
         Some(zone) => {
             let name = zone.strip_prefix(':').unwrap_or(&zone);
-            if name.is_empty() {
-                return utc();
-            }
-            jiff::tz::db()
-                .get(name)
-                .ok()
-                .and_then(|zone| zone.iana_name().map(str::to_owned))
-                .unwrap_or_else(utc)
+            super::resolve_time_zone(name).unwrap_or_else(utc)
         }
         None => jiff::tz::TimeZone::try_system()
             .ok()

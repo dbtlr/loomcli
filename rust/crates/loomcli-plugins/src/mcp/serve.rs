@@ -10,7 +10,7 @@ use std::task::{Context as TaskContext, Poll};
 
 use loomcli_core::{
     CommandGraph, CommandNode, Context, Error, InputStream, InvocationOutcome, InvocationValues,
-    InvokeOptions, OutputStream,
+    InvokeOptions, OutputStream, resolve_time_zone,
 };
 use loomcli_mcp::{
     McpServer, ProtocolError, ServerInfo, Tool, ToolCall, ToolResult, ToolSource, error_codes,
@@ -26,6 +26,8 @@ use super::tools::{
 
 /// The media type whose view a call selects and whose output it sends as structured content.
 const JSON_MEDIA_TYPE: &str = "application/json";
+
+const TIME_ZONE_KEY: &str = "io.github.dbtlr.loomcli/timeZone";
 
 /// How many bytes one read of the host's stdin asks for.
 const READ_CHUNK: usize = 8192;
@@ -160,9 +162,8 @@ fn call_result(outcome: InvocationOutcome<FailedCall>, view: Option<&str>) -> To
 
 impl Tools {
     /// Runs one tool call through `invoke`, as the Command's own run, and answers its result. A
-    /// key the input schema does not list answers a tool execution error, and no run starts. A
-    /// call that carries a progress token receives each progress event of the run as a
-    /// notification.
+    /// key outside the input schema and an invalid time zone each answer a tool execution error
+    /// before a run starts. A progress token relays the run's progress events as notifications.
     async fn call(&self, served: &Served, call: ToolCall) -> Result<ToolResult, ProtocolError> {
         let received = match call.arguments {
             None => Map::new(),
@@ -177,6 +178,23 @@ impl Tools {
         if let Some(refused) = unlisted_key(served, &received) {
             return Ok(refused);
         }
+        let time_zone = match call
+            .metadata
+            .as_ref()
+            .and_then(|meta| meta.get(TIME_ZONE_KEY))
+        {
+            None => None,
+            Some(named) => {
+                let Some(zone) = named.as_str().and_then(resolve_time_zone) else {
+                    return Ok(ToolResult {
+                        messages: messages::INVALID_TIME_ZONE.to_owned(),
+                        is_error: true,
+                        ..ToolResult::default()
+                    });
+                };
+                Some(zone)
+            }
+        };
         let mut options = InvokeOptions::new()
             .failure(|_failure, context| FailedCall {
                 exit_code: context.exit_code.get(),
@@ -191,6 +209,9 @@ impl Tools {
         }
         if let Some(progress) = call.progress {
             options = options.on_progress(progress_relay(progress));
+        }
+        if let Some(zone) = time_zone {
+            options = options.time_zone(zone);
         }
         let path: Vec<&str> = served
             .entry

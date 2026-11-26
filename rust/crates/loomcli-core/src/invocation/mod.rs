@@ -287,11 +287,12 @@ pub struct InvokeOptions<M = Error> {
     pub(crate) signal: Option<CancellationToken>,
     pub(crate) on_progress: Option<ProgressObserver>,
     pub(crate) exclude: Vec<String>,
+    pub(crate) time_zone: Option<String>,
 }
 
 impl InvokeOptions<Error> {
     /// Default options: the result's default view, the failure itself, no signal of its own, no
-    /// progress observer, and no option excluded.
+    /// progress observer, no option excluded, and an inherited time zone.
     pub fn new() -> Self {
         Self {
             view: None,
@@ -299,6 +300,7 @@ impl InvokeOptions<Error> {
             signal: None,
             on_progress: None,
             exclude: Vec::new(),
+            time_zone: None,
         }
     }
 }
@@ -338,6 +340,7 @@ impl<M> InvokeOptions<M> {
             signal: self.signal,
             on_progress: self.on_progress,
             exclude: self.exclude,
+            time_zone: self.time_zone,
         }
     }
 
@@ -364,6 +367,13 @@ impl<M> InvokeOptions<M> {
     /// name the routed Command's table does not hold is the unknown option.
     pub fn exclude(mut self, names: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.exclude.extend(names.into_iter().map(Into::into));
+        self
+    }
+
+    /// Sets the IANA time zone for this call and its descendants. The invocation fails with
+    /// [`crate::InputError`] if the name does not resolve.
+    pub fn time_zone(mut self, name: impl Into<String>) -> Self {
+        self.time_zone = Some(name.into());
         self
     }
 }

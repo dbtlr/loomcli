@@ -86,7 +86,7 @@ pub(crate) fn capture_parts(
         runtime: handle.runtime(),
         libc: handle.libc(),
         uid: handle.uid(),
-        time_zone: handle.time_zone(),
+        time_zone: Arc::default(),
         release,
         terminal: HostTerminal::captured(handle.terminal()),
         signals: handle.signals(),

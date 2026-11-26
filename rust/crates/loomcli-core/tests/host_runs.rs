@@ -1,6 +1,6 @@
 //! The host a run captures from its process handle, through `run()` and `invoke`: the run-level
 //! cases of `host.test.ts`, `process-handle.test.ts`, and `home-folders.test.ts` (`host.md`).
-//! Capture reads each fact once at run entry and keeps that snapshot; a handle reused across runs
+//! Capture snapshots the handle's facts, deferring the time zone to its first read. A handle reused across runs
 //! is read afresh by each; a run writes its code to the handle and an invocation by name writes
 //! none; the folders, arch, libc, and uid copy from the handle at either door.
 
@@ -15,10 +15,10 @@ use std::sync::{Arc, Mutex};
 
 use loomcli_core::{
     Application, Arg, BoxFuture, Build, Child, Command, Context, Env, Error, ExitCode,
-    FailureFacts, InputStream, InvocationOutcome, InvocationValues, InvokeOptions, Libc,
-    LogDestination, LogFields, OutputStream, OutputTerminal, Plugin, ProcessFields, ProcessHandle,
-    ProcessTerminal, ReleaseFacts, RunOptions, SignalSource, SpawnRequest, SuppliedValue,
-    WorkingDirectoryError, process_handle,
+    FailureFacts, InputError, InputStream, InvocationOutcome, InvocationValues, InvokeOptions,
+    Libc, LogDestination, LogFields, OutputStream, OutputTerminal, Plugin, ProcessFields,
+    ProcessHandle, ProcessTerminal, ReleaseFacts, RunOptions, SignalSource, SpawnRequest,
+    SuppliedValue, WorkingDirectoryError, process_handle, resolve_time_zone,
 };
 use loomcli_testing::{MockFields, MockProcess, mock_process};
 use support::streams::{Facts, Scripted, Seen};
@@ -503,9 +503,202 @@ async fn run_writes_its_code_to_the_handle_and_app_invoke_writes_none() {
     assert_eq!(read.exit_code(), None);
 }
 
-/// Capture copies `libc` and the time zone with the other facts, once per run or invocation by
-/// name, whether or not the code reads them (a recorded deviation: the reference defers each to its
-/// first read); an action's call reads its run's host and nothing of the handle.
+// invoke-time-zone.test.ts
+
+const INVALID_ZONE: &str = "invoke() timeZone is not an IANA time zone name this runtime knows. Use a name such as \"Asia/Tokyo\".";
+
+const INVALID_ZONES: &[&str] = &[
+    "Mars/Olympus",
+    "",
+    "+09:00",
+    "\u{2212}09:00",
+    " Asia/Tokyo",
+    "UTC ",
+    "Factory",
+    "localtime",
+    "Etc/Unknown",
+];
+
+#[tokio::test]
+async fn invalid_call_zones_fail_without_repeating_the_received_value() {
+    let app = Application::new("clock").action(|_: Context| async { panic!("action ran") });
+    for zone in INVALID_ZONES {
+        let outcome = app
+            .invoke(
+                &[],
+                InvocationValues::new(),
+                InvokeOptions::new().time_zone(*zone),
+                Some(mock_process(MockFields::new())),
+            )
+            .await;
+        let InvocationOutcome::Failed {
+            failure,
+            exit_code,
+            form,
+            messages,
+            output,
+            ..
+        } = outcome
+        else {
+            panic!("expected failed invoke for {zone:?}: {outcome:?}");
+        };
+        assert_eq!(exit_code.get(), 2, "{zone:?}");
+        assert!(
+            failure
+                .downcast_failure::<InputError>()
+                .unwrap()
+                .problems()
+                .is_empty()
+        );
+        assert_eq!(form.code.as_str(), "invalid-input");
+        assert_eq!(form.exit_code.get(), 2);
+        assert!(form.hints.is_empty());
+        assert_eq!(form.message, INVALID_ZONE);
+        assert_eq!(messages, format!("clock: {INVALID_ZONE}\n"));
+        assert!(output.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn invalid_nested_call_zones_fail_and_the_outer_run_completes() {
+    let app = Application::new("clock")
+        .command(Command::new("leaf").action(|_: Context| async { panic!("leaf ran") }))
+        .action(|ctx: Context| async move {
+            for zone in INVALID_ZONES {
+                let outcome = ctx
+                    .invoke(
+                        &["leaf"],
+                        InvocationValues::new(),
+                        InvokeOptions::new().time_zone(*zone),
+                    )
+                    .await;
+                let InvocationOutcome::Failed {
+                    failure, exit_code, ..
+                } = outcome
+                else {
+                    panic!("expected failed invoke for {zone:?}: {outcome:?}");
+                };
+                assert_eq!(exit_code.get(), 2);
+                assert!(failure.downcast_failure::<InputError>().is_some());
+            }
+            Ok(())
+        });
+    let process = mock_process(MockFields::new());
+    assert_eq!(
+        app.run(RunOptions::new().process(process.clone()))
+            .await
+            .get(),
+        0
+    );
+    assert_eq!(process.stdout_text(), "");
+    assert_eq!(process.stderr_text(), "");
+}
+
+#[tokio::test]
+async fn known_aliases_give_the_host_the_runtime_spelling() {
+    let app = Application::new("clock")
+        .action(|ctx: Context| async move { ctx.out.print(ctx.host.time_zone()).await });
+    for alias in ["US/Eastern", "us/eastern", "Etc/UTC", "Etc/GMT+9", "UTC"] {
+        let spelled = resolve_time_zone(alias).unwrap();
+        let outcome = app
+            .invoke(
+                &[],
+                InvocationValues::new(),
+                InvokeOptions::new().time_zone(alias),
+                Some(mock_process(MockFields::new())),
+            )
+            .await;
+        let InvocationOutcome::Completed {
+            output, messages, ..
+        } = outcome
+        else {
+            panic!("expected completed invoke for {alias:?}: {outcome:?}");
+        };
+        assert_eq!(output, format!("{spelled}\n"));
+        assert!(messages.is_empty());
+    }
+    assert_eq!(
+        resolve_time_zone("us/eastern"),
+        resolve_time_zone("US/Eastern")
+    );
+    assert_eq!(resolve_time_zone("Etc/UTC").as_deref(), Some("Etc/UTC"));
+    assert_eq!(
+        resolve_time_zone("US/Eastern").as_deref(),
+        Some("US/Eastern")
+    );
+}
+
+#[tokio::test]
+async fn invalid_call_zone_reaches_the_mapper_after_capture_succeeds() {
+    let app = Application::new("clock").action(|_: Context| async { panic!("action ran") });
+    let outcome = app
+        .invoke(
+            &[],
+            InvocationValues::new(),
+            InvokeOptions::new()
+                .time_zone("Mars/Olympus")
+                .failure(|failure, _| failure.is::<InputError>()),
+            Some(mock_process(MockFields::new())),
+        )
+        .await;
+    assert!(
+        matches!(outcome, InvocationOutcome::Failed { exit_code, failure: true, .. } if exit_code.get() == 2)
+    );
+
+    let unreadable =
+        mock_process(MockFields::new().cwd_with(|| Err(io::Error::other("private reason"))));
+    let outcome = app
+        .invoke(
+            &[],
+            InvocationValues::new(),
+            InvokeOptions::new().time_zone("Mars/Olympus"),
+            Some(unreadable),
+        )
+        .await;
+    assert!(
+        matches!(outcome, InvocationOutcome::Failed { exit_code, failure, .. } if exit_code.get() == 1 && failure.downcast_failure::<WorkingDirectoryError>().is_some())
+    );
+}
+
+#[tokio::test]
+async fn only_an_explicit_nested_zone_forces_a_parent_zone_read_for_reuse() {
+    let reads = Arc::new(Reads::default());
+    let process = Arc::new(Counted::new(mock_process(MockFields::new()), &reads));
+    let app = Application::new("clock")
+        .command(Command::new("leaf").action(|_: Context| async { Ok(()) }))
+        .action(move |ctx: Context| {
+            let reads = reads.clone();
+            async move {
+                let first = ctx
+                    .invoke(&["leaf"], InvocationValues::new(), InvokeOptions::new())
+                    .await;
+                assert!(matches!(first, InvocationOutcome::Completed { .. }));
+                assert_eq!(reads.time_zone.load(Ordering::SeqCst), 0);
+                let changed = ctx
+                    .invoke(
+                        &["leaf"],
+                        InvocationValues::new(),
+                        InvokeOptions::new().time_zone("Asia/Tokyo"),
+                    )
+                    .await;
+                assert!(matches!(changed, InvocationOutcome::Completed { .. }));
+                assert_eq!(reads.time_zone.load(Ordering::SeqCst), 1);
+                Ok(())
+            }
+        });
+    let outcome = app
+        .invoke(
+            &[],
+            InvocationValues::new(),
+            InvokeOptions::new(),
+            Some(process),
+        )
+        .await;
+    assert!(matches!(outcome, InvocationOutcome::Completed { .. }));
+}
+
+/// Capture copies `libc` at entry and reads the time zone on first use, once per outer run or
+/// invocation by name. An action's call shares its run's effective zone.
 #[tokio::test]
 async fn capture_reads_libc_and_the_time_zone_once_per_door_and_an_actions_call_reads_none() {
     let reads = Arc::new(Reads::default());
@@ -524,10 +717,11 @@ async fn capture_reads_libc_and_the_time_zone_once_per_door_and_an_actions_call_
     let inner_seen = Arc::clone(&seen);
     let app = Application::new("notes")
         .command(Command::new("inner").action(move |ctx: Context| {
-            inner_seen
-                .lock()
-                .unwrap()
-                .push(format!("{}:{:?}", ctx.host.time_zone, ctx.host.libc));
+            inner_seen.lock().unwrap().push(format!(
+                "{}:{:?}",
+                ctx.host.time_zone(),
+                ctx.host.libc
+            ));
             async { Ok(()) }
         }))
         .command(Command::new("outer").action(|ctx: Context| async move {

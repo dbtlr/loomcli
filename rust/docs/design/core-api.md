@@ -364,7 +364,7 @@ pub trait OmissionValidator: Validator {
 | `onShutdown` | `ctx.on_shutdown(FnOnce(ShutdownEvent)) -> Registration`, scoped to the run; a panic is the `error` event `A shutdown handler failed.` with the panic message under `error` |
 | `onSuspend`, `onResume` | `ctx.on_suspend(Fn())`, `ctx.on_resume(Fn())`, scoped to the run, a panic logged as `A suspend handler failed.` or `A resume handler failed.` |
 | `style` | `ctx.style: ContextualStyle` |
-| `invoke` | `ctx.invoke(path, InvocationValues, InvokeOptions<M>).await -> InvocationOutcome<M>`; values are JSON (below); `InvokeOptions::new().view(name).failure(\|failure: &dyn Failure, context: &InvokeFailure\| …).signal(token).on_progress(\|event\| …).exclude(names)`; `InvocationOutcome::{Completed { output, messages }, Failed { failure, form, exit_code, output, messages }, Cancelled { exit_code }}`, `failure` being the mapper's value or, with none, the failure as an `Error`. An observer or mapper that panics makes the call panic once its run settles |
+| `invoke` | `ctx.invoke(path, InvocationValues, InvokeOptions<M>).await -> InvocationOutcome<M>`; values are JSON (below); `InvokeOptions::new().view(name).failure(\|failure: &dyn Failure, context: &InvokeFailure\| …).signal(token).on_progress(\|event\| …).exclude(names).time_zone(name)`; `InvocationOutcome::{Completed { output, messages }, Failed { failure, form, exit_code, output, messages }, Cancelled { exit_code }}`, `failure` being the mapper's value or, with none, the failure as an `Error`. An observer or mapper that panics makes the call panic once its run settles |
 | `log` | `ctx.log: Log` |
 | `provided` | `ctx.provided(&provider) -> Result<Arc<V>, Error>` |
 | `stdin` | `ctx.stdin: Option<Content>`, `None` when a derived `#[stdin]` field claims it |
@@ -384,6 +384,19 @@ Command::new("hello").action(move |ctx: Context| {
 **Invocation values.** `InvocationValues::new().arg(name, v).option(name, v)` takes any `impl Into<serde_json::Value>` for `v`, such as `"text"`, `5`, `true`, `vec!["a", "b"]`, or the JSON value an agent sent. The MCP plugin passes a tool call's `arguments` through as received. Core applies the reference's lowering table. A finite number lowers to the token JavaScript's `String(number)` writes, such as `5` or `0.5`. An unlowerable value supplies nothing and becomes an `invalid` problem in authoring order. Examples include `null`, an object, a nested array, an array on a scalar input, a non-finite number, and a Boolean on an argument. An absent key is the reference's `undefined`.
 
 `InvocationValues::passthrough(words)` takes `impl IntoIterator<Item = impl Into<String>>`. A Command with the mode receives the words in order. A Command with the mode off accepts an empty list and rejects a nonempty list with `UnexpectedArgumentError`, whose `extra()` holds those words and whose `accepted()` holds the Command’s argument count. A crate-private constructor sets the sentence to `Command "get" declares no passthrough. Remove passthrough from the values.` The message module escapes the Command name. Core holds this structural fault behind unknown option keys, excluded names, and argument keys. This applies to both `Application::invoke` and `Context::invoke`.
+
+**Per-call time zone.** Both `Application::invoke` and `Context::invoke` accept
+`InvokeOptions::<M>::time_zone(self, name: impl Into<String>) -> Self`. The builder stores the
+name for validation when the call assembles its host. A valid name gives the call its own
+`Host::time_zone()`. Without the option, `Application::invoke` takes the bound handle's zone and
+`Context::invoke` inherits the immediate parent's effective zone. Each override is scoped to that
+call and inherited by its descendants until another call supplies its own zone.
+
+An invalid name resolves `InvocationOutcome::Failed` with `InputError`, exit code 2, and an empty
+problems list. The message is `invoke() timeZone is not an IANA time zone name this runtime knows. Use a name such as "Asia/Tokyo".`
+The capture failure takes precedence if host capture fails. Core reports a bad zone before
+declared-value validation, input validation, or middleware, using the default failure view with
+no hints. The caller's failure mapper receives the `InputError` and its form.
 
 ## 5. Output
 
@@ -551,7 +564,14 @@ Cloning an `Application` shares its declarations and graph slots. An authoring c
 the declaration gives the resulting Application fresh slots. The graph owns its built declaration
 and parser tables. The slots belong to the Application so the graph can outlive it through a reader's
 `Arc`. Each outer run still captures and prepares its host and validates declared defaults and
-implied values for that host. An action's `ctx.invoke` uses its run's graph and validated defaults.
+implied values for that host. An action's `ctx.invoke` uses its run's graph. If the call omits
+the zone, core reuses its parent's validated defaults and implied values without checking the zone.
+An explicit zone reads the parent's zone for comparison. If the names resolve to the same
+spelling, the call reuses the validated values. Otherwise core validates every default and
+implied value from its declaration against the call's host before validating inputs or running
+middleware. Nested calls use the resulting values and the effective zone of that call.
+For `date_time()`, a validator's own zone still takes precedence for a token with no offset.
+An offset or `Z` in the token still identifies its instant.
 `check()` builds and judges a fresh graph on each call, independent of the slots.
 
 `inspect()` returns `Arc<CommandGraph>`. It shares the same allocation as the graph a run or a
@@ -644,7 +664,7 @@ On a result Command the formatter records the views it appended in the `@loomcli
 
 The order is the reference's (`invocation.md`, steps 1 to 9; `providers.md`, Closing).
 
-1. **Host capture.** `run` reads the process handle (`RunOptions::process`, else `process_handle(ProcessFields::new())`): argv, program, cwd and ceiling (a read failure becomes `WorkingDirectoryError`), env, home, tmpdir, platform, arch, libc, uid, time zone, release facts, terminal facts. Malformed release facts are a build failure in Rust, so none reach here.
+1. **Host capture.** `run` reads the process handle (`RunOptions::process`, else `process_handle(ProcessFields::new())`): argv, program, cwd and ceiling (a read failure becomes `WorkingDirectoryError`), env, home, tmpdir, platform, arch, libc, uid, release facts, terminal facts. It retains the handle for the first read of the time zone. Malformed release facts are a build failure in Rust, so none reach here.
 2. **Color settles** from `host.argv` in an Application that declares the color mark, which sets the run's color policy before anything else prints.
 3. **Background settles** from `host.argv` in an Application that declares the background mark, else from the bounded terminal query (one second, raw mode through the handle's stdin) when no skip applies. The query is `host::ask_terminal(&host, QueryRun { cancel, on_shutdown, signal })`, crate-private: it ends at the DA1 reply, an interrupt key, the deadline, the run's cancellation, or the end of stdin, restores the raw mode it found, pushes every byte that is not a reply back with `InputStream::unshift`, and raises each interrupt key through `raise_interrupt_keys`.
 4. **Signals.** Core subscribes to ending signals and suspend/resume on the handle's `SignalSource`, and composes the caller's token into the run signal.
@@ -715,7 +735,34 @@ lookup rules.
 
 `loomcli-testing::mock_process(MockFields)` is the mock: the reference's fixed facts (cwd `/loom-test`, home `/loom-test/home`, tmpdir `/loom-test/tmp`, uid 1000, and the rest of its table), recording streams with an ordered `transcript()`, `stdout_text()`, `stderr_text()`, `end_output()` for a stream's end, `exit_code()`, `ended_by()` for the ending signal raised while nothing listened, `listeners(SignalEvent)` for how many listeners its signal source holds (the reference's tests count them with a spy), `is_raw()`, `resize(columns, rows)`, and `calls()`. `MockFields::terminal(MockTerminal::new(columns, rows).streams([StreamName::Stderr]).background(…).keys([…]))` puts streams on a terminal and stdin on its keyboard, whose `KeyEntry` is one read or `KeyEntry::reads([…])`; `MockFields::script(command, |call| async { Ok(ProgramAnswer::new()…) })` is a `programs` entry, run behind the mock's own `ChildProcess`, and `program([…])` sets the program words. The file system stays outside the handle, as the reference leaves it, so the mock serves no files: a test writes them under a temporary directory and points `cwd` there.
 
-`Host` is what a run captured: `argv`, `program`, `cwd`, `ceiling`, `env`, `home`, `tmpdir`, `platform`, `arch`, `libc`, `uid`, `time_zone`, `release`, `terminal: HostTerminal` (`background`, live `stdout()`/`stderr()` facts), with `spawn(command, args, SpawnOptions)`, `spawn_detached(…)`, `raise(InterruptSignal)`, `read_source`, and the run's streams `stdin()`, `stdout()`, `stderr()`. Under `invoke` the output streams are the capture sinks. A protocol server, such as the MCP plugin's `mcp` action, writes its messages to `host.stdout()`, past the lane views; a write the closed pipe refuses follows the closed-pipe rule below. `ChildStream::Inherit` is the run's own `host.stdout()` or `host.stderr()`. `SpawnOptions` sets `cwd`, `env`, `stdout`/`stderr` (`ChildStream::{Capture, Ignore, Inherit, Stream}`), `signal`, `input` or `inherit_stdin`; `.detached()`, or `DetachedSpawnOptions::new()`, gives `DetachedSpawnOptions`, which takes only `cwd` and `env`. `DirectoryFacts::from(&host)` is the run's `env`, `home`, and `platform` for `application_directory`. `Child::exited().await` returns a `ChildExit` of kind `Exited`, `Unstarted`, or `Abandoned`. `Child::kill(KillSignal)` forwards a signal to the child. `raise_interrupt_keys(&host, cancel, text)` serves raw-mode readers.
+`Host` is what a run captured: `argv`, `program`, `cwd`, `ceiling`, `env`, `home`, `tmpdir`, `platform`, `arch`, `libc`, `uid`, `release`, `terminal: HostTerminal` (`background`, live `stdout()`/`stderr()` facts), with `time_zone()`, `spawn(command, args, SpawnOptions)`, `spawn_detached(…)`, `raise(InterruptSignal)`, `read_source`, and the run's streams `stdin()`, `stdout()`, `stderr()`. Under `invoke` the output streams are the capture sinks. A protocol server, such as the MCP plugin's `mcp` action, writes its messages to `host.stdout()`, past the lane views; a write the closed pipe refuses follows the closed-pipe rule below. `ChildStream::Inherit` is the run's own `host.stdout()` or `host.stderr()`. `SpawnOptions` sets `cwd`, `env`, `stdout`/`stderr` (`ChildStream::{Capture, Ignore, Inherit, Stream}`), `signal`, `input` or `inherit_stdin`; `.detached()`, or `DetachedSpawnOptions::new()`, gives `DetachedSpawnOptions`, which takes only `cwd` and `env`. `DirectoryFacts::from(&host)` is the run's `env`, `home`, and `platform` for `application_directory`. `Child::exited().await` returns a `ChildExit` of kind `Exited`, `Unstarted`, or `Abandoned`. `Child::kill(KillSignal)` forwards a signal to the child. `raise_interrupt_keys(&host, cancel, text)` serves raw-mode readers.
+
+**Time zone.** `Host::time_zone(&self) -> &str` returns the effective zone. The host reads a
+handle's zone once, on first use, and nested calls that inherit the zone share that read.
+`loomcli_core::resolve_time_zone(name: &str) -> Option<String>` is the check shared by
+`invoke` and MCP. It accepts `UTC` and IANA names and aliases known to the runtime's time zone
+database. It looks up each name without regard to ASCII case, first in Jiff's system
+database, then in its bundled database. It returns the matching database's spelling. `Etc/UTC`
+and `US/Eastern` keep those spellings. The reference's alias test uses the runtime's spelling
+because Node resolves `US/Eastern` to `America/New_York` and Bun keeps `US/Eastern`.
+See the [reference invoke time-zone tests](../../../typescript/packages/core/tests/invoke-time-zone.test.ts).
+The resolver returns `None` for empty names, unknown names, whitespace-padded names, and
+numeric offsets, including offsets with a Unicode minus. It resolves the given name
+independently of the process's current zone. The real handle uses the same lookup for `TZ`.
+`date_time()` uses the lookup for the pinned zone or the effective zone it reads through
+`ValidationContext.host.time_zone()`.
+
+<a name="mcp-tool-call-time-zone"></a>
+
+**MCP tool calls.** The stdio server forwards the optional `params._meta` object in
+`loomcli_mcp::ToolCall::metadata: Option<serde_json::Map<String, serde_json::Value>>`.
+The plugin uses `io.github.dbtlr.loomcli/timeZone` when that key is present. It checks the
+arguments object first, then unlisted argument names, then the metadata value. A non-string
+value, including `null` or `false`, and a string the core resolver rejects both produce a
+JSON-RPC `result` with one text item, `isError: true`, and no `structuredContent`. The message is
+`Metadata key "io.github.dbtlr.loomcli/timeZone" requires an IANA time zone name this runtime knows. Use a name such as "Asia/Tokyo".`
+The plugin keeps that sentence in its MCP message module. Without the key, the tool call
+inherits the server's zone.
 
 **Abandoning a child.** `Child::abandon(&self)` tells the process handle that the caller has stopped
 waiting. It gives every current and later `exited()` waiter the same settled answer without waiting
@@ -829,7 +876,7 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | `serde_json` (`preserve_order`) | core, validators, plugins, examples | JSON in declaration order for the graph, the manifest, the failure form, and log events. |
 | `syn`, `quote`, `proc-macro2` | derive | The standard procedural-macro toolkit. |
 | `url` | validators, plugins (`self-update`) | WHATWG URL parsing, the reference `url()`'s semantics; its output type. |
-| `jiff` (`tzdb-zoneinfo` in core) | core, validators, plugins (`self-update`) | IANA time zones: the real handle's time zone, and civil times for `date_time()` and `time()` with their output types. |
+| `jiff` (`tzdb-bundle-always`, plus `tzdb-zoneinfo` in core) | core, validators, plugins (`self-update`) | The bundled database supplies IANA names that the system database omits. Jiff also reads the system zone and provides civil times for `date_time()` and `time()`. |
 | `loomcli-style`, `serde_json` | core's build script | The baked release facts' reader is the crate's own, and quotes a value as core's messages do. |
 | `regex` | validators, prompts, plugins (`help`, `manpage`) | `text().pattern(…)`, whose syntax differs from a JavaScript `u`-flag `RegExp` (no lookaround, no backreferences), a recorded deviation; the Unicode word classes of the prompts' line editor and of the Markdown subset. |
 | `toml`, `saphyr-parser` | plugins (`config`) | TOML and YAML 1.2 configuration files. |

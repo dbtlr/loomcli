@@ -1,5 +1,6 @@
-//! Items the derive macros and `loomcli-testing` reach. Not part of the public contract.
+//! Internal interfaces shared with other Loom crates.
 
+pub mod time_zone;
 pub mod unit;
 
 /// The phantom marker a declaration carries its type parameters in, without owning them.

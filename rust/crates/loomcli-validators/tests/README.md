@@ -24,6 +24,7 @@ A fault at a factory call is a panic at the author's line that carries the Devel
 | `url.test.ts` | ported, in `url_uuid_date.rs` (7 tests with `uuid-date.test.ts`) | Every accepted token and its `href`, every rejected token and its sentence, the schemas, and the protocol faults. |
 | `uuid-date.test.ts` | ported, in `url_uuid_date.rs` | Every `uuid` and `date` token and the schemas. |
 | `date-time.test.ts` | ported, 10 tests in `date_time.rs`; the run case in `catalog_run.rs` | Offsets, rejected tokens, pinned and host zones, gaps and overlaps, the schema, and the zone fault. Added: an instant after 9999-12-30T22:00:00Z is rejected (a recorded deviation). Not applicable: reading the host zone outside a run. |
+| `invoke-time-zone.test.ts` | ported, 4 of 4 | `invoke_time_zone.rs` covers a supplied zone-less token, immediate-parent inheritance, revalidation and reuse of declared defaults and implied values, and reuse when two names resolve to the same spelling. The alias case uses `resolve_time_zone` to read the runtime's spelling. |
 | `time.test.ts` | ported, 13 tests in `time_of_day.rs` | The default grammar, bounds, layouts, forms, and schemas. |
 | `layouts.test.ts` | ported, 16 tests in `layouts.rs` | Every layout reading, rejection with every form, forms written once, the published patterns, the escaped literals, the zone cases, and every layout fault. |
 | `duration.test.ts` | ported, 7 tests in `duration.rs` | The grammar, systemd spellings, the capital `M`, rejected tokens, bounds, and the schema. |

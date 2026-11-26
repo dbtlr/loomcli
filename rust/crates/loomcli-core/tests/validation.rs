@@ -407,7 +407,7 @@ fn a_default_phase_context_holds_the_captured_host_and_the_input_alone() {
     assert_eq!(
         (
             context.host.cwd.to_string_lossy().into_owned(),
-            context.host.time_zone.clone()
+            context.host.time_zone().to_owned()
         ),
         ("/work".to_owned(), "Europe/Paris".to_owned())
     );

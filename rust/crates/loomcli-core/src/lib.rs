@@ -61,7 +61,7 @@ pub use host::{
     HostTerminal, InputStream, InputTerminal, InterruptKeys, InterruptRaised, InterruptSignal,
     KillSignal, Libc, OutputStream, OutputTerminal, ProcessFields, ProcessHandle, ProcessSignal,
     ProcessTerminal, ReadSource, SignalEvent, SignalListener, SignalSource, SpawnOptions,
-    SpawnRequest, process_handle, raise_interrupt_keys,
+    SpawnRequest, process_handle, raise_interrupt_keys, resolve_time_zone,
 };
 pub use inputs::{
     Arg, ArgumentDecl, BooleanOpt, Content, ContentArg, ContentKind, ContentOpt, CountOpt,

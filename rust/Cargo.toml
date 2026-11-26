@@ -29,7 +29,7 @@ futures-core = { version = "0.3", default-features = false, features = ["std"] }
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
-jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-bundle-platform"] }
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-bundle-always"] }
 url = "2"
 rustix = { version = "1", default-features = false, features = ["std", "termios", "process"] }
 signal-hook = { version = "0.3", default-features = false }
