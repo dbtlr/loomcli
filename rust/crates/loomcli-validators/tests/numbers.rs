@@ -349,3 +349,11 @@ fn one_of_panics_at_the_call_for_a_value_listed_twice() {
         "one_of() lists no values. List at least one value."
     );
 }
+
+#[test]
+fn one_of_escapes_a_declared_value_control_character_in_its_sentence() {
+    assert_eq!(
+        rejection(&one_of(["a\u{1b}[31mb", "c\u{202e}d"]), "other"),
+        rejected_with("Expected one of: a\\u001b[31mb, c\\u202ed.")
+    );
+}

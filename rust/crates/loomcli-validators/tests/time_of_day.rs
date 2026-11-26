@@ -327,3 +327,11 @@ fn time_layouts_publish_the_default_pattern_then_a_pattern_for_each() {
         r#"{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"string","anyOf":[{"pattern":"^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\\.[0-9]+)?)?$"},{"pattern":"^[0-9]{1,2}:[0-9]{1,2}[AaPp][Mm]$"},{"pattern":"^[0-9]{2}[0-9]{2}[0-9]{1,2}$"},{"pattern":"^[0-9]{1,2}\\.[0-9]{1,2}$"}]}"#
     );
 }
+
+#[test]
+fn time_escapes_a_declared_layout_control_character_in_its_sentence() {
+    assert_eq!(
+        rejection(&time_l(&["%H:%M\u{1b}"]), "nope"),
+        support::rejected_with("Expected a time of day as hh:mm or hh:mm\\u001b, such as 09:30.")
+    );
+}

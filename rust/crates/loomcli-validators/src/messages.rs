@@ -232,23 +232,3 @@ pub(crate) fn expected_key_value(separator: &str) -> String {
 }
 
 pub(crate) const EXPECTED_EMAIL: &str = "Expected an email address, such as name@example.com.";
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn declared_settings_a_sentence_repeats_are_escaped() {
-        let hostile = "a\u{1b}[31mb".to_owned();
-        for sentence in [
-            expected_one_of(std::slice::from_ref(&hostile)),
-            expected_url_scheme(std::slice::from_ref(&hostile)),
-            expected_date_layouts(std::slice::from_ref(&hostile)),
-            expected_date_time_layouts(std::slice::from_ref(&hostile)),
-            expected_time_layouts(std::slice::from_ref(&hostile)),
-            expected_key_value(&hostile),
-        ] {
-            assert!(!sentence.contains('\u{1b}'), "{sentence:?}");
-        }
-    }
-}

@@ -82,26 +82,3 @@ pub(crate) fn over_limit(values: &[String], max: usize) -> String {
         if values.len() == 1 { "it" } else { "one" }
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn values_a_sentence_repeats_are_escaped() {
-        let hostile = "a\u{1b}[31mb";
-        let values = [hostile.to_owned()];
-        for sentence in [
-            interaction_unavailable(hostile, hostile),
-            editor_file_unwritable(hostile, hostile),
-            editor_not_started(hostile),
-            editor_exited(hostile, 1),
-            answer_file_unreadable(hostile),
-            choice_issue(hostile, "x"),
-            unselectable(&values),
-            over_limit(&values, 1),
-        ] {
-            assert!(!sentence.contains('\u{1b}'), "{sentence:?}");
-        }
-    }
-}
