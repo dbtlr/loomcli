@@ -290,3 +290,37 @@ fn other_stated_progress_members_replace_the_defaults() {
         (7, "Fetching", ProgressState::Started, None, None)
     );
 }
+
+#[test]
+fn a_log_line_value_can_be_given_to_a_declared_view() {
+    let line = loomcli_testing::log_line(
+        loomcli_testing::LogLineValues::new()
+            .level(loomcli_core::LogLineLevel::Debug)
+            .text("Read the ledger.")
+            .field("rows", "12"),
+    );
+    let context = loomcli_testing::view_context(loomcli_testing::ViewValues::new());
+    let marked = loomcli_core::log_line().render(&line, &context).unwrap();
+    assert_eq!(context.plain(&marked), "› Read the ledger. rows=12");
+    assert_eq!(line.event.application.name, "app");
+}
+
+#[test]
+fn a_destination_fixture_supplies_a_log_that_can_bind_fields() {
+    let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let context =
+        loomcli_testing::environment_context(loomcli_testing::EnvironmentValues::new().on_log({
+            let heard = heard.clone();
+            move |event, _| heard.lock().unwrap().push(event.clone())
+        }));
+    let destination = loomcli_testing::log_destination(
+        loomcli_testing::LogDestinationValues::new().log(context.log),
+    );
+    destination
+        .log
+        .with(loomcli_core::LogFields::new().field("path", "/x"))
+        .debug("Logging to {path}.", ());
+    let seen = heard.lock().unwrap();
+    assert_eq!(seen[0].message, "Logging to {path}.");
+    assert_eq!(seen[0].fields["path"], "/x");
+}

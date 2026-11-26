@@ -400,6 +400,7 @@ mod plugin {
                         host: &context.host,
                         invoked_by: context.invoked_by,
                         out: &context.out,
+                        log: &context.log,
                         style: &context.style,
                         config: context.options.config.as_deref(),
                         no_config: context.options.no_config,
@@ -407,16 +408,12 @@ mod plugin {
                     };
                     let loaded = shared.load_once(&scene).await?;
                     match &loaded.usable {
-                        Some(usable) => {
-                            source::answer_all(
-                                &context.requests,
-                                usable,
-                                context.invoked_by,
-                                &context.out,
-                                &context.style,
-                            )
-                            .await
-                        }
+                        Some(usable) => source::answer_all(
+                            &context.requests,
+                            usable,
+                            context.invoked_by,
+                            &context.log,
+                        ),
                         None => Ok(std::collections::BTreeMap::new()),
                     }
                 }
@@ -442,6 +439,7 @@ mod plugin {
                     host: &context.host,
                     invoked_by: context.invoked_by,
                     out: &context.out,
+                    log: &context.log,
                     style: &context.style,
                     config: config.as_deref(),
                     no_config,

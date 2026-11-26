@@ -5,21 +5,26 @@
 //! has built, at `fatal` with the defect for a declaration fault or a defect and at `error`
 //! otherwise.
 
+use std::collections::HashSet;
 use std::hash::{BuildHasher, Hasher};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 
 use serde::Serialize;
+use serde_json::{Map, Value};
 
+use crate::application::declaration::ApplicationDeclaration;
 use crate::diagnostics::defect::defect_detail;
-use crate::failures::messages::is_author_fault;
-use crate::failures::{Error, Failure, FailureForm};
+use crate::failures::messages::{failure_reason, is_author_fault};
+use crate::failures::{Error, Failure, FailureFacts, FailureForm};
 use crate::host::{Env, Host, OutputStream};
 use crate::invocation::Outcome;
 use crate::support::BoxFuture;
 
 use super::emit::Output;
+use super::log_line::LogLineLevel;
+use super::redaction::Redaction;
 
 /// A log event's level. `Fatal` is core's alone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -39,10 +44,10 @@ pub enum LogLevel {
     Fatal,
 }
 
-/// The structured fields of one event, copied as JSON when the event is published.
+/// The structured fields of a log call, copied as JSON by the builder.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[must_use]
-pub struct LogFields(pub(crate) serde_json::Map<String, serde_json::Value>);
+pub struct LogFields(pub(crate) Map<String, Value>, HashSet<String>);
 
 impl LogFields {
     /// No fields.
@@ -55,9 +60,65 @@ impl LogFields {
     /// not finite, records as `null`. A second field with one name replaces the first in its place.
     pub fn field(mut self, name: &str, value: impl Serialize) -> Self {
         let copied = serde_json::to_value(value).unwrap_or(serde_json::Value::Null);
+        self.1.remove(name);
         self.0.insert(name.to_owned(), copied);
         self
     }
+
+    /// Copies a Rust error's name, message, captured stack, and cause as structured fields.
+    pub fn error_field(mut self, name: &str, error: &Error) -> Self {
+        self.1.insert(name.to_owned());
+        self.0.insert(name.to_owned(), error_value(error));
+        self
+    }
+
+    fn redacted(mut self, redaction: &Redaction) -> Map<String, Value> {
+        redaction.apply(&mut self.0, &self.1);
+        self.0
+    }
+}
+
+fn error_value(error: &Error) -> Value {
+    if let Some(failure) = error.failure() {
+        return error_object(
+            failure.class().name(),
+            failure_reason(failure),
+            None,
+            failure.cause().map(error_value),
+        );
+    }
+    let foreign = error.foreign();
+    error_object(
+        error.foreign_type_name().unwrap_or("Error"),
+        foreign.map(ToString::to_string).unwrap_or_default(),
+        error.backtrace().map(ToString::to_string),
+        foreign
+            .and_then(std::error::Error::source)
+            .map(foreign_cause),
+    )
+}
+
+fn foreign_cause(error: &dyn std::error::Error) -> Value {
+    error_object(
+        "Error",
+        error.to_string(),
+        None,
+        error.source().map(foreign_cause),
+    )
+}
+
+fn error_object(name: &str, message: String, stack: Option<String>, cause: Option<Value>) -> Value {
+    let mut facts = Map::from_iter([
+        ("name".to_owned(), Value::String(name.to_owned())),
+        ("message".to_owned(), Value::String(message)),
+    ]);
+    if let Some(stack) = stack {
+        facts.insert("stack".to_owned(), Value::String(stack));
+    }
+    if let Some(cause) = cause {
+        facts.insert("cause".to_owned(), cause);
+    }
+    Value::Object(facts)
 }
 
 impl From<()> for LogFields {
@@ -127,36 +188,96 @@ pub struct LogDestination {
     pub home: PathBuf,
     /// The outermost run's platform.
     pub platform: String,
-    /// The outermost run's stderr; `None` under an invocation by name.
+    /// The outermost run's stderr; `None` when the outermost run was invoked by name.
     pub stderr: Option<Arc<dyn OutputStream>>,
+    /// The hook's log. Its events reach the other hooks under this hook's plugin identity.
+    pub log: Log,
+    pub(crate) scope: Arc<()>,
 }
 
-/// Publishes log events to the installed `on_log` hooks. Core writes no log record itself: with no
-/// installed hook, a call creates no event.
-///
-/// Each context's `log` is bound to it: a middleware's, a source's, and a failure hook's name the
-/// plugin core is calling, and an action's names none. A call creates one event and hands it to
-/// every hook, in installation order, before it returns; a hook's `Err` never reaches the caller.
+impl LogDestination {
+    /// The identity and lifetime shared by this outermost run's log destinations.
+    ///
+    /// Compare these handles with `Weak::ptr_eq`. A hook can release run-local state once the
+    /// handle can no longer be upgraded.
+    #[must_use]
+    pub fn run_scope(&self) -> Weak<()> {
+        Arc::downgrade(&self.scope)
+    }
+}
+
+/// Publishes log events and shows them at the outermost run's verbosity.
 #[derive(Clone)]
 pub struct Log {
-    pub(crate) run: Arc<crate::__private::RunState>,
-    pub(crate) plugin: Option<Arc<str>>,
+    run: Option<LogRun>,
+    plugin: Option<Arc<str>>,
+    bound: Option<Arc<Map<String, Value>>>,
+}
+
+#[derive(Clone)]
+enum LogRun {
+    Context(Arc<RunLog>),
+    Destination(Weak<RunLog>, usize),
 }
 
 impl Log {
+    pub(crate) fn inert() -> Self {
+        Self {
+            run: None,
+            plugin: None,
+            bound: None,
+        }
+    }
+
+    /// Returns a log carrying these fields alongside each call's own fields.
+    #[must_use]
+    pub fn with(&self, fields: impl Into<LogFields>) -> Self {
+        let Some((run, _)) = self.run() else {
+            return self.clone();
+        };
+        let fields = fields.into().redacted(&run.redaction);
+        Self {
+            bound: Some(Arc::new(self.merge(fields))),
+            ..self.clone()
+        }
+    }
+
+    fn run(&self) -> Option<(Arc<RunLog>, Option<usize>)> {
+        match self.run.as_ref()? {
+            LogRun::Context(run) => Some((Arc::clone(run), None)),
+            LogRun::Destination(run, index) => Some((run.upgrade()?, Some(*index))),
+        }
+    }
+
+    fn merge(&self, fields: Map<String, Value>) -> Map<String, Value> {
+        let Some(bound) = &self.bound else {
+            return fields;
+        };
+        let mut merged = Map::clone(bound);
+        merged.extend(fields);
+        merged
+    }
+
     fn publish(&self, level: LogLevel, message: &str, fields: impl Into<LogFields>) {
-        let log = &self.run.log;
-        if !log.listened() {
+        let Some((log, exclude)) = self.run() else {
+            return;
+        };
+        let visible = LogLineLevel::from_log(level).filter(|level| log.showing(*level));
+        if visible.is_none() && !log.listened(exclude) {
             return;
         }
-        log.deliver(EventParts {
-            level,
-            message: message.to_owned(),
-            fields: fields.into().0,
-            plugin: self.plugin.as_deref().map(str::to_owned),
-            failure: None,
-            defect: None,
-        });
+        log.deliver(
+            EventParts {
+                level,
+                message: message.to_owned(),
+                fields: self.merge(fields.into().redacted(&log.redaction)),
+                plugin: self.plugin.as_deref().map(str::to_owned),
+                failure: None,
+                defect: None,
+            },
+            visible,
+            exclude,
+        );
     }
 
     /// Publishes a trace event.
@@ -188,6 +309,15 @@ impl Log {
 /// An installed `on_log` hook.
 pub(crate) type LogHook = Arc<dyn Fn(&LogEvent, &LogDestination) -> Outcome + Send + Sync>;
 
+/// A hook paired with the plugin that installed it. Tests can install unnamed hooks.
+pub(crate) type InstalledLogHook = (Option<Arc<str>>, LogHook);
+
+#[derive(Clone)]
+struct Receiver {
+    hook: LogHook,
+    destination: LogDestination,
+}
+
 fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -215,133 +345,166 @@ enum Thrown {
 /// nor the call that created it.
 pub(crate) struct RunLog {
     application: LogApplication,
-    hooks: Vec<LogHook>,
-    destination: Mutex<Arc<LogDestination>>,
+    /// A nested run keeps its route and id but uses the outermost run's hooks and screen.
+    outer: Option<Arc<RunLog>>,
+    receivers: Mutex<Arc<[Receiver]>>,
     output: Arc<Output>,
     run: OnceLock<String>,
     thrown: Mutex<Thrown>,
+    redaction: Redaction,
 }
 
 impl RunLog {
-    /// The log of one argv run: its events name the application, read the path routing published
-    /// on `output`, and reach the hooks with the run's environment, home, platform, and a stderr
-    /// that follows the run's stderr order.
+    /// Builds the outermost log and its destinations. A named invocation only captures lines.
     pub(crate) fn new(
-        application: &crate::application::declaration::ApplicationDeclaration,
+        application: &ApplicationDeclaration,
         host: &Host,
         output: &Arc<Output>,
-    ) -> Self {
-        Self {
-            application: LogApplication {
-                name: application.name.clone(),
-                version: application
-                    .version
-                    .clone()
-                    .unwrap_or_else(|| "0.0.0".to_owned()),
-            },
-            hooks: application.log_hooks.clone(),
-            destination: Mutex::new(Arc::new(LogDestination {
-                env: host.env.clone(),
-                home: host.home.clone(),
-                platform: host.platform.clone(),
-                stderr: Some(Arc::new(CarriedStderr {
-                    output: Arc::clone(output),
-                })),
-            })),
-            output: Arc::clone(output),
-            run: OnceLock::new(),
-            thrown: Mutex::new(Thrown::None),
-        }
+        argv: bool,
+    ) -> Arc<Self> {
+        Self::root(
+            application_facts(application),
+            application.log_hooks.clone(),
+            application.log_redaction.clone(),
+            host,
+            output,
+            argv,
+        )
     }
 
-    /// The log of a context built outside a run: its events name `application` and reach `hooks`,
-    /// the ones the test attached, with no stderr; with no hook, a call creates no event.
+    /// A unit context has test hooks and no destination stderr.
     pub(crate) fn unattached(
         application: &str,
         hooks: Vec<LogHook>,
         host: &Host,
         output: &Arc<Output>,
-    ) -> Self {
-        Self {
-            application: LogApplication {
+    ) -> Arc<Self> {
+        Self::root(
+            LogApplication {
                 name: application.to_owned(),
                 version: "0.0.0".to_owned(),
             },
-            hooks,
-            destination: Mutex::new(Arc::new(LogDestination {
-                env: host.env.clone(),
-                home: host.home.clone(),
-                platform: host.platform.clone(),
-                stderr: None,
-            })),
-            output: Arc::clone(output),
-            run: OnceLock::new(),
-            thrown: Mutex::new(Thrown::None),
-        }
+            hooks.into_iter().map(|hook| (None, hook)).collect(),
+            Redaction::default(),
+            host,
+            output,
+            false,
+        )
     }
 
-    /// The log of an invocation by name: its events name the application and read the path routing
-    /// published on `output`, and reach the hooks at `destination`, its action's run's or one with
-    /// no stderr, because a call writes to no process stream.
-    pub(crate) fn with_destination(
-        application: &crate::application::declaration::ApplicationDeclaration,
+    fn root(
+        application: LogApplication,
+        hooks: Vec<InstalledLogHook>,
+        redaction: Redaction,
+        host: &Host,
         output: &Arc<Output>,
-        destination: LogDestination,
-    ) -> Self {
-        Self {
-            application: LogApplication {
-                name: application.name.clone(),
-                version: application
-                    .version
-                    .clone()
-                    .unwrap_or_else(|| "0.0.0".to_owned()),
-            },
-            hooks: application.log_hooks.clone(),
-            destination: Mutex::new(Arc::new(destination)),
+        argv: bool,
+    ) -> Arc<Self> {
+        Arc::new_cyclic(|run| {
+            let stderr = argv.then(|| {
+                Arc::new(CarriedStderr {
+                    output: Arc::clone(output),
+                }) as Arc<dyn OutputStream>
+            });
+            let scope = Arc::new(());
+            let receivers = hooks
+                .into_iter()
+                .enumerate()
+                .map(|(index, (plugin, hook))| Receiver {
+                    hook,
+                    destination: LogDestination {
+                        env: host.env.clone(),
+                        home: host.home.clone(),
+                        platform: host.platform.clone(),
+                        stderr: stderr.clone(),
+                        log: Log {
+                            run: Some(LogRun::Destination(run.clone(), index)),
+                            plugin,
+                            bound: None,
+                        },
+                        scope: Arc::clone(&scope),
+                    },
+                })
+                .collect();
+            Self {
+                application,
+                outer: None,
+                receivers: Mutex::new(receivers),
+                output: Arc::clone(output),
+                run: OnceLock::new(),
+                thrown: Mutex::new(Thrown::None),
+                redaction,
+            }
+        })
+    }
+
+    pub(crate) fn nested(
+        application: &ApplicationDeclaration,
+        output: &Arc<Output>,
+        parent: &Arc<RunLog>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            application: application_facts(application),
+            outer: Some(Arc::clone(parent.outer.as_ref().unwrap_or(parent))),
+            receivers: Mutex::new(Arc::from([])),
             output: Arc::clone(output),
             run: OnceLock::new(),
             thrown: Mutex::new(Thrown::None),
+            redaction: application.log_redaction.clone(),
+        })
+    }
+
+    pub(crate) fn bind(self: &Arc<Self>, plugin: Option<Arc<str>>) -> Log {
+        Log {
+            run: Some(LogRun::Context(Arc::clone(self))),
+            plugin,
+            bound: None,
         }
     }
 
-    /// Where the hooks write now, which an action's call hands its own hooks.
-    pub(crate) fn destination(&self) -> LogDestination {
-        LogDestination::clone(&locked(&self.destination))
-    }
-
-    /// Hands every later event's hooks `env`: the environment with every environment hook's
-    /// additions merged, which the run's reports read too.
+    /// Hands every later event's hooks the environment preparation has merged.
     pub(crate) fn set_env(&self, env: Env) {
-        let mut destination = locked(&self.destination);
-        let mut updated = LogDestination::clone(&destination);
-        updated.env = env;
-        *destination = Arc::new(updated);
+        let mut receivers = locked(&self.outermost().receivers);
+        for receiver in Arc::make_mut(&mut receivers) {
+            receiver.destination.env.clone_from(&env);
+        }
     }
 
-    /// Whether any hook observes the run's events.
-    fn listened(&self) -> bool {
-        !self.hooks.is_empty()
+    fn outermost(&self) -> &Self {
+        self.outer.as_deref().unwrap_or(self)
+    }
+
+    fn showing(&self, level: LogLineLevel) -> bool {
+        self.outermost().output.shows_log(level)
+    }
+
+    fn listened(&self, exclude: Option<usize>) -> bool {
+        locked(&self.outermost().receivers).len() > usize::from(exclude.is_some())
     }
 
     /// Logs one failure the run reports: `fatal` with the defect the run caught for a declaration
     /// fault or a defect, `error` for every other failure.
     pub(crate) fn failure(&self, failure: &dyn Failure, form: FailureForm) {
-        if !self.listened() {
+        if !self.listened(None) {
             return;
         }
         let author = is_author_fault(failure);
-        self.deliver(EventParts {
-            level: if author {
-                LogLevel::Fatal
-            } else {
-                LogLevel::Error
+        self.deliver(
+            EventParts {
+                level: if author {
+                    LogLevel::Fatal
+                } else {
+                    LogLevel::Error
+                },
+                message: form.message.clone(),
+                fields: serde_json::Map::new(),
+                plugin: None,
+                failure: Some(form),
+                defect: author.then(|| defect_detail(failure)),
             },
-            message: form.message.clone(),
-            fields: serde_json::Map::new(),
-            plugin: None,
-            failure: Some(form),
-            defect: author.then(|| defect_detail(failure)),
-        });
+            None,
+            None,
+        );
     }
 
     /// The first `Err` a hook returned, once: the run reports it after every other report, and a
@@ -358,9 +521,9 @@ impl RunLog {
         }
     }
 
-    /// Hands one event to every hook, in installation order, before returning.
-    fn deliver(&self, parts: EventParts) {
-        let event = LogEvent {
+    /// Shows an eligible line and hands its event to the hooks in installation order.
+    fn deliver(&self, parts: EventParts, visible: Option<LogLineLevel>, exclude: Option<usize>) {
+        let event = Arc::new(LogEvent {
             time: now(),
             level: parts.level,
             message: parts.message,
@@ -371,16 +534,32 @@ impl RunLog {
             plugin: parts.plugin,
             failure: parts.failure,
             defect: parts.defect,
-        };
-        let destination = Arc::clone(&locked(&self.destination));
-        for hook in &self.hooks {
-            if let Err(error) = hook(&event, &destination) {
+        });
+        let outer = self.outermost();
+        if let Some(level) = visible {
+            outer.output.show_log(Arc::clone(&event), level);
+        }
+        let receivers = Arc::clone(&locked(&outer.receivers));
+        for (index, receiver) in receivers.iter().enumerate() {
+            if Some(index) != exclude
+                && let Err(error) = (receiver.hook)(&event, &receiver.destination)
+            {
                 let mut thrown = locked(&self.thrown);
                 if matches!(*thrown, Thrown::None) {
                     *thrown = Thrown::Held(error);
                 }
             }
         }
+    }
+}
+
+fn application_facts(application: &ApplicationDeclaration) -> LogApplication {
+    LogApplication {
+        name: application.name.clone(),
+        version: application
+            .version
+            .clone()
+            .unwrap_or_else(|| "0.0.0".to_owned()),
     }
 }
 
@@ -423,5 +602,31 @@ impl OutputStream for CarriedStderr {
         self.output
             .carry(String::from_utf8_lossy(bytes).into_owned());
         Box::pin(std::future::ready(Ok(())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    #[test]
+    fn redacting_the_message_hides_only_a_typed_errors_stack() {
+        let error = Error::from(std::io::Error::other("private"))
+            .with_backtrace(std::backtrace::Backtrace::force_capture());
+        let plain = serde_json::json!({"name":"Error", "message":"private", "stack":"plain stack"});
+        let fields = LogFields::new()
+            .error_field("error", &error)
+            .field("plain", plain);
+        let plain_fields = fields.clone().redacted(&Redaction::default());
+        assert_eq!(plain_fields["error"]["message"], "private");
+        assert!(plain_fields["error"]["stack"].as_str().is_some());
+        let redacted =
+            fields.redacted(&Redaction::new(&["error.message", "plain.message"]).unwrap());
+        assert_eq!(redacted["error"]["message"], "[Redacted]");
+        assert_eq!(redacted["error"]["stack"], "[Redacted]");
+        assert_eq!(redacted["plain"]["message"], "[Redacted]");
+        assert_eq!(redacted["plain"]["stack"], "plain stack");
     }
 }

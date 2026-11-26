@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 use loomcli_core::{
     CommandGraph, ContextualStyle, DeclarationError, DiagnosticParts, DiagnosticRule, Error, Host,
-    InvokedBy, Out, diagnostic_rule, escape_control_characters,
+    InvokedBy, Log, Out, diagnostic_rule, escape_control_characters,
 };
 use serde::de::DeserializeOwned;
 
@@ -103,6 +103,7 @@ pub(crate) struct Scene<'a> {
     pub(crate) host: &'a Arc<Host>,
     pub(crate) invoked_by: InvokedBy,
     pub(crate) out: &'a Out,
+    pub(crate) log: &'a Log,
     pub(crate) style: &'a ContextualStyle,
     pub(crate) config: Option<&'a str>,
     pub(crate) no_config: bool,
@@ -169,7 +170,6 @@ impl<T: DeserializeOwned + Send + Sync + 'static> Shared<T> {
                 (!removal.path.is_empty()).then_some(path.as_str()),
                 shown.as_deref(),
                 &removal.message,
-                scene.style,
             )));
         });
         let loaded = match dropped {
@@ -217,7 +217,7 @@ impl<T: DeserializeOwned + Send + Sync + 'static> Shared<T> {
             match line {
                 Line::Warn(text) => scene.out.warn(&text).await?,
                 Line::Info(text) => scene.out.info(&text).await?,
-                Line::Debug(text) => scene.out.debug(&text).await?,
+                Line::Debug((template, fields)) => scene.log.debug(template, fields),
             }
         }
         read.result()

@@ -102,8 +102,8 @@ pub fn walk(document: Value) -> Walk {
 /// The walk is the result, so core writes each row as the walk yields it.
 pub async fn list_paths(context: Context<DocumentInputs, RowsResult<Entry>>) -> Outcome {
     let Context {
-        inputs, out, style, ..
+        inputs, out, log, ..
     } = context;
-    let document = read_json(&inputs.file, &out, &style).await?;
+    let document = read_json(&inputs.file, &log).await?;
     out.results(RowSource::try_iter(walk(document))).await
 }

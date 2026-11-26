@@ -22,7 +22,6 @@ use crate::inputs::pass::{
 use crate::inputs::sources::{SourceCall, StageFacts, StageScope, fill_inputs};
 use crate::inputs::{Content, InputIdentity, InputKind, InputValues, OptionDecl, SuppliedInputs};
 use crate::inspection::{CommandGraph, OptionNode, reported_spelling};
-use crate::output::emit::{Lane, Stream};
 
 use crate::plugins::Request;
 
@@ -283,18 +282,11 @@ pub(crate) async fn prepare_dispatch(run: &Run<'_>, mut parsed: ParsedInvocation
         Ok(validation) => validation,
         Err(error) => return own_run.held(local_fault.unwrap_or(error), None, ledger),
     };
-    // A fill validation dropped reads as unfilled, so it activates no middleware, and its line goes
-    // through the run's debug lane, ahead of any held fault, so it shows from -v.
-    for (name, line) in &validation.dropped {
+    // A dropped fill is unfilled for activation. Its event precedes any held fault.
+    let log = run.state.log.bind(None);
+    for (name, (template, fields)) in &validation.dropped {
         own_run.globals.withdraw(name);
-        if let Err(error) = run
-            .state
-            .output
-            .emit(Lane::Debug, line.into(), Stream::Stderr)
-            .await
-        {
-            return own_run.held(error, None, ledger);
-        }
+        log.debug(template, fields.clone());
     }
     // A middleware never reads a global value no validator accepted.
     let global_options = (!parsed.global_fault && !validation.rejects_global())

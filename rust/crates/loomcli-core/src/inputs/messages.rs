@@ -37,14 +37,26 @@ pub(crate) fn stdin_issue(issue: &str) -> String {
     format!("Stdin: {issue}")
 }
 
-/// The debug line for a configuration source's value that validation dropped.
-pub(crate) fn ignored_fill(spelling: &str, path: Option<&str>, label: &str, issue: &str) -> String {
-    format!(
-        "Ignored option {}{} from {}: {issue}",
-        quoted(spelling),
-        position(path),
-        escape_control_characters(label)
-    )
+/// A configuration fill's template and fields.
+pub(crate) type FillLog = (&'static str, crate::LogFields);
+
+/// The debug event for a configuration source's value that validation dropped.
+pub(crate) fn ignored_fill(
+    spelling: &str,
+    path: Option<&str>,
+    label: &str,
+    issue: &str,
+) -> FillLog {
+    const FIELD: &str = r#"Ignored option "{option}" from {label}: {issue}"#;
+    const POSITION: &str = r#"Ignored option "{option}" at {position} from {label}: {issue}"#;
+    let fields = crate::LogFields::new()
+        .field("issue", issue)
+        .field("label", label)
+        .field("option", spelling);
+    match path {
+        Some(path) => (POSITION, fields.field("position", path)),
+        None => (FIELD, fields),
+    }
 }
 
 /// How a missing value reads: one value, or at least one for a collected input.

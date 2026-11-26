@@ -21,9 +21,13 @@ pub struct GetInputs {
 /// Prints the value at the path.
 pub async fn get_value(context: Context<GetInputs>) -> Outcome {
     let Context {
-        inputs, out, style, ..
+        inputs,
+        out,
+        log,
+        style,
+        ..
     } = context;
-    let document = read_json(&inputs.file, &out, &style).await?;
+    let document = read_json(&inputs.file, &log).await?;
     let value = resolve_path(&document, &inputs.path)?;
     out.print(&style.escape(&format_json(value))).await
 }

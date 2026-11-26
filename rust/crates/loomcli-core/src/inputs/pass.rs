@@ -190,7 +190,7 @@ pub(crate) struct Invocation<'a> {
 /// What one pass produced: every value it accepted, the configuration fills it dropped with the
 /// debug line that names each, the standalone stdin, and the problems aggregated into one failure.
 pub(crate) struct Validation {
-    pub(crate) dropped: Vec<(String, String)>,
+    pub(crate) dropped: Vec<(String, messages::FillLog)>,
     pub(crate) stdin: Option<Content>,
     pub(crate) failure: Option<InputError>,
     pub(crate) received: Option<ReceivedInputs>,
@@ -352,7 +352,7 @@ struct Pass<'i, 'a> {
     supplied: SuppliedInputs,
     values: Vec<(InputIdentity, RawValue)>,
     reports: Vec<(InputIdentity, Report)>,
-    dropped: Vec<(String, String)>,
+    dropped: Vec<(String, messages::FillLog)>,
 }
 
 impl Pass<'_, '_> {

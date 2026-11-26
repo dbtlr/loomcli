@@ -579,7 +579,7 @@ const CORE: &str = "@loomcli/core";
 /// spaces first, so the gutter cannot move a tab stop, and it wraps at the columns right of the
 /// gutter when any are left, each continuation line indented under the message. Off a terminal it
 /// is unchanged.
-fn under_gutter(message: &str, context: &ViewContext, width: usize) -> String {
+pub(super) fn under_gutter(message: &str, context: &ViewContext, width: usize) -> String {
     let Some(columns) = context.columns else {
         return indented(message, width);
     };
@@ -634,42 +634,18 @@ fn marked(mark: Mark) -> View<str> {
     })
 }
 
-/// The default function of the debug or the trace lane: the gutter's indent, its glyph, and one
-/// space before the first line, continuation lines indented under the message, and the glyph and
-/// the message both in the gutter's fade, so the line reads quieter than info. A trace line nests
-/// one step under a debug line and fades past it, `faint` over `dim`.
-fn guttered(trace: bool) -> View<str> {
-    View::new(move |message: &str, context: &ViewContext| {
-        let (indent, glyph, fade) = if trace {
-            (2, Glyph::LineVerticalDashed0, context.style.dim().faint())
-        } else {
-            (0, Glyph::PointerSmall, context.style.dim())
-        };
-        let glyph = glyph.to_string();
-        let body = under_gutter(message, context, indent + context.width(&glyph) + 1);
-        format!(
-            "{}{} {}",
-            " ".repeat(indent),
-            fade.apply(&glyph),
-            fade.apply(&body)
-        )
-    })
-}
-
 /// One lane view over the original message string, line breaks and authored styles included.
 fn lane(name: &str, view: View<str>) -> DeclaredView<str> {
     view.declare(&format!("{CORE}/lanes/{name}"))
 }
 
-/// Core's seven lane views, declared once.
+/// Core's five lane views, declared once.
 struct Lanes {
     print: DeclaredView<str>,
     info: DeclaredView<str>,
     success: DeclaredView<str>,
     warn: DeclaredView<str>,
     error: DeclaredView<str>,
-    debug: DeclaredView<str>,
-    trace: DeclaredView<str>,
 }
 
 static LANES: std::sync::LazyLock<Lanes> = std::sync::LazyLock::new(|| Lanes {
@@ -681,8 +657,6 @@ static LANES: std::sync::LazyLock<Lanes> = std::sync::LazyLock::new(|| Lanes {
     success: lane("success", marked(Mark::Success)),
     warn: lane("warn", marked(Mark::Warning)),
     error: lane("error", marked(Mark::Error)),
-    debug: lane("debug", guttered(false)),
-    trace: lane("trace", guttered(true)),
 });
 
 /// Core's lane views, each a declared view over the message, overridable like any other. An
@@ -715,17 +689,6 @@ pub mod lanes {
     /// The `error` lane, `@loomcli/core/lanes/error`: the error glyph and one space.
     pub fn error() -> DeclaredView<str> {
         LANES.error.clone()
-    }
-
-    /// The `debug` lane, `@loomcli/core/lanes/debug`: a dim pointer and message, from verbosity 1.
-    pub fn debug() -> DeclaredView<str> {
-        LANES.debug.clone()
-    }
-
-    /// The `trace` lane, `@loomcli/core/lanes/trace`: indented two columns, dim and faint, from
-    /// verbosity 2.
-    pub fn trace() -> DeclaredView<str> {
-        LANES.trace.clone()
     }
 }
 
@@ -768,8 +731,7 @@ pub(crate) fn core_views() -> Vec<AnyDeclaredView> {
         lanes.success.clone().into(),
         lanes.warn.clone().into(),
         lanes.error.clone().into(),
-        lanes.debug.clone().into(),
-        lanes.trace.clone().into(),
+        super::log_line().into(),
         INCOMPLETE.clone().into(),
     ]
 }

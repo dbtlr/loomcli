@@ -44,9 +44,9 @@ fn depth_of(value: &Value) -> usize {
 /// Prints the deepest nesting level under the path. An omitted path measures the whole document.
 pub async fn max_depth(context: Context<MaxInputs>) -> Outcome {
     let Context {
-        inputs, out, style, ..
+        inputs, out, log, ..
     } = context;
-    let document = read_json(&inputs.file, &out, &style).await?;
+    let document = read_json(&inputs.file, &log).await?;
     let value = match &inputs.path {
         None => &document,
         Some(path) => resolve_path(&document, path)?,

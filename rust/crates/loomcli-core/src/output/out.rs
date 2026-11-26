@@ -44,8 +44,6 @@ impl<'a, T: AsRef<str> + ?Sized> From<&'a T> for Message<'a> {
 /// | --- | --- |
 /// | `print` | stdout; stderr from the action of a Command that declares a result |
 /// | `info`, `success`, `warn`, `error` | stderr; `info` and `success` hidden at verbosity -1 |
-/// | `debug` | stderr, from verbosity 1 |
-/// | `trace` | stderr, from verbosity 2 |
 /// | `render` | as `print` |
 /// | `draw` | stderr |
 /// | `region` | stderr |
@@ -55,9 +53,8 @@ impl<'a, T: AsRef<str> + ?Sized> From<&'a T> for Message<'a> {
 /// | `fatal` | the failure path |
 ///
 /// `print`, `info`, `success`, `warn`, and `error` accept borrowed text or a [`Message`] with its
-/// own view; `debug` and `trace` take borrowed text. The method still
-/// sets the message's destination and verbosity. A message whose drawn text lacks a final line
-/// break gains one.
+/// own view. The method sets the message's destination and verbosity. A message whose drawn text
+/// lacks a final line break gains one.
 ///
 /// `R` is the result the Command declares, so `results` takes exactly its type. Writes to one
 /// destination keep the order their calls were made in. A write the run's stdout refuses because its
@@ -128,20 +125,6 @@ impl<R> Out<R> {
     ) -> impl Future<Output = Result<(), Error>> + Send + 'a {
         self.output()
             .emit(Lane::Error, message.into(), Stream::Stderr)
-    }
-
-    /// Writes `message` to stderr through the `debug` lane, from verbosity 1.
-    pub async fn debug(&self, message: &str) -> Result<(), Error> {
-        self.output()
-            .emit(Lane::Debug, message.into(), Stream::Stderr)
-            .await
-    }
-
-    /// Writes `message` to stderr through the `trace` lane, from verbosity 2.
-    pub async fn trace(&self, message: &str) -> Result<(), Error> {
-        self.output()
-            .emit(Lane::Trace, message.into(), Stream::Stderr)
-            .await
     }
 
     /// Renders `data` where `print` writes, adding no line break: a whole view with a reference to

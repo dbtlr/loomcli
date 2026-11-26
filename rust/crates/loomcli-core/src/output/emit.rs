@@ -38,13 +38,14 @@ use crate::style::{
     under_ci,
 };
 
-use super::messages;
+use super::log_line::{LogLine, LogLineLevel, log_line};
 use super::region::{CloseWork, ProgressEvent, RegionCloser, Regions, ScreenOp};
 use super::registry::ViewRegistry;
 use super::results::{ResultTransform, ResultView, RowSource, RowViewEntry};
 use super::screen::{Frame, Measure, Screen, ends_line};
 use super::view::{IncompleteResult, incomplete_result, lanes};
 use super::{DeclaredView, Message, RowView, View, ViewContext, WholeView};
+use super::{LogEvent, messages};
 
 /// Whoever observes a run's progress events.
 pub(crate) type ProgressObserver = Arc<dyn Fn(&ProgressEvent) + Send + Sync>;
@@ -64,19 +65,15 @@ pub(crate) enum Lane {
     Success,
     Warn,
     Error,
-    Debug,
-    Trace,
 }
 
 impl Lane {
     /// The lowest verbosity the lane writes at: `info` and `success` from the default, so one quiet
-    /// step hides them, `debug` from `-v`, `trace` from `-vv`, and the rest at every verbosity.
+    /// step hides them, and the rest at every verbosity.
     fn shown_from(self) -> i8 {
         match self {
             Lane::Print | Lane::Warn | Lane::Error => i8::MIN,
             Lane::Info | Lane::Success => 0,
-            Lane::Debug => 1,
-            Lane::Trace => 2,
         }
     }
 
@@ -88,8 +85,6 @@ impl Lane {
             Lane::Success => lanes::success(),
             Lane::Warn => lanes::warn(),
             Lane::Error => lanes::error(),
-            Lane::Debug => lanes::debug(),
-            Lane::Trace => lanes::trace(),
         }
     }
 }
@@ -301,6 +296,7 @@ pub(crate) struct Output {
     stdout: Destination,
     stderr: Destination,
     held: Mutex<Vec<IncompleteResult>>,
+    log_view_errors: Mutex<Vec<Error>>,
     route: Mutex<Vec<String>>,
     pipe_closed: AtomicBool,
     /// Whether stdout and stderr are one stream, whose writes share one order.
@@ -319,6 +315,7 @@ pub(crate) struct Output {
     screen: Mutex<Screen>,
     queue: Mutex<WriteQueue>,
     end_flushed: tokio::sync::Notify,
+    runtime: Option<tokio::runtime::Handle>,
     /// The live regions this run opened.
     regions: Mutex<Regions>,
     /// How many lends of the terminal have not settled.
@@ -351,6 +348,8 @@ struct WriteQueue {
     pending: BTreeMap<u64, WriteWork>,
     detached: VecDeque<u64>,
     draining: bool,
+    ended: bool,
+    post_end_log: bool,
 }
 
 impl WriteQueue {
@@ -509,6 +508,7 @@ impl Output {
             verbosity: AtomicI8::new(0),
             signal,
             held: Mutex::new(Vec::new()),
+            log_view_errors: Mutex::default(),
             route: Mutex::new(Vec::new()),
             pipe_closed: AtomicBool::new(false),
             shared,
@@ -520,6 +520,7 @@ impl Output {
             screen: Mutex::new(Screen::default()),
             queue: Mutex::new(WriteQueue::default()),
             end_flushed: tokio::sync::Notify::new(),
+            runtime: tokio::runtime::Handle::try_current().ok(),
             regions: Mutex::new(Regions::default()),
             lends: Mutex::new(0),
             lends_settled: tokio::sync::Notify::new(),
@@ -610,11 +611,15 @@ impl Output {
     pub(crate) fn flush_at_end(&self) {
         let pending = {
             let mut queue = locked(&self.queue);
+            if queue.ended || queue.draining {
+                return;
+            }
             queue.draining = true;
+            queue.ended = true;
             queue.detached.clear();
             std::mem::take(&mut queue.pending)
         };
-        let _drain = EndDrain(self);
+        let drain = EndDrain(self);
         let mut closed = Vec::new();
         for (_, mut work) in pending {
             let measure = self.stderr_tty.then(|| self.measure());
@@ -630,6 +635,34 @@ impl Output {
         }
         for work in closed {
             wake_close(work, Ok(()));
+        }
+        drop(drain);
+        self.flush_after_end();
+    }
+
+    /// Writes everything queued after the end, including the log write that asked for the
+    /// drain. The terminal's last frame is already on screen and the cursor is visible.
+    fn flush_after_end(&self) {
+        loop {
+            let pending = {
+                let mut queue = locked(&self.queue);
+                if queue.draining || !queue.post_end_log {
+                    return;
+                }
+                queue.post_end_log = false;
+                queue.draining = true;
+                queue.detached.clear();
+                std::mem::take(&mut queue.pending)
+            };
+            let _drain = EndDrain(self);
+            for (_, work) in pending {
+                for (stream, text) in self.parts(work.stream, work.job, None) {
+                    self.send_at_end(stream, &text);
+                }
+                if let Some(close) = work.close {
+                    wake_close(close, Ok(()));
+                }
+            }
         }
     }
 
@@ -873,13 +906,67 @@ impl Output {
         }
     }
 
+    pub(super) fn shows_log(&self, level: LogLineLevel) -> bool {
+        self.verbosity.load(Ordering::SeqCst) >= level.shown_from()
+    }
+
+    /// Shows a log event through the declared view before offering it to the hooks.
+    pub(super) fn show_log(self: &Arc<Self>, event: Arc<LogEvent>, level: LogLineLevel) {
+        let line = LogLine::from_event(event, level);
+        let declared = log_line();
+        let (identity, view) = declared.whole();
+        match self.render_whole(Stream::Stderr, identity, view, &line) {
+            Ok(mut text) if !text.is_empty() => {
+                if !ends_line(&text) {
+                    text.push('\n');
+                }
+                self.carry(text);
+            }
+            Ok(_) => {}
+            Err(error) => locked(&self.log_view_errors).push(error),
+        }
+    }
+
+    /// The failures of unawaited log-line views, in call order.
+    pub(crate) fn take_log_view_errors(&self) -> Vec<Error> {
+        std::mem::take(&mut *locked(&self.log_view_errors))
+    }
+
     /// Text a log hook wrote to its destination's stderr.
     pub(crate) fn carry(self: &Arc<Self>, text: String) {
         if text.is_empty() {
             return;
         }
-        self.enqueue(WriteJob::Text(text), None);
-        self.wake_drainer();
+        let (ended, idle) = {
+            let mut queue = locked(&self.queue);
+            let idle = !queue.draining
+                && !queue
+                    .pending
+                    .values()
+                    .any(|work| work.stream == Stream::Stderr || self.coordinated)
+                && (!self.coordinated || self.stdout_sequences.load(Ordering::SeqCst) == 0);
+            let place = queue.insert(WriteWork {
+                stream: Stream::Stderr,
+                job: WriteJob::Text(text),
+                close: None,
+            });
+            queue.detached.push_back(place);
+            queue.post_end_log |= queue.ended;
+            (queue.ended, idle)
+        };
+        if ended {
+            self.flush_after_end();
+        } else if idle && let Some(runtime) = self.runtime() {
+            let _entered = runtime.enter();
+            let output = Arc::clone(self);
+            let mut drain = Box::pin(async move { output.flush().await });
+            // Retain the same write future if the stream needs a waker before it can finish.
+            if crate::support::poll_once(tokio::task::unconstrained(drain.as_mut())).is_none() {
+                drop(runtime.spawn(drain));
+            }
+        } else {
+            self.wake_drainer();
+        }
     }
 
     /// Lets a task send detached work even when no other write follows.
@@ -887,10 +974,16 @@ impl Output {
         if locked(&self.queue).detached.is_empty() {
             return;
         }
-        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+        if let Some(runtime) = self.runtime() {
             let output = Arc::clone(self);
             drop(runtime.spawn(async move { output.flush().await }));
         }
+    }
+
+    fn runtime(&self) -> Option<tokio::runtime::Handle> {
+        tokio::runtime::Handle::try_current()
+            .ok()
+            .or_else(|| self.runtime.clone())
     }
 
     /// Sends everything queued on stderr, in its turn.

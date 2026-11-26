@@ -172,6 +172,13 @@ pub(crate) const INVALID_IMPLIED: DiagnosticRule = diagnostic_rule(
     "Each run passes every implied value through its validator before it reads a token, because a bare spelling supplies it to the action as a validated value. An implied value the validator rejects is the declaration at fault, whatever the operator supplies, so the run reports it whether or not a bare spelling was typed.",
 );
 
+/// `@loomcli/core/invalid-redact-path`: Invalid redact path.
+pub(crate) const INVALID_REDACT_PATH: DiagnosticRule = diagnostic_rule(
+    "@loomcli/core/invalid-redact-path",
+    "Invalid redact path",
+    "Core redacts each path log.redact lists from every log event when it copies the fields, so no onLog hook, log line, or record reads the value. A path splits on dots into object keys, so each key is nonempty.",
+);
+
 /// `@loomcli/core/invalid-release-facts`: Invalid release facts.
 // Unreachable under a recorded deviation; kept so the rule table stays whole.
 #[allow(dead_code)]
@@ -484,6 +491,7 @@ pub(crate) const ALL: &[DiagnosticRule] = &[
     INVALID_DEFAULT,
     INVALID_EXTENSION_VALUE,
     INVALID_IMPLIED,
+    INVALID_REDACT_PATH,
     INVALID_RELEASE_FACTS,
     INVALID_SHUTDOWN_TIMEOUT,
     MISSING_INPUT_NAME,

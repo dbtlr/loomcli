@@ -62,10 +62,7 @@ impl OpenerScope {
 
     /// The log that names no plugin.
     fn log(&self) -> Log {
-        Log {
-            run: Arc::clone(&self.run),
-            plugin: None,
-        }
+        self.run.log.bind(None)
     }
 }
 

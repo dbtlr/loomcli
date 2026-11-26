@@ -41,7 +41,7 @@ use crate::inspection::build::KeptGraphs;
 use crate::marks::{self, Background};
 use crate::output::emit::{Channel, Output, ProgressObserver, Stream, is_echo};
 use crate::output::registry::ViewRegistry;
-use crate::output::{Log, LogDestination, Out, ProgressEvent, RegionCloser, RunLog};
+use crate::output::{Out, ProgressEvent, RegionCloser, RunLog};
 use crate::plugins::AnyProvider;
 use crate::plugins::hooks::ReceivedReader;
 use crate::plugins::plugin::EnvironmentHook;
@@ -163,9 +163,6 @@ struct Door {
     /// The view an invocation by name starts from.
     start_view: Option<String>,
     graph_source: GraphSource,
-    /// Where an invocation by name's log events go: its action's run's destination, or one with
-    /// no stderr.
-    destination: Option<LogDestination>,
 }
 
 /// An outer call uses the Application's kept graph. An action's call uses its run's preparation.
@@ -194,7 +191,7 @@ pub(crate) struct CallScope {
     listens: bool,
     timeout: u32,
     signal: RunSignal,
-    destination: LogDestination,
+    log: Arc<RunLog>,
     /// The persistent values every run nested in the outermost one shares, once its dispatch
     /// boundary opened them.
     pub(crate) persistent: Mutex<Option<Arc<PersistentValues>>>,
@@ -243,7 +240,6 @@ pub(crate) fn run(
             named: None,
             start_view: None,
             graph_source: GraphSource::Application(graphs),
-            destination: None,
         };
         let code = execute(&application, door, &entered).await.code();
         // The status is written before the run leaves its lane, whose last leave may end a
@@ -380,15 +376,6 @@ impl<M: Send + 'static> Call<M> {
         } = self;
         let observer = GuardedObserver::new(options.on_progress.clone());
         let bound = graph_source.caller();
-        let destination = bound.map_or_else(
-            || LogDestination {
-                env: capture.host.env.clone(),
-                home: capture.host.home.clone(),
-                platform: capture.host.platform.clone(),
-                stderr: None,
-            },
-            |scope| scope.destination.clone(),
-        );
         let door = Door {
             invoked_by: InvokedBy::Name,
             capture,
@@ -406,7 +393,6 @@ impl<M: Send + 'static> Call<M> {
             }),
             start_view: options.view.clone(),
             graph_source,
-            destination: Some(destination),
         };
         let end = execute(&application, door, &entered).await;
         drop(entered);
@@ -581,7 +567,6 @@ async fn execute(
         named,
         start_view,
         graph_source,
-        destination,
     } = door;
     let signal = &entered.signal;
     let mut host = capture.host;
@@ -643,10 +628,10 @@ async fn execute(
         plain,
     ));
     entered.attach(&output);
-    let log = Arc::new(match destination {
-        Some(destination) => RunLog::with_destination(application, &output, destination),
-        None => RunLog::new(application, &host, &output),
-    });
+    let log = match graph_source.caller() {
+        Some(scope) => RunLog::nested(application, &output, &scope.log),
+        None => RunLog::new(application, &host, &output, argv),
+    };
     let mut reached = Reached::default();
     let outcome = match capture_failure {
         Some(error) => Err(error),
@@ -918,7 +903,7 @@ async fn run_body(
         listens: place.listens(),
         timeout: application.shutdown_timeout,
         signal: signal.clone(),
-        destination: log.destination(),
+        log: Arc::clone(log),
         persistent: Mutex::new(bound.and_then(|scope| locked(&scope.persistent).clone())),
         substitutes: Arc::clone(&substitutes),
     });
@@ -1016,10 +1001,7 @@ async fn prepare_environment(
         let context = EnvironmentContext {
             cwd: host.cwd.clone(),
             env: env.clone(),
-            log: Log {
-                run: Arc::clone(&state),
-                plugin: Some(Arc::from(identity)),
-            },
+            log: state.log.bind(Some(Arc::from(identity))),
             out: Out {
                 run: Arc::clone(&state),
                 channel: Arc::new(Channel::plain()),
@@ -1133,6 +1115,26 @@ async fn settle(
             }
         }
         decisive = Some((failure, form));
+    }
+    for error in output.take_log_view_errors() {
+        if cancelled().is_some() && is_echo(&error) {
+            continue;
+        }
+        let failure = to_failure(translated(error, scene.application.translations()));
+        let mut form = None;
+        let mut broken = false;
+        if output.failed().is_none() {
+            let (report_broke, reported) = report(scene, reached, &*failure, &mut reports).await;
+            form = Some(reported);
+            broken = report_broke;
+        }
+        if decisive.is_none() {
+            code = ExitCode::from(failure.exit_code());
+            decisive = Some((failure, form));
+        }
+        if broken {
+            code = forced();
+        }
     }
     // A run no report reached, such as a cancelled one, writes its held lines now, and a line
     // whose view broke is then the run's own failure.
@@ -1315,10 +1317,10 @@ fn collect_hints(
             style: crate::style::style(),
             graph: Arc::clone(graph),
             command: Arc::clone(&command),
-            log: Log {
-                run: Arc::clone(&scene.state),
-                plugin: Some(Arc::from(plugin.identity.as_str())),
-            },
+            log: scene
+                .state
+                .log
+                .bind(Some(Arc::from(plugin.identity.as_str()))),
             read_received: read_received.clone(),
         };
         hints.extend(hook(failure, &context)?.0);

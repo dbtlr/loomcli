@@ -9,8 +9,12 @@ use crate::read_json::read_json;
 /// Prints the whole parsed document.
 pub async fn dump_document(context: Context<DocumentInputs>) -> Outcome {
     let Context {
-        inputs, out, style, ..
+        inputs,
+        out,
+        log,
+        style,
+        ..
     } = context;
-    let document = read_json(&inputs.file, &out, &style).await?;
+    let document = read_json(&inputs.file, &log).await?;
     out.print(&style.escape(&format_json(&document))).await
 }

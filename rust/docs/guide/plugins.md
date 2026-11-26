@@ -129,7 +129,7 @@ Feature `color`; `color()`.
 
 Feature `verbose`; `verbose()`.
 
-- **Operator:** `-v` shows `debug` lines and `-vv` `trace` lines; `-q` hides `info` and `success` lines. Warnings, errors, and the result always print.
+- **Operator:** `-v` shows log events from `debug` through `error`. `-vv` adds `trace` events. `-q` hides `out.info` and `out.success` messages. `out.warn`, `out.error`, and the result always print.
 
 ### Background
 

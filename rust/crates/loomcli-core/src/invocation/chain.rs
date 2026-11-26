@@ -23,7 +23,7 @@ use crate::failures::{Error, InternalError, ResultError, ResultFault};
 use crate::inputs::{InputIdentity, InputKind, InputValues, NoInputs};
 use crate::inspection::{CommandGraph, CommandNode};
 use crate::output::emit::{Channel, ResultBinding, is_echo};
-use crate::output::{Log, Out, RegionCloser};
+use crate::output::{Out, RegionCloser};
 use crate::plugins::middleware::{
     ChainCall, ChainOutcome, Next, OwnOptions, Request, Spellings, ViewSelection, locked,
 };
@@ -395,10 +395,7 @@ impl Chain {
                 _result: std::marker::PhantomData,
             },
             signal: self.signal.clone(),
-            log: Log {
-                run: Arc::clone(&self.state),
-                plugin: Some(Arc::clone(&entry.identity)),
-            },
+            log: self.state.log.bind(Some(Arc::clone(&entry.identity))),
             run: Arc::clone(&self.state),
             selection: Arc::clone(&self.selection),
             identity: Arc::clone(&entry.identity),
@@ -558,10 +555,7 @@ impl Chain {
             host: Arc::clone(&run.host),
             signal: self.signal.clone(),
             style: crate::style::style(),
-            log: Log {
-                run: Arc::clone(run),
-                plugin: None,
-            },
+            log: run.log.bind(None),
             // A derived `#[stdin]` field reads the standalone stdin instead.
             stdin: if typed_stdin { None } else { ready.stdin },
             run: Arc::clone(run),

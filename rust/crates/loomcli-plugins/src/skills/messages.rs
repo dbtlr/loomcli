@@ -355,14 +355,6 @@ pub(super) fn root_is_index(skill: Option<&str>, application: &str) -> (String, 
     }
 }
 
-pub(super) fn skill_file_left_out(skill: &str, path: &str) -> String {
-    format!(
-        "Left out {}, which the skill {} supplies, because the plugin owns that name for its command references.",
-        shown(path),
-        shown(skill)
-    )
-}
-
 pub(super) fn reference_aliases(aliases: &[String], heading: bool) -> String {
     let label = match (aliases.len() == 1, heading) {
         (true, true) => "Alias",

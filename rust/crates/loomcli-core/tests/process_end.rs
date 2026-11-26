@@ -519,3 +519,45 @@ async fn an_exit_event_keeps_a_queued_row_ahead_of_the_write_waiting_for_its_seq
     assert_eq!(mock.stdout_text(), "row\nwaiting\n");
     assert_eq!(mock.stderr_text(), "⚠ block\n\u{1b}[?25h");
 }
+
+#[tokio::test]
+async fn a_shutdown_handlers_log_drains_the_warning_it_queued_after_the_end() {
+    let (signals, pause, options) = fixture(MockFields::new().argv(["-v"]));
+    let mock = Arc::clone(&signals.mock);
+    let app = loomcli_core::__private::install_log_hook(
+        Application::new("ship")
+            .global_option("verbose", loomcli_core::Opt::count().short('v').verbose())
+            .action(move |ctx: Context| {
+                let (signals, pause) = (Arc::clone(&signals), Arc::clone(&pause));
+                async move {
+                    pause.next();
+                    let mut hold = std::pin::pin!(ctx.out.warn("leaving"));
+                    start(hold.as_mut()).await;
+                    let out = ctx.out.clone();
+                    let log = ctx.log.clone();
+                    let _kept = ctx.on_shutdown(move |_| {
+                        let mut warning = std::pin::pin!(out.warn("handler warn"));
+                        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+                        assert!(warning.as_mut().poll(&mut cx).is_pending());
+                        log.info("handler record", ());
+                    });
+                    signals.fire(7);
+                    pause.resume.notify_one();
+                    hold.await
+                }
+            }),
+        |event, destination| {
+            if let Some(stderr) = &destination.stderr {
+                let bytes = format!("[REC] {}\n", event.message);
+                let mut write = stderr.write(bytes.as_bytes());
+                let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+                assert!(write.as_mut().poll(&mut cx).is_ready());
+            }
+        },
+    );
+    assert_eq!(app.run(options).await.get(), 0);
+    assert_eq!(
+        mock.stderr_text(),
+        "⚠ leaving\n⚠ handler warn\n› handler record\n[REC] handler record\n"
+    );
+}

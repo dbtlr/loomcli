@@ -29,3 +29,9 @@ pub(super) fn rotate(path: &str) -> String {
         escape_control_characters(path)
     )
 }
+
+/// The first successful append for one outermost run.
+pub(super) const LOGGING_TO: &str = "Logging to {path}.";
+
+/// The current file was renamed or removed during rotation.
+pub(super) const ROTATED: &str = "Rotated {path}.";

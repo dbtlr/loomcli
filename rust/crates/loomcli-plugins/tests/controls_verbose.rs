@@ -16,7 +16,7 @@ fn reader() -> App {
     Application::new("reader")
         .plugins((verbose(),))
         .action(|ctx: Context| async move {
-            ctx.out.debug("Reading doc.json.").await?;
+            ctx.log.debug("Reading doc.json.", ());
             ctx.out.print("a").await
         })
 }

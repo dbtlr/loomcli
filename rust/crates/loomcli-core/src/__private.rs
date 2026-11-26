@@ -50,10 +50,7 @@ impl RunState {
         let run = std::sync::Arc::downgrade(self);
         std::sync::Arc::new(move |message: String| {
             if let Some(run) = run.upgrade() {
-                let log = crate::output::Log {
-                    run,
-                    plugin: plugin.clone(),
-                };
+                let log = run.log.bind(plugin.clone());
                 log.error(
                     sentence,
                     crate::output::LogFields::new().field("error", message),
@@ -322,11 +319,10 @@ where
 {
     let mut declaration =
         crate::application::declaration::ApplicationDeclaration::clone(&application.declaration);
-    declaration
-        .log_hooks
-        .push(std::sync::Arc::new(move |event, destination| {
-            hook(event, destination).into_outcome()
-        }));
+    declaration.log_hooks.push((
+        None,
+        std::sync::Arc::new(move |event, destination| hook(event, destination).into_outcome()),
+    ));
     crate::Application {
         declaration: std::sync::Arc::new(declaration),
         graphs: std::sync::Arc::default(),

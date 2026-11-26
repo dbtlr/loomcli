@@ -19,12 +19,6 @@
       ]
     },
     {
-      "id": "jsonkit-color-forced-verbose-line",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
       "id": "jsonkit-color-help-with-color-flag",
       "parts": [
         "stdout"
@@ -588,12 +582,6 @@
       "parts": [
         "stderr",
         "files"
-      ]
-    },
-    {
-      "id": "jsonkit-mcp-call-get-verbose",
-      "parts": [
-        "stderr"
       ]
     },
     {
