@@ -70,7 +70,7 @@ fn generate_command() -> Command {
         .action(|context: Context| async move {
             // `required` means validation rejected a run without it, so the action always has it.
             let out: Option<String> = context.option("out")?;
-            let out = out.ok_or_else(|| FatalError::new("--out is required."))?;
+            let out = out.ok_or_else(|| FatalError::new(messages::OUT_REQUIRED))?;
             generate_pages(&child_run(&context), &out).await
         })
 }

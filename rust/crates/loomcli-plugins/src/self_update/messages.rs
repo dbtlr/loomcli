@@ -266,3 +266,17 @@ pub(super) fn notice_line(name: &str, newer: &str, channel: &str, running: &str)
 
 /// The cancellation's text when the run's signal cannot say it.
 pub(super) const RUN_CANCELLED: &str = "The run was cancelled.";
+
+pub(super) const VERSION_ISSUE: &str = "Supply a semantic version, such as 1.4.0.";
+
+pub(super) const CHANNEL_ISSUE: &str = "Supply stable or a prerelease identifier, such as next.";
+
+pub(super) const REFRESH_NOTICE_CONFLICT: &str =
+    "Option \"--refresh-notice\" cannot be given with other inputs. Leave out the other inputs.";
+
+pub(super) const REFRESH_NOTICE_CONFLICT_ISSUE: &str = "Leave out the other inputs.";
+
+pub(super) const CHANNEL_CONFLICT: &str =
+    "Option \"--channel\" cannot be given with a version. Leave out --channel, or the version.";
+
+pub(super) const CHANNEL_CONFLICT_ISSUE: &str = "Leave out --channel, or the version.";

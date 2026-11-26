@@ -156,3 +156,17 @@ pub(super) fn skills_not_refreshed(path: &str, name: &str) -> String {
 
 /// The `warn` log event of a refresh whose child failed or could not start.
 pub(super) const SKILLS_REFRESH_FAILED: &str = "Skills were not refreshed after the update.";
+
+pub(super) const DIRECTORY_WITHOUT_PROJECT_ISSUE: &str = "Add --project, or leave out --directory.";
+
+pub(super) const DIRECTORY_WITHOUT_PROJECT: &str =
+    "Option \"--directory\" needs --project. Add --project, or leave out --directory.";
+
+pub(super) const DIRECTORY_MISSING_ISSUE: &str = "Name a directory that exists.";
+
+pub(super) fn directory_missing(start: &str) -> String {
+    format!(
+        "Option \"--directory\" names {}, which is not a directory. Name a directory that exists.",
+        shown(start)
+    )
+}

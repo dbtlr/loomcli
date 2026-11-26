@@ -222,3 +222,9 @@ pub(super) fn completion_not_refreshed(path: &str, name: &str) -> String {
 
 /// The `warn` log event of a refresh whose child failed or could not start.
 pub(super) const COMPLETION_REFRESH_FAILED: &str = "Completion was not refreshed after the update.";
+
+/// The issue of a shell name `install` and `uninstall` do not accept, worded as the validators'
+/// one-of issue. The names are Loom's own.
+pub(super) fn shell_issue(shells: &[&str]) -> String {
+    format!("Expected one of: {}.", shells.join(", "))
+}

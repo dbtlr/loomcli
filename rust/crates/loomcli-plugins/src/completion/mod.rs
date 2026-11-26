@@ -79,12 +79,10 @@ impl Validator for ShellInput {
         if SHELL_NAMES.contains(&input) {
             return Ok(input.to_owned());
         }
-        Err(vec![
-            Issue::new(format!("Expected one of: {}.", SHELL_NAMES.join(", "))).code(
-                "@loomcli/validators/one-of",
-                serde_json::json!({ "values": SHELL_NAMES }),
-            ),
-        ])
+        Err(vec![Issue::new(messages::shell_issue(&SHELL_NAMES)).code(
+            "@loomcli/validators/one-of",
+            serde_json::json!({ "values": SHELL_NAMES }),
+        )])
     }
 
     fn input_schema(&self) -> loomcli_core::InputSchema {

@@ -169,3 +169,6 @@ pub(super) fn man_pages_not_refreshed(path: &str, name: &str) -> String {
 
 /// The `warn` log event of a refresh whose child failed or could not start.
 pub(super) const MAN_PAGES_REFRESH_FAILED: &str = "Man pages were not refreshed after the update.";
+
+/// The failure of a `generate` run without `--out`, which validation rejects first.
+pub(super) const OUT_REQUIRED: &str = "--out is required.";
