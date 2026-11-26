@@ -391,26 +391,6 @@ fn panic_message(work: impl FnOnce()) -> String {
 }
 
 #[test]
-fn an_application_whose_root_declares_arguments_cannot_install_the_plugin() {
-    let message = panic_message(|| {
-        let _ = faulty().argument("files", Arg::string().description("The files.").variadic());
-    });
-    assert!(
-        message.contains("@loomcli/core/arguments-beside-children"),
-        "{message}"
-    );
-    assert!(
-        message
-            .contains("The root Command declares argument \"files\" and attaches child \"mcp\"."),
-        "{message}"
-    );
-    assert!(
-        message.contains("Move the argument into a child Command or remove the children."),
-        "{message}"
-    );
-}
-
-#[test]
 fn an_mcp_input_value_that_holds_a_description_and_exclude_is_the_invalid_extension_value_fault() {
     // Rust's constructors build one key or the other; a value read from data can hold both.
     let both: McpInputFacts =
@@ -457,4 +437,41 @@ fn an_mcp_command_description_that_is_not_prose_is_the_invalid_extension_value_f
         message.contains("Supply prose whose every line holds a character other than whitespace."),
         "{message}"
     );
+}
+
+#[test]
+fn a_terminal_command_cannot_be_served_as_an_mcp_tool() {
+    let app = faulty().command(
+        Command::new("top")
+            .needs_terminal()
+            .extend([opted()])
+            .action(dispatch),
+    );
+    let fault = app
+        .check()
+        .into_iter()
+        .next()
+        .expect("the tool must be refused");
+    assert_eq!(
+        fault.rule().unwrap().identity(),
+        "@loomcli/plugins/mcp/tool-needs-terminal"
+    );
+    assert_eq!(
+        fault.sentence(),
+        "Command \"top\" carries mcpCommand and needs a terminal, which no tool call has."
+    );
+    assert!(
+        fault
+            .message()
+            .contains("Remove mcpCommand, or remove needs_terminal() from the Command.")
+    );
+}
+
+#[test]
+fn a_callable_root_can_declare_arguments_with_the_mcp_plugin_installed() {
+    let app = faulty()
+        .argument("file", Arg::string())
+        .extend([opted()])
+        .action(dispatch);
+    assert!(app.inspect().is_ok());
 }

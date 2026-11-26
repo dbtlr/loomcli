@@ -14,6 +14,7 @@ workspace = true
 explain = { path = "../explain" }
 loomcli-core = { path = "../../crates/loomcli-core" }
 loomcli-plugins = { path = "../../crates/loomcli-plugins", features = [
+    "completion",
     "config",
     "format",
     "help",

@@ -4,8 +4,7 @@
 //! | --- | --- | --- |
 //! | `Configuring` | `Application::new` | `plugins()`, and every call `Fresh` offers |
 //! | `Fresh` | `Command::new`, or any call on `Configuring` | arguments, children, options, globals |
-//! | `Leaf` | `argument()`, or `inputs::<I>()` with arguments | arguments, options, globals |
-//! | `Group` | `command()` | children, options |
+//! | `Group` | `command()` | arguments, children, options |
 //! | `Done` | `action()` | `extend()`, and `views()` on a declaration with a result |
 
 use crate::output::{ResultViews, RowViews, RowsResult, ValueResult};
@@ -40,20 +39,6 @@ pub trait State: sealed::Sealed + Send + Sync + 'static {
 )]
 pub trait Open: State {}
 
-/// A state that takes arguments.
-#[diagnostic::on_unimplemented(
-    message = "a Command declares arguments or attaches children, never both",
-    label = "this declaration attached a child or registered its action"
-)]
-pub trait TakesArguments: Open {}
-
-/// A state that takes children.
-#[diagnostic::on_unimplemented(
-    message = "a Command declares arguments or attaches children, never both",
-    label = "this declaration declared arguments or registered its action"
-)]
-pub trait TakesChildren: Open {}
-
 /// A state that takes global options and plugins: before the Application's first `command()` or
 /// `action()`.
 #[diagnostic::on_unimplemented(
@@ -66,8 +51,6 @@ pub trait TakesGlobals: Open {}
 pub struct Configuring;
 /// A fresh declaration.
 pub struct Fresh;
-/// A declaration with arguments.
-pub struct Leaf;
 /// A declaration with children.
 pub struct Group;
 /// A declaration whose action is registered.
@@ -75,7 +58,6 @@ pub struct Done;
 
 impl sealed::Sealed for Configuring {}
 impl sealed::Sealed for Fresh {}
-impl sealed::Sealed for Leaf {}
 impl sealed::Sealed for Group {}
 impl sealed::Sealed for Done {}
 
@@ -84,9 +66,6 @@ impl State for Configuring {
 }
 impl State for Fresh {
     type Declared = Fresh;
-}
-impl State for Leaf {
-    type Declared = Leaf;
 }
 impl State for Group {
     type Declared = Group;
@@ -97,20 +76,10 @@ impl State for Done {
 
 impl Open for Configuring {}
 impl Open for Fresh {}
-impl Open for Leaf {}
 impl Open for Group {}
-
-impl TakesArguments for Configuring {}
-impl TakesArguments for Fresh {}
-impl TakesArguments for Leaf {}
-
-impl TakesChildren for Configuring {}
-impl TakesChildren for Fresh {}
-impl TakesChildren for Group {}
 
 impl TakesGlobals for Configuring {}
 impl TakesGlobals for Fresh {}
-impl TakesGlobals for Leaf {}
 
 /// A declaration that declares no result yet, so `result()` and `rows()` are available.
 ///

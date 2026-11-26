@@ -27,6 +27,13 @@ const TOOL_WITHOUT_ACTION: DiagnosticRule = diagnostic_rule(
     "An MCP tool call runs the Command's action, so a Command with no action, such as a group, has nothing to run when a client calls it.",
 );
 
+/// An opted-in Command that always fails an invocation by name.
+const TOOL_NEEDS_TERMINAL: DiagnosticRule = diagnostic_rule(
+    "@loomcli/plugins/mcp/tool-needs-terminal",
+    "MCP tool needs a terminal",
+    "An MCP tool call is an invocation by name, which has no terminal, so a Command that declares it needs a terminal fails every call a client makes.",
+);
+
 /// An argument and an option one MCP tool would list under one name.
 const PROPERTY_NAME_TAKEN: DiagnosticRule = diagnostic_rule(
     "@loomcli/plugins/mcp/property-name-taken",
@@ -234,6 +241,13 @@ fn entry_fault(
 ) -> Result<Option<DeclarationError>, Error> {
     if let Some(found) = action_fault(command) {
         return Ok(Some(found));
+    }
+    if command.needs_terminal {
+        return Ok(Some(fault(
+            TOOL_NEEDS_TERMINAL,
+            super::messages::tool_needs_terminal(&command.path),
+            "Remove mcpCommand, or remove needs_terminal() from the Command.",
+        )));
     }
     if let Some(found) = name_fault(earlier, command, name) {
         return Ok(Some(found));

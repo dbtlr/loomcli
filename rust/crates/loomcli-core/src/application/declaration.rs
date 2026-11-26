@@ -429,6 +429,10 @@ impl ApplicationDeclaration {
                 "Global inputs declare stdin, which only a Command reads.".to_owned(),
                 Finding::new("stdin", vec![stdin.literal()]).mark("0"),
             ),
+            DeclarationCall::Passthrough(mode) => (
+                "Global inputs declare passthrough, which only a Command reads.".to_owned(),
+                Finding::new("passthrough", vec![mode.literal()]).mark("0"),
+            ),
             DeclarationCall::Group(_, names) => (
                 "Global inputs declare an option group, which only a Command declares.".to_owned(),
                 Finding::new("exclusive", vec![crate::diagnostics::Literal::from(names)]).mark("0"),

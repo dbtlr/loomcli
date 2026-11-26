@@ -14,13 +14,13 @@ use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::commands::{
-    AnyCommand, CarriesResult, Configuring, Done, Group, Leaf, NoResultYet, Open, State,
-    TakesArguments, TakesChildren, TakesGlobals,
+    AnyCommand, CarriesResult, Configuring, Done, Group, NoResultYet, Open, Passthrough, State,
+    TakesGlobals,
 };
 use crate::failures::{DeclarationError, ExitCode, Translation};
 use crate::host::ProcessHandle;
 use crate::inputs::{
-    ArgumentDecl, GlobalInputs, GlobalOptionDecl, Inputs, NoInputs, OptionDecl, Shape, Stdin,
+    ArgumentDecl, GlobalInputs, GlobalOptionDecl, Inputs, NoInputs, OptionDecl, Stdin,
 };
 use crate::invocation::{Context, InvocationOutcome, InvocationValues, InvokeOptions, Outcome};
 use crate::output::{
@@ -248,6 +248,28 @@ impl<I, R, S: State> Application<I, R, S> {
         application.retyped()
     }
 
+    /// Enables passthrough after the first bare `--`. A second declaration is a call fault.
+    #[track_caller]
+    pub fn passthrough(self, mode: Passthrough) -> Application<I, R, <S as State>::Declared>
+    where
+        S: Open,
+    {
+        let mut application = self;
+        raise(application.declared().root.declare_passthrough(mode));
+        application.retyped()
+    }
+
+    /// Requires stdin and stderr at a terminal outside CI. A second declaration is a call fault.
+    #[track_caller]
+    pub fn needs_terminal(self) -> Application<I, R, <S as State>::Declared>
+    where
+        S: Open,
+    {
+        let mut application = self;
+        raise(application.declared().root.declare_terminal_need());
+        application.retyped()
+    }
+
     /// Declares that at most one of these root-local options is supplied.
     #[track_caller]
     pub fn exclusive(self, names: &[&str]) -> Self
@@ -328,14 +350,16 @@ impl<I, R, S: State> Application<I, R, S> {
         application.retyped()
     }
 
-    /// Declares a root argument. A root with arguments holds no children, a plugin's included.
+    /// Declares a positional argument for the root action.
     #[track_caller]
-    pub fn argument(self, name: &str, argument: impl Into<ArgumentDecl>) -> Application<I, R, Leaf>
+    pub fn argument(
+        self,
+        name: &str,
+        argument: impl Into<ArgumentDecl>,
+    ) -> Application<I, R, <S as State>::Declared>
     where
-        S: TakesArguments,
+        S: Open,
     {
-        // A root argument beside the plugins' Commands meets `arguments-beside-children` here,
-        // through the root's children.
         let mut application = self;
         raise(
             application
@@ -350,7 +374,7 @@ impl<I, R, S: State> Application<I, R, S> {
     #[track_caller]
     pub fn command(self, child: impl Into<AnyCommand>) -> Application<I, R, Group>
     where
-        S: TakesChildren,
+        S: Open,
     {
         let mut application = self;
         raise(application.declared().attach(child.into().declaration));
@@ -362,11 +386,10 @@ impl<R, S: State> Application<NoInputs, R, S> {
     /// Declares the fields of `J` as the root's arguments and options, and types the root action's
     /// inputs as `J`.
     #[track_caller]
-    pub fn inputs<J>(self) -> Application<J, R, <J::Shape as Shape<S>>::After>
+    pub fn inputs<J>(self) -> Application<J, R, <S as State>::Declared>
     where
         S: Open,
         J: Inputs,
-        J::Shape: Shape<S>,
     {
         let mut application = self;
         let calls = J::declare(crate::inputs::Declarations::new()).calls;

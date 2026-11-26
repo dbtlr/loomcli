@@ -50,13 +50,13 @@ fn globals(short: Value) -> Value {
 
 fn get_entry() -> Value {
     json!({
-        "stdin": null, "name": "get", "path": ["get"], "description": "Read one value.",
+        "stdin": null, "passthrough": null, "name": "get", "path": ["get"], "description": "Read one value.",
         "details": ["Quote a path.", "Help prose."],
         "examples": [
             { "command": "get a", "note": null },
             { "command": "get b", "note": "B." },
         ],
-        "deprecated": null, "hasAction": true, "result": null, "failures": [],
+        "deprecated": null, "hasAction": true, "needsTerminal": false, "result": null, "failures": [],
         "arguments": [{
             "name": "path", "description": "The path.", "required": true, "requiredWhen": null,
             "variadic": false, "schema": null, "default": null,
@@ -391,7 +391,7 @@ async fn an_unknown_command_still_fails_in_routing() {
 }
 
 #[tokio::test]
-async fn a_manifest_token_after_the_passthrough_delimiter_is_not_read_as_the_option() {
+async fn a_manifest_token_after_the_delimiter_is_an_unexpected_argument() {
     let application: App = Application::new("app")
         .plugins((manifest(),))
         .command(
@@ -403,9 +403,10 @@ async fn a_manifest_token_after_the_passthrough_delimiter_is_not_read_as_the_opt
     assert_eq!(
         run(&application, &["get", "x", "--", "--manifest"]).await,
         Ran {
-            status: 0,
-            stderr: String::new(),
-            stdout: "dispatched\n".to_owned()
+            status: 2,
+            stderr: "app: Command \"get\" accepts 1 argument. Remove the extra values.\n"
+                .to_owned(),
+            stdout: String::new(),
         }
     );
 }
@@ -555,6 +556,7 @@ async fn a_command_entry_carries_stdin_null_without_a_declaration_and_the_declar
         keys(&document["command"]),
         [
             "stdin",
+            "passthrough",
             "name",
             "path",
             "description",
@@ -562,6 +564,7 @@ async fn a_command_entry_carries_stdin_null_without_a_declaration_and_the_declar
             "examples",
             "deprecated",
             "hasAction",
+            "needsTerminal",
             "result",
             "failures",
             "arguments",

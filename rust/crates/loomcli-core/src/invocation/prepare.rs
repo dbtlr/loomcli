@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::__private::{RawValue, RunState};
 use crate::application::declaration::ApplicationDeclaration;
 use crate::commands::declaration::{CommandDeclaration, InputDeclaration, OptionInput};
-use crate::failures::{Error, NonCallableCommandError};
+use crate::failures::{Error, NonCallableCommandError, TerminalUnavailableError};
 use crate::host::Host;
 use crate::inputs::declared::DeclaredValues;
 use crate::inputs::interaction::interaction_decision;
@@ -135,7 +135,11 @@ pub(crate) async fn prepare_dispatch(run: &Run<'_>, mut parsed: ParsedInvocation
     // The held structural fault, then the callable check: a group holds its missing subcommand.
     let local_fault: Option<Error> = parsed.fault.take().or_else(|| {
         routed.action.is_none().then(|| {
-            NonCallableCommandError::new(parsed.path.clone(), candidates_of(routed)).into()
+            let failure = NonCallableCommandError::new(parsed.path.clone(), candidates_of(routed));
+            match parsed.escapable.as_deref() {
+                Some(word) => failure.argument(word).into(),
+                None => failure.into(),
+            }
         })
     });
     let local = declaration.filter(|_| local_fault.is_none());
@@ -297,6 +301,12 @@ pub(crate) async fn prepare_dispatch(run: &Run<'_>, mut parsed: ParsedInvocation
     if let Some(fault) = local_fault {
         return own_run.held(fault, global_options, ledger);
     }
+    if routed.node.needs_terminal
+        && (run.invoked_by != InvokedBy::Argv || !interaction_decision(run.host, None))
+    {
+        let failure = TerminalUnavailableError::new(&run.application.name, parsed.path.clone());
+        return own_run.held(failure.into(), global_options, ledger);
+    }
     if let Some(failure) = validation.failure {
         return own_run.held(failure.into(), global_options, ledger);
     }
@@ -307,7 +317,8 @@ pub(crate) async fn prepare_dispatch(run: &Run<'_>, mut parsed: ParsedInvocation
         &options,
     );
     let values = RunInputs {
-        locals: scope_values(&validation.values, false, validation.stdin.clone()),
+        locals: scope_values(&validation.values, false, validation.stdin.clone())
+            .with_passthrough(parsed.passthrough.clone()),
         globals: scope_values(&validation.values, true, None),
         invoked_by: run.invoked_by,
     };

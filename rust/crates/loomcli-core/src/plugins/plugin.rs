@@ -266,6 +266,10 @@ impl crate::__private::PluginState {
                 "Plugin options declare stdin, which only a Command reads.".to_owned(),
                 Finding::new(format!("{receiver}.stdin"), vec![stdin.literal()]).mark("0"),
             ),
+            DeclarationCall::Passthrough(mode) => (
+                "Plugin options declare passthrough, which only a Command reads.".to_owned(),
+                Finding::new(format!("{receiver}.passthrough"), vec![mode.literal()]).mark("0"),
+            ),
             DeclarationCall::Group(_, names) => (
                 "Plugin options declare an option group, which only a Command declares.".to_owned(),
                 Finding::new(format!("{receiver}.exclusive"), vec![Literal::from(names)]).mark("0"),

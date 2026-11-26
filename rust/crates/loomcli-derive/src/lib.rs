@@ -12,7 +12,7 @@ use proc_macro::TokenStream;
 
 /// Implements `loomcli_core::Inputs` for a struct whose fields are a Command's inputs.
 ///
-/// Each field carries one of `#[option(...)]`, `#[argument(...)]`, or `#[stdin(...)]`. The field
+/// Each field carries one of `#[option(...)]`, `#[argument(...)]`, `#[stdin(...)]`, or `#[passthrough(...)]`. The field
 /// type decides the declaration: `bool` is a Boolean option, an integer under `count` a counted
 /// option, `Content` a content input, `Vec<T>` a multiple option or a variadic argument, `Option<T>`
 /// an optional input, and any other `T` a required one, typed by its validator's output.
@@ -24,6 +24,8 @@ use proc_macro::TokenStream;
 /// - `#[option(fact, …)]`: an option.
 /// - `#[argument(fact, …)]`: an argument, bound in field order.
 /// - `#[stdin(description = "…")]`: the standalone stdin, on a `Content` or `Option<Content>` field.
+/// - `#[passthrough(description = "…")]` declares passthrough on a `Vec<String>` field.
+///   The description is optional.
 ///
 /// The struct may carry `#[inputs(exclusive("a", "b"), one_required(…), required_together(…))]`.
 /// Each member is an option's declared name (`dry-run` for a field `dry_run`), not a field
@@ -75,7 +77,7 @@ use proc_macro::TokenStream;
 /// A `bool` field is never `Option<bool>` or `Vec<bool>`; a `count` field is `u8`, `u16`, `u32`,
 /// `u64`, or `usize`; `min` and `max` sit on a `Vec` field alone.
 ///
-/// The derive implements `GlobalInputs` too when the struct has no argument, no stdin, no content
+/// The derive implements `GlobalInputs` too when the struct has no argument, no stdin, no passthrough, no content
 /// option, no presence rule, and no option group, so it can declare global options and a plugin's
 /// options.
 ///
@@ -207,7 +209,7 @@ use proc_macro::TokenStream;
 ///     force: bool,
 /// }
 /// ```
-#[proc_macro_derive(Inputs, attributes(inputs, option, argument, stdin))]
+#[proc_macro_derive(Inputs, attributes(inputs, option, argument, stdin, passthrough))]
 pub fn derive_inputs(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     inputs::expand(&input)

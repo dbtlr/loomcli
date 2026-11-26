@@ -23,6 +23,7 @@ use super::cells::{
 use super::details::render_details;
 use super::extension::{CommandExample, HELP_ARGUMENT, HELP_COMMAND, HELP_INPUT, HelpCommandFacts};
 use super::layout::{Hang, continuation, hang_lines, on_terminal, prose, signed, spaces};
+use super::messages::{CHILD_NAME_ESCAPE, TERMINAL_NEED_LABEL, TERMINAL_NEED_TEXT};
 use super::sections::{SectionMember, section_blocks};
 use super::views::{HelpPage, HelpVariant};
 use crate::config::extension::CONFIG_INPUT;
@@ -82,26 +83,28 @@ pub(crate) fn path_of(graph: &CommandGraph, command: &CommandNode) -> String {
 const DEPRECATION_LABEL: &str = "Deprecated: ";
 
 /// The indent of the deprecation line.
-const DEPRECATION_INDENT: &str = "  ";
+const LABELED_INDENT: &str = "  ";
 
 /// Where a masthead description continues when its hang after the path cannot fit.
 const MASTHEAD_BASE: i64 = 2;
 
-/// The deprecation line under a masthead. On a terminal its message wraps and continues under its
-/// first character, after the label, or at the line's indent when that hang cannot fit. Each line
-/// is one warning value.
-fn deprecation(message: &str, context: &ViewContext) -> Vec<String> {
+/// A masthead line wraps its text after the label, keeping each line in one style span.
+fn labeled(
+    label: &str,
+    message: &str,
+    paint: impl Fn(&str) -> String,
+    context: &ViewContext,
+) -> Vec<String> {
     let style = &context.style;
-    let label = style.escape(DEPRECATION_LABEL);
+    let label = style.escape(label);
     let text = style.escape(message);
-    let warning = style.warning();
     let Some(columns) = super::layout::columns(context) else {
         return vec![format!(
-            "{DEPRECATION_INDENT}{}",
-            warning.apply(&format!("{label}{text}"))
+            "{LABELED_INDENT}{}",
+            paint(&format!("{label}{text}"))
         )];
     };
-    let base = signed(context.width(DEPRECATION_INDENT));
+    let base = signed(context.width(LABELED_INDENT));
     let hung = hang_lines(
         &text,
         &Hang {
@@ -113,13 +116,13 @@ fn deprecation(message: &str, context: &ViewContext) -> Vec<String> {
     );
     let indent = spaces(hung.indent);
     std::iter::once(format!(
-        "{DEPRECATION_INDENT}{}",
-        warning.apply(&format!("{label}{}", hung.first))
+        "{LABELED_INDENT}{}",
+        paint(&format!("{label}{}", hung.first))
     ))
     .chain(
         hung.rest
             .iter()
-            .map(|line| continuation(&warning.apply(line), &indent, context)),
+            .map(|line| continuation(&paint(line), &indent, context)),
     )
     .collect()
 }
@@ -137,8 +140,21 @@ fn masthead(path: &str, command: &CommandNode, context: &ViewContext) -> Vec<Str
             context,
         ),
     };
+    if command.needs_terminal {
+        lines.extend(labeled(
+            TERMINAL_NEED_LABEL,
+            TERMINAL_NEED_TEXT,
+            |text| style.dim().apply(text),
+            context,
+        ));
+    }
     if let Some(deprecated) = command.deprecated.as_deref().map(single_line) {
-        lines.extend(deprecation(&deprecated, context));
+        lines.extend(labeled(
+            DEPRECATION_LABEL,
+            &deprecated,
+            |text| style.warning().apply(text),
+            context,
+        ));
     }
     lines
 }
@@ -167,6 +183,9 @@ pub(crate) fn usage_forms(
         );
         // `[options]` is always present, because the help option is one.
         parts.push(writer.word("[options]"));
+        if command.passthrough.is_some() {
+            parts.push(writer.word("[-- <args>...]"));
+        }
         forms.push(format!("{path} {}", parts.join(" ")));
     }
     let group = !command.has_action && !command.children.is_empty();
@@ -260,13 +279,33 @@ fn commands(
     Ok(section_blocks(order, members, context))
 }
 
-/// The ARGUMENTS block: one row per argument in declaration order.
-fn arguments(command: &CommandNode, context: &ViewContext) -> Result<Vec<String>, Error> {
-    let rows = command
+/// Whether help and the man page describe escaping a child name into an argument.
+pub(crate) fn notes_escape(command: &CommandNode, has_visible_children: bool) -> bool {
+    has_visible_children && !command.arguments.is_empty() && command.passthrough.is_none()
+}
+
+/// The ARGUMENTS block: declared arguments, then the row for the delimiter when applicable.
+fn arguments(
+    command: &CommandNode,
+    has_visible_children: bool,
+    context: &ViewContext,
+) -> Result<Vec<String>, Error> {
+    let mut rows = command
         .arguments
         .iter()
         .map(|argument| argument_row(argument, context))
         .collect::<Result<Vec<_>, Error>>()?;
+    if let Some(mode) = &command.passthrough {
+        rows.push(Row {
+            left: format!("-- {}", context.style.dim().italic().apply("<args>...")),
+            right: right_cell(mode.description.as_deref(), None, &[], context),
+        });
+    } else if notes_escape(command, has_visible_children) {
+        rows.push(Row {
+            left: "--".to_owned(),
+            right: right_cell(Some(CHILD_NAME_ESCAPE), None, &[], context),
+        });
+    }
     if rows.is_empty() {
         return Ok(Vec::new());
     }
@@ -611,7 +650,7 @@ pub(super) fn render_page(page: &HelpPage, context: &ViewContext) -> Result<Stri
         &children,
         context,
     )?);
-    blocks.push(arguments(command, context)?);
+    blocks.push(arguments(command, any_visible_child, context)?);
     blocks.push(stdin_input(command, &path, context));
     blocks.extend(options(
         help.option_sections.as_deref(),

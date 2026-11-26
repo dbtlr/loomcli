@@ -1091,14 +1091,11 @@ fn every_command_rule_rejects_a_plugin_command_where_the_root_attaches_it() {
         }),
         "Option \"quiet\" is declared as a global option and as a local option on Command \"doctor\". Rename the local option."
     );
-    assert_eq!(
-        thrown(|| {
-            let _ = Application::new("app")
-                .plugins([doctor()])
-                .argument("files", Arg::string().variadic());
-        }),
-        "The root Command declares argument \"files\" and attaches child \"doctor\". Move the argument into a child Command or remove the children."
-    );
+    let root = Application::new("app")
+        .plugins([doctor()])
+        .argument("files", Arg::string().variadic())
+        .action(dispatch);
+    assert_eq!(children(&root), ["doctor"]);
     assert_eq!(
         thrown(|| {
             let _ = attaching("@acme/doctor", vec![Command::new("doctor").into()]);

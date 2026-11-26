@@ -14,6 +14,7 @@
 //! | `RepeatedOptionError` | `UsageError` | `repeated-option` | 2 |
 //! | `MisplacedOptionError` | `UsageError` | `misplaced-option` | 2 |
 //! | `FatalError` | `LoomError` | `fatal` | 1 |
+//! | `TerminalUnavailableError` | `FatalError` | `terminal-unavailable` | 1 |
 //! | `WorkingDirectoryError` | `LoomError` | `working-directory-unreadable` | 1 |
 //! | `DeclarationError` | `LoomError` | `internal` | 1 |
 //! | `InternalError` | `LoomError` | `internal` | 1 |
@@ -130,6 +131,32 @@ impl FatalError {
     }
 }
 
+/// An invocation of a Command that needs a terminal, without terminal stdin and stderr outside CI.
+#[derive(Debug, Failure)]
+#[failure(code = "terminal-unavailable")]
+pub struct TerminalUnavailableError {
+    #[failure(base)]
+    base: FatalError,
+    command: Vec<String>,
+}
+
+impl TerminalUnavailableError {
+    /// Builds the failure for the application and routed path, empty for the root.
+    #[must_use]
+    pub fn new(application: &str, command: Vec<String>) -> Self {
+        Self {
+            base: FatalError::new(messages::terminal_unavailable(application, &command)),
+            command,
+        }
+    }
+
+    /// The routed path from the root.
+    #[must_use]
+    pub fn command(&self) -> &[String] {
+        &self.command
+    }
+}
+
 /// One or more input problems found in the validation phase, in authoring order, with the broken
 /// option groups after them.
 #[derive(Debug, Failure)]
@@ -199,6 +226,7 @@ pub struct NonCallableCommandError {
     base: UsageError,
     command: Vec<String>,
     candidates: Vec<String>,
+    argument: Option<String>,
 }
 
 impl NonCallableCommandError {
@@ -209,7 +237,24 @@ impl NonCallableCommandError {
             base: UsageError::new(messages::missing_subcommand(&command, &candidates)),
             command,
             candidates,
+            argument: None,
         }
+    }
+
+    /// Adds the argv word that the parent could have read as an argument.
+    #[must_use]
+    pub fn argument(mut self, word: impl Into<String>) -> Self {
+        let word = word.into();
+        let sentence = messages::missing_subcommand(&self.command, &self.candidates);
+        self.base = UsageError::new(messages::pass_as_argument(&sentence, &word));
+        self.argument = Some(word);
+        self
+    }
+
+    /// The escapable argv word, when routing reached the group through a parent with arguments.
+    #[must_use]
+    pub fn argument_word(&self) -> Option<&str> {
+        self.argument.as_deref()
     }
 
     /// The group's path.
@@ -260,6 +305,20 @@ impl UnexpectedArgumentError {
         }
     }
 
+    /// An explicit named tail on a Command that leaves the mode off.
+    pub(crate) fn declared_no_passthrough(
+        command: Vec<String>,
+        accepted: usize,
+        extra: Vec<String>,
+    ) -> Self {
+        Self {
+            base: UsageError::new(messages::declared_no_passthrough(&command)),
+            command,
+            accepted,
+            extra,
+        }
+    }
+
     /// The routed path.
     #[must_use]
     pub fn command(&self) -> &[String] {
@@ -295,6 +354,14 @@ impl UnknownOptionError {
         Self {
             base: UsageError::new(messages::unknown_option(&spelling)),
             spelling,
+        }
+    }
+
+    /// A spelling on a Command that reads bare words as arguments.
+    pub(crate) fn before_arguments(spelling: &str) -> Self {
+        Self {
+            base: UsageError::new(messages::unknown_option_before_arguments(spelling)),
+            spelling: spelling.to_owned(),
         }
     }
 

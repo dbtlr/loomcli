@@ -10,7 +10,7 @@ The [core API design](../design/core-api.md) states each rule this page touches 
 
 ## Applications and Commands
 
-`Application::new(name)` starts a declaration and `Command::new(name)` starts a Command. Each call consumes the value and returns the next one, and the builder types are `#[must_use]`, so a dropped declaration is a compiler warning. A Command either holds children through `command()` or takes arguments; it cannot do both, and the type state turns the mistake into a compile error. A Command with children may also have an action of its own, which runs when the operator names no child.
+`Application::new(name)` starts a declaration and `Command::new(name)` starts a Command. Each call consumes the value and returns the next one, and the builder types are `#[must_use]`, so a dropped declaration is a compiler warning. A Command with an action may declare arguments and attach children in either order. An exact child name or alias routes to that child. A Command that declares arguments handles other plain words itself. A group has children and requires the operator to name one.
 
 ```rust
 use loomcli_core::{Application, Command, Context, GroupApplication, GroupCommand, Outcome};
@@ -112,9 +112,15 @@ let about = Command::new("about")
     });
 ```
 
+## Passthrough and terminal need
+
+A bare `--` ends routing and option parsing. The words after it fill positional arguments. To forward those words unchanged through `ctx.passthrough`, declare `.passthrough(Passthrough::new())` on the Command and add `.description(text)` to describe the forwarded words in help.
+
+An action that needs stdin and stderr at a terminal outside CI declares `.needs_terminal()`. The Command’s help remains available on a pipe. Invoking the action by name fails with `TerminalUnavailableError`.
+
 ## Inputs through the derive
 
-`#[derive(Inputs)]` on a struct declares a Command's arguments and local options, and `inputs::<I>()` applies the declaration. Each field carries `#[argument(...)]`, `#[option(...)]`, or `#[stdin(...)]`, and its doc comment is its description. The field type decides the kind of input and whether it is required:
+`#[derive(Inputs)]` on a struct declares a Command's arguments and local options, and `inputs::<I>()` applies the declaration. Each field carries `#[argument(...)]`, `#[option(...)]`, `#[stdin(...)]`, or `#[passthrough(...)]`. Its doc comment provides the default description. A `#[passthrough]` field is a `Vec<String>` of the words after the first bare `--`. The field type decides the kind of input and whether it is required.
 
 | Field type | Input |
 | --- | --- |

@@ -4,6 +4,7 @@ use explain::explain;
 use explain::extension::{EXPLAIN_COMMAND, ExplainFacts};
 use loomcli_core::{Application, Content, FatalError, Inputs, RowViews, RowsResult, ThemeMapping};
 use loomcli_core::{failure, override_view};
+use loomcli_plugins::completion::completion;
 use loomcli_plugins::config::extension::{CONFIG_INPUT, ConfigInputFacts};
 use loomcli_plugins::config::{ConfigurationSettings, Scope, configuration};
 use loomcli_plugins::format::format;
@@ -128,6 +129,7 @@ pub fn textstat() -> Application<TextstatInputs, RowsResult<Row>> {
             logging(),
             loom_theme(ThemeMapping::default()),
             explain(),
+            completion(),
         ))
         .description("Count bytes, words, or lines across text sources.")
         .version(env!("CARGO_PKG_VERSION"))

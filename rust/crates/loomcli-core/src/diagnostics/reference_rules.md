@@ -1,17 +1,16 @@
-<!-- The @loomcli/core section of the reference's docs/core/diagnostics.md, copied verbatim from
-the TypeScript reference at 5e10fd077df02d58d5348f01f254df5277e9f087. The rule wording test in
-diagnostics/tests.rs compares core's rule constants with it. Do not edit by hand: copy the section
-again when the pinned reference moves. -->
+<!-- The @loomcli/core section of docs/core/diagnostics.md, copied verbatim from
+the TypeScript reference at v0.20.0 (4672a4119608c254494a280669e910f55fc38f8f).
+The rule wording test in diagnostics/tests.rs compares core's rule constants with it. -->
 
 ## @loomcli/core
+
+### @loomcli/core/argument-after-variadic
+
+**Argument after variadic not a required scalar.** A variadic argument takes the plain words between the arguments before it and the arguments after it, so each argument after it fills from the end of the line with exactly one word. Only a required scalar argument always takes exactly one word: an optional argument, a second variadic, an argument required only when input is not interactive, or a content argument after a variadic would leave the parser unable to tell where the variadic's words end.
 
 ### @loomcli/core/argument-declared-twice
 
 **Argument declared twice.** An action reads each argument under its name, so two arguments with one name leave one of them unreadable.
-
-### @loomcli/core/arguments-beside-children
-
-**Arguments beside children.** A Command's first bare token either names a child or fills an argument, so a Command that holds both cannot tell which one an operator meant.
 
 ### @loomcli/core/background-mark
 
@@ -47,7 +46,7 @@ again when the pinned reference moves. -->
 
 ### @loomcli/core/command-without-action
 
-**Nothing to run.** Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run.
+**Nothing to run.** Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run. A group that declares an argument, stdin, the passthrough mode, or that it needs a terminal has the same fault, because those declarations reach no action.
 
 ### @loomcli/core/declared-name
 
@@ -55,7 +54,7 @@ again when the pinned reference moves. -->
 
 ### @loomcli/core/env-delimiter
 
-**Empty environment delimiter.** A multiple option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.
+**Empty environment delimiter.** A multiple option's or a scalar arity option's variable splits at each occurrence of its envDelimiter into the option's list, and an empty string occurs between every two characters, so it separates no item.
 
 ### @loomcli/core/extension-output
 
@@ -67,7 +66,7 @@ again when the pinned reference moves. -->
 
 ### @loomcli/core/failure-encoder-taken
 
-**Failure encoder taken.** A failed run writes its failure through the one encoder registered for the media type its selected view declares. Two encoders for one media type leave core no way to choose between them.
+**Failure encoder taken.** A failed run writes its failure through the one encoder registered for its media type: the one its selected view declares, or on a Command that declares no result the one a middleware assigned. Two encoders for one media type leave core no way to choose between them.
 
 ### @loomcli/core/foreign-graph
 
@@ -79,7 +78,7 @@ again when the pinned reference moves. -->
 
 ### @loomcli/core/foreign-value
 
-**Value from another copy of core.** Core reads a plugin, an extension value, a declared view, a view override, a translation, a failure encoding, and a provider through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.
+**Value from another copy of core.** Core reads a plugin, an extension value, a declared view, a view override, a translation, a failure encoding, a phrasebook, a provider, and an option set through facts the copy of @loomcli/core that built it recorded. When two copies of @loomcli/core are installed, a value one copy built carries no facts the other copy can read.
 
 ### @loomcli/core/interaction-mark
 
@@ -96,6 +95,10 @@ again when the pinned reference moves. -->
 ### @loomcli/core/invalid-implied
 
 **Implied value rejected.** Each run passes every implied value through its validator before it reads a token, because a bare spelling supplies it to the action as a validated value. An implied value the validator rejects is the declaration at fault, whatever the operator supplies, so the run reports it whether or not a bare spelling was typed.
+
+### @loomcli/core/invalid-redact-path
+
+**Invalid redact path.** Core redacts each path log.redact lists from every log event when it copies the fields, so no onLog hook, log line, or record reads the value. A path splits on dots into object keys, so each key is nonempty.
 
 ### @loomcli/core/invalid-release-facts
 
@@ -117,6 +120,10 @@ again when the pinned reference moves. -->
 
 **next() misused.** next() continues the middleware chain once, while the middleware that received it runs. A second call, or a call after the middleware returned, has no chain left to continue.
 
+### @loomcli/core/option-arity
+
+**Invalid option arity.** An option with an arity takes exactly that many words per occurrence and gives the action a tuple of them. A count below 2 is the single word an option without arity already takes, and a count that is not whole names no number of words.
+
 ### @loomcli/core/option-declared-twice
 
 **Option declared twice.** An action reads the global options and its Command's own options from one options object, each under its declared name, and the global options, the application's and every installed plugin's, share every Command's one table of spellings. Two options with one name in either leave one of them unreadable.
@@ -128,6 +135,14 @@ again when the pinned reference moves. -->
 ### @loomcli/core/optional-argument-last
 
 **Required argument after optional.** Bare words fill the arguments in order, and an operator leaves out optional arguments from the end of the line. A required argument after an optional one would leave the parser unable to tell which of the two a lone bare word fills, and one after an argument required only when input is not interactive would keep that argument's question from ever being asked at a terminal. A content argument whose min is positive counts as required here, because it must receive a source.
+
+### @loomcli/core/phrasebook-language
+
+**Phrasebook language not canonical.** A run renders a phrase through the phrasebooks installed for its language: the first subtag of the operator's canonical locale, two or three lowercase letters. A key in any other form, such as a region tag, an uppercase spelling, or a deprecated code Intl replaces, never equals a run's language, so its phrasebooks would never render.
+
+### @loomcli/core/plain-mark
+
+**Invalid plain mark.** One Boolean global option may carry the spelling that turns the run's plain switch on. Core reads it from argv right after host capture, before anything else prints, so it takes no second source, and ACCESSIBLE is the environment's word for the switch.
 
 ### @loomcli/core/plugin-installed-twice
 
@@ -171,7 +186,7 @@ again when the pinned reference moves. -->
 
 ### @loomcli/core/source-answers
 
-**Invalid source answers.** A configuration source answers with a record that maps each option core requested to { value, label }, where the value has the raw type the option takes and the label is one line of prose, and an answer may add a directory, the absolute path of the folder holding the file the value came from. Core fills no option from any other answer.
+**Invalid source answers.** A configuration source answers with a record that maps each option core requested to { value, label }, where the value has the raw type the option takes and the label is one line of prose, and an answer may add a directory, the absolute path of the folder holding the file the value came from, and a strict flag, true when a value its option rejects fails the run instead of falling back. Core fills no option from any other answer.
 
 ### @loomcli/core/spelling-taken
 
@@ -193,14 +208,10 @@ again when the pinned reference moves. -->
 
 **Variable bound twice.** Within one invocation's scope a variable fills one option, so two options that bind it would both take the value an operator set for one of them.
 
-### @loomcli/core/variadic-argument-last
-
-**Variadic argument not last.** A variadic argument takes every positional token that remains, so an argument after it would never receive one.
-
 ### @loomcli/core/verbose-mark
 
 **Invalid verbose mark.** One counted global option may raise the run's verbosity. Core settles the verbosity right after graph build, before it reads the environment or configuration, so the marked option takes no second source.
 
 ### @loomcli/core/view-selection
 
-**Invalid view selection.** A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render.
+**Invalid view selection.** A middleware, or the caller of invoke(), selects one of the views the routed Command's result declares, by name, before the action runs. A Command that declares no result has no view to select, and a name its result does not declare has no view to render. A middleware states the run's media type only on a Command that declares no result, because on one that declares a result the selected view states it.

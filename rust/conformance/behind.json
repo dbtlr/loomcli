@@ -163,83 +163,15 @@
       ]
     },
     {
-      "id": "jsonkit-form-case-sensitive-option",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
-      "id": "jsonkit-form-long-prefix-abbreviation",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
-      "id": "jsonkit-form-no-negation-of-valued",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
-      "id": "jsonkit-form-passthrough-dash-word",
-      "parts": [
-        "stdout",
-        "stderr",
-        "exit"
-      ]
-    },
-    {
-      "id": "jsonkit-form-passthrough-double-dash-word",
-      "parts": [
-        "stdout",
-        "stderr",
-        "exit"
-      ]
-    },
-    {
-      "id": "jsonkit-form-passthrough-second-separator",
-      "parts": [
-        "stdout",
-        "stderr",
-        "exit"
-      ]
-    },
-    {
-      "id": "jsonkit-form-passthrough-tail",
-      "parts": [
-        "stdout",
-        "stderr",
-        "exit"
-      ]
-    },
-    {
       "id": "jsonkit-form-short-group-help",
       "parts": [
         "stdout"
       ]
     },
     {
-      "id": "jsonkit-form-short-group-unknown-member",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
       "id": "jsonkit-format-incomplete-jsonl",
       "parts": [
         "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-format-on-command-without-result",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
-      "id": "jsonkit-get-format-option-not-declared",
-      "parts": [
-        "stderr"
       ]
     },
     {
@@ -719,26 +651,6 @@
       ]
     },
     {
-      "id": "jsonkit-usage-misplaced-option-after-passthrough",
-      "parts": [
-        "stdout",
-        "stderr",
-        "exit"
-      ]
-    },
-    {
-      "id": "jsonkit-usage-two-faults-at-once",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
-      "id": "jsonkit-usage-unknown-option-on-command",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
       "id": "jsonkit-usage-validation-format-near",
       "parts": [
         "stderr"
@@ -751,12 +663,6 @@
       ]
     },
     {
-      "id": "textstat-color-no-color-flag-unknown",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
       "id": "textstat-env-help-shows-nothing-extra",
       "parts": [
         "stdout"
@@ -764,18 +670,6 @@
     },
     {
       "id": "textstat-form-hidden-timing-not-in-help",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "textstat-form-no-total-is-not-declared",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
-      "id": "textstat-form-passthrough-tail-ignored-total",
       "parts": [
         "stdout"
       ]
@@ -861,35 +755,7 @@
     {
       "id": "textstat-usage-completion-not-installed",
       "parts": [
-        "stdout",
-        "stderr",
-        "exit"
-      ]
-    },
-    {
-      "id": "textstat-usage-passthrough-tail-ignored",
-      "parts": [
-        "stdout",
-        "stderr",
-        "exit"
-      ]
-    },
-    {
-      "id": "textstat-usage-unknown-option-long",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
-      "id": "textstat-usage-unknown-option-short",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
-      "id": "textstat-usage-unknown-option-verbose-not-installed",
-      "parts": [
-        "stderr"
+        "stdout"
       ]
     },
     {

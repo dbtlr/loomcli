@@ -147,7 +147,7 @@ pub struct ArgumentNode {
     pub validate_omitted: bool,
     /// Whether it has a validator.
     pub validated: bool,
-    /// Whether it takes the remaining words.
+    /// Whether it takes the words left after binding the other arguments.
     pub variadic: bool,
 }
 
@@ -451,8 +451,17 @@ impl OptionNode {
     }
 }
 
-/// One Command. Keys, in order: `optionGroups`, `stdin` (when declared), `aliases`, `arguments`,
-/// `children`, `deprecated`, `description`, `extensions`, `hasAction`, `hidden`, `name`, `options`,
+/// An enabled passthrough declaration as published in the command graph.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct PassthroughNode {
+    /// The optional description for the words after the delimiter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// One Command. Keys, in order: `optionGroups`, `passthrough`, `stdin` (when declared), `aliases`, `arguments`,
+/// `children`, `deprecated`, `description`, `extensions`, `hasAction`, `hidden`, `name`, `needsTerminal`, `options`,
 /// `path`, `result`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -460,6 +469,8 @@ impl OptionNode {
 pub struct CommandNode {
     /// The declared option groups.
     pub option_groups: Vec<OptionGroup>,
+    /// The passthrough declaration, serialized as `null` when the mode is off.
+    pub passthrough: Option<PassthroughNode>,
     /// The standalone stdin declaration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stdin: Option<StdinNode>,
@@ -486,6 +497,8 @@ pub struct CommandNode {
     pub hidden: bool,
     /// The canonical name; `null` for the root.
     pub name: Option<String>,
+    /// Whether this Command's action needs stdin and stderr at a terminal outside CI.
+    pub needs_terminal: bool,
     /// Local options, hook-declared ones included, in declaration order; shared, as `arguments` are.
     pub options: Vec<Arc<OptionNode>>,
     /// The route from the root; empty for the root.
@@ -547,8 +560,10 @@ impl CommandGraph {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum WordPosition {
-    /// A Command name.
+    /// A child name or the first positional word of the Command routing reached.
     Command {
+        /// The first declared argument, if the word names no child.
+        argument: Option<Arc<ArgumentNode>>,
         /// The Command routing reached.
         command: Arc<CommandNode>,
         /// The partial word.
@@ -587,7 +602,7 @@ pub enum WordPosition {
         /// The partial word.
         prefix: String,
     },
-    /// A word after `--`.
+    /// A word after `--` on a Command that declares passthrough.
     Passthrough {
         /// The Command routing reached.
         command: Arc<CommandNode>,
@@ -640,6 +655,9 @@ impl Scope<'_, '_> {
     fn last_word(&self, last: &str) -> WordPosition {
         let earlier = self.earlier;
         if earlier.delimited {
+            if self.command.passthrough.is_none() {
+                return self.plain_word(last);
+            }
             return WordPosition::Passthrough {
                 command: Arc::clone(&self.command),
                 prefix: last.to_owned(),
@@ -688,8 +706,9 @@ impl Scope<'_, '_> {
     /// A plain word names a child until routing ends, and fills the next positional after.
     fn plain_word(&self, last: &str) -> WordPosition {
         let earlier = self.earlier;
-        if !earlier.committed && !earlier.command.children.is_empty() {
+        if !earlier.delimited && !earlier.committed && !earlier.command.children.is_empty() {
             return WordPosition::Command {
+                argument: self.command.arguments.first().cloned(),
                 command: Arc::clone(&self.command),
                 prefix: last.to_owned(),
             };

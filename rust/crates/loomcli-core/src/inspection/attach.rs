@@ -7,8 +7,7 @@ use std::sync::Arc;
 use crate::__private::{AttachedState, PluginState};
 use crate::application::declaration::ApplicationDeclaration;
 use crate::commands::declaration::{
-    CommandDeclaration, GlobalTable, InputDeclaration, OptionOwner, check_local_options,
-    check_slot_order, local_site,
+    CommandDeclaration, GlobalTable, InputDeclaration, OptionOwner, check_local_options, local_site,
 };
 use crate::diagnostics::{DiagnosticParts, DiagnosticRule, Finding, Literal, rules};
 use crate::failures::messages::{as_sentence, command_subject, quoted, reason_of};
@@ -66,9 +65,12 @@ fn attach_tree(
     )?;
     if !hooked.is_empty() {
         check_attached_inputs(&attached, &hooked, path, &application.global_table)?;
-        check_hooked_command(&attached, &children, path, &application.global_table)?;
+        check_hooked_command(&attached, path, &application.global_table)?;
     }
     attached.children = children;
+    if !hooked.is_empty() && !path.is_empty() {
+        attached.check_finished(path, None)?;
+    }
     attached.attached_by = hooked;
     *command = attached;
     for child in &mut command.children {
@@ -395,30 +397,30 @@ fn authored_collision(
 }
 
 /// The rules a hook's inputs meet with the Command's own once every hook has run: one stdin target,
-/// the argument order, arguments beside children, and the Command's options against the global
+/// the argument order, and the Command's options against the global
 /// table, each variable bound once included.
 fn check_hooked_command(
     command: &CommandDeclaration,
-    children: &[CommandDeclaration],
     path: &[String],
     globals: &GlobalTable,
 ) -> Result<(), DeclarationError> {
     command.check_stdin_claims(path, None)?;
     let subject = command_subject(command.name.as_deref());
     let arguments: Vec<_> = command.arguments().collect();
+    let mut variadic = None;
     for pair in arguments.windows(2) {
         let [previous, next] = pair else {
             continue;
         };
-        check_slot_order(
-            (previous, &command.argument_site(path, previous)),
+        if previous.decl.variadic() {
+            variadic = Some(*previous);
+        }
+        command.check_slot_order(
+            previous,
+            variadic,
             (&next.name, &next.decl, &command.argument_site(path, next)),
-            &subject,
+            path,
         )?;
-    }
-    if let (Some(argument), Some(child)) = (arguments.first(), children.first()) {
-        let site = command.argument_site(path, argument);
-        return Err(command.placement_fault(path, &argument.name, &site, child));
     }
     check_local_options(&command.scope_options(path), globals, &subject).map(|_| ())
 }

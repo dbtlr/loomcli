@@ -15,9 +15,10 @@ use crate::help::cells::{
     option_cell_parts, single_line, unbound_option_facts,
 };
 use crate::help::extension::{CommandExample, HELP_ARGUMENT};
+use crate::help::messages::{CHILD_NAME_ESCAPE, TERMINAL_NEED_LABEL, TERMINAL_NEED_TEXT};
 use crate::help::page::{
-    ReadOption, child_suffix, command_help, epilogs_of, option_accepts, option_description,
-    path_of, read_options, usage_forms,
+    ReadOption, child_suffix, command_help, epilogs_of, notes_escape, option_accepts,
+    option_description, path_of, read_options, usage_forms,
 };
 use crate::help::sections::{OrderedSection, SectionMember, ordered_sections};
 
@@ -204,10 +205,18 @@ fn synopsis(subject: &Subject<'_>) -> Vec<String> {
     headed("SYNOPSIS", lines)
 }
 
-/// The deprecation paragraph, then the details.
+/// The masthead facts as paragraphs, then the details.
 fn description(subject: &Subject<'_>) -> Vec<String> {
     let mut lines = Vec::new();
+    if subject.command.needs_terminal {
+        lines.push(text_line(&escape(&format!(
+            "{TERMINAL_NEED_LABEL}{TERMINAL_NEED_TEXT}"
+        ))));
+    }
     if let Some(message) = &subject.command.deprecated {
+        if !lines.is_empty() {
+            lines.push(".PP".to_owned());
+        }
         lines.push(text_line(&escape(&format!(
             "Deprecated: {}",
             single_line(message)
@@ -257,6 +266,20 @@ fn arguments_section(subject: &Subject<'_>) -> Result<Vec<String>, Error> {
     let mut lines = Vec::new();
     for argument in &subject.command.arguments {
         lines.extend(argument_entry(argument)?);
+    }
+    if let Some(mode) = &subject.command.passthrough {
+        let args = in_font("args", Font::Italic, Fill::Fill);
+        lines.extend(entry(
+            &format!(r"\-\- {args}..."),
+            &entry_text(mode.description.as_deref(), None, &[]),
+            &[],
+        ));
+    } else if notes_escape(subject.command, !subject.children.is_empty()) {
+        lines.extend(entry(
+            r"\-\-",
+            &entry_text(Some(CHILD_NAME_ESCAPE), None, &[]),
+            &[],
+        ));
     }
     Ok(headed("ARGUMENTS", lines))
 }

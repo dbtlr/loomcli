@@ -263,3 +263,11 @@ async fn an_invocation_by_name_captures_the_same_page() {
         _ => panic!("the help Command completes"),
     }
 }
+
+#[tokio::test]
+async fn a_word_after_the_delimiter_is_an_argument_of_the_help_command() {
+    let app = notes(help().command(true));
+    let expected = run(&app, &["add", "--help"]).await;
+    assert_eq!(expected.status, 0);
+    assert_eq!(run(&app, &["help", "--", "add"]).await, expected);
+}

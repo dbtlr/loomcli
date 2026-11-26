@@ -35,6 +35,7 @@ fn options_app() -> App {
         .option("depth", Opt::string().short('d'))
         .option("pattern", Opt::string())
         .option("total", Opt::boolean().short('t'))
+        .passthrough(loomcli_core::Passthrough::new())
         .action(report_argv)
 }
 
@@ -509,6 +510,7 @@ async fn an_option_with_an_implied_value_occurs_once_whichever_spelling_supplied
 
 fn multiple_app() -> App {
     Application::new("multiple")
+        .passthrough(loomcli_core::Passthrough::new())
         .option("field", Opt::string().multiple().short('F'))
         .option("total", Opt::boolean().short('t'))
         .action(report)
@@ -573,6 +575,7 @@ async fn an_argument_and_an_option_can_share_a_key_without_losing_either_value()
 async fn option_declarations_and_invocation_values_stay_isolated_across_branches_and_repeated_runs()
 {
     let base = Application::new("state")
+        .passthrough(loomcli_core::Passthrough::new())
         .option(
             "enabled",
             Opt::boolean().polarity(Polarity::Negative).short('n'),

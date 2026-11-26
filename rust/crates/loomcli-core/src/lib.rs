@@ -38,8 +38,8 @@ pub use loomcli_derive::{Failure, Inputs};
 
 pub use application::{Application, GroupApplication, RunOptions};
 pub use commands::{
-    AnyCommand, CarriesResult, Command, Configuring, Done, Fresh, Group, GroupCommand, Leaf,
-    NoResultYet, Open, State, TakesArguments, TakesChildren, TakesGlobals,
+    AnyCommand, CarriesResult, Command, Configuring, Done, Fresh, Group, GroupCommand, NoResultYet,
+    Open, Passthrough, State, TakesGlobals,
 };
 pub use diagnostics::{
     DiagnosticParts, DiagnosticRule, Finding, Literal, diagnostic_rule, is_rule_identity,
@@ -51,9 +51,9 @@ pub use failures::{
     FailureEncoding, FailureExitCode, FailureFacts, FailureForm, FailureKey, FailureView,
     FailureViewContext, FatalError, InputError, InternalError, LoomError, MisplacedOptionError,
     MissingValueError, NonCallableCommandError, RepeatedOptionError, ResultError, ResultFault,
-    Translation, UnexpectedArgumentError, UnexpectedValueError, UnknownCommandError,
-    UnknownOptionError, UsageError, WorkingDirectoryError, encode_failure, failure,
-    is_failure_code, translate,
+    TerminalUnavailableError, Translation, UnexpectedArgumentError, UnexpectedValueError,
+    UnknownCommandError, UnknownOptionError, UsageError, WorkingDirectoryError, encode_failure,
+    failure, is_failure_code, translate,
 };
 pub use failures::{MissingValueForm, ValuelessKind};
 pub use host::{
@@ -64,20 +64,19 @@ pub use host::{
     SpawnRequest, process_handle, raise_interrupt_keys,
 };
 pub use inputs::{
-    Arg, ArgumentDecl, Arguments, BooleanOpt, Content, ContentArg, ContentKind, ContentOpt,
-    CountOpt, Declarations, DefaultValue, FromInputValue, GlobalInputs, GlobalOptionDecl,
-    InputIdentity, InputKind, InputProblem, InputValues, Inputs, IntoInputValue, IsType, Issue,
-    NoArguments, NoInputs, OmissionValidator, Opt, OptionDecl, PathSegment, Polarity, Required,
-    Shape, Stdin, StringArg, StringOpt, SuppliedInputs, SuppliedValue, ValidationContext,
-    ValidationFacts, ValidationPhase, Validator, ValueLink, assert_string_input,
-    assert_validator_output, issue_path, missing_input_error, question_validation_context,
-    validate_linked_value, validation_context,
+    Arg, ArgumentDecl, BooleanOpt, Content, ContentArg, ContentKind, ContentOpt, CountOpt,
+    Declarations, DefaultValue, FromInputValue, GlobalInputs, GlobalOptionDecl, InputIdentity,
+    InputKind, InputProblem, InputValues, Inputs, IntoInputValue, IsType, Issue, NoInputs,
+    OmissionValidator, Opt, OptionDecl, PathSegment, Polarity, Required, Stdin, StringArg,
+    StringOpt, SuppliedInputs, SuppliedValue, ValidationContext, ValidationFacts, ValidationPhase,
+    Validator, ValueLink, assert_string_input, assert_validator_output, issue_path,
+    missing_input_error, question_validation_context, validate_linked_value, validation_context,
 };
 pub use inspection::{
     ArgumentNode, BooleanOptionNode, CommandGraph, CommandNode, ConfigurationNode,
     ContentOptionNode, ContentType, CountOptionNode, DeclaredDefault, InputSchema, OptionGroup,
-    OptionGroupKind, OptionNode, ResultKindName, ResultNode, StdinNode, StringOptionNode,
-    WordPosition, locate, reported_spelling,
+    OptionGroupKind, OptionNode, PassthroughNode, ResultKindName, ResultNode, StdinNode,
+    StringOptionNode, WordPosition, locate, reported_spelling,
 };
 pub use inspection::{JSON_SCHEMA_DIALECT, with_schema_dialect};
 pub use invocation::{

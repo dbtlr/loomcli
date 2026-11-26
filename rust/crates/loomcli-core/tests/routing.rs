@@ -386,9 +386,9 @@ async fn the_default_text_escapes_a_right_to_left_override() {
     );
     assert_eq!(
         run(&app, &["get", "x", "--a\u{202e}b"]).await,
-        usage(&format!(
-            "failures: Unknown option \"--a\\u202eb\". {unknown}"
-        ))
+        usage(
+            "failures: Unknown option \"--a\\u202eb\". Supply a declared option, or pass it as an argument after \"--\"."
+        )
     );
     assert_eq!(
         run(&app, &["-q\u{202e}"]).await,
@@ -665,6 +665,7 @@ fn jsonkit() -> App {
 async fn mirrors_the_first_line_of_the_jsonkit_usage_corpus() {
     let app = jsonkit();
     let unknown = "Supply a declared option; prefix a hyphenated path with \"./\".";
+    let argument_correction = "Supply a declared option, or pass it as an argument after \"--\".";
     let cases: &[(&[&str], String)] = &[
         (&["typo"], "Unknown command \"typo\". Use one of: get, keys, select, stats.".into()),
         (
@@ -675,7 +676,7 @@ async fn mirrors_the_first_line_of_the_jsonkit_usage_corpus() {
         (&["-x"], format!("Unknown option \"-x\". {unknown}")),
         (
             &["get", "name", "--json", "-f", "doc.json"],
-            format!("Unknown option \"--json\". {unknown}"),
+            format!("Unknown option \"--json\". {argument_correction}"),
         ),
         (
             &["get", "--file"],
@@ -751,11 +752,11 @@ async fn mirrors_the_first_line_of_the_jsonkit_usage_corpus() {
         ),
         (
             &["get", "--bogus", "a", "b"],
-            format!("Unknown option \"--bogus\". {unknown}"),
+            format!("Unknown option \"--bogus\". {argument_correction}"),
         ),
         (
             &["get", "name", "-vz", "-f", "doc.json"],
-            format!("Unknown option \"-z\". {unknown}"),
+            format!("Unknown option \"-z\". {argument_correction}"),
         ),
     ];
     for (argv, line) in cases {
@@ -769,8 +770,8 @@ async fn mirrors_the_first_line_of_the_jsonkit_usage_corpus() {
         );
     }
     assert_eq!(
-        dispatched(&app, &["keys", "-f", "doc.json", "--", "--format", "json"]).await["passthrough"],
-        json!(["--format", "json"])
+        dispatched(&app, &["keys", "-f", "doc.json", "--", "--format"]).await["args"],
+        json!({"path": "--format"})
     );
 }
 

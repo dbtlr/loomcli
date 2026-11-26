@@ -104,7 +104,7 @@ async fn an_unknown_option_from_argv_points_at_the_explanation() {
         (
             2,
             String::new(),
-            "notes: Unknown option \"--bogus\". Supply a declared option; prefix a hyphenated path with \"./\".\nRun \"notes add --explain\" to explain this command.\n".to_owned()
+            "notes: Unknown option \"--bogus\". Supply a declared option, or pass it as an argument after \"--\".\nRun \"notes add --explain\" to explain this command.\n".to_owned()
         )
     );
 }

@@ -23,6 +23,7 @@ fn graph_application(words: &[&str]) -> App {
         .description("Keep notes in sync.")
         .command(
             Command::new("serve")
+                .passthrough(loomcli_core::Passthrough::new())
                 .description("Serve the notes.")
                 .option("port", Opt::string().description("The port to serve on."))
                 .option("verbose", Opt::boolean().description("Write more."))

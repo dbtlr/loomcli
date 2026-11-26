@@ -207,3 +207,67 @@ async fn help_explain_manifest_and_suggestions_describe_the_same_assembled_graph
     assert_eq!(near.status, 2);
     assert!(near.stderr.contains("Did you mean \"--total\"?"));
 }
+
+#[tokio::test]
+async fn the_delimiter_and_first_file_allow_hyphenated_names_and_child_names_as_files() {
+    let directory = folder("delimiter");
+    std::fs::write(directory.join("-notes.txt"), "abc").unwrap();
+    std::fs::write(directory.join("completion"), "abcd").unwrap();
+    for (argv, rows) in [
+        (
+            &["one.txt", "--", "-notes.txt"][..],
+            "    6  one.txt\n    3  -notes.txt\n",
+        ),
+        (
+            &["one.txt", "completion"][..],
+            "    6  one.txt\n    4  completion\n",
+        ),
+        (&["--", "completion"][..], "    4  completion\n"),
+    ] {
+        let result = run(&directory, argv, "", &[]).await;
+        assert_eq!(result.status, 0);
+        assert!(result.stderr.is_empty());
+        assert!(result.stdout.contains(rows), "{}", result.stdout);
+    }
+}
+
+#[tokio::test]
+async fn completion_routes_and_offers_children_or_files() {
+    let directory = folder("completion");
+    let bash = run(&directory, &["completion", "bash"], "", &[]).await;
+    assert_eq!(bash.status, 0);
+    assert!(bash.stdout.contains("textstat"));
+    let group = run(&directory, &["completion"], "", &[]).await;
+    assert_eq!(group.status, 2);
+    assert!(group.stdout.is_empty());
+    assert!(
+        group
+            .stderr
+            .contains("Command \"completion\" requires a subcommand.")
+    );
+    assert!(
+        group
+            .stderr
+            .contains("To pass \"completion\" as an argument, write -- before it.")
+    );
+    assert_eq!(
+        run(
+            &directory,
+            &["completion", "__complete", "--", "co"],
+            "",
+            &[]
+        )
+        .await,
+        printed("completion\tPrint or install a shell completion script.\n:0\n")
+    );
+    assert_eq!(
+        run(
+            &directory,
+            &["completion", "__complete", "--", "a"],
+            "",
+            &[]
+        )
+        .await,
+        printed(":0\n")
+    );
+}

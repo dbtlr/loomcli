@@ -74,11 +74,11 @@ const JSONKIT: &str = concat!(
     r#"{"configuration":null,"globals":["#,
     r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--file","name":"file","short":"-f","envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"},"#,
     r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--quiet","name":"quiet","short":"-q","color":false,"interaction":false,"negative":null,"polarity":"positive","schema":null,"type":"boolean"}"#,
-    r#"],"name":"jsonkit","root":{"optionGroups":[],"aliases":[],"arguments":[],"children":["#,
-    r#"{"optionGroups":[],"aliases":[],"arguments":[{"extensions":{},"name":"path","required":true,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"variadic":false}],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"get","options":[],"path":["get"],"result":null},"#,
-    r#"{"optionGroups":[],"aliases":[],"arguments":[{"extensions":{},"name":"path","required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"variadic":false}],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"keys","options":[],"path":["keys"],"result":null},"#,
-    r#"{"optionGroups":[],"aliases":[],"arguments":[],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"select","options":[{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--field","name":"field","short":"-F","envDelimiter":null,"implied":null,"multiple":true,"required":true,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"}],"path":["select"],"result":null}"#,
-    r#"],"extensions":{},"hasAction":true,"hidden":false,"name":null,"options":[],"path":[],"result":null},"version":"0.0.0"}"#,
+    r#"],"name":"jsonkit","root":{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":["#,
+    r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[{"extensions":{},"name":"path","required":true,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"variadic":false}],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"get","needsTerminal":false,"options":[],"path":["get"],"result":null},"#,
+    r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[{"extensions":{},"name":"path","required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"variadic":false}],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"keys","needsTerminal":false,"options":[],"path":["keys"],"result":null},"#,
+    r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"select","needsTerminal":false,"options":[{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--field","name":"field","short":"-F","envDelimiter":null,"implied":null,"multiple":true,"required":true,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"}],"path":["select"],"result":null}"#,
+    r#"],"extensions":{},"hasAction":true,"hidden":false,"name":null,"needsTerminal":false,"options":[],"path":[],"result":null},"version":"0.0.0"}"#,
 );
 
 #[test]
@@ -120,10 +120,10 @@ fn reports_the_version_and_every_declared_description_and_the_root_reports_the_g
         concat!(
             r#"{"configuration":null,"description":"Reads a JSON document.","globals":["#,
             r#"{"aliases":[],"control":false,"description":"The document to read.","env":[],"extensions":{},"hidden":false,"long":"--file","name":"file","short":"-f","envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"}"#,
-            r#"],"name":"described","root":{"optionGroups":[],"aliases":[],"arguments":[],"children":["#,
-            r#"{"optionGroups":[],"aliases":[],"arguments":[{"description":"The path to read.","extensions":{},"name":"path","required":true,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"variadic":false}],"children":[],"description":"Reads one value.","extensions":{},"hasAction":true,"hidden":false,"name":"get","options":["#,
+            r#"],"name":"described","root":{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":["#,
+            r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[{"description":"The path to read.","extensions":{},"name":"path","required":true,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"variadic":false}],"children":[],"description":"Reads one value.","extensions":{},"hasAction":true,"hidden":false,"name":"get","needsTerminal":false,"options":["#,
             r#"{"aliases":[],"control":false,"description":"Prints the value unquoted.","env":[],"extensions":{},"hidden":false,"long":"--raw","name":"raw","short":null,"color":false,"interaction":false,"negative":null,"polarity":"positive","schema":null,"type":"boolean"}"#,
-            r#"],"path":["get"],"result":null}],"description":"Reads a JSON document.","extensions":{},"hasAction":true,"hidden":false,"name":null,"options":[],"path":[],"result":null},"version":"1.2.0"}"#,
+            r#"],"path":["get"],"result":null}],"description":"Reads a JSON document.","extensions":{},"hasAction":true,"hidden":false,"name":null,"needsTerminal":false,"options":[],"path":[],"result":null},"version":"1.2.0"}"#,
         )
     );
 }
@@ -153,12 +153,12 @@ fn reports_hidden_and_deprecated_on_every_command_and_option_and_neither_on_the_
             r#"{"configuration":null,"globals":["#,
             r#"{"aliases":[],"control":false,"deprecated":"Use --path instead.","env":[],"extensions":{},"hidden":false,"long":"--file","name":"file","short":"-f","envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"},"#,
             r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":true,"long":"--quiet","name":"quiet","short":null,"color":false,"interaction":false,"negative":null,"polarity":"positive","schema":null,"type":"boolean"}"#,
-            r#"],"name":"listing","root":{"optionGroups":[],"aliases":[],"arguments":[],"children":["#,
-            r#"{"optionGroups":[],"aliases":[],"arguments":[],"children":[],"deprecated":"Use get instead.","extensions":{},"hasAction":true,"hidden":false,"name":"fetch","options":["#,
+            r#"],"name":"listing","root":{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":["#,
+            r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":[],"deprecated":"Use get instead.","extensions":{},"hasAction":true,"hidden":false,"name":"fetch","needsTerminal":false,"options":["#,
             r#"{"aliases":[],"control":false,"deprecated":"Use --plain instead.","env":[],"extensions":{},"hidden":true,"long":"--raw","name":"raw","short":null,"envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"}"#,
             r#"],"path":["fetch"],"result":null},"#,
-            r#"{"optionGroups":[],"aliases":[],"arguments":[],"children":[],"extensions":{},"hasAction":true,"hidden":true,"name":"debug","options":[],"path":["debug"],"result":null}"#,
-            r#"],"extensions":{},"hasAction":true,"hidden":false,"name":null,"options":[],"path":[],"result":null},"version":"0.0.0"}"#,
+            r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":[],"extensions":{},"hasAction":true,"hidden":true,"name":"debug","needsTerminal":false,"options":[],"path":["debug"],"result":null}"#,
+            r#"],"extensions":{},"hasAction":true,"hidden":false,"name":null,"needsTerminal":false,"options":[],"path":[],"result":null},"version":"0.0.0"}"#,
         )
     );
 }
@@ -175,12 +175,12 @@ fn inspects_a_group_at_two_named_levels_below_the_root() {
     assert_eq!(
         json(&application),
         concat!(
-            r#"{"configuration":null,"globals":[],"name":"store","root":{"optionGroups":[],"aliases":[],"arguments":[],"children":["#,
-            r#"{"optionGroups":[],"aliases":["c"],"arguments":[],"children":["#,
-            r#"{"optionGroups":[],"aliases":[],"arguments":[],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"clear","options":[],"path":["cache","clear"],"result":null},"#,
-            r#"{"optionGroups":[],"aliases":["ls","l"],"arguments":[],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"list","options":[],"path":["cache","list"],"result":null}"#,
-            r#"],"extensions":{},"hasAction":false,"hidden":false,"name":"cache","options":[],"path":["cache"],"result":null}"#,
-            r#"],"extensions":{},"hasAction":true,"hidden":false,"name":null,"options":[],"path":[],"result":null},"version":"0.0.0"}"#,
+            r#"{"configuration":null,"globals":[],"name":"store","root":{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":["#,
+            r#"{"optionGroups":[],"passthrough":null,"aliases":["c"],"arguments":[],"children":["#,
+            r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"clear","needsTerminal":false,"options":[],"path":["cache","clear"],"result":null},"#,
+            r#"{"optionGroups":[],"passthrough":null,"aliases":["ls","l"],"arguments":[],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"list","needsTerminal":false,"options":[],"path":["cache","list"],"result":null}"#,
+            r#"],"extensions":{},"hasAction":false,"hidden":false,"name":"cache","needsTerminal":false,"options":[],"path":["cache"],"result":null}"#,
+            r#"],"extensions":{},"hasAction":true,"hidden":false,"name":null,"needsTerminal":false,"options":[],"path":[],"result":null},"version":"0.0.0"}"#,
         )
     );
 }

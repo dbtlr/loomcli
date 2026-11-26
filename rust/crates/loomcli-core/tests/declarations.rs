@@ -294,7 +294,7 @@ fn a_twin_name_reports_before_an_alias_a_sibling_already_holds() {
 }
 
 #[test]
-fn the_variadic_not_last_fault_throws_its_rules_diagnostic() {
+fn an_optional_argument_after_a_variadic_reports_its_diagnostic() {
     assert_eq!(
         fault(|| {
             let _ = Command::new("get")
@@ -302,9 +302,9 @@ fn the_variadic_not_last_fault_throws_its_rules_diagnostic() {
                 .argument("path", Arg::string());
         }),
         expected(
-            "variadic-argument-last",
-            "Argument \"paths\" is variadic and precedes argument \"path\" on Command \"get\".",
-            "Declare the variadic argument last."
+            "argument-after-variadic",
+            "Argument \"path\" is optional and follows variadic argument \"paths\" on Command \"get\".",
+            "Declare only required scalar arguments after a variadic argument."
         )
     );
 }
@@ -354,18 +354,18 @@ fn an_alias_that_repeats_the_name_or_an_alias_adds_nothing() {
 // command-diagnostics.test.ts, the rows with a plugin's Commands.
 
 #[test]
-fn a_root_argument_beside_a_plugins_command_is_arguments_beside_children() {
+fn a_root_group_with_a_plugin_command_cannot_declare_arguments() {
+    let app = Application::new("probe")
+        .plugins([Plugin::new("@acme/doctor").commands([leaf("check")])])
+        .argument("files", Arg::string().variadic());
+    let fault = app.inspect().unwrap_err();
     assert_eq!(
-        fault(|| {
-            let _ = Application::new("probe")
-                .plugins([Plugin::new("@acme/doctor").commands([leaf("check")])])
-                .argument("files", Arg::string().variadic());
-        }),
-        expected(
-            "arguments-beside-children",
-            "The root Command declares argument \"files\" and attaches child \"check\".",
-            "Move the argument into a child Command or remove the children."
-        )
+        fault.rule().unwrap().identity(),
+        "@loomcli/core/command-without-action"
+    );
+    assert_eq!(
+        fault.sentence(),
+        "The root Command declares arguments but registers no action to receive them."
     );
 }
 

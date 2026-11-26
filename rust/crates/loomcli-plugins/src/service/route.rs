@@ -14,18 +14,17 @@ const RUN_UNROUTED: DiagnosticRule = diagnostic_rule(
     "The service unit runs the application with the words in run, so they name a Command that has an action, with its options and arguments, as the application's command line takes them. Words that route nowhere would leave the manager restarting a process that fails at once.",
 );
 
-/// The delimiter after which every word is passthrough.
-const DELIMITER: &str = "--";
-
-/// Whether the words route to a Command with an action: read before a final `--`, they end at an
-/// option position, or at a passthrough position when they hold a bare `--` themselves.
+/// Whether every run word reads and the routed Command has an action.
 fn routes(graph: &CommandGraph, run: &[String]) -> bool {
-    let words: Vec<&str> = run.iter().map(String::as_str).chain([DELIMITER]).collect();
+    let mut words: Vec<&str> = run.iter().map(String::as_str).collect();
+    // After a delimiter the last word must itself be an argument or passthrough.
+    if !words.contains(&"--") {
+        words.push("--");
+    }
     match locate(graph, &words) {
-        WordPosition::Option { command, .. } => command.has_action,
-        WordPosition::Passthrough { command, .. } => {
-            run.iter().any(|word| word == DELIMITER) && command.has_action
-        }
+        WordPosition::Option { command, .. }
+        | WordPosition::Argument { command, .. }
+        | WordPosition::Passthrough { command, .. } => command.has_action,
         _ => false,
     }
 }

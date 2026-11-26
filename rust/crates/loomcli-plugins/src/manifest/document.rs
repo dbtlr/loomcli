@@ -405,8 +405,13 @@ fn command_entry(node: &CommandNode) -> Result<Value, Error> {
             "required": stdin.required,
         })
     });
+    let passthrough = node.passthrough.as_ref().map_or(
+        Value::Null,
+        |mode| json!({ "description": line_of(mode.description.as_deref()) }),
+    );
     Ok(json!({
         "stdin": stdin,
+        "passthrough": passthrough,
         "name": node.name,
         "path": node.path,
         "description": line_of(node.description.as_deref()),
@@ -414,6 +419,7 @@ fn command_entry(node: &CommandNode) -> Result<Value, Error> {
         "examples": examples,
         "deprecated": line_of(node.deprecated.as_deref()),
         "hasAction": node.has_action,
+        "needsTerminal": node.needs_terminal,
         "result": node.result.as_ref().map_or(Value::Null, result_entry),
         "failures": failures,
         "arguments": node.arguments.iter().map(|argument| argument_entry(argument)).collect::<Vec<_>>(),

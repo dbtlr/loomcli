@@ -461,6 +461,7 @@ async fn a_question_context_carries_the_run_and_names_an_unlinked_question_by_it
     let recorded = Arc::clone(&contexts);
     let app = Application::new("ask")
         .argument("name", Arg::string())
+        .passthrough(loomcli_core::Passthrough::new())
         .action(move |ctx: Context| {
             let unlinked = question_validation_context(&ctx, None, "Your name?");
             let linked = question_validation_context(

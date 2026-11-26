@@ -10,7 +10,8 @@ use super::{OmissionValidator, Validator};
 pub struct Arg;
 
 impl Arg {
-    /// A string argument: one word, or the remaining words with [`StringArg::variadic`].
+    /// A string argument that takes one word by default. With [`StringArg::variadic`], it takes
+    /// the words left after binding the other arguments.
     pub fn string() -> StringArg {
         <StringArg as Default>::default()
     }
@@ -59,7 +60,8 @@ impl StringArg {
         self
     }
 
-    /// Takes the remaining words. A variadic argument is the Command's last.
+    /// Takes the words left after fixed arguments. Only required scalar string arguments may
+    /// follow a variadic argument, and they bind from the end.
     pub fn variadic(mut self) -> Self {
         called(&mut self.chain, "variadic", Vec::new());
         self.variadic = true;
@@ -136,7 +138,7 @@ impl ContentArg {
         self
     }
 
-    /// Takes the remaining words as sources.
+    /// Takes the words left after binding the other arguments and reads them as sources.
     pub fn variadic(mut self) -> Self {
         called(&mut self.chain, "variadic", Vec::new());
         self.variadic = true;
@@ -245,7 +247,7 @@ impl ArgumentDecl {
         matches!(self, ArgumentDecl::String(argument) if argument.required_non_interactive)
     }
 
-    /// Whether it takes the remaining words.
+    /// Whether it takes the words left after fixed arguments.
     pub(crate) fn variadic(&self) -> bool {
         match self {
             ArgumentDecl::String(argument) => argument.variadic,

@@ -20,8 +20,8 @@ mod details;
 pub mod extension;
 #[cfg(feature = "help-views")]
 mod layout;
-#[cfg(feature = "help")]
-mod messages;
+#[cfg(feature = "help-views")]
+pub(crate) mod messages;
 #[cfg(feature = "help-views")]
 pub(crate) mod page;
 #[cfg(feature = "help")]

@@ -61,7 +61,7 @@ async fn a_required_variadic_argument_fails_with_no_value_and_after_a_bare_doubl
         ran(&app, &["-file"]).await,
         expected(
             2,
-            "fixture: Unknown option \"-f\". Supply a declared option; prefix a hyphenated path with \"./\".\n"
+            "fixture: Unknown option \"-f\". Supply a declared option, or pass it as an argument after \"--\".\n"
         )
     );
 }

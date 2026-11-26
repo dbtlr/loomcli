@@ -26,6 +26,7 @@ fn kit() -> App {
         .option("pretty", Opt::boolean().short('p'))
         .option("raw", Opt::boolean().short('r'))
         .option("depth", Opt::string().short('d'))
+        .passthrough(loomcli_core::Passthrough::new())
         .action(report);
     let keys = Command::new("keys")
         .argument("path", Arg::string())
@@ -242,12 +243,16 @@ async fn a_parents_own_option_the_routed_command_does_not_declare_is_an_unknown_
     let app = rooted();
     assert_eq!(
         run(&app, &["--verbose", "get", "a.b"]).await,
-        unknown("rooted", "--verbose")
+        usage(
+            "rooted: Unknown option \"--verbose\". Supply a declared option, or pass it as an argument after \"--\"."
+        )
     );
     // The parent's option precedes the later global fault in word order, so it is the one held.
     assert_eq!(
         run(&app, &["--verbose", "--quiet=1", "get", "a.b"]).await,
-        unknown("rooted", "--verbose")
+        usage(
+            "rooted: Unknown option \"--verbose\". Supply a declared option, or pass it as an argument after \"--\"."
+        )
     );
 }
 
@@ -283,7 +288,9 @@ async fn a_value_class_the_routed_command_declares_differently_is_misplaced() {
     );
     assert_eq!(
         run(&app, &["--verbose=1", "get", "a.b"]).await,
-        unknown("rooted", "--verbose")
+        usage(
+            "rooted: Unknown option \"--verbose\". Supply a declared option, or pass it as an argument after \"--\"."
+        )
     );
 }
 
@@ -641,9 +648,14 @@ fn jsonkit() -> App {
             Command::new("get")
                 .argument("path", Arg::string().required())
                 .option("raw", Opt::boolean().short('r'))
+                .passthrough(loomcli_core::Passthrough::new())
                 .action(report),
         )
-        .command(Command::new("keys").action(report))
+        .command(
+            Command::new("keys")
+                .passthrough(loomcli_core::Passthrough::new())
+                .action(report),
+        )
         .action(report)
 }
 

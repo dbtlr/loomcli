@@ -3,18 +3,18 @@
 
 use super::{DiagnosticRule, diagnostic_rule};
 
+/// `@loomcli/core/argument-after-variadic`: Argument after variadic not a required scalar.
+pub(crate) const ARGUMENT_AFTER_VARIADIC: DiagnosticRule = diagnostic_rule(
+    "@loomcli/core/argument-after-variadic",
+    "Argument after variadic not a required scalar",
+    "A variadic argument takes the plain words between the arguments before it and the arguments after it, so each argument after it fills from the end of the line with exactly one word. Only a required scalar argument always takes exactly one word: an optional argument, a second variadic, an argument required only when input is not interactive, or a content argument after a variadic would leave the parser unable to tell where the variadic's words end.",
+);
+
 /// `@loomcli/core/argument-declared-twice`: Argument declared twice.
 pub(crate) const ARGUMENT_DECLARED_TWICE: DiagnosticRule = diagnostic_rule(
     "@loomcli/core/argument-declared-twice",
     "Argument declared twice",
     "An action reads each argument under its name, so two arguments with one name leave one of them unreadable.",
-);
-
-/// `@loomcli/core/arguments-beside-children`: Arguments beside children.
-pub(crate) const ARGUMENTS_BESIDE_CHILDREN: DiagnosticRule = diagnostic_rule(
-    "@loomcli/core/arguments-beside-children",
-    "Arguments beside children",
-    "A Command's first bare token either names a child or fills an argument, so a Command that holds both cannot tell which one an operator meant.",
 );
 
 /// `@loomcli/core/background-mark`: Invalid background mark.
@@ -79,7 +79,7 @@ pub(crate) const COMMAND_ATTACHED_TWICE: DiagnosticRule = diagnostic_rule(
 pub(crate) const COMMAND_WITHOUT_ACTION: DiagnosticRule = diagnostic_rule(
     "@loomcli/core/command-without-action",
     "Nothing to run",
-    "Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run.",
+    "Routing ends at a Command that runs its action, or passes on to one of a group's children. A Command with neither leaves an invocation that reaches it nothing to run. A group that declares an argument, stdin, the passthrough mode, or that it needs a terminal has the same fault, because those declarations reach no action.",
 );
 
 /// `@loomcli/core/declared-name`: Invalid declared name.
@@ -350,13 +350,6 @@ pub(crate) const VARIABLE_BOUND_TWICE: DiagnosticRule = diagnostic_rule(
     "Within one invocation's scope a variable fills one option, so two options that bind it would both take the value an operator set for one of them.",
 );
 
-/// `@loomcli/core/variadic-argument-last`: Variadic argument not last.
-pub(crate) const VARIADIC_ARGUMENT_LAST: DiagnosticRule = diagnostic_rule(
-    "@loomcli/core/variadic-argument-last",
-    "Variadic argument not last",
-    "A variadic argument takes every positional token that remains, so an argument after it would never receive one.",
-);
-
 /// `@loomcli/core/verbose-mark`: Invalid verbose mark.
 pub(crate) const VERBOSE_MARK: DiagnosticRule = diagnostic_rule(
     "@loomcli/core/verbose-mark",
@@ -432,11 +425,25 @@ pub(crate) const SOURCE_ANSWERS_CORRECTION: &str = "Return a record that maps ea
 #[allow(dead_code)]
 pub(crate) const FOREIGN_GRAPH_CORRECTION: &str = "Pass the graph inspect() returned, unchanged.";
 
+/// A second passthrough declaration.
+pub(crate) const PASSTHROUGH_DECLARED_TWICE: DiagnosticRule = diagnostic_rule(
+    "@loomcli/core/passthrough-declared-twice",
+    "Passthrough declared twice",
+    "A Command declares one passthrough mode for the words after the first bare delimiter.",
+);
+
+/// A second terminal need declaration.
+pub(crate) const TERMINAL_NEED_DECLARED_TWICE: DiagnosticRule = diagnostic_rule(
+    "@loomcli/core/terminal-need-declared-twice",
+    "Terminal need declared twice",
+    "A Command declares once that its action needs a terminal.",
+);
+
 /// Every rule core declares, in identity order, the port's own rules last.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const ALL: &[DiagnosticRule] = &[
+    ARGUMENT_AFTER_VARIADIC,
     ARGUMENT_DECLARED_TWICE,
-    ARGUMENTS_BESIDE_CHILDREN,
     BACKGROUND_MARK,
     BROKEN_ATTACH_HOOK,
     BROKEN_DESTINATION,
@@ -482,9 +489,10 @@ pub(crate) const ALL: &[DiagnosticRule] = &[
     TWO_PACKAGE_COPIES,
     VALIDATOR_FAILED,
     VARIABLE_BOUND_TWICE,
-    VARIADIC_ARGUMENT_LAST,
     VERBOSE_MARK,
     VIEW_SELECTION,
+    PASSTHROUGH_DECLARED_TWICE,
+    TERMINAL_NEED_DECLARED_TWICE,
     OPTION_CONFIG,
     PLUGIN_OPTION_NAME,
     INPUT_READ,

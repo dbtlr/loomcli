@@ -70,7 +70,9 @@ fn reduce(graph: &CommandGraph, position: &WordPosition, mode: Mode) -> Value {
     let mut reduced = Map::new();
     let (kind, command) = match position {
         WordPosition::None => return json!({ "kind": "none" }),
-        WordPosition::Command { command, prefix } => {
+        WordPosition::Command {
+            command, prefix, ..
+        } => {
             reduced.insert("prefix".into(), json!(prefix));
             ("command", command)
         }
@@ -230,8 +232,7 @@ fn reads_an_empty_list_as_one_empty_word_at_the_root() {
 }
 
 #[test]
-fn reads_every_word_after_a_bare_delimiter_as_passthrough_a_group_included() {
-    let passthrough = |path: &[&str], prefix: &str| json!({ "command": path, "kind": "passthrough", "own": true, "prefix": prefix });
+fn reads_delimiter_words_as_arguments_with_the_mode_off() {
     assert_eq!(
         locate_all(&[
             &["paths", "a", "--", "x"],
@@ -240,10 +241,10 @@ fn reads_every_word_after_a_bare_delimiter_as_passthrough_a_group_included() {
             &["cache", "--", "-"],
         ]),
         vec![
-            passthrough(&["paths"], "x"),
-            passthrough(&[], "--"),
-            passthrough(&[], ""),
-            passthrough(&["cache"], "-"),
+            json!({ "argument": "rest", "command": ["paths"], "kind": "argument", "own": true, "prefix": "x" }),
+            none(),
+            none(),
+            none(),
         ]
     );
 }
@@ -570,8 +571,13 @@ fn reads_200000_words_without_exhausting_the_call_stack() {
     let mut paths = vec!["paths"];
     paths.extend(std::iter::repeat_n("x", 200_000));
     paths.push("");
+    let forwarding = Application::new("kit")
+        .passthrough(loomcli_core::Passthrough::new())
+        .action(report)
+        .inspect()
+        .unwrap_or_else(|fault| panic!("{}", fault.message()));
     assert_eq!(
-        reduce(&graph, &locate(&graph, &delimited), Mode::Own),
+        reduce(&forwarding, &locate(&forwarding, &delimited), Mode::Own),
         json!({ "command": [], "kind": "passthrough", "own": true, "prefix": "" })
     );
     assert_eq!(

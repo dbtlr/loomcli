@@ -2131,7 +2131,7 @@ const MISSING_NAME: &str =
 fn probe(
     plugins: Vec<Plugin>,
     overrides: Vec<loomcli_core::ViewOverride>,
-) -> loomcli_core::Application<NoInputs, NoResult, loomcli_core::Leaf> {
+) -> loomcli_core::Application<NoInputs, NoResult, loomcli_core::Fresh> {
     Application::new("probe")
         .plugins(plugins)
         .overrides(overrides)
