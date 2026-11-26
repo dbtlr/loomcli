@@ -12,14 +12,14 @@
 use std::sync::Arc;
 
 use loomcli_core::__private::unit::{
-    self, ActionParts, FailureHookParts, MiddlewareParts, UnitLog, UnitLogHook, UnitProvided,
-    UnitResult, UnitRun,
+    self, ActionParts, FailureHookParts, MiddlewareParts, ReceivedReader, UnitLog, UnitLogHook,
+    UnitProvided, UnitResult, UnitRun,
 };
 use loomcli_core::{
     Application, Background, ChainOutcome, CommandGraph, CommandNode, Content, Context,
-    FailureFacts, FailureHookContext, InputValues, Inputs, IntoOutcome, InvokedBy, Lifetime,
-    LogDestination, LogEvent, MiddlewareContext, Next, ProcessHandle, Provider, ProviderContext,
-    ViewContext,
+    FailureFacts, FailureHookContext, InputProblem, InputValues, Inputs, IntoOutcome, InvokedBy,
+    Lifetime, LogDestination, LogEvent, MiddlewareContext, Next, ProcessHandle, Provider,
+    ProviderContext, SuppliedValue, ViewContext,
 };
 
 use crate::{MockFields, mock_process};
@@ -400,6 +400,7 @@ pub struct FailureHookValues {
     pub(crate) media_type: Option<String>,
     pub(crate) graph: Option<Arc<CommandGraph>>,
     pub(crate) log: Vec<UnitLogHook>,
+    pub(crate) read_received: Option<ReceivedReader>,
 }
 
 impl FailureHookValues {
@@ -413,6 +414,7 @@ impl FailureHookValues {
             media_type: None,
             graph: None,
             log: Vec::new(),
+            read_received: None,
         }
     }
 
@@ -432,6 +434,15 @@ impl FailureHookValues {
     /// Reads this graph, whose node at the path is the context's `command`.
     pub fn graph(mut self, graph: Arc<CommandGraph>) -> Self {
         self.graph = Some(graph);
+        self
+    }
+
+    /// Sets the reader for `ctx.received(problem)`, which returns `None` by default.
+    pub fn received(
+        mut self,
+        reader: impl Fn(&InputProblem) -> Option<SuppliedValue> + Send + Sync + 'static,
+    ) -> Self {
+        self.read_received = Some(Arc::new(reader));
         self
     }
 
@@ -480,6 +491,7 @@ pub fn failure_hook_context(values: FailureHookValues) -> FailureHookContext {
             media_type: values.media_type,
             graph,
             command,
+            read_received: values.read_received,
         },
     )
 }

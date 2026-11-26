@@ -14,7 +14,6 @@
 //! self-update's refresh step, so the new binary rewrites the recorded scripts.
 
 mod answer;
-mod closed_set;
 mod install;
 mod messages;
 mod name;

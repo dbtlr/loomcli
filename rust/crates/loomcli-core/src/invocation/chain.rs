@@ -195,7 +195,9 @@ pub(crate) struct ChainRun<'a> {
 /// dispatch boundary. Resolves with the failure the outermost middleware, or the boundary when no
 /// middleware wraps it, settled with, else with a failure core holds for after the chain.
 pub(crate) async fn run_chain(run: ChainRun<'_>, prepared: Prepared) -> Result<(), Error> {
-    let Prepared { boundary, chain } = prepared;
+    let Prepared {
+        boundary, chain, ..
+    } = prepared;
     let entries = activated(run.application, &chain, &run.path);
     let options = chain.options.clone();
     let globals = options

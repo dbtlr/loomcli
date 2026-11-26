@@ -498,6 +498,20 @@ pub struct PathNotFoundError {
 
 **Failure identity.** Core boxes each reported failure once and moves it no more until its report is written, so every `on_failure` hook and then the failure's view receive one `&dyn Failure` at one address. A plugin that correlates the two, as suggestions does, keys on that address within one report.
 
+**Received input.** Core keeps the raw value outside `InputError` and `InputProblem`, including
+their debug output, and out of its failure text. Core keys the raw value by the invalid problem's
+address in the reported `InputError`'s problems vector, which stays stable from construction
+through the report. The only public reader of that association is
+`FailureHookContext::received(&self, problem: &InputProblem) -> Option<SuppliedValue>`.
+It returns the value core held before validation or content preparation, from argv, an invocation
+by name, the environment, or a configuration fill that validation keeps. `SuppliedValue::One`
+holds a string and `SuppliedValue::Many` holds the whole collection. An issue's path identifies
+its rejected element.
+The reader returns `None` for missing or group problems, copies of problems, problems from another
+failure, and problems with no recorded value. An author's own problem, a rejected omission, an
+environment value outside its option's grammar, and an invocation by name whose input could not
+lower to tokens have no recorded value.
+
 ### Rust-only rules
 
 Each replaces a TypeScript compile-time check that Rust's types cannot state. Each is in `docs/deviations.md`.
@@ -674,11 +688,15 @@ The five context builders build the context one author function receives, with n
 | --- | --- | --- |
 | `action_context::<I, R: UnitResult>(ActionValues::new(inputs))` | `.globals(g)`, `.passthrough(words)`, `.interactive()`, `.process(handle)`, `.graph(graph)`, `.command(path)`, `.provide(&provider, value)`, `.on_log(hook)` | `ctx.inputs` is the inputs read back through `extract(&into_values())`, which `ctx.argument` and `ctx.option` read. The typed inputs supply the tail, with an empty vector by default. The fixture’s `.passthrough(words)` overrides the tail for both the typed field and `ctx.passthrough`. `out.results` writes a value as one JSON line and rows as one JSON line each. |
 | `middleware_context(MiddlewareValues::new(Some(options)))` returns `(MiddlewareContext<O>, Next)` | `.outcome(ChainOutcome)`, `.own_options(values)`, `.request(values)`, `.spelling(name, spelling)`, `.view(name)`, `.plugin(identity)`, `.process`, `.graph`, `.command`, `.on_log` | an unstated outcome makes `next.run()` fail with `middleware_context has no outcome for this middleware's next to resolve. Add one to its values, such as .outcome(ChainOutcome::Dispatched).` |
-| `failure_hook_context(FailureHookValues::new(app, path))` | `.invoked_by(…)`, `.view(name, media_type)`, `.graph(graph)`, `.on_log` | `command` is the graph's node at the path, or its root |
+| `failure_hook_context(FailureHookValues::new(app, path))` | `.invoked_by(…)`, `.view(name, media_type)`, `.graph(graph)`, `.on_log`, `.received(reader)` | `command` is the graph's node at the path, or its root. `received` returns `None` unless the test supplies a reader. |
 | `provider_context(ProviderValues::new(globals))` | `.process`, `.graph`, `.provide(&provider, value)`, `.on_log` | `options` holds the globals' values |
 | `view_context(ViewValues::new())` | `.columns(n)`, `.background(b)`, `.color()` | core's own measures; the test calls `View::render(&data, &ctx)` (or `DeclaredView::render`), or `render_head`, `render_row(&row, index, &ctx)`, and `render_tail(count, &ctx)` on a `RowView` or `DeclaredRowView`, each the view's own function with no registry read |
 
 A built context writes through core's output onto its process handle, by default a fresh mock no test reads, so a test that reads what the function wrote states a mock and reads its streams. Its host is captured from that handle, its log reaches the hooks `.on_log(hook)` attaches, in order, each event naming the graph's application (a failure hook context's stated one) at version `0.0.0` and the routed path, with no stderr in its destination and a hook's `Err` dropped, a handler registered on it is never called, its signal is cancelled only by `ctx.cancel()`, and `ctx.invoke` resolves cancelled with 130. An unstated graph is an Application named `app` whose root runs an action. `piped_content(bytes)` and `file_content(cwd, path)` build the `Content` a test gives a content input.
+
+`FailureHookValues::received(reader)` takes
+`impl Fn(&InputProblem) -> Option<SuppliedValue> + Send + Sync + 'static`. The unit context passes
+each problem directly to that reader, so the test can choose which problems receive a value.
 
 **`loomcli-plugins` features.** No default features. One feature per plugin; a plugin's extension descriptors and declared views sit behind their own features, which the plugin's feature enables.
 

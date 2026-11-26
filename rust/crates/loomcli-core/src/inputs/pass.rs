@@ -71,10 +71,11 @@ where
 }
 
 /// One validation problem and the lines core's default text holds for it.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct Report {
     pub(crate) lines: Vec<String>,
     pub(crate) problem: InputProblem,
+    received: Option<SuppliedValue>,
 }
 
 /// Every outcome a run's validation passes settled, which each later pass reads, so a validator
@@ -192,7 +193,29 @@ pub(crate) struct Validation {
     pub(crate) dropped: Vec<(String, String)>,
     pub(crate) stdin: Option<Content>,
     pub(crate) failure: Option<InputError>,
+    pub(crate) received: Option<ReceivedInputs>,
     pub(crate) values: Vec<(InputIdentity, RawValue)>,
+}
+
+/// The values for one failure report. Sharing its problems keeps their addresses valid even
+/// when middleware handles and replaces the failure or a hook clones its context.
+pub(crate) struct ReceivedInputs {
+    problems: Arc<Vec<InputProblem>>,
+    values: Vec<Option<SuppliedValue>>,
+}
+
+impl ReceivedInputs {
+    pub(crate) fn belongs_to(&self, failure: &InputError) -> bool {
+        std::ptr::eq(failure.problems(), self.problems.as_slice())
+    }
+
+    pub(crate) fn get(&self, problem: &InputProblem) -> Option<SuppliedValue> {
+        self.problems
+            .iter()
+            .zip(&self.values)
+            .find(|(known, _)| std::ptr::eq(*known, problem))
+            .and_then(|(_, value)| value.clone())
+    }
 }
 
 impl Validation {
@@ -313,6 +336,16 @@ enum Raw<'a> {
     None,
 }
 
+impl Raw<'_> {
+    fn received(&self) -> Option<SuppliedValue> {
+        match self {
+            Self::One(value) => Some(SuppliedValue::One((*value).to_owned())),
+            Self::Many(values) => Some(SuppliedValue::Many(values.to_vec())),
+            Self::None => None,
+        }
+    }
+}
+
 /// One pass's running state.
 struct Pass<'i, 'a> {
     invocation: &'i Invocation<'a>,
@@ -409,12 +442,13 @@ impl Pass<'_, '_> {
                     input: entry.identity(),
                     spelling,
                 },
+                received: None,
             },
         ));
     }
 
     /// One rejected input, whatever rejected it.
-    fn reject(&mut self, entry: Scoped<'_>, issues: Vec<Issue>, subject: &str) {
+    fn reject(&mut self, entry: Scoped<'_>, issues: Vec<Issue>, subject: &str, raw: &Raw<'_>) {
         let spelling = self.spelling(entry.input);
         self.reports.push((
             entry.identity(),
@@ -425,6 +459,7 @@ impl Pass<'_, '_> {
                     spelling,
                     issues,
                 },
+                received: raw.received(),
             },
         ));
     }
@@ -511,7 +546,7 @@ impl Pass<'_, '_> {
                     return;
                 }
                 let subject = supplied_name(entry.input, spelling, origin);
-                self.reject(entry, issues, &subject);
+                self.reject(entry, issues, &subject, raw);
             }
         }
     }
@@ -608,7 +643,7 @@ impl Pass<'_, '_> {
             PreparedContent::Rejected { issues, .. } => {
                 let origin = if self.is_dropped(input) { None } else { origin };
                 let subject = supplied_name(input, &spelling, origin.as_deref());
-                self.reject(entry, issues, &subject);
+                self.reject(entry, issues, &subject, raw);
             }
         }
         Ok(())
@@ -636,14 +671,19 @@ impl Pass<'_, '_> {
         }) {
             // A value no token spells supplied nothing, and the caller's value is the problem.
             let subject = supplied_name(input, input.name(), None);
-            self.reject(entry, vec![Issue::new(issue.clone())], &subject);
+            self.reject(entry, vec![Issue::new(issue.clone())], &subject, &Raw::None);
             return Ok(());
         }
         if let Declared::Option(option) = input {
             if let Some(variable) = invocation.sources.rejected_variable(&option.name) {
                 // A variable outside its option's grammar filled nothing.
                 let subject = supplied_name(input, &self.spelling(input), Some(variable));
-                self.reject(entry, vec![grammar_issue(&option.decl)], &subject);
+                self.reject(
+                    entry,
+                    vec![grammar_issue(&option.decl)],
+                    &subject,
+                    &Raw::None,
+                );
                 return Ok(());
             }
             match &option.decl {
@@ -767,6 +807,7 @@ pub(crate) fn validate_values(
                         },
                         spelling: "stdin".to_owned(),
                     },
+                    received: None,
                 });
             }
             PreparedContent::Ready(Prepared::One(content)) => stdin = content,
@@ -801,22 +842,38 @@ pub(crate) fn validate_values(
         labels: &invocation.sources.labels,
         unanswered: &invocation.sources.unanswered,
     }) {
-        found.push(Report { lines, problem });
+        found.push(Report {
+            lines,
+            problem,
+            received: None,
+        });
     }
-    let failure = (!found.is_empty()).then(|| {
-        InputError::new(
-            found
-                .iter()
-                .flat_map(|report| report.lines.iter().cloned())
-                .collect::<Vec<_>>()
-                .join("\n"),
-            found.into_iter().map(|report| report.problem).collect(),
-        )
-    });
+    let (failure, received) = if found.is_empty() {
+        (None, None)
+    } else {
+        let message = found
+            .iter()
+            .flat_map(|report| &report.lines)
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (problems, values): (Vec<_>, Vec<_>) = found
+            .into_iter()
+            .map(|report| (report.problem, report.received))
+            .unzip();
+        let problems = Arc::new(problems);
+        let failure = InputError::with_problems(message, Arc::clone(&problems));
+        let received = values
+            .iter()
+            .any(Option::is_some)
+            .then_some(ReceivedInputs { problems, values });
+        (Some(failure), received)
+    };
     Ok(Validation {
         dropped: pass.dropped,
         stdin,
         failure,
+        received,
         values: pass.values,
     })
 }
