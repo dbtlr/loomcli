@@ -13,10 +13,10 @@ use std::sync::Arc;
 
 use loomcli_core::{
     Application, ChainOutcome, Context, EndState, Error, Failure, FailureFacts, FailureHookContext,
-    FatalError, InputValues, Inputs, InvocationOutcome, InvocationValues, InvokeOptions, InvokedBy,
-    LogDestination, LogEvent, LogFields, MiddlewareContext, Next, Outcome, Persistent, Plugin,
-    Provider, ProviderContext, RegionOptions, RowsResult, RunOptions, UnknownCommandError,
-    ValueResult, View, ViewContext,
+    FatalError, InputIdentity, InputKind, InputProblem, InputValues, Inputs, InvocationOutcome,
+    InvocationValues, InvokeOptions, InvokedBy, Issue, LogDestination, LogEvent, LogFields,
+    MiddlewareContext, Next, Outcome, Persistent, Plugin, Provider, ProviderContext, RegionOptions,
+    RowsResult, RunOptions, SuppliedValue, UnknownCommandError, ValueResult, View, ViewContext,
 };
 use loomcli_testing::{
     ActionValues, FailureHookValues, MiddlewareValues, MockFields, MockProcess, ProviderValues,
@@ -479,6 +479,29 @@ fn an_invocation_by_name_gets_no_hint() {
     assert_eq!(hints(&failure, &ctx), None);
     assert_eq!(ctx.media_type.as_deref(), Some("application/json"));
     assert_eq!(ctx.path, ["list"]);
+}
+
+#[test]
+fn received_defaults_to_absence_and_accepts_the_reader_a_test_states() {
+    let input = InputIdentity::new(false, InputKind::Option, "format");
+    let problem = InputProblem::Invalid {
+        input: input.clone(),
+        spelling: "--format".to_owned(),
+        issues: vec![Issue::new("Expected JSON.")],
+    };
+    let default = failure_hook_context(FailureHookValues::new("notes", &[]));
+    assert_eq!(default.received(&problem), None);
+
+    let stated = failure_hook_context(FailureHookValues::new("notes", &[]).received(
+        move |problem| {
+            matches!(problem, InputProblem::Invalid { input: found, .. } if *found == input)
+                .then(|| SuppliedValue::One("jsno".to_owned()))
+        },
+    ));
+    assert_eq!(
+        stated.received(&problem),
+        Some(SuppliedValue::One("jsno".to_owned()))
+    );
 }
 
 #[test]

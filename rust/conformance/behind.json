@@ -651,12 +651,6 @@
       ]
     },
     {
-      "id": "jsonkit-usage-validation-format-near",
-      "parts": [
-        "stderr"
-      ]
-    },
-    {
       "id": "jsonkit-usage-validation-manifest-and-help",
       "parts": [
         "stdout"
@@ -756,12 +750,6 @@
       "id": "textstat-usage-completion-not-installed",
       "parts": [
         "stdout"
-      ]
-    },
-    {
-      "id": "textstat-usage-validation-metric-near",
-      "parts": [
-        "stderr"
       ]
     }
   ]

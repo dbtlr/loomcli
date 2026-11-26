@@ -8,7 +8,7 @@ use loomcli_core::{
     ArgumentNode, CommandGraph, CommandNode, OptionGroupKind, OptionNode, Polarity, WordPosition,
 };
 
-use super::closed_set::{Schema, closed_set};
+use crate::closed_set::{Schema, closed_set};
 
 /// Cobra's directive numbers, of which the answer writes three: `0` leaves the shell its default,
 /// file names included, `1` reports an error, and `4` turns file completion off.

@@ -16,8 +16,8 @@ use crate::host::Host;
 use crate::inputs::declared::DeclaredValues;
 use crate::inputs::interaction::interaction_decision;
 use crate::inputs::pass::{
-    Invocation, Ledger, Provenance, Validation, absent_boolean, scoped, supplied_inputs,
-    validate_values,
+    Invocation, Ledger, Provenance, ReceivedInputs, Validation, absent_boolean, scoped,
+    supplied_inputs, validate_values,
 };
 use crate::inputs::sources::{SourceCall, StageFacts, StageScope, fill_inputs};
 use crate::inputs::{Content, InputIdentity, InputKind, InputValues, OptionDecl, SuppliedInputs};
@@ -34,6 +34,7 @@ use super::{InvokedBy, RunInputs};
 pub(crate) struct Prepared {
     pub(crate) boundary: Boundary,
     pub(crate) chain: ChainFacts,
+    pub(crate) received: Option<ReceivedInputs>,
 }
 
 /// What the dispatch boundary does: raise the fault the preparation held, or dispatch the action.
@@ -308,7 +309,9 @@ pub(crate) async fn prepare_dispatch(run: &Run<'_>, mut parsed: ParsedInvocation
         return own_run.held(failure.into(), global_options, ledger);
     }
     if let Some(failure) = validation.failure {
-        return own_run.held(failure.into(), global_options, ledger);
+        let mut held = own_run.held(failure.into(), global_options, ledger);
+        held.received = validation.received;
+        return held;
     }
     // The supplied record keeps every value a source filled, so it is taken before a drop.
     let supplied = supplied_inputs(
@@ -354,6 +357,7 @@ pub(crate) async fn prepare_dispatch(run: &Run<'_>, mut parsed: ParsedInvocation
     Prepared {
         boundary: Boundary::Ready(Box::new(dispatch)),
         chain,
+        received: None,
     }
 }
 
@@ -376,6 +380,7 @@ impl OwnRun<'_, '_, '_> {
         self.validate_own(&mut ledger);
         Prepared {
             boundary: Boundary::Held(fault),
+            received: None,
             chain: ChainFacts {
                 globals: self.globals.clone(),
                 options,

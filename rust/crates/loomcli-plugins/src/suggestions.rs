@@ -1,23 +1,23 @@
-//! The suggestions plugin: an unknown Command or option suggests the closest declared name.
+//! The suggestions plugin: offers nearby names and accepted values inside failures.
 //!
 //! The plugin's `on_failure` hook reads the graph and writes the suggestion sentence for the
-//! failure it was handed; the plugin's two failure views write that sentence in place of core's.
-//! A failure view's context carries no graph, so the hook is where the graph is read. The hook
-//! adds no hint line. When nothing is near, or the failure is none of the two classes, the views
-//! write core's own text, hints included.
+//! failure it was handed. The views for unknown Commands, unknown options, and rejected inputs
+//! render the hook's suggestion or core's own text, with any hint lines. The hook reads the graph
+//! and any received input values. It adds no hint line.
 //!
 //! The hook and the view correlate through the failure's address: core boxes each reported
 //! failure once and moves it no more until its report is written, so both receive the same object.
 
 mod messages;
+mod values;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 use loomcli_core::{
     CommandGraph, CommandNode, Failure, FailureFacts, FailureHookContext, FailureView,
-    FailureViewContext, InvokedBy, OptionNode, Plugin, UnknownCommandError, UnknownOptionError,
-    failure, override_view,
+    FailureViewContext, InputError, InvokedBy, OptionNode, Plugin, UnknownCommandError,
+    UnknownOptionError, failure, override_view,
 };
 
 use crate::PACKAGE_NAME;
@@ -65,25 +65,25 @@ fn fold(word: &str, spelled: Spelled) -> Vec<char> {
 /// edited more than once.
 fn distance(typed: &[char], candidate: &[char]) -> usize {
     let width = candidate.len() + 1;
-    let mut table = vec![0_usize; (typed.len() + 1) * width];
-    for (column, cell) in table.iter_mut().enumerate().take(width) {
-        *cell = column;
-    }
-    for row in 1..=typed.len() {
-        table[row * width] = row;
-        for column in 1..width {
-            let letter = typed[row - 1];
-            let other = candidate[column - 1];
-            let mut best = (table[(row - 1) * width + column] + 1)
-                .min(table[row * width + column - 1] + 1)
-                .min(table[(row - 1) * width + column - 1] + usize::from(letter != other));
-            if row > 1 && column > 1 && typed[row - 2] == other && candidate[column - 2] == letter {
-                best = best.min(table[(row - 2) * width + column - 2] + 1);
+    // A transposition reaches two rows back. Retaining three rows keeps memory linear.
+    let mut before = vec![0; width];
+    let mut above: Vec<_> = (0..width).collect();
+    let mut current = vec![0; width];
+    for (row, &letter) in typed.iter().enumerate() {
+        current[0] = row + 1;
+        for (column, &other) in candidate.iter().enumerate() {
+            let mut best = (above[column + 1] + 1)
+                .min(current[column] + 1)
+                .min(above[column] + usize::from(letter != other));
+            if row > 0 && column > 0 && typed[row - 1] == other && candidate[column - 1] == letter {
+                best = best.min(before[column - 1] + 1);
             }
-            table[row * width + column] = best;
+            current[column + 1] = best;
         }
+        std::mem::swap(&mut before, &mut above);
+        std::mem::swap(&mut above, &mut current);
     }
-    table[typed.len() * width + candidate.len()]
+    above[candidate.len()]
 }
 
 /// The declared spellings near the typed word, nearest first and in candidate order at one
@@ -179,47 +179,12 @@ fn option_names(graph: &CommandGraph, command: &CommandNode) -> Vec<Vec<String>>
         .collect()
 }
 
-/// The word the failure holds and the sentence that offers its nearest names, if any is near.
-fn suggestion(
-    failure: &dyn Failure,
-    context: &FailureHookContext,
-) -> Option<(usize, String, String)> {
-    let command = &*context.command;
-    if let Some(unknown) = failure.downcast_ref::<UnknownCommandError>() {
-        let names = nearest(unknown.token(), &command_names(command), Spelled::Command);
-        return messages::unknown_with_suggestion("command", unknown.token(), &names)
-            .map(|written| (address_of(unknown), unknown.token().to_owned(), written));
-    }
-    if let Some(unknown) = failure.downcast_ref::<UnknownOptionError>() {
-        let graph = &*context.graph;
-        // An invocation by name names an option by its declared name, so it is offered names alone.
-        let names = if context.invoked_by == InvokedBy::Name {
-            nearest(
-                unknown.spelling(),
-                &option_names(graph, command),
-                Spelled::Name,
-            )
-        } else {
-            nearest(
-                unknown.spelling(),
-                &option_spellings(graph, command),
-                Spelled::Option,
-            )
-        };
-        return messages::unknown_with_suggestion("option", unknown.spelling(), &names)
-            .map(|written| (address_of(unknown), unknown.spelling().to_owned(), written));
-    }
-    None
-}
-
 /// The address that identifies one reported failure to both the hook and the view.
 fn address_of<F>(failure: &F) -> usize {
     std::ptr::from_ref(failure) as usize
 }
 
-/// The sentences the hook wrote, by failure address, each with the typed word it was written for.
-/// The view takes its entry out, and only when the word matches, so an entry a skipped view left
-/// behind never reaches a later failure that reuses its address.
+/// The sentences the hook wrote, by failure address and a key the view can read back.
 static SENTENCES: Mutex<Option<HashMap<usize, (String, String)>>> = Mutex::new(None);
 
 /// A map this large holds only entries no view took; it is dropped whole.
@@ -232,34 +197,58 @@ fn with_sentences<T>(work: impl FnOnce(&mut HashMap<usize, (String, String)>) ->
     work(guard.get_or_insert_with(HashMap::new))
 }
 
-/// Records the sentence for this report. It first forgets any an earlier report recorded at the
-/// same address, so a failure with nothing near never prints another's suggestion.
-fn suggest(failure: &dyn Failure, context: &FailureHookContext) {
-    let found = suggestion(failure, context);
+/// Replaces any record left at this address by an earlier report whose view was skipped.
+fn remember<F>(failure: &F, key: &str, written: Option<String>) {
+    let address = address_of(failure);
     with_sentences(|map| {
-        if map.len() >= MOST_PENDING {
-            map.clear();
-        }
-        let address = match &found {
-            Some((address, _, _)) => Some(*address),
-            None => failure
-                .downcast_ref::<UnknownCommandError>()
-                .map(address_of)
-                .or_else(|| failure.downcast_ref::<UnknownOptionError>().map(address_of)),
-        };
-        if let Some(address) = address {
+        if let Some(written) = written {
+            if map.len() >= MOST_PENDING {
+                map.clear();
+            }
+            map.insert(address, (key.to_owned(), written));
+        } else {
             map.remove(&address);
-        }
-        if let Some((address, typed, written)) = found {
-            map.insert(address, (typed, written));
         }
     });
 }
 
-/// The sentence recorded for this failure and word, taken out of the record.
-fn take_sentence(address: usize, typed: &str) -> Option<String> {
+fn suggest(failure: &dyn Failure, context: &FailureHookContext) {
+    if let Some(unknown) = failure.downcast_ref::<UnknownCommandError>() {
+        let names = nearest(
+            unknown.token(),
+            &command_names(&context.command),
+            Spelled::Command,
+        );
+        let written = messages::unknown_with_suggestion("command", unknown.token(), &names);
+        remember(unknown, unknown.token(), written);
+    } else if let Some(unknown) = failure.downcast_ref::<UnknownOptionError>() {
+        let (candidates, spelled) = if context.invoked_by == InvokedBy::Name {
+            (
+                option_names(&context.graph, &context.command),
+                Spelled::Name,
+            )
+        } else {
+            (
+                option_spellings(&context.graph, &context.command),
+                Spelled::Option,
+            )
+        };
+        let names = nearest(unknown.spelling(), &candidates, spelled);
+        let written = messages::unknown_with_suggestion("option", unknown.spelling(), &names);
+        remember(unknown, unknown.spelling(), written);
+    } else if let Some(input) = failure.downcast_ref::<InputError>() {
+        remember(
+            input,
+            input.message(),
+            values::input_suggestion(input, context),
+        );
+    }
+}
+
+/// The sentence recorded for this failure and key, taken out of the record.
+fn take_sentence(address: usize, key: &str) -> Option<String> {
     with_sentences(|map| match map.remove(&address) {
-        Some((word, written)) if word == typed => Some(written),
+        Some((recorded, written)) if recorded == key => Some(written),
         _ => None,
     })
 }
@@ -281,13 +270,19 @@ fn render(written: Option<String>, message: &str, context: &FailureViewContext) 
     out
 }
 
-/// The suggestions plugin: offers the declared name nearest a mistyped Command or option as the
-/// fix inside the failure's sentence. Its hook reads the graph and adds no hint; its two views
-/// write the sentence, and write core's text when no name is near.
+/// Offers nearby names and accepted values inside the failure's sentence. The hook reads the
+/// graph and records a suggestion for its failure view. Other hints and issues keep their place.
 pub fn suggestions() -> Plugin {
     Plugin::new(format!("{PACKAGE_NAME}/suggestions"))
         .on_failure(suggest)
         .views([
+            override_view(
+                failure::<InputError>(),
+                FailureView::new(|input: &InputError, context| {
+                    let written = take_sentence(address_of(input), input.message());
+                    render(written, input.message(), context)
+                }),
+            ),
             override_view(
                 failure::<UnknownCommandError>(),
                 FailureView::new(|unknown: &UnknownCommandError, context| {

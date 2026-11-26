@@ -2,113 +2,13 @@
 //! `accepts` or derived from a closed set of strings in the input's published schema.
 
 use loomcli_core::InputSchema;
-use serde_json::{Map, Value};
+
+use crate::closed_set::closed_set;
 
 use super::cells::one_line;
 
 /// The most values a derived list names; a larger set is the author's to state with `accepts`.
 const MAXIMUM_VALUES: usize = 8;
-
-/// Keywords that describe a schema without constraining the values it accepts.
-const ANNOTATIONS: [&str; 10] = [
-    "$comment",
-    "$id",
-    "$schema",
-    "default",
-    "deprecated",
-    "description",
-    "examples",
-    "readOnly",
-    "title",
-    "writeOnly",
-];
-
-/// The keywords that name a closed set of values at one level.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ClosedKeyword {
-    AnyOf,
-    Const,
-    Enum,
-}
-
-fn closed_keyword_of(keyword: &str) -> Option<ClosedKeyword> {
-    match keyword {
-        "anyOf" => Some(ClosedKeyword::AnyOf),
-        "const" => Some(ClosedKeyword::Const),
-        "enum" => Some(ClosedKeyword::Enum),
-        _ => None,
-    }
-}
-
-/// The one closed-set keyword a level holds, when every other keyword beside it leaves each listed
-/// value accepted: `type: "string"` or an annotation. Two closed-set keywords at one level, or any
-/// keyword that could narrow the set, answer `None`.
-fn closed_keyword(schema: &Map<String, Value>) -> Option<ClosedKeyword> {
-    let mut shapes = Vec::new();
-    for (keyword, value) in schema {
-        match closed_keyword_of(keyword) {
-            Some(shape) => shapes.push(shape),
-            None => {
-                let harmless = (keyword == "type" && value.as_str() == Some("string"))
-                    || ANNOTATIONS.contains(&keyword.as_str());
-                if !harmless {
-                    return None;
-                }
-            }
-        }
-    }
-    match shapes.as_slice() {
-        [shape] => Some(*shape),
-        _ => None,
-    }
-}
-
-/// A list of strings, when the value is one.
-fn strings(value: Option<&Value>) -> Option<Vec<String>> {
-    value?
-        .as_array()?
-        .iter()
-        .map(|entry| entry.as_str().map(str::to_owned))
-        .collect()
-}
-
-/// The values one `enum` or `const` level names, or `None` for any other level.
-fn member(schema: &Map<String, Value>) -> Option<Vec<String>> {
-    match closed_keyword(schema)? {
-        ClosedKeyword::Enum => strings(schema.get("enum")),
-        ClosedKeyword::Const => schema
-            .get("const")
-            .and_then(Value::as_str)
-            .map(|value| vec![value.to_owned()]),
-        ClosedKeyword::AnyOf => None,
-    }
-}
-
-/// The values an `anyOf` names when every member is an `enum` or a `const`, flattened in order.
-fn flattened(members: Option<&Value>) -> Option<Vec<String>> {
-    let mut values = Vec::new();
-    for entry in members?.as_array()? {
-        values.extend(member(entry.as_object()?)?);
-    }
-    Some(values)
-}
-
-/// The distinct values an input's schema names, in first-occurrence order.
-fn closed_set(schema: &InputSchema) -> Option<Vec<String>> {
-    let schema = schema.as_ref()?;
-    let values = if closed_keyword(schema) == Some(ClosedKeyword::AnyOf) {
-        flattened(schema.get("anyOf"))?
-    } else {
-        member(schema)?
-    };
-    let mut distinct: Vec<String> = Vec::new();
-    for value in values {
-        if !distinct.contains(&value) {
-            distinct.push(value);
-        }
-    }
-    Some(distinct)
-}
 
 /// JavaScript's `\s`.
 fn is_space(character: char) -> bool {
@@ -149,7 +49,7 @@ fn listed(value: &str) -> String {
 /// The sentence derived from an input's schema: `One of: a, b, c.` for a closed set of at most
 /// eight distinct strings, and nothing for anything else.
 fn derived(schema: &InputSchema) -> Option<String> {
-    let distinct = closed_set(schema)?;
+    let distinct = closed_set(schema.as_ref())?;
     if distinct.is_empty() || distinct.len() > MAXIMUM_VALUES {
         return None;
     }

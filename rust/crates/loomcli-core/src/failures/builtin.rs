@@ -21,6 +21,7 @@
 //! | `ResultError` | `InternalError` | `internal`, inherited | 1 |
 
 use std::any::Any;
+use std::sync::Arc;
 
 use crate::Failure;
 use crate::diagnostics::text::{Anatomy, Fallback, Layout, diagnostic_text};
@@ -164,12 +165,19 @@ impl TerminalUnavailableError {
 pub struct InputError {
     #[failure(base)]
     base: UsageError,
-    problems: Vec<InputProblem>,
+    problems: Arc<Vec<InputProblem>>,
 }
 
 impl InputError {
     /// An input failure with its sentence and problems.
     pub fn new(message: impl Into<String>, problems: Vec<InputProblem>) -> Self {
+        Self::with_problems(message, Arc::new(problems))
+    }
+
+    pub(crate) fn with_problems(
+        message: impl Into<String>,
+        problems: Arc<Vec<InputProblem>>,
+    ) -> Self {
         Self {
             base: UsageError::new(message),
             problems,

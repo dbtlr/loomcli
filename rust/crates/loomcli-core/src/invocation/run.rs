@@ -27,7 +27,7 @@ use crate::failures::messages::{
 use crate::failures::translators::translated;
 use crate::failures::{
     Error, ExitCode, Failure, FailureExitCode, FailureFacts, FailureForm, FailureViewContext,
-    InternalError, WorkingDirectoryError,
+    InputError, InternalError, WorkingDirectoryError,
 };
 use crate::host::capture::{HostCapture, OwnStreams, RunStreams, capture_host, capture_parts};
 use crate::host::{
@@ -35,12 +35,14 @@ use crate::host::{
     ask_terminal, process_handle,
 };
 use crate::inputs::declared::{DeclaredValues, prepare_declared_values};
+use crate::inputs::pass::ReceivedInputs;
 use crate::inspection::CommandGraph;
 use crate::marks::{self, Background};
 use crate::output::emit::{Channel, Output, ProgressObserver, Stream, is_echo};
 use crate::output::registry::ViewRegistry;
 use crate::output::{Log, LogDestination, Out, ProgressEvent, RegionCloser, RunLog};
 use crate::plugins::AnyProvider;
+use crate::plugins::hooks::ReceivedReader;
 use crate::plugins::plugin::EnvironmentHook;
 use crate::plugins::provided::PersistentValues;
 use crate::plugins::{EnvironmentContext, FailureHookContext};
@@ -660,6 +662,8 @@ struct Reached {
     host: Option<Arc<Host>>,
     /// The routed Command's view selection, once routing reached a Command.
     selection: Option<Arc<Mutex<ViewSelection>>>,
+    /// Raw input associated with the validation failure held at the dispatch boundary.
+    received: Option<Arc<ReceivedInputs>>,
 }
 
 impl Reached {
@@ -893,7 +897,7 @@ async fn run_body(
     // Steps 11 to 13: the input sources fill the parsed values, interaction settles, and
     // validation runs, every fault held for the dispatch boundary.
     let cancelled = || signal.is_cancelled();
-    let prepared = prepare_dispatch(
+    let mut prepared = prepare_dispatch(
         &Run {
             application,
             graph: &graph,
@@ -906,6 +910,7 @@ async fn run_body(
         parsed,
     )
     .await;
+    reached.received = prepared.received.take().map(Arc::new);
     // Steps 14 to 18: activation, the chain in installation order, the dispatch boundary, and the
     // unwind.
     run_chain(
@@ -1247,6 +1252,18 @@ fn collect_hints(
     let command = graph
         .command(&words)
         .map_or_else(|| Arc::clone(&graph.root), Arc::clone);
+    let read_received: Option<ReceivedReader> = reached
+        .received
+        .as_ref()
+        .filter(|received| {
+            failure
+                .downcast_ref::<InputError>()
+                .is_some_and(|input| received.belongs_to(input))
+        })
+        .map(|received| {
+            let received = Arc::clone(received);
+            Arc::new(move |problem: &crate::InputProblem| received.get(problem)) as ReceivedReader
+        });
     let mut hints = Vec::new();
     for plugin in &scene.application.plugins {
         let Some(hook) = &plugin.on_failure else {
@@ -1265,6 +1282,7 @@ fn collect_hints(
                 run: Arc::clone(&scene.state),
                 plugin: Some(Arc::from(plugin.identity.as_str())),
             },
+            read_received: read_received.clone(),
         };
         hints.extend(hook(failure, &context)?.0);
     }

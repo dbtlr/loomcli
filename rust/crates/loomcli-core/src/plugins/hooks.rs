@@ -13,7 +13,7 @@ use crate::failures::DeclarationError;
 use crate::failures::messages::{command_sentence, command_subject, quoted};
 use crate::host::Env;
 use crate::inputs::table::{self, ScopeOption, check_option_config, check_option_name};
-use crate::inputs::{ArgumentDecl, OptionDecl};
+use crate::inputs::{ArgumentDecl, InputProblem, OptionDecl, SuppliedValue};
 use crate::inspection::build::result_node;
 use crate::inspection::{CommandGraph, CommandNode, OptionGroupKind, ResultNode};
 use crate::invocation::InvokedBy;
@@ -380,6 +380,9 @@ impl<H: IntoHints, E: Into<crate::Error>> IntoHints for Result<H, E> {
     }
 }
 
+/// Shared reader used by failure hook contexts and their test builders.
+pub type ReceivedReader = Arc<dyn Fn(&InputProblem) -> Option<SuppliedValue> + Send + Sync>;
+
 /// What an `on_failure` hook reads beside the failure.
 #[derive(Clone)]
 #[non_exhaustive]
@@ -402,6 +405,19 @@ pub struct FailureHookContext {
     pub command: Arc<CommandNode>,
     /// The log, tagged with the hook's plugin.
     pub log: Log,
+    pub(crate) read_received: Option<ReceivedReader>,
+}
+
+impl FailureHookContext {
+    /// The raw value of this failure's invalid problem, before validation. For a collected input
+    /// this is the whole collection, and issue paths identify rejected elements.
+    ///
+    /// Returns `None` for other problems, copies, or problems with no recorded value. A received
+    /// value can contain a secret, so only the hook context exposes it.
+    #[must_use]
+    pub fn received(&self, problem: &InputProblem) -> Option<SuppliedValue> {
+        self.read_received.as_ref()?(problem)
+    }
 }
 
 /// Variables an environment hook adds. Empty adds none.

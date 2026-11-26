@@ -14,6 +14,12 @@ pub const PACKAGE_NAME: &str = "@loomcli/plugins";
 pub mod background;
 #[cfg(feature = "box")]
 pub mod boxed;
+#[cfg(any(
+    feature = "completion",
+    feature = "help-views",
+    feature = "suggestions"
+))]
+mod closed_set;
 #[cfg(feature = "color")]
 pub mod color;
 #[cfg(feature = "completion")]

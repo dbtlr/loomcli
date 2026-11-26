@@ -19,6 +19,7 @@ use crate::output::registry::ViewRegistry;
 use crate::output::{
     Log, NoResult, Out, ResultView, RowView, RowsResult, RunLog, ValueResult, View, ViewContext,
 };
+pub use crate::plugins::hooks::ReceivedReader;
 use crate::plugins::middleware::{OwnOptions, Request, Spellings, ViewSelection};
 use crate::plugins::provider::{ErasedValue, ProvidedValues, ProviderKey};
 use crate::plugins::{
@@ -352,6 +353,8 @@ pub struct FailureHookParts {
     pub graph: Arc<CommandGraph>,
     /// The routed node.
     pub command: Arc<CommandNode>,
+    /// A test's reader of received values.
+    pub read_received: Option<ReceivedReader>,
 }
 
 /// The context an `on_failure` hook receives, built from `parts` over `run`.
@@ -367,6 +370,7 @@ pub fn failure_hook_context(run: &UnitRun, parts: FailureHookParts) -> FailureHo
         graph: parts.graph,
         command: parts.command,
         log: run.log(None),
+        read_received: parts.read_received,
     }
 }
 
