@@ -1,5 +1,6 @@
 //! `rust/conformance/accepted.json`: differences recorded on purpose, each tied to a row of `docs/deviations.md`.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -33,22 +34,31 @@ struct File {
 }
 
 #[derive(Deserialize)]
-struct Ids {
-    accepted: Vec<Id>,
+struct Listed {
+    accepted: Vec<ListedEntry>,
 }
 
 #[derive(Deserialize)]
-struct Id {
+struct ListedEntry {
     id: String,
+    parts: Vec<String>,
 }
 
-/// The case ids an `accepted.json` lists, read without checking its rows against a register, as a
-/// base branch's copy is read.
-pub fn ids(path: &Path) -> Result<Vec<String>, String> {
+/// The parts an `accepted.json` lists for each case, read without checking its rows against a
+/// register, as a base branch's copy is read. A part name the harness does not know is skipped.
+pub fn listed(path: &Path) -> Result<BTreeMap<String, Vec<Part>>, String> {
     let text =
         fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let file: Ids = serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(file.accepted.into_iter().map(|entry| entry.id).collect())
+    let file: Listed =
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(file
+        .accepted
+        .into_iter()
+        .map(|entry| {
+            let parts = entry.parts.iter().filter_map(|p| Part::parse(p)).collect();
+            (entry.id, parts)
+        })
+        .collect())
 }
 
 /// Parses the file text; `deviations` is the text of `docs/deviations.md` that every `row` must occur in.

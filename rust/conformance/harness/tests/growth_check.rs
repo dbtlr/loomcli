@@ -123,6 +123,37 @@ fn a_case_the_base_accepted_may_move_to_the_behind_list() {
 }
 
 #[test]
+fn a_case_the_base_accepted_may_not_gain_a_part_it_never_accepted_on_the_move() {
+    let (id, base_list) = without_first();
+    let accepted =
+        json!({ "accepted": [{ "id": id, "parts": ["exit"], "row": "r", "reason": "x" }] });
+    let (base, changed) = scenario("from-accepted-wider", &base_list, &accepted, &[]);
+    let out = check(&base, &changed);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+#[test]
+fn check_growth_with_a_selection_exits_2() {
+    let (base, changed) = scenario("with-only", &committed(), &none_accepted(), &[]);
+    let out = Command::new(env!("CARGO_BIN_EXE_conformance-harness"))
+        .arg("--check-growth")
+        .arg(&base)
+        .arg("--changed")
+        .arg(&changed)
+        .args(["--only", "jsonkit"])
+        .output()
+        .expect("run the harness");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(stderr.contains("with no other argument"), "{stderr}");
+}
+
+#[test]
 fn a_malformed_base_list_exits_2_naming_the_file() {
     let (base, changed) = scenario("malformed", &committed(), &none_accepted(), &[]);
     fs::write(base.join("behind.json"), "{\"behind\": [").expect("truncate the base list");

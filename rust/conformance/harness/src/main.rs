@@ -84,9 +84,7 @@ fn default_bin_dir(root: &Path) -> PathBuf {
 fn check_growth(rust_dir: &Path, base: &Path, changed: &Path) -> Result<bool, String> {
     match growth::check(base, &rust_dir.join("conformance/behind.json"), changed)? {
         None => {
-            println!(
-                "behind.json grows for no case whose expected output this change leaves unchanged."
-            );
+            println!("behind.json grows only where this change explains it.");
             Ok(true)
         }
         Some(report) => {

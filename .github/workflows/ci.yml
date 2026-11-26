@@ -478,7 +478,7 @@ jobs:
 
       # Rust work only shrinks rust/conformance/behind.json (ADR-0006), so a pull request may add
       # or widen an entry only for a case whose files under conformance/expected/ it changes, or
-      # one the base branch lists in accepted.json. -z keeps each path unquoted.
+      # with the parts the base branch's accepted.json lists for it. -z keeps each path unquoted.
       - name: Check that the behind list grows only for cases whose expected output changed
         if: github.event_name == 'pull_request'
         shell: bash

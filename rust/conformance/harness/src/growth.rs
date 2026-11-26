@@ -37,19 +37,25 @@ pub fn grown(base: &Behind, head: &Behind) -> Vec<Growth> {
 }
 
 /// The growth that `changed`, the repository-relative paths a change touched, does not explain. A
-/// case's growth is explained when the change touched a file under `conformance/expected/<id>/`,
-/// or when the base listed the case in `accepted.json`: a deviation reclassified as owed to the
-/// catch-up was already known to differ, so its move is no regression.
-pub fn unexplained(
-    growth: Vec<Growth>,
-    changed: &[String],
-    base_accepted: &[String],
-) -> Vec<Growth> {
+/// case's growth is explained when the change touched a file under `conformance/expected/<id>/`.
+/// A part `base_accepted`, the base branch's `accepted.json`, lists for the case is explained too:
+/// a deviation reclassified as owed to the catch-up was already known to differ there, so its move
+/// is no regression.
+pub fn unexplained(growth: Vec<Growth>, changed: &[String], base_accepted: &Behind) -> Vec<Growth> {
     growth
         .into_iter()
-        .filter(|g| {
+        .filter_map(|g| {
             let folder = format!("conformance/expected/{}/", g.id);
-            !base_accepted.contains(&g.id) && !changed.iter().any(|path| path.starts_with(&folder))
+            if changed.iter().any(|path| path.starts_with(&folder)) {
+                return None;
+            }
+            let accepted = base_accepted.get(&g.id).map_or(&[][..], Vec::as_slice);
+            let parts: Vec<Part> = g
+                .parts
+                .into_iter()
+                .filter(|part| !accepted.contains(part))
+                .collect();
+            (!parts.is_empty()).then_some(Growth { id: g.id, parts })
         })
         .collect()
 }
@@ -60,7 +66,7 @@ pub fn unexplained(
 /// of unexplained growth, or `None` when there is none.
 pub fn check(base: &Path, head: &Path, changed: &Path) -> Result<Option<String>, String> {
     let base_behind = behind::load(&base.join("behind.json"))?;
-    let base_accepted = accepted::ids(&base.join("accepted.json"))?;
+    let base_accepted = accepted::listed(&base.join("accepted.json"))?;
     let head = behind::load(head)?;
     let changed: Vec<String> = fs::read_to_string(changed)
         .map_err(|e| format!("cannot read {}: {e}", changed.display()))?
@@ -84,7 +90,7 @@ pub fn render(unexplained: &[Growth]) -> String {
     text.push_str(
         "Rust work only shrinks behind.json (ADR-0006), so a new difference here is a regression \
          to fix. A case may be added or widened only in the change that alters its files under \
-         conformance/expected/, or that moves it from accepted.json.\n",
+         conformance/expected/, or that moves the parts accepted.json listed for it.\n",
     );
     text
 }
@@ -164,7 +170,7 @@ mod tests {
             "rust/conformance/behind.json",
         ]);
         assert_eq!(
-            unexplained(found, &changed, &[]),
+            unexplained(found, &changed, &Behind::new()),
             [growth("jsonkit-b", &[Part::Stderr])]
         );
     }
@@ -179,21 +185,25 @@ mod tests {
             "rust/conformance/expected/jsonkit-a/stdout",
         ]);
         assert_eq!(
-            unexplained(found.clone(), &changed, &[]),
+            unexplained(found.clone(), &changed, &Behind::new()),
             found,
             "only a file under conformance/expected/jsonkit-a/ explains jsonkit-a"
         );
     }
 
     #[test]
-    fn a_case_the_base_accepted_is_explained_and_no_other() {
+    fn the_base_accepted_explains_only_the_parts_it_accepted_for_its_own_case() {
         let found = vec![
-            growth("jsonkit-a", &[Part::Stdout]),
+            growth("jsonkit-a", &[Part::Stdout, Part::Exit]),
             growth("jsonkit-b", &[Part::Stdout]),
         ];
+        let accepted = list(&[("jsonkit-a", &[Part::Stdout])]);
         assert_eq!(
-            unexplained(found, &[], &["jsonkit-a".to_owned()]),
-            [growth("jsonkit-b", &[Part::Stdout])]
+            unexplained(found, &[], &accepted),
+            [
+                growth("jsonkit-a", &[Part::Exit]),
+                growth("jsonkit-b", &[Part::Stdout])
+            ]
         );
     }
 
@@ -201,7 +211,7 @@ mod tests {
     fn a_files_part_is_explained_by_a_changed_file_under_the_cases_files_folder() {
         let found = vec![growth("jsonkit-a", &[Part::Files])];
         let changed = paths(&["conformance/expected/jsonkit-a/files/out/report.json"]);
-        assert_eq!(unexplained(found, &changed, &[]), []);
+        assert_eq!(unexplained(found, &changed, &Behind::new()), []);
     }
 
     #[test]
@@ -217,7 +227,7 @@ mod tests {
              textstat-b: files\n\
              Rust work only shrinks behind.json (ADR-0006), so a new difference here is a regression \
              to fix. A case may be added or widened only in the change that alters its files under \
-             conformance/expected/, or that moves it from accepted.json.\n"
+             conformance/expected/, or that moves the parts accepted.json listed for it.\n"
         );
     }
 }
