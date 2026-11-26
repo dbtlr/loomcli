@@ -1,4 +1,5 @@
-//! The sentences core's failure classes write, and core's default text for a failure.
+//! The sentences core's failure classes write, the quoting helpers every sentence of core repeats a
+//! value through, and core's default text for a failure.
 
 use crate::diagnostics::{DiagnosticParts, rules};
 use crate::style::{escape, escape_control_characters};
@@ -36,7 +37,7 @@ pub(crate) fn mid_sentence(text: &str) -> String {
 pub(crate) fn command_subject(name: Option<&str>) -> String {
     name.map_or_else(
         || "the root Command".to_owned(),
-        |name| format!("Command \"{name}\""),
+        |name| format!("Command {}", quoted(name)),
     )
 }
 
@@ -62,6 +63,15 @@ pub(crate) enum Offered {
     Subcommand,
 }
 
+/// Names a list joins, each escaped, separated by `separator`.
+pub(crate) fn escaped_list(names: &[String], separator: &str) -> String {
+    names
+        .iter()
+        .map(|name| escape_control_characters(name))
+        .collect::<Vec<_>>()
+        .join(separator)
+}
+
 /// The clause that states a routing fault's fix: the candidates, or, when the Command offers none
 /// because every child is hidden or deprecated, the kind of name to supply.
 pub(crate) fn offering(candidates: &[String], kind: Offered) -> String {
@@ -72,8 +82,135 @@ pub(crate) fn offering(candidates: &[String], kind: Offered) -> String {
         };
         format!(" Supply the name of a declared {kind}.")
     } else {
-        format!(" Use one of: {}.", candidates.join(", "))
+        format!(" Use one of: {}.", escaped_list(candidates, ", "))
     }
+}
+
+pub(crate) fn unknown_command(token: &str, candidates: &[String]) -> String {
+    format!(
+        "Unknown command {}.{}",
+        quoted(token),
+        offering(candidates, Offered::Command)
+    )
+}
+
+/// The sentence of a group routed to with no subcommand. The root has no name to repeat, and the
+/// default text already opens with the application name, so the root's sentence names no Command.
+pub(crate) fn missing_subcommand(command: &[String], candidates: &[String]) -> String {
+    if command.is_empty() {
+        format!(
+            "A command is required.{}",
+            offering(candidates, Offered::Command)
+        )
+    } else {
+        format!(
+            "{} requires a subcommand.{}",
+            routed_sentence(command),
+            offering(candidates, Offered::Subcommand)
+        )
+    }
+}
+
+pub(crate) fn unexpected_arguments(command: &[String], accepted: usize) -> String {
+    let subject = routed_sentence(command);
+    match accepted {
+        0 => format!("{subject} accepts no arguments. Remove the supplied values."),
+        1 => format!("{subject} accepts 1 argument. Remove the extra values."),
+        _ => format!("{subject} accepts {accepted} arguments. Remove the extra values."),
+    }
+}
+
+pub(crate) fn undeclared_argument(command: &[String], name: &str) -> String {
+    format!(
+        "{} declares no argument {}. Supply the name of a declared argument.",
+        routed_sentence(command),
+        quoted(name)
+    )
+}
+
+pub(crate) fn unknown_option(spelling: &str) -> String {
+    format!(
+        "Unknown option {}. Supply a declared option; prefix a hyphenated path with \"./\".",
+        quoted(spelling)
+    )
+}
+
+/// The unknown option of an invocation by name, which asks for a declared name, because the caller
+/// typed no spelling.
+pub(crate) fn unknown_option_name(name: &str) -> String {
+    format!(
+        "Unknown option {}. Supply the name of a declared option.",
+        quoted(name)
+    )
+}
+
+pub(crate) fn missing_value(spelling: &str) -> String {
+    let spelling = quoted(spelling);
+    format!("Option {spelling} requires a value. Supply a value after {spelling}.")
+}
+
+/// The sentence of an option whose next word was an option word or the bare `--`, so it names the
+/// attached form too.
+pub(crate) fn missing_attached_value(spelling: &str) -> String {
+    let quoted_spelling = quoted(spelling);
+    format!(
+        "Option {quoted_spelling} requires a value. Supply a value after {quoted_spelling}, or attach one that starts with a hyphen as {}.",
+        quoted(&format!("{spelling}=<value>"))
+    )
+}
+
+pub(crate) fn counted_value(spelling: &str) -> String {
+    let spelling = quoted(spelling);
+    format!(
+        "Counted option {spelling} does not accept a value. Repeat {spelling} to raise its count."
+    )
+}
+
+pub(crate) fn boolean_value(spelling: &str) -> String {
+    format!(
+        "Boolean option {} does not accept a value. Supply the flag alone.",
+        quoted(spelling)
+    )
+}
+
+pub(crate) fn repeated_option(spelling: &str) -> String {
+    format!(
+        "Option {} can be supplied only once. Remove the repeated option.",
+        quoted(spelling)
+    )
+}
+
+pub(crate) fn misplaced_option(spelling: &str, commands: &[Vec<String>]) -> String {
+    let names: Vec<String> = commands.iter().map(|path| path.join(" ")).collect();
+    match names.as_slice() {
+        [only] => format!(
+            "Option {} belongs to command {}. Supply it after {}.",
+            quoted(spelling),
+            quoted(only),
+            quoted(only)
+        ),
+        _ => format!(
+            "Option {} belongs to commands {}. Supply it after the command name.",
+            quoted(spelling),
+            escaped_list(&names, ", ")
+        ),
+    }
+}
+
+pub(crate) const WORKING_DIRECTORY_UNREADABLE: &str = "The current working directory cannot be read. Change to a directory that exists and run the command again.";
+
+pub(crate) fn result_missing(path: &[String]) -> String {
+    format!(
+        "{} declares a result and its action returned without emitting one. Call out.results() once.",
+        routed_sentence(path)
+    )
+}
+
+pub(crate) fn result_repeated(path: &[String]) -> String {
+    format!(
+        "{} emitted its result twice. Call out.results() once.",
+        routed_sentence(path)
+    )
 }
 
 /// One message someone else wrote, as a sentence of its own: a full stop added only where the

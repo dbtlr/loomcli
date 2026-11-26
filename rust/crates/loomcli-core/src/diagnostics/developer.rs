@@ -2,7 +2,7 @@
 //! stderr, with the application name before each finding's path, and, for a defect, its source and
 //! cause chain.
 
-use crate::failures::sentences::is_author_fault;
+use crate::failures::messages::is_author_fault;
 use crate::style::Style;
 use crate::{DeclarationError, Failure, FailureFacts, InternalError};
 

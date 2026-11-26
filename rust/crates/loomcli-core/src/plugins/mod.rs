@@ -7,6 +7,7 @@
 
 pub(crate) mod extension;
 pub(crate) mod hooks;
+mod messages;
 pub(crate) mod middleware;
 pub(crate) mod plugin;
 pub(crate) mod provided;

@@ -9,7 +9,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use crate::diagnostics::{DiagnosticParts, Finding, Literal, rules};
-use crate::failures::sentences::{command_sentence, command_subject, quoted};
+use crate::failures::messages::{command_sentence, command_subject, quoted};
 use crate::failures::{DeclarationError, FailureFacts};
 use crate::inputs::table::{
     self, BoundVariable, InputSite, ScopeOption, Table, check_option_config, check_option_name,

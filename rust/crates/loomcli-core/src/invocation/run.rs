@@ -21,7 +21,7 @@ use crate::diagnostics::developer::{
 };
 use crate::diagnostics::{DiagnosticParts, rules};
 use crate::failures::form::{FormScene, failure_form};
-use crate::failures::sentences::{
+use crate::failures::messages::{
     core_text, foreign_failure, generic_defect_text, is_author_fault, quoted, reason_of, to_failure,
 };
 use crate::failures::translators::translated;
@@ -250,7 +250,7 @@ pub(crate) fn entry_inside_runtime(application: &str) -> crate::failures::Declar
         rules::ENTRY_POINT,
         DiagnosticParts::new(format!(
             "Application {} called main inside a tokio runtime.",
-            crate::failures::sentences::quoted(application)
+            crate::failures::messages::quoted(application)
         ))
         .finding(crate::diagnostics::Finding::new("main", vec![]).path(vec![]))
         .correction("Await main_async() from an async main, such as one under #[tokio::main], or call main() from a main that starts no runtime."),

@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::__private::RunState;
 use crate::failures::Error;
-use crate::failures::sentences::quoted;
+use crate::failures::messages::quoted;
 use crate::host::Host;
 use crate::inputs::InputValues;
 use crate::inspection::CommandGraph;
@@ -19,11 +19,9 @@ use crate::output::emit::Channel;
 use crate::output::{Log, LogFields, Out};
 use crate::signals::RunSignal;
 
+use super::messages;
 use super::provider::{ErasedOpen, ErasedValue, ProvidedValues, ProviderKey};
 use super::{AnyProvider, ProviderContext};
-
-/// The sentence the log event of a close that fails without failing the run carries.
-const CLOSE_FAILED: &str = "A provider's close failed.";
 
 fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -271,7 +269,7 @@ async fn close_values(built: Vec<Built>, log: &Log, fails: bool) -> Option<Error
             first = Some(error);
         } else {
             log.error(
-                CLOSE_FAILED,
+                messages::PROVIDER_CLOSE_FAILED,
                 LogFields::new()
                     .field("error", error_fields(&error))
                     .field("provider", &*entry.provider.inner.name),

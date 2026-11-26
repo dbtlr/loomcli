@@ -20,6 +20,7 @@ pub mod inputs;
 pub mod inspection;
 pub mod invocation;
 pub mod marks;
+mod messages;
 pub mod output;
 pub mod plugins;
 pub mod shipping;

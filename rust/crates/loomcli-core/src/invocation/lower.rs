@@ -13,6 +13,7 @@ use crate::inputs::table::{Form, Role};
 use crate::inputs::{InputIdentity, InputKind, SuppliedValue};
 use crate::support::js_number_text;
 
+use super::messages;
 use super::parse::{
     Entry, Grammar, GrammarCommand, ParsedInvocation, ScopeValues, Slot, Supplied, candidates_of,
 };
@@ -25,17 +26,6 @@ pub(crate) struct NamedCall<'c> {
     pub(crate) options: &'c serde_json::Map<String, Value>,
     pub(crate) exclude: &'c [String],
     pub(crate) passthrough: &'c [String],
-}
-
-/// The issue each kind of input reports for a value no token spells.
-mod takes {
-    pub(super) const BOOLEAN: &str = "Use true or false.";
-    pub(super) const COUNT: &str = "Use a whole number of 0 or more.";
-    pub(super) const IMPLIED: &str = "Use a string, a number, or true.";
-    pub(super) const LIST: &str = "Use a string, a number, or a list of them.";
-    pub(super) const LIST_OR_IMPLIED: &str =
-        "Use a string, a number, true, or a list of strings and numbers.";
-    pub(super) const SCALAR: &str = "Use a string or a number.";
 }
 
 /// The token one value gives: a string as it is, a finite number as `String` writes it, or none.
@@ -103,7 +93,7 @@ fn option_occurrences<'g>(entries: &[&'g Entry], value: &Value) -> Lowering<Vec<
         Form::Boolean { .. } => {
             // A Boolean lowers to the spelling that reads its value, or to absence where none does.
             let Value::Bool(flag) = value else {
-                return Lowering::Issue(takes::BOOLEAN);
+                return Lowering::Issue(messages::TAKES_BOOLEAN);
             };
             let reading = entries
                 .iter()
@@ -134,7 +124,7 @@ fn option_occurrences<'g>(entries: &[&'g Entry], value: &Value) -> Lowering<Vec<
                 _ => None,
             };
             let Some(count) = count else {
-                return Lowering::Issue(takes::COUNT);
+                return Lowering::Issue(messages::TAKES_COUNT);
             };
             Lowering::Occurrences(if count > 0 {
                 vec![Lowered {
@@ -175,10 +165,10 @@ fn option_occurrences<'g>(entries: &[&'g Entry], value: &Value) -> Lowering<Vec<
                         .collect(),
                 ),
                 None => Lowering::Issue(match (multiple, implied.is_some()) {
-                    (true, true) => takes::LIST_OR_IMPLIED,
-                    (true, false) => takes::LIST,
-                    (false, true) => takes::IMPLIED,
-                    (false, false) => takes::SCALAR,
+                    (true, true) => messages::TAKES_LIST_OR_IMPLIED,
+                    (true, false) => messages::TAKES_LIST,
+                    (false, true) => messages::TAKES_IMPLIED,
+                    (false, false) => messages::TAKES_SCALAR,
                 }),
             }
         }
@@ -188,11 +178,11 @@ fn option_occurrences<'g>(entries: &[&'g Entry], value: &Value) -> Lowering<Vec<
 /// One argument's value bound to its slot: one token, or one per element on a variadic.
 fn argument_tokens(slot: &Slot, value: &Value) -> Lowering<SuppliedValue> {
     if slot.variadic {
-        tokens_of(value).map_or(Lowering::Issue(takes::LIST), |tokens| {
+        tokens_of(value).map_or(Lowering::Issue(messages::TAKES_LIST), |tokens| {
             Lowering::Occurrences(SuppliedValue::Many(tokens))
         })
     } else {
-        token_of(value).map_or(Lowering::Issue(takes::SCALAR), |token| {
+        token_of(value).map_or(Lowering::Issue(messages::TAKES_SCALAR), |token| {
             Lowering::Occurrences(SuppliedValue::One(token))
         })
     }

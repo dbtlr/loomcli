@@ -7,7 +7,7 @@
 
 use crate::diagnostics::{DiagnosticParts, Finding, Literal, rules};
 use crate::failures::DeclarationError;
-use crate::failures::sentences::quoted;
+use crate::failures::messages::quoted;
 use crate::support::is_declared_name;
 
 use super::{OptionDecl, Polarity};

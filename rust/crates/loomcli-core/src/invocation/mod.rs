@@ -6,6 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 pub(crate) mod chain;
 pub(crate) mod lower;
+mod messages;
 pub(crate) mod parse;
 pub(crate) mod prepare;
 pub(crate) mod run;
@@ -331,7 +332,7 @@ impl<M> InvokeOptions<M> {
                 match error.failure() {
                     Some(failure) => mapper(failure, context),
                     // The run hands over failures alone; a foreign error reads as its defect.
-                    None => mapper(&crate::failures::sentences::foreign_failure(error), context),
+                    None => mapper(&crate::failures::messages::foreign_failure(error), context),
                 }
             }),
             signal: self.signal,

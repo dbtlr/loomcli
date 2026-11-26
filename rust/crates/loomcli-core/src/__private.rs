@@ -69,7 +69,7 @@ impl RunState {
     ) -> crate::signals::Registration {
         self.place.on_shutdown(
             Box::new(handler),
-            Some(self.handler_failed(plugin, "A shutdown handler failed.")),
+            Some(self.handler_failed(plugin, crate::messages::SHUTDOWN_HANDLER_FAILED)),
         )
     }
 
@@ -81,7 +81,7 @@ impl RunState {
     ) -> crate::signals::Registration {
         self.place.on_suspend(
             std::sync::Arc::new(handler),
-            Some(self.handler_failed(plugin, "A suspend handler failed.")),
+            Some(self.handler_failed(plugin, crate::messages::SUSPEND_HANDLER_FAILED)),
         )
     }
 
@@ -93,7 +93,7 @@ impl RunState {
     ) -> crate::signals::Registration {
         self.place.on_resume(
             std::sync::Arc::new(handler),
-            Some(self.handler_failed(plugin, "A resume handler failed.")),
+            Some(self.handler_failed(plugin, crate::messages::RESUME_HANDLER_FAILED)),
         )
     }
 }

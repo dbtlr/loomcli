@@ -10,7 +10,7 @@ mod builtin;
 mod class;
 mod error;
 pub(crate) mod form;
-pub(crate) mod sentences;
+pub(crate) mod messages;
 pub(crate) mod translators;
 
 #[cfg(test)]

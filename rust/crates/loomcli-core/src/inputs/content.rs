@@ -11,6 +11,7 @@ use crate::host::{Host, InputStream};
 use crate::support::BoxFuture;
 
 use super::Issue;
+use super::messages;
 
 /// Where a content input reads from.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -330,17 +331,14 @@ fn readable(path: &Path) -> Result<bool, Error> {
     }
 }
 
-/// The issue of a file operand core cannot read.
-const UNREADABLE: &str = "Expected a readable file that exists.";
-
 /// A successful probe leaves opening the file to the action's first read.
 fn file_content(name: &str, scope: &ContentScope<'_>) -> Result<Result<Content, Issue>, Error> {
     if name.is_empty() || name.contains('\0') {
-        return Ok(Err(Issue::new(UNREADABLE)));
+        return Ok(Err(Issue::new(messages::UNREADABLE_FILE)));
     }
     let path = absolute_source(name, scope.host);
     if !readable_source(&path, scope.named)? {
-        return Ok(Err(Issue::new(UNREADABLE)));
+        return Ok(Err(Issue::new(messages::UNREADABLE_FILE)));
     }
     Ok(Ok(Content {
         kind: ContentKind::File {
@@ -380,34 +378,25 @@ fn source_content(
         return file_content(token, scope);
     }
     if !settings.stdin {
-        return Ok(Err(Issue::new(
-            "This input accepts file paths only. Use ./- for a file named -.",
-        )));
+        return Ok(Err(Issue::new(messages::FILE_PATHS_ONLY)));
     }
     if scope.named || scope.host.terminal.stdin().is_tty {
-        return Ok(Err(Issue::new("Expected piped or redirected stdin.")));
+        return Ok(Err(Issue::new(messages::PIPED_STDIN)));
     }
     Ok(Ok(stdin_content(scope.host)))
 }
 
 /// The count issues of one collection: below its minimum, above its maximum.
 fn count_issues(count: usize, settings: &ContentSettings) -> Vec<Issue> {
-    let sources = |n: usize| if n == 1 { "source" } else { "sources" };
     let mut issues = Vec::new();
     let minimum = minimum_sources(settings);
     if count < minimum {
-        issues.push(Issue::new(format!(
-            "Expected at least {minimum} readable {}.",
-            sources(minimum)
-        )));
+        issues.push(Issue::new(messages::too_few_sources(minimum)));
     }
     if let Some(max) = settings.max
         && count > max
     {
-        issues.push(Issue::new(format!(
-            "Expected at most {max} readable {}.",
-            sources(max)
-        )));
+        issues.push(Issue::new(messages::too_many_sources(max)));
     }
     issues
 }

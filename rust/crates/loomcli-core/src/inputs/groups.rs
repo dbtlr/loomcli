@@ -1,11 +1,10 @@
 //! Option groups at run time: which members an exclusive group withdraws by input tier, and the
 //! problems a group reports after every input has validated.
 
-use crate::failures::sentences::quoted;
 use crate::inspection::{OptionGroup, OptionGroupKind};
 use crate::invocation::parse::OptionValues;
-use crate::support::escape_control_characters;
 
+use super::messages;
 use super::{InputIdentity, InputKind, InputProblem};
 
 /// The input tier that supplied an option's value, argv highest.
@@ -128,26 +127,6 @@ fn broken(group: &OptionGroup, context: &GroupContext<'_>) -> bool {
     }
 }
 
-/// A group has no singular subject, so each sentence states the whole relationship.
-fn group_message(kind: OptionGroupKind, names: &[String]) -> String {
-    let members = match names {
-        [first, second] => format!("{first} and {second}"),
-        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
-        [] => String::new(),
-    };
-    match kind {
-        OptionGroupKind::Exclusive => {
-            format!("Options {members} cannot be used together. Supply only one of them.")
-        }
-        OptionGroupKind::OneRequired => {
-            format!("One of options {members} is required. Supply at least one of them.")
-        }
-        OptionGroupKind::RequiredTogether => {
-            format!("Options {members} must be supplied together. Supply all of them, or none.")
-        }
-    }
-}
-
 /// The reports of every broken group, each its default text's line and its problem.
 pub(crate) fn group_reports(context: &GroupContext<'_>) -> Vec<(Vec<String>, InputProblem)> {
     context
@@ -160,7 +139,7 @@ pub(crate) fn group_reports(context: &GroupContext<'_>) -> Vec<(Vec<String>, Inp
                 .iter()
                 .map(|name| (context.spelling)(name))
                 .collect();
-            let described: Vec<String> = group
+            let described: Vec<(&str, Option<&str>)> = group
                 .options
                 .iter()
                 .zip(&spellings)
@@ -169,9 +148,8 @@ pub(crate) fn group_reports(context: &GroupContext<'_>) -> Vec<(Vec<String>, Inp
                         .labels
                         .iter()
                         .find(|(known, _)| known == name)
-                        .map(|(_, label)| format!(" (from {})", escape_control_characters(label)))
-                        .unwrap_or_default();
-                    format!("{}{label}", quoted(spelling))
+                        .map(|(_, label)| label.as_str());
+                    (spelling.as_str(), label)
                 })
                 .collect();
             let supplied = group
@@ -182,7 +160,7 @@ pub(crate) fn group_reports(context: &GroupContext<'_>) -> Vec<(Vec<String>, Inp
                 .map(|(_, spelling)| spelling.clone())
                 .collect();
             (
-                vec![group_message(group.kind, &described)],
+                vec![messages::group_sentence(group.kind, &described)],
                 InputProblem::Group {
                     reason: group.kind,
                     inputs: group

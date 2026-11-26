@@ -15,13 +15,13 @@ use crate::failures::{Error, InputError};
 use crate::host::Host;
 use crate::inspection::OptionGroup;
 use crate::invocation::parse::OptionValues;
-use crate::support::escape_control_characters;
 
 use super::content::{ContentScope, ContentSettings, Prepared, PreparedContent, prepare_content};
 use super::declared::{
     DeclKey, Declared, DeclaredValues, Presence, messages, reported, text, validate_list,
 };
 use super::groups::{GroupContext, group_reports};
+use super::messages;
 use super::{
     Content, InputIdentity, InputKind, InputProblem, Issue, OptionDecl, Polarity, Stdin,
     SuppliedInputs, SuppliedValue, ValidationContext, ValidationPhase, issue_path,
@@ -274,8 +274,8 @@ pub(crate) fn supplied_inputs(
 /// The issue a variable outside its option's grammar reports.
 fn grammar_issue(decl: &OptionDecl) -> Issue {
     match decl {
-        OptionDecl::Count(_) => Issue::new("Use a whole number of 0 or more."),
-        _ => Issue::new("Use true, false, yes, no, y, n, on, off, 1, or 0."),
+        OptionDecl::Count(_) => Issue::new(messages::ENVIRONMENT_COUNT),
+        _ => Issue::new(messages::ENVIRONMENT_BOOLEAN),
     }
 }
 
@@ -283,9 +283,8 @@ fn grammar_issue(decl: &OptionDecl) -> Issue {
 /// of a value an input source filled in parentheses.
 fn supplied_name(input: Declared<'_>, spelling: &str, origin: Option<&str>) -> String {
     match (input, origin) {
-        (Declared::Argument(_), _) => format!("Argument \"{spelling}\""),
-        (Declared::Option(_), None) => format!("Option \"{spelling}\""),
-        (Declared::Option(_), Some(origin)) => format!("Option \"{spelling}\" (from {origin})"),
+        (Declared::Argument(_), _) => messages::argument_subject(spelling),
+        (Declared::Option(_), origin) => messages::option_subject(spelling, origin),
     }
 }
 
@@ -296,23 +295,13 @@ fn missing_message(
     collected: bool,
     origin: Option<&str>,
 ) -> String {
-    let conditional = if input.presence() == Presence::NonInteractive {
-        " when input is not interactive"
-    } else {
-        ""
-    };
-    let amount = if collected {
-        "at least one value"
-    } else {
-        "a value"
-    };
+    let conditional = input.presence() == Presence::NonInteractive;
     match input {
-        Declared::Argument(_) => format!(
-            "Argument \"{spelling}\" requires {amount}{conditional}. Supply a value for \"{spelling}\"."
-        ),
-        Declared::Option(_) => format!(
-            "{} is required{conditional}. Supply {amount}.",
-            supplied_name(input, spelling, origin)
+        Declared::Argument(_) => messages::required_argument(spelling, collected, conditional),
+        Declared::Option(_) => messages::required_option(
+            &supplied_name(input, spelling, origin),
+            conditional,
+            &messages::OptionFix::Value { collected },
         ),
     }
 }
@@ -456,14 +445,11 @@ impl Pass<'_, '_> {
             return false;
         }
         let first = issues.first();
-        let position = first
-            .and_then(issue_path)
-            .map(|path| format!(" at {}", escape_control_characters(&path)))
-            .unwrap_or_default();
+        let path = first.and_then(issue_path);
         let message = first.map_or("", |issue| issue.message.as_str());
         self.dropped.push((
             option.name.clone(),
-            format!("Ignored option \"{spelling}\"{position} from {origin}: {message}"),
+            messages::ignored_fill(spelling, path.as_deref(), origin, message),
         ));
         true
     }
@@ -771,7 +757,7 @@ pub(crate) fn validate_values(
                 stdin_report = Some(Report {
                     lines: issues
                         .iter()
-                        .map(|issue| format!("Stdin: {}", issue.message))
+                        .map(|issue| messages::stdin_issue(&issue.message))
                         .collect(),
                     problem: InputProblem::Missing {
                         input: InputIdentity {

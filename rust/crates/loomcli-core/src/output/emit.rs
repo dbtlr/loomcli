@@ -34,6 +34,7 @@ use crate::style::{
     under_ci,
 };
 
+use super::messages;
 use super::region::{CloseWork, ProgressEvent, RegionCloser, Regions, ScreenOp};
 use super::registry::ViewRegistry;
 use super::results::{ResultView, RowSource, RowViewEntry};
@@ -96,7 +97,7 @@ pub(crate) struct CancellationEcho;
 
 impl std::fmt::Display for CancellationEcho {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("The run was cancelled.")
+        formatter.write_str(messages::RUN_CANCELLED)
     }
 }
 
@@ -1338,9 +1339,7 @@ impl Output {
     /// answers fails as a broken view does.
     fn selected<'b>(&self, channel: &'b Channel) -> Result<&'b ViewEntryRef, Error> {
         let Some(binding) = &channel.result else {
-            return Err(Error::from_foreign(
-                "Only the action of a Command that declares a result calls out.results().".into(),
-            ));
+            return Err(Error::from_foreign(messages::RESULTS_NOT_DECLARED.into()));
         };
         if channel.calls.fetch_add(1, Ordering::SeqCst) > 0 {
             return Err(ResultError::new(ResultFault::Repeated, binding.path.clone()).into());
@@ -1355,9 +1354,7 @@ impl Output {
             .iter()
             .find(|entry| entry.key == name)
             .map(|entry| &entry.view)
-            .ok_or_else(|| {
-                Error::from_foreign(format!("The view \"{name}\" is not declared.").into())
-            })
+            .ok_or_else(|| Error::from_foreign(messages::view_not_declared(name).into()))
     }
 
     /// One `out.results` call under a value result: the selected view over the value, written to
@@ -1379,9 +1376,7 @@ impl Output {
                         self.render_whole(Stream::Stdout, None, view, &data)?
                     }
                     _ => {
-                        return Err(Error::from_foreign(
-                            "The selected view renders rows, not a value.".into(),
-                        ));
+                        return Err(Error::from_foreign(messages::VIEW_RENDERS_ROWS.into()));
                     }
                 }
             }
@@ -1408,9 +1403,7 @@ impl Output {
             Some(ResultView::Row(view)) => SequenceView::Rows(view.clone()),
             Some(ResultView::Whole(view)) => SequenceView::WholeOwned(json_rows_view(view)),
             None => {
-                return Err(Error::from_foreign(
-                    "The selected view renders a value, not rows.".into(),
-                ));
+                return Err(Error::from_foreign(messages::VIEW_RENDERS_VALUE.into()));
             }
         };
         self.sequence(Stream::Stdout, json_rows(source), view).await
@@ -1435,8 +1428,7 @@ struct JsonDataError(serde_json::Error);
 
 impl std::fmt::Display for JsonDataError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .write_str("The value cannot be encoded as JSON. Emit plain JSON data from the action.")
+        formatter.write_str(messages::NOT_JSON_DATA)
     }
 }
 

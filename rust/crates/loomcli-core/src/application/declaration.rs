@@ -9,7 +9,7 @@ use crate::commands::declaration::{
     option_extensions,
 };
 use crate::diagnostics::{DiagnosticParts, DiagnosticRule, Finding, Literal, rules};
-use crate::failures::sentences::{mid_sentence, quoted};
+use crate::failures::messages::{mid_sentence, quoted};
 use crate::failures::{DeclarationError, FailureEncoding, Translation};
 use crate::inputs::OptionDecl;
 use crate::inputs::table::{

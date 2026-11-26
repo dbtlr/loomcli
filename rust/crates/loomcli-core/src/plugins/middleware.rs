@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::commands::declaration::DeclaredResult;
 use crate::diagnostics::{DiagnosticParts, rules};
-use crate::failures::sentences::{quoted, routed_subject};
+use crate::failures::messages::{quoted, routed_subject};
 use crate::failures::{Error, InternalError};
 use crate::host::Host;
 use crate::inputs::{Content, FromInputValue, InputValues};

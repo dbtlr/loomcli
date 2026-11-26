@@ -11,7 +11,7 @@ use crate::commands::declaration::{
     check_slot_order, local_site,
 };
 use crate::diagnostics::{DiagnosticParts, DiagnosticRule, Finding, Literal, rules};
-use crate::failures::sentences::{as_sentence, command_subject, quoted, reason_of};
+use crate::failures::messages::{as_sentence, command_subject, quoted, reason_of};
 use crate::failures::{DeclarationError, Error};
 use crate::inputs::table::{self, InputSite, Role, ScopeOption, Spelling, spelling_mark};
 use crate::plugins::AttachedCommand;

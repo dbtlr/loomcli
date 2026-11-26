@@ -26,7 +26,7 @@ use crate::diagnostics::text::{Anatomy, Fallback, Layout, diagnostic_text};
 use crate::diagnostics::{DiagnosticParts, DiagnosticRule, Finding, rules};
 use crate::inputs::InputProblem;
 
-use super::sentences::{Offered, offering, quoted, routed_sentence};
+use super::messages;
 use super::{Error, FailureClass, FailureExitCode};
 
 /// The root failure class: the message and the cause every failure carries. It is abstract: core
@@ -171,13 +171,8 @@ impl UnknownCommandError {
     /// The unknown word and the canonical names of the visible children.
     pub fn new(token: impl Into<String>, candidates: Vec<String>) -> Self {
         let token = token.into();
-        let message = format!(
-            "Unknown command {}.{}",
-            quoted(&token),
-            offering(&candidates, Offered::Command)
-        );
         Self {
-            base: UsageError::new(message),
+            base: UsageError::new(messages::unknown_command(&token, &candidates)),
             token,
             candidates,
         }
@@ -210,22 +205,8 @@ impl NonCallableCommandError {
     /// The group's path and the canonical names of its visible children.
     #[must_use]
     pub fn new(command: Vec<String>, candidates: Vec<String>) -> Self {
-        // The root has no name to repeat, and the default text already opens with the application
-        // name, so the root's sentence names no Command.
-        let message = if command.is_empty() {
-            format!(
-                "A command is required.{}",
-                offering(&candidates, Offered::Command)
-            )
-        } else {
-            format!(
-                "{} requires a subcommand.{}",
-                routed_sentence(&command),
-                offering(&candidates, Offered::Subcommand)
-            )
-        };
         Self {
-            base: UsageError::new(message),
+            base: UsageError::new(messages::missing_subcommand(&command, &candidates)),
             command,
             candidates,
         }
@@ -259,14 +240,8 @@ impl UnexpectedArgumentError {
     /// The routed path, how many arguments it accepts, and the extra words.
     #[must_use]
     pub fn new(command: Vec<String>, accepted: usize, extra: Vec<String>) -> Self {
-        let subject = routed_sentence(&command);
-        let message = match accepted {
-            0 => format!("{subject} accepts no arguments. Remove the supplied values."),
-            1 => format!("{subject} accepts 1 argument. Remove the extra values."),
-            _ => format!("{subject} accepts {accepted} arguments. Remove the extra values."),
-        };
         Self {
-            base: UsageError::new(message),
+            base: UsageError::new(messages::unexpected_arguments(&command, accepted)),
             command,
             accepted,
             extra,
@@ -277,13 +252,8 @@ impl UnexpectedArgumentError {
     /// the key alone, `accepted` the number of arguments the Command declares, and the sentence
     /// names the key.
     pub(crate) fn undeclared(command: Vec<String>, accepted: usize, name: &str) -> Self {
-        let message = format!(
-            "{} declares no argument {}. Supply the name of a declared argument.",
-            routed_sentence(&command),
-            quoted(name)
-        );
         Self {
-            base: UsageError::new(message),
+            base: UsageError::new(messages::undeclared_argument(&command, name)),
             command,
             accepted,
             extra: vec![name.to_owned()],
@@ -322,12 +292,8 @@ impl UnknownOptionError {
     /// The spelling as supplied.
     pub fn new(spelling: impl Into<String>) -> Self {
         let spelling = spelling.into();
-        let message = format!(
-            "Unknown option {}. Supply a declared option; prefix a hyphenated path with \"./\".",
-            quoted(&spelling)
-        );
         Self {
-            base: UsageError::new(message),
+            base: UsageError::new(messages::unknown_option(&spelling)),
             spelling,
         }
     }
@@ -336,12 +302,8 @@ impl UnknownOptionError {
     /// the sentence asks for a declared name, because the caller typed no spelling.
     pub(crate) fn by_name(name: impl Into<String>) -> Self {
         let spelling = name.into();
-        let message = format!(
-            "Unknown option {}. Supply the name of a declared option.",
-            quoted(&spelling)
-        );
         Self {
-            base: UsageError::new(message),
+            base: UsageError::new(messages::unknown_option_name(&spelling)),
             spelling,
         }
     }
@@ -377,15 +339,9 @@ impl MissingValueError {
     /// The spelling, and how the value was missing.
     pub fn new(spelling: impl Into<String>, form: MissingValueForm) -> Self {
         let spelling = spelling.into();
-        let quoted_spelling = quoted(&spelling);
         let message = match form {
-            MissingValueForm::Attached => format!(
-                "Option {quoted_spelling} requires a value. Supply a value after {quoted_spelling}, or attach one that starts with a hyphen as {}.",
-                quoted(&format!("{spelling}=<value>"))
-            ),
-            MissingValueForm::Separate => format!(
-                "Option {quoted_spelling} requires a value. Supply a value after {quoted_spelling}."
-            ),
+            MissingValueForm::Attached => messages::missing_attached_value(&spelling),
+            MissingValueForm::Separate => messages::missing_value(&spelling),
         };
         Self {
             base: UsageError::new(message),
@@ -423,14 +379,9 @@ impl UnexpectedValueError {
     /// The spelling, the attached value, and the option's kind.
     pub fn new(spelling: impl Into<String>, value: impl Into<String>, kind: ValuelessKind) -> Self {
         let spelling = spelling.into();
-        let quoted_spelling = quoted(&spelling);
         let message = match kind {
-            ValuelessKind::Count => format!(
-                "Counted option {quoted_spelling} does not accept a value. Repeat {quoted_spelling} to raise its count."
-            ),
-            ValuelessKind::Boolean => format!(
-                "Boolean option {quoted_spelling} does not accept a value. Supply the flag alone."
-            ),
+            ValuelessKind::Count => messages::counted_value(&spelling),
+            ValuelessKind::Boolean => messages::boolean_value(&spelling),
         };
         Self {
             base: UsageError::new(message),
@@ -465,12 +416,8 @@ impl RepeatedOptionError {
     /// The repeated spelling.
     pub fn new(spelling: impl Into<String>) -> Self {
         let spelling = spelling.into();
-        let message = format!(
-            "Option {} can be supplied only once. Remove the repeated option.",
-            quoted(&spelling)
-        );
         Self {
-            base: UsageError::new(message),
+            base: UsageError::new(messages::repeated_option(&spelling)),
             spelling,
         }
     }
@@ -496,22 +443,8 @@ impl MisplacedOptionError {
     /// The spelling and the paths of the Commands that declare it.
     pub fn new(spelling: impl Into<String>, commands: Vec<Vec<String>>) -> Self {
         let spelling = spelling.into();
-        let names: Vec<String> = commands.iter().map(|path| path.join(" ")).collect();
-        let message = match names.as_slice() {
-            [only] => format!(
-                "Option {} belongs to command {}. Supply it after {}.",
-                quoted(&spelling),
-                quoted(only),
-                quoted(only)
-            ),
-            _ => format!(
-                "Option {} belongs to commands {}. Supply it after the command name.",
-                quoted(&spelling),
-                names.join(", ")
-            ),
-        };
         Self {
-            base: UsageError::new(message),
+            base: UsageError::new(messages::misplaced_option(&spelling, &commands)),
             spelling,
             commands,
         }
@@ -543,10 +476,7 @@ impl WorkingDirectoryError {
     #[must_use]
     pub fn new(cause: std::io::Error) -> Self {
         Self {
-            base: LoomError::with_cause(
-                "The current working directory cannot be read. Change to a directory that exists and run the command again.",
-                cause,
-            ),
+            base: LoomError::with_cause(messages::WORKING_DIRECTORY_UNREADABLE, cause),
         }
     }
 }
@@ -769,14 +699,9 @@ impl ResultError {
     /// The fault and the routed path.
     #[must_use]
     pub fn new(kind: ResultFault, path: Vec<String>) -> Self {
-        let subject = routed_sentence(&path);
         let sentence = match kind {
-            ResultFault::Missing => format!(
-                "{subject} declares a result and its action returned without emitting one. Call out.results() once."
-            ),
-            ResultFault::Repeated => {
-                format!("{subject} emitted its result twice. Call out.results() once.")
-            }
+            ResultFault::Missing => messages::result_missing(&path),
+            ResultFault::Repeated => messages::result_repeated(&path),
         };
         Self {
             base: InternalError::without_cause(

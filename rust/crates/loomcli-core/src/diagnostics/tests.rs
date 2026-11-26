@@ -10,7 +10,7 @@ use super::defect::SourceAccess;
 use super::developer::{AuthorFault, DeveloperScene, developer_plain_text, developer_text};
 use super::rules;
 use super::{DiagnosticParts, Finding, Literal};
-use crate::failures::sentences::foreign_failure;
+use crate::failures::messages::foreign_failure;
 use crate::style::{Capabilities, Palette, Renderer, style};
 use crate::{DeclarationError, Error, FailureFacts, InternalError};
 

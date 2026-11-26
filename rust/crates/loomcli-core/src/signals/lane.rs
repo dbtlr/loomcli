@@ -17,6 +17,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
+use super::messages;
 use super::{EndingSignal, Registration, ShutdownCause, ShutdownEvent};
 use crate::host::{ProcessSignal, SignalEvent, SignalListener, SignalSource};
 
@@ -166,7 +167,7 @@ pub(crate) fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
         .downcast_ref::<&str>()
         .map(|text| (*text).to_owned())
         .or_else(|| payload.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "The handler panicked.".to_owned())
+        .unwrap_or_else(|| messages::HANDLER_PANICKED.to_owned())
 }
 
 /// Calls one handler, catching a panic so the rest still run, and hands its message to `failed`.

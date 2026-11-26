@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::diagnostics::{DiagnosticParts, Finding, Literal, rules};
-use crate::failures::sentences::quoted;
+use crate::failures::messages::quoted;
 use crate::failures::{DeclarationError, Failure};
 
 use super::view::{ErasedFailureView, OverrideIdentity, core_views};
