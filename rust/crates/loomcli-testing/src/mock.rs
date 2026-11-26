@@ -25,6 +25,8 @@ const DEFAULT_CWD: &str = "/loom-test";
 pub(crate) const DEFAULT_HOME: &str = "/loom-test/home";
 /// The platform the default mock describes.
 pub(crate) const DEFAULT_PLATFORM: &str = "linux";
+/// The Cargo target triple the default mock describes.
+const DEFAULT_RUNTIME: &str = "x86_64-unknown-linux-gnu";
 /// The default temporary folder, a path that does not exist.
 const DEFAULT_TMPDIR: &str = "/loom-test/tmp";
 /// The default `program` words: a runtime and a script that do not exist.
@@ -219,9 +221,9 @@ enum MockCwd {
 /// The facts a mock process reports. Every fact has a fixed default, so a test reads nothing from
 /// the machine: argv empty, env empty, cwd `/loom-test`, home `/loom-test/home` and tmpdir
 /// `/loom-test/tmp` unless an absolute `HOME` or `TMPDIR` in env names others, platform `linux`,
-/// arch `x64`, libc glibc on Linux, uid 1000, time zone `UTC`, program
-/// `/loom-test/runtime /loom-test/app.js`, a `source` build, no source reader, empty piped stdin,
-/// no terminal, and no programs. A supplied field replaces its default whole.
+/// arch `x64`, runtime `x86_64-unknown-linux-gnu`, libc glibc on Linux, uid 1000, time zone `UTC`,
+/// program `/loom-test/runtime /loom-test/app.js`, a `source` build, no source reader, empty piped
+/// stdin, no terminal, and no programs. A supplied field replaces its default whole.
 #[derive(Clone, Default)]
 #[must_use]
 pub struct MockFields {
@@ -233,6 +235,7 @@ pub struct MockFields {
     pub(crate) tmpdir: Option<PathBuf>,
     pub(crate) platform: Option<String>,
     pub(crate) arch: Option<String>,
+    runtime: Option<Option<String>>,
     pub(crate) libc: Option<Option<Libc>>,
     pub(crate) uid: Option<Option<u32>>,
     pub(crate) time_zone: Option<String>,
@@ -317,6 +320,14 @@ impl MockFields {
     pub fn arch(self, arch: impl Into<String>) -> Self {
         Self {
             arch: Some(arch.into()),
+            ..self
+        }
+    }
+
+    /// Sets the Cargo target triple. `None` reports no runtime fact.
+    pub fn runtime(self, runtime: Option<String>) -> Self {
+        Self {
+            runtime: Some(runtime),
             ..self
         }
     }
@@ -435,6 +446,7 @@ pub struct MockProcess {
     tmpdir: PathBuf,
     platform: String,
     arch: String,
+    runtime: Option<String>,
     libc: Option<Libc>,
     uid: Option<u32>,
     time_zone: String,
@@ -548,6 +560,9 @@ pub fn mock_process(fields: MockFields) -> Arc<MockProcess> {
             .cwd
             .unwrap_or_else(|| MockCwd::Path(PathBuf::from(DEFAULT_CWD))),
         arch: fields.arch.unwrap_or_else(|| "x64".to_owned()),
+        runtime: fields
+            .runtime
+            .unwrap_or_else(|| Some(DEFAULT_RUNTIME.to_owned())),
         uid: fields.uid.unwrap_or(Some(DEFAULT_UID)),
         time_zone: fields.time_zone.unwrap_or_else(|| "UTC".to_owned()),
         program: fields
@@ -683,6 +698,9 @@ impl ProcessHandle for MockProcess {
     }
     fn arch(&self) -> String {
         self.arch.clone()
+    }
+    fn runtime(&self) -> Option<String> {
+        self.runtime.clone()
     }
     fn libc(&self) -> Option<Libc> {
         self.libc

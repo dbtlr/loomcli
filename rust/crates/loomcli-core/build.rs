@@ -1,4 +1,4 @@
-//! Bakes a build's release facts.
+//! Bakes a build's release facts and target triple.
 //!
 //! `cargo loom build` sets `LOOM_RELEASE` to the release facts as one line of JSON for the cargo
 //! invocation. This script validates the value and hands its known members to the crate as
@@ -12,6 +12,9 @@
 mod baked;
 
 fn main() {
+    if let Ok(target) = std::env::var("TARGET") {
+        println!("cargo:rustc-env=LOOM_BUILD_TARGET={target}");
+    }
     println!("cargo:rerun-if-env-changed=LOOM_RELEASE");
     let value = std::env::var("LOOM_RELEASE").unwrap_or_default();
     let facts = if value.is_empty() {

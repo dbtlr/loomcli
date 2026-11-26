@@ -97,6 +97,7 @@ Feature `help`; `help()`, with `.command(true)` and `.paging(true)`.
 Feature `version`; `version()`, with `.postfix(text)`.
 
 - **Operator:** `-V` and `--version` print `<app> v<version>` and the postfix, then exit 0.
+- **Author:** Set `.extended(true)` to include the channel, build, asset, installation method, runtime, and platform. See [extended version facts](../design/core-api.md#extended-version-facts).
 
 ## Output
 

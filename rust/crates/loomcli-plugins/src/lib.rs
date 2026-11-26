@@ -54,7 +54,8 @@ pub mod interaction;
     feature = "records",
     feature = "rule",
     feature = "step",
-    feature = "table"
+    feature = "table",
+    feature = "version-views"
 ))]
 // Each view reads the parts of the layout it draws with, so a build of fewer views leaves some unread.
 #[cfg_attr(
