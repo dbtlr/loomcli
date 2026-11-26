@@ -458,9 +458,12 @@ jobs:
       run:
         working-directory: rust
     steps:
+      # On a pull request the checkout is GitHub's merge commit, and depth 2 brings its first
+      # parent, the base branch the pull request merges into, for the behind list check.
       - name: Check out repository
         uses: actions/checkout@v7
         with:
+          fetch-depth: 2
           persist-credentials: false
 
       # rustup reads rust/rust-toolchain.toml from the working directory and installs the toolchain
@@ -472,6 +475,21 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: rust
+
+      # Rust work only shrinks rust/conformance/behind.json (ADR-0006), so a pull request may add
+      # or widen an entry only for a case whose files under conformance/expected/ it changes.
+      - name: Check that the behind list grows only for cases whose expected output changed
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" -ne 3 ]; then
+            echo "The checkout is not a merge commit, so the base branch's behind list is unknown." >&2
+            exit 1
+          fi
+          git show HEAD^1:rust/conformance/behind.json > "$RUNNER_TEMP/behind-base.json"
+          git diff --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed-paths"
+          cargo run -p conformance-harness -- --check-growth "$RUNNER_TEMP/behind-base.json" --changed "$RUNNER_TEMP/changed-paths"
 
       - name: Run the tests
         run: cargo test --workspace --all-features

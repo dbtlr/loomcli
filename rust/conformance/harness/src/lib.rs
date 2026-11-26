@@ -11,6 +11,7 @@ pub mod cases;
 pub mod compare;
 pub mod diff;
 pub mod exec;
+pub mod growth;
 pub mod report;
 pub mod runner;
 pub mod sandbox;
