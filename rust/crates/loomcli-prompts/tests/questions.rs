@@ -282,10 +282,18 @@ async fn an_unlinked_question_cannot_resolve_without_interaction() {
 #[tokio::test]
 async fn an_unavailable_question_escapes_control_characters_in_its_text() {
     let (code, mock) = run_setup("hostile", &[]).await;
-    assert_eq!(code, 1);
-    assert!(mock.stderr_text().contains(
-        "The question \"Na\\u001b[31mme\\u202e\" needs an interactive terminal, and this run is not interactive. Run \"setup\" at a terminal."
-    ));
+    assert_eq!(
+        (
+            code,
+            mock.stdout_text().as_str(),
+            mock.stderr_text().as_str()
+        ),
+        (
+            1,
+            "",
+            "The question \"Na\\u001b[31mme\\u202e\" needs an interactive terminal, and this run is not interactive. Run \"setup\" at a terminal.\n"
+        )
+    );
 }
 
 #[tokio::test]

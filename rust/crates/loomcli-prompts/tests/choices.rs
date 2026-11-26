@@ -13,7 +13,11 @@ mod support;
 
 use std::sync::{Arc, Mutex};
 
-use loomcli_core::{Application, Context, Error, Issue, Opt, ValidationContext, Validator};
+use loomcli_core::{
+    Application, Context, Error, Issue, Opt, ValidationContext, Validator, View, ViewContext,
+    override_view,
+};
+use loomcli_prompts::views::{QuestionFrame, question_frame};
 use loomcli_prompts::{
     Choice, ChoiceEntry, MultiselectSettings, SelectSettings, multiselect, multiselect_as, select,
 };
@@ -422,6 +426,98 @@ async fn linked_answers_run_their_input_validator_keep_rejected_selections_and_r
     assert_eq!(run(app, &mock).await, 0);
     assert_eq!(*answer.lock().unwrap(), [80.0]);
     assert!(mock.stderr_text().contains("Invalid: Use a port."));
+}
+
+/// An override of the question frame that draws the default frame and records each issue it
+/// carries, before the default view escapes the issue.
+fn recording_issues(issues: &Arc<Mutex<Vec<String>>>) -> loomcli_core::ViewOverride {
+    let issues = Arc::clone(issues);
+    override_view(
+        question_frame(),
+        View::new(move |data: &QuestionFrame, context: &ViewContext| {
+            if let QuestionFrame::List(list) = data
+                && let Some(issue) = &list.issue
+            {
+                let mut seen = issues.lock().unwrap();
+                if seen.last() != Some(issue) {
+                    seen.push(issue.clone());
+                }
+            }
+            question_frame().render(data, context)
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_rejected_choice_issue_escapes_control_characters_in_its_label() {
+    let issues = Arc::new(Mutex::new(Vec::new()));
+    let mock = terminal(vec![entry(&format!(
+        "{}{}{}{}",
+        key::TAB,
+        key::ENTER,
+        key::TAB,
+        key::ENTER
+    ))]);
+    let app: App = Application::new("linked")
+        .overrides([recording_issues(&issues)])
+        .option("port", Opt::string().multiple().validate(Port))
+        .action(|ctx: Context| async move {
+            let _: Vec<f64> = multiselect_as(
+                &ctx,
+                MultiselectSettings::new(
+                    "Ports",
+                    vec![Choice::new("bad".to_owned(), "In\u{1b}[31mva\u{202e}lid")],
+                )
+                .option("port"),
+            )
+            .await?;
+            Ok(())
+        });
+    assert_eq!(run(app, &mock).await, 0);
+    assert_eq!(
+        *issues.lock().unwrap(),
+        ["In\\u001b[31mva\\u202elid: Use a port."]
+    );
+}
+
+#[tokio::test]
+async fn supplied_values_in_the_selection_issues_escape_control_characters() {
+    let issues = Arc::new(Mutex::new(Vec::new()));
+    let mock = terminal_with(
+        MockFields::new().argv([
+            "--tag",
+            "gone\u{1b}[31m\u{202e}",
+            "--tag",
+            "b",
+            "--tag",
+            "c\u{1b}[1m\u{202e}",
+        ]),
+        200,
+        vec![entry(key::ENTER)],
+    );
+    let app: App = Application::new("linked")
+        .overrides([recording_issues(&issues)])
+        .option("tag", Opt::string().multiple())
+        .action(|ctx: Context| async move {
+            let _ = multiselect(
+                &ctx,
+                MultiselectSettings::new(
+                    "Tags",
+                    vec![Choice::text("b"), Choice::text("c\u{1b}[1m\u{202e}")],
+                )
+                .max(1)
+                .option("tag"),
+            )
+            .await?;
+            Ok(())
+        });
+    assert_eq!(run(app, &mock).await, 0);
+    assert_eq!(
+        *issues.lock().unwrap(),
+        [
+            "Cannot select \"gone\\u001b[31m\\u202e\". Choose from the list. Cannot select \"c\\u001b[1m\\u202e\": at most 1 can be selected. Deselect a choice to select it."
+        ]
+    );
 }
 
 #[tokio::test]
