@@ -1,5 +1,6 @@
 //! The input region one question draws in, and the typed questions: text, secret, and confirm.
 
+use crate::messages;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -249,7 +250,7 @@ pub(crate) fn region_closed() -> Error {
 /// The first issue's message, or the sentence for a rejection with none.
 pub(crate) fn first_issue(issues: &[Issue]) -> String {
     issues.first().map_or_else(
-        || "The answer is invalid.".to_owned(),
+        || messages::INVALID_ANSWER.to_owned(),
         |issue| issue.message.clone(),
     )
 }

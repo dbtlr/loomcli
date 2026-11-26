@@ -1,5 +1,6 @@
 //! The questions: text, secret, editor, confirm, select, and multiselect.
 
+use crate::messages;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -846,7 +847,7 @@ pub fn confirm<'a, I, R: 'static>(
             |raw, _| match raw.to_lowercase().as_str() {
                 "y" | "yes" => Ok((true, Some("yes".to_owned()))),
                 "n" | "no" => Ok((false, Some("no".to_owned()))),
-                _ => Err("Type y or n.".to_owned()),
+                _ => Err(messages::YES_OR_NO.to_owned()),
             },
         )
         .await
