@@ -49,6 +49,7 @@ logging = []
 manifest = ["manifest-extension"]
 manpage = ["markdown", "installation", "help-views"]
 mcp = ["mcp-extension", "installation", "dep:loomcli-mcp", "dep:tokio", "dep:loomcli-validators"]
+plain = []
 self-update = ["installation", "dep:loomcli-validators", "dep:reqwest", "dep:url", "dep:jiff", "dep:rustix"]
 # The service plugin declares status's json view from the formatter's views, and times its reads and its unload wait with tokio.
 service = ["installation", "format-views", "dep:tokio"]

@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use crate::controls::{PASTE_OFF, SHOW_CURSOR, controls};
 use crate::question::{Begun, Shown, region_closed, stopped};
 use crate::reader::Key;
-use crate::views::{EditorFrame, QuestionFrame};
+use crate::views::{AnsweredLine, EditorFrame, QuestionFrame, QuestionKind, answered_line};
 
 /// The operator's editor failed: it could not start, it exited with an error, or its file could not
 /// be written. Exit 1.
@@ -220,27 +220,37 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
         frame.issue = issue.clone();
         QuestionFrame::Editor(frame)
     };
+    let plain = draw.is_line();
     let outcome: Result<T, Error> = async {
+        let line = draw.start_line(context).await?;
         let mut file = PathBuf::new();
         let mut held: Vec<u8> = question.hint.clone().unwrap_or_default().into_bytes();
         let mut lost = false;
         let mut issue: Option<String> = None;
-        reader.start(context).await?;
-        draw.frame(context, frame(false, &issue)).await?;
+        if let Some(line) = &line {
+            line.editor_frame(frame(false, &None), false).await?;
+        } else {
+            reader.start(context).await?;
+            draw.frame(context, frame(false, &issue)).await?;
+        }
         // The question shows now, so keys left from the reads an earlier question took are not its
         // own.
         reader.discard_taken();
         loop {
-            let key = reader
-                .read(context, &region)
-                .await
-                .map_err(|stop| stopped(context, stop))?;
-            if key == Key::Eof {
-                context.cancel();
-                context.signal.throw_if_cancelled()?;
-            }
-            if key != Key::Enter {
-                continue;
+            if let Some(line) = &line {
+                line.read(context, &mut reader, &region, false).await?;
+            } else {
+                let key = reader
+                    .read(context, &region)
+                    .await
+                    .map_err(|stop| stopped(context, stop))?;
+                if key == Key::Eof {
+                    context.cancel();
+                    context.signal.throw_if_cancelled()?;
+                }
+                if key != Key::Enter {
+                    continue;
+                }
             }
             issue = None;
             let created = (|| -> io::Result<()> {
@@ -281,14 +291,23 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
                 )
                 .into());
             }
-            draw.frame(context, frame(true, &issue)).await?;
+            if let Some(line) = &line {
+                line.editor_frame(frame(true, &None), true).await?;
+            } else {
+                draw.frame(context, frame(true, &issue)).await?;
+            }
             reader.pause();
             draw.lend(true);
+            if let Some(line) = &line {
+                line.lend(true);
+            }
             let lent: Result<Option<ChildExit>, Error> = async {
-                context
-                    .out
-                    .draw(format!("{PASTE_OFF}{SHOW_CURSOR}").as_str(), &controls())
-                    .await?;
+                if !plain {
+                    context
+                        .out
+                        .draw(format!("{PASTE_OFF}{SHOW_CURSOR}").as_str(), &controls())
+                        .await?;
+                }
                 let token = CancellationToken::new();
                 let watcher = {
                     let token = token.clone();
@@ -353,10 +372,16 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
             }
             .await;
             draw.lend(false);
+            if let Some(line) = &line {
+                line.lend(false);
+            }
             let exit = lent?;
             context.signal.throw_if_cancelled()?;
             if region.is_cancelled() {
                 return Err(region_closed());
+            }
+            if plain {
+                reader.resume(context).await;
             }
             let status = match exit {
                 Some(ChildExit::Exited { code, .. }) => Some(code),
@@ -414,17 +439,31 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
                                 line.chars().any(|c| !c.is_whitespace() && c != '\u{feff}')
                             })
                             .map_or_else(String::new, |line| (*line).to_owned());
-                        answered = Some(Shown {
-                            value: Some(first),
-                            lines: Some(lines.len()),
-                        });
+                        if plain {
+                            let mut answered = AnsweredLine::new(question.message, Some(first))
+                                .kind(QuestionKind::Editor);
+                            answered.lines = Some(lines.len());
+                            context.out.draw(&answered, &answered_line()).await?;
+                        } else {
+                            answered = Some(Shown {
+                                value: Some(first),
+                                lines: Some(lines.len()),
+                            });
+                        }
                         return Ok(value);
                     }
                     Err(message) => issue = Some(message),
                 }
             }
-            reader.resume(context).await;
-            draw.frame(context, frame(false, &issue)).await?;
+            if let Some(line) = &line {
+                if let Some(issue) = issue.take() {
+                    line.reject(issue).await?;
+                }
+                line.editor_frame(frame(false, &None), false).await?;
+            } else {
+                reader.resume(context).await;
+                draw.frame(context, frame(false, &issue)).await?;
+            }
         }
     }
     .await;
@@ -434,7 +473,11 @@ pub(crate) async fn ask_editor<I, R: 'static, T>(
     if !released {
         reader.resume(context).await;
     }
-    let finished = draw.finish(context, answered, released).await;
+    let finished = if plain {
+        draw.finish_line(outcome.is_ok()).await
+    } else {
+        draw.finish(context, answered, released).await
+    };
     let value = outcome?;
     finished?;
     Ok(value)

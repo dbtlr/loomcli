@@ -599,6 +599,7 @@ async fn execute(
             }
         });
     let argv = invoked_by == InvokedBy::Argv;
+    let plain = argv && capture_failure.is_none() && marks::plain::chosen(application, &host.argv);
     // The installed theme, which the settled background resolves to a palette.
     let theme = application
         .plugins
@@ -639,6 +640,7 @@ async fn execute(
         palette,
         ViewRegistry::new(overrides),
         progress,
+        plain,
     ));
     entered.attach(&output);
     let log = Arc::new(match destination {

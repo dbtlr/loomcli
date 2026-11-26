@@ -457,7 +457,11 @@ impl Session {
     }
 
     /// Enters raw mode and registers the run's handlers that restore the terminal.
-    fn hold<I, R: 'static>(self: &Arc<Self>, context: &Context<I, R>) -> Result<(), Error> {
+    fn hold<I, R: 'static>(
+        self: &Arc<Self>,
+        context: &Context<I, R>,
+        plain: bool,
+    ) -> Result<(), Error> {
         if self.state().held {
             return Ok(());
         }
@@ -474,10 +478,12 @@ impl Session {
                     return;
                 }
                 let _ = session.stdin.set_raw_mode(false);
-                let stderr = host.stderr();
-                poll_once(stderr.write(PASTE_OFF.as_bytes()));
-                if host.terminal.stderr().is_tty {
-                    poll_once(stderr.write(SHOW_CURSOR.as_bytes()));
+                if !plain {
+                    let stderr = host.stderr();
+                    poll_once(stderr.write(PASTE_OFF.as_bytes()));
+                    if host.terminal.stderr().is_tty {
+                        poll_once(stderr.write(SHOW_CURSOR.as_bytes()));
+                    }
                 }
             });
             let session = Arc::clone(self);
@@ -487,7 +493,9 @@ impl Session {
                     return;
                 }
                 let _ = session.stdin.set_raw_mode(false);
-                poll_once(host.stderr().write(PASTE_OFF.as_bytes()));
+                if !plain {
+                    poll_once(host.stderr().write(PASTE_OFF.as_bytes()));
+                }
             });
             let session = Arc::clone(self);
             let host = Arc::clone(&context.host);
@@ -496,7 +504,9 @@ impl Session {
                     return;
                 }
                 let _ = session.stdin.set_raw_mode(true);
-                poll_once(host.stderr().write(PASTE_ON.as_bytes()));
+                if !plain {
+                    poll_once(host.stderr().write(PASTE_ON.as_bytes()));
+                }
             });
             vec![shutdown, suspend, resume]
         };
@@ -506,7 +516,7 @@ impl Session {
             state.paused = false;
             state.interrupted = false;
             state.registrations = registrations;
-            state.controls = true;
+            state.controls = !plain;
         }
         Ok(())
     }
@@ -526,20 +536,25 @@ pub(crate) struct Reader {
     closed: Arc<AtomicBool>,
     abandoned: Arc<Mutex<bool>>,
     last_read: Option<u64>,
+    plain: bool,
 }
 
 impl Reader {
     /// Opens a question's reading: raw mode holds from here while any question of the run is open.
-    pub(crate) fn open<I, R: 'static>(context: &Context<I, R>) -> Result<Reader, Error> {
+    pub(crate) fn open<I, R: 'static>(
+        context: &Context<I, R>,
+        plain: bool,
+    ) -> Result<Reader, Error> {
         context.signal.throw_if_cancelled()?;
         let session = Session::of(&context.host);
-        session.hold(context)?;
+        session.hold(context, plain)?;
         session.state().readers += 1;
         Ok(Reader {
             session,
             closed: Arc::new(AtomicBool::new(false)),
             abandoned: Arc::new(Mutex::new(false)),
             last_read: None,
+            plain,
         })
     }
 
@@ -621,10 +636,12 @@ impl Reader {
             state.paused = false;
         }
         let _ = self.session.stdin.set_raw_mode(true);
-        let _ = context
-            .out
-            .draw(format!("{HIDE_CURSOR}{PASTE_ON}").as_str(), &controls())
-            .await;
+        if !self.plain {
+            let _ = context
+                .out
+                .draw(format!("{HIDE_CURSOR}{PASTE_ON}").as_str(), &controls())
+                .await;
+        }
     }
 
     /// The next key, reading stdin when none is queued. A run's cancellation, the close of the

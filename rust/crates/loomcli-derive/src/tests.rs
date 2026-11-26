@@ -222,7 +222,7 @@ fn a_passthrough_field_rejects_facts_other_than_description_at_the_key() {
              `short_only`, `aliases`, `hidden`, `deprecated`, `control`, `count`, `polarity`, \
              `validate`, `validate_omitted`, `default`, `implied`, `required`, `non_interactive`, \
              `env`, `env_delimiter`, `env_allow_empty`, `extensions`, `stdin`, `min`, `max`, \
-             `interaction`, `color`, `verbose`, `quiet`, `background`, `builder`",
+             `interaction`, `color`, `plain`, `verbose`, `quiet`, `background`, `builder`",
             "unknown",
         )
     );
@@ -725,5 +725,46 @@ fn a_group_member_that_names_a_declared_name_or_no_field_expands() {
     ] {
         let input: DeriveInput = syn::parse_str(source).expect("the source is a struct");
         assert!(crate::inputs::expand(&input).is_ok(), "{source}");
+    }
+}
+
+#[test]
+fn a_plain_option_takes_only_a_positive_long_spelling_and_no_other_source() {
+    for (attribute, message, key) in [
+        (
+            "plain, polarity = \"negative\"",
+            "a plain option takes positive polarity",
+            "polarity",
+        ),
+        (
+            "plain, polarity = \"both\"",
+            "a plain option takes positive polarity",
+            "polarity",
+        ),
+        (
+            "plain, short = 'p'",
+            "a plain option takes no short spelling",
+            "short",
+        ),
+        (
+            "plain, env = \"FLAT\"",
+            "a plain option takes no environment binding",
+            "env",
+        ),
+        (
+            "plain, color",
+            "a plain option takes no color or interaction mark",
+            "plain",
+        ),
+        (
+            "plain, interaction",
+            "a plain option takes no color or interaction mark",
+            "plain",
+        ),
+    ] {
+        assert_eq!(
+            inputs_fault(&format!("struct I {{ #[option({attribute})] flat: bool }}")),
+            pair(message, key),
+        );
     }
 }

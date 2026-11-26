@@ -68,9 +68,10 @@ pub(crate) fn global_site(name: &str, decl: &OptionDecl) -> InputSite {
 }
 
 /// The run-wide marks, each with the rule a second marked option breaks.
-const MARKS: [(&str, DiagnosticRule); 5] = [
+const MARKS: [(&str, DiagnosticRule); 6] = [
     ("interaction", rules::INTERACTION_MARK),
     ("color", rules::COLOR_MARK),
+    ("plain", rules::PLAIN_MARK),
     ("verbose", rules::VERBOSE_MARK),
     ("quiet", rules::QUIET_MARK),
     ("background", rules::BACKGROUND_MARK),

@@ -367,6 +367,7 @@ fn option_node(option: &OptionInput, table: &Table) -> OptionNode {
             color: config.color,
             interaction: config.interaction,
             negative,
+            plain: config.plain,
             polarity: config.polarity,
             schema: None,
             kind: BooleanType::Boolean,

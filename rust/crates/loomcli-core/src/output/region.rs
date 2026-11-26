@@ -116,7 +116,7 @@ pub(crate) struct RegionCell {
 /// What changes as a region draws, reports, and closes.
 #[derive(Default)]
 struct RegionState {
-    /// Whether the region has opened; a live input region waits while another one is open.
+    /// Whether the region has opened; a terminal input region waits while another one is open.
     opened: bool,
     closed_by: Option<RegionCloser>,
     /// Whether the close has run its handlers, after which the region takes no frame.
@@ -230,14 +230,17 @@ impl Region {
             });
             regions.open.push(Arc::clone(&cell));
             let mut entered = false;
-            if live && input && regions.input_owner.is_some() {
+            let takes_turn = input && output.terminal_input_regions();
+            if takes_turn && regions.input_owner.is_some() {
                 regions.waiting.push_back(cell.id);
-            } else if cell.start() {
-                if input {
+            } else {
+                if takes_turn {
                     regions.input_owner = Some(cell.id);
                 }
-                output.screen_open(cell.id, input);
-                entered = true;
+                if cell.start() {
+                    output.screen_open(cell.id, input);
+                    entered = true;
+                }
             }
             (
                 Region {
@@ -270,9 +273,9 @@ impl Region {
         }
     }
 
-    /// Whether core draws this region's frames: stderr is a terminal, and the region takes input
-    /// or the run is not quiet and the terminal redraws in place. It does not change while the
-    /// region is open.
+    /// Whether core draws this region's frames. On a terminal stderr, an input region draws
+    /// when the terminal moves its cursor. Other regions draw when the run is not quiet and the
+    /// terminal redraws in place. This value is fixed at opening.
     #[must_use]
     pub fn live(&self) -> bool {
         self.cell.live
@@ -309,8 +312,8 @@ impl Region {
     /// inside the call with stderr's view context and its live `columns`; its marked text resolves
     /// under stderr's rendering policy with its control sequences kept, and no newline is added.
     /// The returned future resolves once the frame is written. A region that is not live calls no
-    /// view and writes nothing; once the region has closed, the call does nothing. A view's `Err`
-    /// is this call's.
+    /// view and writes nothing. A terminal input region still waits for its turn to open.
+    /// Once the region has closed, the call does nothing. A view's `Err` is this call's.
     pub fn draw<D: ?Sized + Sync + 'static, V: WholeView<D>>(
         &self,
         data: &D,
@@ -332,8 +335,18 @@ impl Region {
 
     fn decide_draw<D: ?Sized + 'static, V: WholeView<D>>(&self, data: &D, view: &V) -> DrawStep {
         self.settle_cancellation();
-        if !self.cell.live || self.cell.state().finished {
-            return DrawStep::Done(Ok(()));
+        {
+            let state = self.cell.state();
+            if state.finished {
+                return DrawStep::Done(Ok(()));
+            }
+            if !self.cell.live {
+                return if state.opened {
+                    DrawStep::Done(Ok(()))
+                } else {
+                    DrawStep::Wait(self.cell.opened_signal.subscribe())
+                };
+            }
         }
         let (identity, view) = view.whole();
         let frame = match self.output.frame(identity, view, data) {
@@ -503,11 +516,9 @@ fn release(regions: &mut Regions, cell: &Arc<RegionCell>) -> CloseWork {
                 .map(Arc::clone)
         });
         if let Some(next) = next {
+            regions.input_owner = Some(next.id);
             if next.start() {
                 work.live += 1;
-                if next.input {
-                    regions.input_owner = Some(next.id);
-                }
                 work.ops.push(ScreenOp::Open(next.id, next.input));
                 if let Some(pending) = next.state().pending.take() {
                     work.ops.push(ScreenOp::Draw(next.id, pending));

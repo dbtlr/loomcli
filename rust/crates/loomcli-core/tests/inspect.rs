@@ -73,7 +73,7 @@ fn root_json(application: &Application, field: &str) -> String {
 const JSONKIT: &str = concat!(
     r#"{"configuration":null,"globals":["#,
     r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--file","name":"file","short":"-f","envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"},"#,
-    r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--quiet","name":"quiet","short":"-q","color":false,"interaction":false,"negative":null,"polarity":"positive","schema":null,"type":"boolean"}"#,
+    r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--quiet","name":"quiet","short":"-q","color":false,"interaction":false,"negative":null,"plain":false,"polarity":"positive","schema":null,"type":"boolean"}"#,
     r#"],"name":"jsonkit","root":{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":["#,
     r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[{"extensions":{},"name":"path","required":true,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"variadic":false}],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"get","needsTerminal":false,"options":[],"path":["get"],"result":null},"#,
     r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[{"extensions":{},"name":"path","required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"variadic":false}],"children":[],"extensions":{},"hasAction":true,"hidden":false,"name":"keys","needsTerminal":false,"options":[],"path":["keys"],"result":null},"#,
@@ -122,7 +122,7 @@ fn reports_the_version_and_every_declared_description_and_the_root_reports_the_g
             r#"{"aliases":[],"control":false,"description":"The document to read.","env":[],"extensions":{},"hidden":false,"long":"--file","name":"file","short":"-f","envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"}"#,
             r#"],"name":"described","root":{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":["#,
             r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[{"description":"The path to read.","extensions":{},"name":"path","required":true,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"variadic":false}],"children":[],"description":"Reads one value.","extensions":{},"hasAction":true,"hidden":false,"name":"get","needsTerminal":false,"options":["#,
-            r#"{"aliases":[],"control":false,"description":"Prints the value unquoted.","env":[],"extensions":{},"hidden":false,"long":"--raw","name":"raw","short":null,"color":false,"interaction":false,"negative":null,"polarity":"positive","schema":null,"type":"boolean"}"#,
+            r#"{"aliases":[],"control":false,"description":"Prints the value unquoted.","env":[],"extensions":{},"hidden":false,"long":"--raw","name":"raw","short":null,"color":false,"interaction":false,"negative":null,"plain":false,"polarity":"positive","schema":null,"type":"boolean"}"#,
             r#"],"path":["get"],"result":null}],"description":"Reads a JSON document.","extensions":{},"hasAction":true,"hidden":false,"name":null,"needsTerminal":false,"options":[],"path":[],"result":null},"version":"1.2.0"}"#,
         )
     );
@@ -152,7 +152,7 @@ fn reports_hidden_and_deprecated_on_every_command_and_option_and_neither_on_the_
         concat!(
             r#"{"configuration":null,"globals":["#,
             r#"{"aliases":[],"control":false,"deprecated":"Use --path instead.","env":[],"extensions":{},"hidden":false,"long":"--file","name":"file","short":"-f","envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"},"#,
-            r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":true,"long":"--quiet","name":"quiet","short":null,"color":false,"interaction":false,"negative":null,"polarity":"positive","schema":null,"type":"boolean"}"#,
+            r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":true,"long":"--quiet","name":"quiet","short":null,"color":false,"interaction":false,"negative":null,"plain":false,"polarity":"positive","schema":null,"type":"boolean"}"#,
             r#"],"name":"listing","root":{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":["#,
             r#"{"optionGroups":[],"passthrough":null,"aliases":[],"arguments":[],"children":[],"deprecated":"Use get instead.","extensions":{},"hasAction":true,"hidden":false,"name":"fetch","needsTerminal":false,"options":["#,
             r#"{"aliases":[],"control":false,"deprecated":"Use --plain instead.","env":[],"extensions":{},"hidden":true,"long":"--raw","name":"raw","short":null,"envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"}"#,
@@ -246,9 +246,9 @@ fn reports_the_accepted_spellings_of_each_polarity_and_of_a_short_only_option() 
     assert_eq!(
         root_json(&application, "options"),
         concat!(
-            r#"[{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--total","name":"total","short":"-t","color":false,"interaction":false,"negative":"--no-total","polarity":"both","schema":null,"type":"boolean"},"#,
-            r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--color","name":"color","short":null,"color":false,"interaction":false,"negative":null,"polarity":"positive","schema":null,"type":"boolean"},"#,
-            r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":null,"name":"cache","short":null,"color":false,"interaction":false,"negative":"--no-cache","polarity":"negative","schema":null,"type":"boolean"},"#,
+            r#"[{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--total","name":"total","short":"-t","color":false,"interaction":false,"negative":"--no-total","plain":false,"polarity":"both","schema":null,"type":"boolean"},"#,
+            r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--color","name":"color","short":null,"color":false,"interaction":false,"negative":null,"plain":false,"polarity":"positive","schema":null,"type":"boolean"},"#,
+            r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":null,"name":"cache","short":null,"color":false,"interaction":false,"negative":"--no-cache","plain":false,"polarity":"negative","schema":null,"type":"boolean"},"#,
             r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":null,"name":"mode","short":"-m","envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"}]"#,
         )
     );
@@ -266,7 +266,7 @@ fn reads_each_spelling_role_from_the_table_including_a_name_that_begins_with_no(
     assert_eq!(
         root_json(&application, "options"),
         concat!(
-            r#"[{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--no-color","name":"no-color","short":"-n","color":false,"interaction":false,"negative":"--no-no-color","polarity":"both","schema":null,"type":"boolean"},"#,
+            r#"[{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--no-color","name":"no-color","short":"-n","color":false,"interaction":false,"negative":"--no-no-color","plain":false,"polarity":"both","schema":null,"type":"boolean"},"#,
             r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":null,"name":"field","short":"-F","envDelimiter":null,"implied":null,"multiple":true,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"background":false,"envAllowEmpty":false,"type":"string"}]"#,
         )
     );

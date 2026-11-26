@@ -14,9 +14,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::controls::{HIDE_CURSOR, PASTE_OFF, SHOW_CURSOR, controls, poll_once};
 use crate::line::TypedLine;
+use crate::lines::LineAsking;
 use crate::reader::{Key, Reader, ReaderCloser, Stop};
 use crate::views::{
-    AnsweredLine, CancelledLine, QuestionFrame, QuestionKind, QuestionViews, TypedFrame,
+    AnsweredLine, CancelledLine, QuestionFrame, QuestionKind, QuestionLine, QuestionViews,
+    TypedFrame,
 };
 
 /// The answer a question's last line shows: the display string, `None` for a secret, and an
@@ -40,6 +42,7 @@ pub(crate) struct Asking {
     message: String,
     kind: QuestionKind,
     views: QuestionViews,
+    plain: Option<LineAsking>,
     hidden: bool,
     lent: Arc<Mutex<bool>>,
     unhide: Option<Registration>,
@@ -70,16 +73,21 @@ impl Drop for Asking {
         // A question still waiting for its turn hid no cursor; while another question holds
         // stdin, it leaves the terminal's controls to that one.
         let mut closing = vec![ended];
-        if self.hidden || released {
+        if self.plain.is_none() && (self.hidden || released) {
             closing.push((self.draw_controls)(released));
         }
         for future in closing {
-            if let Some(rest) = poll_first(future) {
-                if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-                    drop(runtime.spawn(rest));
-                }
-            }
+            background_draw(future);
         }
+    }
+}
+
+/// Starts a close or resume draw immediately, so its write takes the current place in stderr's order.
+pub(crate) fn background_draw(future: impl Future<Output = ()> + Send + 'static) {
+    if let Some(rest) = poll_first(Box::pin(future))
+        && let Ok(runtime) = tokio::runtime::Handle::try_current()
+    {
+        drop(runtime.spawn(rest));
     }
 }
 
@@ -100,9 +108,12 @@ impl Asking {
         message: &str,
         kind: QuestionKind,
         reader: &Reader,
+        region: Region,
     ) -> Asking {
         let views = QuestionViews::new();
-        let region = context.out.region(RegionOptions::new().input());
+        let plain =
+            (!region.live()).then(|| LineAsking::new(context.out.clone(), message.to_owned()));
+        let plain_on_close = plain.clone();
         let cancelled = Arc::clone(&views.cancelled);
         let owned = message.to_owned();
         let abandoned = reader.abandon_flag();
@@ -114,7 +125,11 @@ impl Asking {
             if closer == Some(RegionCloser::End) && !gone.load(Ordering::SeqCst) {
                 return;
             }
-            drop(region.draw(&CancelledLine::new(owned), &*cancelled));
+            if let Some(plain) = &plain_on_close {
+                plain.leave();
+            } else {
+                drop(region.draw(&CancelledLine::new(owned), &*cancelled));
+            }
             if closer == Some(RegionCloser::Cancellation) {
                 // The terminal is cooked again at the moment of the abort.
                 session.release();
@@ -139,6 +154,7 @@ impl Asking {
             message: message.to_owned(),
             kind,
             views,
+            plain,
             hidden: false,
             lent: Arc::new(Mutex::new(false)),
             unhide: None,
@@ -152,6 +168,43 @@ impl Asking {
     /// The token cancelled when the region closes.
     pub(crate) fn signal(&self) -> CancellationToken {
         self.region.signal()
+    }
+
+    /// The line-based question, once its turn has come, or no line reader for a live region.
+    pub(crate) async fn start_line<I, R: 'static>(
+        &mut self,
+        context: &Context<I, R>,
+    ) -> Result<Option<LineAsking>, Error> {
+        let Some(line) = self.plain.clone() else {
+            return Ok(None);
+        };
+        if let Err(closed) = line.start(&self.region).await {
+            context.signal.throw_if_cancelled()?;
+            return Err(closed);
+        }
+        let resumed = line.clone();
+        self.unhide = Some(context.on_resume(move || resumed.resume()));
+        Ok(Some(line))
+    }
+
+    /// Ends a line-based question. The editor alone writes an answered line.
+    pub(crate) async fn finish_line(mut self, outcome: bool) -> Result<(), Error> {
+        self.finished = true;
+        if let Some(resume) = self.unhide.take() {
+            resume.remove();
+        }
+        if !outcome && let Some(line) = &self.plain {
+            line.leave();
+        }
+        if self.region.closed_by().is_none() {
+            self.region.end(EndState::Ended, None).await?;
+        }
+        Ok(())
+    }
+
+    /// Whether this question appends its pieces.
+    pub(crate) fn is_line(&self) -> bool {
+        self.plain.is_some()
     }
 
     /// Draws a frame, hiding the cursor after the first.
@@ -268,8 +321,17 @@ pub(crate) fn begin<I, R: 'static>(
     message: &str,
     kind: QuestionKind,
 ) -> Result<Begun, Error> {
-    let reader = Reader::open(context)?;
-    let draw = Asking::open(context, message, kind, &reader);
+    let region = context.out.region(RegionOptions::new().input());
+    let reader = match Reader::open(context, !region.live()) {
+        Ok(reader) => reader,
+        Err(error) => {
+            background_draw(async move {
+                let _ = region.end(EndState::Ended, None).await;
+            });
+            return Err(error);
+        }
+    };
+    let draw = Asking::open(context, message, kind, &reader, region);
     Ok(Begun { reader, draw })
 }
 
@@ -281,13 +343,12 @@ pub(crate) enum TypedKind {
     Confirm,
 }
 
-fn confirm_legend(hint: Option<&str>) -> String {
+fn confirm_legend(hint: Option<&str>) -> &'static str {
     match hint {
-        Some("yes") => "[Y/n]",
-        Some("no") => "[y/N]",
-        _ => "[y/n]",
+        Some("yes") => "Y/n",
+        Some("no") => "y/N",
+        _ => "y/n",
     }
-    .to_owned()
 }
 
 /// What a typed question asks: its message, kind, hint, and link.
@@ -310,6 +371,53 @@ pub(crate) async fn ask_typed<I, R: 'static, T>(
         mut reader,
         mut draw,
     } = begun;
+    if draw.is_line() {
+        let outcome = async {
+            let Some(line) = draw.start_line(context).await? else {
+                return Err(region_closed());
+            };
+            let piece = match question.kind {
+                TypedKind::Text => QuestionLine::Text {
+                    message: question.message.to_owned(),
+                    hint: question.hint.clone(),
+                },
+                TypedKind::Secret => QuestionLine::Secret(question.message.to_owned()),
+                TypedKind::Confirm => QuestionLine::Confirm {
+                    message: question.message.to_owned(),
+                    hint: confirm_legend(question.hint.as_deref()).to_owned(),
+                },
+            };
+            let region = draw.signal();
+            let validation = question_validation_context(context, question.link, question.message);
+            let secret = question.kind == TypedKind::Secret;
+            loop {
+                line.print(piece.clone()).await?;
+                let typed = line.read(context, &mut reader, &region, secret).await?;
+                let raw = if typed.is_empty() {
+                    question.hint.as_deref().unwrap_or_default()
+                } else {
+                    &typed
+                };
+                let judged = judge(raw, &validation);
+                context.signal.throw_if_cancelled()?;
+                match judged {
+                    Ok((value, _)) => {
+                        if secret {
+                            reader.discard();
+                        }
+                        return Ok(value);
+                    }
+                    Err(issue) => line.reject(issue).await?,
+                }
+            }
+        }
+        .await;
+        reader.close();
+        let finished = draw.finish_line(outcome.is_ok()).await;
+        let value = outcome?;
+        finished?;
+        return Ok(value);
+    }
     let kind = match question.kind {
         TypedKind::Text => QuestionKind::Text,
         TypedKind::Secret => QuestionKind::Secret,
@@ -332,7 +440,7 @@ pub(crate) async fn ask_typed<I, R: 'static, T>(
         );
         frame.cursor = Some(if secret { 0 } else { line.cursor });
         frame.hint = if question.kind == TypedKind::Confirm {
-            Some(confirm_legend(question.hint.as_deref()))
+            Some(format!("[{}]", confirm_legend(question.hint.as_deref())))
         } else {
             question.hint.clone()
         };

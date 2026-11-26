@@ -230,6 +230,13 @@ pub(crate) const OPTIONAL_ARGUMENT_LAST: DiagnosticRule = diagnostic_rule(
     "Bare words fill the arguments in order, and an operator leaves out optional arguments from the end of the line. A required argument after an optional one would leave the parser unable to tell which of the two a lone bare word fills, and one after an argument required only when input is not interactive would keep that argument's question from ever being asked at a terminal. A content argument whose min is positive counts as required here, because it must receive a source.",
 );
 
+/// `@loomcli/core/plain-mark`: Invalid plain mark.
+pub(crate) const PLAIN_MARK: DiagnosticRule = diagnostic_rule(
+    "@loomcli/core/plain-mark",
+    "Invalid plain mark",
+    "One Boolean global option may carry the spelling that turns the run's plain switch on. Core reads it from argv right after host capture, before anything else prints, so it takes no second source, and ACCESSIBLE is the environment's word for the switch.",
+);
+
 /// `@loomcli/core/plugin-installed-twice`: Plugin installed twice.
 pub(crate) const PLUGIN_INSTALLED_TWICE: DiagnosticRule = diagnostic_rule(
     "@loomcli/core/plugin-installed-twice",
@@ -485,6 +492,7 @@ pub(crate) const ALL: &[DiagnosticRule] = &[
     OPTION_DECLARED_TWICE,
     OPTION_GROUP,
     OPTIONAL_ARGUMENT_LAST,
+    PLAIN_MARK,
     PLUGIN_INSTALLED_TWICE,
     PLUGIN_LOADER_FAILED,
     PORTABLE_NAME,

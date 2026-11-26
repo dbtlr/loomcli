@@ -286,7 +286,7 @@ pub struct ContentOptionNode {
 }
 
 /// A Boolean option. Keys, in order: the shared keys through `short`, then `color`, `interaction`,
-/// `negative`, `polarity`, `schema`, `type`.
+/// `negative`, `plain`, `polarity`, `schema`, `type`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
@@ -321,6 +321,8 @@ pub struct BooleanOptionNode {
     pub interaction: bool,
     /// The negative spelling.
     pub negative: Option<String>,
+    /// Whether its spellings turn the run's plain switch on.
+    pub plain: bool,
     /// Its polarity.
     pub polarity: crate::inputs::Polarity,
     /// Always `null`.

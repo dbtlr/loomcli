@@ -51,7 +51,7 @@ use proc_macro::TokenStream;
 /// | `env`, `env_delimiter`, `env_allow_empty` | `env = "ACME_LOG"` or `env = ["A", "B"]` | option |
 /// | `extensions` | `extensions = [HELP_INPUT.value(…)]` | both |
 /// | `stdin`, `min`, `max` | flag; `min = 1` | content input |
-/// | `interaction`, `color`, `verbose`, `quiet`, `background` | flags | global option |
+/// | `interaction`, `color`, `plain`, `verbose`, `quiet`, `background` | flags | global option |
 /// | `builder` | `builder = document_input()`, a shared `ContentOpt` holding every option fact | content option |
 ///
 /// Beside a shared `builder`, a field states only `name` and, on a `Vec`, `required`, `min`, and

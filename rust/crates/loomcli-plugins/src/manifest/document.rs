@@ -116,6 +116,7 @@ fn option_entry(node: &OptionNode) -> Value {
             put("polarity", serialized(&node.polarity));
             put("interaction", json!(node.interaction));
             put("color", json!(node.color));
+            put("plain", json!(node.plain));
             put("schema", schema_of(&node.schema));
             put("env", strings(&node.env));
         }

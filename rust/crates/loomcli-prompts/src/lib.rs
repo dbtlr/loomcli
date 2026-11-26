@@ -14,6 +14,7 @@
 mod controls;
 mod editor;
 mod line;
+mod lines;
 mod link;
 mod list;
 mod messages;
