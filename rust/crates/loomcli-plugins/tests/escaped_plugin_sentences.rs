@@ -31,8 +31,9 @@ use serde_json::json;
 
 type App = Application<NoInputs, NoResult, Done>;
 
-/// Runs an application whose option `fla<U+202E>g` reads `flag` from `.app.json`, with `-L`.
-async fn config_run(workspace: &Workspace) -> (u8, String) {
+/// Runs an application whose option `fla<U+202E>g` reads `flag` from `.app.json`, with `-L`, and
+/// returns its exit code, stdout, and stderr.
+async fn config_run(workspace: &Workspace) -> (u8, String, String) {
     let config = configuration::<Loose>(Settings::default().apply::<Loose>(None));
     let app: App = Application::new("app")
         .plugins([loomcli_core::AnyPlugin::from(loud()), config.plugin.into()])
@@ -50,7 +51,7 @@ async fn config_run(workspace: &Workspace) -> (u8, String) {
     let code = app
         .run(RunOptions::new().process(Arc::clone(&process) as Arc<dyn ProcessHandle>))
         .await;
-    (code.get(), process.stderr_text())
+    (code.get(), process.stdout_text(), process.stderr_text())
 }
 
 #[tokio::test]
@@ -61,6 +62,7 @@ async fn the_configuration_plugins_lines_escape_the_spelling_of_the_option_a_fil
         config_run(&workspace).await,
         (
             0,
+            String::new(),
             "› Ignored option \"--fla\\u202eg\" from flag in .app.json: Use true or false.\n"
                 .to_owned()
         )
