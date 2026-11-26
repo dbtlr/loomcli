@@ -31,7 +31,7 @@ use crate::diagnostics::{
     rules::{RESULT_TRANSFORM, RESULT_TRANSFORM_CORRECTION},
 };
 use crate::failures::{Error, InternalError, ResultError, ResultFault};
-use crate::host::{Host, OutputStream, ShutdownStdout};
+use crate::host::{Host, OutputStream, ShutdownOutput};
 use crate::signals::{CancellationSource, RunSignal, ShutdownCause};
 use crate::style::{
     Capabilities, Palette, Renderer, RenderingPolicy, Style, capabilities, effective_columns,
@@ -43,6 +43,7 @@ use super::region::{CloseWork, ProgressEvent, RegionCloser, Regions, ScreenOp};
 use super::registry::ViewRegistry;
 use super::results::{ResultTransform, ResultView, RowSource, RowViewEntry};
 use super::screen::{Frame, Measure, Screen, ends_line};
+use super::streamed::{Change, OpenMessage, OpenMessages, Piece, StreamedMessage};
 use super::view::{IncompleteResult, incomplete_result, lanes};
 use super::{DeclaredView, Message, RowView, View, ViewContext, WholeView};
 use super::{LogEvent, messages};
@@ -109,7 +110,7 @@ pub(crate) fn is_echo(error: &Error) -> bool {
         .is_some_and(|foreign| foreign.is::<CancellationEcho>())
 }
 
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(super) fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -296,6 +297,7 @@ pub(crate) struct Output {
     stdout: Destination,
     stderr: Destination,
     held: Mutex<Vec<IncompleteResult>>,
+    pub(super) streamed: OpenMessages,
     log_view_errors: Mutex<Vec<Error>>,
     route: Mutex<Vec<String>>,
     pipe_closed: AtomicBool,
@@ -311,6 +313,9 @@ pub(crate) struct Output {
     send_turn: tokio::sync::Mutex<()>,
     /// How many sequences hold a place in stdout's order.
     stdout_sequences: AtomicUsize,
+    stderr_sequences: AtomicUsize,
+    stdout_print: AtomicBool,
+    stderr_print: AtomicBool,
     /// The stack of open live regions as stderr shows it.
     screen: Mutex<Screen>,
     queue: Mutex<WriteQueue>,
@@ -349,7 +354,7 @@ struct WriteQueue {
     detached: VecDeque<u64>,
     draining: bool,
     end: Option<ShutdownCause>,
-    shutdown_stdout: Option<ShutdownStdout>,
+    shutdown_output: Option<ShutdownOutput>,
     post_end_log: bool,
 }
 
@@ -369,12 +374,18 @@ impl WriteQueue {
 
 struct WriteWork {
     stream: Stream,
+    held_line: Option<u64>,
     job: WriteJob,
     close: Option<CloseWork>,
 }
 
 enum WriteJob {
     Text(String),
+    MessageRow {
+        id: u64,
+        change: Change,
+        text: String,
+    },
     Screen(Vec<ScreenOp>),
     Reclaim,
     Parts(VecDeque<(Stream, String)>),
@@ -397,14 +408,14 @@ impl Drop for WritePlace<'_> {
 /// that keeps its runtime alive after the exit event.
 struct EndDrain<'a> {
     output: &'a Output,
-    stdout: Option<ShutdownStdout>,
+    shutdown: Option<ShutdownOutput>,
 }
 
 impl Drop for EndDrain<'_> {
     fn drop(&mut self) {
         {
             let mut queue = locked(&self.output.queue);
-            queue.shutdown_stdout = self.stdout.take();
+            queue.shutdown_output = self.shutdown.take();
             queue.draining = false;
         }
         self.output.end_flushed.notify_waiters();
@@ -450,16 +461,74 @@ impl Measure for StderrMeasure {
     fn column(&self, shown: &str, column: usize) -> usize {
         crate::style::next_column(shown, self.columns, column)
     }
+
+    fn fits(&self, marked: &str) -> bool {
+        self.rows(marked) == 0
+    }
+}
+
+/// The terminal's order while a print line is unfinished.
+struct PrintTurn<'a> {
+    held: &'a AtomicBool,
+    _turn: tokio::sync::MutexGuard<'a, ()>,
+    _stdout: Option<tokio::sync::MutexGuard<'a, ()>>,
+}
+
+impl Drop for PrintTurn<'_> {
+    fn drop(&mut self) {
+        self.held.store(false, Ordering::SeqCst);
+    }
+}
+
+pub(super) struct StreamWriter<'a> {
+    output: &'a Output,
+    id: u64,
+    stream: Stream,
+    line: Option<PrintTurn<'a>>,
+}
+
+impl StreamWriter<'_> {
+    pub(super) async fn write(&mut self, message: &OpenMessage) -> Result<(), Error> {
+        let output = self.output;
+        let stream = output.lane(self.stream);
+        while let Some((place, print)) = message.next(|piece, held_line| {
+            let (job, print) = message_job(self.id, piece);
+            let place = output.track_held(stream, job, held_line);
+            (place.number, (place, print))
+        }) {
+            match (self.line.is_some(), print) {
+                (false, Some(true)) => {
+                    self.line = Some(output.hold_print(stream, place.number).await);
+                    output.deliver(place).await?;
+                }
+                (true, Some(open)) => {
+                    output.deliver(place).await?;
+                    if !open {
+                        self.line = None;
+                        message.release_line();
+                    }
+                }
+                _ => output.write_place(stream, place).await?,
+            }
+        }
+        Ok(())
+    }
+}
+
+fn message_job(id: u64, Piece { text, change }: Piece) -> (WriteJob, Option<bool>) {
+    match change {
+        Change::Line => (WriteJob::Text(text), None),
+        Change::Print { open } => (WriteJob::Text(text), Some(open)),
+        Change::Row(_) | Change::DropRow => (WriteJob::MessageRow { id, change, text }, None),
+    }
 }
 
 /// Counts one place a stdout sequence holds while it lasts.
-struct SequencePlace<'a>(Option<&'a AtomicUsize>);
+struct SequencePlace<'a>(&'a AtomicUsize);
 
 impl Drop for SequencePlace<'_> {
     fn drop(&mut self) {
-        if let Some(count) = self.0 {
-            count.fetch_sub(1, Ordering::SeqCst);
-        }
+        self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -516,6 +585,7 @@ impl Output {
             verbosity: AtomicI8::new(0),
             signal,
             held: Mutex::new(Vec::new()),
+            streamed: OpenMessages::default(),
             log_view_errors: Mutex::default(),
             route: Mutex::new(Vec::new()),
             pipe_closed: AtomicBool::new(false),
@@ -525,6 +595,9 @@ impl Output {
             coordinated,
             send_turn: tokio::sync::Mutex::new(()),
             stdout_sequences: AtomicUsize::new(0),
+            stderr_sequences: AtomicUsize::new(0),
+            stdout_print: AtomicBool::new(false),
+            stderr_print: AtomicBool::new(false),
             screen: Mutex::new(Screen::default()),
             queue: Mutex::new(WriteQueue::default()),
             end_flushed: tokio::sync::Notify::new(),
@@ -596,6 +669,10 @@ impl Output {
     /// cursor shown, straight to the terminal, because the process stops as the suspend handlers
     /// return. A lent terminal is the child's, so nothing is erased while one is lent.
     fn suspend_regions(&self) {
+        if self.stderr_print.load(Ordering::SeqCst) {
+            self.send_at_end(Stream::Stderr, self.cursor_shown(), None);
+            return;
+        }
         self.flush_composed(|screen, measure| {
             if screen.lending() > 0 {
                 String::new()
@@ -615,27 +692,60 @@ impl Output {
         self.wake_drainer();
     }
 
-    /// Offers pending writes in queue order before restoring the terminal.
+    /// Offers pending writes and the rest of each streamed message in queue order before
+    /// restoring the terminal.
     pub(crate) fn flush_at_end(&self, cause: ShutdownCause) {
-        let pending = {
+        {
             let mut queue = locked(&self.queue);
             if queue.end.is_some() || queue.draining {
                 return;
             }
             queue.draining = true;
             queue.end = Some(cause);
+        }
+        let mut drain = EndDrain {
+            output: self,
+            shutdown: matches!(cause, ShutdownCause::Signal(_)).then(ShutdownOutput::default),
+        };
+        let mut ends = Vec::new();
+        for message in self.streamed.targets(None) {
+            let id = message.id;
+            let (place, stream, pieces) = message.at_end(self);
+            let stream = self.lane(stream);
+            ends.extend(pieces.into_iter().enumerate().map(|(index, piece)| {
+                (
+                    (true, place, u64::MAX, index + 1),
+                    WriteWork {
+                        stream,
+                        held_line: None,
+                        job: message_job(id, piece).0,
+                        close: None,
+                    },
+                )
+            }));
+        }
+        let pending = {
+            let mut queue = locked(&self.queue);
             queue.detached.clear();
             std::mem::take(&mut queue.pending)
         };
-        let mut drain = EndDrain {
-            output: self,
-            stdout: matches!(cause, ShutdownCause::Signal(_)).then(ShutdownStdout::default),
-        };
+        ends.extend(pending.into_iter().map(|(place, work)| {
+            (
+                (
+                    !matches!(work.job, WriteJob::Parts(_)),
+                    work.held_line.unwrap_or(place),
+                    place,
+                    0,
+                ),
+                work,
+            )
+        }));
+        ends.sort_by_key(|(order, _)| *order);
         let mut closed = Vec::new();
-        for (_, mut work) in pending {
+        for (_, mut work) in ends {
             let measure = self.stderr_tty.then(|| self.measure());
             for (stream, text) in self.parts(work.stream, work.job, measure.as_ref()) {
-                self.send_at_end(stream, &text, drain.stdout.as_mut());
+                self.send_at_end(stream, &text, drain.shutdown.as_mut());
             }
             closed.extend(work.close.take());
         }
@@ -645,7 +755,7 @@ impl Output {
             self.send_at_end(
                 Stream::Stderr,
                 &format!("{text}{}", self.cursor_shown()),
-                drain.stdout.as_mut(),
+                drain.shutdown.as_mut(),
             );
         }
         for work in closed {
@@ -669,13 +779,13 @@ impl Output {
                 queue.detached.clear();
                 let drain = EndDrain {
                     output: self,
-                    stdout: queue.shutdown_stdout.take(),
+                    shutdown: queue.shutdown_output.take(),
                 };
                 (std::mem::take(&mut queue.pending), drain)
             };
             for (_, work) in pending {
                 for (stream, text) in self.parts(work.stream, work.job, None) {
-                    self.send_at_end(stream, &text, drain.stdout.as_mut());
+                    self.send_at_end(stream, &text, drain.shutdown.as_mut());
                 }
                 if let Some(close) = work.close {
                     wake_close(close, Ok(()));
@@ -685,11 +795,11 @@ impl Output {
     }
 
     /// The stream is offered each part just once. An end cannot wait for a stream to become ready.
-    fn send_at_end(&self, stream: Stream, text: &str, stdout: Option<&mut ShutdownStdout>) {
+    fn send_at_end(&self, stream: Stream, text: &str, shutdown: Option<&mut ShutdownOutput>) {
         let destination = self.destination(stream);
         if !text.is_empty()
             && destination.refusal().is_none()
-            && !stdout.is_some_and(|stdout| stdout.write(&destination.stream, text.as_bytes()))
+            && !shutdown.is_some_and(|output| output.write(&destination.stream, text.as_bytes()))
         {
             let _ = crate::support::poll_once(destination.stream.write(text.as_bytes()));
         }
@@ -792,7 +902,7 @@ impl Output {
     }
 
     /// The order a write to `stream` takes: stderr's for stdout too when the two are one stream.
-    fn lane(&self, stream: Stream) -> Stream {
+    pub(super) fn lane(&self, stream: Stream) -> Stream {
         if self.shared { Stream::Stderr } else { stream }
     }
 
@@ -891,6 +1001,7 @@ impl Output {
         let mut queue = locked(&self.queue);
         let place = queue.insert(WriteWork {
             stream: Stream::Stderr,
+            held_line: None,
             job,
             close,
         });
@@ -899,8 +1010,13 @@ impl Output {
 
     /// Keeps a polled write's work available for process-end draining while it waits for its turn.
     fn track(&self, stream: Stream, job: WriteJob) -> WritePlace<'_> {
+        self.track_held(stream, job, None)
+    }
+
+    fn track_held(&self, stream: Stream, job: WriteJob, held_line: Option<u64>) -> WritePlace<'_> {
         let number = locked(&self.queue).insert(WriteWork {
             stream,
+            held_line,
             job,
             close: None,
         });
@@ -917,6 +1033,7 @@ impl Output {
             number,
             WriteWork {
                 stream,
+                held_line: None,
                 job: WriteJob::Text(text),
                 close: None,
             },
@@ -965,9 +1082,11 @@ impl Output {
                     .pending
                     .values()
                     .any(|work| work.stream == Stream::Stderr || self.coordinated)
-                && (!self.coordinated || self.stdout_sequences.load(Ordering::SeqCst) == 0);
+                && (!self.coordinated || self.stdout_sequences.load(Ordering::SeqCst) == 0)
+                && !self.stderr_print.load(Ordering::SeqCst);
             let place = queue.insert(WriteWork {
                 stream: Stream::Stderr,
+                held_line: None,
                 job: WriteJob::Text(text),
                 close: None,
             });
@@ -1002,7 +1121,7 @@ impl Output {
         }
     }
 
-    fn runtime(&self) -> Option<tokio::runtime::Handle> {
+    pub(super) fn runtime(&self) -> Option<tokio::runtime::Handle> {
         tokio::runtime::Handle::try_current()
             .ok()
             .or_else(|| self.runtime.clone())
@@ -1100,6 +1219,13 @@ impl Output {
                     screen.note(measure, &text);
                     [(stream, text)].into()
                 }
+            }
+            WriteJob::MessageRow { id, change, text } => {
+                let text = match measure {
+                    Some(measure) => locked(&self.screen).streamed(measure, id, change, text),
+                    None => text,
+                };
+                [(stream, text)].into()
             }
             WriteJob::Screen(ops) => {
                 let text = measure.map_or_else(String::new, |measure| {
@@ -1249,9 +1375,15 @@ impl Output {
     /// Closes the regions `channel`'s caller opened that are still open, and sends their last
     /// frames.
     pub(crate) async fn close_channel(self: &Arc<Self>, channel: &Channel, closer: RegionCloser) {
+        if closer == RegionCloser::Failure {
+            self.streamed.stop(self, Some(channel));
+            self.streamed.wait_channel(channel).await;
+        }
         let opened = channel.regions();
-        self.close_regions(closer, Some(&opened));
-        self.flush().await;
+        if !opened.is_empty() || !self.stderr_print.load(Ordering::SeqCst) {
+            self.close_regions(closer, Some(&opened));
+            self.flush().await;
+        }
     }
 
     fn is_tty(&self, stream: Stream) -> bool {
@@ -1266,7 +1398,7 @@ impl Output {
         capabilities(&*self.env(), self.is_tty(stream), &self.policy)
     }
 
-    fn renderer(&self, stream: Stream) -> Renderer {
+    pub(super) fn renderer(&self, stream: Stream) -> Renderer {
         Renderer::new(self.capabilities(stream), self.palette.clone())
     }
 
@@ -1298,7 +1430,7 @@ impl Output {
     }
 
     /// The bytes `stream` receives for marked text.
-    fn resolve(&self, stream: Stream, marked: &str) -> String {
+    pub(super) fn resolve(&self, stream: Stream, marked: &str) -> String {
         self.renderer(stream).resolve(marked)
     }
 
@@ -1323,6 +1455,87 @@ impl Output {
         view: &RowView<R>,
     ) -> RowView<R> {
         self.views().rows(identity, view)
+    }
+
+    pub(super) fn queue_message_end(&self, id: u64, piece: Piece) {
+        self.enqueue(message_job(id, piece).0, None);
+    }
+
+    pub(super) fn stream_redraws(&self, stream: Stream) -> bool {
+        self.is_tty(stream) && self.redraws()
+    }
+
+    pub(super) fn stream_appends(&self, stream: Stream) -> bool {
+        let shares_screen = stream == Stream::Stderr || self.coordinated || self.shared;
+        if shares_screen && (locked(&self.screen).holding() || self.streamed.has_rows()) {
+            return false;
+        }
+        (stream != Stream::Stdout && !self.coordinated && !self.shared
+            || self.stdout_sequences.load(Ordering::SeqCst) == 0)
+            && (!shares_screen || self.stderr_sequences.load(Ordering::SeqCst) == 0)
+    }
+
+    pub(super) fn stream_writer(&self, id: u64, stream: Stream) -> StreamWriter<'_> {
+        StreamWriter {
+            output: self,
+            id,
+            stream,
+            line: None,
+        }
+    }
+
+    async fn hold_print(&self, stream: Stream, place: u64) -> PrintTurn<'_> {
+        // The initial hold waits for stdout work that entered its own order before the terminal
+        // was held. Later print lines join the existing terminal hold in stderr's order.
+        let stdout = if self.coordinated && !self.stderr_print.load(Ordering::SeqCst) {
+            Some(self.stdout.turn.lock().await)
+        } else {
+            None
+        };
+        let (held, turn) = if stream == Stream::Stderr || self.coordinated {
+            (&self.stderr_print, self.stderr_turn_before(place).await)
+        } else {
+            (&self.stdout_print, self.stdout.turn.lock().await)
+        };
+        held.store(true, Ordering::SeqCst);
+        PrintTurn {
+            held,
+            _turn: turn,
+            _stdout: stdout,
+        }
+    }
+
+    pub(super) fn shows_lane(&self, lane: Lane) -> bool {
+        self.verbosity.load(Ordering::SeqCst) >= lane.shown_from()
+    }
+
+    pub(super) fn lane_view(&self, lane: Lane) -> (View<str>, bool) {
+        let declared = lane.view();
+        let (identity, view) = declared.whole();
+        let views = self.views();
+        (
+            views.whole(identity, view),
+            !views.overrides::<str>(identity),
+        )
+    }
+
+    pub(super) fn stream_message(
+        self: &Arc<Self>,
+        channel: &Arc<Channel>,
+        lane: Lane,
+        message: StreamedMessage,
+        stream: Stream,
+    ) -> crate::BoxFuture<'static, Result<(), Error>> {
+        let call = locked(&self.queue).place();
+        OpenMessage::start(self, call, channel, lane, stream, message)
+    }
+
+    pub(crate) fn stop_messages(&self) {
+        self.streamed.stop(self, None);
+    }
+
+    pub(crate) async fn settle_messages(&self) -> Vec<Error> {
+        self.streamed.settle().await
     }
 
     /// Writes a semantic message, adding a line break if the view's drawn text lacks one.
@@ -1383,12 +1596,23 @@ impl Output {
     pub(crate) async fn write(&self, stream: Stream, text: String) -> Result<(), Error> {
         let stream = self.lane(stream);
         let place = self.track(stream, WriteJob::Text(text));
+        self.write_place(stream, place).await
+    }
+
+    async fn write_place(&self, stream: Stream, place: WritePlace<'_>) -> Result<(), Error> {
         match stream {
             Stream::Stderr => {
                 let _turn = self.stderr_turn_before(place.number).await;
                 self.deliver(place).await
             }
             Stream::Stdout => {
+                if self.coordinated
+                    && self.stderr_print.load(Ordering::SeqCst)
+                    && self.stdout_sequences.load(Ordering::SeqCst) == 0
+                {
+                    let _turn = self.stderr_turn_before(place.number).await;
+                    return self.deliver(place).await;
+                }
                 let joins = self.coordinated
                     && self.stdout_sequences.load(Ordering::SeqCst) == 0
                     && locked(&self.screen).holding();
@@ -1536,14 +1760,21 @@ impl Output {
         map: impl Fn(R) -> Result<D, Error> + Send + Sync,
     ) -> Result<(), Error> {
         let lane = self.lane(stream);
-        let place = SequencePlace((lane == Stream::Stdout).then(|| {
-            self.stdout_sequences.fetch_add(1, Ordering::SeqCst);
-            &self.stdout_sequences
-        }));
+        let counter = match lane {
+            Stream::Stdout => &self.stdout_sequences,
+            Stream::Stderr => &self.stderr_sequences,
+        };
+        counter.fetch_add(1, Ordering::SeqCst);
+        let place = SequencePlace(counter);
         let number = locked(&self.queue).place();
         let turn = match lane {
             Stream::Stderr => self.stderr_turn_before(number).await,
-            Stream::Stdout => self.stdout.turn.lock().await,
+            Stream::Stdout => {
+                if self.coordinated && self.stderr_print.load(Ordering::SeqCst) {
+                    drop(self.stderr_turn_before(number).await);
+                }
+                self.stdout.turn.lock().await
+            }
         };
         let mut counts = Counts::default();
         let outcome = self

@@ -82,7 +82,7 @@ impl ParsedText<'_> {
 
 /// A style, padding, or no-wrap frame opening or closing in the input, placed before the decoded
 /// character at `at`. An open keeps its header as written, and whether it starts a style scope.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum FrameMark {
     Open {
         at: usize,

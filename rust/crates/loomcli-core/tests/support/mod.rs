@@ -102,6 +102,7 @@ pub fn assert_matches(actual: &Value, expected: &Value) {
 
 pub mod faults;
 pub mod screen;
+pub mod streaming;
 pub mod streams;
 pub mod validators;
 

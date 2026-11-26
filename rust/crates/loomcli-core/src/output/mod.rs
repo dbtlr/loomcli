@@ -5,6 +5,7 @@
 //! application's overrides, then each plugin's in installation order, then the declaring
 //! contributor's default.
 
+mod carry;
 pub(crate) mod emit;
 mod log;
 mod log_line;
@@ -16,13 +17,14 @@ mod region;
 pub(crate) mod registry;
 mod results;
 mod screen;
+mod streamed;
 pub(crate) mod view;
 
 pub(crate) use log::{InstalledLogHook, LogHook, RunLog};
 
 pub use log::{Log, LogApplication, LogDefect, LogDestination, LogEvent, LogFields, LogLevel};
 pub use log_line::{LogLine, LogLineField, LogLineLevel, log_line};
-pub use out::{Message, Out};
+pub use out::{Message, MessageArguments, Out};
 pub use region::{
     EndState, ProgressEvent, ProgressReport, ProgressState, Region, RegionCloser, RegionOptions,
 };
@@ -30,6 +32,7 @@ pub use results::{
     NoResult, ResultKind, ResultTransform, ResultView, ResultViews, RowSource, RowViewEntry,
     RowViews, RowsResult, ValueResult,
 };
+pub use streamed::StreamedMessage;
 pub use view::{
     AnyDeclaredView, Declare, DeclaredRowView, DeclaredView, IncompleteResult, IntoRendered,
     OverrideKey, Render, RowView, View, ViewContext, ViewContribution, ViewOverride, WholeView,

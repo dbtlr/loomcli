@@ -2,6 +2,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+mod support;
 use loomcli_core::{Application, Arg, Context, Opt, RegionOptions, RunOptions};
 use loomcli_testing::{MockFields, MockTerminal, mock_process};
 
@@ -311,5 +312,58 @@ fn a_second_plain_mark_fails_and_inspection_identifies_the_one_mark() {
     for (node, marked) in graph.globals.iter().zip([true, false]) {
         let node = serde_json::to_value(node).unwrap();
         assert_eq!(node["plain"], marked);
+    }
+}
+
+#[tokio::test]
+async fn streamed_messages_with_the_switch_on_write_each_completed_line_once() {
+    use loomcli_testing::{StreamName, Write};
+    use support::streaming::chunks;
+
+    for (print, streams, expected) in [
+        (
+            true,
+            vec![StreamName::Stdout],
+            vec![
+                Write::Stdout("abc\n".to_owned()),
+                Write::Stdout("def\n".to_owned()),
+                Write::Stdout("gh\n".to_owned()),
+            ],
+        ),
+        (
+            false,
+            vec![StreamName::Stdout, StreamName::Stderr],
+            vec![
+                Write::Stderr("ℹ Fetched the first page.\n".to_owned()),
+                Write::Stderr("  Then the second page.\n".to_owned()),
+            ],
+        ),
+    ] {
+        let mock = mock_process(
+            MockFields::new()
+                .argv(["--plain"])
+                .terminal(MockTerminal::new(40, 24).streams(streams)),
+        );
+        let app = Application::new("notes")
+            .global_option("plain", Opt::boolean().plain())
+            .action(move |ctx: Context| async move {
+                if print {
+                    ctx.out.print(chunks(["ab", "c\nde", "f\ng", "h"])).await
+                } else {
+                    ctx.out
+                        .info(chunks([
+                            "Fetched the ",
+                            "first page.\nThen the sec",
+                            "ond",
+                            " page.",
+                        ]))
+                        .await
+                }
+            });
+        assert_eq!(
+            app.run(RunOptions::new().process(mock.clone())).await.get(),
+            0
+        );
+        assert_eq!(mock.transcript(), expected);
     }
 }

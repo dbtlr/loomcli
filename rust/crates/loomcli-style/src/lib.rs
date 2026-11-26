@@ -79,7 +79,10 @@ pub use color::{Ansi16Color, Ansi256Fallbacks, Color, ColorDepth, ColorFallbacks
 pub use controls::escape_control_characters;
 pub use environment::Environment;
 pub use glyph::Glyph;
-pub use lines::split_lines;
+pub use lines::{
+    Carried, LineCarry, controls_after_last_line, resolved_row_suffix, split_lines,
+    unfinished_sequence,
+};
 pub use renderer::Renderer;
 pub use rendering::{
     BackgroundPolicy, Capabilities, ColorChoice, RenderingPolicy, Switch, TerminalControls,

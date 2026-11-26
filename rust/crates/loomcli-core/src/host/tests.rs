@@ -168,6 +168,33 @@ fn captured(handle: &Arc<HandBuilt>) -> HostCapture {
     capture_host("notes", Arc::clone(handle) as Arc<dyn ProcessHandle>)
 }
 
+/// A host over test streams and fixed dimensions, for output layout tests.
+pub(crate) fn output_host(columns: Option<u16>) -> Host {
+    struct Terminal(Option<u16>);
+
+    impl ProcessTerminal for Terminal {
+        fn stdin(&self) -> InputTerminal {
+            InputTerminal::new(false)
+        }
+
+        fn stdout(&self) -> OutputTerminal {
+            OutputTerminal::new(self.0.is_some(), self.0, Some(24))
+        }
+
+        fn stderr(&self) -> OutputTerminal {
+            self.stdout()
+        }
+    }
+
+    let mut handle = HandBuilt::new();
+    handle
+        .env
+        .insert("TERM".to_owned(), "xterm-256color".to_owned());
+    let mut host = captured(&Arc::new(handle)).host;
+    host.terminal = HostTerminal::captured(Arc::new(Terminal(columns)));
+    host
+}
+
 #[test]
 fn capture_copies_each_fact_from_the_handle() {
     let handle = Arc::new(HandBuilt::new());

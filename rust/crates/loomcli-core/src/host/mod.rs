@@ -10,7 +10,7 @@ mod keys;
 mod messages;
 pub(crate) mod real;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::BTreeMap;
 use std::io;
@@ -44,7 +44,7 @@ pub(crate) use background::{QueryRun, ask_terminal};
 pub(crate) use capture::{HostCapture, OwnStreams, RunStreams, capture_host, capture_parts};
 pub use keys::raise_interrupt_keys;
 #[allow(unused_imports)]
-pub(crate) use real::{ShutdownStdout, process_exiting};
+pub(crate) use real::{ShutdownOutput, process_exiting};
 
 /// The environment: variable names and their values.
 pub type Env = BTreeMap<String, String>;

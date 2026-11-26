@@ -5,6 +5,7 @@
 //! decides the bytes when each write reaches stderr, so what it erases is always what that stream
 //! last showed.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -131,6 +132,9 @@ pub(crate) trait Measure {
     fn rows(&self, marked: &str) -> usize;
     /// The column the next character lands on after visible text written from `column`.
     fn column(&self, shown: &str, column: usize) -> usize;
+    fn fits(&self, _marked: &str) -> bool {
+        true
+    }
 }
 
 /// What one region shows on the screen and the frame it last drew.
@@ -153,6 +157,13 @@ struct Stack {
 #[derive(Default)]
 pub(crate) struct Screen {
     slots: Vec<Slot>,
+    unfinished: Vec<(u64, Option<Frame>)>,
+    /// The messages whose unfinished row grew wider than the screen, which write each row once it
+    /// is finished and write nothing for a chunk that finishes none.
+    by_row: BTreeSet<u64>,
+    /// The messages whose unfinished rows a narrowed terminal left on the screen as drawn. Each
+    /// draws no unfinished row again, but its writes still erase and redraw the regions below.
+    left: BTreeSet<u64>,
     /// The regions that closed while an input region or a lend held them, in the order they closed.
     closed_meanwhile: Vec<u64>,
     /// The column the last write above the stack left the cursor at, 0 when it ended a row.
@@ -176,7 +187,7 @@ impl Screen {
 
     /// Whether any region is open on the screen.
     pub(crate) fn holding(&self) -> bool {
-        !self.slots.is_empty()
+        !self.slots.is_empty() || !self.unfinished.is_empty()
     }
 
     /// Whether an input region is open, which holds every other region's frame still.
@@ -254,9 +265,14 @@ impl Screen {
             return None;
         }
         let frames: Vec<&Frame> = self
-            .slots
+            .unfinished
             .iter()
-            .filter_map(|slot| slot.shown.as_ref().filter(|frame| !frame.text.is_empty()))
+            .filter_map(|(_, frame)| frame.as_ref())
+            .chain(
+                self.slots
+                    .iter()
+                    .filter_map(|slot| slot.shown.as_ref().filter(|frame| !frame.text.is_empty())),
+            )
             .collect();
         if frames.is_empty() {
             return None;
@@ -293,7 +309,8 @@ impl Screen {
     /// continues that row. A row filled exactly counts as wrapped, because no control sequence
     /// restores a terminal's pending wrap.
     fn uncover(&mut self, measure: &dyn Measure) -> String {
-        let erase = self.erase(measure);
+        let wide = self.leave_wide_rows(measure);
+        let erase = wide.unwrap_or_else(|| self.erase(measure));
         let Some(column) = self.opened.take() else {
             return erase;
         };
@@ -322,7 +339,9 @@ impl Screen {
         if self.depth > 0 || self.suspended {
             return String::new();
         }
-        let erase = self.erase(measure);
+        let erase = self
+            .leave_wide_rows(measure)
+            .unwrap_or_else(|| self.erase(measure));
         self.suspended = true;
         self.opened = None;
         self.column = 0;
@@ -349,6 +368,83 @@ impl Screen {
         (before, self.draw_stack(measure))
     }
 
+    /// Width changed after a row was drawn. Leave every unfinished row in scrollback and
+    /// erase only the region stack below them.
+    fn leave_wide_rows(&mut self, measure: &dyn Measure) -> Option<String> {
+        if self.depth > 0
+            || self.suspended
+            || self.unfinished.iter().all(|(_, frame)| {
+                frame
+                    .as_ref()
+                    .is_none_or(|frame| measure.fits(&frame.marked))
+            })
+        {
+            return None;
+        }
+        self.left
+            .extend(self.unfinished.drain(..).map(|(id, _)| id));
+        self.opened = None;
+        self.column = 0;
+        Some(if self.stack().is_some() {
+            self.erase(measure)
+        } else {
+            "\n".to_owned()
+        })
+    }
+
+    /// Writes finished rows and changes the message's unfinished row above the region stack.
+    pub(super) fn streamed(
+        &mut self,
+        measure: &dyn Measure,
+        id: u64,
+        change: super::streamed::Change,
+        text: String,
+    ) -> String {
+        use super::streamed::Change;
+
+        if text.is_empty() && matches!(change, Change::Row(_)) && self.by_row.contains(&id) {
+            return self
+                .leave_wide_rows(measure)
+                .map_or_else(String::new, |before| before + &self.draw_stack(measure));
+        }
+        let before = if self.depth == 0 {
+            self.uncover(measure)
+        } else {
+            String::new()
+        };
+        let prior = self.unfinished.iter().position(|(slot, _)| *slot == id);
+        match change {
+            Change::Row(frame) if !self.by_row.contains(&id) => {
+                if frame
+                    .as_ref()
+                    .is_some_and(|frame| !measure.fits(&frame.marked))
+                {
+                    self.left.remove(&id);
+                    self.by_row.insert(id);
+                    if let Some(at) = prior {
+                        self.unfinished.remove(at);
+                    }
+                } else if self.left.contains(&id) {
+                    // A row left as drawn stays there; the write still redraws the regions.
+                } else if let Some(at) = prior {
+                    self.unfinished[at].1 = frame;
+                } else {
+                    self.unfinished.push((id, frame));
+                }
+            }
+            Change::DropRow => {
+                self.by_row.remove(&id);
+                self.left.remove(&id);
+                if let Some(at) = prior {
+                    self.unfinished.remove(at);
+                }
+            }
+            Change::Row(_) | Change::Line | Change::Print { .. } => {}
+        }
+        self.note(measure, &text);
+        before + &text + &self.draw_stack(measure)
+    }
+
     /// Text written to the terminal while no region is open, which moves the row the stack starts
     /// on.
     pub(crate) fn note(&mut self, measure: &dyn Measure, text: &str) {
@@ -361,6 +457,10 @@ impl Screen {
     fn settled(&self, slot: &Slot) -> bool {
         same(slot.shown.as_ref(), slot.latest.as_ref())
             && self.closed_meanwhile.is_empty()
+            && self
+                .unfinished
+                .iter()
+                .all(|(_, frame)| blank(frame.as_ref()))
             && self.slots.iter().all(|other| {
                 other.id == slot.id
                     || (blank(other.shown.as_ref())
@@ -390,7 +490,9 @@ impl Screen {
         if lending || (frozen && !slot.input) {
             return String::new();
         }
-        let before = self.erase(measure);
+        let before = self
+            .leave_wide_rows(measure)
+            .unwrap_or_else(|| self.erase(measure));
         if let Some(slot) = self.slot(id) {
             slot.shown = Some(frame);
         }

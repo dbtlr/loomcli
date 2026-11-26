@@ -437,10 +437,11 @@ pub struct EnvironmentContext {
 }
 
 impl EnvironmentContext {
-    /// Writes a warning to stderr. A [`crate::Message`] can carry its own view.
+    /// Writes a warning to stderr. Accepts a [`crate::Message`] with its own view or a
+    /// [`crate::StreamedMessage`] drawn through the warning lane.
     pub fn warn<'a>(
         &'a self,
-        message: impl Into<crate::Message<'a>>,
+        message: impl Into<crate::MessageArguments<'a>>,
     ) -> impl std::future::Future<Output = Result<(), crate::Error>> + Send + 'a {
         self.out.warn(message)
     }

@@ -561,3 +561,260 @@ async fn a_shutdown_handlers_log_drains_the_warning_it_queued_after_the_end() {
         "⚠ leaving\n⚠ handler warn\n› handler record\n[REC] handler record\n"
     );
 }
+
+#[tokio::test]
+async fn exit_finishes_received_streamed_print_before_the_waiting_terminal_writes() {
+    use loomcli_core::{Error, Stream, StreamedMessage};
+
+    struct HeldLine(Option<String>, Arc<tokio::sync::Notify>);
+
+    impl Stream for HeldLine {
+        type Item = Result<String, Error>;
+
+        fn poll_next(
+            mut self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            if let Some(text) = self.0.take() {
+                std::task::Poll::Ready(Some(Ok(text)))
+            } else {
+                self.1.notify_one();
+                std::task::Poll::Pending
+            }
+        }
+    }
+
+    let fields = MockFields::new()
+        .terminal(MockTerminal::new(80, 24).streams([StreamName::Stdout, StreamName::Stderr]));
+    let (signals, _pause, options) = fixture(fields);
+    let source = signals.clone();
+    let app = Application::new("streamed").action(move |ctx: Context| {
+        let signals = source.clone();
+        async move {
+            let ready = Arc::new(tokio::sync::Notify::new());
+            let done = ctx.out.print(StreamedMessage::new(HeldLine(
+                Some("first\nsecond".to_owned()),
+                Arc::clone(&ready),
+            )));
+            ready.notified().await;
+            let mut after = std::pin::pin!(ctx.out.warn("after"));
+            assert!(
+                std::future::poll_fn(|cx| std::task::Poll::Ready(after.as_mut().poll(cx)))
+                    .await
+                    .is_pending()
+            );
+            signals.fire(1);
+            assert_eq!(signals.mock.stdout_text(), "first\nsecond\n");
+            assert!(signals.mock.stderr_text().contains("after"));
+            done.await?;
+            after.await?;
+            Ok(())
+        }
+    });
+    let _ = app.run(options).await;
+    assert_eq!(signals.mock.stdout_text(), "first\nsecond\n");
+    assert!(signals.mock.stderr_text().contains("after"));
+}
+
+#[derive(Clone, Copy, Debug)]
+enum StreamEnd {
+    Exit,
+    Signal(ProcessSignal, u8),
+    WhileQueuing { hops: usize, ends_line: bool },
+}
+
+#[tokio::test]
+async fn a_colored_held_print_finishes_before_warnings_and_log_writes_at_exit_or_shutdown() {
+    use loomcli_core::{Error, Opt, RenderingPolicy, StreamedMessage, Switch};
+    use support::streaming::{PollStream, bytes};
+
+    let ordinary = [
+        (StreamEnd::Exit, false),
+        (StreamEnd::Exit, true),
+        (StreamEnd::Signal(ProcessSignal::Term, 143), false),
+        (StreamEnd::Signal(ProcessSignal::Quit, 131), true),
+    ];
+    let queued = (0..5).flat_map(|hops| {
+        [false, true].map(|ends_line| (StreamEnd::WhileQueuing { hops, ends_line }, false))
+    });
+    for (end, warn) in ordinary.into_iter().chain(queued) {
+        let fields = MockFields::new()
+            .argv(["-v"])
+            .terminal(MockTerminal::new(80, 24).streams([StreamName::Stdout, StreamName::Stderr]));
+        let (signals, _, options) = fixture(fields);
+        let source = signals.clone();
+        let app = loomcli_core::__private::install_log_hook(
+            Application::new("app")
+                .global_option("verbose", Opt::count().short('v').verbose())
+                .shutdown_timeout(0)
+                .action(move |ctx: Context| {
+                    let signals = source.clone();
+                    async move {
+                        let after_first = Arc::new(tokio::sync::Notify::new());
+                        let take_second = Arc::new(tokio::sync::Notify::new());
+                        let after_second = Arc::new(tokio::sync::Notify::new());
+                        let ready = after_first.clone();
+                        let observed = after_second.clone();
+                        let mut release = Box::pin(take_second.clone().notified_owned());
+                        let next = if matches!(
+                            end,
+                            StreamEnd::WhileQueuing {
+                                ends_line: true,
+                                ..
+                            }
+                        ) {
+                            " part-b\n"
+                        } else {
+                            " part-b"
+                        };
+                        let mut first = Some("part-a \x1b[31mred");
+                        let mut second = Some(next);
+                        let producer = PollStream(move |cx: &mut std::task::Context<'_>| {
+                            if let Some(text) = first.take() {
+                                return Poll::Ready(Some(Ok::<String, Error>(text.to_owned())));
+                            }
+                            if second.is_some() {
+                                ready.notify_one();
+                                std::task::ready!(release.as_mut().poll(cx));
+                                return Poll::Ready(second.take().map(|text| Ok(text.to_owned())));
+                            }
+                            observed.notify_one();
+                            Poll::Pending
+                        });
+                        let done = ctx.out.print(StreamedMessage::new(producer));
+                        after_first.notified().await;
+                        let mut warning = std::pin::pin!(ctx.out.warn("mid-stream warning"));
+                        if warn {
+                            start(warning.as_mut()).await;
+                        }
+                        ctx.log.info("mid-stream", ());
+                        take_second.notify_one();
+                        if let StreamEnd::WhileQueuing { hops, .. } = end {
+                            for _ in 0..hops {
+                                tokio::task::yield_now().await;
+                            }
+                        } else {
+                            after_second.notified().await;
+                        }
+                        match end {
+                            StreamEnd::Exit | StreamEnd::WhileQueuing { .. } => signals.fire(4),
+                            StreamEnd::Signal(signal, _) => signals.mock.raise(signal),
+                        }
+                        let output = bytes(&signals.mock.transcript());
+                        let Some((line, later)) = output.split_once("\x1b[39m\n") else {
+                            panic!("held line did not close for {end:?}: {output:?}");
+                        };
+                        assert!(
+                            line.starts_with("part-a \x1b[31mred"),
+                            "{end:?}: {output:?}"
+                        );
+                        assert!(!later.contains(" part-b"), "{end:?}: {output:?}");
+                        if !matches!(end, StreamEnd::WhileQueuing { .. }) {
+                            assert!(line.ends_with(" part-b"), "{end:?}: {output:?}");
+                        }
+                        let expected = if warn { "⚠ mid-stream warning\n" } else { "" };
+                        assert!(
+                            later.starts_with(&format!(
+                                "{expected}› mid-stream\n[REC] mid-stream\n"
+                            )),
+                            "{end:?}: {output:?}"
+                        );
+                        done.await?;
+                        if warn {
+                            warning.await?;
+                        }
+                        Ok(())
+                    }
+                }),
+            |event: &LogEvent, destination: &LogDestination| {
+                if let Some(stderr) = &destination.stderr {
+                    drop(stderr.write(format!("[REC] {}\n", event.message).as_bytes()));
+                }
+            },
+        );
+        let code = app
+            .run(options.rendering(RenderingPolicy::new().color(Switch::Always)))
+            .await;
+        let status = match end {
+            StreamEnd::Signal(_, status) => status,
+            _ => 0,
+        };
+        assert_eq!(code.get(), status, "{end:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_new_terminal_print_line_waits_for_earlier_stdout_writes() {
+    use support::streaming::chunks;
+
+    let fields = MockFields::new()
+        .terminal(MockTerminal::new(80, 24).streams([StreamName::Stdout, StreamName::Stderr]));
+    let (signals, pause, options) = fixture_with_paused_stream(fields, StreamName::Stdout);
+    let target = pause.clone();
+    let app = Application::new("streamed").action(move |ctx: Context| {
+        let pause = target.clone();
+        async move {
+            pause.next();
+            let mut first = std::pin::pin!(ctx.out.print("first"));
+            start(first.as_mut()).await;
+            let mut second = std::pin::pin!(ctx.out.print("second"));
+            start(second.as_mut()).await;
+            let third = ctx.out.print(chunks(["third", " line"]));
+
+            tokio::task::yield_now().await;
+            pause.resume.notify_one();
+            let (first, second, third) = tokio::join!(first, second, third);
+            first?;
+            second?;
+            third
+        }
+    });
+    assert_eq!(app.run(options).await.get(), 0);
+    assert_eq!(signals.mock.stdout_text(), "first\nsecond\nthird line\n");
+}
+
+#[tokio::test]
+async fn a_piped_message_that_has_not_written_keeps_its_call_place_at_exit() {
+    use loomcli_core::{Error, StreamedMessage};
+    use support::streaming::PollStream;
+
+    let (signals, pause, options) =
+        fixture_with_paused_stream(MockFields::new(), StreamName::Stdout);
+    let observe = signals.clone();
+    let paused = pause.clone();
+    let app = Application::new("streamed").action(move |ctx: Context| {
+        let signals = observe.clone();
+        let paused = paused.clone();
+        async move {
+            paused.next();
+            let mut first = std::pin::pin!(ctx.out.print("first"));
+            start(first.as_mut()).await;
+
+            let ready = Arc::new(tokio::sync::Notify::new());
+            let waiting = ready.clone();
+            let mut part = Some("unwritten");
+            let done = ctx.out.print(StreamedMessage::new(PollStream(
+                move |_: &mut std::task::Context<'_>| {
+                    if let Some(text) = part.take() {
+                        Poll::Ready(Some(Ok::<_, Error>(text.to_owned())))
+                    } else {
+                        waiting.notify_one();
+                        Poll::Pending
+                    }
+                },
+            )));
+            ready.notified().await;
+            let mut last = std::pin::pin!(ctx.out.print("last"));
+            start(last.as_mut()).await;
+
+            signals.fire(0);
+            assert_eq!(signals.mock.stdout_text(), "first\nunwritten\nlast\n");
+            paused.resume.notify_one();
+            first.await?;
+            done.await?;
+            last.await
+        }
+    });
+    assert_eq!(app.run(options).await.get(), 0);
+    assert_eq!(signals.mock.stdout_text(), "first\nunwritten\nlast\n");
+}

@@ -31,8 +31,8 @@ pub mod support;
 #[doc(hidden)]
 pub mod __private;
 
-/// The asynchronous sequence a rows result reads through [`RowSource::stream`], re-exported so an
-/// author who streams rows needs no `futures-core` dependency of their own.
+/// The asynchronous sequence [`RowSource::stream`] and [`StreamedMessage::new`] read, re-exported
+/// so an author can name it without depending on `futures-core`.
 pub use futures_core::Stream;
 pub use loomcli_derive::{Failure, Inputs};
 
@@ -87,11 +87,11 @@ pub use marks::{Background, RequiredWhen};
 pub use output::{
     AnyDeclaredView, Declare, DeclaredRowView, DeclaredView, EndState, IncompleteResult,
     IntoRendered, Log, LogApplication, LogDefect, LogDestination, LogEvent, LogFields, LogLevel,
-    LogLine, LogLineField, LogLineLevel, Message, NoResult, Out, OverrideKey, ProgressEvent,
-    ProgressReport, ProgressState, Region, RegionCloser, RegionOptions, Render, ResultKind,
-    ResultTransform, ResultView, ResultViews, RowSource, RowView, RowViewEntry, RowViews,
-    RowsResult, ValueResult, View, ViewContext, ViewContribution, ViewOverride, WholeView,
-    incomplete_result, lanes, log_line, override_view, view,
+    LogLine, LogLineField, LogLineLevel, Message, MessageArguments, NoResult, Out, OverrideKey,
+    ProgressEvent, ProgressReport, ProgressState, Region, RegionCloser, RegionOptions, Render,
+    ResultKind, ResultTransform, ResultView, ResultViews, RowSource, RowView, RowViewEntry,
+    RowViews, RowsResult, StreamedMessage, ValueResult, View, ViewContext, ViewContribution,
+    ViewOverride, WholeView, incomplete_result, lanes, log_line, override_view, view,
 };
 pub use plugins::{
     Activation, AnyExtension, AnyPlugin, AnyProvider, ArgumentTarget, AttachedCommand,

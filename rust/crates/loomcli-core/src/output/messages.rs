@@ -45,3 +45,11 @@ pub(super) fn incompatible_transform(plugin: &str, path: &[String]) -> String {
         routed_subject(path)
     )
 }
+
+/// What a streamed message's completion future returns when it is awaited after the run reported
+/// the message's failure.
+pub(super) const STREAMED_FAILURE_REPORTED: &str = "The run already reported this streamed message's failure. Await the message before the run ends to receive it.";
+
+/// The panic a streamed message's completion future resumes when it is awaited after the run
+/// resumed the message's panic.
+pub(super) const STREAMED_PANIC_RESUMED: &str = "The run already resumed this streamed message's panic. Await the message before the run ends to receive it.";

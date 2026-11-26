@@ -333,7 +333,7 @@ A type of your own implements `loomcli_core::Validator`: `validate(&self, token,
 
 ## Output, results, and views
 
-`context.out` writes messages and results. Each write is `async` and writes when it is awaited.
+`context.out` writes messages and results. Each write is `async` and writes when it is awaited, except a streamed message (`StreamedMessage`), which starts at the call and keeps printing to the end even if its future is dropped; the run waits for it before it ends, so put a timeout on the stream rather than around the call.
 
 | Method | Writes to | Shown |
 | --- | --- | --- |
