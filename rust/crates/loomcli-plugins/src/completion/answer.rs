@@ -172,13 +172,9 @@ fn option_offers(
     let excluded: HashSet<&str> = command
         .option_groups
         .iter()
-        .filter(|group| {
-            group.kind == OptionGroupKind::Exclusive
-                && group.options.iter().any(|name| claimed(name))
-        })
-        .flat_map(|group| group.options.iter())
+        .filter(|group| group.kind() == OptionGroupKind::Exclusive && group.members().any(claimed))
+        .flat_map(|group| group.members())
         .filter(|name| !supplied(name))
-        .map(String::as_str)
         .collect();
     scope
         .into_iter()

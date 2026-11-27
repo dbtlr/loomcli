@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::__private::{AttachedState, PluginState};
 use crate::application::declaration::ApplicationDeclaration;
 use crate::commands::declaration::{
-    CommandDeclaration, GlobalTable, InputDeclaration, OptionOwner, check_local_options, local_site,
+    CommandDeclaration, GlobalTable, InputDeclaration, OptionOwner, check_local_options,
 };
 use crate::diagnostics::{DiagnosticParts, DiagnosticRule, Finding, Literal, rules};
 use crate::failures::messages::{as_sentence, command_subject, quoted, reason_of};
@@ -151,13 +151,7 @@ fn input_site(
 ) -> InputSite {
     match input {
         InputDeclaration::Argument(argument) => command.argument_site(path, argument),
-        InputDeclaration::Option(option) => local_site(
-            command.name.as_deref(),
-            path,
-            "option",
-            &option.name,
-            option.decl.literal(),
-        ),
+        InputDeclaration::Option(option) => option.site(command.name.as_deref(), path),
     }
 }
 

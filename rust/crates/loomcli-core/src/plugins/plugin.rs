@@ -130,6 +130,7 @@ pub(crate) fn plugin_option_site(identity: &str, name: &str, decl: &OptionDecl) 
         receiver: Some(plugin_receiver(identity)),
         path: Vec::new(),
         name: name.to_owned(),
+        origin: Default::default(),
         config: decl.literal(),
         subject: format!("{} option {}", plugin_sentence(identity), quoted(name)),
     }
@@ -223,6 +224,7 @@ impl crate::__private::PluginState {
         )?;
         let mut options = self.options.clone();
         options.push(OptionInput {
+            origin: Default::default(),
             name: name.to_owned(),
             decl,
             extensions,
@@ -269,6 +271,10 @@ impl crate::__private::PluginState {
             DeclarationCall::Passthrough(mode) => (
                 "Plugin options declare passthrough, which only a Command reads.".to_owned(),
                 Finding::new(format!("{receiver}.passthrough"), vec![mode.literal()]).mark("0"),
+            ),
+            DeclarationCall::Options(_) => (
+                "Plugin options declare an option set, which only a Command takes.".to_owned(),
+                Finding::new(format!("{receiver}.options"), vec![Literal::Opaque]).mark("0"),
             ),
             DeclarationCall::Group(_, names) => (
                 "Plugin options declare an option group, which only a Command declares.".to_owned(),

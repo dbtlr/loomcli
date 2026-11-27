@@ -4,6 +4,8 @@ Reference tests live in `typescript/packages/plugins/tests`. The plugin's tests 
 
 | Reference file | Status | Notes |
 | --- | --- | --- |
+| `option-groups.test.ts` | partly ported here | `option_groups.rs`: three completion cases cover claiming spellings, aliases, and both Boolean polarities. |
+| `option-requires.test.ts` | partly ported here | `option_requires.rs` checks that completion still offers the needed options. |
 | `completion.test.ts` (arity and last-wins additions) | ported | `completion_protocol.rs` checks the closed set at both word positions and repeated offers for last-wins. |
 | `passthrough-mode.test.ts`, `completion.test.ts` | ported, parsing and terminal cases | `passthrough_mode.rs` checks argument candidates after the delimiter and alongside child names for open and closed value sets. |
 | `completion.test.ts` | ported, 42 of 42 rows | In `completion_protocol.rs` (the answer, 19 cases; the Commands, 3 of 3; the name, 3) and `completion_scripts.rs` (the scripts, 17 rows). The `kit` fixture declares `--help` by hand, and the cases that install `format()` and `verbose()` declare the same options on the application directly (a root-level `format` option with an action and a group; a verbose-marked and a quiet-marked counted option), because those plugins belong to other packages. The fixture's lone-surrogate value is not representable (deviation). `a shell Command reaches help when help is installed` runs only when the `help` feature is on too. The `it.each` rows of the three script tables run as one test over their rows. Added: the four printed scripts are compared with the shared expectations outside listed differences (`jsonkit-completion-script-*`). |

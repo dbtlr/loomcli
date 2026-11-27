@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::application::declaration::{ApplicationDeclaration, global_site};
 use crate::commands::declaration::{
-    ArgumentInput, CommandDeclaration, InputDeclaration, OptionInput, local_site,
+    ArgumentInput, CommandDeclaration, InputDeclaration, OptionInput,
 };
 use crate::diagnostics::{DiagnosticParts, DiagnosticRule, rules};
 use crate::failures::DeclarationError;
@@ -439,21 +439,15 @@ fn placed(application: &ApplicationDeclaration) -> Vec<Placed<'_>> {
 fn walk<'a>(command: &'a CommandDeclaration, path: &[String], placed: &mut Vec<Placed<'a>>) {
     for input in &command.inputs {
         let declared = Declared::of(input);
-        let (call, literal) = match input {
-            InputDeclaration::Argument(argument) => ("argument", argument.decl.literal()),
-            InputDeclaration::Option(option) => ("option", option.decl.literal()),
+        let site = match input {
+            InputDeclaration::Argument(argument) => command.argument_site(path, argument),
+            InputDeclaration::Option(option) => option.site(command.name.as_deref(), path),
         };
         placed.push(Placed {
             input: declared,
             global: false,
             command: Some(path.to_vec()),
-            site: local_site(
-                command.name.as_deref(),
-                path,
-                call,
-                declared.name(),
-                literal,
-            ),
+            site,
         });
     }
     for child in &command.children {

@@ -10,8 +10,7 @@ use std::sync::Arc;
 
 use loomcli_core::style::nowrap;
 use loomcli_core::{
-    CommandGraph, CommandNode, Error, OptionGroupKind, OptionNode, ViewContext, read_extension,
-    reported_spelling,
+    CommandGraph, CommandNode, Error, OptionNode, ViewContext, read_extension, reported_spelling,
 };
 
 use super::accepted::accepted;
@@ -570,53 +569,17 @@ fn stdin_input(command: &CommandNode, path: &str, context: &ViewContext) -> Vec<
 
 /// The plain sentence for each option group whose members are all visible.
 pub(crate) fn option_group_sentences(command: &CommandNode) -> impl Iterator<Item = String> + '_ {
-    command
-        .option_groups
-        .iter()
-        .filter(|group| {
-            group.options.iter().all(|name| {
-                command
-                    .options
-                    .iter()
-                    .any(|option| option.name() == name && !option.hidden())
-            })
-        })
-        .map(|group| {
-            let nodes: Vec<&Arc<OptionNode>> = command
-                .options
-                .iter()
-                .filter(|option| group.options.iter().any(|name| name == option.name()))
-                .collect();
-            let names: Vec<String> = group
-                .options
-                .iter()
-                .map(|name| {
-                    nodes
-                        .iter()
-                        .find(|node| node.name() == name)
-                        .map_or_else(|| name.clone(), |node| reported_spelling(node))
-                })
-                .collect();
-            let members = match names.as_slice() {
-                [first, second] => format!("{first} and {second}"),
-                [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
-                [] => String::new(),
-            };
-            let rule = match group.kind {
-                OptionGroupKind::Exclusive => format!("Use at most one of {members}"),
-                OptionGroupKind::OneRequired => format!("Supply at least one of {members}"),
-                OptionGroupKind::RequiredTogether => format!("Use {members} together"),
-            };
-            let caveat = if nodes
-                .iter()
-                .any(|node| matches!(node.as_ref(), OptionNode::Content(content) if content.stdin))
-            {
-                " (piped stdin does not count)"
-            } else {
-                ""
-            };
-            format!("{rule}{caveat}.")
-        })
+    crate::option_groups::visible_option_groups(command).filter_map(|group| {
+        let nodes: Vec<_> = group
+            .members()
+            .filter_map(|name| command.options.iter().find(|node| node.name() == name))
+            .collect();
+        let names: Vec<String> = nodes.iter().map(|node| reported_spelling(node)).collect();
+        let accepts_stdin = nodes
+            .iter()
+            .any(|node| matches!(node.as_ref(), OptionNode::Content(content) if content.stdin));
+        super::messages::option_group_sentence(group.kind(), &names, accepts_stdin)
+    })
 }
 
 fn group_sentences(command: &CommandNode, context: &ViewContext) -> Vec<String> {

@@ -230,8 +230,7 @@ fn a_passthrough_field_rejects_facts_other_than_description_at_the_key() {
 
 #[test]
 fn a_passthrough_field_rejects_a_second_input_attribute_at_that_attribute() {
-    let message =
-        "a field is one input: one of #[option], #[argument], #[stdin], or #[passthrough]";
+    let message = "a field is one input: one of #[option], #[argument], #[stdin], #[passthrough], or #[inputs(flatten)]";
     assert_eq!(
         inputs_fault("struct I { #[passthrough] #[argument] tail: Vec<String> }"),
         pair(message, "#[argument]")
@@ -524,14 +523,14 @@ fn the_attribute_grammar_points_at_the_word_at_fault() {
     assert_eq!(
         inputs_fault("struct I { #[option] #[argument] file: String }"),
         pair(
-            "a field is one input: one of #[option], #[argument], #[stdin], or #[passthrough]",
+            "a field is one input: one of #[option], #[argument], #[stdin], #[passthrough], or #[inputs(flatten)]",
             "#[argument]",
         )
     );
     assert_eq!(
         inputs_fault("struct I { file: String }"),
         pair(
-            "each field of an Inputs struct carries #[option], #[argument], #[stdin], or #[passthrough]",
+            "each field of an Inputs struct carries #[option], #[argument], #[stdin], #[passthrough], or #[inputs(flatten)]",
             "file",
         )
     );
@@ -552,7 +551,7 @@ fn the_attribute_grammar_points_at_the_word_at_fault() {
     assert_eq!(
         inputs_fault("#[inputs(alone(\"a\", \"b\"))] struct I { #[option] a: bool }"),
         pair(
-            "expected `exclusive`, `one_required`, or `required_together`",
+            "expected `option_set`, `exclusive`, `one_required`, `required_together`, or `requires`",
             "alone",
         )
     );
@@ -722,6 +721,17 @@ fn a_group_member_that_names_a_declared_name_or_no_field_expands() {
             #[option]
             quiet: bool,
         }"#,
+        // A flattened set may declare the name a renamed field's identifier spells, so the
+        // derive leaves that name to the call.
+        r#"#[inputs(requires("token", "profile"))]
+        struct DeployInputs {
+            #[option(name = "deploy-profile")]
+            profile: Option<String>,
+            #[inputs(flatten)]
+            credentials: Credentials,
+            #[option]
+            token: Option<String>,
+        }"#,
     ] {
         let input: DeriveInput = syn::parse_str(source).expect("the source is a struct");
         assert!(crate::inputs::expand(&input).is_ok(), "{source}");
@@ -796,4 +806,72 @@ fn arity_and_last_wins_reject_incompatible_derived_fields() {
         assert!(!message.is_empty(), "{source}");
         assert_eq!(found, span, "{source}");
     }
+}
+
+#[test]
+fn a_typed_set_rejects_nesting_and_other_input_roles() {
+    for (field, at) in [
+        ("#[inputs(flatten)] shared: Other", "shared"),
+        ("#[argument] path: String", "path"),
+    ] {
+        let source = format!("#[inputs(option_set)] struct Set {{ {field} }}");
+        let (message, span) = inputs_fault(&source);
+        assert_eq!(message, "an option set takes only #[option] fields");
+        assert!(span.contains(at), "{span}");
+    }
+    assert_eq!(
+        inputs_fault("#[inputs(option_set)] struct Set { #[option(verbose, count)] loud: u8 }"),
+        pair(
+            "an option set cannot declare a global option mark",
+            "verbose"
+        ),
+    );
+}
+
+#[test]
+fn a_typed_set_group_checks_names_and_literal_arity() {
+    assert_eq!(
+        inputs_fault(
+            r#"#[inputs(option_set, requires("secret", "user"))] struct Set {
+            #[option] secret: bool
+        }"#
+        ),
+        pair(
+            "an option set group names only options in that set: \"user\" is undeclared",
+            "\"user\""
+        ),
+    );
+    assert_eq!(
+        inputs_fault(
+            r#"#[inputs(option_set, exclusive("secret"))] struct Set {
+            #[option] secret: bool
+        }"#
+        ),
+        pair(
+            "an option group names at least two local options",
+            "exclusive"
+        ),
+    );
+    assert_eq!(
+        inputs_fault(
+            r#"#[inputs(requires("secret"))] struct Command {
+            #[option] secret: bool
+        }"#
+        ),
+        pair(
+            "an option group names at least two local options",
+            "requires"
+        ),
+    );
+    assert_eq!(
+        inputs_fault(
+            r#"#[inputs(requires("show_input", "user"))] struct Command {
+            #[option] show_input: bool
+        }"#
+        ),
+        pair(
+            "`show_input` is the field; a group names the declared name \"show-input\"",
+            "\"show_input\""
+        ),
+    );
 }

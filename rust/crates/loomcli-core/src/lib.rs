@@ -39,7 +39,7 @@ pub use loomcli_derive::{Failure, Inputs};
 pub use application::{Application, GroupApplication, RunOptions};
 pub use commands::{
     AnyCommand, CarriesResult, Command, Configuring, Done, Fresh, Group, GroupCommand, NoResultYet,
-    Open, Passthrough, State, TakesGlobals,
+    Open, OptionSet, Passthrough, State, TakesGlobals,
 };
 pub use diagnostics::{
     DiagnosticParts, DiagnosticRule, Finding, Literal, diagnostic_rule, is_rule_identity,
@@ -67,10 +67,11 @@ pub use inputs::{
     Arg, ArgumentDecl, BooleanOpt, Content, ContentArg, ContentKind, ContentOpt, CountOpt,
     Declarations, DefaultValue, FromInputValue, GlobalInputs, GlobalOptionDecl, InputIdentity,
     InputKind, InputProblem, InputValues, Inputs, IntoInputValue, IsType, Issue, NoInputs,
-    OmissionValidator, Opt, OptionDecl, PathSegment, Polarity, Required, Stdin, StringArg,
-    StringOpt, SuppliedInputs, SuppliedValue, ValidationContext, ValidationFacts, ValidationPhase,
-    Validator, ValueLink, assert_string_input, assert_validator_output, issue_path,
-    missing_input_error, question_validation_context, validate_linked_value, validation_context,
+    OmissionValidator, Opt, OptionDecl, OptionSetInputs, PathSegment, Polarity, Required, Stdin,
+    StringArg, StringOpt, SuppliedInputs, SuppliedValue, ValidationContext, ValidationFacts,
+    ValidationPhase, Validator, ValueLink, assert_string_input, assert_validator_output,
+    issue_path, missing_input_error, question_validation_context, validate_linked_value,
+    validation_context,
 };
 pub use inspection::{
     ArgumentNode, BooleanOptionNode, CommandGraph, CommandNode, ConfigurationNode,

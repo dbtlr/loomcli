@@ -55,18 +55,6 @@
       ]
     },
     {
-      "id": "jsonkit-completion-protocol-bare-dash-after-get",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-completion-protocol-bare-dash-after-select",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
       "id": "jsonkit-completion-protocol-empty",
       "parts": [
         "stdout"
@@ -74,12 +62,6 @@
     },
     {
       "id": "jsonkit-completion-protocol-empty-word",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-completion-protocol-option-after-value-taken-dash",
       "parts": [
         "stdout"
       ]
@@ -582,36 +564,6 @@
       "parts": [
         "stderr",
         "files"
-      ]
-    },
-    {
-      "id": "jsonkit-mcp-cancel-settled-request",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-mcp-session-several-calls",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-mcp-tools-list-2025-06-18",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-mcp-tools-list-2025-11-25",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-mcp-tools-list-per-request",
-      "parts": [
-        "stdout"
       ]
     },
     {

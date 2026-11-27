@@ -3,7 +3,7 @@
 use loomcli_core::{Content, Context, Inputs, Outcome};
 
 use crate::document_input::document_input;
-use crate::json::format_json;
+use crate::json_layout::JsonLayout;
 use crate::read_json::read_json;
 use crate::resolve_path::resolve_path;
 
@@ -13,6 +13,9 @@ pub struct GetInputs {
     /// The document, from the shared document input.
     #[option(builder = document_input())]
     pub file: Content,
+    /// Shared JSON layout options.
+    #[inputs(flatten)]
+    pub layout: JsonLayout,
     /// Dot path to read.
     #[argument]
     pub path: String,
@@ -29,5 +32,5 @@ pub async fn get_value(context: Context<GetInputs>) -> Outcome {
     } = context;
     let document = read_json(&inputs.file, &log).await?;
     let value = resolve_path(&document, &inputs.path)?;
-    out.print(&style.escape(&format_json(value))).await
+    out.print(&style.escape(&inputs.layout.format(value))).await
 }

@@ -351,6 +351,7 @@ async fn manpage_writes_a_page_for_each_visible_command_three_levels_deep_includ
 fn get_inputs(file: loomcli_core::Content, path: &str) -> GetInputs {
     GetInputs {
         file,
+        layout: Default::default(),
         path: path.to_owned(),
     }
 }
@@ -464,6 +465,7 @@ async fn select_fields_warns_once_per_missing_field_and_keeps_the_first_occurren
     let process = process();
     let ctx: Context<SelectInputs> = action_context(
         ActionValues::new(SelectInputs {
+            layout: Default::default(),
             file: piped_content(r#"{"b":1,"a":2,"2":"two","1":"one"}"#),
             field: ["a", "zzz", "b", "a", "zzz", "2", "1"]
                 .map(str::to_owned)
@@ -486,6 +488,7 @@ async fn select_fields_warns_once_per_missing_field_and_keeps_the_first_occurren
 #[tokio::test]
 async fn select_fields_fails_on_a_document_whose_root_is_no_object() {
     let ctx: Context<SelectInputs> = action_context(ActionValues::new(SelectInputs {
+        layout: Default::default(),
         file: piped_content("[1]"),
         field: vec!["a".to_owned()],
     }));
@@ -539,4 +542,60 @@ fn a_document_prints_as_json_stringify_writes_what_json_parse_read() {
         ["2", "10", "z", "01", "x", "4294967295", "a"]
     );
     assert_eq!(format_json(&serde_json::json!("text")), "\"text\"");
+}
+
+#[tokio::test]
+async fn each_json_printer_shares_the_layout_options_and_their_exclusive_group() {
+    let directory = folder("layout");
+    for (argv, expected) in [
+        (
+            &["get", "nested", "--compact", "-f", "doc.json"][..],
+            "{\"deep\":{\"value\":\"found\"}}\n",
+        ),
+        (
+            &["fetch", "tags", "--indent", "4", "-f", "doc.json"],
+            "[\n    \"a\",\n    \"b\"\n]\n",
+        ),
+        (
+            &["select", "-F", "name", "--compact", "-f", "doc.json"],
+            "{\"name\":\"loom\"}\n",
+        ),
+        (
+            &["debug", "--indent", "0", "-f", "doc.json"],
+            "{\"name\":\"loom\",\"tags\":[\"a\",\"b\"],\"nested\":{\"deep\":{\"value\":\"found\"}}}\n",
+        ),
+    ] {
+        assert_eq!(
+            run_in(&directory, argv, "").await,
+            printed(expected),
+            "{argv:?}"
+        );
+    }
+    assert_eq!(
+        run_in(
+            &directory,
+            &[
+                "get",
+                "name",
+                "--compact",
+                "--indent",
+                "4",
+                "-f",
+                "doc.json"
+            ],
+            ""
+        )
+        .await,
+        failed(
+            2,
+            "jsonkit: Options \"--compact\" and \"--indent\" cannot be used together. Supply only one of them.\nRun \"jsonkit get --help\" to see the usage.\n"
+        ),
+    );
+}
+
+#[tokio::test]
+async fn help_gives_indent_the_spaces_placeholder() {
+    let page = run_in(&folder("layout-help"), &["get", "--help"], "").await;
+    assert_eq!(page.status, 0);
+    assert!(page.stdout.contains("--indent <spaces>"), "{}", page.stdout);
 }

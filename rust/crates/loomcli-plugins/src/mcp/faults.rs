@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use loomcli_core::{
     CommandGraph, CommandNode, DeclarationError, DiagnosticParts, DiagnosticRule, Error,
-    OptionGroupKind, diagnostic_rule,
+    OptionGroupKind, OptionNode, diagnostic_rule,
 };
 
 use super::tools::{
@@ -45,7 +45,7 @@ const PROPERTY_NAME_TAKEN: DiagnosticRule = diagnostic_rule(
 const REQUIRED_INPUT_EXCLUDED: DiagnosticRule = diagnostic_rule(
     "@loomcli/plugins/mcp/required-input-excluded",
     "Required MCP input excluded",
-    "An excluded option is off its Command's MCP tool, and a tool call reads no source for it, so a required option that is excluded, a one-required group whose every member is excluded, and a required-together group that excludes some of its members leave calls of the tool missing a value the Command needs.",
+    "An excluded option is off its Command's MCP tool, and a tool call reads no source for it, so a required option that is excluded, a one-required group whose every member is excluded, a required-together group that excludes some of its members, and a requirement that excludes an option it needs and not its option leave calls of the tool missing a value the Command needs.",
 );
 
 /// One fault under a rule, with its sentence and correction.
@@ -131,21 +131,69 @@ fn required_fault(command: &CommandNode) -> Result<Option<DeclarationError>, Err
     Ok(None)
 }
 
-/// Option names joined for a sentence: `"a" and "b"`, or `"a", "b", and "c"`.
+/// Quoted option names joined for a sentence.
 fn names_of(names: &[&str]) -> String {
     let quoted: Vec<String> = names.iter().map(|name| format!("\"{name}\"")).collect();
     match quoted.as_slice() {
+        [only] => only.clone(),
         [first, second] => format!("{first} and {second}"),
         [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
         [] => String::new(),
     }
 }
 
-/// The fault, if any, of an option group no tool call can satisfy: a `oneRequired` group whose
-/// every member is excluded, or a `requiredTogether` group that excludes some members and not all.
+/// Excluding the trigger makes a requirement inert. If the trigger remains, even a hidden
+/// trigger can be supplied from server sources, so an excluded dependency is a build fault.
+fn requirement_fault(
+    command: &CommandNode,
+    members: &[&OptionNode],
+) -> Result<Option<DeclarationError>, Error> {
+    let Some((option, needed)) = members.split_first() else {
+        return Ok(None);
+    };
+    if excluded(option)? {
+        return Ok(None);
+    }
+    for member in needed {
+        if excluded(member)? {
+            let names: Vec<&str> = needed.iter().map(|member| member.name()).collect();
+            let noun = if names.len() == 1 {
+                "option"
+            } else {
+                "options"
+            };
+            return Ok(Some(fault(
+                REQUIRED_INPUT_EXCLUDED,
+                format!(
+                    r#"{} makes option "{}" require {noun} {} and excludes "{}" from its MCP tool, so a call that supplies "{}" always fails."#,
+                    opening(command),
+                    option.name(),
+                    names_of(&names),
+                    member.name(),
+                    option.name(),
+                ),
+                &format!(
+                    r#"Exclude "{}" from the tool as well, or remove exclude from the mcpInput value of "{}"."#,
+                    option.name(),
+                    member.name(),
+                ),
+            )));
+        }
+    }
+    Ok(None)
+}
+
+/// The first group whose excluded members make a valid tool call impossible when its rule applies.
 fn group_fault(command: &CommandNode) -> Result<Option<DeclarationError>, Error> {
     for group in &command.option_groups {
-        let members = group_members(command, &group.options);
+        let members = group_members(command, group);
+        let kind = group.kind();
+        if kind == OptionGroupKind::Requires {
+            if let Some(error) = requirement_fault(command, &members)? {
+                return Ok(Some(error));
+            }
+            continue;
+        }
         let mut left = Vec::new();
         for member in &members {
             if excluded(member)? {
@@ -154,7 +202,7 @@ fn group_fault(command: &CommandNode) -> Result<Option<DeclarationError>, Error>
         }
         let names: Vec<&str> = members.iter().map(|member| member.name()).collect();
         let names = names_of(&names);
-        if group.kind == OptionGroupKind::OneRequired && left.len() == members.len() {
+        if kind == OptionGroupKind::OneRequired && left.len() == members.len() {
             return Ok(Some(fault(
                 REQUIRED_INPUT_EXCLUDED,
                 format!(
@@ -165,7 +213,7 @@ fn group_fault(command: &CommandNode) -> Result<Option<DeclarationError>, Error>
             )));
         }
         let some_left = left.first().filter(|_| left.len() < members.len());
-        if let (OptionGroupKind::RequiredTogether, Some(first)) = (group.kind, some_left) {
+        if let (OptionGroupKind::RequiredTogether, Some(first)) = (kind, some_left) {
             return Ok(Some(fault(
                 REQUIRED_INPUT_EXCLUDED,
                 format!(

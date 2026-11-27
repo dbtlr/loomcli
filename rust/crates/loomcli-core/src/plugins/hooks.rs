@@ -207,6 +207,7 @@ impl AttachedCommand {
             .command
             .inputs
             .push(InputDeclaration::Option(OptionInput {
+                origin: Default::default(),
                 name: name.to_owned(),
                 decl,
                 extensions,
@@ -233,6 +234,17 @@ impl AttachedCommand {
     /// [`exclusive`](Self::exclusive) states.
     pub fn required_together(&mut self, names: &[&str]) -> Result<&mut Self, DeclarationError> {
         self.group(OptionGroupKind::RequiredTogether, names)
+    }
+
+    /// Requires each named local option when `option` is supplied, under the rules
+    /// [`exclusive`](Self::exclusive) states.
+    pub fn requires(
+        &mut self,
+        option: &str,
+        needed: &[&str],
+    ) -> Result<&mut Self, DeclarationError> {
+        let names = crate::inputs::groups::requirement_members(option, needed);
+        self.group(OptionGroupKind::Requires, &names)
     }
 
     /// One option group, judged against the Command as the hook holds it.

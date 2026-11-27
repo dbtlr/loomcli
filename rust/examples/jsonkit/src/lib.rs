@@ -14,6 +14,7 @@ pub mod document_input;
 pub mod entries;
 pub mod failures;
 pub mod json;
+pub mod json_layout;
 pub mod kinds;
 pub mod member;
 pub mod read_json;

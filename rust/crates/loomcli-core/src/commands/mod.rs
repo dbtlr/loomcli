@@ -8,6 +8,7 @@
 
 pub(crate) mod declaration;
 mod messages;
+mod option_sets;
 mod state;
 
 use std::future::Future;
@@ -21,6 +22,8 @@ use crate::invocation::{Context, Outcome};
 use crate::output::{NoResult, ResultViews, RowViews, RowsResult, ValueResult};
 use crate::plugins::{AnyProvider, CommandTarget, ExtensionValue};
 use crate::support::IntoList;
+
+pub use option_sets::OptionSet;
 
 pub use state::{
     CarriesResult, Configuring, Done, Fresh, Group, NoResultYet, Open, State, TakesGlobals,
@@ -150,6 +153,20 @@ impl<I, R, S: State> Command<I, R, S> {
         command.retyped()
     }
 
+    /// Applies a reusable set of local options and groups.
+    #[track_caller]
+    pub fn options(self, set: &OptionSet) -> Command<I, R, <S as State>::Declared>
+    where
+        S: Open,
+    {
+        let mut command = self;
+        declaration::raise(set.apply(
+            &mut command.declaration,
+            &declaration::GlobalTable::default(),
+        ));
+        command.retyped()
+    }
+
     /// Declares standalone stdin, which the action reads under `ctx.stdin`. A Command whose content
     /// input already claims stdin faults here under `stdin-claimed-twice`.
     #[track_caller]
@@ -182,6 +199,22 @@ impl<I, R, S: State> Command<I, R, S> {
         let mut command = self;
         declaration::raise(command.declaration.declare_terminal_need());
         command.retyped()
+    }
+
+    /// Requires each named local option when `option` is supplied.
+    #[track_caller]
+    pub fn requires(self, option: &str, needed: &[&str]) -> Self
+    where
+        S: Open,
+    {
+        let mut command = self;
+        let names = crate::inputs::groups::requirement_members(option, needed);
+        declaration::raise(
+            command
+                .declaration
+                .declare_group(crate::inspection::OptionGroupKind::Requires, &names),
+        );
+        command
     }
 
     /// Declares that at most one of these local options is supplied.

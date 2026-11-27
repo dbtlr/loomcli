@@ -164,29 +164,64 @@ fn group_member(spelling: &str, label: Option<&str>) -> String {
     format!("{}{}", quoted(spelling), origin_clause(label))
 }
 
-/// A group has no singular subject, so each sentence states the whole relationship. Each member is
-/// its spelling and, when a source filled it, that source's label.
-pub(crate) fn group_sentence(kind: OptionGroupKind, members: &[(&str, Option<&str>)]) -> String {
-    let names: Vec<String> = members
-        .iter()
-        .map(|(spelling, label)| group_member(spelling, *label))
-        .collect();
-    let members = match names.as_slice() {
+fn joined_names(names: &[String]) -> String {
+    match names {
+        [only] => only.clone(),
         [first, second] => format!("{first} and {second}"),
         [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
         [] => String::new(),
+    }
+}
+
+/// Each member is its spelling and, when a source filled it, that source's label.
+/// For a requirement the first member is the trigger, followed by only the options still needed.
+pub(crate) fn group_sentence(kind: OptionGroupKind, members: &[(String, Option<&str>)]) -> String {
+    let listed = || {
+        let names: Vec<String> = members
+            .iter()
+            .map(|(spelling, label)| group_member(spelling, *label))
+            .collect();
+        joined_names(&names)
     };
     match kind {
         OptionGroupKind::Exclusive => {
-            format!("Options {members} cannot be used together. Supply only one of them.")
+            format!(
+                "Options {} cannot be used together. Supply only one of them.",
+                listed()
+            )
         }
         OptionGroupKind::OneRequired => {
-            format!("One of options {members} is required. Supply at least one of them.")
+            format!(
+                "One of options {} is required. Supply at least one of them.",
+                listed()
+            )
         }
         OptionGroupKind::RequiredTogether => {
-            format!("Options {members} must be supplied together. Supply all of them, or none.")
+            format!(
+                "Options {} must be supplied together. Supply all of them, or none.",
+                listed()
+            )
         }
+        OptionGroupKind::Requires => requirement_sentence(members),
     }
+}
+
+fn requirement_sentence(members: &[(String, Option<&str>)]) -> String {
+    let Some(((spelling, label), needed)) = members.split_first() else {
+        return String::new();
+    };
+    let trigger = group_member(spelling, *label);
+    let remove = quoted(spelling);
+    let names: Vec<String> = needed.iter().map(|(name, _)| quoted(name)).collect();
+    let lacking = joined_names(&names);
+    let (noun, pronoun) = if names.len() == 1 {
+        ("option", "it")
+    } else {
+        ("options", "them")
+    };
+    format!(
+        "Option {trigger} requires {noun} {lacking}. Supply {pronoun} as well, or remove {remove}."
+    )
 }
 
 pub(crate) fn environment_arity(arity: usize, delimiter: &str) -> String {

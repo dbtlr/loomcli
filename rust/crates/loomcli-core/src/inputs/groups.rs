@@ -7,6 +7,13 @@ use crate::invocation::parse::OptionValues;
 use super::messages;
 use super::{InputIdentity, InputKind, InputProblem};
 
+/// The trigger and the needed options, in the order a group call judges them.
+pub(crate) fn requirement_members<'a>(option: &'a str, needed: &[&'a str]) -> Vec<&'a str> {
+    std::iter::once(option)
+        .chain(needed.iter().copied())
+        .collect()
+}
+
 /// The input tier that supplied an option's value, argv highest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Tier {
@@ -51,11 +58,10 @@ pub(crate) fn losing_members(
     let mut losers: Vec<String> = Vec::new();
     for group in groups
         .iter()
-        .filter(|group| group.kind == OptionGroupKind::Exclusive)
+        .filter(|group| group.kind() == OptionGroupKind::Exclusive)
     {
-        let ranked: Vec<(&String, u8)> = group
-            .options
-            .iter()
+        let ranked: Vec<(&str, u8)> = group
+            .members()
             .map(|name| (name, tier_of(name).map_or(0, Tier::rank)))
             .collect();
         let top = ranked.iter().map(|(_, rank)| *rank).max().unwrap_or(0);
@@ -63,10 +69,10 @@ pub(crate) fn losing_members(
             let loses = if rank > 0 {
                 rank < top
             } else {
-                rejected.contains(name) && top == Tier::Argv.rank()
+                rejected.iter().any(|known| known == name) && top == Tier::Argv.rank()
             };
-            if loses && !losers.contains(name) {
-                losers.push(name.clone());
+            if loses && !losers.iter().any(|known| known == name) {
+                losers.push(name.to_owned());
             }
         }
     }
@@ -79,7 +85,7 @@ pub(crate) struct GroupContext<'a> {
     pub(crate) absent: &'a [(String, bool)],
     pub(crate) groups: &'a [OptionGroup],
     /// The members withdrawn as the losers of an exclusive group. `oneRequired` counts each, and a
-    /// `requiredTogether` group that holds one is not checked.
+    /// `requiredTogether` group or requirement that holds one is not checked.
     pub(crate) withdrawn: &'a [String],
     pub(crate) values: &'a OptionValues,
     /// The spelling a problem names each option by.
@@ -89,42 +95,61 @@ pub(crate) struct GroupContext<'a> {
     pub(crate) unanswered: &'a [String],
 }
 
-/// Whether one member counts toward its group: for an exclusive group, a claim; for `oneRequired`,
-/// a supplied or withdrawn member; for `requiredTogether`, a supplied one.
+/// Whether one member counts toward its group's report.
 fn counts_for(kind: OptionGroupKind, name: &str, context: &GroupContext<'_>) -> bool {
     match kind {
         OptionGroupKind::Exclusive => claims(context.values, name, context.absent),
         OptionGroupKind::OneRequired => {
             context.values.is_supplied(name) || context.withdrawn.iter().any(|known| known == name)
         }
-        OptionGroupKind::RequiredTogether => context.values.is_supplied(name),
+        OptionGroupKind::RequiredTogether | OptionGroupKind::Requires => {
+            context.values.is_supplied(name)
+        }
     }
 }
 
-/// Whether a group is broken. An unanswered configuration member suppresses only a failure whose
-/// proof depends on its answer.
-fn broken(group: &OptionGroup, context: &GroupContext<'_>) -> bool {
-    let counted: Vec<&String> = group
-        .options
-        .iter()
-        .filter(|name| counts_for(group.kind, name, context))
-        .collect();
-    let unanswered = |name: &String| context.unanswered.contains(name);
-    match group.kind {
-        OptionGroupKind::Exclusive => counted.len() > 1,
-        OptionGroupKind::OneRequired => counted.is_empty() && !group.options.iter().any(unanswered),
-        OptionGroupKind::RequiredTogether => {
-            !counted.is_empty()
-                && !group
-                    .options
-                    .iter()
-                    .any(|name| context.withdrawn.contains(name))
-                && group
-                    .options
-                    .iter()
-                    .any(|name| !counted.contains(&name) && !unanswered(name))
+/// The members a broken group's sentence names. A skipped configuration answer suppresses only
+/// the part of a failure that depends on that answer.
+fn sentence_members<'a>(
+    group: &'a OptionGroup,
+    context: &GroupContext<'_>,
+) -> Option<Vec<&'a str>> {
+    let kind = group.kind();
+    let withdrawn = |name: &str| context.withdrawn.iter().any(|known| known == name);
+    let unanswered = |name: &str| context.unanswered.iter().any(|known| known == name);
+    let supplied = |name: &str| counts_for(kind, name, context);
+    let lacking = |name: &str| !supplied(name) && !unanswered(name);
+    let broken = match group {
+        OptionGroup::Exclusive { .. } => {
+            group
+                .members()
+                .filter(|name| supplied(name))
+                .take(2)
+                .count()
+                == 2
         }
-    }
+        OptionGroup::OneRequired { .. } => !group
+            .members()
+            .any(|name| supplied(name) || unanswered(name)),
+        OptionGroup::RequiredTogether { .. } => {
+            group.members().any(supplied)
+                && !group.members().any(withdrawn)
+                && group.members().any(lacking)
+        }
+        OptionGroup::Requires { option, requires } => {
+            if !claims(context.values, option, context.absent) || group.members().any(withdrawn) {
+                return None;
+            }
+            let mut needed = requires
+                .iter()
+                .map(String::as_str)
+                .filter(|name| lacking(name))
+                .peekable();
+            needed.peek()?;
+            return Some(std::iter::once(option.as_str()).chain(needed).collect());
+        }
+    };
+    broken.then(|| group.members().collect())
 }
 
 /// The reports of every broken group, each its default text's line and its problem.
@@ -132,50 +157,43 @@ pub(crate) fn group_reports(context: &GroupContext<'_>) -> Vec<(Vec<String>, Inp
     context
         .groups
         .iter()
-        .filter(|group| broken(group, context))
-        .map(|group| {
-            let spellings: Vec<String> = group
-                .options
-                .iter()
-                .map(|name| (context.spelling)(name))
-                .collect();
-            let described: Vec<(&str, Option<&str>)> = group
-                .options
-                .iter()
-                .zip(&spellings)
-                .map(|(name, spelling)| {
+        .filter_map(|group| {
+            let kind = group.kind();
+            let described = sentence_members(group, context)?;
+            let members: Vec<(String, Option<&str>)> = described
+                .into_iter()
+                .map(|name| {
                     let label = context
                         .labels
                         .iter()
                         .find(|(known, _)| known == name)
                         .map(|(_, label)| label.as_str());
-                    (spelling.as_str(), label)
+                    ((context.spelling)(name), label)
                 })
                 .collect();
+            let spellings: Vec<String> = group.members().map(context.spelling).collect();
             let supplied = group
-                .options
-                .iter()
+                .members()
                 .zip(&spellings)
-                .filter(|(name, _)| counts_for(group.kind, name, context))
+                .filter(|(name, _)| counts_for(kind, name, context))
                 .map(|(_, spelling)| spelling.clone())
                 .collect();
-            (
-                vec![messages::group_sentence(group.kind, &described)],
+            Some((
+                vec![messages::group_sentence(kind, &members)],
                 InputProblem::Group {
-                    reason: group.kind,
+                    reason: kind,
                     inputs: group
-                        .options
-                        .iter()
+                        .members()
                         .map(|name| InputIdentity {
                             global: false,
                             kind: InputKind::Option,
-                            name: name.clone(),
+                            name: name.to_owned(),
                         })
                         .collect(),
                     spellings,
                     supplied,
                 },
-            )
+            ))
         })
         .collect()
 }

@@ -12,7 +12,8 @@ use crate::diagnostics::{DiagnosticParts, Finding, Literal, rules};
 use crate::failures::messages::{command_sentence, command_subject, quoted};
 use crate::failures::{DeclarationError, FailureFacts};
 use crate::inputs::table::{
-    self, BoundVariable, InputSite, ScopeOption, Table, check_option_config, check_option_name,
+    self, BoundVariable, InputSite, OptionOrigin, ScopeOption, Table, check_option_config,
+    check_option_name,
 };
 use crate::inputs::{ArgumentDecl, DeclarationCall, OptionDecl, Stdin};
 use crate::inspection::{OptionGroup, OptionGroupKind};
@@ -47,9 +48,16 @@ pub(crate) type ErasedAction =
 /// One declared option with the extension values it carries.
 #[derive(Clone)]
 pub(crate) struct OptionInput {
+    pub(crate) origin: OptionOrigin,
     pub(crate) name: String,
     pub(crate) decl: OptionDecl,
     pub(crate) extensions: ExtensionStore,
+}
+
+impl OptionInput {
+    pub(crate) fn site(&self, command: Option<&str>, path: &[String]) -> InputSite {
+        option_site(command, path, &self.name, &self.decl, self.origin)
+    }
 }
 
 /// One declared argument with the extension values it carries.
@@ -209,6 +217,7 @@ pub(crate) fn local_site(
         receiver: None,
         path: path.to_vec(),
         name: name.to_owned(),
+        origin: Default::default(),
         config,
         subject: format!("{} {kind} {}", command_sentence(command), quoted(name)),
     }
@@ -217,6 +226,21 @@ pub(crate) fn local_site(
 /// The Command's own path when nothing above it is known.
 fn own_path(name: Option<&str>) -> Vec<String> {
     name.map_or_else(Vec::new, |name| vec![name.to_owned()])
+}
+
+fn option_site(
+    command: Option<&str>,
+    path: &[String],
+    name: &str,
+    decl: &OptionDecl,
+    origin: OptionOrigin,
+) -> InputSite {
+    let mut site = local_site(command, path, "option", name, decl.literal());
+    site.origin = origin;
+    if origin == OptionOrigin::Set {
+        site.subject = format!("An option set option {}", quoted(name));
+    }
+    site
 }
 
 /// Validates one input's extension values as one layer.
@@ -231,13 +255,18 @@ pub(crate) fn input_extensions<T>(
     if values.is_empty() {
         return Ok(store);
     }
-    let place = ExtensionSite {
-        call: Finding::new(
+    let call = if site.origin == OptionOrigin::Direct {
+        Finding::new(
             site.call,
             vec![site.name.as_str().into(), site.config.clone()],
         )
-        .path(site.path.clone()),
-        at: setter_index.to_owned(),
+        .path(site.path.clone())
+    } else {
+        site.finding(setter_index)
+    };
+    let place = ExtensionSite {
+        call,
+        at: site.mark_path(setter_index),
     };
     store.extend(validate_layer(values, registry, &place, &subject)?);
     Ok(store)
@@ -348,13 +377,7 @@ impl CommandDeclaration {
             .map(|option| ScopeOption {
                 name: &option.name,
                 decl: &option.decl,
-                site: local_site(
-                    self.name.as_deref(),
-                    path,
-                    "option",
-                    &option.name,
-                    option.decl.literal(),
-                ),
+                site: option.site(self.name.as_deref(), path),
             })
             .collect()
     }
@@ -502,13 +525,7 @@ impl CommandDeclaration {
         for input in &self.inputs {
             match input {
                 InputDeclaration::Option(option) if option.decl.claims_stdin() => {
-                    claimed.push(local_site(
-                        self.name.as_deref(),
-                        path,
-                        "option",
-                        &option.name,
-                        option.decl.literal(),
-                    ));
+                    claimed.push(option.site(self.name.as_deref(), path));
                 }
                 InputDeclaration::Argument(argument) if argument.decl.claims_stdin() => {
                     claimed.push(self.argument_site(path, argument));
@@ -520,7 +537,19 @@ impl CommandDeclaration {
         if claimed.len() + usize::from(self.stdin.is_some()) <= 1 {
             return Ok(());
         }
-        let mut parts = DiagnosticParts::new("A Command declares more than one stdin target.");
+        let in_set = claim.is_some_and(|site| site.origin == OptionOrigin::Set);
+        let (sentence, correction) = if in_set {
+            (
+                "An option set declares more than one stdin target.",
+                "Keep one stdin target in the set.",
+            )
+        } else {
+            (
+                "A Command declares more than one stdin target.",
+                "Keep one stdin target on the Command.",
+            )
+        };
+        let mut parts = DiagnosticParts::new(sentence);
         for site in &claimed {
             parts = parts.finding(site.named(Some("claims stdin")));
         }
@@ -533,7 +562,7 @@ impl CommandDeclaration {
         }
         Err(DeclarationError::new(
             rules::STDIN_CLAIMED_TWICE,
-            parts.correction("Keep one stdin target on the Command."),
+            parts.correction(correction),
         ))
     }
 
@@ -545,10 +574,25 @@ impl CommandDeclaration {
         decl: OptionDecl,
         globals: &GlobalTable,
     ) -> Result<(), DeclarationError> {
+        self.declare_option_in(name, decl, globals, OptionOrigin::Direct)
+    }
+
+    /// Uses the ordinary local option rules for entries declared in or applied from a set.
+    pub(super) fn declare_option_in(
+        &mut self,
+        name: &str,
+        decl: OptionDecl,
+        globals: &GlobalTable,
+        origin: OptionOrigin,
+    ) -> Result<(), DeclarationError> {
         let path = own_path(self.name.as_deref());
         let command = self.name.as_deref();
-        let subject = command_subject(command);
-        let site = local_site(command, &path, "option", name, decl.literal());
+        let subject = if origin == OptionOrigin::Set {
+            "an option set".to_owned()
+        } else {
+            command_subject(command)
+        };
+        let site = option_site(command, &path, name, &decl, origin);
         check_option_name(name, &site)?;
         let mut registry = self.descriptors.clone();
         let extensions = input_extensions(
@@ -558,10 +602,11 @@ impl CommandDeclaration {
             "1.extend.0",
             ExtensionSubject {
                 phrase: format!("on {subject} option {}", quoted(name)),
-                sentence: format!("{} option {}", command_sentence(command), quoted(name)),
+                sentence: site.subject.clone(),
             },
         )?;
         let candidate = OptionInput {
+            origin,
             name: name.to_owned(),
             decl,
             extensions,
@@ -667,19 +712,45 @@ impl CommandDeclaration {
         kind: OptionGroupKind,
         names: &[&str],
     ) -> Result<(), DeclarationError> {
+        self.declare_group_in(kind, names, false)
+    }
+
+    /// Group calls on Commands and option sets share the same checks.
+    pub(super) fn declare_group_in(
+        &mut self,
+        kind: OptionGroupKind,
+        names: &[&str],
+        in_set: bool,
+    ) -> Result<(), DeclarationError> {
         let (call, word) = match kind {
             OptionGroupKind::Exclusive => ("exclusive", "exclusive"),
             OptionGroupKind::OneRequired => ("one_required", "oneRequired"),
             OptionGroupKind::RequiredTogether => ("required_together", "requiredTogether"),
+            OptionGroupKind::Requires => ("requires", "requires"),
         };
-        let subject = command_sentence(self.name.as_deref());
-        let finding = Finding::new(
-            call,
+        let arguments = if let (OptionGroupKind::Requires, Some((option, needed))) =
+            (kind, names.split_first())
+        {
+            vec![
+                (*option).into(),
+                Literal::Slice(needed.iter().map(|name| (*name).into()).collect()),
+            ]
+        } else {
             vec![Literal::List(
                 names.iter().map(|name| (*name).into()).collect(),
-            )],
-        )
-        .path(own_path(self.name.as_deref()));
+            )]
+        };
+        let (subject, finding) = if in_set {
+            (
+                "An option set".to_owned(),
+                Finding::new(format!("OptionSet::new().{call}"), arguments),
+            )
+        } else {
+            (
+                command_sentence(self.name.as_deref()),
+                Finding::new(call, arguments).path(own_path(self.name.as_deref())),
+            )
+        };
         let fail = |sentence: String, correction: &str| {
             DeclarationError::new(
                 rules::OPTION_GROUP,
@@ -688,14 +759,23 @@ impl CommandDeclaration {
                     .correction(correction),
             )
         };
-        if names.len() < 2 {
+        let Some((first, rest)) = names.split_first().filter(|(_, rest)| !rest.is_empty()) else {
             return Err(fail(
                 format!("{subject} declares {word} with fewer than two options."),
                 "Name at least two local options.",
             ));
-        }
+        };
         let mut seen: Vec<&str> = Vec::new();
-        for member in names {
+        for (index, member) in names.iter().enumerate() {
+            if kind == OptionGroupKind::Requires && index > 0 && member == first {
+                return Err(fail(
+                    format!(
+                        "{subject} requires names option {} as its own requirement.",
+                        quoted(member)
+                    ),
+                    "Name only other local options after the first.",
+                ));
+            }
             if seen.contains(member) {
                 return Err(fail(
                     format!("{subject} {word} repeats option {}.", quoted(member)),
@@ -713,29 +793,43 @@ impl CommandDeclaration {
                 ));
             }
         }
-        let group = OptionGroup {
-            kind,
-            options: names.iter().map(|name| (*name).to_owned()).collect(),
+        let members = || names.iter().map(|name| (*name).to_owned()).collect();
+        let group = match kind {
+            OptionGroupKind::Exclusive => OptionGroup::Exclusive { options: members() },
+            OptionGroupKind::OneRequired => OptionGroup::OneRequired { options: members() },
+            OptionGroupKind::RequiredTogether => {
+                OptionGroup::RequiredTogether { options: members() }
+            }
+            OptionGroupKind::Requires => OptionGroup::Requires {
+                option: (*first).to_owned(),
+                requires: rest.iter().map(|name| (*name).to_owned()).collect(),
+            },
+        };
+        let asks_together = |group: &OptionGroup| {
+            matches!(
+                group,
+                OptionGroup::RequiredTogether { .. } | OptionGroup::Requires { .. }
+            )
         };
         let exclusive: Vec<&OptionGroup> = if kind == OptionGroupKind::Exclusive {
             vec![&group]
         } else {
             self.groups
                 .iter()
-                .filter(|each| each.kind == OptionGroupKind::Exclusive)
+                .filter(|each| matches!(each, OptionGroup::Exclusive { .. }))
                 .collect()
         };
-        let together: Vec<&OptionGroup> = if kind == OptionGroupKind::RequiredTogether {
+        let together: Vec<&OptionGroup> = if asks_together(&group) {
             vec![&group]
         } else {
             self.groups
                 .iter()
-                .filter(|each| each.kind == OptionGroupKind::RequiredTogether)
+                .filter(|group| asks_together(group))
                 .collect()
         };
-        for rule in &exclusive {
+        for rule in exclusive {
             if let Some(required) = self.options().find(|option| {
-                rule.options.contains(&option.name) && option.decl.requires_presence()
+                rule.members().any(|name| name == option.name) && option.decl.requires_presence()
             }) {
                 return Err(fail(
                     format!(
@@ -745,16 +839,21 @@ impl CommandDeclaration {
                     "Remove the presence requirement or remove the exclusive group.",
                 ));
             }
-            if together.iter().any(|other| {
-                rule.options
-                    .iter()
-                    .filter(|name| other.options.contains(name))
+            if let Some(other) = together.iter().find(|other| {
+                other
+                    .members()
+                    .filter(|name| rule.members().any(|member| member == *name))
+                    .take(2)
                     .count()
-                    >= 2
+                    == 2
             }) {
+                let conflict = match other {
+                    OptionGroup::Requires { .. } => "requires",
+                    _ => "requiredTogether",
+                };
                 return Err(fail(
                     format!(
-                        "{subject} exclusive and requiredTogether groups share at least two options."
+                        "{subject} exclusive and {conflict} groups share at least two options."
                     ),
                     "Remove one of the conflicting group rules.",
                 ));
@@ -795,6 +894,7 @@ impl CommandDeclaration {
             match call {
                 DeclarationCall::Argument(name, decl) => self.declare_argument(&name, decl)?,
                 DeclarationCall::Option(name, decl) => self.declare_option(&name, decl, globals)?,
+                DeclarationCall::Options(set) => set.apply(self, globals)?,
                 DeclarationCall::Stdin(stdin) => {
                     self.declare_stdin(stdin)?;
                     self.typed_stdin = true;

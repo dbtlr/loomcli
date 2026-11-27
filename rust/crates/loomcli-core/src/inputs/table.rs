@@ -75,6 +75,15 @@ pub(crate) fn spellings_of(table: &Table, name: &str) -> [Option<String>; 3] {
     spellings
 }
 
+/// How the author declared a local option, for findings at any phase.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum OptionOrigin {
+    #[default]
+    Direct,
+    Set,
+    AppliedSet,
+}
+
 /// Where one input's declaration sits in the author's code: the call, the Command's path, its name,
 /// and the builder chain, with the subject a fault's sentence names it by.
 #[derive(Clone, Debug)]
@@ -87,17 +96,37 @@ pub(crate) struct InputSite {
     pub(crate) name: String,
     pub(crate) config: Literal,
     pub(crate) subject: String,
+    pub(crate) origin: OptionOrigin,
 }
 
 impl InputSite {
     /// The finding that marks `mark` in the call's arguments.
     pub(crate) fn finding(&self, mark: &str) -> Finding {
         let arguments = vec![self.name.as_str().into(), self.config.clone()];
-        let finding = match &self.receiver {
-            Some(receiver) => Finding::new(format!("{receiver}.{}", self.call), arguments),
-            None => Finding::new(self.call, arguments).path(self.path.clone()),
+        let finding = match (self.origin, &self.receiver) {
+            (OptionOrigin::Set, _) => Finding::new("OptionSet::new().option", arguments),
+            (OptionOrigin::AppliedSet, _) => Finding::new(
+                "options",
+                vec![Literal::builder("&OptionSet::new()").call("option", arguments)],
+            )
+            .path(self.path.clone()),
+            (OptionOrigin::Direct, Some(receiver)) => {
+                Finding::new(format!("{receiver}.{}", self.call), arguments)
+            }
+            (OptionOrigin::Direct, None) => {
+                Finding::new(self.call, arguments).path(self.path.clone())
+            }
         };
-        finding.mark(mark)
+        finding.mark(self.mark_path(mark))
+    }
+
+    /// The path of a direct option call's argument inside the call that declared this entry.
+    pub(crate) fn mark_path(&self, mark: &str) -> String {
+        if self.origin == OptionOrigin::AppliedSet {
+            format!("0.option.{mark}")
+        } else {
+            mark.to_owned()
+        }
     }
 
     /// The finding that marks the name, with a note.
