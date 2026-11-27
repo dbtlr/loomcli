@@ -97,9 +97,10 @@ fn default_of(default: &Option<loomcli_core::DeclaredDefault>) -> Value {
         .map_or(Value::Null, |default| json!({ "value": default.value }))
 }
 
-/// One option's entry: its node without `hidden`, `aliases`, `extensions`, and the schema-run flags.
+/// One option's entry. The `aliases` field carries the option's visible aliases as bare names.
 fn option_entry(node: &OptionNode) -> Value {
     let mut entry = Map::new();
+    let aliases = json!(node.visible_aliases());
     let mut put = |key: &str, value: Value| {
         entry.insert(key.to_owned(), value);
     };
@@ -113,6 +114,7 @@ fn option_entry(node: &OptionNode) -> Value {
             put("long", text_or_null(node.long.as_ref()));
             put("short", text_or_null(node.short.as_ref()));
             put("negative", text_or_null(node.negative.as_ref()));
+            put("aliases", aliases);
             put("polarity", serialized(&node.polarity));
             put("interaction", json!(node.interaction));
             put("color", json!(node.color));
@@ -128,6 +130,7 @@ fn option_entry(node: &OptionNode) -> Value {
             put("control", json!(node.control));
             put("long", text_or_null(node.long.as_ref()));
             put("short", text_or_null(node.short.as_ref()));
+            put("aliases", aliases);
             put("verbose", json!(node.verbose));
             put("quiet", json!(node.quiet));
             put("schema", schema_of(&node.schema));
@@ -144,6 +147,7 @@ fn option_entry(node: &OptionNode) -> Value {
             put("control", json!(node.control));
             put("long", text_or_null(node.long.as_ref()));
             put("short", text_or_null(node.short.as_ref()));
+            put("aliases", aliases);
             put("required", json!(node.required));
             put("requiredWhen", serialized(&node.required_when));
             put("multiple", json!(node.multiple));
@@ -161,6 +165,7 @@ fn option_entry(node: &OptionNode) -> Value {
             put("control", json!(node.control));
             put("long", text_or_null(node.long.as_ref()));
             put("short", text_or_null(node.short.as_ref()));
+            put("aliases", aliases);
             put("required", json!(node.required));
             put("requiredWhen", serialized(&node.required_when));
             put("multiple", json!(node.multiple));
@@ -393,6 +398,7 @@ fn command_entry(node: &CommandNode) -> Result<Value, Error> {
         "stdin": stdin,
         "passthrough": passthrough,
         "name": node.name,
+        "aliases": node.visible_aliases,
         "path": node.path,
         "description": line_of(node.description.as_deref()),
         "details": details,

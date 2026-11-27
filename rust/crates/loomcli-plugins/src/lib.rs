@@ -10,6 +10,8 @@
 /// The package part of every identity the pack declares: `@loomcli/plugins/<plugin>`.
 pub const PACKAGE_NAME: &str = "@loomcli/plugins";
 
+#[cfg(any(feature = "completion", feature = "help-views"))]
+mod aliases;
 #[cfg(feature = "background")]
 pub mod background;
 #[cfg(feature = "box")]

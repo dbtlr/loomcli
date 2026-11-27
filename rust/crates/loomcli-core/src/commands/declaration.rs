@@ -30,6 +30,11 @@ use super::{Passthrough, messages};
 /// The correction every portable-name fault gives.
 pub(crate) const PORTABLE_NAME_CORRECTION: &str = "Use a nonempty name of A-Z, a-z, 0-9, \".\", \"_\", and \"-\" that does not start with \"-\" or \".\".";
 
+fn alias_finding(alias: &str, visible: bool) -> Finding {
+    let call = if visible { "visible_alias" } else { "alias" };
+    Finding::new(call, vec![alias.into()]).mark("0")
+}
+
 /// Panics with a fault's whole Developer Diagnostic, at the author's line: the Rust form of the
 /// reference's throw while the module evaluates.
 #[track_caller]
@@ -116,6 +121,7 @@ pub(crate) struct CommandDeclaration {
     pub(crate) hidden: bool,
     pub(crate) deprecated: Option<String>,
     pub(crate) aliases: Vec<String>,
+    pub(crate) visible_aliases: Vec<String>,
     pub(crate) inputs: Vec<InputDeclaration>,
     pub(crate) stdin: Option<Stdin>,
     pub(crate) passthrough: Option<Passthrough>,
@@ -410,28 +416,28 @@ impl CommandDeclaration {
         )
     }
 
-    /// `alias(name)`: a portable name; one that repeats the Command's name or an alias adds nothing.
-    pub(crate) fn declare_alias(&mut self, alias: &str) -> Result<(), DeclarationError> {
+    /// Declares one portable alias or makes an earlier declaration of that alias visible.
+    pub(crate) fn declare_alias(
+        &mut self,
+        alias: &str,
+        visible: bool,
+    ) -> Result<(), DeclarationError> {
         if !is_portable_name(alias) {
-            let mut names: Vec<String> = self.aliases.clone();
-            names.push(alias.to_owned());
             return Err(DeclarationError::new(
                 rules::PORTABLE_NAME,
-                DiagnosticParts::new(format!(
-                    "{} declares an alias named {}.",
-                    command_sentence(self.name.as_deref()),
-                    quoted(alias)
-                ))
-                .finding(
-                    Finding::new("alias", vec![alias.into()])
-                        .path(own_path(self.name.as_deref()))
-                        .mark("0"),
-                )
-                .correction(PORTABLE_NAME_CORRECTION),
+                DiagnosticParts::new(messages::invalid_alias(self.name.as_deref(), alias))
+                    .finding(alias_finding(alias, visible).path(own_path(self.name.as_deref())))
+                    .correction(PORTABLE_NAME_CORRECTION),
             ));
         }
-        if self.name.as_deref() != Some(alias) && !self.aliases.iter().any(|known| known == alias) {
+        if self.name.as_deref() == Some(alias) {
+            return Ok(());
+        }
+        if !self.aliases.iter().any(|known| known == alias) {
             self.aliases.push(alias.to_owned());
+        }
+        if visible && !self.visible_aliases.iter().any(|known| known == alias) {
+            self.visible_aliases.push(alias.to_owned());
         }
         Ok(())
     }
@@ -1022,9 +1028,9 @@ impl CommandDeclaration {
             let command_name = name_of(command);
             let mut child_path = path.to_vec();
             child_path.push(command_name.clone());
-            Finding::new("alias", vec![alias.into()])
+            let visible = command.visible_aliases.iter().any(|name| name == alias);
+            alias_finding(alias, visible)
                 .path(child_path)
-                .mark("0")
                 .note(format!("alias of child {}", quoted(&command_name)))
         };
         if let Some(twin) = self.children.iter().find(|entry| name_of(entry) == name) {
@@ -1036,12 +1042,7 @@ impl CommandDeclaration {
         for alias in &child.aliases {
             if let Some(holder) = self.children.iter().find(|entry| &name_of(entry) == alias) {
                 return Err(fault(
-                    format!(
-                        "{sentence} attaches child {} with alias {}, which is also the name of child {}.",
-                        quoted(name),
-                        quoted(alias),
-                        quoted(alias)
-                    ),
+                    messages::alias_hits_sibling_name(&sentence, name, alias),
                     [child_finding(holder), aliased(child, alias)],
                 ));
             }
@@ -1051,12 +1052,7 @@ impl CommandDeclaration {
                 .find(|entry| entry.aliases.contains(alias))
             {
                 return Err(fault(
-                    format!(
-                        "{sentence} attaches child {} with alias {}, which is also an alias of child {}.",
-                        quoted(name),
-                        quoted(alias),
-                        quoted(&name_of(owner))
-                    ),
+                    messages::alias_hits_sibling_alias(&sentence, name, alias, &name_of(owner)),
                     [aliased(owner, alias), aliased(child, alias)],
                 ));
             }
@@ -1067,12 +1063,7 @@ impl CommandDeclaration {
             .find(|entry| entry.aliases.iter().any(|alias| alias == name))
         {
             return Err(fault(
-                format!(
-                    "{sentence} attaches child {} with alias {}, which is also the name of child {}.",
-                    quoted(&name_of(owner)),
-                    quoted(name),
-                    quoted(name)
-                ),
+                messages::alias_hits_sibling_name(&sentence, &name_of(owner), name),
                 [aliased(owner, name), child_finding(child)],
             ));
         }

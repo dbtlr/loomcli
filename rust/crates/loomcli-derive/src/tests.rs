@@ -219,7 +219,7 @@ fn a_passthrough_field_rejects_facts_other_than_description_at_the_key() {
         inputs_fault("struct I { #[passthrough(unknown)] tail: Vec<String> }"),
         pair(
             "unknown input fact `unknown`; the facts are `name`, `description`, `short`, \
-             `short_only`, `aliases`, `hidden`, `deprecated`, `control`, `count`, `polarity`, \
+             `short_only`, `aliases`, `visible_aliases`, `hidden`, `deprecated`, `control`, `count`, `polarity`, \
              `validate`, `validate_omitted`, `default`, `implied`, `last_wins`, `arity`, `required`, `non_interactive`, \
              `env`, `env_delimiter`, `env_allow_empty`, `extensions`, `stdin`, `min`, `max`, \
              `interaction`, `color`, `plain`, `verbose`, `quiet`, `background`, `builder`",
@@ -873,5 +873,25 @@ fn a_typed_set_group_checks_names_and_literal_arity() {
             "`show_input` is the field; a group names the declared name \"show-input\"",
             "\"show_input\""
         ),
+    );
+}
+
+#[test]
+fn visible_alias_errors_mark_the_literal_or_conflicting_fact() {
+    assert_eq!(
+        inputs_fault(r#"struct I { #[option(visible_aliases = ["bad=name"])] name: String }"#),
+        pair(
+            "the alias \"bad=name\" is not a declared name: a declared name is nonempty, with no leading hyphen, no whitespace, and no `=`",
+            r#""bad=name""#,
+        )
+    );
+    assert_eq!(
+        inputs_fault(
+            r#"struct I { #[option(short = 'n', short_only, visible_aliases = [])] name: String }"#
+        ),
+        pair(
+            "a short-only option has no long spelling for an alias to stand beside; drop `visible_aliases` or `short_only`",
+            "visible_aliases",
+        )
     );
 }

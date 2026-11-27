@@ -8,6 +8,7 @@ use loomcli_core::{
     ArgumentNode, CommandGraph, CommandNode, OptionGroupKind, OptionNode, Polarity, WordPosition,
 };
 
+use crate::aliases::alias_spellings;
 use crate::closed_set::{Schema, closed_set};
 
 /// Cobra's directive numbers, of which the answer writes three: `0` leaves the shell its default,
@@ -80,17 +81,41 @@ fn is_listed(hidden: bool, deprecated: Option<&str>) -> bool {
     !hidden && deprecated.is_none()
 }
 
-/// The canonical names of a Command's listed children.
-fn child_offers(command: &CommandNode) -> Vec<Offer> {
+/// Offer matching visible aliases in a member's place if none of its own words match.
+fn in_place(
+    own: &[&str],
+    aliases: impl Iterator<Item = String>,
+    prefix: &str,
+    description: Option<String>,
+) -> Vec<Offer> {
+    let offer = |word| Offer {
+        word,
+        description: description.clone(),
+    };
+    if own.iter().any(|word| word.starts_with(prefix)) {
+        own.iter().map(|word| offer((*word).to_owned())).collect()
+    } else {
+        aliases
+            .filter(|word| word.starts_with(prefix))
+            .map(offer)
+            .collect()
+    }
+}
+
+/// The names and matching visible aliases of a Command's listed children.
+fn child_offers(command: &CommandNode, prefix: &str) -> Vec<Offer> {
     command
         .children
         .iter()
         .filter(|child| is_listed(child.hidden, child.deprecated.as_deref()))
-        .filter_map(|child| {
-            child.name.as_ref().map(|name| Offer {
-                word: name.clone(),
-                description: child.description.clone(),
-            })
+        .filter_map(|child| child.name.as_deref().map(|name| (child, name)))
+        .flat_map(|(child, name)| {
+            in_place(
+                &[name],
+                child.visible_aliases.iter().cloned(),
+                prefix,
+                child.description.clone(),
+            )
         })
         .collect()
 }
@@ -139,8 +164,9 @@ impl Given<'_> {
 }
 
 /// The spellings of the options in scope that the word may still name: each long spelling, a
-/// Boolean's negative spelling, and the short spelling when the word is exactly `-`. An option the
-/// earlier words gave is left out unless another occurrence still adds anything.
+/// Boolean's negative spelling, and the short spelling when the word is exactly `-`. An option's
+/// visible aliases are offered when no own spelling matches. An option the earlier words gave is
+/// left out unless another occurrence still adds anything.
 fn option_offers(
     graph: &CommandGraph,
     command: &Arc<CommandNode>,
@@ -192,14 +218,11 @@ fn option_offers(
             if prefix == "-" {
                 spellings.extend(option.short());
             }
-            let description = description_of(option);
-            spellings
-                .into_iter()
-                .map(|word| Offer {
-                    word: word.to_owned(),
-                    description: description.clone(),
-                })
-                .collect::<Vec<_>>()
+            let aliases = option
+                .visible_aliases()
+                .iter()
+                .flat_map(|alias| alias_spellings(option, alias));
+            in_place(&spellings, aliases, prefix, description_of(option))
         })
         .collect()
 }
@@ -255,7 +278,7 @@ fn offers_at(graph: &CommandGraph, position: &WordPosition) -> Offers {
             prefix,
             ..
         } => {
-            let mut children = child_offers(command);
+            let mut children = child_offers(command, prefix);
             let Some(argument) = argument else {
                 return Offers {
                     directive: FILES_OFF,

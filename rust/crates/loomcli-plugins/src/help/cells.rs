@@ -3,8 +3,12 @@
 //! set out, wrapping or stacking it on a terminal.
 
 use loomcli_core::style::{Alignment, nowrap};
-use loomcli_core::{ArgumentNode, ContentType, OptionNode, Polarity, RequiredWhen, ViewContext};
+use loomcli_core::{
+    ArgumentNode, CommandNode, ContentType, OptionNode, Polarity, RequiredWhen, ViewContext,
+};
 use serde_json::Value;
+
+use crate::aliases::alias_spellings;
 
 use super::layout::{hanging, on_terminal, padded, signed, spaces, unit_width};
 
@@ -388,6 +392,37 @@ fn dim_fact(text: impl Into<String>) -> Fact {
     }
 }
 
+fn labeled_aliases(
+    names: &[String],
+    singular: &'static str,
+    plural: &'static str,
+) -> Option<(&'static str, String)> {
+    let label = match names {
+        [] => return None,
+        [_] => singular,
+        _ => plural,
+    };
+    Some((label, names.join(", ")))
+}
+
+/// The label and names printed in a Command's masthead or DESCRIPTION.
+pub(crate) fn command_alias_line(command: &CommandNode) -> Option<(&'static str, String)> {
+    labeled_aliases(&command.visible_aliases, "Alias: ", "Aliases: ")
+}
+
+fn alias_fact(names: &[String]) -> Option<Fact> {
+    let (label, names) = labeled_aliases(names, "alias: ", "aliases: ")?;
+    Some(dim_fact(format!("{label}{names}")))
+}
+
+/// A Command row's visible aliases and deprecation, in that order.
+pub(crate) fn command_facts(command: &CommandNode) -> Vec<Fact> {
+    alias_fact(&command.visible_aliases)
+        .into_iter()
+        .chain(deprecated_facts(command.deprecated.as_deref()))
+        .collect()
+}
+
 /// A dim fact that prints a label, then names help keeps whole, then a list's delimiter.
 fn binding_fact(label: &str, names: Vec<String>, delimiter: Option<(String, String)>) -> Fact {
     Fact {
@@ -513,8 +548,18 @@ fn kind_facts(option: &OptionNode) -> Vec<Fact> {
     }
 }
 
+/// The fact for a visible option alias. Each name uses its first long spelling.
+pub(super) fn option_alias_fact(option: &OptionNode) -> Option<Fact> {
+    let names: Vec<_> = option
+        .visible_aliases()
+        .iter()
+        .filter_map(|alias| alias_spellings(option, alias).next())
+        .collect();
+    alias_fact(&names)
+}
+
 /// The fact a deprecated member contributes: its migration message, on one line, always last.
-pub(crate) fn deprecated_facts(deprecated: Option<&str>) -> Vec<Fact> {
+fn deprecated_facts(deprecated: Option<&str>) -> Vec<Fact> {
     deprecated
         .map(|message| Fact {
             text: format!("deprecated: {}", single_line(message)),
@@ -567,16 +612,18 @@ fn binding_facts(option: &OptionNode, help: &OptionHelp) -> Vec<Fact> {
     facts
 }
 
-/// The facts of one option row that are not its bindings: what its kind contributes, then its
-/// deprecation. A renderer that prints the bindings on lines of their own lists these.
+/// The aliases, kind, and deprecation facts for a renderer that lists bindings on their own lines.
 #[cfg(feature = "manpage")]
 pub(crate) fn unbound_option_facts(option: &OptionNode) -> Vec<Fact> {
-    let mut facts = kind_facts(option);
+    let mut facts: Vec<_> = option_alias_fact(option)
+        .into_iter()
+        .chain(kind_facts(option))
+        .collect();
     facts.extend(deprecated_facts(option.deprecated()));
     facts
 }
 
-/// The facts a help page prints for one option row, in the order the right-cell rule names them.
+/// The kind, binding, and deprecation facts shared by help and generated command references.
 pub(crate) fn option_facts(option: &OptionNode, help: &OptionHelp) -> Vec<Fact> {
     let mut facts = kind_facts(option);
     facts.extend(binding_facts(option, help));

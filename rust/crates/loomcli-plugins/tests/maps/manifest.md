@@ -4,6 +4,8 @@ The plugin is `manifest` (`--manifest`) with its collecting extension `@loomcli/
 
 | Reference file | Status | Notes |
 | --- | --- | --- |
+| `visible-aliases.test.ts` | ported, the manifest cases | `visible_aliases.rs` checks which aliases appear, their bare names, and the entry shapes and key order. |
+| `manifest.test.ts` (visible alias fields) | ported | `manifest_document.rs` pins empty alias arrays and their key positions, including content options. |
 | `option-groups.test.ts` | partly ported here | `option_groups.rs` checks that the manifest lists the same visible groups as help. |
 | `option-requires.test.ts` | partly ported here | `option_requires.rs` checks the manifest's requirement shape and order and omission of groups with a hidden member on either side. |
 | `manifest.test.ts` (arity and last-wins additions) | ported | `manifest_document.rs` checks nested defaults, key order, the string defaults, and omission from content entries. |

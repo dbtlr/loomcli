@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::diagnostics::Literal;
 use crate::plugins::{ExtensionValue, OptionTarget};
 
-use super::{OmissionValidator, Validator};
+use super::{OmissionValidator, Validator, messages};
 
 /// Which spellings a Boolean option accepts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
@@ -161,10 +161,36 @@ pub(crate) struct OptionFacts {
     pub(crate) short: Option<char>,
     pub(crate) short_only: bool,
     pub(crate) aliases: Vec<String>,
+    pub(crate) visible_aliases: Vec<String>,
     pub(crate) env: Vec<String>,
     pub(crate) extensions: Vec<ExtensionValue<OptionTarget>>,
     /// The setters called, in call order, for the builder chain a finding prints.
     pub(crate) chain: Vec<(&'static str, Vec<Literal>)>,
+}
+
+/// The two lists an option can declare aliases in, in the order Loom checks them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AliasList {
+    Unadvertised,
+    Visible,
+}
+
+impl AliasList {
+    pub(super) const ALL: [Self; 2] = [Self::Unadvertised, Self::Visible];
+
+    pub(super) fn names(self, facts: &OptionFacts) -> &[String] {
+        match self {
+            Self::Unadvertised => &facts.aliases,
+            Self::Visible => &facts.visible_aliases,
+        }
+    }
+
+    pub(super) const fn setter(self) -> &'static str {
+        match self {
+            Self::Unadvertised => "aliases",
+            Self::Visible => "visible_aliases",
+        }
+    }
 }
 
 impl OptionFacts {
@@ -255,6 +281,20 @@ macro_rules! shared_option_setters {
             self.facts
                 .called("aliases", vec![Literal::from(aliases.clone())]);
             self.facts.aliases = aliases;
+            self
+        }
+
+        /// Sets the visible long aliases, as bare names, in the order declared.
+        /// A name also in `aliases` keeps its place there and becomes visible.
+        /// A short-only option accepts an empty list.
+        pub fn visible_aliases(
+            mut self,
+            aliases: impl IntoIterator<Item = impl Into<String>>,
+        ) -> Self {
+            let aliases: Vec<String> = aliases.into_iter().map(Into::into).collect();
+            self.facts
+                .called("visible_aliases", vec![Literal::from(aliases.clone())]);
+            self.facts.visible_aliases = aliases;
             self
         }
 
@@ -774,11 +814,13 @@ impl OptionDecl {
                 "declares short_only without a short spelling".to_owned(),
             ));
         }
-        if facts.short_only && !facts.aliases.is_empty() {
-            return Some((
-                "aliases",
-                "declares aliases beside short_only, which removes every long spelling".to_owned(),
-            ));
+        if facts.short_only
+            && let Some(list) = AliasList::ALL
+                .into_iter()
+                .find(|list| !list.names(facts).is_empty())
+        {
+            let setter = list.setter();
+            return Some((setter, messages::aliases_beside_short_only(setter)));
         }
         if !global && let Some(mark) = self.marks().first() {
             return Some((

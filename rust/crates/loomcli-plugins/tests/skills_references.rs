@@ -4,7 +4,7 @@
 #![allow(clippy::unwrap_used)]
 
 use loomcli_core::{
-    Application, Arg, Command, Context, DeclarationError, Group, Passthrough, Stdin,
+    Application, Arg, Command, Context, DeclarationError, Group, Opt, Passthrough, Stdin,
 };
 use loomcli_plugins::skills::extension::{SKILL_COMMAND, SkillCommandFacts};
 use loomcli_plugins::skills::{Skill, SkillFile, Skills, command_references, skills};
@@ -167,13 +167,32 @@ fn references_share_graph_order_and_can_include_the_commands_guidance() {
 }
 
 #[test]
+fn option_rows_in_command_references_keep_the_canonical_spelling() {
+    let graph = Application::new("notes")
+        .command(
+            Command::new("get")
+                .option("size", Opt::string().visible_aliases(["minimum"]))
+                .action(|_: Context| async { Ok(()) }),
+        )
+        .inspect()
+        .unwrap();
+    let files = command_references(&graph, [["get"]], true).unwrap();
+    assert!(files[1].content.contains("--size <size>"));
+    assert!(
+        !files[1].content.contains("--minimum"),
+        "{}",
+        files[1].content
+    );
+}
+
+#[test]
 fn a_terminal_need_appears_between_aliases_and_deprecation() {
     let graph = Application::new("p8")
         .command(
             Command::new("get")
                 .deprecated("Use open.")
                 .description("Edit a note.")
-                .alias("e")
+                .visible_alias("e")
                 .needs_terminal()
                 .action(|_: Context| async { Ok(()) }),
         )
@@ -196,6 +215,34 @@ fn a_terminal_need_appears_between_aliases_and_deprecation() {
     );
 }
 
+#[test]
+fn an_unadvertised_alias_stays_out_of_the_index_and_the_reference() {
+    let graph = Application::new("p8")
+        .command(
+            Command::new("get")
+                .description("Edit a note.")
+                .alias("e")
+                .visible_alias("g")
+                .action(|_: Context| async { Ok(()) }),
+        )
+        .inspect()
+        .unwrap();
+    let files = command_references(&graph, [["get"]], true).unwrap();
+    assert_eq!(
+        files[0].content,
+        concat!(
+            "---\napplication: \"p8\"\nversion: \"0.0.0\"\n---\n\n# p8 commands\n\n",
+            "- [p8 get](p8-get.md): Edit a note. (alias: g)\n",
+        ),
+    );
+    assert!(
+        files[1]
+            .content
+            .starts_with("# p8 get\n\nAlias: g\n\nEdit a note.\n"),
+        "{}",
+        files[1].content
+    );
+}
 #[test]
 fn a_passthrough_row_takes_the_place_of_the_child_name_escape() {
     let graph = Application::new("index-tools")

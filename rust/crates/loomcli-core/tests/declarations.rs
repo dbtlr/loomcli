@@ -902,7 +902,7 @@ fn an_alias_an_option_already_answers_to_adds_nothing_and_the_option_keeps_every
             .expect("a list")
         })
         .collect();
-    assert_eq!(aliases, [vec!["minimum"], vec!["no-color", "colour"]]);
+    assert_eq!(aliases, [vec!["minimum"], vec!["colour"]]);
     assert_eq!(graph.root.options[1].long(), Some("--color"));
 }
 
@@ -1573,7 +1573,7 @@ fn an_input_publishes_its_validators_schema_and_a_content_input_a_nonempty_path(
     );
     assert_eq!(
         serde_json::to_string(graph.root.options[1].as_ref()).expect("serializes"),
-        r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--file","name":"file","short":null,"envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":{"minLength":1,"type":"string"},"validateOmitted":false,"validated":true,"stdin":false,"type":"content"}"#
+        r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--file","name":"file","short":null,"visibleAliases":[],"envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":{"minLength":1,"type":"string"},"validateOmitted":false,"validated":true,"stdin":false,"type":"content"}"#
     );
     assert_eq!(
         serde_json::to_string(graph.root.arguments[0].as_ref()).expect("serializes"),

@@ -79,7 +79,21 @@ Each state bound sits in the method's `where` clause rather than the impl header
 | `options.extensions`, `extend()` | `.extend(list)` |
 | `options.uses` | `.uses(list)` |
 | `alias(...names)` | `.alias(name)`, once per alias |
+| `visibleAlias(...names)` | `.visible_alias(name)`, once per alias |
 | every other call | as on Application, minus `global_option`, `globals`, `plugins`, and the Application-only facts |
+
+A named `Command` builder in an `Open` state takes either alias setter. `.alias("dir")`
+declares an unadvertised alias. `.visible_alias("ls")` declares a visible alias that help,
+the man page, completion, and the manifest can show beside the canonical name. Both take
+one `&str` per call. A repeat of the Command's own name adds nothing. When both setters
+declare a name, it is visible and keeps its place from the first call. A visible alias is
+an alias in every other respect. The routed path, diagnostics, the validation context,
+and the candidate list of a routing error hold canonical names alone.
+
+Each setter checks the portable-name rule at its call. Attaching a child checks its name
+and both kinds of aliases against the names and aliases of its siblings. A fault marks
+the single name in `.alias(name)` or `.visible_alias(name)`, using the visible form for
+a sibling collision on a name declared by both setters.
 
 A Command with an action may declare arguments and attach children in either order. The root may also declare arguments beside a plugin's Commands. A group has children and no action. Its declaration may carry local options, and any argument, stdin, passthrough mode, or terminal need is a `command-without-action` fault. Attach checks a child, and graph build checks the root and hook contributions.
 
@@ -105,6 +119,7 @@ The first bare `--` ends routing and option parsing. With passthrough enabled, e
 | `short` | `.short(letter)` | all |
 | `shortOnly` | `.short_only()` | all |
 | `aliases` | `.aliases(names)` | all |
+| `visibleAliases` | `.visible_aliases(names)` | all |
 | `extensions` | `.extend(list)` | all |
 | `env` | `.env(names)` | all |
 | `envDelimiter` | `.env_delimiter(text)` | string, content |
@@ -129,6 +144,31 @@ The first bare `--` ends routing and option parsing. With passthrough enabled, e
 | `min`, `max` | `.min(n)`, `.max(n)` | content |
 
 `option()` takes `impl Into<OptionDecl>` (all four builders). `global_option()` and a plugin's `option()` take `impl Into<GlobalOptionDecl>`, which `ContentOpt` does not implement.
+
+`.aliases(["mb"])` sets the list of unadvertised aliases. `.visible_aliases(["minimum"])`
+sets the list of visible aliases. Each setter accepts `impl IntoIterator<Item = impl Into<String>>`
+and replaces its own list. Both work wherever the option builder is accepted, including
+local, global, plugin, and lifecycle hook declarations and entries in an `OptionSet`.
+Each alias binds the same option with the long forms its polarity generates. A Boolean
+with `Polarity::Both` accepts `--colour` and `--no-colour` for `colour`, and one with
+`Polarity::Negative` accepts just `--no-colour`. `locate()` resolves aliases of both
+kinds as routing and parsing do. Validation reports the option's own spelling.
+
+Loom considers unadvertised names first, then visible names, in each list's order. A name
+in both lists is visible and keeps its first place. An alias whose first long form the
+option already accepts adds nothing. For a `Both` option named `color`, `no-color` is
+such a repeat and adds no `--no-no-color`. If an alias's first form is new and a later
+form already belongs to the same option, the alias stays and the shared spelling keeps
+its existing binding.
+
+The declaring call checks each alias against the declared-name rule. For options a
+lifecycle hook contributes, that check runs at graph build. The ordinary scope checks
+cover both lists and their generated forms. Names in `.aliases(...)` are
+checked before names in `.visible_aliases(...)`, and the first bad name is marked in its
+list. A spelling collision on a visible alias marks its first occurrence in
+`.visible_aliases(...)`, including when both lists carry the name. A declaration with
+`.short_only()` faults when either alias list is non-empty. The derive rejects either
+attribute beside `short_only`.
 
 The plain mark is `Opt::boolean().plain()` or `#[option(plain)]` on one global Boolean option. The marked option takes positive long spellings. It carries neither an environment or configuration binding nor a color or interaction mark. The `plain` Cargo feature exposes `loomcli_plugins::plain::{plain, PlainOptions}`, which declares the `--plain` control option.
 
@@ -497,8 +537,8 @@ follows the ordinary lookup rules. [Reference strict setting](../../../docs/plug
 | `command()` and `action()` remove `globalOption()` | Type: `TakesGlobals` | (types) |
 | `result()`/`rows()` once, `views()` only with a result | Type: `NoResultYet`, `CarriesResult` | (types) |
 | `action()` closes every call but `extend()`/`views()` | Type: `Open` | (types) |
-| The root has no `alias()`, `hidden`, `deprecated` | Type: Application has no such setters | (types) |
-| `alias()` takes at least one name | Type: `alias(name)` takes one | (types) |
+| Command aliases, `hidden`, and `deprecated` belong to named Commands | Type: Command builder setters only | (types) |
+| An alias setter on a Command takes at least one name | Type: `alias(name)` and `visible_alias(name)` take one each | (types) |
 | One statically known name per declaration | Type: a `&str` names one input | (types) |
 | An argument has no `hidden`, `deprecated`, `control`, `env`, spelling | Type: argument builders lack the setters | (types) |
 | A content option is local | Type: no `From<ContentOpt> for GlobalOptionDecl` | (types) |
@@ -507,11 +547,12 @@ follows the ordinary lookup rules. [Reference strict setting](../../../docs/plug
 | A default and an implied value are in the validator's input type | Type: `DefaultValue` and `implied` are raw strings | (types) |
 | Plugins install before the application's own declarations | Type: `plugins()` exists on `Configuring` only | (types) |
 | Shutdown handlers are synchronous | Type: handlers return `()` | (types) |
-| Application, Command, alias names are portable | Call | `portable-name` |
-| Argument, option, alias names are declared names | Call | `declared-name` |
+| Application names, Command names, and Command aliases are portable | Call | `portable-name` |
+| Argument names, option names, and option aliases are declared names | Call. The derive checks literals at compile time. | `declared-name` |
 | A global option declares no presence rule | Call (`option-config`); derive: `GlobalInputs` is not implemented, a compile error at `globals::<G>()` or `options::<O>()` under `cargo check` | `option-config` |
 | Run-wide marks only on global options | Call | `option-config` |
-| `required` excludes `default`; `shortOnly` excludes `aliases`; `polarity: 'both'` excludes `shortOnly`; a color mark excludes a short spelling and `env`; a verbose or quiet mark excludes `env`; a multiple option's `env` needs `envDelimiter`; `validateOmitted` excludes `required`, `default`, `multiple` | Call; derive: compile error | `option-config` |
+| `required` excludes `default`; `polarity: 'both'` excludes `shortOnly`; a color mark excludes a short spelling and `env`; a verbose or quiet mark excludes `env`; a multiple option's `env` needs `envDelimiter`; `validateOmitted` excludes `required`, `default`, `multiple` | Call; derive: compile error | `option-config` |
+| `shortOnly` excludes both alias lists | Call for a non-empty list. The derive rejects either alias attribute beside `short_only`. | `option-config` |
 | Option arity is at least 2 | Call, or a compile error for a literal count in the derive | `option-arity` |
 | Arity and last-wins combinations, arity environment bindings, and arity default shape | Call, or a compile error for facts the derive can check | `option-config` |
 | An empty `envDelimiter` | Call | `env-delimiter` |
@@ -574,6 +615,7 @@ checked at `inputs::<I>()`, when options declared earlier or through a flattened
 | `description` | `description = "…"`; default: the doc comment, lines joined by spaces. Use `description = "…"` when the help text holds `<…>` or `[…]`, which rustdoc reads as HTML or a link | both |
 | `short`, `short_only` | `short = 'f'`, `short_only` | option |
 | `aliases` | `aliases = ["minimum"]` | option |
+| `visible_aliases` | `visible_aliases = ["minimum"]` | option |
 | `hidden`, `deprecated`, `control` | flags; `deprecated = "Use get instead."` | option |
 | `count` | flag; the field is an unsigned integer | option |
 | `polarity` | `polarity = "both"` | Boolean option |
@@ -657,9 +699,9 @@ The derive rejects at compile time what the builder would reject at the call for
 
 - **A fact of another kind**, such as `polarity` on a string option or `short` on an argument: `` `polarity` is not a fact of a string option: it is a fact of a Boolean option``.
 - **Presence stated twice**: `required` on a non-`Option` scalar, `required` or `default` on an `Option`, `non_interactive` on a scalar, `validate_omitted` on an `Option` or a `Vec`.
-- **The `option-config` rules of one field**: a `short` character literal that is not an ASCII letter, `short_only` with no `short` or beside `aliases`, polarity `"both"` beside `short_only`, a color option's `short` or `env`, a verbose or quiet option's `env`, `verbose` beside `quiet`, a background option's `short`, `env`, `default`, or `implied`, or a `Vec` background option, a multiple option's `env` with no `env_delimiter`, `env_delimiter` with no `env` or off a `Vec`, `env_allow_empty` with no `env` or on a `Vec`, `validate_omitted` with no `validate` or beside `default`, `required` beside `non_interactive` or `default`, `non_interactive` beside `default`, and a list `default` (an array literal) off a `Vec`.
+- **The `option-config` rules of one field**: a `short` character literal that is not an ASCII letter, `short_only` with no `short` or beside `aliases` or `visible_aliases`, polarity `"both"` beside `short_only`, a color option's `short` or `env`, a verbose or quiet option's `env`, `verbose` beside `quiet`, a background option's `short`, `env`, `default`, or `implied`, or a `Vec` background option, a multiple option's `env` with no `env_delimiter`, `env_delimiter` with no `env` or off a `Vec`, `env_allow_empty` with no `env` or on a `Vec`, `validate_omitted` with no `validate` or beside `default`, `required` beside `non_interactive` or `default`, `non_interactive` beside `default`, and a list `default` (an array literal) off a `Vec`.
 - **A fact beside a shared `builder`** other than `name`, `required`, `min`, and `max`: `` `short` is a fact of the shared builder: set it in the builder or drop `builder` ``.
-- **A name outside the `declared-name` grammar**: a `name` literal, a literal in an `aliases` array, or a field name that becomes one, such as `_private` (`-private`).
+- **A name outside the `declared-name` grammar**: a `name` literal, a literal in an `aliases` or `visible_aliases` array, or a field name that becomes one, such as `_private` (`-private`).
 - **A type no kind reads**: `Option<bool>`, a `bool` argument, a `count` field that is no unsigned integer, a `#[stdin]` field that is not `Content` or `Option<Content>`.
 - **The grammar**: an unknown fact (the message lists the facts), a fact named twice, a flag given a value, a valued fact given none, two roles on one field, a field with no role, and a tuple struct or an enum.
 
@@ -671,6 +713,11 @@ field and its input disagree on is E0277 at the field type through `IsType`. A s
 is ineligible for global options is E0277 at `globals::<G>()` or `options::<O>()` through
 `GlobalInputs`. The derive implements `GlobalInputs` only for a struct with no argument, no
 stdin, no passthrough, no content option, no presence rule, no option group, and no option set.
+
+`#[option(visible_aliases = ["minimum"])]` expands to `.visible_aliases(["minimum"])`.
+The attribute also takes an expression such as `visible_aliases = NAMES`, in which case
+the declaring call checks the alias names. The same attribute applies to an option in a
+typed option set. Command aliases are declared on the `Command` builder.
 
 ### Expansion contract
 
@@ -1273,12 +1320,12 @@ the reference's object-literal order.
 | Node | Keys in order |
 | --- | --- |
 | `CommandGraph` | `configuration`, `description`?, `globals`, `name`, `root`, `version` |
-| `CommandNode` | `optionGroups`, `passthrough`, `stdin`?, `aliases`, `arguments`, `children`, `deprecated`?, `description`?, `extensions`, `hasAction`, `hidden`, `name`, `needsTerminal`, `options`, `path`, `result` |
+| `CommandNode` | `optionGroups`, `passthrough`, `stdin`?, `aliases`, `arguments`, `children`, `deprecated`?, `description`?, `extensions`, `hasAction`, `hidden`, `name`, `needsTerminal`, `options`, `path`, `result`, `visibleAliases` |
 | `ArgumentNode` | `max`?, `min`?, `stdin`?, `type`? (content alone), `default`?, `description`?, `extensions`, `name`, `required`, `requiredWhen`, `schema`, `validateOmitted`, `validated`, `variadic` |
-| `StringOptionNode` | `aliases`, `control`, `deprecated`?, `description`?, `env`, `extensions`, `hidden`, `long`, `name`, `short`, `default`?, `envDelimiter`, `implied`, `multiple`, `required`, `requiredWhen`, `schema`, `validateOmitted`, `validated`, `arity`, `background`, `envAllowEmpty`, `lastWins`, `type` |
+| `StringOptionNode` | `aliases`, `control`, `deprecated`?, `description`?, `env`, `extensions`, `hidden`, `long`, `name`, `short`, `visibleAliases`, `default`?, `envDelimiter`, `implied`, `multiple`, `required`, `requiredWhen`, `schema`, `validateOmitted`, `validated`, `arity`, `background`, `envAllowEmpty`, `lastWins`, `type` |
 | `ContentOptionNode` | the string node's keys through `validated`, then `max`?, `min`?, `stdin`, `type` |
-| `BooleanOptionNode` | shared keys through `short`, then `color`, `interaction`, `negative`, `plain`, `polarity`, `schema`, `type` |
-| `CountOptionNode` | shared keys through `short`, then `quiet`, `schema`, `type`, `verbose` |
+| `BooleanOptionNode` | shared keys through `visibleAliases`, then `color`, `interaction`, `negative`, `plain`, `polarity`, `schema`, `type` |
+| `CountOptionNode` | shared keys through `visibleAliases`, then `quiet`, `schema`, `type`, `verbose` |
 | `ResultNode` | `default`, `kind`, `mediaTypes`, `views` |
 | `OptionGroup` | `kind`, `options` for exclusive, one-required, and required-together groups. `kind`, `option`, `requires` for a requirement. |
 | `PassthroughNode` | `description`? |
@@ -1294,9 +1341,22 @@ in declaration order. The `Requires` variant carries the triggering `option` and
 names in order, with the trigger first for a requirement, for every projection to use.
 `OptionGroupKind::Requires` is also the reason of the corresponding `InputProblem::Group`.
 
-`?` marks a key absent when the value is absent. `OptionNode` is an untagged enum of the four option nodes, with the shared accessors `name()`, `long()`, `short()`, `hidden()`, `deprecated()`, and `extensions()`. Children, arguments, options, and globals are `Arc`s, so a context holds the routed node without copying the tree, and every node a reader receives, from a context or from `locate`, is the graph's own: a reader compares by `Arc::ptr_eq`. `extensions` and `mediaTypes` are `serde_json::Map` (insertion order, `preserve_order`). `locate(&graph, words) -> WordPosition` reads a partial invocation with the run's grammar and never fails: the words before the last go through the parser's own walk (`invocation::parse`, with routing left open where they run out at a Command with children), and an empty list reads as one empty word. Core constructs `CommandGraph` (`#[non_exhaustive]`). A clone shares the parser's tables, so `foreign-graph` is unreachable. `WordPosition::Option`'s `counts` and `booleans` are `Vec<(String, _)>` in the order the earlier words first gave each, the reference's insertion-ordered maps. `graph.command(&["cache", "clear"])` finds a node by canonical path.
+`?` marks a key absent when the value is absent. `OptionNode` is an untagged enum of the four option nodes, with the shared accessors `name()`, `long()`, `short()`, `aliases()`, `visible_aliases()`, `hidden()`, `deprecated()`, and `extensions()`. Children, arguments, options, and globals are `Arc`s, so a context holds the routed node without copying the tree, and every node a reader receives, from a context or from `locate`, is the graph's own: a reader compares by `Arc::ptr_eq`. `extensions` and `mediaTypes` are `serde_json::Map` (insertion order, `preserve_order`). `locate(&graph, words) -> WordPosition` reads a partial invocation with the run's grammar and never fails: the words before the last go through the parser's own walk (`invocation::parse`, with routing left open where they run out at a Command with children), and an empty list reads as one empty word. Core constructs `CommandGraph` (`#[non_exhaustive]`). A clone shares the parser's tables, so `foreign-graph` is unreachable. `WordPosition::Option`'s `counts` and `booleans` are `Vec<(String, _)>` in the order the earlier words first gave each, the reference's insertion-ordered maps. `graph.command(&["cache", "clear"])` finds a node by canonical path.
 
 `CommandNode::passthrough` is `Option<PassthroughNode>`, serialized as `null` when the mode is off. When the mode is on but the description is absent, the graph serializes an empty object and the manifest serializes an object with `description: null`. `CommandNode::needs_terminal` is `bool`. `WordPosition::Command` includes `argument: Option<Arc<ArgumentNode>>`, the graph's first argument for a word that matches no child. With passthrough off, `locate` returns an argument position for a word after `--` when a slot is available.
+
+`CommandNode` and every option node store all retained bare names in `aliases` and the
+visible subset in `visible_aliases`. The subset follows the order of `aliases`, which is
+call order for a Command and, for an option, its unadvertised list then its visible list, each
+in list order and without repeats. `OptionNode::aliases()` and
+`OptionNode::visible_aliases()` read those lists as slices for every option kind. Inspection
+writes both lists as JSON arrays. The root and nodes with no aliases publish empty arrays.
+
+The manifest publishes the visible subset as `aliases` on each Command and option entry,
+including global options, with `[]` when the entry has no visible aliases. Aliases are
+part of the canonical entry. The manifest writes `aliases` after
+`name` for a Command, after `negative` for a Boolean option, and after `short` for other
+options.
 
 `StringOptionNode::arity` is `Option<usize>`, serialized as `null` without an arity.
 `StringOptionNode::last_wins` is a `bool`, serialized as `lastWins` and `false` by default.

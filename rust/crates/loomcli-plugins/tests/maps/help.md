@@ -6,6 +6,8 @@ The reference's fixtures install `version()`, `verbose()`, `manifest()`, and oth
 
 | Reference file | Status | Notes |
 | --- | --- | --- |
+| `visible-aliases.test.ts` | ported, the help cases | `visible_aliases.rs` checks the Command and option rows, the singular and plural masthead, wrap and style, and the alias whose spelling the option already accepts. |
+| `plain-switch.test.ts` (visible alias) | ported | `visible_aliases.rs` checks the marked option through its alias on a terminal, then checks the alias on its help row. |
 | `option-groups.test.ts` | partly ported here | `option_groups.rs`: help and manifest agree on visible groups, and help lists a set's groups in group call order. The completion, runtime and MCP cases use their own seams. |
 | `option-requires.test.ts` | partly ported here | `option_requires.rs`: help lists requirements in declaration order and omits groups with a hidden trigger or dependency. Other projections are mapped with their plugins. |
 | `help-page.test.ts` (arity addition) | ported | `help_page.rs` checks grouped usage, placeholder repetition, default display, and the environment delimiter fact. |

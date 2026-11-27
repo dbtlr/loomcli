@@ -30,7 +30,7 @@ fn manifest_option(short: Value) -> Value {
         "type": "boolean", "name": "manifest",
         "description": "Print this command's manifest as JSON.",
         "deprecated": null, "control": true, "long": "--manifest", "short": short,
-        "negative": null, "polarity": "positive", "interaction": false, "color": false, "plain": false,
+        "negative": null, "aliases": [], "polarity": "positive", "interaction": false, "color": false, "plain": false,
         "schema": null, "env": [],
     })
 }
@@ -39,7 +39,7 @@ fn globals(short: Value) -> Value {
     json!([
         {
             "type": "string", "name": "file", "description": "The document.", "deprecated": null,
-            "control": false, "long": "--file", "short": "-f", "required": false,
+            "control": false, "long": "--file", "short": "-f", "aliases": [], "required": false,
             "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false, "schema": null, "env": [],
             "envDelimiter": null, "envAllowEmpty": false, "default": null, "implied": null,
             "background": false,
@@ -50,7 +50,7 @@ fn globals(short: Value) -> Value {
 
 fn get_entry() -> Value {
     json!({
-        "stdin": null, "passthrough": null, "name": "get", "path": ["get"], "description": "Read one value.",
+        "stdin": null, "passthrough": null, "name": "get", "aliases": [], "path": ["get"], "description": "Read one value.",
         "details": ["Quote a path.", "Help prose."],
         "examples": [
             { "command": "get a", "note": null },
@@ -66,12 +66,12 @@ fn get_entry() -> Value {
             {
                 "type": "boolean", "name": "raw", "description": "Print raw.", "deprecated": null,
                 "control": false, "long": "--raw", "short": null, "negative": "--no-raw",
-                "polarity": "both", "interaction": false, "color": false, "plain": false, "schema": null,
+                "aliases": [], "polarity": "both", "interaction": false, "color": false, "plain": false, "schema": null,
                 "env": ["APP_RAW"],
             },
             {
                 "type": "string", "name": "limit", "description": "The limit.", "deprecated": null,
-                "control": false, "long": "--limit", "short": "-l", "required": false,
+                "control": false, "long": "--limit", "short": "-l", "aliases": [], "required": false,
                 "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false,
                 "schema": { "$schema": SCHEMA, "type": "string", "pattern": "^[0-9]+$" },
                 "env": ["APP_LIMIT", "APP_LIMIT_FALLBACK"], "envDelimiter": null,
@@ -80,7 +80,7 @@ fn get_entry() -> Value {
             },
             {
                 "type": "string", "name": "tag", "description": null, "deprecated": null,
-                "control": false, "long": "--tag", "short": null, "required": false,
+                "control": false, "long": "--tag", "short": null, "aliases": [], "required": false,
                 "requiredWhen": null, "multiple": true, "arity": null, "lastWins": false, "schema": null, "env": ["APP_TAGS"],
                 "envDelimiter": ",", "envAllowEmpty": false, "default": null, "implied": null,
                 "background": false,
@@ -88,18 +88,18 @@ fn get_entry() -> Value {
             {
                 "type": "count", "name": "verbose", "description": "Say more.",
                 "deprecated": null, "control": false, "long": "--verbose", "short": "-v",
-                "verbose": false, "quiet": false, "schema": null, "env": ["APP_VERBOSE"],
+                "aliases": [], "verbose": false, "quiet": false, "schema": null, "env": ["APP_VERBOSE"],
             },
             {
                 "type": "string", "name": "backup", "description": null, "deprecated": null,
-                "control": false, "long": "--backup", "short": null, "required": false,
+                "control": false, "long": "--backup", "short": null, "aliases": [], "required": false,
                 "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false, "schema": null, "env": [],
                 "envDelimiter": null, "envAllowEmpty": false, "default": { "value": "none" },
                 "implied": "simple", "background": false,
             },
             {
                 "type": "string", "name": "mode", "description": null, "deprecated": null,
-                "control": false, "long": "--mode", "short": null, "required": false,
+                "control": false, "long": "--mode", "short": null, "aliases": [], "required": false,
                 "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false,
                 "schema": { "$schema": SCHEMA, "type": "string" }, "env": [],
                 "envDelimiter": null, "envAllowEmpty": false, "default": null, "implied": null,
@@ -356,7 +356,7 @@ async fn marker_characters_print_exactly_c1_controls_escape_up_to_u009f_and_u00a
         entry_at(&document, &[])["options"],
         json!([{
             "type": "string", "name": "marked", "description": null, "deprecated": null,
-            "control": false, "long": "--marked", "short": null, "required": false,
+            "control": false, "long": "--marked", "short": null, "aliases": [], "required": false,
             "requiredWhen": null, "multiple": false, "arity": null, "lastWins": false, "schema": null, "env": [],
             "envDelimiter": null, "envAllowEmpty": false,
             "default": { "value": "c\u{e000}\u{e001}\u{e002}\u{e003}d\u{e003}E000e" },
@@ -558,6 +558,7 @@ async fn a_command_entry_carries_stdin_null_without_a_declaration_and_the_declar
             "stdin",
             "passthrough",
             "name",
+            "aliases",
             "path",
             "description",
             "details",
@@ -612,7 +613,7 @@ async fn a_content_input_entry_carries_min_and_max_null_when_its_declaration_sta
         json!({
             "type": "content", "stdin": stdin, "min": bounds.0, "max": bounds.1, "name": name,
             "description": null, "deprecated": null, "control": false, "long": format!("--{name}"),
-            "short": null, "required": required, "requiredWhen": null, "multiple": multiple,
+            "short": null, "aliases": [], "required": required, "requiredWhen": null, "multiple": multiple,
             "schema": min_length, "env": [], "envDelimiter": null, "default": null,
             "implied": null,
         })
@@ -637,6 +638,7 @@ async fn a_content_input_entry_carries_min_and_max_null_when_its_declaration_sta
             "control",
             "long",
             "short",
+            "aliases",
             "required",
             "requiredWhen",
             "multiple",

@@ -4,6 +4,7 @@ Reference tests live in `typescript/packages/plugins/tests`. The Rust tests driv
 
 | Reference file | Status | Notes |
 | --- | --- | --- |
+| `visible-aliases.test.ts` | ported, the MCP case | `visible_aliases.rs` checks the canonical tool name and schema keys over stdio. |
 | `option-requires.test.ts` | partly ported here, 6 of 11 | `option_requires.rs`: both schema forms, needed Boolean, list, and count predicates, environment bindings on either side, a hidden needed option, and build checks when either or both sides are excluded. The listing fixture uses the reference completion extension identity since Rust exposes no descriptor for that hint. |
 | `mcp.test.ts` (arity additions) | ported | `mcp_listing.rs` checks scalar and multiple array schemas. `mcp_calls.rs` checks a grouped call and the failure for a short group. |
 | `mcp.test.ts` | ported, parsing and terminal cases | `mcp_faults.rs` rejects opted-in Commands that need a terminal, and checks installation with root arguments. |

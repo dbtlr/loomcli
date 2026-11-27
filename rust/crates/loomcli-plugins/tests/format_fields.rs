@@ -592,7 +592,7 @@ async fn the_manifest_publishes_both_formatter_control_options() {
     assert_eq!(
         options[1],
         json!({
-            "background": false, "control": true, "default": null,
+            "aliases": [], "background": false, "control": true, "default": null,
             "deprecated": null, "description": "Select top-level fields of json and jsonl output, as a comma list.",
             "env": [], "envAllowEmpty": false, "envDelimiter": null, "implied": null,
             "long": "--fields", "multiple": true, "name": "fields", "required": false,

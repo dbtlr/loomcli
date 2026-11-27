@@ -99,6 +99,7 @@ struct FieldAttributes {
     short: Option<Valued<Expr>>,
     short_only: Option<Span>,
     aliases: Option<Valued<Expr>>,
+    visible_aliases: Option<Valued<Expr>>,
     hidden: Option<Span>,
     deprecated: Option<Valued<LitStr>>,
     control: Option<Span>,
@@ -132,12 +133,13 @@ struct FieldAttributes {
 
 /// Every fact the grammar knows, and what it is a fact of, for the sentence that rejects it on a
 /// field of another kind.
-const FACTS: [(&str, &str); 32] = [
+const FACTS: [(&str, &str); 33] = [
     ("name", "an option or an argument"),
     ("description", "an input"),
     ("short", "an option"),
     ("short_only", "an option"),
     ("aliases", "an option"),
+    ("visible_aliases", "an option"),
     ("hidden", "an option"),
     ("deprecated", "an option"),
     ("control", "an option"),
@@ -168,12 +170,13 @@ const FACTS: [(&str, &str); 32] = [
 ];
 
 /// The facts every option kind takes.
-const OPTION_FACTS: [&str; 10] = [
+const OPTION_FACTS: [&str; 11] = [
     "name",
     "description",
     "short",
     "short_only",
     "aliases",
+    "visible_aliases",
     "hidden",
     "deprecated",
     "control",
@@ -234,6 +237,7 @@ fn parse_fact(facts: &mut FieldAttributes, meta: &ParseNestedMeta<'_>) -> syn::R
         "short" => set_value(&mut facts.short, meta, &key),
         "short_only" => set_flag(&mut facts.short_only, meta, &key),
         "aliases" => set_value(&mut facts.aliases, meta, &key),
+        "visible_aliases" => set_value(&mut facts.visible_aliases, meta, &key),
         "hidden" => set_flag(&mut facts.hidden, meta, &key),
         "deprecated" => set_value(&mut facts.deprecated, meta, &key),
         "control" => set_flag(&mut facts.control, meta, &key),
@@ -619,22 +623,27 @@ fn reject_declared_names(name: &LitStr, facts: &FieldAttributes) -> syn::Result<
         };
         return Err(syn::Error::new(name.span(), message));
     }
-    if let Some(Expr::Array(aliases)) = facts.aliases.as_ref().map(|aliases| &aliases.value) {
+    for aliases in [&facts.aliases, &facts.visible_aliases]
+        .into_iter()
+        .flatten()
+    {
+        let Expr::Array(aliases) = &aliases.value else {
+            continue;
+        };
         for alias in &aliases.elems {
             if let Expr::Lit(syn::ExprLit {
                 lit: syn::Lit::Str(text),
                 ..
             }) = alias
+                && !is_declared_name(&text.value())
             {
-                if !is_declared_name(&text.value()) {
-                    return Err(syn::Error::new(
-                        text.span(),
-                        format!(
-                            "the alias {:?} is not a declared name: {DECLARED_NAME}",
-                            text.value()
-                        ),
-                    ));
-                }
+                return Err(syn::Error::new(
+                    text.span(),
+                    format!(
+                        "the alias {:?} is not a declared name: {DECLARED_NAME}",
+                        text.value()
+                    ),
+                ));
             }
         }
     }
@@ -744,11 +753,20 @@ fn reject_fact_pairs(kind: Kind, wrapper: Wrapper<'_>, facts: &FieldAttributes) 
     reject_spellings(facts)?;
     reject_env_facts(wrapper, facts)?;
     reject_marks(wrapper, facts)?;
-    if let (Some(_), Some(aliases)) = (facts.short_only, &facts.aliases) {
-        return Err(syn::Error::new(
-            aliases.key,
-            "a short-only option has no long spelling for an alias to stand beside; drop `aliases` or `short_only`",
-        ));
+    if facts.short_only.is_some() {
+        for (key, aliases) in [
+            ("aliases", &facts.aliases),
+            ("visible_aliases", &facts.visible_aliases),
+        ] {
+            if let Some(aliases) = aliases {
+                return Err(syn::Error::new(
+                    aliases.key,
+                    format!(
+                        "a short-only option has no long spelling for an alias to stand beside; drop `{key}` or `short_only`"
+                    ),
+                ));
+            }
+        }
     }
     if let (Some(polarity), Some(short_only)) = (&facts.polarity, facts.short_only) {
         if polarity.value.value() == "both" {
@@ -962,6 +980,10 @@ fn shared_option_setters(facts: &FieldAttributes, description: Option<&LitStr>) 
     if let Some(aliases) = &facts.aliases {
         let aliases = &aliases.value;
         calls.extend(quote!(.aliases(#aliases)));
+    }
+    if let Some(aliases) = &facts.visible_aliases {
+        let aliases = &aliases.value;
+        calls.extend(quote!(.visible_aliases(#aliases)));
     }
     if facts.hidden.is_some() {
         calls.extend(quote!(.hidden()));
