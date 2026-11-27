@@ -10,7 +10,9 @@ use loomcli_testing::{ViewValues, view_context};
 
 use super::backend::Reading;
 use super::launchd::read_printed;
-use super::status::{ServiceDetail, ServiceState, ServiceStatus, Subject, status_text};
+use super::status::{
+    ServiceDetail, ServiceFile, ServiceLogs, ServiceState, ServiceStatus, Subject, status_text,
+};
 use super::systemd::read_shown;
 use super::unit::{UnitValues, launchd_plist, systemd_unit};
 
@@ -33,6 +35,9 @@ fn words() -> Vec<String> {
 
 fn values(words: &[String]) -> UnitValues<'_> {
     UnitValues {
+        environment: &[],
+        output: None,
+        stop_timeout: None,
         label: "com.acme.notes",
         words,
         home: "/home/me 50%",
@@ -216,10 +221,17 @@ fn the_text_view_pads_the_names_to_the_longest_plus_two_prints_author_rows_as_gi
 
 #[test]
 fn the_status_members_keep_the_order_the_type_lists_them_with_no_pid_when_none_is_reported() {
-    let with_pid = ServiceStatus::of(
-        &state_of("/u", true, reading("active", true, Some(1), &[])),
-        Vec::new(),
-    );
+    let with_pid = ServiceStatus {
+        output: Some(ServiceFile {
+            path: "/logs/console.log".to_owned(),
+            exists: false,
+        }),
+        logs: Some(ServiceLogs::Files { files: Vec::new() }),
+        ..ServiceStatus::of(
+            &state_of("/u", true, reading("active", true, Some(1), &[])),
+            Vec::new(),
+        )
+    };
     let keys: Vec<String> = serde_json::to_value(&with_pid)
         .unwrap()
         .as_object()
@@ -237,7 +249,9 @@ fn the_status_members_keep_the_order_the_type_lists_them_with_no_pid_when_none_i
             "state",
             "pid",
             "notes",
-            "details"
+            "details",
+            "output",
+            "logs",
         ]
     );
     let without_pid = ServiceStatus::of(
@@ -250,5 +264,25 @@ fn the_status_members_keep_the_order_the_type_lists_them_with_no_pid_when_none_i
             .as_object()
             .unwrap()
             .contains_key("pid")
+    );
+}
+
+#[test]
+fn the_output_row_keeps_the_path_and_absence_together() {
+    let state = state_of("/u", false, reading("not installed", false, None, &[]));
+    let status = ServiceStatus {
+        output: Some(ServiceFile {
+            path: "/logs/notes.log".to_owned(),
+            exists: false,
+        }),
+        ..ServiceStatus::of(&state, Vec::new())
+    };
+    assert_eq!(
+        text_of(&status),
+        format!(
+            "com.acme.notes: not installed\n  unit    {}\n  output  {}\n",
+            nowrap("/u"),
+            nowrap("/logs/notes.log (file missing)"),
+        )
     );
 }

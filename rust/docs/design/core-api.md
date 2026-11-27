@@ -1565,7 +1565,7 @@ the corresponding member. A stated destination stream is shared through its `Arc
 
 | Feature | Module | Also enables |
 | --- | --- | --- |
-| `background`, `color`, `completion`, `dotenv`, `interaction`, `manpage`, `plain`, `self-update`, `service`, `skills`, `suggestions`, `theme`, `verbose` | the plugin | |
+| `background`, `color`, `completion`, `dotenv`, `interaction`, `manpage`, `plain`, `self-update`, `skills`, `suggestions`, `theme`, `verbose` | the plugin | |
 | `config` | `config` | `config-extension` |
 | `external-commands` | `external_commands` | `dep:rustix` (Unix) |
 | `format` | `format` | `format-views` |
@@ -1573,6 +1573,7 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | `logging` | `logging` | `logging-extension`, `dep:jiff` |
 | `manifest` | `manifest` | `manifest-extension` |
 | `mcp` | `mcp` | `mcp-extension` |
+| `service` | `service` | `format-views`, `logging-extension` |
 | `version` | `version` | `version-views`, `format-views` |
 | `config-extension`, `help-extension`, `manifest-extension`, `mcp-extension` | `<plugin>::extension` | |
 | `logging-extension` | `logging::extension` | `dep:rustix` (Unix) |
@@ -1605,6 +1606,37 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | `unicode-normalization` | plugins (`suggestions`) | Comparing names under the normalization the reference's suggestions apply. |
 
 `signal-hook`, `rustix`, and `regex` are declared in `[workspace.dependencies]`; core names `signal-hook` and `rustix` for Unix targets, and the validators, the prompts, and the plugins' Markdown subset name `regex`. `loomcli-testing` names `tokio` and `tokio-util` for its scripted children and keyboard.
+
+### Service
+
+`service(label, run)` builds the plugin for one systemd user unit on Linux or one launchd
+user agent on macOS. The label is a reverse-DNS name. The run words route to an application
+Command with an action. The builder has three optional unit settings.
+
+| Setter | Contract |
+| --- | --- |
+| `.environment(callback)` | Install calls `Fn(&Host) -> Result<Env, Error>` with the install run's host. The unit stores the returned names and values in name order. Use values safe to include in a unit file that other local users can read. A callback error takes the ordinary failure path. |
+| `.output(path)` | The manager appends stdout and stderr to the same file. A relative path resolves against the host's home. Install creates the parent folder before calling the manager. Uninstall keeps the output file and folder. |
+| `.stop_timeout(milliseconds)` | A positive `u64` in milliseconds. Set it above the Application's shutdown timeout. Loom writes systemd's `TimeoutStopSec` in milliseconds and launchd's `ExitTimeOut` in whole seconds rounded up. On macOS 26.4 and later, launchd caps the effective timeout at 60 seconds. |
+
+An empty output path or a zero timeout raises the `@loomcli/plugins/service/settings`
+declaration diagnostic at its setter. Install refuses control characters in the paths and
+description it writes. Environment names and values may contain tabs, line feeds, and
+carriage returns. Other control characters cause install to fail before writing the unit.
+
+`status` checks the console output and log destinations before calling the manager. A configured
+`output` is a `ServiceFile` with an absolute `path` and an `exists` flag for a regular file. An
+unreadable path yields `exists: false`. If the root Command has the `LOGGING_FILES` fact,
+`status` resolves the files with the status host's environment, home, and platform. It reports
+`ServiceLogs::Files` in declaration order, including paths where the logging plugin has yet to
+write. If the fact declares no files and `output` is unset, `status` reports `ServiceLogs::Manager`
+with `ServiceConsoleCapture::Journald` or `ServiceConsoleCapture::None`. The `service` feature can
+read the file fact with the logging writers disabled.
+
+The `ServiceStatus` JSON adds `output` then `logs` after `details` when present. The text view
+shows `output` and `log` rows below the unit path and above the probe's rows. `.probe(callback)`
+is called once for an installed unit and returns `ProbeRows` from a boxed future. It receives
+the state the manager reported and the status run's host, signal, log, and `invoke` method.
 
 ### Skills
 

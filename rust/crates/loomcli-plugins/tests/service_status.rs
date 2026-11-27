@@ -6,12 +6,46 @@
 
 mod service_support;
 
+use std::fs;
+
+use loomcli_core::nowrap;
+use loomcli_plugins::logging;
+use loomcli_testing::{ViewValues, view_context};
+use serde_json::{Value, json};
 use service_support::{
     Answer, Answers, Probe, Scenario, UID, agent, both, domain, invoke_view, not_loaded, one, ran,
     run, sandbox,
 };
 
+// A command run strips the view's markup before writing. Compile the private view and its
+// messages here to compare the marked text directly.
+#[allow(dead_code)]
+#[path = "../src/service/messages.rs"]
+mod messages;
+#[allow(dead_code)]
+#[path = "../src/service/status.rs"]
+mod status;
+
+mod backend {
+    // The view test needs no manager. The status constructor only needs the reported state fields.
+    pub(super) use loomcli_plugins::service::ServiceState as Reading;
+}
+
 const SHOW: &str = "systemctl --user show com.acme.notes.service --property=ActiveState,MainPID";
+
+async fn read_status(box_: &service_support::Sandbox, scenario: &Scenario) -> Value {
+    #[cfg(feature = "format")]
+    let output = {
+        let report = run(box_, &["service", "status", "--format", "json"], scenario).await;
+        assert_eq!(report.status, 0, "{}", report.stderr);
+        report.stdout
+    };
+    #[cfg(not(feature = "format"))]
+    let output = invoke_view(box_, &["service", "status"], "json", scenario)
+        .await
+        .unwrap();
+    serde_json::from_str(&output).unwrap()
+}
 
 fn linger_read() -> String {
     format!("loginctl show-user {UID} --property=Linger")
@@ -45,6 +79,281 @@ async fn installed_darwin() -> service_support::Sandbox {
     .await;
     assert_eq!(installed.status, 0, "{}", installed.stderr);
     box_
+}
+
+#[test]
+fn the_text_view_keeps_each_log_row_whole_for_line_breaking() {
+    use status::{ServiceFile, ServiceLogs, ServiceStatus, status_text};
+
+    let status = ServiceStatus {
+        label: "l.m".to_owned(),
+        unit: "/u".to_owned(),
+        installed: true,
+        running: false,
+        state: "inactive".to_owned(),
+        pid: None,
+        notes: Vec::new(),
+        details: Vec::new(),
+        output: None,
+        logs: Some(ServiceLogs::Files {
+            files: vec![
+                ServiceFile {
+                    path: "/logs/my notes.jsonl".to_owned(),
+                    exists: true,
+                },
+                ServiceFile {
+                    path: "/logs/debug.jsonl".to_owned(),
+                    exists: false,
+                },
+            ],
+        }),
+    };
+    assert_eq!(
+        status_text(&status, &view_context(ViewValues::new())),
+        format!(
+            "l.m: inactive\n  unit  {}\n  log   {}\n  log   {}\n",
+            nowrap("/u"),
+            nowrap("/logs/my notes.jsonl"),
+            nowrap("/logs/debug.jsonl (no records yet)")
+        )
+    );
+}
+
+#[tokio::test]
+async fn status_still_reports_state_when_a_file_blocks_the_output_folder() {
+    let box_ = installed_linux().await;
+    fs::write(box_.home.join("logs"), "").unwrap();
+    let scenario = Scenario::default()
+        .answers(shown("active", 4120))
+        .output("logs/console.log");
+    let report = read_status(&box_, &scenario).await;
+    assert_eq!(
+        report["output"],
+        json!({"path": box_.home.join("logs/console.log"), "exists": false})
+    );
+    assert_eq!(report["state"], "active");
+    assert_eq!(report["running"], true);
+}
+
+#[cfg(feature = "logging")]
+#[tokio::test]
+async fn status_names_each_log_file_in_order_even_before_the_first_record() {
+    for platform in ["linux", "darwin"] {
+        let box_ = if platform == "linux" {
+            installed_linux().await
+        } else {
+            installed_darwin().await
+        };
+        let first = box_.root.join("first.jsonl");
+        let second = box_.root.join("second.jsonl");
+        fs::write(&first, "a record\n").unwrap();
+        let scenario = status_scenario(platform).log_files([&first, &second]);
+        let text = run(&box_, &["service", "status"], &scenario).await;
+        assert_eq!(text.status, 0, "{}", text.stderr);
+        assert!(
+            text.stdout.contains(&format!(
+                "  log   {}\n  log   {} (no records yet)\n",
+                first.display(),
+                second.display()
+            )),
+            "{}",
+            text.stdout
+        );
+        let report = read_status(&box_, &scenario).await;
+        assert_eq!(
+            report["logs"],
+            json!({
+                "kind": "files", "files": [
+                    {"path": first, "exists": true},
+                    {"path": second, "exists": false},
+                ],
+            })
+        );
+        assert!(!second.exists());
+    }
+}
+
+#[cfg(feature = "logging")]
+#[tokio::test]
+async fn status_names_the_managers_default_console_capture_without_file_destinations() {
+    for (platform, capture, line) in [
+        (
+            "linux",
+            "journald",
+            "Service console output goes to journald.",
+        ),
+        (
+            "darwin",
+            "none",
+            "Service console output goes nowhere: launchd discards it.",
+        ),
+    ] {
+        let box_ = if platform == "linux" {
+            installed_linux().await
+        } else {
+            installed_darwin().await
+        };
+        let scenario = status_scenario(platform).log_to_console();
+        let text = run(&box_, &["service", "status"], &scenario).await;
+        assert_eq!(text.status, 0, "{}", text.stderr);
+        assert!(
+            text.stdout.contains(&format!("  log   {line}\n")),
+            "{}",
+            text.stdout
+        );
+        let report = read_status(&box_, &scenario).await;
+        assert_eq!(
+            report["logs"],
+            json!({"kind": "manager", "capture": capture})
+        );
+    }
+}
+
+#[cfg(feature = "logging")]
+#[tokio::test]
+async fn status_separates_redirected_console_output_from_log_files() {
+    for platform in ["linux", "darwin"] {
+        let box_ = sandbox();
+        let path = box_.home.join("console.log");
+        let answers = if platform == "linux" {
+            shown("inactive", 0)
+        } else {
+            not_loaded()
+        };
+        let scenario = Scenario::default()
+            .platform(platform)
+            .answers(answers)
+            .output("console.log")
+            .log_to_console();
+        let text = run(&box_, &["service", "status"], &scenario).await;
+        assert_eq!(
+            text,
+            ran(
+                0,
+                &format!(
+                    "com.acme.notes: not installed\n  unit    {}\n  output  {} (file missing)\n",
+                    box_.unit_path(platform).display(),
+                    path.display(),
+                ),
+                ""
+            )
+        );
+        let missing = read_status(&box_, &scenario).await;
+        assert_eq!(missing["output"], json!({"path": path, "exists": false}));
+        assert!(!missing.as_object().unwrap().contains_key("logs"));
+
+        fs::create_dir(&path).unwrap();
+        let directory = read_status(&box_, &scenario).await;
+        assert_eq!(directory["output"], json!({"path": path, "exists": false}));
+        fs::remove_dir(&path).unwrap();
+        fs::write(&path, "").unwrap();
+        let log_path = box_.home.join("records.log");
+        let present = read_status(&box_, &scenario.log_files([&log_path])).await;
+        assert_eq!(present["output"], json!({"path": path, "exists": true}));
+        assert_eq!(
+            present["logs"],
+            json!({
+                "kind": "files", "files": [{"path": log_path, "exists": false}],
+            })
+        );
+    }
+}
+
+#[cfg(feature = "logging")]
+#[tokio::test]
+async fn status_checks_for_log_files_before_its_debug_records_reach_them() {
+    for platform in ["linux", "darwin"] {
+        let box_ = if platform == "linux" {
+            installed_linux().await
+        } else {
+            installed_darwin().await
+        };
+        let path = box_.root.join("logs/debug.jsonl");
+        let scenario = status_scenario(platform)
+            .log_files([&path])
+            .with_env("NOTES_LOG_LEVEL", "debug")
+            .probe(Probe::Debug);
+        let report = read_status(&box_, &scenario).await;
+        assert_eq!(
+            report["logs"],
+            json!({
+                "kind": "files", "files": [{"path": path, "exists": false}],
+            })
+        );
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("The status probe ran.")
+        );
+    }
+}
+
+#[cfg(feature = "logging")]
+#[tokio::test]
+async fn status_resolves_the_first_file_override_and_other_files_from_its_own_host() {
+    for platform in ["linux", "darwin"] {
+        let box_ = sandbox();
+        let override_path = box_.root.join("operator.jsonl");
+        let other = box_.home.join("other.jsonl");
+        let scenario = status_scenario(platform)
+            .log_files(["declared.jsonl", "~/other.jsonl"])
+            .with_env("NOTES_LOG_FILE", override_path.to_str().unwrap());
+        let text = run(&box_, &["service", "status"], &scenario).await;
+        assert_eq!(text.status, 0, "{}", text.stderr);
+        assert!(
+            text.stdout.contains(&format!(
+                "  log   {} (no records yet)\n  log   {} (no records yet)\n",
+                override_path.display(),
+                other.display(),
+            )),
+            "{}",
+            text.stdout
+        );
+        let report = read_status(&box_, &scenario).await;
+        assert_eq!(
+            report["logs"],
+            json!({
+                "kind": "files", "files": [
+                    {"path": override_path, "exists": false},
+                    {"path": other, "exists": false},
+                ],
+            })
+        );
+        assert!(!override_path.exists());
+    }
+}
+
+#[cfg(feature = "logging")]
+#[tokio::test]
+async fn status_escapes_controls_in_text_log_paths_and_keeps_them_in_json() {
+    let box_ = sandbox();
+    let path = box_.root.join("a\nb.jsonl");
+    let scenario = status_scenario("linux").log_files([&path]);
+    let text = run(&box_, &["service", "status"], &scenario).await;
+    assert_eq!(text.status, 0, "{}", text.stderr);
+    assert!(
+        text.stdout.contains(&format!(
+            "  log   {}/a\\u000ab.jsonl (no records yet)\n",
+            box_.root.display(),
+        )),
+        "{}",
+        text.stdout
+    );
+    let report = read_status(&box_, &scenario).await;
+    assert_eq!(
+        report["logs"]["files"],
+        json!([{"path": path, "exists": false}])
+    );
+}
+
+#[cfg(feature = "logging")]
+fn status_scenario(platform: &str) -> Scenario {
+    let answers = if platform == "linux" {
+        shown("active", 4120)
+    } else {
+        service_support::loaded()
+    };
+    Scenario::default().platform(platform).answers(answers)
 }
 
 /// The status JSON of an installed unit, its members in the type's order.
