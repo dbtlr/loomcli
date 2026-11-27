@@ -119,7 +119,7 @@ impl Default for LogDestinationValues {
 
 impl LogDestinationValues {
     /// Uses an empty environment, home `/loom-test/home`, platform `linux`, and no stderr,
-    /// and a log that discards events.
+    /// a log that discards events, and a warning lane that discards warnings.
     pub fn new() -> Self {
         Self::default()
     }
@@ -145,6 +145,12 @@ impl LogDestinationValues {
     /// Supplies the log the hook writes to.
     pub fn log(mut self, log: loomcli_core::Log) -> Self {
         self.0.log = log;
+        self
+    }
+
+    /// Supplies a callback to capture warning text.
+    pub fn warn(mut self, capture: impl Fn(&str) + Send + Sync + 'static) -> Self {
+        unit::set_log_warning(&mut self.0, capture);
         self
     }
 

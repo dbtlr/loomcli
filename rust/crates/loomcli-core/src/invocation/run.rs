@@ -1270,12 +1270,12 @@ async fn report(
     let output = scene.output();
     output.close_regions(RegionCloser::Failure, None);
     output.wait_for_lends().await;
+    if reached.graph.is_some() {
+        scene.state.log.failure(failure, form(scene, failure, &[]));
+    }
     let hinted = collect_hints(scene, reached, failure);
     let hints: &[String] = hinted.as_ref().map_or(&[], Vec::as_slice);
     let form = form(scene, failure, hints);
-    if reached.graph.is_some() {
-        scene.state.log.failure(failure, form.clone());
-    }
     let (broken, plain) = match &hinted {
         Ok(hints) => report_own(scene, reached, failure, hints, &form, reports).await,
         Err(_) => report_unhinted(scene, failure, reports).await,
@@ -1330,6 +1330,7 @@ fn collect_hints(
         };
         let context = FailureHookContext {
             application: scene.name().to_owned(),
+            run: scene.state.log.run_id().to_owned(),
             path: path.clone(),
             invoked_by: scene.invoked_by,
             view: reached.selection().view,

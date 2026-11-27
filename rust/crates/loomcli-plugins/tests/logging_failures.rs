@@ -151,8 +151,9 @@ async fn with_no_on_error_a_failed_write_leaves_the_run_its_own_exit_code_and_wr
     let failed = run_default(&sandbox, &["fail"]).await;
     assert_eq!(failed.status, 1);
     let reference = run_default(&writable, &["fail"]).await;
-    assert_eq!(failed.stderr, reference.stderr);
-    assert_ne!(failed.stderr, "");
+    assert_eq!(failed.stderr, "The run failed.\n");
+    assert!(reference.stderr.starts_with(&failed.stderr));
+    assert!(reference.stderr.contains("Read the log of this run"));
 }
 
 #[tokio::test]

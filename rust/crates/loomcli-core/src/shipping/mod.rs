@@ -301,6 +301,18 @@ impl DirectoryFacts {
             platform: platform.into(),
         }
     }
+
+    /// The environment a directory lookup uses.
+    #[must_use]
+    pub fn env(&self) -> &Env {
+        &self.env
+    }
+
+    /// The captured home directory, which can be unset or relative.
+    #[must_use]
+    pub fn home(&self) -> &Path {
+        &self.home
+    }
 }
 
 impl From<&Host> for DirectoryFacts {

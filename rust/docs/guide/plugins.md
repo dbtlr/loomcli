@@ -245,6 +245,91 @@ Feature `skills`; `skills(list)`, with `.folder(path)` and `.embedded_folder(lis
 Feature `logging`; `logging()`, with `.level(level)`, `.target(LogTarget::Stderr)`, `.file(name)`, `.max_bytes(n)`, `.keep(n)`, and `.on_error(hook)`.
 
 - **Operator:** each log event of the run, `info` and above by default, is appended as one JSON line to `<app>.jsonl` in the platform's log directory, rotated past 10,000,000 bytes with 5 copies kept, or written to stderr. The line holds the time, level, message, fields, application, run id, routed path, plugin, failure, and defect.
+  By default, `<APP>_LOG_LEVEL` sets the minimum level for every file and `<APP>_LOG_FILE` changes the first file's path. For `my-tool`, the names are `MY_TOOL_LOG_LEVEL` and `MY_TOOL_LOG_FILE`. When the plugin records a runtime failure and adds a hint, the report includes `Read the log of this run in <path> (run <id>).`
+- **Author:** `.destinations(list)` replaces the shorthand with file, console, or OpenTelemetry destinations, each with its own level. `.level_env(binding)` names or disables the variable that overrides file levels. `.file_env(binding)` names or disables the variable that overrides the first file's path. `.failure_hint(mode)` selects which failures point the operator to their log records. See the [logging plugin contract](../design/core-api.md#logging-plugin).
+
+#### Forward records to OpenTelemetry
+
+Pass a logger from your OpenTelemetry provider to the destination closure. Configure the
+provider's resource, exporters, and shutdown in your application. This example uses the
+no-op logger from `opentelemetry` 0.33 with the `logs` feature. The Rust API's
+`AnyValue` has no null variant, so the example leaves out an attribute whose value is null,
+such as `loom.plugin` on a core event, and uses the string `"null"` for a null nested in an
+array or an object, to keep array positions. Unsigned integers outside the signed 64-bit range
+keep their decimal digits as strings.
+
+```rust
+use loomcli_core::{Application, Context, LogFields, LogLevel};
+use loomcli_plugins::logging::{OpenTelemetryDestination, logging};
+use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider, NoopLoggerProvider, Severity};
+use serde_json::Value;
+
+fn json_attribute(value: Value) -> AnyValue {
+	match value {
+		Value::Null => AnyValue::from("null"),
+		Value::Bool(value) => AnyValue::from(value),
+		Value::Number(value) => {
+			if let Some(integer) = value.as_i64() {
+				AnyValue::from(integer)
+			} else if let Some(double) = value.as_f64().filter(|_| value.is_f64()) {
+				AnyValue::from(double)
+			} else {
+				AnyValue::from(value.to_string())
+			}
+		}
+		Value::String(value) => AnyValue::from(value),
+		Value::Array(values) => values.into_iter().map(json_attribute).collect(),
+		Value::Object(values) => values
+			.into_iter()
+			.map(|(key, value)| (key, json_attribute(value)))
+			.collect(),
+	}
+}
+
+fn destination(logger: impl Logger + Send + Sync + 'static) -> OpenTelemetryDestination {
+	OpenTelemetryDestination::new(move |record| {
+		let mut output = logger.create_log_record();
+		output.set_timestamp(record.timestamp);
+		output.set_severity_text(record.severity_text);
+		let severity = match record.severity_number {
+			1 => Some(Severity::Trace),
+			5 => Some(Severity::Debug),
+			9 => Some(Severity::Info),
+			13 => Some(Severity::Warn),
+			17 => Some(Severity::Error),
+			21 => Some(Severity::Fatal),
+			_ => None,
+		};
+		if let Some(severity) = severity {
+			output.set_severity_number(severity);
+		}
+		output.set_body(AnyValue::from(record.body));
+		output.add_attributes(
+			record
+				.attributes
+				.into_iter()
+				.filter(|(_, value)| !value.is_null())
+				.map(|(key, value)| (key, json_attribute(value))),
+		);
+		logger.emit(output);
+	})
+}
+
+let provider = NoopLoggerProvider::new();
+let logger = provider.logger("notes");
+let app = Application::new("notes")
+	.plugins((logging().destinations((destination(logger).level(LogLevel::Debug),)),))
+	.action(|ctx: Context| async move {
+		ctx.log.info("Indexed {count} notes.", LogFields::new().field("count", 3));
+		Ok(())
+	});
+# let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+# let process = loomcli_testing::mock_process(loomcli_testing::MockFields::new());
+# let exit = runtime.block_on(async {
+#     app.run(loomcli_core::RunOptions::new().process(process)).await
+# });
+# assert_eq!(exit.get(), 0);
+```
 
 ### Self-update
 

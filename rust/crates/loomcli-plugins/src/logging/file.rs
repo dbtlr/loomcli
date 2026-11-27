@@ -15,6 +15,14 @@ pub(super) type Report<'a> = &'a dyn Fn(LoggingError) -> Outcome;
 /// Renames a file; a test substitutes a rename that loses a race.
 pub(super) type Rename<'a> = &'a dyn Fn(&Path, &Path) -> io::Result<()>;
 
+/// The file facts needed to decide whether rotation applies.
+pub(super) struct FileStatus {
+    regular: bool,
+    size: u64,
+}
+
+type Stat<'a> = &'a dyn Fn(&Path) -> io::Result<FileStatus>;
+
 /// The log file, what it keeps, and where a failed step goes.
 pub(super) struct FileSink<'a> {
     pub(super) path: &'a Path,
@@ -24,6 +32,7 @@ pub(super) struct FileSink<'a> {
     pub(super) keep: usize,
     pub(super) report: Report<'a>,
     pub(super) rename: Rename<'a>,
+    pub(super) stat: Stat<'a>,
 }
 
 /// The name of the `number`th rotated copy: the number goes before the file's last extension,
@@ -40,9 +49,12 @@ fn copy_name(path: &Path, number: usize) -> PathBuf {
     path.with_file_name(name)
 }
 
-/// The size of the file now, or 0 when it is not there.
-fn size_of(path: &Path) -> u64 {
-    std::fs::metadata(path).map_or(0, |metadata| metadata.len())
+pub(super) fn stat(path: &Path) -> io::Result<FileStatus> {
+    let metadata = std::fs::metadata(path)?;
+    Ok(FileStatus {
+        regular: metadata.is_file(),
+        size: metadata.len(),
+    })
 }
 
 /// Runs a file operation that a missing source does not fail: the file it names is already gone.
@@ -73,7 +85,10 @@ fn rotate(path: &Path, keep: usize, rename: Rename<'_>) -> io::Result<bool> {
 
 /// Rotates the file when the record would take it past `max_bytes`, reporting a failure.
 fn rotate_when_full(sink: &FileSink<'_>, bytes: u64) -> Result<bool, loomcli_core::Error> {
-    let size = size_of(sink.path);
+    let size = (sink.stat)(sink.path)
+        .ok()
+        .filter(|status| status.regular)
+        .map_or(0, |status| status.size);
     // A file with nothing in it has nothing to rotate, so an oversize record lands whole in it.
     if size == 0 || size.saturating_add(bytes) <= sink.max_bytes {
         return Ok(false);
@@ -159,8 +174,14 @@ mod tests {
     #[test]
     fn a_rename_that_fails_because_another_process_rotated_first_appends_to_the_file_now_at_the_path()
      {
-        let directory =
-            std::env::temp_dir().join(format!("loomcli-logging-race-{}", std::process::id()));
+        let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let scratch = crate_root
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join(".scratch");
+        let directory = scratch.join(format!("loomcli-logging-race-{}", std::process::id()));
         let _ = fs::remove_dir_all(&directory);
         fs::create_dir_all(&directory).unwrap();
         let path = directory.join("collector.jsonl");
@@ -186,6 +207,7 @@ mod tests {
             keep: 1,
             report: &report,
             rename: &rename,
+            stat: &stat,
         };
         write_record(&sink, &format!("{}\n", "y".repeat(150))).unwrap();
         assert_eq!(reports.get(), 0);
@@ -221,5 +243,42 @@ mod tests {
             copy_name(Path::new("/s/.hidden"), 1),
             Path::new("/s/.hidden.1")
         );
+    }
+
+    #[test]
+    fn a_nonregular_file_never_rotates_even_when_it_reports_a_size() {
+        let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let scratch = crate_root
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join(".scratch");
+        let directory = scratch.join(format!("loomcli-logging-device-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("device");
+        fs::write(&path, "Already here.\n").unwrap();
+        let sink = FileSink {
+            path: &path,
+            max_bytes: 1,
+            keep: 1,
+            report: &|error| Err(error.into()),
+            rename: &|_, _| Err(io::Error::other("Rotation attempted.")),
+            stat: &|_| {
+                Ok(FileStatus {
+                    regular: false,
+                    size: 150,
+                })
+            },
+        };
+        let written = write_record(&sink, "A record.\n").unwrap();
+        assert!(written.appended);
+        assert!(!written.rotated);
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "Already here.\nA record.\n"
+        );
+        assert!(!path.with_file_name("device.1").exists());
+        fs::remove_dir_all(directory).unwrap();
     }
 }

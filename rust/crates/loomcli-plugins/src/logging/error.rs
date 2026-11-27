@@ -58,6 +58,7 @@ impl LoggingError {
         }
     }
 
+    #[cfg(feature = "logging")]
     pub(super) fn failed(kind: LoggingErrorKind, path: PathBuf, cause: std::io::Error) -> Self {
         LoggingError {
             kind,

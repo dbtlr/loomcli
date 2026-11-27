@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use loomcli_core::{
-    Application, Arg, Command, Context, Done, FatalError, InvocationOutcome, InvocationValues,
-    InvokeOptions, NoInputs, NoResult, ProcessHandle, RunOptions,
+    AnyPlugin, Application, Arg, Command, Context, Done, FatalError, InvocationOutcome,
+    InvocationValues, InvokeOptions, NoInputs, NoResult, ProcessHandle, RunOptions,
 };
 use loomcli_plugins::logging::{Logging, LoggingError, logging};
 use loomcli_testing::{MockFields, mock_process};
@@ -29,8 +29,14 @@ impl Sandbox {
     pub fn new() -> Self {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let number = NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let root =
-            std::env::temp_dir().join(format!("loomcli-logging-{}-{number}", std::process::id()));
+        let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let scratch = crate_root
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join(".scratch");
+        let root = scratch.join(format!("loomcli-logging-{}-{number}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let home = root.join("home");
         let state = root.join("state");
@@ -203,7 +209,7 @@ fn with_on_error(
 }
 
 /// The application the logging cases run.
-pub fn logging_application(settings: Logging) -> App {
+pub fn logging_application(settings: impl Into<AnyPlugin>) -> App {
     let log = Command::new("log")
         .description("Log one event at each level.")
         .action(|ctx: Context| async move {
@@ -277,10 +283,11 @@ pub fn logging_application(settings: Logging) -> App {
             ctx.log.info("After healing.", ());
             Ok(())
         });
+    let plugin: AnyPlugin = settings.into();
     Application::new("heimdall")
         .description("A fixture application.")
         .version("1.2.0")
-        .plugins((settings,))
+        .plugins([plugin])
         .command(log)
         .command(burst)
         .command(defect)

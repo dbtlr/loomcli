@@ -75,7 +75,7 @@ pub mod interaction;
 mod layout;
 #[cfg(feature = "list")]
 pub mod list;
-#[cfg(feature = "logging")]
+#[cfg(any(feature = "logging", feature = "logging-extension"))]
 pub mod logging;
 #[cfg(any(feature = "manifest", feature = "manifest-extension"))]
 pub mod manifest;

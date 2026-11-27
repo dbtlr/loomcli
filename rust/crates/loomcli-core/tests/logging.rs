@@ -917,8 +917,8 @@ async fn an_action_a_middleware_a_source_and_an_on_failure_hook_each_log_one_eve
                 reaching.clone()
             ),
             (LogLevel::Info, "from action".to_owned(), None),
-            (LogLevel::Info, "from hook".to_owned(), reaching),
             (LogLevel::Error, "The action failed.".to_owned(), None),
+            (LogLevel::Info, "from hook".to_owned(), reaching),
         ]
     );
 }
