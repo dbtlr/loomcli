@@ -17,7 +17,10 @@ use loomcli_core::{
 
 use super::document::Value;
 use super::messages;
-use super::reading::{Clause, Reading, parse_file, split_extension};
+use super::reading::{
+    Clause, ConfigurationReader, Reading, choose_parser, parse_text, split_extension,
+};
+use super::strict;
 
 /// One line the lookup or the drop writes, by its level.
 #[derive(Clone, Debug, PartialEq)]
@@ -62,6 +65,8 @@ pub(crate) struct Reach {
 pub(crate) struct Lookup<'a> {
     /// The pattern's candidates, relative paths in the order the lookup tries them.
     pub(crate) candidates: &'a [String],
+    pub(crate) readers: &'a [ConfigurationReader],
+    pub(crate) strict: bool,
     /// The directory option's value, which replaces `host.cwd` as the walk's start.
     pub(crate) directory: Option<&'a str>,
     /// The value of the author-named variable, empty or unset when it names nothing.
@@ -211,9 +216,11 @@ fn read_text(path: &Path) -> Result<String, Clause> {
 }
 
 /// Reads one file once.
-fn read(file: &ConfigFile) -> Reading {
-    match read_text(&file.path) {
-        Ok(text) => parse_file(&shown(&file.path), &text),
+fn read(file: &ConfigFile, readers: &[ConfigurationReader]) -> Reading {
+    let text = choose_parser(&shown(&file.path), readers)
+        .and_then(|parser| read_text(&file.path).map(|text| parse_text(parser, &text)));
+    match text {
+        Ok(reading) => reading,
         Err(clause) => Reading::Unusable { clause, at: None },
     }
 }
@@ -223,6 +230,8 @@ fn read(file: &ConfigFile) -> Reading {
 pub(crate) enum LookupFault {
     /// The file `--config` named cannot be used: the message after `File "<path>" `.
     Named(String),
+    /// A discovered file cannot be used under strict configuration.
+    Broken(String),
     /// `--config` beside `--no-config`.
     Both,
 }
@@ -241,6 +250,9 @@ impl LookupFault {
         };
         let identity = |name: &str| InputIdentity::new(true, InputKind::Option, name);
         match self {
+            LookupFault::Broken(message) => {
+                strict::failure(vec![message.clone()], Vec::new(), invoked_by)
+            }
             LookupFault::Named(message) => {
                 let spelling = spelling("config");
                 InputError::new(
@@ -268,10 +280,11 @@ impl LookupFault {
     }
 }
 
-/// How a step of the lookup ended: with a file, or with no configuration and no later step.
+/// A lookup step that settles the read with a file, no configuration, or a strict failure.
 enum Outcome {
     Ended,
     File(UsableFile),
+    Broken(String),
 }
 
 /// One directory a discovered step looks in, with the candidates it tries there, in order.
@@ -349,18 +362,26 @@ impl Lookup<'_> {
         steps
     }
 
-    /// A discovered file read once: its object, or the end of the lookup after one warning when it
-    /// cannot be used. One that does not exist is silent, and the lookup goes on.
+    /// Read a discovered file once. An unusable file ends the lookup with a strict failure or,
+    /// with strict off, one warning. A file that does not exist is silent and has no outcome.
     fn discovered(&self, file: ConfigFile, lines: &mut Vec<Line>) -> Option<Outcome> {
-        match read(&file) {
+        match read(&file, self.readers) {
             Reading::Usable(object) => Some(Outcome::File(UsableFile { file, object })),
             Reading::Unusable { clause, at } => {
-                let step = messages::discovered_step(clause)?;
+                let step = messages::discovered_step(clause, self.readers)?;
+                if self.strict {
+                    return Some(Outcome::Broken(messages::strict_broken_file(
+                        &file.shown,
+                        clause,
+                        at,
+                        &step,
+                    )));
+                }
                 lines.push(Line::Warn(messages::skipped_unusable(
                     &file.shown,
                     clause,
                     at,
-                    step,
+                    &step,
                     self.style,
                 )));
                 Some(Outcome::Ended)
@@ -442,7 +463,8 @@ impl Lookup<'_> {
     /// writes. `--no-config` reads no file and writes no notice, and with `--config` beside it
     /// fails. The named file answers alone and fails the run when it cannot be used. Then the
     /// variable's file answers alone, and the walk, the home directory, and the user folder answer
-    /// in that order. A file that cannot be used ends the lookup with a warning.
+    /// in that order. An unusable file in these steps ends the lookup with a strict failure or,
+    /// with strict off, one warning.
     pub(crate) fn find(&self, lines: &mut Vec<Line>) -> Result<Option<UsableFile>, LookupFault> {
         if self.ignored {
             return match self.named {
@@ -452,10 +474,10 @@ impl Lookup<'_> {
         }
         if let Some(named) = self.named {
             let file = ConfigFile::new(resolve(&self.cwd(), Path::new(named)), named);
-            return match read(&file) {
+            return match read(&file, self.readers) {
                 Reading::Usable(object) => Ok(Some(UsableFile { file, object })),
                 Reading::Unusable { clause, at } => Err(LookupFault::Named(
-                    messages::named_file_issue(&file.shown, clause, at),
+                    messages::named_file_issue(&file.shown, clause, at, self.readers),
                 )),
             };
         }
@@ -473,10 +495,11 @@ impl Lookup<'_> {
                 outcome
             }
         };
-        Ok(match outcome {
-            Some(Outcome::File(usable)) => Some(usable),
-            _ => None,
-        })
+        match outcome {
+            Some(Outcome::File(usable)) => Ok(Some(usable)),
+            Some(Outcome::Broken(message)) => Err(LookupFault::Broken(message)),
+            Some(Outcome::Ended) | None => Ok(None),
+        }
     }
 }
 

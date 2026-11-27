@@ -4,9 +4,6 @@
 //! control character, and the MCP server's error text repeats the tool name and the argument key a
 //! client sent. A control or bidirectional character in one prints as its `\uXXXX` escape, so it
 //! cannot reorder or break the line.
-//!
-//! The reference's configuration case also runs a `strict` setting, whose failure names the option
-//! the same way. The Rust plugin has no `strict` setting, so that half is not ported.
 
 #![cfg(all(feature = "config", feature = "mcp"))]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -21,8 +18,8 @@ use loomcli_core::{
     Application, Arg, Command, Context, Done, Group, NoInputs, NoResult, Opt, ProcessHandle,
     RunOptions,
 };
-use loomcli_plugins::config::configuration;
 use loomcli_plugins::config::extension::{CONFIG_INPUT, ConfigInputFacts};
+use loomcli_plugins::config::{Strict, configuration};
 use loomcli_plugins::mcp::extension::{MCP_COMMAND, McpCommandFacts};
 use loomcli_plugins::mcp::mcp;
 use loomcli_testing::{MockFields, mock_process};
@@ -33,8 +30,9 @@ type App = Application<NoInputs, NoResult, Done>;
 
 /// Runs an application whose option `fla<U+202E>g` reads `flag` from `.app.json`, with `-L`, and
 /// returns its exit code, stdout, and stderr.
-async fn config_run(workspace: &Workspace) -> (u8, String, String) {
-    let config = configuration::<Loose>(Settings::default().apply::<Loose>(None));
+async fn config_run(workspace: &Workspace, strict: Strict) -> (u8, String, String) {
+    let config =
+        configuration::<Loose>(Settings::default().with_strict(strict).apply::<Loose>(None));
     let app: App = Application::new("app")
         .plugins([loomcli_core::AnyPlugin::from(loud()), config.plugin.into()])
         .option(
@@ -59,11 +57,20 @@ async fn the_configuration_plugins_lines_escape_the_spelling_of_the_option_a_fil
     let workspace = Workspace::new();
     workspace.write(".app.json", &json!({ "flag": "yes" }).to_string());
     assert_eq!(
-        config_run(&workspace).await,
+        config_run(&workspace, Strict::OFF).await,
         (
             0,
             String::new(),
             "› Ignored option \"--fla\\u202eg\" from flag in .app.json: Use true or false.\n"
+                .to_owned()
+        )
+    );
+    assert_eq!(
+        config_run(&workspace, Strict::ALL).await,
+        (
+            2,
+            String::new(),
+            "app: Option \"--fla\\u202eg\" (from flag in .app.json): Use true or false.\n"
                 .to_owned()
         )
     );

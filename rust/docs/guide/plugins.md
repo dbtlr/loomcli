@@ -15,6 +15,7 @@ use loomcli_core::{Application, Command, Context, GroupApplication, ThemeMapping
 use loomcli_plugins::background::background;
 use loomcli_plugins::color::color;
 use loomcli_plugins::completion::completion;
+use loomcli_plugins::config::toml::TOML;
 use loomcli_plugins::config::{ConfigurationSettings, Scope, configuration};
 use loomcli_plugins::dotenv::dotenv;
 use loomcli_plugins::format::format;
@@ -42,6 +43,7 @@ fn notes() -> GroupApplication {
     let config = configuration::<Settings>(
         ConfigurationSettings::new(None)
             .file(".notes.{toml,json}")
+            .formats(&[TOML])
             .scopes(&[Scope::Project { root: vec![".git".into()] }, Scope::User]),
     );
     Application::new("notes")
@@ -78,7 +80,7 @@ fn notes() -> GroupApplication {
 loomcli_testing::assert_assembles(&notes());
 ```
 
-That application needs the features `background`, `color`, `completion`, `config`, `dotenv`, `format`, `help`, `interaction`, `logging`, `manifest`, `manpage`, `mcp`, `self-update`, `service`, `skills`, `suggestions`, `theme`, `verbose`, and `version`. A plugin with settings returns a settings builder (`Help`, `Format`, `Version`, `Manifest`) that converts into a plugin in the list. `.plugin()` converts it explicitly. A root with an action may declare arguments beside the Commands its plugins attach.
+That application needs the features `background`, `color`, `completion`, `config-toml`, `dotenv`, `format`, `help`, `interaction`, `logging`, `manifest`, `manpage`, `mcp`, `self-update`, `service`, `skills`, `suggestions`, `theme`, `verbose`, and `version`. A plugin with settings returns a settings builder (`Help`, `Format`, `Version`, `Manifest`) that converts into a plugin in the list. `.plugin()` converts it explicitly. A root with an action may declare arguments beside the Commands its plugins attach.
 
 A plugin that defines extensions keeps their descriptors in its `extension` module behind a feature of its own (`help-extension`, `manifest-extension`, `mcp-extension`, `config-extension`), and a plugin that declares views keeps them in its `views` module (`help-views`, `version-views`, `format-views`). A crate that supplies values to a plugin's extensions, such as a plugin crate that adds help sections, turns on the extension feature alone, and the application that installs the plugin turns on the plugin.
 
@@ -155,8 +157,8 @@ Feature `interaction`; `interaction()`, with `.env(variables)`.
 
 Feature `config`; `configuration::<T>(ConfigurationSettings)` returns the plugin and a provider of the parsed file.
 
-- **Operator:** the run reads one configuration file, in JSON with comments, TOML, or YAML: the one `--config <file>` names, else the one a variable names, else the first match of the file pattern from the working directory up to the project's root marker, then in the home and XDG folders. `--no-config` reads none. A value the type rejects is dropped with one `-v` line, and a broken file the operator named fails the run with exit 2.
-- **Author:** an option links to a key with `CONFIG_INPUT.value(ConfigInputFacts::path("minBytes"))`, so the file fills it below the command line and the environment. A Command that needs the whole file opts in to `config.provider` with `uses` and reads it with `context.provided(&config.provider)`. [textstat](../../examples/textstat/src/application.rs) links two options to its `.textstat.{toml,json}` file.
+- **Operator:** the run reads one configuration file in JSON with comments or in a format the application opted in to with a reader: the one `--config <file>` names, else the one a variable names, else the first match of the file pattern from the working directory up to the project's root marker, then in the home and XDG folders. `--no-config` reads none. A value the type rejects is dropped and reported at `-v` by default. With strict enabled, covered values and unknown keys fail the run with exit code 2, as does an unusable file.
+- **Author:** enable `config-toml` or `config-yaml` and pass the corresponding reader in `.formats()` to accept TOML or YAML. An option links to a key with `CONFIG_INPUT.value(ConfigInputFacts::path("minBytes"))`, so the file fills it below the command line and the environment. A Command that needs the whole file opts in to `config.provider` with `uses` and reads it with `context.provided(&config.provider)`. [textstat](../../examples/textstat/src/application.rs) links two options to its `.textstat.{toml,json}` file.
 - **Agent:** the manifest publishes the file's JSON Schema, which `ConfigurationSettings::new(schema)` supplies.
 
 ### Dotenv

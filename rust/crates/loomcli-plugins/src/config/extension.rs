@@ -24,7 +24,7 @@ impl ConfigInputFacts {
 }
 
 /// Whether a path is dotted keys, each nonempty.
-fn is_dotted_path(path: &str) -> bool {
+pub(super) fn is_dotted_path(path: &str) -> bool {
     path.split('.').all(|segment| !segment.is_empty())
 }
 

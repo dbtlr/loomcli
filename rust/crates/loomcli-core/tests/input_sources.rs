@@ -870,6 +870,11 @@ fn sourced<I, R, S>(
         &CONFIG_KEY,
         &["config"],
         move |probe: SourceProbe| {
+            let strict = probe
+                .host
+                .env
+                .get("FIXTURE_STRICT")
+                .is_some_and(|value| value == "true");
             let config: Option<String> = probe.options.option("config").unwrap_or_default();
             let names: Vec<String> = probe
                 .requests
@@ -890,16 +895,17 @@ fn sourced<I, R, S>(
                 }) else {
                     continue;
                 };
+                let answer = SourceAnswer::new(
+                    value,
+                    format!(
+                        "{} in {}",
+                        key.unwrap_or_default(),
+                        config.clone().unwrap_or_default()
+                    ),
+                );
                 answers.insert(
                     request.name().to_owned(),
-                    SourceAnswer::new(
-                        value,
-                        format!(
-                            "{} in {}",
-                            key.unwrap_or_default(),
-                            config.clone().unwrap_or_default()
-                        ),
-                    ),
+                    if strict { answer.strict() } else { answer },
                 );
             }
             std::future::ready(Ok::<_, Error>(answers))
@@ -1127,6 +1133,32 @@ async fn a_configuration_value_its_validator_rejects_falls_back_to_the_default_a
     )
     .await;
     assert_eq!(ran.status, 2);
+}
+
+#[tokio::test]
+async fn a_strict_configuration_answer_fails_with_its_label_or_fills_as_usual() {
+    let record = calls();
+    let strict = [("FIXTURE_STRICT", "true")];
+    let rejected = configured_fixture(
+        vec![("limits.bytes", SourceValue::String("many".to_owned()))],
+        &record,
+    );
+    let ran = run_with(&rejected, fields(&["-v"], &strict)).await;
+    assert_eq!(
+        (ran.status, ran.stdout.as_str(), ran.stderr.as_str()),
+        (
+            2,
+            "",
+            "app: Option \"--limit\" (from limits.bytes in fixture.json): Supply a whole number.\n",
+        )
+    );
+    let accepted = configured_fixture(
+        vec![("limits.bytes", SourceValue::String("3".to_owned()))],
+        &record,
+    );
+    let ran = run_with(&accepted, fields(&[], &strict)).await;
+    assert_eq!((ran.status, ran.stderr.as_str()), (0, ""));
+    assert_eq!(options_of(&ran)["limit"], json!("3"));
 }
 
 #[tokio::test]
@@ -1595,7 +1627,12 @@ fn reading(settings: Settings, directory: Option<std::path::PathBuf>) -> App {
         "@fixture/config",
         &CONFIG_KEY,
         &[],
-        move |_probe: SourceProbe| {
+        move |probe: SourceProbe| {
+            let strict = probe
+                .host
+                .env
+                .get("FIXTURE_STRICT")
+                .is_some_and(|value| value == "true");
             let answers = settings
                 .iter()
                 .map(|(key, value)| {
@@ -1604,7 +1641,10 @@ fn reading(settings: Settings, directory: Option<std::path::PathBuf>) -> App {
                         Some(directory) => answer.directory(directory.clone()),
                         None => answer,
                     };
-                    ((*key).to_owned(), answer)
+                    (
+                        (*key).to_owned(),
+                        if strict { answer.strict() } else { answer },
+                    )
                 })
                 .collect::<BTreeMap<_, _>>();
             std::future::ready(Ok::<_, Error>(answers))
@@ -1653,6 +1693,27 @@ async fn a_configuration_path_its_content_option_cannot_read_falls_back_and_is_n
         (
             2,
             "app: Option \"--input\": Expected a readable file that exists.\n"
+        )
+    );
+}
+
+#[tokio::test]
+async fn a_strict_configuration_path_its_content_option_cannot_read_fails_with_its_label() {
+    let app = reading(
+        vec![("input", SourceValue::String("absent.txt".to_owned()))],
+        None,
+    );
+    let ran = run_with(
+        &app,
+        fields(&["-v"], &[("FIXTURE_STRICT", "true")]).cwd("/loom-test"),
+    )
+    .await;
+    assert_eq!(
+        (ran.status, ran.stdout.as_str(), ran.stderr.as_str()),
+        (
+            2,
+            "",
+            "app: Option \"--input\" (from input in fixture.json): Expected a readable file that exists.\n",
         )
     );
 }

@@ -12,10 +12,12 @@ use loomcli_core::{
 };
 use serde::de::DeserializeOwned;
 
-use super::document::Value;
-use super::drop::{Dropped, drop_until_passes, shown_path};
+use super::document::{Step, Value};
+use super::drop::{Dropped, Removal, drop_until_passes, shown_path};
 use super::lookup::{Line, Lookup, LookupFault, Reach, UsableFile};
-use super::messages;
+use super::strict::RemovalCoverage;
+use super::{ConfigurationReader, Strict};
+use super::{links::published_schema, messages, unknown};
 
 /// A configuration schema that rejects an empty file, which no type check can see.
 pub(crate) const EMPTY_FILE: DiagnosticRule = diagnostic_rule(
@@ -27,10 +29,39 @@ pub(crate) const EMPTY_FILE: DiagnosticRule = diagnostic_rule(
 /// The key a file may hold for the URL of its hosted JSON Schema, which an editor reads.
 const POINTER_KEY: &str = "$schema";
 
+enum RemovalReport {
+    Debug,
+    Failure,
+    EarlierFailure,
+}
+
+/// A missing key that an earlier round removed takes its issue from that earlier rejection.
+fn earlier_rejection<'a>(
+    removals: &'a [(Removal, RemovalReport)],
+    mut removal: &'a Removal,
+) -> Option<usize> {
+    let mut earlier = removals;
+    while matches!(
+        removal.issue_path.get(removal.path.len()..),
+        Some([Step::Key(_)])
+    ) {
+        let Some(index) = earlier
+            .iter()
+            .rposition(|(rejected, _)| rejected.path == removal.issue_path)
+        else {
+            break;
+        };
+        removal = &earlier[index].0;
+        earlier = &earlier[..index];
+    }
+    (earlier.len() < removals.len()).then_some(earlier.len())
+}
+
 /// What a run read: the file that passed, when one was found, with every dropped value removed.
 #[derive(Clone, Debug)]
 pub(crate) struct Loaded {
     pub(crate) usable: Option<UsableFile>,
+    pub(crate) file_issues: Vec<String>,
 }
 
 impl Loaded {
@@ -88,6 +119,8 @@ fn empty_file_fault(message: &str) -> DeclarationError {
 pub(crate) struct Shared<T> {
     /// The pattern's candidates, or `None` for the default `.<app>.json`.
     pub(crate) candidates: Option<Vec<String>>,
+    readers: Vec<ConfigurationReader>,
+    pub(crate) strict: Strict,
     /// The variable that names the configuration file, when the settings name one.
     pub(crate) env: Option<String>,
     pub(crate) notice: bool,
@@ -113,12 +146,16 @@ pub(crate) struct Scene<'a> {
 impl<T: DeserializeOwned + Send + Sync + 'static> Shared<T> {
     pub(crate) fn new(
         candidates: Option<Vec<String>>,
+        readers: Vec<ConfigurationReader>,
+        strict: Strict,
         env: Option<String>,
         notice: bool,
         reach: Reach,
     ) -> Self {
         Self {
             candidates,
+            readers,
+            strict,
             env,
             notice,
             reach,
@@ -139,6 +176,8 @@ impl<T: DeserializeOwned + Send + Sync + 'static> Shared<T> {
             .map(String::as_str);
         let lookup = Lookup {
             candidates,
+            readers: &self.readers,
+            strict: self.strict.enabled(),
             directory: scene.directory,
             from_variable,
             host: scene.host,
@@ -164,21 +203,73 @@ impl<T: DeserializeOwned + Send + Sync + 'static> Shared<T> {
             usable.object.without_key(POINTER_KEY)
         });
         let shown = found.as_ref().map(|usable| usable.file.shown.clone());
-        let dropped = drop_until_passes::<T>(object, &mut |removal| {
-            let path = shown_path(&removal.path);
-            lines.push(Line::Debug(messages::ignored_value(
-                (!removal.path.is_empty()).then_some(path.as_str()),
-                shown.as_deref(),
-                &removal.message,
-            )));
+        let schema = published_schema(scene.graph);
+        let mut removals = Vec::new();
+        let dropped = drop_until_passes::<T>(object, &mut |removal, round| {
+            let coverage = found.as_ref().map_or(RemovalCoverage::Uncovered, |usable| {
+                self.strict
+                    .removal_coverage(&removal, round, &usable.object, schema)
+            });
+            let report = match coverage {
+                RemovalCoverage::Uncovered => RemovalReport::Debug,
+                RemovalCoverage::Covered => RemovalReport::Failure,
+                RemovalCoverage::MissingListedKey => {
+                    if let Some(index) = earlier_rejection(&removals, &removal) {
+                        removals[index].1 = RemovalReport::Failure;
+                        RemovalReport::EarlierFailure
+                    } else {
+                        RemovalReport::Failure
+                    }
+                }
+            };
+            removals.push((removal, report));
         });
+        let mut file_issues = Vec::new();
+        for (removal, report) in removals {
+            match (report, shown.as_deref()) {
+                (RemovalReport::Failure, Some(file)) => {
+                    let path = shown_path(&removal.issue_path);
+                    file_issues.push(messages::rejected_value(
+                        (!removal.issue_path.is_empty()).then_some(path.as_str()),
+                        file,
+                        &removal.message,
+                    ));
+                }
+                (RemovalReport::Debug, file) => {
+                    let path = shown_path(&removal.path);
+                    lines.push(Line::Debug(messages::ignored_value(
+                        (!removal.path.is_empty()).then_some(path.as_str()),
+                        file,
+                        &removal.message,
+                    )));
+                }
+                _ => {}
+            }
+        }
         let loaded = match dropped {
-            Dropped::Passed(object) => Ok(Loaded {
-                usable: found.map(|usable| UsableFile {
-                    file: usable.file,
-                    object,
-                }),
-            }),
+            Dropped::Passed(object) => {
+                if let (Some(schema), Some(file)) = (schema, shown.as_deref()) {
+                    unknown::walk(&object, schema, |path| {
+                        let shown = unknown::shown_path(path);
+                        if self.strict.covers(path) {
+                            file_issues.push(messages::strict_unknown_key(&shown, file));
+                        } else {
+                            lines.push(Line::Debug(messages::ignored_value(
+                                Some(&shown),
+                                Some(file),
+                                messages::UNKNOWN_KEY_ISSUE,
+                            )));
+                        }
+                    });
+                }
+                Ok(Loaded {
+                    file_issues,
+                    usable: found.map(|usable| UsableFile {
+                        file: usable.file,
+                        object,
+                    }),
+                })
+            }
             Dropped::EmptyRejected(message) => Err(Fault::EmptyFile(message)),
         };
         let read = Read {

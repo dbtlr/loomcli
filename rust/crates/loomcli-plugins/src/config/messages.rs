@@ -1,18 +1,46 @@
-//! The sentences of the configuration plugin. A clause that says why a file cannot be used is one
-//! of the fixed strings `Clause::text` returns.
+//! The sentences of the configuration plugin.
+
+use std::borrow::Cow;
 
 use loomcli_core::LogFields;
-use loomcli_core::{ContextualStyle, escape_control_characters, nowrap};
+use loomcli_core::{ContextualStyle, Issue, escape_control_characters, issue_path, nowrap};
 
-use super::reading::{Clause, Position};
+use super::reading::{Clause, ConfigurationReader, Position, ReaderFormat, has_reader};
 
 /// A value a sentence repeats, escaped as a failure message quotes text.
 fn shown(text: &str) -> String {
     escape_control_characters(text)
 }
 
+fn clause_text(clause: Clause) -> &'static str {
+    match clause {
+        Clause::DoesNotExist => "does not exist",
+        Clause::CouldNotBeRead => "could not be read",
+        Clause::InvalidJson => "is not valid JSON",
+        Clause::NotJsonObject => "does not hold a JSON object",
+        Clause::InvalidToml => "is not valid TOML",
+        Clause::InvalidYaml => "is not valid YAML",
+        Clause::NotYamlMapping => "does not hold a YAML mapping",
+        Clause::Unread(ReaderFormat::Toml) => "is TOML, which this application does not read",
+        Clause::Unread(ReaderFormat::Yaml) => "is YAML, which this application does not read",
+    }
+}
+
+fn unread_step(readers: &[ConfigurationReader]) -> String {
+    let formats = std::iter::once("JSON").chain(
+        ReaderFormat::ORDER
+            .into_iter()
+            .filter(|format| has_reader(readers, *format))
+            .map(ReaderFormat::name),
+    );
+    format!(
+        "Supply a {} file.",
+        formats.collect::<Vec<_>>().join(" or ")
+    )
+}
+
 /// What the operator does about the file `--config` named.
-fn named_step(clause: Clause) -> &'static str {
+fn named_step(clause: Clause, readers: &[ConfigurationReader]) -> Cow<'static, str> {
     match clause {
         Clause::DoesNotExist => "Supply the path of an existing file.",
         Clause::CouldNotBeRead => "Supply a file this process can read.",
@@ -21,21 +49,28 @@ fn named_step(clause: Clause) -> &'static str {
         Clause::InvalidJson | Clause::InvalidToml | Clause::InvalidYaml => {
             "Correct its syntax, or supply another file."
         }
+        Clause::Unread(_) => return Cow::Owned(unread_step(readers)),
     }
+    .into()
 }
 
 /// What the operator does about a discovered file, or `None` for a clause a discovered file is
 /// silent about.
-pub(super) fn discovered_step(clause: Clause) -> Option<&'static str> {
-    match clause {
-        Clause::DoesNotExist => None,
-        Clause::CouldNotBeRead => Some("Make it readable, or remove it."),
-        Clause::NotJsonObject => Some("Write its settings as one JSON object, or remove it."),
-        Clause::NotYamlMapping => Some("Write its settings as one YAML mapping, or remove it."),
+pub(super) fn discovered_step(
+    clause: Clause,
+    readers: &[ConfigurationReader],
+) -> Option<Cow<'static, str>> {
+    let step = match clause {
+        Clause::DoesNotExist => return None,
+        Clause::CouldNotBeRead => "Make it readable, or remove it.",
+        Clause::NotJsonObject => "Write its settings as one JSON object, or remove it.",
+        Clause::NotYamlMapping => "Write its settings as one YAML mapping, or remove it.",
         Clause::InvalidJson | Clause::InvalidToml | Clause::InvalidYaml => {
-            Some("Correct its syntax, or remove it.")
+            "Correct its syntax, or remove it."
         }
-    }
+        Clause::Unread(_) => return Some(Cow::Owned(unread_step(readers))),
+    };
+    Some(Cow::Borrowed(step))
 }
 
 /// Where a file stops parsing, or nothing when the parser named no place.
@@ -60,13 +95,18 @@ fn warned_files(files: &[&str], style: &ContextualStyle) -> String {
 }
 
 /// Why the file `--config` named cannot be used.
-pub(super) fn named_file_issue(file: &str, clause: Clause, at: Option<Position>) -> String {
+pub(super) fn named_file_issue(
+    file: &str,
+    clause: Clause,
+    at: Option<Position>,
+    readers: &[ConfigurationReader],
+) -> String {
     format!(
         "File \"{}\" {}{}. {}",
         shown(file),
-        clause.text(),
+        clause_text(clause),
         where_at(at),
-        named_step(clause)
+        named_step(clause, readers)
     )
 }
 
@@ -107,9 +147,66 @@ pub(super) fn skipped_unusable(
     format!(
         "Skipped {}: the file {}{}, so this run reads no configuration. {step}",
         warned(file, style),
-        clause.text(),
+        clause_text(clause),
         where_at(at)
     )
+}
+
+/// A discovered file that strict configuration cannot use.
+pub(super) fn strict_broken_file(
+    file: &str,
+    clause: Clause,
+    at: Option<Position>,
+    step: &str,
+) -> String {
+    format!(
+        "Configuration file {} {}{}. {step}",
+        shown(file),
+        clause_text(clause),
+        where_at(at)
+    )
+}
+
+/// A strict schema issue, at its original path or on the whole file.
+pub(super) fn rejected_value(path: Option<&str>, file: &str, message: &str) -> String {
+    let file = shown(file);
+    let message = shown(message);
+    let stop = if message.ends_with(['.', '!', '?']) {
+        ""
+    } else {
+        "."
+    };
+    match path {
+        Some(path) => format!(
+            "Configuration value {} in {file}: {message}{stop} Correct the value, or remove it.",
+            shown(path)
+        ),
+        None => {
+            format!("Configuration file {file}: {message}{stop} Correct the file, or remove it.")
+        }
+    }
+}
+
+pub(super) fn strict_unknown_key(path: &str, file: &str) -> String {
+    format!(
+        "Unknown key {} in {}. Check its spelling, or remove it.",
+        shown(path),
+        shown(file)
+    )
+}
+
+pub(super) fn strict_option_issue(spelling: &str, label: &str, issue: &Issue) -> String {
+    let at = issue_path(issue).map_or_else(String::new, |path| format!(" at {}", shown(&path)));
+    format!(
+        "Option \"{}\" (from {}){at}: {}",
+        shown(spelling),
+        shown(label),
+        shown(&issue.message)
+    )
+}
+
+pub(super) fn source_label(path: &str, file: &str) -> String {
+    format!("{} in {}", shown(path), shown(file))
 }
 
 /// The notice that no file was found.
@@ -168,6 +265,8 @@ pub(super) fn ignored_option(
 }
 
 pub(super) const BOOLEAN_ISSUE: &str = "Use true or false.";
+
+pub(super) const UNKNOWN_KEY_ISSUE: &str = "Unknown key. Check its spelling, or remove it.";
 
 pub(super) const COUNT_ISSUE: &str = "Use a whole number of 0 or more.";
 

@@ -45,6 +45,14 @@ pub struct SourceAnswer {
     pub label: String,
     /// The directory a relative path resolves against.
     pub directory: Option<std::path::PathBuf>,
+    /// Whether a rejected value or unreadable content path fails the run.
+    ///
+    /// ```compile_fail,E0308
+    /// # use loomcli_core::{SourceAnswer, SourceValue};
+    /// let mut answer = SourceAnswer::new(SourceValue::Bool(true), "fixture.json");
+    /// answer.strict = "yes";
+    /// ```
+    pub strict: bool,
 }
 
 impl SourceAnswer {
@@ -54,6 +62,7 @@ impl SourceAnswer {
             value,
             label: label.into(),
             directory: None,
+            strict: false,
         }
     }
 
@@ -62,6 +71,15 @@ impl SourceAnswer {
     pub fn directory(self, directory: impl Into<std::path::PathBuf>) -> Self {
         Self {
             directory: Some(directory.into()),
+            ..self
+        }
+    }
+
+    /// Fails the run if validation rejects the answer or its content path cannot be read.
+    #[must_use]
+    pub fn strict(self) -> Self {
+        Self {
+            strict: true,
             ..self
         }
     }

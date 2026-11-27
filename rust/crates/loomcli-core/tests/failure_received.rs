@@ -136,6 +136,64 @@ async fn a_hand_built_copy_of_a_problem_has_no_received_value() {
 }
 
 #[tokio::test]
+async fn the_reader_returns_a_strict_configuration_fill_and_none_for_a_hand_built_problem() {
+    use std::collections::BTreeMap;
+
+    use loomcli_core::__private::{SourceProbe, install_source};
+    use loomcli_core::{Extension, OptionTarget, SourceAnswer, SourceValue};
+
+    const CONFIG_KEY: Extension<OptionTarget, String> = Extension::new("fixture/config-key");
+
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let observer = Plugin::new("fixture/received").on_failure({
+        let seen = Arc::clone(&seen);
+        move |failure, ctx| {
+            let input = failure.downcast_ref::<InputError>().unwrap();
+            let mut seen = seen.lock().unwrap();
+            seen.extend(input.problems().iter().map(|problem| ctx.received(problem)));
+            seen.push(ctx.received(&InputProblem::Invalid {
+                input: InputIdentity::new(false, InputKind::Option, "format"),
+                spelling: "--format".to_owned(),
+                issues: vec![Issue::new("Expected a format.")],
+            }));
+        }
+    });
+    let mock = mock_process(MockFields::new());
+    let app = install_source(
+        Application::new("kit")
+            .plugins([observer])
+            .option(
+                "format",
+                Opt::string()
+                    .validate(Format)
+                    .extend([CONFIG_KEY.value("format".to_owned())]),
+            )
+            .action(|_: Context| async { Ok(()) }),
+        "fixture/config",
+        &CONFIG_KEY,
+        &[],
+        |probe: SourceProbe| {
+            let answers: BTreeMap<String, SourceAnswer> = probe
+                .requests
+                .iter()
+                .map(|request| {
+                    let answer =
+                        SourceAnswer::new(SourceValue::String("jsno".to_owned()), "settings.json");
+                    (request.name().to_owned(), answer.strict())
+                })
+                .collect();
+            std::future::ready(Ok::<_, Error>(answers))
+        },
+    );
+    let status = app.run(RunOptions::new().process(mock.clone())).await;
+    assert_eq!(status.get(), 2);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [Some(SuppliedValue::One("jsno".to_owned())), None]
+    );
+    assert!(!mock.stderr_text().contains("jsno"));
+}
+#[tokio::test]
 async fn the_reader_excludes_a_live_earlier_problem_and_this_failures_missing_problem() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let earlier = Arc::new(Mutex::new(None::<Error>));

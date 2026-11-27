@@ -2,7 +2,7 @@
 //! the clause that says why a file cannot be used.
 
 use super::document::Value;
-use super::{json, toml, yaml};
+use super::json;
 
 /// A place in a file's text, as an editor shows it: its line and its column, each counted from 1.
 /// A line ends at LF, at CRLF, or at a lone CR, and a column counts characters, one per code
@@ -46,6 +46,7 @@ pub(crate) fn position_at(text: &str, offset: usize) -> Position {
 }
 
 /// The byte offset of a character index in a text, or the text's length past its end.
+#[cfg(feature = "config-yaml")]
 pub(crate) fn offset_of_character(text: &str, index: usize) -> usize {
     text.char_indices()
         .nth(index)
@@ -59,24 +60,13 @@ pub(crate) enum Clause {
     CouldNotBeRead,
     InvalidJson,
     NotJsonObject,
+    #[cfg_attr(not(feature = "config-toml"), allow(dead_code))]
     InvalidToml,
+    #[cfg_attr(not(feature = "config-yaml"), allow(dead_code))]
     InvalidYaml,
+    #[cfg_attr(not(feature = "config-yaml"), allow(dead_code))]
     NotYamlMapping,
-}
-
-impl Clause {
-    /// The clause without its closing full stop, so a sentence can go on after it.
-    pub(crate) fn text(self) -> &'static str {
-        match self {
-            Clause::DoesNotExist => "does not exist",
-            Clause::CouldNotBeRead => "could not be read",
-            Clause::InvalidJson => "is not valid JSON",
-            Clause::NotJsonObject => "does not hold a JSON object",
-            Clause::InvalidToml => "is not valid TOML",
-            Clause::InvalidYaml => "is not valid YAML",
-            Clause::NotYamlMapping => "does not hold a YAML mapping",
-        }
-    }
+    Unread(ReaderFormat),
 }
 
 /// What reading one file found: its top-level object, or the clause that says why it is skipped,
@@ -125,32 +115,65 @@ pub(crate) fn split_extension(path: &str) -> Option<(&str, &str)> {
     Some((&path[..at], &path[at + 1..]))
 }
 
-/// The format a file's extension chooses, compared as written: `toml` reads as TOML, `yaml` and
-/// `yml` as YAML, and every other name as JSON with comments, one with no extension included.
+/// A format that needs a reader. JSON is built in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Format {
-    Json,
+pub(crate) enum ReaderFormat {
     Toml,
     Yaml,
 }
 
-fn format_of(path: &str) -> Format {
-    match split_extension(path).map(|(_, extension)| extension) {
-        Some("toml") => Format::Toml,
-        Some("yaml" | "yml") => Format::Yaml,
-        _ => Format::Json,
+impl ReaderFormat {
+    /// Reader formats in the order the plugin uses.
+    pub(crate) const ORDER: [Self; 2] = [Self::Toml, Self::Yaml];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Toml => "TOML",
+            Self::Yaml => "YAML",
+        }
     }
 }
 
-/// What one file's text holds, parsed by its path's extension with a leading byte order mark
-/// ignored.
-pub(crate) fn parse_file(path: &str, text: &str) -> Reading {
-    let body = text.strip_prefix('\u{feff}').unwrap_or(text);
-    match format_of(path) {
-        Format::Json => json::read_json(body),
-        Format::Toml => toml::read_toml(body),
-        Format::Yaml => yaml::read_yaml(body),
-    }
+type Parser = fn(&str) -> Reading;
+
+/// An optional configuration file reader. Pass `toml::TOML` or `yaml::YAML` to the
+/// configuration settings to accept files in its format.
+#[derive(Clone, Copy, Debug)]
+pub struct ConfigurationReader {
+    pub(crate) format: ReaderFormat,
+    pub(crate) parse: Parser,
+}
+
+/// The extension and its reader format, if this is an extension JSON does not read.
+pub(crate) fn reader_format(path: &str) -> Option<(&str, ReaderFormat)> {
+    let (_, extension) = split_extension(path)?;
+    let format = match extension {
+        "toml" => ReaderFormat::Toml,
+        "yaml" | "yml" => ReaderFormat::Yaml,
+        _ => return None,
+    };
+    Some((extension, format))
+}
+
+pub(crate) fn has_reader(readers: &[ConfigurationReader], format: ReaderFormat) -> bool {
+    readers.iter().any(|reader| reader.format == format)
+}
+
+/// Selects the parser from the path, before the plugin reads the file.
+pub(crate) fn choose_parser(path: &str, readers: &[ConfigurationReader]) -> Result<Parser, Clause> {
+    let Some((_, format)) = reader_format(path) else {
+        return Ok(json::read_json);
+    };
+    readers
+        .iter()
+        .find(|reader| reader.format == format)
+        .map(|reader| reader.parse)
+        .ok_or(Clause::Unread(format))
+}
+
+/// Parses the file's text with a leading byte order mark ignored.
+pub(crate) fn parse_text(parser: Parser, text: &str) -> Reading {
+    parser(text.strip_prefix('\u{feff}').unwrap_or(text))
 }
 
 #[cfg(test)]
@@ -181,16 +204,31 @@ mod tests {
     #[test]
     fn every_other_name_reads_as_json_with_comments_and_a_byte_order_mark_is_no_column() {
         for path in [".app.jsonc", ".apprc", "config.cfg"] {
-            let Reading::Usable(value) = parse_file(path, "{ \"minBytes\": 1, // note\n }") else {
+            let Ok(parser) = choose_parser(path, &[]) else {
+                panic!("{path} uses the JSON parser");
+            };
+            let Reading::Usable(value) = parse_text(parser, "{ \"minBytes\": 1, // note\n }")
+            else {
                 panic!("{path} reads");
             };
             assert_eq!(value.get("minBytes"), Some(&Value::Number(1.0)), "{path}");
         }
         assert_eq!(
-            parse_file(".app.json", "\u{feff}{ x }"),
+            parse_text(json::read_json, "\u{feff}{ x }"),
             Reading::Unusable {
                 clause: Clause::InvalidJson,
                 at: Some(Position { line: 1, column: 3 })
+            }
+        );
+    }
+
+    #[test]
+    fn mixed_line_endings_and_an_astral_character_count_as_one_position_rule() {
+        assert_eq!(
+            parse_text(json::read_json, "{\r\n\"😀\": 1,\r\"b\": x}"),
+            Reading::Unusable {
+                clause: Clause::InvalidJson,
+                at: Some(Position { line: 3, column: 6 }),
             }
         );
     }
@@ -203,8 +241,8 @@ mod tests {
         assert_eq!(split_extension("dir.d/.toml"), None);
         assert_eq!(split_extension("a\\b.c"), Some(("a\\b", "c")));
         assert_eq!(split_extension(".app."), Some((".app", "")));
-        assert_eq!(format_of(".app.TOML"), Format::Json);
-        assert_eq!(format_of("config.cfg"), Format::Json);
-        assert_eq!(format_of(".app.yml"), Format::Yaml);
+        assert_eq!(reader_format(".app.TOML"), None);
+        assert_eq!(reader_format("config.cfg"), None);
+        assert_eq!(reader_format(".app.yml"), Some(("yml", ReaderFormat::Yaml)));
     }
 }

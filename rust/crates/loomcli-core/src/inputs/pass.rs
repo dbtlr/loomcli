@@ -30,11 +30,11 @@ use super::{
 
 /// What the input-source stage leaves for validation, by option name: the label of each value it
 /// filled, the variable of each Boolean or counted option whose value is outside its grammar, the
-/// configuration fills with the directory of the file each came from, the options a skipped
+/// configuration fills with their directories and strictness, the options a skipped
 /// configuration source would have filled, and the members an exclusive group withdrew.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Provenance {
-    pub(crate) fills: Vec<(String, Option<PathBuf>)>,
+    pub(crate) fills: Vec<(String, ConfigurationFill)>,
     pub(crate) labels: Vec<(String, String)>,
     pub(crate) rejected: Vec<(String, String)>,
     pub(crate) unanswered: Vec<String>,
@@ -50,7 +50,7 @@ impl Provenance {
         lookup(&self.rejected, name)
     }
 
-    pub(crate) fn fill(&self, name: &str) -> Option<&Option<PathBuf>> {
+    pub(crate) fn fill(&self, name: &str) -> Option<&ConfigurationFill> {
         lookup(&self.fills, name)
     }
 
@@ -59,6 +59,12 @@ impl Provenance {
     fn unanswered(&self, input: Declared<'_>) -> bool {
         input.option().is_some() && self.unanswered.iter().any(|known| known == input.name())
     }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ConfigurationFill {
+    pub(crate) directory: Option<PathBuf>,
+    pub(crate) strict: bool,
 }
 
 /// The value of `name` in an ordered list of pairs.
@@ -408,7 +414,7 @@ impl Pass<'_, '_> {
                 .invocation
                 .sources
                 .fill(&option.name)
-                .and_then(Clone::clone),
+                .and_then(|fill| fill.directory.clone()),
             Declared::Argument(_) => None,
         };
         match directory {
@@ -487,7 +493,7 @@ impl Pass<'_, '_> {
     }
 
     /// Drops a value the configuration source filled, recording the debug line that names its
-    /// first issue, and says whether it did. A value from any other tier is never dropped.
+    /// first issue, and says whether it did. Strict fills and other tiers report a failure.
     fn drops_fill(
         &mut self,
         entry: Scoped<'_>,
@@ -498,7 +504,12 @@ impl Pass<'_, '_> {
         let (Some(origin), Declared::Option(option)) = (origin, entry.input) else {
             return false;
         };
-        if self.invocation.sources.fill(&option.name).is_none() {
+        if self
+            .invocation
+            .sources
+            .fill(&option.name)
+            .is_none_or(|fill| fill.strict)
+        {
             return false;
         }
         let first = issues.first();

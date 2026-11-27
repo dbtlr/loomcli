@@ -1,17 +1,8 @@
-//! YAML 1.2 under its core schema, through `saphyr-parser`'s event stream. The file holds one
-//! document with unique keys and only the core schema's tags, and every alias names a preceding
-//! anchor. A plain scalar resolves as the core schema reads it, a number as a 64-bit float as the
-//! reference's runtime reads one, and a YAML `yes`, `no`, `on`, or `off` stays a string. An alias
-//! shares the value its anchor names, so a profile reused across many environments costs one value.
+//! The configuration reader for YAML 1.2 files under the YAML core schema.
 //!
-//! A file that is not valid YAML names the place of its first error, or else of its first tag
-//! outside the core schema, or else of its first alias that names no preceding anchor. The place
-//! of an error is the one the reference's `yaml` names: `saphyr-parser` reports most errors
-//! elsewhere (at a quote, a colon, or the end of a line), so [`error_place`] moves each kind it
-//! recognizes to the reference's place. Where the parser and `yaml` judge a text differently, the
-//! reader follows `yaml`: a block collection or a quoted line indented with a tab or too few
-//! spaces breaks, and a tab after a colon separates the value. The places that still differ are
-//! in the YAML row of `docs/deviations.md`.
+//! Enable the `config-yaml` Cargo feature and pass [`YAML`] to
+//! [`ConfigurationSettings::formats`](super::ConfigurationSettings::formats) to read `.yaml` or
+//! `.yml` files.
 
 use std::collections::HashMap;
 
@@ -696,6 +687,12 @@ fn error_place(
         marker
     }
 }
+
+/// The YAML configuration reader, available with the `config-yaml` feature.
+pub const YAML: super::reading::ConfigurationReader = super::reading::ConfigurationReader {
+    format: super::reading::ReaderFormat::Yaml,
+    parse: read_yaml,
+};
 
 /// The mapping a YAML document holds, or where it breaks. An empty document, or one that holds
 /// only comments, holds no mapping.

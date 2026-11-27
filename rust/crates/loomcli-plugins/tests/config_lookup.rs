@@ -348,9 +348,10 @@ async fn a_discovered_file_that_is_missing_is_silent_and_one_that_is_broken_warn
     );
 }
 
+#[cfg(feature = "config-yaml")]
 #[tokio::test]
 async fn a_file_in_the_working_directory_shows_as_file_names_it_and_one_in_home_as_its_path() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[loomcli_plugins::config::yaml::YAML]);
     let nested = Settings::file(".app/config.{yaml,json}");
     space.write(".app/config.yaml", "limits: { bytes: many }\n");
     // A wrong value in the file falls back to the default, and only -v names the drop.
@@ -551,9 +552,13 @@ async fn the_user_file_is_under_xdg_config_home_or_under_dot_config() {
     );
 }
 
+#[cfg(all(feature = "config-toml", feature = "config-yaml"))]
 #[tokio::test]
 async fn each_candidate_names_one_user_file_extension_and_one_named_twice_counts_once() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[
+        loomcli_plugins::config::toml::TOML,
+        loomcli_plugins::config::yaml::YAML,
+    ]);
     let xdg = shown(&space.root);
     for (file, user) in [
         (".app.toml", "config.toml"),
@@ -607,9 +612,10 @@ async fn each_candidate_names_one_user_file_extension_and_one_named_twice_counts
     assert_eq!(both.received()["title"], json!("t"));
 }
 
+#[cfg(feature = "config-toml")]
 #[tokio::test]
 async fn env_names_the_one_file_a_run_reads_from_the_environment_with_no_search() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[loomcli_plugins::config::toml::TOML]);
     let named = Settings::default().with_env("APP_CONFIG");
     write_json(
         &space,
@@ -699,9 +705,10 @@ async fn env_names_the_one_file_a_run_reads_from_the_environment_with_no_search(
     );
 }
 
+#[cfg(feature = "config-toml")]
 #[tokio::test]
 async fn a_variable_naming_a_missing_file_is_silent_and_one_naming_a_broken_file_warns_once() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[loomcli_plugins::config::toml::TOML]);
     let named = Settings::default().with_env("APP_CONFIG").with_notice();
     write_json(
         &space,
@@ -826,9 +833,10 @@ async fn the_directory_option_starts_the_walk_there_and_yields_to_config_and_the
     );
 }
 
+#[cfg(feature = "config-yaml")]
 #[tokio::test]
 async fn notice_writes_one_info_line_naming_the_first_candidate_in_the_start_directory() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[loomcli_plugins::config::yaml::YAML]);
     let on = Settings::default().with_notice();
     assert_eq!(
         space.run().settings(on.clone()).stderr().await,

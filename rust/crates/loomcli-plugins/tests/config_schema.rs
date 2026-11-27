@@ -364,9 +364,13 @@ async fn in_an_invocation_by_name_a_named_file_the_provider_reads_first_names_co
     );
 }
 
+#[cfg(all(feature = "config-toml", feature = "config-yaml"))]
 #[tokio::test]
 async fn a_top_level_schema_key_is_removed_before_validation_in_every_format() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[
+        loomcli_plugins::config::toml::TOML,
+        loomcli_plugins::config::yaml::YAML,
+    ]);
     for (file, content) in [
         (
             ".app.json",
@@ -846,8 +850,10 @@ fn a_root_marker_that_is_not_one_path_segment_panics_with_the_root_name_fault() 
 fn well_formed_settings_return_the_plugin() {
     let files = [
         ".textstat.json",
+        #[cfg(feature = "config-toml")]
         ".norn/config.toml",
         "dir\\.textstat.*",
+        #[cfg(all(feature = "config-toml", feature = "config-yaml"))]
         ".textstat.{toml,yaml,yml,json}",
         ".textstat.{json,json}",
         ".textstat.conf",
@@ -856,8 +862,15 @@ fn well_formed_settings_return_the_plugin() {
     ];
     for file in files {
         assert_eq!(
-            panics(|| configuration::<Empty>(ConfigurationSettings::new(None).file(file)))
-                .map(|_| file),
+            panics(
+                || configuration::<Empty>(ConfigurationSettings::new(None).file(file).formats(&[
+                    #[cfg(feature = "config-toml")]
+                    loomcli_plugins::config::toml::TOML,
+                    #[cfg(feature = "config-yaml")]
+                    loomcli_plugins::config::yaml::YAML,
+                ]))
+            )
+            .map(|_| file),
             None
         );
     }
