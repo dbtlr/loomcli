@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::future::poll_fn;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use loomcli_style::{
     LineCarry, Renderer, controls_after_last_line, resolved_row_suffix, split_lines,
@@ -243,12 +243,15 @@ pub(super) struct OpenMessage {
     stop: CancellationToken,
     rows: bool,
     built_in: bool,
+    stream: Stream,
+    layout: Mutex<MessageOutput>,
     state: Mutex<Reading>,
 }
 
 struct Reading {
-    layout: MessageOutput,
     pending: VecDeque<Piece>,
+    /// What the last completed layout left to close.
+    tail: Option<Piece>,
     ending: bool,
     /// Place of the most recent write, or of the call before its first write.
     place: u64,
@@ -257,20 +260,6 @@ struct Reading {
     detached: bool,
     /// What the final layout raised, which the reader resumes or returns once every lock is free.
     fault: Option<MessageFault>,
-}
-
-impl Reading {
-    /// Queues the closing writes. A failed final layout queues its fallback instead and keeps the
-    /// fault for the reader, so nothing unwinds while the message's lock is held.
-    fn finish(&mut self, output: &Output) {
-        if self.ending {
-            return;
-        }
-        self.ending = true;
-        let plan = self.layout.close(output);
-        self.pending.extend(plan.pieces);
-        self.fault = plan.fault;
-    }
 }
 
 impl OpenMessage {
@@ -300,9 +289,11 @@ impl OpenMessage {
             stop: CancellationToken::new(),
             rows,
             built_in: layout.built_in,
+            stream,
+            layout: Mutex::new(layout),
             state: Mutex::new(Reading {
-                layout,
                 pending: VecDeque::new(),
+                tail: None,
                 ending: false,
                 place: id,
                 line: None,
@@ -340,15 +331,15 @@ impl OpenMessage {
     fn stop(&self, output: &Output) {
         // An override can synchronously cancel its run. If it is still rendering, its reader
         // finishes the message after the layout returns.
-        let state = if self.built_in {
-            Some(locked(&self.state))
+        let layout = if self.built_in {
+            Some(locked(&self.layout))
         } else {
-            self.state.try_lock().ok()
+            self.layout.try_lock().ok()
         };
-        if let Some(mut state) = state {
-            state.finish(output);
+        if let Some(mut layout) = layout {
+            let mut state = self.finish(output, &mut layout);
             if state.line.is_none()
-                && output.lane(state.layout.stream) == Stream::Stderr
+                && output.lane(self.stream) == Stream::Stderr
                 && state
                     .pending
                     .iter()
@@ -363,15 +354,59 @@ impl OpenMessage {
         self.stop.cancel();
     }
 
+    /// Queues the final layout or, if the view faults, the tail from the previous layout. The
+    /// queue is available to an exit drain throughout the lane view call.
+    fn finish(&self, output: &Output, layout: &mut MessageOutput) -> MutexGuard<'_, Reading> {
+        let state = locked(&self.state);
+        if state.ending {
+            return state;
+        }
+        drop(state);
+        let closing = layout.close(output);
+        let mut state = locked(&self.state);
+        let pieces = match closing {
+            Ok(pieces) => Some(pieces),
+            Err(fault) => {
+                state.fault = Some(fault);
+                None
+            }
+        };
+        if !state.ending {
+            state.ending = true;
+            let tail = state.tail.take();
+            if let Some(pieces) = pieces {
+                state.pending.extend(pieces);
+            } else {
+                let mut piece = tail.unwrap_or_else(|| layout.closing_piece(String::new()));
+                piece.text.push('\n');
+                state.pending.push_back(piece);
+            }
+        }
+        state
+    }
+
     /// The rest of this message for the exit drain, ordered behind its last write or at the
     /// place a terminal line still holds ahead of writes waiting for it.
     pub(super) fn at_end(&self, output: &Output) -> (u64, Stream, VecDeque<Piece>) {
-        let mut state = locked(&self.state);
-        state.finish(output);
+        let mut state = if let Ok(mut layout) = self.layout.try_lock() {
+            self.finish(output, &mut layout)
+        } else {
+            // A lane view is in flight. Finish with the last completed layout and prevent that
+            // view from publishing its output after the drain has taken the queue.
+            let mut state = locked(&self.state);
+            state.ending = true;
+            if let Some(mut tail) = state.tail.take() {
+                if !tail.text.is_empty() || matches!(tail.change, Change::Print { .. }) {
+                    tail.text.push('\n');
+                }
+                state.pending.push_back(tail);
+            }
+            state
+        };
         self.stop.cancel();
         (
             state.line.unwrap_or(state.place),
-            state.layout.stream,
+            self.stream,
             std::mem::take(&mut state.pending),
         )
     }
@@ -394,8 +429,7 @@ impl OpenMessage {
     }
 
     async fn read(&self, output: &Output, mut source: Chunks) -> Result<(), Error> {
-        let stream = locked(&self.state).layout.stream;
-        let mut writer = output.stream_writer(self.id, stream);
+        let mut writer = output.stream_writer(self.id, self.stream);
         let fault = loop {
             let next = tokio::select! {
                 biased;
@@ -418,20 +452,39 @@ impl OpenMessage {
             match next {
                 Some(Ok(chunk)) => {
                     {
-                        let mut state = locked(&self.state);
-                        if state.ending {
+                        let mut layout = locked(&self.layout);
+                        if locked(&self.state).ending {
                             break None;
                         }
-                        match state.layout.chunk(output, &chunk) {
-                            Ok(pieces) => state.pending.extend(pieces),
+                        let chunk = layout.chunk(output, &chunk);
+                        let mut state = locked(&self.state);
+                        match chunk {
+                            Ok(_) if state.ending => break None,
+                            Ok(Some(Plan { pieces, tail })) => {
+                                state.tail = (!tail.is_empty()
+                                    || layout.head > 0
+                                    || layout.layout == Layout::Rows)
+                                    .then(|| layout.closing_piece(tail));
+                                state.pending.extend(pieces);
+                            }
+                            Ok(None) => {}
                             // The final layout below retries the whole received text.
                             Err(fault) => break Some(fault),
                         }
                     }
                     if let Err(error) = writer.write(self).await {
-                        let mut state = locked(&self.state);
-                        state.ending = true;
-                        state.pending.clear();
+                        let closing = {
+                            // A concurrent cancellation can be laying out the closing writes.
+                            let _layout = locked(&self.layout);
+                            let mut state = locked(&self.state);
+                            state.ending = true;
+                            state.pending.clear();
+                            state.tail = None;
+                            state.fault.take()
+                        };
+                        if let Some(MessageFault::Panic(payload)) = closing {
+                            resume_unwind(payload);
+                        }
                         return Err(error);
                     }
                 }
@@ -441,9 +494,8 @@ impl OpenMessage {
         };
         let dropped = catch_unwind(AssertUnwindSafe(|| drop(source))).err();
         let closing = {
-            let mut state = locked(&self.state);
-            state.finish(output);
-            state.fault.take()
+            let mut layout = locked(&self.layout);
+            self.finish(output, &mut layout).fault.take()
         };
         // Complete these writes with the same writer so a print line keeps its turn until closed.
         let written = writer.write(self).await;
@@ -528,10 +580,9 @@ pub(super) enum Change {
     Print { open: bool },
 }
 
-#[derive(Default)]
 struct Plan {
     pieces: Vec<Piece>,
-    fault: Option<MessageFault>,
+    tail: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -551,7 +602,6 @@ struct MessageOutput {
     carry: Carry,
     joined: String,
     written: usize,
-    pending: String,
     /// How many visible characters of the unfinished print line reached the cursor.
     head: usize,
     built_in: bool,
@@ -576,7 +626,6 @@ impl MessageOutput {
             carry: Carry::new(built_in),
             joined: String::new(),
             written: 0,
-            pending: String::new(),
             head: 0,
             built_in,
             blocked_line: false,
@@ -585,9 +634,9 @@ impl MessageOutput {
 
     /// The writes one chunk makes. A failed layout changes nothing the message has written, so
     /// the final layout can lay out the whole received text in its place.
-    fn chunk(&mut self, output: &Output, chunk: &str) -> Result<Vec<Piece>, MessageFault> {
+    fn chunk(&mut self, output: &Output, chunk: &str) -> Result<Option<Plan>, MessageFault> {
         if self.hidden {
-            return Ok(Vec::new());
+            return Ok(None);
         }
         self.joined.push_str(chunk);
         if self.layout == Layout::Lines
@@ -596,32 +645,21 @@ impl MessageOutput {
             && !self.blocked_line
             && !chunk.contains('\n')
         {
-            return Ok(Vec::new());
+            return Ok(None);
         }
         attempt(|| self.advance(output, false))
     }
 
-    /// The writes that end the message. A failed final layout writes what the last layout left
-    /// unwritten and a line break.
-    fn close(&mut self, output: &Output) -> Plan {
+    /// The writes that end the message.
+    fn close(&mut self, output: &Output) -> Result<Vec<Piece>, MessageFault> {
         if self.hidden {
-            return Plan::default();
+            return Ok(Vec::new());
         }
-        match attempt(|| self.advance(output, true)) {
-            Ok(pieces) => Plan {
-                pieces,
-                fault: None,
-            },
-            Err(fault) => Plan {
-                pieces: vec![self.close_pending()],
-                fault: Some(fault),
-            },
-        }
+        attempt(|| self.advance(output, true))
+            .map(|plan| plan.map_or_else(Vec::new, |plan| plan.pieces))
     }
 
-    fn close_pending(&mut self) -> Piece {
-        let mut text = std::mem::take(&mut self.pending);
-        text.push('\n');
+    fn closing_piece(&self, text: String) -> Piece {
         let change = match self.layout {
             Layout::Lines => Change::Line,
             Layout::Rows => Change::DropRow,
@@ -632,7 +670,7 @@ impl MessageOutput {
 
     /// Lays out the text so far. Every view call comes before any change to what the message has
     /// written, so a layout that fails or panics leaves the message as the last one left it.
-    fn advance(&mut self, output: &Output, end: bool) -> Result<Vec<Piece>, Error> {
+    fn advance(&mut self, output: &Output, end: bool) -> Result<Option<Plan>, Error> {
         let cut = if end {
             self.joined.len()
         } else {
@@ -651,7 +689,7 @@ impl MessageOutput {
         };
         if !end && text.is_empty() {
             self.blocked_line = blocked_line;
-            return Ok(Vec::new());
+            return Ok(None);
         }
 
         let context = self
@@ -667,7 +705,7 @@ impl MessageOutput {
             None => None,
         };
         self.blocked_line = blocked_line;
-        let pieces = match self.layout {
+        let plan = match self.layout {
             Layout::Lines => self.lines(renderer.resolve(&marked), end),
             Layout::Rows => self.rows(&marked, &renderer, end),
             Layout::Print => self.print(output, &marked, &renderer, end),
@@ -677,7 +715,7 @@ impl MessageOutput {
             self.joined.drain(..at);
             self.written = (self.written + 1).saturating_sub(rows);
         }
-        Ok(pieces)
+        Ok(Some(plan))
     }
 
     /// The carry past the lines that end at `at`, and the rows they take, when the split can move
@@ -708,7 +746,7 @@ impl MessageOutput {
         Ok(Some((carry, rows)))
     }
 
-    fn lines(&mut self, mut resolved: String, end: bool) -> Vec<Piece> {
+    fn lines(&mut self, mut resolved: String, end: bool) -> Plan {
         if end && !ends_line(&resolved) {
             resolved.push('\n');
         }
@@ -723,46 +761,43 @@ impl MessageOutput {
             })
             .collect();
         self.written = self.written.max(count);
-        self.pending = resolved[head..].to_owned();
-        if end && !self.pending.is_empty() {
+        let mut tail = resolved[head..].to_owned();
+        if end && !tail.is_empty() {
             if let Some(last) = fresh.last_mut() {
-                last.text.push_str(&self.pending);
+                last.text.push_str(&tail);
             } else {
                 fresh.push(Piece {
-                    text: std::mem::take(&mut self.pending),
+                    text: std::mem::take(&mut tail),
                     change: Change::Line,
                 });
             }
         }
-        fresh
+        Plan {
+            pieces: fresh,
+            tail,
+        }
     }
 
-    fn rows(&mut self, marked: &str, renderer: &Renderer, end: bool) -> Vec<Piece> {
+    fn rows(&mut self, marked: &str, renderer: &Renderer, end: bool) -> Plan {
         let mut rows = ResolvedRows::new(marked, renderer, end);
         let pending = rows.pending().unwrap_or_default();
         let mut text = self.finish_rows(&rows.finished);
         text.push_str(&rows.after);
-        self.pending = pending;
-        let change = if end {
-            Change::DropRow
-        } else {
-            Change::Row((!self.pending.is_empty()).then(|| {
-                Frame::new(
-                    loomcli_style::escape(&visible(&self.pending)),
-                    self.pending.as_str(),
-                )
-            }))
-        };
-        vec![Piece { text, change }]
+        let change =
+            if end {
+                Change::DropRow
+            } else {
+                Change::Row((!pending.is_empty()).then(|| {
+                    Frame::new(loomcli_style::escape(&visible(&pending)), pending.as_str())
+                }))
+            };
+        Plan {
+            pieces: vec![Piece { text, change }],
+            tail: pending,
+        }
     }
 
-    fn print(
-        &mut self,
-        output: &Output,
-        marked: &str,
-        renderer: &Renderer,
-        end: bool,
-    ) -> Vec<Piece> {
+    fn print(&mut self, output: &Output, marked: &str, renderer: &Renderer, end: bool) -> Plan {
         let mut rows = ResolvedRows::new(marked, renderer, end);
         let pending = rows.pending().unwrap_or_default();
         let mut text = self.finish_rows(&rows.finished);
@@ -785,8 +820,8 @@ impl MessageOutput {
             }
         }
         // Only what the cursor has yet to receive, which a failed final layout writes.
-        self.pending = resolved_row_suffix(&pending, self.head, false).0;
-        pieces
+        let tail = resolved_row_suffix(&pending, self.head, false).0;
+        Plan { pieces, tail }
     }
 
     fn finish_rows(&mut self, rows: &[String]) -> String {
@@ -898,7 +933,7 @@ mod tests {
         for part in parts {
             assert!(layout.chunk(&output, part).is_ok());
         }
-        assert!(layout.close(&output).fault.is_none());
+        assert!(layout.close(&output).is_ok());
         size.load(Ordering::Relaxed)
     }
 

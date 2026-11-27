@@ -403,9 +403,7 @@ impl Screen {
         use super::streamed::Change;
 
         if text.is_empty() && matches!(change, Change::Row(_)) && self.by_row.contains(&id) {
-            return self
-                .leave_wide_rows(measure)
-                .map_or_else(String::new, |before| before + &self.draw_stack(measure));
+            return String::new();
         }
         let before = if self.depth == 0 {
             self.uncover(measure)
