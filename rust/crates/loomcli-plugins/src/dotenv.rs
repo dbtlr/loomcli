@@ -58,11 +58,11 @@ enum Names {
 }
 
 impl Names {
-    fn imports(&self, name: &str) -> bool {
+    fn exclusion(&self, name: &str) -> Option<messages::Skip<'static>> {
         match self {
-            Names::All => true,
-            Names::Only(listed) => listed.contains(name),
-            Names::Except(listed) => !listed.contains(name),
+            Names::Only(listed) if !listed.contains(name) => Some(messages::Skip::NotOnly),
+            Names::Except(listed) if listed.contains(name) => Some(messages::Skip::Except),
+            _ => None,
         }
     }
 }
@@ -142,7 +142,7 @@ impl<List> Dotenv<List> {
         let names = Arc::new(self.names);
         Plugin::new(format!("{PACKAGE_NAME}/dotenv")).on_environment(move |context| {
             let names = Arc::clone(&names);
-            async move { read::read_dotenv(context, &|name| names.imports(name)).await }
+            async move { read::read_dotenv(context, &names).await }
         })
     }
 }

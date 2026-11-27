@@ -4,17 +4,22 @@
 
 use std::cmp::Ordering;
 use std::path::PathBuf;
+use std::pin::pin;
 use std::sync::Arc;
+use std::task::{Context, Poll, Waker};
 
 use loomcli_core::{
-    ApplicationDirectory, ChainOutcome, DetachedSpawnOptions, DirectoryFacts, DirectoryLookup, Env,
-    Host, MiddlewareContext, Next, NoOptions, Out, Outcome, application_directory,
+    ApplicationDirectory, ChainOutcome, ChildExit, DetachedSpawnOptions, DirectoryFacts,
+    DirectoryLookup, Env, Host, MiddlewareContext, Next, NoOptions, Outcome, application_directory,
 };
 
-use super::cache::{CacheEntry, CacheReading, Lookup, now, read_cache, write_cache};
-use super::messages;
+use super::cache::{
+    CACHE_FILE, CacheEntry, CacheFound, CacheReading, Lookup, STALE, read_cache, write_cache,
+};
+use super::messages::{self, UpdateCheckSkip};
 use super::update::{release_binary, script_installation};
 use super::version::{Version, compare_versions, parse_version};
+use crate::change_events::file_written;
 
 /// The variable any operator sets to turn update notices off.
 const OPERATOR_OPT_OUT: &str = "NO_UPDATE_NOTIFIER";
@@ -37,16 +42,28 @@ fn under_ci(env: &Env) -> bool {
         .is_some_and(|value| !value.is_empty() && value != "false")
 }
 
-/// Whether conditions 2 to 5 of the contract hold, in its order: no opt-out variable, both output
-/// streams at a terminal, not CI, and not `self-update` itself.
-fn is_eligible(host: &Host, opt_out: Option<&str>, routed: &[String]) -> bool {
+/// The first opt-out, terminal, CI, or route condition that skips the update check.
+fn ineligibility<'a>(
+    host: &Host,
+    opt_out: Option<&'a str>,
+    routed: &[String],
+) -> Option<UpdateCheckSkip<'a>> {
     let env = &host.env;
-    !(is_set(env, OPERATOR_OPT_OUT)
-        || opt_out.is_some_and(|name| is_set(env, name))
-        || !host.terminal.stdout().is_tty
-        || !host.terminal.stderr().is_tty
-        || under_ci(env)
-        || routed.join(" ") == COMMAND_NAME)
+    if is_set(env, OPERATOR_OPT_OUT) {
+        Some(UpdateCheckSkip::OptedOut(OPERATOR_OPT_OUT))
+    } else if let Some(variable) = opt_out.filter(|name| is_set(env, name)) {
+        Some(UpdateCheckSkip::OptedOut(variable))
+    } else if !host.terminal.stdout().is_tty {
+        Some(UpdateCheckSkip::Stdout)
+    } else if !host.terminal.stderr().is_tty {
+        Some(UpdateCheckSkip::Stderr)
+    } else if under_ci(env) {
+        Some(UpdateCheckSkip::Ci)
+    } else if routed.join(" ") == COMMAND_NAME {
+        Some(UpdateCheckSkip::SelfUpdate)
+    } else {
+        None
+    }
 }
 
 /// A run that may show a notice: the graph's name, the running binary's version and lookup, and
@@ -70,25 +87,27 @@ impl Qualified {
 
 /// The run's binary and cache directory when conditions 2 to 7 of the contract hold, in its order;
 /// the last two are a script-installed release binary and a cache directory that resolves.
-fn qualified(
+fn qualified<'a>(
     host: &Host,
-    name: &str,
-    opt_out: Option<&str>,
+    name: &'a str,
+    opt_out: Option<&'a str>,
     routed: &[String],
-) -> Option<Qualified> {
-    if !is_eligible(host, opt_out, routed) {
-        return None;
+) -> Result<Qualified, UpdateCheckSkip<'a>> {
+    if let Some(reason) = ineligibility(host, opt_out, routed) {
+        return Err(reason);
     }
-    let binary = release_binary(host)?;
-    script_installation(host)?;
-    let DirectoryLookup::Path(directory) = application_directory(
+    let binary = release_binary(host).ok_or(UpdateCheckSkip::NotRelease(name))?;
+    script_installation(host).ok_or(UpdateCheckSkip::NotScript(name))?;
+    let directory = match application_directory(
         ApplicationDirectory::Cache,
         name,
         &DirectoryFacts::from(host),
-    ) else {
-        return None;
+    ) {
+        DirectoryLookup::Path(path) => path,
+        DirectoryLookup::Variable(variable) => return Err(UpdateCheckSkip::NotAbsolute(variable)),
+        _ => return Err(UpdateCheckSkip::NotAbsolute("HOME".to_owned())),
     };
-    Some(Qualified {
+    Ok(Qualified {
         name: name.to_owned(),
         repository: binary.repository,
         channel: binary.channel,
@@ -109,30 +128,47 @@ fn notice_line(run: &Qualified, newer: &Version) -> String {
 }
 
 /// Starts `[...program, 'self-update', '--refresh-notice']` as a detached child in the cache
-/// directory, with the run's environment, and releases it. A child that cannot start answers so
-/// through its exit, which nothing reads.
-fn start_refresh(host: &Host, run: &Qualified) {
+/// directory, with the run's environment. Checks for an immediate start failure and releases it.
+fn start_refresh(host: &Host, run: &Qualified) -> bool {
     let Some((command, words)) = host.program.split_first() else {
-        return;
+        return false;
     };
     let args = words.iter().map(String::as_str).chain(REFRESH_WORDS);
-    // The run never waits for the refresh, so its child handle is released at once.
-    drop(host.spawn_detached(
+    let child = host.spawn_detached(
         command,
         args,
         DetachedSpawnOptions::new().cwd(run.directory.clone()),
-    ));
+    );
+    // Core returns an immediately ready exit when spawn fails. A pending child outlives the run.
+    let mut exit = pin!(child.exited());
+    !matches!(
+        exit.as_mut().poll(&mut Context::from_waker(Waker::noop())),
+        Poll::Ready(ChildExit::Unstarted { .. })
+    )
 }
 
 /// Prints the notice when the cache names a newer version, then refreshes a stale cache, writing
 /// the cached `latest` back when only its `checked` was at fault. Writing `checked` comes first; a
 /// `checked` that cannot be written starts no child.
-async fn notify(host: &Host, run: &Qualified, out: &Out) {
-    let now = now();
-    let reading = read_cache(&run.directory, run.lookup(), now);
+async fn notify(run: &Qualified, context: &MiddlewareContext<NoOptions>, now: i64) {
+    let log = &context.log;
+    let path = run.directory.join(CACHE_FILE);
+    let reading = match read_cache(&path, run.lookup(), now) {
+        CacheFound::Read(reading) => {
+            let (template, fields) = messages::read_update_check(&path);
+            log.debug(template, fields);
+            reading
+        }
+        CacheFound::Ignored => {
+            let (template, fields) = messages::ignored_update_cache(&path);
+            log.trace(template, fields);
+            STALE
+        }
+        CacheFound::Missing => STALE,
+    };
     if let Some(newer) = newer_version(&reading, &run.running) {
         // Core's output contract alone reports a write that fails; the notice lets it go.
-        let _ = out.info(&notice_line(run, &newer)).await;
+        let _ = context.out.info(&notice_line(run, &newer)).await;
     }
     if reading.fresh {
         return;
@@ -142,8 +178,11 @@ async fn notify(host: &Host, run: &Qualified, out: &Out) {
         checked: now,
         latest: reading.latest.flatten(),
     };
-    if write_cache(&run.directory, &entry).is_ok() {
-        start_refresh(host, run);
+    if let Ok(path) = write_cache(&run.directory, &entry) {
+        file_written(log, &path);
+        if start_refresh(&context.host, run) {
+            log.debug(messages::STARTED_REFRESH, ());
+        }
     }
 }
 
@@ -152,6 +191,7 @@ async fn notify(host: &Host, run: &Qualified, out: &Out) {
 /// failure of `next` propagates unchanged.
 pub(crate) fn notice_middleware(
     opt_out: Option<String>,
+    clock: fn() -> i64,
 ) -> impl Fn(
     MiddlewareContext<NoOptions>,
     Next,
@@ -167,16 +207,23 @@ pub(crate) fn notice_middleware(
             if outcome != ChainOutcome::Dispatched || context.signal.is_cancelled() {
                 return Ok(());
             }
-            let host = &context.host;
-            if let Some(run) = qualified(
-                host,
+            match qualified(
+                &context.host,
                 &context.graph.name,
                 opt_out.as_deref(),
                 &context.command.path,
             ) {
-                notify(host, &run, &context.out).await;
+                Ok(run) => notify(&run, &context, clock()).await,
+                Err(reason) => {
+                    let (template, fields) = messages::skipped(reason);
+                    context.log.trace(template, fields);
+                }
             }
             Ok(())
         })
     }
 }
+
+#[cfg(all(test, feature = "verbose"))]
+#[path = "notices/lines_tests.rs"]
+mod lines_tests;

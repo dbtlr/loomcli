@@ -8,9 +8,10 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::task::Poll;
 
-use loomcli_core::{Error, RunSignal};
+use loomcli_core::{Error, Log, RunSignal};
 use url::Url;
 
+use super::messages;
 use super::transport::{Transport, TransportResponse};
 
 /// The most redirects one request follows; one more fails it.
@@ -100,6 +101,7 @@ impl From<io::Error> for Stop {
 pub(crate) struct Client {
     pub(crate) transport: Arc<dyn Transport>,
     pub(crate) signal: RunSignal,
+    pub(crate) log: Log,
 }
 
 /// Where a request ended: a response, or a redirect the caller asked to stop at, which was not
@@ -155,14 +157,18 @@ pub(crate) fn is_github(url: &Url) -> bool {
 impl Client {
     /// One request with no redirect followed, its failure before a response named for `start`.
     async fn request(&self, url: &Url, start: &Url) -> Result<TransportResponse, Stop> {
-        until_cancelled(&self.signal, self.transport.get(url.as_str()))
-            .await?
-            .map_err(|cause| {
-                Stop::Request(RequestError::NoResponse {
-                    url: start.as_str().to_owned(),
-                    cause,
-                })
+        until_cancelled(&self.signal, async {
+            let (template, fields) = messages::requested(url);
+            self.log.trace(template, fields);
+            self.transport.get(url.as_str()).await
+        })
+        .await?
+        .map_err(|cause| {
+            Stop::Request(RequestError::NoResponse {
+                url: start.as_str().to_owned(),
+                cause,
             })
+        })
     }
 
     /// Requests `start` and follows each redirect itself, only to an HTTPS URL and at most 20

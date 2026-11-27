@@ -38,7 +38,7 @@ fn systemctl(name: &str, args: &[&str]) -> Call {
 /// Reloads the manager's units, its failure pointing at the label's unit.
 pub(super) async fn reload(unit: &Unit<'_>) -> Result<(), Error> {
     let call = systemctl(&unit_name(unit.label), &["daemon-reload"]);
-    unit.manager.expect(&call, &[SUCCEEDED]).await?;
+    unit.manager.expect_change(&call, &[SUCCEEDED]).await?;
     Ok(())
 }
 
@@ -46,7 +46,7 @@ pub(super) async fn reload(unit: &Unit<'_>) -> Result<(), Error> {
 pub(super) async fn unit_call(unit: &Unit<'_>, verb: &str) -> Result<(), Error> {
     let name = unit_name(unit.label);
     unit.manager
-        .expect(&systemctl(&name, &[verb, &name]), &[SUCCEEDED])
+        .expect_change(&systemctl(&name, &[verb, &name]), &[SUCCEEDED])
         .await?;
     Ok(())
 }
@@ -76,14 +76,14 @@ pub(super) async fn retire(unit: &Unit<'_>, path: &Path) -> Result<(), Error> {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     unit.manager
-        .expect(
+        .expect_change(
             &systemctl(&name, &["stop", &name]),
             &[SUCCEEDED, NOT_LOADED],
         )
         .await?;
     if exists(path)? {
         unit.manager
-            .expect(&systemctl(&name, &["disable", &name]), &[SUCCEEDED])
+            .expect_change(&systemctl(&name, &["disable", &name]), &[SUCCEEDED])
             .await?;
     }
     Ok(())

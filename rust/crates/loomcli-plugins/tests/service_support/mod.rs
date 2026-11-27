@@ -311,6 +311,7 @@ pub struct Scenario {
     pub output: Option<String>,
     pub stop_timeout: Option<u64>,
     pub output_folder_watch: Option<OutputFolderWatch>,
+    pub log_events: Option<Arc<Mutex<Vec<LogEvent>>>>,
     pub platform: String,
     pub program: Vec<String>,
     pub build: Build,
@@ -338,6 +339,7 @@ impl Default for Scenario {
             output: None,
             stop_timeout: None,
             output_folder_watch: None,
+            log_events: None,
             platform: "linux".to_owned(),
             program: vec!["/opt/notes/bin/notes".to_owned()],
             build: Build::Distributed,
@@ -539,8 +541,14 @@ pub fn application(sandbox: &Sandbox, scenario: &Scenario) -> App {
         });
     }
     let mut plugins: Vec<AnyPlugin> = Vec::new();
-    if let Some(watch) = &scenario.output_folder_watch {
-        let events = Arc::clone(&watch.log_events);
+    let events = scenario.log_events.as_ref().or_else(|| {
+        scenario
+            .output_folder_watch
+            .as_ref()
+            .map(|watch| &watch.log_events)
+    });
+    if let Some(events) = events {
+        let events = Arc::clone(events);
         plugins.push(
             Plugin::new("fixture/observer")
                 .on_log(move |event, _| {

@@ -30,6 +30,8 @@ const WORK: &str = "/loom-test/work";
 
 const COMPLETION: Refresh = Refresh {
     words: &["completion", "update"],
+    records: Vec::new,
+    skipped: "Skipped the refresh.",
     warning: "Completion was not refreshed after the update.",
     not_started: |path, name| {
         format!(
@@ -40,6 +42,8 @@ const COMPLETION: Refresh = Refresh {
 
 const MANPAGE: Refresh = Refresh {
     words: &["manpage", "update"],
+    records: Vec::new,
+    skipped: "Skipped the refresh.",
     warning: "Man pages were not refreshed after the update.",
     not_started: |path, name| {
         format!(
@@ -50,6 +54,8 @@ const MANPAGE: Refresh = Refresh {
 
 const SKILLS: Refresh = Refresh {
     words: &["skills", "update"],
+    records: Vec::new,
+    skipped: "Skipped the refresh.",
     warning: "Skills were not refreshed after the update.",
     not_started: |path, name| {
         format!(
@@ -95,12 +101,7 @@ fn refresh_application(
                     let resolved = Arc::clone(&resolved);
                     async move {
                         refresh_by_running(
-                            RefreshContext {
-                                path: Path::new(&path),
-                                host: &ctx.host,
-                                signal: &ctx.signal,
-                                log: &ctx.log,
-                            },
+                            RefreshContext::new(Path::new(&path), &ctx.host, &ctx.signal, &ctx.log),
                             &refresh,
                         )
                         .await;
@@ -168,7 +169,7 @@ async fn unstartable(call: ProgramCall) -> io::Result<ProgramAnswer> {
 }
 
 /// A run's refresh runs the binary with the words, `host.env`, and `host.cwd`, passes its output
-/// through, adds no event, and returns.
+/// through, records the completed child, and returns.
 async fn runs_the_binary_with_its_words(refresh: Refresh, path: &str, words: [&str; 2]) {
     let result = refresh_on_mock(refresh, path, greeting, None).await;
     assert_eq!(result.code, 0);
@@ -184,7 +185,14 @@ async fn runs_the_binary_with_its_words(refresh: Refresh, path: &str, words: [&s
     assert!(result.stdout.ends_with("resolved\n"));
     assert!(result.stderr.contains("child says hello\n"));
     assert!(result.resolved);
-    assert!(result.events.is_empty());
+    assert_eq!(
+        result.events,
+        [json!({
+            "level": "info",
+            "message": "Program run.",
+            "fields": {"arguments": words, "code": 0, "program": path}
+        })]
+    );
 }
 
 /// A child that exits 1 adds the warn event with its code and the path, and the refresh returns.
@@ -354,14 +362,11 @@ async fn a_refresh_writes_the_new_binary_output_to_the_host_streams_and_gives_it
     );
     let app = Application::new("notes").action(move |ctx: Context| async move {
         refresh_by_running(
-            RefreshContext {
-                path: Path::new(path),
-                host: &ctx.host,
-                signal: &ctx.signal,
-                log: &ctx.log,
-            },
+            RefreshContext::new(Path::new(path), &ctx.host, &ctx.signal, &ctx.log),
             &Refresh {
                 words: &["skills", "update"],
+                records: Vec::new,
+                skipped: "Skipped the refresh.",
                 warning: "The refresh failed.",
                 not_started: |_, _| "not started\n".to_owned(),
             },

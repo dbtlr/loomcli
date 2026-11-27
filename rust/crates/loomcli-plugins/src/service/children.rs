@@ -6,7 +6,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use loomcli_core::{Build, Env, Error, FatalError, Host, Out, RunSignal};
+use loomcli_core::{Build, Env, Error, FatalError, Host, Log, Out, RunSignal};
 
 use super::Service;
 use super::backend::{Backend, Unit, normalized};
@@ -34,6 +34,7 @@ pub(super) struct ChildRun<'a> {
     pub(super) host: &'a Host,
     pub(super) signal: &'a RunSignal,
     pub(super) on_shutdown: OnShutdown<'a>,
+    pub(super) log: &'a Log,
 }
 
 /// What the checks found: the run's unit, its backend, its home, and its record directory.
@@ -77,6 +78,7 @@ pub(super) fn prepare<'a>(run: &'a ChildRun<'a>) -> Result<Prepared<'a>, FatalEr
         host,
         signal: run.signal,
         on_shutdown: run.on_shutdown,
+        log: run.log,
     };
     let path = backend.unit_path(run.label, home, &host.env);
     let record =
@@ -270,7 +272,7 @@ async fn write_unit(
     }
     let request =
         InstallRequest::new().files([InstalledFile::new(&unit.path, text).mode(UNIT_MODE)]);
-    let file = PluginRecord::new(&prepared.record, RECORD_NAME);
+    let file = PluginRecord::new(&prepared.record, RECORD_NAME).with_log(run.log);
     match file.install(&request, run.signal)? {
         InstallOutcome::Refused(refused) => refuse(run.name, &refused).map_err(Error::from),
         InstallOutcome::Installed(done) => {
@@ -317,7 +319,7 @@ async fn remove_units(
     for file in files {
         prepared.backend.retire(unit, &file.path).await?;
     }
-    let record = PluginRecord::new(&prepared.record, RECORD_NAME);
+    let record = PluginRecord::new(&prepared.record, RECORD_NAME).with_log(run.log);
     let done = match record.uninstall(&[], run.signal)? {
         UninstallOutcome::Refused(refused) => {
             let path = refused

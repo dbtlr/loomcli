@@ -96,6 +96,8 @@ pub enum Rule {
     LateAbort,
     /// Redirects off github.com.
     Offsite,
+    /// Redirects a download to the asset host using a signed address.
+    Signed,
     /// Cancels the run during the request.
     Abort,
 }
@@ -286,6 +288,15 @@ impl FakeGitHub {
                 self.controller.cancel();
                 None
             }
+            Rule::Signed => {
+                let (_, asset) = text_url.split_once("/releases/download/")?;
+                Some(Ok(redirect(
+                    302,
+                    &format!(
+                        "https://user:pass@release-assets.example/{asset}?X-Amz-Signature=abc&token=def#frag"
+                    ),
+                )))
+            }
             Rule::Offsite => Some(Ok(redirect(302, "https://example.com/elsewhere"))),
             Rule::Hops(hops) => {
                 let mut url = Url::parse(text_url).unwrap();
@@ -389,12 +400,8 @@ impl Drop for Sandbox {
 /// A fresh, empty directory under the system's temporary folder, named through no link.
 pub fn temporary_root(prefix: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "{prefix}-{}-{}-{nanos}",
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+        "{prefix}-{}-{}",
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
@@ -555,8 +562,12 @@ impl Fixture {
     /// `notes`, installing `self_update()` and the help plugin where the fixture names, with the
     /// Commands a notices scenario runs: one that succeeds, one that fails, and two cancelled.
     pub fn application(&self, role: &'static str) -> App {
+        self.application_named("notes", role)
+    }
+
+    pub fn application_named(&self, name: &str, role: &'static str) -> App {
         let update = self.settings(role).plugin();
-        let base = Application::new("notes")
+        let base = Application::new(name)
             .description("A fixture application.")
             .version(self.version.clone());
         let mut application = match (self.help, self.verbose) {
@@ -689,7 +700,16 @@ pub fn mock_for(
 
 /// Runs the fixture's application on `process`, its signal the fixture's controller.
 pub async fn run_on(fixture: &Fixture, role: &'static str, process: &Arc<MockProcess>) -> Ran {
-    let application = fixture.application(role);
+    run_named_on(fixture, "notes", role, process).await
+}
+
+pub async fn run_named_on(
+    fixture: &Fixture,
+    name: &str,
+    role: &'static str,
+    process: &Arc<MockProcess>,
+) -> Ran {
+    let application = fixture.application_named(name, role);
     let code = application
         .run(
             RunOptions::new()

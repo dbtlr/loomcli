@@ -442,10 +442,13 @@ async fn a_file_found_in_an_ancestor_shows_as_its_full_path() {
     );
     assert_eq!(
         space.run().arg(&["-L"]).loud().cwd(&start).stderr().await,
-        wrong(&[&format!(
-            "Ignored option \"--limit\" from limits.bytes in {}: Use a string or a number.",
-            shown(&found)
-        )])
+        read_wrong(
+            &shown(&found),
+            &[&format!(
+                "Ignored option \"--limit\" from limits.bytes in {}: Use a string or a number.",
+                shown(&found)
+            )]
+        )
     );
     space.write_in(
         &start,
@@ -454,9 +457,12 @@ async fn a_file_found_in_an_ancestor_shows_as_its_full_path() {
     );
     assert_eq!(
         space.run().arg(&["-L"]).loud().cwd(&start).stderr().await,
-        wrong(&[
-            "Ignored option \"--limit\" from limits.bytes in .app.json: Use a string or a number."
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored option \"--limit\" from limits.bytes in .app.json: Use a string or a number."
+            ]
+        )
     );
 }
 

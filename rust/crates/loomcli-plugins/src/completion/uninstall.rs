@@ -62,7 +62,9 @@ async fn remove_shell(run: &ChildRun, record: &Path, planned: &Planned) -> Resul
             release.push(entry.path.clone());
         }
     }
-    let outcome = shell_record(record, recorded.shell).uninstall(&release, &run.signal)?;
+    let outcome = shell_record(record, recorded.shell)
+        .with_log(&run.log)
+        .uninstall(&release, &run.signal)?;
     let outcome = match outcome {
         UninstallOutcome::Uninstalled(done) => done,
         UninstallOutcome::Refused(refused) => {
@@ -130,7 +132,7 @@ fn sits_under(script: &Path, folder: &Path) -> Result<bool, Error> {
 /// installed shell whose script sits under it, before the shell's file is deleted. That folder
 /// still holds the other shell's script, or its folders, after this uninstall, and the other
 /// shell's uninstall removes it once it is empty.
-fn hand_over_folders(record: &Path, shell: Shell) -> Result<(), Error> {
+fn hand_over_folders(run: &ChildRun, record: &Path, shell: Shell) -> Result<(), Error> {
     let mut remaining = shell_record(record, shell).directories()?;
     for heir in SHELLS.into_iter().filter(|other| *other != shell) {
         let scripts = scripts_of(record, heir)?;
@@ -147,7 +149,11 @@ fn hand_over_folders(record: &Path, shell: Shell) -> Result<(), Error> {
                 held.push(folder.clone());
             }
         }
-        if !held.is_empty() && shell_record(record, heir).adopt_directories(&held)? {
+        if !held.is_empty()
+            && shell_record(record, heir)
+                .with_log(&run.log)
+                .adopt_directories(&held)?
+        {
             remaining.retain(|folder| !held.contains(folder));
         }
     }
@@ -168,7 +174,7 @@ pub(super) async fn uninstall_shells(run: &ChildRun, argument: Option<Shell>) ->
         planned.push(plan_shell(run, recorded)?);
     }
     for entry in &planned {
-        hand_over_folders(&record, entry.recorded.shell)?;
+        hand_over_folders(run, &record, entry.recorded.shell)?;
         remove_shell(run, &record, entry).await?;
     }
     if nothing {

@@ -66,12 +66,12 @@ fn refresh_application(
                     let path = path.clone();
                     let resolved = Arc::clone(&resolved);
                     async move {
-                        refresh_completion(RefreshContext {
-                            path: Path::new(&path),
-                            host: &context.host,
-                            signal: &context.signal,
-                            log: &context.log,
-                        })
+                        refresh_completion(RefreshContext::new(
+                            Path::new(&path),
+                            &context.host,
+                            &context.signal,
+                            &context.log,
+                        ))
                         .await?;
                         resolved.store(true, Ordering::SeqCst);
                         context.out.print("resolved").await
@@ -135,7 +135,14 @@ async fn runs_the_binary_with_completion_update_host_env_and_host_cwd_pipes_its_
     assert!(printed["cwd"].as_str().unwrap().ends_with("work"));
     assert!(result.stderr.contains("child says hello\n"));
     assert!(result.resolved);
-    assert!(result.events.is_empty());
+    assert_eq!(
+        result.events,
+        [json!({
+            "level": "info",
+            "message": "Program run.",
+            "fields": {"arguments": ["completion", "update"], "code": 0, "program": REFRESHED}
+        })]
+    );
 }
 
 #[tokio::test]
@@ -286,5 +293,12 @@ async fn a_refresh_after_a_binary_replacement_rewrites_a_recorded_script_to_the_
     );
     assert_eq!(fs::read_to_string(&script).unwrap(), bash_script("jsonkit"));
     assert!(resolved.load(Ordering::SeqCst));
-    assert!(events.lock().unwrap().is_empty());
+    assert_eq!(
+        *events.lock().unwrap(),
+        [json!({
+            "level": "info",
+            "message": "Program run.",
+            "fields": {"arguments": ["completion", "update"], "code": 0, "program": binary_text}
+        })]
+    );
 }

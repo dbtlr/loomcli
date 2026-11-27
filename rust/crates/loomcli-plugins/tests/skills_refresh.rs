@@ -65,12 +65,12 @@ fn refresh_application(
                     let path = path.clone();
                     let resolved = Arc::clone(&resolved);
                     async move {
-                        refresh_skills(RefreshContext {
-                            path: Path::new(&path),
-                            host: &ctx.host,
-                            signal: &ctx.signal,
-                            log: &ctx.log,
-                        })
+                        refresh_skills(RefreshContext::new(
+                            Path::new(&path),
+                            &ctx.host,
+                            &ctx.signal,
+                            &ctx.log,
+                        ))
                         .await?;
                         resolved.store(true, Ordering::SeqCst);
                         ctx.out.print("resolved").await
@@ -150,7 +150,14 @@ async fn runs_the_binary_with_skills_update_host_env_and_host_cwd_pipes_its_outp
     assert!(result.stdout.ends_with("resolved\n"));
     assert!(result.stderr.contains("child says hello\n"));
     assert!(result.resolved);
-    assert!(result.events.is_empty());
+    assert_eq!(
+        result.events,
+        [json!({
+            "level": "info",
+            "message": "Program run.",
+            "fields": {"arguments": ["skills", "update"], "code": 0, "program": BINARY}
+        })]
+    );
 }
 
 #[tokio::test]

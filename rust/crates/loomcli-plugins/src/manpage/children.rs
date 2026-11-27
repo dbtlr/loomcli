@@ -1,4 +1,4 @@
-//! The four children: `generate` writes the set to a folder and records nothing; `install`,
+//! The four children: `generate` writes the set to a folder without changing the installation record; `install`,
 //! `update`, and `uninstall` act on the set under the operator's home through the installed-files
 //! module, recorded in the plugin's file `manpage.json`.
 
@@ -7,11 +7,12 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-use loomcli_core::{CommandGraph, Error, FatalError, Host, Out, RunSignal};
+use loomcli_core::{CommandGraph, Error, FatalError, Host, Log, Out, RunSignal};
 
 use super::advice::advice;
 use super::messages::{self, WritingVerb};
 use super::page::{ManPage, man_pages};
+use crate::change_events::file_written;
 use crate::installation::{
     InstallOutcome, InstallRequest, InstalledFile, Observed, PluginRecord, RecordedRead, Refusal,
     RefusalReason, ReplaceOptions, UninstallOutcome, create_directory, digest_of, missing_parents,
@@ -24,10 +25,11 @@ pub(super) struct ChildRun<'a> {
     pub(super) host: &'a Host,
     pub(super) signal: &'a RunSignal,
     pub(super) out: &'a Out,
+    pub(super) log: &'a Log,
 }
 
 /// The plugin's file in the installation record, `manpage.json`.
-const PLUGIN: &str = "manpage";
+pub(super) const PLUGIN: &str = "manpage";
 
 /// The permission bits of a folder the plugin creates and of a page it writes, whatever the umask.
 const FOLDER_MODE: u32 = 0o755;
@@ -120,6 +122,7 @@ pub(super) async fn generate_pages(run: &ChildRun<'_>, out: &str) -> Result<(), 
             &page.content,
             ReplaceOptions::new().maybe_mode(page.mode),
         )?;
+        file_written(run.log, &page.path);
     }
     run.out
         .success(&messages::wrote(pages.len(), &folder))
@@ -136,7 +139,7 @@ struct Recorded {
 fn read_record(run: &ChildRun<'_>, verb: &str) -> Result<Recorded, Error> {
     let name = &run.graph.name;
     let record = record_directory(name, run.host)?;
-    let file = PluginRecord::new(record, PLUGIN);
+    let file = PluginRecord::new(record, PLUGIN).with_log(run.log);
     match file.read()? {
         RecordedRead::Refused(refused) => {
             Err(FatalError::new(messages::record(name, &refused.path, verb)).into())

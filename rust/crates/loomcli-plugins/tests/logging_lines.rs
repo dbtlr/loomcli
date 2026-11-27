@@ -279,3 +279,70 @@ async fn no_written_record_means_no_file_announcement() {
         assert_eq!(mock.stderr_text(), "› Indexed.\n");
     }
 }
+
+async fn file_lines(path: &std::path::Path, argv: &[&str]) -> String {
+    let app = Application::new("notes")
+        .plugins((logging().file(path.to_string_lossy()),))
+        .global_option("verbose", Opt::count().short('v').verbose())
+        .global_option("quiet", Opt::count().short('q').quiet())
+        .action(|ctx: Context| async move {
+            ctx.log.info("Indexed.", ());
+            ctx.log.info("Synced.", ());
+            Ok(())
+        });
+    let mock = mock_process(MockFields::new().argv(argv.iter().copied()));
+    assert_eq!(
+        app.run(RunOptions::new().process(mock.clone())).await.get(),
+        0
+    );
+    mock.stderr_text()
+}
+
+#[tokio::test]
+async fn default_and_offset_verbosity_keep_file_announcements_off_stderr() {
+    let sandbox = Sandbox::new();
+    assert_eq!(file_lines(&sandbox.file, &[]).await, "");
+    assert_eq!(lines(&sandbox.file).len(), 2);
+    assert_eq!(file_lines(&sandbox.file, &["-v", "-q"]).await, "");
+    assert_eq!(lines(&sandbox.file).len(), 4);
+}
+
+#[tokio::test]
+async fn a_control_character_in_the_log_path_is_escaped() {
+    let sandbox = Sandbox::new();
+    let path = sandbox.root.join("no\u{7}tes.jsonl");
+    assert_eq!(
+        file_lines(&path, &["-v"]).await,
+        format!(
+            "› Indexed.\n› Logging to {}/no\\u0007tes.jsonl.\n› Synced.\n",
+            sandbox.root.display()
+        ),
+    );
+    assert_eq!(lines(&path).len(), 2);
+}
+
+#[tokio::test]
+async fn a_console_only_destination_prints_its_record_and_no_file_lines() {
+    let app = Application::new("notes")
+        .plugins((logging().destinations([ConsoleDestination::new()]),))
+        .global_option("verbose", Opt::count().short('v').verbose())
+        .action(|ctx: Context| async move {
+            ctx.log.info("Indexed.", ());
+            Ok(())
+        });
+    let mock = mock_process(MockFields::new().argv(["-vv"]));
+    assert_eq!(
+        app.run(RunOptions::new().process(mock.clone())).await.get(),
+        0
+    );
+    let stderr = mock.stderr_text();
+    let record = stderr
+        .strip_prefix("› Indexed.\n")
+        .unwrap()
+        .strip_suffix('\n')
+        .unwrap();
+    assert!(!record.contains('\n'));
+    let record: Value = serde_json::from_str(record).unwrap();
+    assert_eq!(record["message"], "Indexed.");
+    assert_eq!(record["level"], "info");
+}

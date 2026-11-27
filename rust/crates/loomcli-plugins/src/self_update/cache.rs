@@ -1,8 +1,8 @@
 //! The update notices' cache: `update.json` in the application's cache directory, one line that
 //! says when the newest release on a repository's channel was last looked up and what it was.
 
-use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::{fs, io};
 
 use jiff::Timestamp;
 use serde_json::Value;
@@ -36,10 +36,16 @@ pub(crate) struct CacheReading {
 }
 
 /// The reading of a cache that is missing, damaged, or for another repository or channel.
-const STALE: CacheReading = CacheReading {
+pub(super) const STALE: CacheReading = CacheReading {
     fresh: false,
     latest: None,
 };
+
+pub(super) enum CacheFound {
+    Missing,
+    Ignored,
+    Read(CacheReading),
+}
 
 /// A time in milliseconds since the epoch, in the `toISOString()` form: UTC, with milliseconds.
 pub(crate) fn iso_time(milliseconds: i64) -> Option<String> {
@@ -78,14 +84,13 @@ fn is_known_format(format: Option<&Value>) -> bool {
         .is_some_and(|number| number == KNOWN_FORMAT as f64)
 }
 
-/// Judges a cache's text for a repository and channel at `now`, in milliseconds since the epoch.
-/// Every member other than the five it reads is passed over, in any order.
-pub(crate) fn judge_cache(content: &str, lookup: Lookup<'_>, now: i64) -> CacheReading {
-    let Ok(Value::Object(members)) = serde_json::from_str::<Value>(content) else {
-        return STALE;
-    };
-    if !is_known_format(members.get("format"))
-        || members.get("repository").and_then(Value::as_str) != Some(lookup.repository)
+/// Judges a format-1 object for the running binary without interpreting any other members.
+fn judge_members(
+    members: &serde_json::Map<String, Value>,
+    lookup: Lookup<'_>,
+    now: i64,
+) -> CacheReading {
+    if members.get("repository").and_then(Value::as_str) != Some(lookup.repository)
         || members.get("channel").and_then(Value::as_str) != Some(lookup.channel)
     {
         return STALE;
@@ -101,19 +106,29 @@ pub(crate) fn judge_cache(content: &str, lookup: Lookup<'_>, now: i64) -> CacheR
     }
 }
 
-/// The text of the cache in `directory`, or `None` when it is not a regular file that reads as
-/// UTF-8.
-fn cache_text(directory: &Path) -> Option<String> {
-    let path = directory.join(CACHE_FILE);
-    if !fs::metadata(&path).ok()?.is_file() {
-        return None;
+fn cache_contents(content: &str, lookup: Lookup<'_>, now: i64) -> CacheFound {
+    match serde_json::from_str::<Value>(content) {
+        Ok(Value::Object(members)) if is_known_format(members.get("format")) => {
+            CacheFound::Read(judge_members(&members, lookup, now))
+        }
+        _ => CacheFound::Ignored,
     }
-    fs::read_to_string(path).ok()
 }
 
-/// Reads and judges the cache in `directory`; one that cannot be read is stale.
-pub(crate) fn read_cache(directory: &Path, lookup: Lookup<'_>, now: i64) -> CacheReading {
-    cache_text(directory).map_or(STALE, |content| judge_cache(&content, lookup, now))
+/// Distinguishes a missing file from an ignored cache and a recognized format-1 cache.
+pub(super) fn read_cache(path: &Path, lookup: Lookup<'_>, now: i64) -> CacheFound {
+    fn read_failed(error: io::Error) -> CacheFound {
+        match error.kind() {
+            io::ErrorKind::NotFound => CacheFound::Missing,
+            _ => CacheFound::Ignored,
+        }
+    }
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => fs::read_to_string(path)
+            .map_or_else(read_failed, |content| cache_contents(&content, lookup, now)),
+        Ok(_) => CacheFound::Ignored,
+        Err(error) => read_failed(error),
+    }
 }
 
 /// What one cache line records: when it looked, where, and the newest version, if any.
@@ -150,13 +165,11 @@ pub(crate) fn cache_line(entry: &CacheEntry<'_>) -> String {
 pub(crate) fn write_cache(
     directory: &Path,
     entry: &CacheEntry<'_>,
-) -> Result<(), InstallationError> {
+) -> Result<PathBuf, InstallationError> {
     fs::create_dir_all(directory)?;
-    replace_file(
-        &directory.join(CACHE_FILE),
-        cache_line(entry).as_bytes(),
-        ReplaceOptions::new(),
-    )
+    let path = directory.join(CACHE_FILE);
+    replace_file(&path, cache_line(entry).as_bytes(), ReplaceOptions::new())?;
+    Ok(path)
 }
 
 /// The current time in milliseconds since the epoch, as `Date.now()` answers it.
@@ -190,6 +203,13 @@ mod tests {
         CacheReading {
             fresh,
             latest: Some(Some("1.5.1".to_owned())),
+        }
+    }
+
+    fn judge_cache(content: &str, lookup: Lookup<'_>, now: i64) -> CacheReading {
+        match cache_contents(content, lookup, now) {
+            CacheFound::Read(reading) => reading,
+            CacheFound::Missing | CacheFound::Ignored => STALE,
         }
     }
 

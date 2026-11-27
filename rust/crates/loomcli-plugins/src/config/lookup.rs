@@ -12,7 +12,7 @@ use std::path::{Component, Path, PathBuf};
 
 use loomcli_core::{
     ContextualStyle, Host, InputError, InputIdentity, InputKind, InputProblem, InvokedBy, Issue,
-    OptionGroupKind,
+    LogFields, OptionGroupKind,
 };
 
 use super::document::Value;
@@ -27,7 +27,8 @@ use super::strict;
 pub(crate) enum Line {
     Warn(String),
     Info(String),
-    Debug((&'static str, loomcli_core::LogFields)),
+    Debug((&'static str, LogFields)),
+    Trace((&'static str, LogFields)),
 }
 
 /// One file the lookup reads: where it is and the name its labels and messages use.
@@ -393,12 +394,15 @@ impl Lookup<'_> {
     /// candidate is the file found there. Every later present one is skipped unread with one
     /// warning, ahead of any warning about the found file.
     fn directory_file(&self, step: &Step, lines: &mut Vec<Line>) -> Option<Outcome> {
-        let mut present = self
-            .files_in(step)
-            .into_iter()
-            .filter(|file| is_present(&file.path));
-        let found = present.next()?;
-        let skipped: Vec<ConfigFile> = present.collect();
+        let mut present = self.files_in(step).into_iter();
+        let found = present.find(|file| {
+            let exists = is_present(&file.path);
+            if !exists {
+                lines.push(Line::Trace(messages::looked_for(&file.shown)));
+            }
+            exists
+        })?;
+        let skipped: Vec<ConfigFile> = present.filter(|file| is_present(&file.path)).collect();
         if !skipped.is_empty() {
             let names: Vec<&str> = skipped.iter().map(|file| file.shown.as_str()).collect();
             lines.push(Line::Warn(messages::skipped_candidates(
@@ -475,7 +479,10 @@ impl Lookup<'_> {
         if let Some(named) = self.named {
             let file = ConfigFile::new(resolve(&self.cwd(), Path::new(named)), named);
             return match read(&file, self.readers) {
-                Reading::Usable(object) => Ok(Some(UsableFile { file, object })),
+                Reading::Usable(object) => {
+                    lines.push(Line::Debug(messages::read_from(&file.shown)));
+                    Ok(Some(UsableFile { file, object }))
+                }
                 Reading::Unusable { clause, at } => Err(LookupFault::Named(
                     messages::named_file_issue(&file.shown, clause, at, self.readers),
                 )),
@@ -485,20 +492,35 @@ impl Lookup<'_> {
             Some(value) => {
                 let file = ConfigFile::new(resolve(&self.cwd(), Path::new(value)), value);
                 // The variable's file always ends the lookup, so only a search is noticed.
-                Some(self.discovered(file, lines).unwrap_or(Outcome::Ended))
+                let outcome = self.discovered(file, lines);
+                if outcome.is_none() {
+                    lines.push(Line::Trace(messages::looked_for(value)));
+                }
+                outcome
             }
             None => {
                 let outcome = self.searched(lines);
-                if outcome.is_none() && self.notice {
-                    lines.extend(self.notice_line());
+                if outcome.is_none()
+                    && self.notice
+                    && let Some(notice) = self.notice_line()
+                {
+                    lines.push(notice);
+                    return Ok(None);
                 }
                 outcome
             }
         };
         match outcome {
-            Some(Outcome::File(usable)) => Ok(Some(usable)),
+            Some(Outcome::File(usable)) => {
+                lines.push(Line::Debug(messages::read_from(&usable.file.shown)));
+                Ok(Some(usable))
+            }
             Some(Outcome::Broken(message)) => Err(LookupFault::Broken(message)),
-            Some(Outcome::Ended) | None => Ok(None),
+            Some(Outcome::Ended) => Ok(None),
+            None => {
+                lines.push(Line::Debug((messages::NO_FILE_FOUND, LogFields::new())));
+                Ok(None)
+            }
         }
     }
 }

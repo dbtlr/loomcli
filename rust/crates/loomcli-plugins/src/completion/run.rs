@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use loomcli_core::{Error, FatalError, Host, Out, RunSignal};
+use loomcli_core::{Error, FatalError, Host, Log, Out, RunSignal};
 
 use super::messages::{self, Verb};
 use super::shells::Shell;
@@ -20,6 +20,7 @@ pub(super) struct ChildRun {
     pub host: Arc<Host>,
     pub signal: RunSignal,
     pub out: Out,
+    pub log: Log,
 }
 
 impl ChildRun {

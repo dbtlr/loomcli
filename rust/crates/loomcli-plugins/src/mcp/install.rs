@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use loomcli_core::{Build, Error, FatalError};
+use loomcli_core::{Build, Error, FatalError, Log};
 
 use super::messages::{self, BuildNote, Child};
 use super::registration::{Agent, Answer, ChildRun, command_line, selected_agents};
@@ -30,8 +30,8 @@ struct Registering<'a> {
 }
 
 impl Registering<'_> {
-    fn file(&self) -> PluginRecord {
-        PluginRecord::new(self.record, self.agent.record_name())
+    fn file(&self, log: &Log) -> PluginRecord {
+        PluginRecord::new(self.record, self.agent.record_name()).with_log(log)
     }
 }
 
@@ -64,7 +64,7 @@ async fn holds_name(run: &ChildRun<'_>, agent: Agent) -> Result<bool, Error> {
     let Some(check) = agent.name_check(&run.registration) else {
         return Ok(false);
     };
-    let answer = run.call(agent, check).await?;
+    let answer = run.call(agent, &check).await?;
     match answer.code() {
         Some(0) => Ok(true),
         Some(NOT_HELD) => Ok(false),
@@ -115,8 +115,11 @@ async fn refuse_name_in_the_way(
 /// Writes the agent's plugin's file back to what is known to be registered after a failed `add`:
 /// the registration recorded before the run, or no file when it recorded none or when `claude`'s
 /// `remove` already took it away.
-fn restore_record(registering: &Registering<'_>, removed: bool) -> Result<(), Error> {
-    let file = registering.file();
+fn restore_record(
+    file: &PluginRecord,
+    registering: &Registering<'_>,
+    removed: bool,
+) -> Result<(), Error> {
     match registering.recorded {
         Some(recorded) if !removed => {
             file.write_committed_registration(&recorded.name, &recorded.command)?;
@@ -139,7 +142,7 @@ async fn remove_first(
         return Ok(false);
     }
     let removed = run
-        .call(agent, agent.remove(&run.registration))
+        .change(agent, agent.remove(&run.registration))
         .await?
         .succeeded();
     if removed && registering.recorded.is_none() {
@@ -157,7 +160,7 @@ async fn register_with(
     force: bool,
 ) -> Result<(), Error> {
     let agent = registering.agent;
-    let file = registering.file();
+    let file = registering.file(run.log);
     file.write_pending_registration(
         &run.registration,
         registering
@@ -167,7 +170,7 @@ async fn register_with(
     )?;
     let removed = remove_first(run, registering, force).await?;
     let answer: Answer = run
-        .call(agent, agent.add(&run.registration, registering.command))
+        .change(agent, agent.add(&run.registration, registering.command))
         .await?;
     if answer.succeeded() {
         file.write_committed_registration(&run.registration, registering.command)?;
@@ -181,7 +184,7 @@ async fn register_with(
             .await;
     }
     run.warn_output(&answer).await?;
-    restore_record(registering, removed)?;
+    restore_record(&file, registering, removed)?;
     Err(FatalError::new(messages::add_failed(
         &run.names(),
         agent.name(),

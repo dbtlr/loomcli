@@ -40,6 +40,39 @@ async fn environment_hook_log_respects_the_outer_run_verbosity() {
 }
 
 #[tokio::test]
+async fn destination_log_respects_the_outer_run_verbosity() {
+    let observer = Plugin::new("fixture/observer").on_log(|event, destination| {
+        let log = destination
+            .log
+            .with(LogFields::new().field("message", &event.message));
+        log.debug("Saw {message}", ());
+        log.trace("Traced {message}", ());
+    });
+    let app = Application::new("app")
+        .plugins([observer])
+        .global_option("loud", Opt::count().short('L').verbose())
+        .action(|ctx: Context| async move {
+            ctx.log.info("Indexed.", ());
+            Ok(())
+        });
+    for (flags, expected) in [
+        (&[][..], ""),
+        (&["-L"], "› Indexed.\n› Saw Indexed.\n"),
+        (
+            &["-LL"],
+            "› Indexed.\n› Saw Indexed.\n  ┆ Traced Indexed.\n",
+        ),
+    ] {
+        let mock = mock_process(MockFields::new().argv(flags.iter().copied()));
+        assert_eq!(
+            app.run(RunOptions::new().process(mock.clone())).await.get(),
+            0
+        );
+        assert_eq!(mock.stderr_text(), expected);
+    }
+}
+
+#[tokio::test]
 async fn destination_log_preserves_identity_and_does_not_call_its_own_hook() {
     let own = Arc::new(Mutex::new(Vec::new()));
     let seen = Arc::new(Mutex::new(Vec::new()));

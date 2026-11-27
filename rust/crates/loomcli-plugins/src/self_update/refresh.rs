@@ -10,6 +10,7 @@ use super::messages;
 use super::request::{Client, Stop};
 use super::resolve::latest_release;
 use super::update::release_binary;
+use crate::change_events::file_written;
 
 /// Resolves the newest release on `host.release.channel`, fetching only what resolving the channel
 /// needs, and writes the cache with the time it finished. It reads no installation and hashes
@@ -38,10 +39,12 @@ pub(crate) async fn refresh_notice(name: &str, host: &Host, client: &Client) -> 
         checked: now(),
         latest: found.map(|release| release.version.text),
     };
-    write_cache(&directory, &entry).map_err(|error| {
+    let path = write_cache(&directory, &entry).map_err(|error| {
         Stop::from(FatalError::with_cause(
             messages::cache_write(name, &directory.to_string_lossy()),
             error,
         ))
-    })
+    })?;
+    file_written(&client.log, &path);
+    Ok(())
 }

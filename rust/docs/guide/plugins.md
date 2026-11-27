@@ -80,7 +80,7 @@ fn notes() -> GroupApplication {
 loomcli_testing::assert_assembles(&notes());
 ```
 
-That application needs the features `background`, `color`, `completion`, `config-toml`, `dotenv`, `format`, `help`, `interaction`, `logging`, `manifest`, `manpage`, `mcp`, `self-update`, `service`, `skills`, `suggestions`, `theme`, `verbose`, and `version`. A plugin with settings returns a settings builder (`Help`, `Format`, `Version`, `Manifest`) that converts into a plugin in the list. `.plugin()` converts it explicitly. A root with an action may declare arguments beside the Commands its plugins attach.
+That application needs the features `background`, `color`, `completion`, `config-toml`, `dotenv`, `format`, `help`, `interaction`, `logging`, `manifest`, `manpage`, `mcp`, `self-update`, `service`, `skills`, `suggestions`, `theme`, `verbose`, and `version`. A plugin with settings returns a settings builder (`Help`, `Format`, `Version`, `Manifest`, `Mcp`) that converts into a plugin in the list. `.plugin()` converts it explicitly. A root with an action may declare arguments beside the Commands its plugins attach.
 
 A plugin that defines extensions keeps their descriptors in its `extension` module behind a feature of its own (`help-extension`, `manifest-extension`, `mcp-extension`, `config-extension`), and a plugin that declares views keeps them in its `views` module (`help-views`, `version-views`, `format-views`). A crate that supplies values to a plugin's extensions, such as a plugin crate that adds help sections, turns on the extension feature alone, and the application that installs the plugin turns on the plugin.
 
@@ -216,9 +216,11 @@ Feature `mcp`; `mcp()`, with `.authorize(hook)`, `.max_body_bytes(limit)`, and `
 
 - **Agent:** `app mcp` serves every Command that carries an `MCP_COMMAND` value as a tool of a Model Context Protocol server over stdin and stdout. Each tool call runs the Command through `invoke`, and its result answers as text; the output of a JSON view also answers as structured content when it is an object, or always under the per-request revision; and a failure answers with its failure form and exit code. The server speaks the per-request revision `2026-07-28` and the handshake revisions `2025-11-25` and `2025-06-18`.
   A client can set the time zone for one tool call by passing an IANA zone name in `params._meta` under `io.github.dbtlr.loomcli/timeZone`. See [MCP tool call time zones](../design/core-api.md#mcp-tool-call-time-zone).
-- **Operator:** `app mcp --http <address>` serves the same tools over the protocol's streamable HTTP transport at `/mcp`, for a client that reaches a server by URL, and writes the endpoint's URL as stdout's one line. The address is a port, such as `8080`, which listens on 127.0.0.1, or `host:port`; port 0 takes any free port, and a non-loopback address writes a warning first. See [MCP over HTTP](../design/core-api.md#mcp-over-http).
+- **Operator:** `app mcp --http <address>` serves the same tools over the protocol's streamable HTTP transport at `/mcp`. The address is a port such as `8080`, which listens on 127.0.0.1, or `host:port`. Port 0 takes any free port. The endpoint URL, such as `http://127.0.0.1:8080/mcp`, is the only line on stdout. A non-loopback bind first warns on stderr. The warning depends on whether the application installed an authorize hook.
+  - Without a hook, for `0.0.0.0:8080`, it says “Serving at 0.0.0.0:8080, which other hosts can reach, with no authorize hook, so any host that reaches it can call the tools without credentials. Serve on 127.0.0.1, or put the server behind something that authenticates.”
+  - With a hook, for `10.1.2.3:8080`, it says “Serving at 10.1.2.3:8080 over plain HTTP, so requests and their credentials cross the network unencrypted, where anyone on the path can read and replay them. Put TLS in front of the server, such as a reverse proxy that terminates it.”
 - **Operator:** `app mcp install` registers the server with Claude Code and Codex through each agent's own CLI and records it in the installation record, `app mcp uninstall` removes the registration, and `app mcp config` prints a client configuration.
-- **Author:** `mcp().authorize(|request: McpHttpRequest| async move { … })` judges each HTTP request from its headers: `true` serves it, `false` answers 401, and an `Err` answers 500 and is reported once the server stops. Loom stores no credential; the hook compares what the author reads from their own sources.
+- **Author:** `mcp().authorize(|request: McpHttpRequest| async move { … })` judges each HTTP request from its headers. A `true` serves it, a `false` answers 401, and an `Err` answers 500 and is reported once the server stops. The hook compares credentials the author reads from their own sources: a comparison of a secret takes the same time whether or not the values match, and refuses an empty secret, as the example in the rustdoc of `authorize` does. `.max_body_bytes(limit)` sets the largest POST body the server reads, with a default of 4 MiB. `.session_idle(interval)` sets how long a handshake session may sit idle before it ends, with a default of 30 minutes. See [MCP over HTTP](../design/core-api.md#mcp-over-http).
 - **Author:** `McpCommandFacts` sets a tool's annotations and description, `MCP_INPUT` and `MCP_ARGUMENT` describe or exclude one input, and an `on_graph_built` check rejects a graph whose tools cannot be served.
 
 ### Completion
@@ -341,4 +343,9 @@ Feature `self-update`; `self_update()`, with `.after_replace(hook)`, `.notices(o
 
 ### Service
 
-Feature `service`; `service(label, run)`, with `.probe(probe)`. The [shipping guide](shipping.md#the-service-plugin) describes it.
+Feature `service`. `service(label, run)` declares a per-user service.
+
+- **Author:** `.environment(callback)` writes the environment values returned by the callback to the unit file only. `.output(path)` puts stdout and stderr on the same file in the unit. `.stop_timeout(milliseconds)` puts the manager's stop timeout in the unit. `.probe(probe)` adds rows to `status`.
+- **Operator:** `service status` shows an `output` row when the unit has an output file and one `log` row per file the logging plugin writes. When the logging plugin is installed but writes to no file, and the unit has no output file, one `log` row says where the service manager sends the console output: to journald under systemd, and nowhere under launchd.
+
+See [the service plugin in the shipping guide](shipping.md#the-service-plugin).

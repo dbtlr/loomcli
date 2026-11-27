@@ -5,7 +5,7 @@
 
 mod config_support;
 
-use config_support::{Ran, Workspace, wrong};
+use config_support::{Ran, Workspace, read_line, read_wrong};
 use loomcli_core::{
     Application, FailureView, InputError, InputProblem, Opt, failure, override_view,
 };
@@ -121,10 +121,11 @@ fn strict_lines(ran: Ran, expected: &[&str]) {
     assert_eq!((ran.status, ran.stdout.as_str()), (2, ""), "{}", ran.stderr);
     assert_eq!(
         ran.stderr,
-        expected
-            .iter()
-            .map(|line| format!("app: {line}\n"))
-            .collect::<String>()
+        read_line(".app.json")
+            + &expected
+                .iter()
+                .map(|line| format!("app: {line}\n"))
+                .collect::<String>()
     );
 }
 
@@ -134,11 +135,14 @@ async fn a_later_round_names_dropped_items_by_their_original_positions() {
     assert_eq!((ran.status, ran.stdout.as_str()), (0, "ran\n"));
     assert_eq!(
         ran.stderr,
-        wrong(&[
-            &format!("Ignored sessions.sources[0] in .app.json: {WRONG}"),
-            "Ignored sessions.sources[2] in .app.json: A bad harness.",
-            "Ignored sessions.sources[4] in .app.json: A bad harness.",
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                &format!("Ignored sessions.sources[0] in .app.json: {WRONG}"),
+                "Ignored sessions.sources[2] in .app.json: A bad harness.",
+                "Ignored sessions.sources[4] in .app.json: A bad harness.",
+            ]
+        )
     );
 }
 
@@ -158,7 +162,13 @@ async fn a_strict_failure_keeps_the_original_positions_in_both_text_and_issues()
     let problems = run::<Fixtures>(&multiple_rounds(), strict(), true).await;
     assert_eq!((problems.status, problems.stdout.as_str()), (2, ""));
     assert_eq!(
-        serde_json::from_str::<Value>(&problems.stderr).unwrap(),
+        serde_json::from_str::<Value>(
+            problems
+                .stderr
+                .strip_prefix(&read_line(".app.json"))
+                .unwrap()
+        )
+        .unwrap(),
         json!(lines)
     );
 }
@@ -172,11 +182,14 @@ async fn nested_arrays_name_each_level_and_drop_the_outer_item() {
     assert_eq!(dropped.status, 0);
     assert_eq!(
         dropped.stderr,
-        wrong(&[
-            "Ignored groups[0] in .app.json: Missing key: \"items\"",
-            "Ignored groups[1] in .app.json: Bad.",
-            "Ignored groups[2] in .app.json: Bad.",
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored groups[0] in .app.json: Missing key: \"items\"",
+                "Ignored groups[1] in .app.json: Bad.",
+                "Ignored groups[2] in .app.json: Bad.",
+            ]
+        )
     );
     strict_lines(
         run::<Fixtures>(&contents, Strict::ALL, false).await,
@@ -219,11 +232,17 @@ async fn one_round_and_no_drops_write_their_ordinary_lines() {
     for (items, expected) in [
         (
             json!([{"harness":"a"},{"harness":1}]),
-            wrong(&[&format!(
-                "Ignored sessions.sources[1] in .app.json: {WRONG}"
-            )]),
+            read_wrong(
+                ".app.json",
+                &[&format!(
+                    "Ignored sessions.sources[1] in .app.json: {WRONG}"
+                )],
+            ),
         ),
-        (json!([{"harness":"a"},{"harness":"b"}]), String::new()),
+        (
+            json!([{"harness":"a"},{"harness":"b"}]),
+            read_line(".app.json"),
+        ),
     ] {
         let ran = run::<Fixtures>(&json!({"sessions":{"sources":items}}), Strict::OFF, false).await;
         assert_eq!(

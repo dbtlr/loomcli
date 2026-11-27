@@ -659,6 +659,14 @@ pub fn wrong(lines: &[&str]) -> String {
     lines.iter().map(|line| format!("› {line}\n")).collect()
 }
 
+pub fn read_line(file: &str) -> String {
+    format!("› Read configuration from {file}.\n")
+}
+
+pub fn read_wrong(file: &str, lines: &[&str]) -> String {
+    read_line(file) + &wrong(lines)
+}
+
 /// The notice line a run with no file writes.
 pub fn notice(file: &str) -> String {
     format!("ℹ Found no configuration file. Create {file} to configure app.\n")

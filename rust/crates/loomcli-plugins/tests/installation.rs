@@ -1778,7 +1778,7 @@ fn writing_a_folder_without_a_record_replaces_what_is_there_and_removes_the_left
         fs::create_dir(path).unwrap();
         symlink(&target, path.join("link")).unwrap();
     }
-    write_folder(&s.directory, &exact_files()).unwrap();
+    write_folder(&s.directory, &exact_files(), None).unwrap();
     assert_eq!(text(&s.directory.join("SKILL.md")), "test");
     assert_eq!(text(&s.directory.join("agents/run.sh")), "abc");
     assert!(!own[0].exists());
@@ -1791,13 +1791,14 @@ fn writing_a_folder_without_a_record_replaces_what_is_there_and_removes_the_left
 #[test]
 fn writing_a_folder_that_fails_leaves_the_old_folder_and_no_staging_folder() {
     let s = sandbox();
-    write_folder(&s.directory, &[FolderFile::new("a.md", "test")]).unwrap();
+    write_folder(&s.directory, &[FolderFile::new("a.md", "test")], None).unwrap();
     let error = write_folder(
         &s.directory,
         &[
             FolderFile::new("a.md/b.md", "x"),
             FolderFile::new("a.md", "y"),
         ],
+        None,
     )
     .unwrap_err();
     assert!(matches!(error, InstallationError::Io(_)), "{error:?}");

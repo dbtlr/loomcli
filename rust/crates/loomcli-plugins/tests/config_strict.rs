@@ -5,7 +5,7 @@
 
 mod config_support;
 
-use config_support::{App, HELP_HINT, Settings, Workspace, panics, wrong};
+use config_support::{App, HELP_HINT, Settings, Workspace, panics, read_line, read_wrong};
 use loomcli_core::{Application, FailureFacts, Opt};
 use loomcli_plugins::config::{ConfigurationSettings, Strict, configuration};
 use serde::Deserialize;
@@ -84,9 +84,18 @@ fn assert_failure(ran: config_support::Ran, lines: &[&str]) {
     assert_eq!(ran.stderr, expected);
 }
 
+fn assert_verbose_failure(mut ran: config_support::Ran, lines: &[&str]) {
+    ran.stderr = ran
+        .stderr
+        .strip_prefix(&read_line(".app.json"))
+        .unwrap()
+        .to_owned();
+    assert_failure(ran, lines);
+}
+
 #[tokio::test]
 async fn strict_all_reports_each_rejection_before_the_unknown_keys() {
-    assert_failure(
+    assert_verbose_failure(
         read::<Config>(
             &json!({"state_dir":1,"delivery":{"retries":"many","webhok":"x"}}),
             shape(),
@@ -115,9 +124,12 @@ async fn explicit_off_preserves_fallback_and_verbose_drop_lines() {
     assert_eq!((default.status, default.stdout.as_str()), (0, "ran\n"));
     assert_eq!(
         default.stderr,
-        wrong(&[
-            "Ignored delivery.retries in .app.json: Invalid input: expected int, received string"
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored delivery.retries in .app.json: Invalid input: expected int, received string"
+            ]
+        )
     );
     assert_eq!(
         (off.status, off.stdout, off.stderr),
@@ -136,6 +148,7 @@ async fn strict_paths_match_whole_keys_and_continue_reporting_uncovered_keys_and
     assert_eq!(
         ran.stderr,
         concat!(
+            "› Read configuration from .app.json.\n",
             "› Ignored cosmetic in .app.json: Invalid input: expected string, received number\n",
             "› Ignored state_dir in .app.json: Unknown key. Check its spelling, or remove it.\n",
             "› Ignored deliveryMode in .app.json: Unknown key. Check its spelling, or remove it.\n",
@@ -148,7 +161,7 @@ async fn strict_paths_match_whole_keys_and_continue_reporting_uncovered_keys_and
 
 #[tokio::test]
 async fn strict_uses_the_issue_path_inside_a_removed_array_item() {
-    assert_failure(
+    assert_verbose_failure(
         read::<Config>(
             &json!({"delivery":{"targets":[{"root":"valid"},{"root":5,"name":"keep"}]}}),
             shape(),
@@ -168,15 +181,18 @@ async fn strict_uses_the_issue_path_inside_a_removed_array_item() {
     assert_eq!(ran.status, 0);
     assert_eq!(
         ran.stderr,
-        wrong(&[
-            "Ignored delivery.targets[1] in .app.json: Invalid input: expected string, received number"
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored delivery.targets[1] in .app.json: Invalid input: expected string, received number"
+            ]
+        )
     );
 }
 
 #[tokio::test]
 async fn without_json_schema_strict_still_reports_rejections_but_it_does_not_judge_unknown_keys() {
-    assert_failure(
+    assert_verbose_failure(
         read::<Config>(
             &json!({"unknown":5,"delivery":{"retries":"many"}}),
             Value::Null,
@@ -190,13 +206,13 @@ async fn without_json_schema_strict_still_reports_rejections_but_it_does_not_jud
     let ran = read::<Config>(&json!({"unknown":5}), Value::Null, Strict::ALL).await;
     assert_eq!(
         (ran.status, ran.stdout.as_str(), ran.stderr.as_str()),
-        (0, "ran\n", "")
+        (0, "ran\n", read_line(".app.json").as_str())
     );
 }
 
 #[tokio::test]
 async fn strict_unknown_key_issues_use_segment_quoting_and_core_control_escapes() {
-    assert_failure(
+    assert_verbose_failure(
         read::<Config>(
             &json!({"state\u{200b}Dir":"x","state\nDir":"x","delivery":{" webhok":"x"}}),
             shape(),
@@ -357,7 +373,7 @@ async fn a_linked_value_that_a_validator_rejects_fails_through_core() {
     assert_eq!(
         ran.stderr,
         format!(
-            "app: Option \"--limit\" (from limits.bytes in .app.json): Supply a whole number.\n{HELP_HINT}"
+            "› Read configuration from .app.json.\napp: Option \"--limit\" (from limits.bytes in .app.json): Supply a whole number.\n{HELP_HINT}"
         )
     );
 }
@@ -378,6 +394,7 @@ async fn a_covered_multiple_option_reports_each_wrong_item_without_debug_lines()
         ran.stderr,
         format!(
             concat!(
+                "› Read configuration from .app.json.\n",
                 "app: Option \"--fields\" (from fields in .app.json) at 1: Use a string or a number.\n",
                 "app: Option \"--fields\" (from fields in .app.json) at 3: Use a string or a number.\n",
                 "{}"
@@ -442,7 +459,7 @@ struct RequiredDelivery {
 
 #[tokio::test]
 async fn a_missing_key_at_a_strict_path_fails_even_when_its_section_is_removed() {
-    assert_failure(
+    assert_verbose_failure(
         read::<Required>(
             &json!({"delivery":{}}),
             shape(),
@@ -480,7 +497,7 @@ fn delivery_shape(required: &[&str]) -> Value {
 
 #[tokio::test]
 async fn probe_strict_listed_required_key_behind_an_earlier_missing_key() {
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<BothRequired>>(
             &json!({"delivery":{"note":"x"}}),
             delivery_shape(&["webhook", "retries"]),
@@ -500,7 +517,7 @@ struct RetriesFirst {
 
 #[tokio::test]
 async fn a_listed_required_key_also_fails_when_it_is_reported_first() {
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<RetriesFirst>>(
             &json!({"delivery":{"note":"x"}}),
             delivery_shape(&["retries", "webhook"]),
@@ -529,7 +546,10 @@ async fn an_absent_optional_key_does_not_make_a_sibling_removal_strict() {
     assert_eq!((ran.status, ran.stdout.as_str()), (0, "ran\n"));
     assert_eq!(
         ran.stderr,
-        wrong(&["Ignored delivery in .app.json: Missing key: \"webhook\""])
+        read_wrong(
+            ".app.json",
+            &["Ignored delivery in .app.json: Missing key: \"webhook\""]
+        )
     );
 }
 
@@ -552,13 +572,16 @@ async fn an_optional_key_in_the_only_object_branch_can_be_absent() {
     assert_eq!((ran.status, ran.stdout.as_str()), (0, "ran\n"));
     assert_eq!(
         ran.stderr,
-        wrong(&["Ignored delivery in .app.json: Missing key: \"webhook\""])
+        read_wrong(
+            ".app.json",
+            &["Ignored delivery in .app.json: Missing key: \"webhook\""]
+        )
     );
 }
 
 #[tokio::test]
 async fn without_json_schema_an_absent_optional_key_fails_when_its_parent_is_removed() {
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<OptionalRetries>>(
             &json!({"delivery":{"note":"x"}}),
             Value::Null,
@@ -579,7 +602,7 @@ struct ThreeRequired {
 
 #[tokio::test]
 async fn the_third_missing_required_key_covers_the_removal() {
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<ThreeRequired>>(
             &json!({"delivery":{}}),
             delivery_shape(&["webhook", "backoff", "retries"]),
@@ -608,7 +631,7 @@ async fn a_published_shape_that_leaves_optionality_uncertain_still_covers_the_re
         {"type":"object","properties":section["properties"],"required":["webhook","retries"]}
     ]}}});
     for published in [beside_a_reference, beside_an_all_of, two_object_branches] {
-        assert_failure(
+        assert_verbose_failure(
             read::<WithDelivery<BothRequired>>(
                 &json!({"delivery":{"note":"x"}}),
                 published,
@@ -647,7 +670,7 @@ async fn a_missing_key_can_cover_a_removal_two_levels_above_it() {
         "webhook":{"type":"string"},
         "transport":{"required":["retries"], "properties":{"retries":{"type":"integer"}}}
     }}}});
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<NestedRequired>>(
             &json!({"delivery":{"transport":{}}}),
             schema.clone(),
@@ -665,13 +688,16 @@ async fn a_missing_key_can_cover_a_removal_two_levels_above_it() {
     assert_eq!((ran.status, ran.stdout.as_str()), (0, "ran\n"));
     assert_eq!(
         ran.stderr,
-        wrong(&["Ignored delivery in .app.json: Missing key: \"webhook\""])
+        read_wrong(
+            ".app.json",
+            &["Ignored delivery in .app.json: Missing key: \"webhook\""]
+        )
     );
 }
 
 #[tokio::test]
 async fn without_json_schema_a_missing_key_covers_a_removal_two_levels_above_it() {
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<NestedRequired>>(
             &json!({"delivery":{"transport":{}}}),
             Value::Null,
@@ -706,7 +732,10 @@ async fn an_absent_required_parent_does_not_cover_a_listed_child() {
     assert_eq!((ran.status, ran.stdout.as_str()), (0, "ran\n"));
     assert_eq!(
         ran.stderr,
-        wrong(&["Ignored delivery in .app.json: Missing key: \"transport\""])
+        read_wrong(
+            ".app.json",
+            &["Ignored delivery in .app.json: Missing key: \"transport\""]
+        )
     );
 }
 
@@ -721,14 +750,17 @@ async fn a_non_object_parent_does_not_cover_a_listed_child() {
     assert_eq!((ran.status, ran.stdout.as_str()), (0, "ran\n"));
     assert_eq!(
         ran.stderr,
-        wrong(&["Ignored delivery in .app.json: Invalid input: expected object, received boolean"])
+        read_wrong(
+            ".app.json",
+            &["Ignored delivery in .app.json: Invalid input: expected object, received boolean"]
+        )
     );
 }
 
 #[tokio::test]
 async fn without_json_schema_a_listed_key_hidden_behind_a_missing_sibling_fails() {
     let file = json!({"delivery":{"note":"x"}});
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<BothRequired>>(
             &file,
             Value::Null,
@@ -737,7 +769,7 @@ async fn without_json_schema_a_listed_key_hidden_behind_a_missing_sibling_fails(
         .await,
         &[MISSING_WEBHOOK],
     );
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<BothRequired>>(&file, Value::Null, Strict::ALL).await,
         &[MISSING_WEBHOOK],
     );
@@ -745,7 +777,7 @@ async fn without_json_schema_a_listed_key_hidden_behind_a_missing_sibling_fails(
 
 #[tokio::test]
 async fn whole_file_strict_fails_on_the_first_of_two_missing_keys() {
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<BothRequired>>(
             &json!({"delivery":{"note":"x"}}),
             delivery_shape(&["webhook", "retries"]),
@@ -775,7 +807,7 @@ async fn a_listed_missing_key_still_fails_after_an_optional_sibling_is_rejected(
     assert_eq!(
         ran.stderr,
         format!(
-            "› Ignored delivery.webhook in .app.json: Invalid input: expected string, received boolean\napp: {MISSING_RETRIES}\n"
+            "› Read configuration from .app.json.\n› Ignored delivery.webhook in .app.json: Invalid input: expected string, received boolean\napp: {MISSING_RETRIES}\n"
         )
     );
 }
@@ -785,7 +817,7 @@ async fn a_rejected_required_sibling_reports_its_original_issue_under_listed_str
     let file = json!({"delivery":{"webhook":false}});
     let schema = delivery_shape(&["webhook", "retries"]);
     for published in [schema.clone(), Value::Null] {
-        assert_failure(
+        assert_verbose_failure(
             read::<WithDelivery<BothRequired>>(
                 &file,
                 published,
@@ -797,7 +829,7 @@ async fn a_rejected_required_sibling_reports_its_original_issue_under_listed_str
             ],
         );
     }
-    assert_failure(
+    assert_verbose_failure(
         read::<WithDelivery<BothRequired>>(&file, schema, Strict::ALL).await,
         &[
             "Configuration value delivery.webhook in .app.json: Invalid input: expected string, received boolean. Correct the value, or remove it.",
@@ -818,6 +850,7 @@ async fn a_dropped_listed_value_keeps_its_original_issue() {
     assert_eq!(
         ran.stderr,
         concat!(
+            "› Read configuration from .app.json.\n",
             "› Ignored delivery in .app.json: Missing key: \"webhook\"\n",
             "app: Configuration value delivery.retries in .app.json: Invalid input: expected int, received string. Correct the value, or remove it.\n",
         )
@@ -849,7 +882,7 @@ impl TryFrom<Map<String, Value>> for RefinedDelivery {
 #[tokio::test]
 async fn an_ancestor_removal_fails_only_when_it_discards_the_listed_value() {
     let strict = || Strict::paths("delivery.webhook", &[]);
-    assert_failure(
+    assert_verbose_failure(
         read::<Refined>(
             &json!({"delivery":{"retries":3,"webhook":"keep"}}),
             shape(),
@@ -871,7 +904,10 @@ async fn an_ancestor_removal_fails_only_when_it_discards_the_listed_value() {
         assert_eq!((ran.status, ran.stdout.as_str()), (0, "ran\n"));
         assert_eq!(
             ran.stderr,
-            wrong(&[&format!("Ignored delivery in .app.json: {issue}")])
+            read_wrong(
+                ".app.json",
+                &[&format!("Ignored delivery in .app.json: {issue}")]
+            )
         );
     }
 }
@@ -895,7 +931,7 @@ impl<const STOP: char> TryFrom<Map<String, Value>> for RefinedFile<STOP> {
 #[tokio::test]
 async fn a_top_level_refinement_names_the_file_and_does_not_add_a_second_period() {
     for strict in [Strict::ALL, Strict::paths("delivery.webhook", &[])] {
-        assert_failure(
+        assert_verbose_failure(
             read::<RefinedFile>(&json!({"delivery":{"webhook":"keep"}}), shape(), strict).await,
             &[
                 "Configuration file .app.json: Check the delivery settings. Correct the file, or remove it.",
@@ -911,14 +947,17 @@ async fn a_top_level_refinement_names_the_file_and_does_not_add_a_second_period(
     assert_eq!((ran.status, ran.stdout.as_str()), (0, "ran\n"));
     assert_eq!(
         ran.stderr,
-        wrong(&["Ignored every key in .app.json: Check the delivery settings."])
+        read_wrong(
+            ".app.json",
+            &["Ignored every key in .app.json: Check the delivery settings."]
+        )
     );
 }
 
 #[tokio::test]
 async fn strict_failure_keeps_a_final_exclamation_mark() {
     let file = json!({"delivery":{"webhook":"keep"}});
-    assert_failure(
+    assert_verbose_failure(
         read::<RefinedFile<'!'>>(&file, shape(), Strict::ALL).await,
         &[
             "Configuration file .app.json: Check the delivery settings! Correct the file, or remove it.",
@@ -929,7 +968,7 @@ async fn strict_failure_keeps_a_final_exclamation_mark() {
 #[tokio::test]
 async fn strict_failure_keeps_a_final_question_mark() {
     let file = json!({"delivery":{"webhook":"keep"}});
-    assert_failure(
+    assert_verbose_failure(
         read::<RefinedFile<'?'>>(&file, shape(), Strict::ALL).await,
         &[
             "Configuration file .app.json: Check the delivery settings? Correct the file, or remove it.",
@@ -951,7 +990,7 @@ async fn strict_holds_rejections_found_only_after_an_earlier_removal() {
     struct OwnerFile {
         owners: Option<std::collections::BTreeMap<String, Owner>>,
     }
-    assert_failure(
+    assert_verbose_failure(
         read::<OwnerFile>(
             &json!({"owners":{"alpha":{"id":5}}}),
             Value::Null,
@@ -1309,7 +1348,7 @@ async fn a_broken_yaml_file_in_the_user_folder_fails_as_a_yaml_file() {
 #[tokio::test]
 async fn a_rejected_key_with_a_newline_keeps_the_failure_on_one_line() {
     type Numeric = std::collections::BTreeMap<String, f64>;
-    assert_failure(
+    assert_verbose_failure(
         read::<Numeric>(&json!({"a\nb":"x"}), Value::Null, Strict::ALL).await,
         &[
             r"Configuration value a\u000ab in .app.json: Invalid input: expected number, received string. Correct the value, or remove it.",
@@ -1332,7 +1371,7 @@ async fn an_object_branch_of_an_array_or_object_schema_admits_and_covers_a_path(
     let schema = json!({"properties":{"x":{"anyOf":[
         {"type":"array"}, {"properties":{"a":{"type":"integer"}}}
     ]}}});
-    assert_failure(
+    assert_verbose_failure(
         read::<UnionFile>(&json!({"x":{"a":"bad"}}), schema, Strict::paths("x.a", &[])).await,
         &[
             "Configuration value x.a in .app.json: Invalid input: expected int, received string. Correct the value, or remove it.",

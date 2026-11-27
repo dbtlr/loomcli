@@ -6,9 +6,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use loomcli_core::{ChildExit, Error, FatalError, Host, NoResult, Out, RunSignal, SpawnOptions};
+use loomcli_core::{
+    ChildExit, Error, FatalError, Host, Log, NoResult, Out, RunSignal, SpawnOptions,
+};
 
 use super::messages::{self, Child, Names, shown};
+use crate::change_events::program_run;
 use crate::installation::{PluginRecord, RecordedRegistration, RegistrationRead, record_directory};
 
 /// One agent: the program that starts it and the words of each call the plugin makes. Each is one
@@ -135,6 +138,7 @@ pub(super) struct ChildRun<'a> {
     pub(super) host: &'a Host,
     pub(super) signal: &'a RunSignal,
     pub(super) out: &'a Out<NoResult>,
+    pub(super) log: &'a Log,
 }
 
 impl<'a> ChildRun<'a> {
@@ -143,6 +147,7 @@ impl<'a> ChildRun<'a> {
         host: &'a Host,
         signal: &'a RunSignal,
         out: &'a Out<NoResult>,
+        log: &'a Log,
     ) -> Self {
         Self {
             name,
@@ -150,6 +155,7 @@ impl<'a> ChildRun<'a> {
             host,
             signal,
             out,
+            log,
         }
     }
 
@@ -166,7 +172,7 @@ impl<'a> ChildRun<'a> {
     /// program that cannot start answers `Unstarted`. A run signal that has been cancelled, before
     /// the call or by the time it ends, returns the run's cancellation echo in place of an
     /// answer, so no later call starts.
-    pub(super) async fn call(&self, agent: Agent, args: Vec<String>) -> Result<Answer, Error> {
+    pub(super) async fn call(&self, agent: Agent, args: &[String]) -> Result<Answer, Error> {
         self.signal.throw_if_cancelled()?;
         let child = self.host.spawn(
             agent.name(),
@@ -189,10 +195,19 @@ impl<'a> ChildRun<'a> {
         Ok(answer)
     }
 
+    /// Records an agent's add or removal after it exits successfully.
+    pub(super) async fn change(&self, agent: Agent, args: Vec<String>) -> Result<Answer, Error> {
+        let answer = self.call(agent, &args).await?;
+        if answer.succeeded() {
+            program_run(self.log, agent.name(), &args, 0);
+        }
+        Ok(answer)
+    }
+
     /// Whether the agent's CLI starts, whatever its exit code.
     pub(super) async fn starts(&self, agent: Agent) -> Result<bool, Error> {
         Ok(matches!(
-            self.call(agent, agent.version()).await?,
+            self.call(agent, &agent.version()).await?,
             Answer::Exited { .. }
         ))
     }
@@ -234,7 +249,8 @@ impl<'a> ChildRun<'a> {
     ) -> Result<HashMap<Agent, Option<RecordedRegistration>>, Error> {
         let mut recorded = HashMap::new();
         for agent in agents {
-            match PluginRecord::new(record, agent.record_name()).read_registration()? {
+            let file = PluginRecord::new(record, agent.record_name());
+            match file.read_registration()? {
                 RegistrationRead::Refused(refused) => {
                     return Err(FatalError::new(messages::record(
                         self.name,
@@ -244,12 +260,16 @@ impl<'a> ChildRun<'a> {
                     .into());
                 }
                 RegistrationRead::Read(registration) => {
+                    let (template, fields) = messages::checked_record(&file.path());
+                    self.log.trace(template, fields);
                     recorded.insert(*agent, registration);
                 }
             }
         }
         for agent in agents {
-            PluginRecord::new(record, agent.record_name()).remove_staging()?;
+            PluginRecord::new(record, agent.record_name())
+                .with_log(self.log)
+                .remove_staging()?;
         }
         Ok(recorded)
     }

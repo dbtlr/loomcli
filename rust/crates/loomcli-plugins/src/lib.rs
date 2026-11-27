@@ -16,6 +16,8 @@ mod aliases;
 pub mod background;
 #[cfg(feature = "box")]
 pub mod boxed;
+#[cfg(feature = "installation")]
+mod change_events;
 #[cfg(any(
     feature = "completion",
     feature = "help-views",
@@ -94,8 +96,11 @@ mod markdown;
 #[cfg(any(feature = "mcp", feature = "mcp-extension"))]
 pub mod mcp;
 // The sentences of the files at the top of `src`; a build of fewer plugins leaves some unread.
-#[cfg(any(feature = "format-views", feature = "manifest"))]
-#[cfg_attr(not(feature = "format-views"), allow(dead_code))]
+#[cfg(any(
+    feature = "format-views",
+    feature = "manifest",
+    feature = "installation"
+))]
 mod messages;
 #[cfg(any(feature = "help-views", feature = "manifest"))]
 mod option_groups;

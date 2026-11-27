@@ -1058,11 +1058,11 @@ The default view uses `Glyph::PointerSmall` with `dim` for `Debug`, `info` for `
 
 **When a line shows.** Core shows log lines at `-v` from `Debug` through `Error`, and at `-vv` adds `Trace`. It shows no lines at default or quiet verbosity. Core renders an eligible line on stderr before handing the event to hooks in installation order. Core sends failure events only to hooks. After graph build each failure core reports produces an `Error` event, or a `Fatal` event with defect details for a declaration fault or defect. The failure form supplies the message.
 
-Each `LogEvent` keeps `time`, `level`, `message`, `fields`, `application`, `run`, `path`, `plugin`, `failure`, and `defect`. The run id is one 32-character hexadecimal string per run, and the path is the route the emitting run has published. Each hook receives a `LogDestination { env, home, platform, stderr, log }`. The environment includes preparation's additions for later events. The destination also offers `warn()` through the outermost run's warning lane. `LogDestination::run_scope() -> Weak<()>` gives hooks a shared identity for the outermost run. Compare handles with `Weak::ptr_eq` and release associated state after the handle expires. The destination's log belongs to that hook's plugin and records under the outermost run. Its events reach the view and every other installed hook, skipping the receiving hook. The hook's first `Err` reports once after the run's outcome as `foreign-throw` and forces exit 1. `output::RunLog` delivers events. `Plugin::on_log` installs each plugin's hook and the hidden `__private::install_log_hook(app, hook)` installs a test hook after them.
+Each `LogEvent` keeps `time`, `level`, `message`, `fields`, `application`, `run`, `path`, `plugin`, `failure`, and `defect`. An action under a Command listed by a plugin logs under that plugin's identity, including actions of its descendants. An action on an application Command has no plugin identity. The run id is one 32-character hexadecimal string per run, and the path is the route the emitting run has published. Each hook receives a `LogDestination { env, home, platform, stderr, log }`. The environment includes preparation's additions for later events. The destination also offers `warn()` through the outermost run's warning lane. `LogDestination::run_scope() -> Weak<()>` gives hooks a shared identity for the outermost run. Compare handles with `Weak::ptr_eq` and release associated state after the handle expires. The destination's log belongs to that hook's plugin and records under the outermost run. Its events reach the view and every other installed hook, skipping the receiving hook. The hook's first `Err` reports once after the run's outcome as `foreign-throw` and forces exit 1. `output::RunLog` delivers events. `Plugin::on_log` installs each plugin's hook and the hidden `__private::install_log_hook(app, hook)` installs a test hook after them.
 
 Both the line and the hook's destination follow the outermost run, including under `Context::invoke`. A nested invocation captures its own messages without log lines. Under `Application::invoke` the lines follow the invocation's own verbosity and enter its captured `messages`. The destination's `stderr` is `None` for such a run. Its `warn()` writes to that invocation's captured `messages`. Console records join stderr's order on a terminal and on a pipe. A line or record reaches the stream in its call when its `OutputStream::write` completes on the first poll and no earlier write or sequence holds its turn, including stdout when both streams share the terminal. A write that returns `Pending` retains its place. On a terminal the queue writes above live regions. After the process-end drain, a log write first sends any writes queued since the drain, then goes below the last frame without redrawing the regions. An abort before the queue drains preserves only writes already handed to the stream.
 
-**First-party log lines.** Core and first-party plugins declare the reference's templates and use its field names. Core logs a dropped configuration fill as `Ignored option "{option}" from {label}: {issue}`. The templates live as constants in message modules, and writers pass values as fields for the log-line view to escape. The logging plugin uses the destination's `log` to report `Logging to {path}.` at debug after the first successful append for each file destination in an outermost run. It reports `Rotated {path}.` at trace for a rotation that moved or removed the file. A binary replacement, a successful service-manager change, and each post-update refresh of completions, man pages, or skills appear through their change events alone.
+**First-party log lines.** Core and first-party plugins declare the reference's templates and use its field names. Core logs a dropped configuration fill as `Ignored option "{option}" from {label}: {issue}`. Templates live in message modules. Writers pass values as fields, and core escapes them when it renders a line. The logging plugin uses the destination's `log` to report `Logging to {path}.` at debug after the first successful append for each file destination in an outermost run. It reports `Rotated {path}.` at trace for a rotation that moved or removed the file. Plugins report successful external changes at info. `File written.` and `File removed.` carry `path`. `Program run.` carries `arguments`, `code`, and `program`. `Binary replaced.` carries `from`, `path`, and `to`. An environment import, a configuration read, and a service-manager read produce no change event.
 
 ### Logging plugin
 
@@ -1811,25 +1811,34 @@ the corresponding member. A stated destination stream is shared through its `Arc
 
 `LogLineValues` sets the level, the marked text, the trailing fields, and the event. A test passes the resulting value to a log-line override with a fixture `ViewContext`.
 
-**`loomcli-plugins` features.** No default features. One feature per plugin; a plugin's extension descriptors and declared views sit behind their own features, which the plugin's feature enables.
+**`loomcli-plugins` features.** No default features. One feature per plugin. The table lists what each feature enables directly, including the features for extension descriptors and declared views.
 
 | Feature | Module | Also enables |
 | --- | --- | --- |
-| `background`, `color`, `completion`, `dotenv`, `interaction`, `manpage`, `plain`, `self-update`, `skills`, `suggestions`, `theme`, `verbose` | the plugin | |
+| `background`, `color`, `dotenv`, `interaction`, `plain`, `theme`, `verbose` | the plugin | |
+| `completion` | `completion` | `installation`, `dep:rustix` (Unix) |
 | `config` | `config` | `config-extension`, `dep:unicode-general-category` |
 | `config-toml` | `config::toml` | `config`, `dep:toml` |
 | `config-yaml` | `config::yaml` | `config`, `dep:saphyr-parser` |
 | `external-commands` | `external_commands` | `dep:rustix` (Unix) |
 | `format` | `format` | `format-views` |
-| `help` | `help` | `help-extension`, `help-views` |
+| `help` | `help` | `help-extension`, `help-views`, `manifest-extension` |
 | `logging` | `logging` | `logging-extension`, `dep:jiff` |
 | `manifest` | `manifest` | `manifest-extension` |
-| `mcp` | `mcp` | `mcp-extension` |
-| `service` | `service` | `format-views`, `logging-extension` |
+| `manpage` | `manpage` | `markdown`, `installation`, `help-views` |
+| `mcp` | `mcp` | `mcp-extension`, `installation`, `dep:loomcli-mcp`, `dep:tokio`, `dep:loomcli-validators`, `tokio/net`, `tokio/macros` |
+| `self-update` | `self_update` | `installation`, `dep:loomcli-validators`, `dep:reqwest`, `dep:url`, `dep:jiff`, `dep:rustix` (Unix) |
+| `service` | `service` | `installation`, `format-views`, `logging-extension`, `dep:tokio` |
+| `skills` | `skills` | `installation`, `format-views`, `help-views`, `dep:loomcli-validators` |
+| `suggestions` | `suggestions` | `dep:unicode-normalization` |
 | `version` | `version` | `version-views`, `format-views` |
-| `config-extension`, `help-extension`, `manifest-extension`, `mcp-extension` | `<plugin>::extension` | |
+| `markdown` | internal Markdown parser | `dep:regex` |
+| `installation` | internal installation record writer | `dep:sha2` |
+| `config-extension`, `manifest-extension`, `mcp-extension` | `<plugin>::extension` | |
+| `help-extension` | `help::extension` | `manifest-extension` |
 | `logging-extension` | `logging::extension` | `dep:rustix` (Unix) |
-| `format-views`, `help-views`, `version-views` | `<plugin>::views` | |
+| `format-views`, `version-views` | `<plugin>::views` | |
+| `help-views` | `help::views` | `help-extension`, `config-extension`, `markdown` |
 | `box`, `heading`, `list`, `prose`, `records`, `rule`, `step`, `table` | the pack view (`box` is module `boxed`) | |
 
 <a name="extended-version-facts"></a>
@@ -1862,6 +1871,18 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | `uuid` (`v4`) | mcp | Random version 4 session ids from the system's secure source, as `crypto.randomUUID()` gives. |
 
 `signal-hook`, `rustix`, and `regex` are declared in `[workspace.dependencies]`; core names `signal-hook` and `rustix` for Unix targets, and the validators, the prompts, and the plugins' Markdown subset name `regex`. `loomcli-testing` names `tokio` and `tokio-util` for its scripted children and keyboard.
+
+### Self-update
+
+`AfterReplaceContext::name` is the Application's declared name. The hook's `log` uses
+the self-update plugin's identity and follows the outermost run's verbosity.
+
+`AfterReplaceContext::refresh()` passes the name and log to the refresh context. Use
+`RefreshContext::new(path, host, signal, log).name(name)` to construct the context outside the
+hook. When a named Application's installation record has no file for the plugin, its refresh
+logs the reason at trace and starts no child. An omitted name or a record directory that cannot
+be resolved or searched leaves the decision to the child. A refresh child that exits 0 logs
+`Program run.`.
 
 ### Service
 

@@ -50,7 +50,10 @@ fn launchctl(unit: &Unit<'_>, label: &str, args: &[&str]) -> Call {
 /// Whether `label`'s agent is loaded: `print` exits 0 when it is and 113 when it is not.
 async fn is_loaded(unit: &Unit<'_>, label: &str) -> Result<bool, Error> {
     let call = launchctl(unit, label, &["print", &target(unit, label)]);
-    let (code, _) = unit.manager.expect(&call, &[SUCCEEDED, NOT_LOADED]).await?;
+    let (code, _) = unit
+        .manager
+        .expect_read(&call, &[SUCCEEDED, NOT_LOADED])
+        .await?;
     Ok(code == SUCCEEDED)
 }
 
@@ -58,7 +61,7 @@ async fn is_loaded(unit: &Unit<'_>, label: &str) -> Result<bool, Error> {
 /// no deadline; the run signal ends the wait.
 async fn unload(unit: &Unit<'_>, label: &str) -> Result<(), Error> {
     let call = launchctl(unit, label, &["bootout", &target(unit, label)]);
-    unit.manager.expect(&call, &UNLOADED).await?;
+    unit.manager.expect_change(&call, &UNLOADED).await?;
     while is_loaded(unit, label).await? {
         unit.manager.pause(POLL_INTERVAL).await?;
     }
@@ -69,7 +72,7 @@ async fn unload(unit: &Unit<'_>, label: &str) -> Result<(), Error> {
 async fn bootstrap(unit: &Unit<'_>) -> Result<(), Error> {
     let path = unit.path.to_string_lossy();
     let call = launchctl(unit, unit.label, &["bootstrap", &domain(unit), &path]);
-    unit.manager.expect(&call, &[SUCCEEDED]).await?;
+    unit.manager.expect_change(&call, &[SUCCEEDED]).await?;
     Ok(())
 }
 
@@ -82,7 +85,7 @@ async fn kickstart(unit: &Unit<'_>, kill: bool) -> Result<(), Error> {
         .chain([target.as_str()])
         .collect();
     unit.manager
-        .expect(&launchctl(unit, unit.label, &args), &[SUCCEEDED])
+        .expect_change(&launchctl(unit, unit.label, &args), &[SUCCEEDED])
         .await?;
     Ok(())
 }
@@ -111,7 +114,7 @@ pub(super) fn unit_path(label: &str, home: &Path) -> PathBuf {
 /// this way.
 pub(super) async fn install(unit: &Unit<'_>) -> Result<(), Error> {
     let call = launchctl(unit, unit.label, &["enable", &target(unit, unit.label)]);
-    unit.manager.expect(&call, &[SUCCEEDED]).await?;
+    unit.manager.expect_change(&call, &[SUCCEEDED]).await?;
     unload(unit, unit.label).await?;
     bootstrap(unit).await
 }

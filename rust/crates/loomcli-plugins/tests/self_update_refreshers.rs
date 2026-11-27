@@ -41,7 +41,7 @@ use loomcli_plugins::self_update::AfterReplaceContext;
 use loomcli_testing::{MockFields, ProgramAnswer, ProgramCall};
 use self_update_support::{
     AfterReplaceHook, FakeRelease, Fixture, GitHub, Hook, Ran, Records, RunFacts, digest_of,
-    mock_for, record_line, recorded_digest, run_on, temporary_root,
+    mock_for, record_line, recorded_digest, run_named_on, temporary_root,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -84,13 +84,13 @@ where
     })
 }
 
-/// The binary at `bin/<name>` holding `old` bytes, recorded by the `notes` installation record
+/// The binary at `bin/<name>` holding `old` bytes, recorded by the application's installation record
 /// under `state`.
 fn installed_binary(bin: &Path, state: &Path, name: &str, old: &str) -> PathBuf {
     let binary = bin.join(name);
     std::fs::write(&binary, old).unwrap();
     std::fs::set_permissions(&binary, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-    let record = state.join("notes").join("installation");
+    let record = state.join(name).join("installation");
     std::fs::create_dir_all(&record).unwrap();
     std::fs::write(record.join("install.json"), record_line(&binary, old)).unwrap();
     binary
@@ -100,6 +100,7 @@ fn installed_binary(bin: &Path, state: &Path, name: &str, old: &str) -> PathBuf 
 /// program `replacing`.
 #[allow(clippy::too_many_arguments)]
 async fn update(
+    name: &str,
     github: GitHub,
     asset: &str,
     binary: &Path,
@@ -145,7 +146,7 @@ async fn update(
         },
         move |fields: MockFields| fields.script(&command, move |call| replacing(call)),
     );
-    run_on(&fixture, "run", &process).await
+    run_named_on(&fixture, name, "run", &process).await
 }
 
 /// The answer of a fixture run, as a program answers it.
@@ -227,6 +228,7 @@ async fn an_update_refreshes_a_recorded_skill_to_the_replaced_binarys_version() 
         ),
     ];
     let ran = update(
+        "notes",
         one_release("acme/notes", "notes-linux-x64", new),
         "notes-linux-x64",
         &binary,
@@ -343,6 +345,7 @@ async fn an_update_rewrites_a_recorded_page_to_the_replaced_binarys_version() {
         })
     });
     let ran = update(
+        "notes",
         one_release("acme/notes", "notes-linux-x64", new),
         "notes-linux-x64",
         &binary,
@@ -392,7 +395,6 @@ async fn a_self_update_rewrites_a_recorded_script_to_the_replaced_binarys_versio
     for directory in [&home, &data, &state, &bin, &installation] {
         std::fs::create_dir_all(directory).unwrap();
     }
-    // The self-update fixture's application is notes, and the binary it installs is jsonkit.
     let old = "jsonkit 1.4.2 binary\n";
     let binary = installed_binary(&bin, &state, "jsonkit", old);
     // The old version installed its Bash script, so the record lists it and the file holds it.
@@ -454,6 +456,7 @@ async fn a_self_update_rewrites_a_recorded_script_to_the_replaced_binarys_versio
         ),
     ];
     let ran = update(
+        "jsonkit",
         one_release("acme/jsonkit", "jsonkit-linux-x64", new),
         "jsonkit-linux-x64",
         &binary,

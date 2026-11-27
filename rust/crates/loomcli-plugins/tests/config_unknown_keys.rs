@@ -4,7 +4,7 @@
 
 mod config_support;
 
-use config_support::{Workspace, wrong};
+use config_support::{Workspace, read_line, wrong};
 use loomcli_core::{Application, Opt};
 use loomcli_plugins::config::{ConfigurationReader, ConfigurationSettings, configuration};
 use serde::Deserialize;
@@ -70,7 +70,7 @@ async fn unknown_keys_are_named_depth_first_in_file_order_at_verbose_only() {
         json!({"stateDir":"yes","state_dir":"typo","updates":{"chanel":"beta","interval":5}});
     assert_eq!(
         report(closed(), file.clone()).await,
-        line("state_dir") + &line("updates.chanel")
+        read_line(FILE) + &line("state_dir") + &line("updates.chanel")
     );
     assert_eq!(
         read::<Map<String, Value>>(closed(), FILE, &file.to_string(), &[], false).await,
@@ -83,7 +83,7 @@ async fn a_key_inside_an_array_item_uses_the_index_in_the_file() {
     let file = json!({"sessions":{"sources":[{"harness":"a"},{"harness":"b","nmae":"x"}]}});
     assert_eq!(
         report(closed(), file).await,
-        line("sessions.sources[1].nmae")
+        read_line(FILE) + &line("sessions.sources[1].nmae")
     );
 }
 
@@ -95,14 +95,20 @@ async fn open_objects_unconstrained_shapes_and_absent_json_schema_leave_keys_unc
         "table": {"type":"object","additionalProperties":{"properties":{"id":{"type":"string"}}}
     }}});
     let file = json!({"free":{"any":{"thing":1}},"loose":{"extra":1},"table":{"first":{"typo":1},"second":{}}});
-    assert_eq!(report(shape, file).await, "");
-    assert_eq!(report(Value::Null, json!({"state_dir":"x"})).await, "");
+    assert_eq!(report(shape, file).await, read_line(FILE));
+    assert_eq!(
+        report(Value::Null, json!({"state_dir":"x"})).await,
+        read_line(FILE)
+    );
 }
 
 #[tokio::test]
 async fn the_pointer_is_removed_and_a_nested_schema_key_is_ordinary() {
     let file = json!({"$schema":"https://example.test/s.json","updates":{"$schema":"x"}});
-    assert_eq!(report(closed(), file).await, line("updates.$schema"));
+    assert_eq!(
+        report(closed(), file).await,
+        read_line(FILE) + &line("updates.$schema")
+    );
 }
 
 #[derive(Deserialize)]
@@ -145,6 +151,7 @@ async fn the_walk_skips_removed_values_and_keeps_surviving_array_items_at_their_
     assert_eq!(
         read::<Typed>(closed(), FILE, &file.to_string(), &[], true).await,
         concat!(
+            "› Read configuration from .app.json.\n",
             "› Ignored sessions.sources[0] in .app.json: Invalid input: expected string, received number\n",
             "› Ignored sessions.sources[1] in .app.json: Invalid input: expected string, received boolean\n",
             "› Ignored updates.interval in .app.json: Invalid input: expected number, received string\n",
@@ -168,6 +175,7 @@ async fn each_path_to_a_shared_yaml_value_gets_its_own_line() {
     assert_eq!(
         stderr,
         concat!(
+            "› Read configuration from .app.yaml.\n",
             "› Ignored sessions.sources[0].nmae in .app.yaml: Unknown key. Check its spelling, or remove it.\n",
             "› Ignored sessions.sources[1].nmae in .app.yaml: Unknown key. Check its spelling, or remove it.\n",
         )
@@ -181,7 +189,10 @@ async fn tuple_items_use_their_own_published_shapes() {
         {"properties":{"label":{"type":"string"}}}
     ]}}});
     let file = json!({"pair":[{"id":"a"},{"label":"b","lable":"c"}]});
-    assert_eq!(report(schema, file).await, line("pair[1].lable"));
+    assert_eq!(
+        report(schema, file).await,
+        read_line(FILE) + &line("pair[1].lable")
+    );
 }
 
 #[tokio::test]
@@ -195,6 +206,7 @@ async fn a_surviving_tuple_item_keeps_its_original_published_shape() {
     assert_eq!(
         read::<Typed>(schema, FILE, &file.to_string(), &[], true).await,
         concat!(
+            "› Read configuration from .app.json.\n",
             "› Ignored sessions.sources[0] in .app.json: Invalid input: expected string, received number\n",
             "› Ignored sessions.sources[1].lable in .app.json: Unknown key. Check its spelling, or remove it.\n",
         )
@@ -223,13 +235,13 @@ async fn unknown_keys_with_invisible_differences_are_quoted_by_segment() {
     ] {
         assert_eq!(
             report(closed(), json!({raw:1})).await,
-            line(shown),
+            read_line(FILE) + &line(shown),
             "{raw:?}"
         );
     }
     assert_eq!(
         report(closed(), json!({"sessions":{"sources":[{"harness":"a","na\u{200b}me":"x"}]},"updates":{" chanel":"x"}})).await,
-        line(r#"sessions.sources[0]."naU+200Bme""#) + &line(r#"updates."U+0020chanel""#)
+        read_line(FILE) + &line(r#"sessions.sources[0]."naU+200Bme""#) + &line(r#"updates."U+0020chanel""#)
     );
 }
 
@@ -256,10 +268,11 @@ async fn a_visible_key_keeps_punctuation_and_core_escapes_controls_on_one_line()
     );
     assert_eq!(
         report(closed(), file).await,
-        cases
-            .iter()
-            .map(|(_, shown)| line(shown))
-            .collect::<String>()
+        read_line(FILE)
+            + &cases
+                .iter()
+                .map(|(_, shown)| line(shown))
+                .collect::<String>()
     );
 }
 
@@ -275,6 +288,6 @@ async fn an_empty_dropped_key_has_its_own_line() {
     .await;
     assert_eq!(
         text,
-        "› Ignored  in .app.json: Invalid input: expected int, received string\n"
+        "› Read configuration from .app.json.\n› Ignored  in .app.json: Invalid input: expected int, received string\n"
     );
 }

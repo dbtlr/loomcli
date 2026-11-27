@@ -390,7 +390,7 @@ async fn the_environment_override_reaches_configuration_source_debug_records() {
     use loomcli_plugins::config::{ConfigurationSettings, configuration};
 
     let sandbox = Sandbox::new();
-    // The configuration source already logs rejected fills at Debug before input resolution.
+    // The file read precedes the rejected fill in the log.
     fs::write(sandbox.work.join(".heimdall.json"), r#"{"value":[true]}"#).unwrap();
     let config = configuration(ConfigurationSettings::<Value>::new(None));
     let app = Application::new("heimdall")
@@ -405,9 +405,21 @@ async fn the_environment_override_reaches_configuration_source_debug_records() {
         });
     let mock = sandbox_mock(&sandbox, &[], &[("HEIMDALL_LOG_LEVEL", "debug")]);
     assert_eq!(app.run(RunOptions::new().process(mock)).await.get(), 0);
-    assert!(records(&sandbox.file).iter().any(|record| {
-        record["plugin"] == "@loomcli/plugins/config" && record["level"] == "debug"
-    }));
+    let records = records(&sandbox.file);
+    let messages: Vec<&str> = records
+        .iter()
+        .filter(|record| {
+            record["plugin"] == "@loomcli/plugins/config" && record["level"] == "debug"
+        })
+        .map(|record| record["message"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "Read configuration from {file}.",
+            r#"Ignored option "{option}" from {label}: {issue}"#,
+        ]
+    );
 }
 
 #[tokio::test]
