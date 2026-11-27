@@ -1,5 +1,6 @@
 //! The MCP plugin: serves the application's opted-in Commands as tools of a Model Context Protocol
-//! server over stdio, and registers that server with coding agents.
+//! server, over stdio or, with `mcp --http <address>`, over the protocol's streamable HTTP
+//! transport, and registers that server with coding agents.
 //!
 //! [`mcp()`] contributes the `mcp` Command, whose action serves every Command carrying an
 //! [`MCP_COMMAND`](extension::MCP_COMMAND) value as one tool, each call run through `invoke`; its
@@ -25,6 +26,8 @@
 pub mod extension;
 
 #[cfg(feature = "mcp")]
+mod address;
+#[cfg(feature = "mcp")]
 mod faults;
 #[cfg(feature = "mcp")]
 mod install;
@@ -37,23 +40,31 @@ mod registration;
 #[cfg(feature = "mcp")]
 mod serve;
 #[cfg(feature = "mcp")]
+mod serve_http;
+#[cfg(feature = "mcp")]
+mod settings;
+#[cfg(feature = "mcp")]
 mod tools;
 #[cfg(feature = "mcp")]
 mod uninstall;
 
 #[cfg(feature = "mcp")]
 pub use plugin::mcp;
+#[cfg(feature = "mcp")]
+pub use settings::{IntoAuthorization, Mcp, McpHttpRequest, RequestHeaders};
 
 #[cfg(feature = "mcp")]
 mod plugin {
-    use loomcli_core::{Command, Context, Inputs, Plugin, View};
+    use loomcli_core::{AnyPlugin, Command, Context, Inputs, Plugin, View};
     use loomcli_validators::one_of;
 
+    use super::address::{HttpAddress, HttpAddressInput};
     use super::extension::{MCP_ARGUMENT, MCP_COMMAND, MCP_INPUT};
     use super::faults::judge_tools;
     use super::install::{InstallRequest, install_registrations};
     use super::registration::{AGENT_NAMES, Agent, ChildRun, command_line, registration_name};
     use super::serve::serve;
+    use super::settings::{Mcp, McpSettings};
     use super::uninstall::uninstall_registrations;
     use crate::PACKAGE_NAME;
 
@@ -77,10 +88,19 @@ mod plugin {
         agent: Option<String>,
     }
 
+    /// The options of `mcp`.
+    #[derive(Inputs)]
+    pub(in crate::mcp) struct ServeInputs {
+        /// Serve over HTTP at this address instead of stdin and stdout: a port, or host:port. A
+        /// port alone listens on 127.0.0.1, and port 0 takes any free port.
+        #[option(control, validate = HttpAddressInput)]
+        pub(in crate::mcp) http: Option<HttpAddress>,
+    }
+
     /// The text as it is, with no markup resolved and no newline added, because another program
     /// reads these bytes: an MCP client reads a configuration. It renders through `out`, so a
     /// reader that closes stdout ends the run as it does any write.
-    fn exact_text() -> View<String> {
+    pub(in crate::mcp) fn exact_text() -> View<String> {
         View::new(|text: &String, context| context.style.escape(text))
     }
 
@@ -138,25 +158,49 @@ mod plugin {
             })
     }
 
-    /// A plugin that serves every Command carrying an `MCP_COMMAND` value as one tool of a Model
-    /// Context Protocol server over stdio, each call run through `invoke`. It contributes the
-    /// `mcp` Command and its three children, `install` and `uninstall`, which register the server
-    /// with Claude Code and Codex and record each registration, and `config`; the three
-    /// extensions; and a hook that rejects a graph whose tools cannot be served. Its identity is
-    /// `@loomcli/plugins/mcp`.
-    ///
-    /// A root that declares arguments cannot hold children, so such an application cannot install
-    /// the plugin.
-    pub fn mcp() -> Plugin {
-        let tree = Command::new("mcp")
-            .description("Serve this application's tools to an MCP client over stdin and stdout.")
+    /// The `mcp` Command: it serves the tools, over stdio or with `--http` over HTTP, and its
+    /// children install, uninstall, and print a configuration.
+    fn mcp_command(settings: McpSettings) -> Command<ServeInputs> {
+        Command::new("mcp")
+            .description(
+                "Serve this application's tools to an MCP client, over stdin and stdout or, with --http, over HTTP.",
+            )
+            .inputs::<ServeInputs>()
             .command(install_command())
             .command(uninstall_command())
             .command(config_command())
-            .action(|context: Context| serve(context));
-        Plugin::new(format!("{PACKAGE_NAME}/mcp"))
-            .commands([tree])
-            .extensions((MCP_COMMAND, MCP_INPUT, MCP_ARGUMENT))
-            .on_graph_built(judge_tools)
+            .action(move |context: Context<ServeInputs>| serve(context, settings.clone()))
+    }
+
+    /// A plugin that serves every Command carrying an `MCP_COMMAND` value as one tool of a Model
+    /// Context Protocol server, over stdio or, with `mcp --http <address>`, over the protocol's
+    /// streamable HTTP transport, each call run through `invoke`. It contributes the `mcp`
+    /// Command and its three children, `install` and `uninstall`, which register the server with
+    /// Claude Code and Codex and record each registration, and `config`; the three extensions;
+    /// and a hook that rejects a graph whose tools cannot be served. Its identity is
+    /// `@loomcli/plugins/mcp`. Its settings, set on the [`Mcp`] it returns, shape the HTTP server
+    /// alone.
+    ///
+    /// A root that declares arguments cannot hold children, so such an application cannot install
+    /// the plugin.
+    pub fn mcp() -> Mcp {
+        Mcp {
+            settings: McpSettings::default(),
+        }
+    }
+
+    impl Mcp {
+        fn plugin(self) -> Plugin {
+            Plugin::new(format!("{PACKAGE_NAME}/mcp"))
+                .commands([mcp_command(self.settings)])
+                .extensions((MCP_COMMAND, MCP_INPUT, MCP_ARGUMENT))
+                .on_graph_built(judge_tools)
+        }
+    }
+
+    impl From<Mcp> for AnyPlugin {
+        fn from(settings: Mcp) -> Self {
+            settings.plugin().into()
+        }
     }
 }

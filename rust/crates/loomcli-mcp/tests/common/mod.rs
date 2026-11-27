@@ -229,8 +229,11 @@ impl ToolSource for Fixture {
             }
             "refuse" => Err(ProtocolError::new(error_codes::INVALID_PARAMS, "Refused.")
                 .with_data(json!({ "reason": "fixture" }))),
+            // The run's token, cancelled from outside the call as the reference's caller signal
+            // is: the call waits for the abort it starts, so it answers nothing.
             "stop" => {
                 self.stop.cancel();
+                call.cancel.cancelled().await;
                 Ok(text_result("stopped"))
             }
             "structured" => {

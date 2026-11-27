@@ -12,6 +12,8 @@ use crate::messages;
 pub mod error_codes {
     /// The server failed while handling a request.
     pub const INTERNAL_ERROR: i64 = -32_603;
+    /// A per-request message's metadata header is missing or does not equal its body.
+    pub const HEADER_MISMATCH: i64 = -32_020;
     /// The request's parameters are not ones the method accepts.
     pub const INVALID_PARAMS: i64 = -32_602;
     /// The message is not a JSON-RPC request the server reads.
@@ -226,24 +228,60 @@ pub(crate) enum Incoming {
     },
 }
 
-fn not_json() -> ProtocolError {
-    ProtocolError::new(error_codes::PARSE_ERROR, messages::LINE_NOT_JSON)
+/// The refusals of a message that is not one a transport reads, worded for its framing: a stdio
+/// line or an HTTP POST body. A body also refuses a response that is not well formed.
+pub(crate) struct Wording {
+    not_json: &'static str,
+    batch: &'static str,
+    not_request: &'static str,
+    strict_responses: bool,
 }
 
-fn batch() -> ProtocolError {
-    ProtocolError::new(error_codes::INVALID_REQUEST, messages::BATCH_UNSUPPORTED)
-}
+/// The refusals of a stdio line.
+pub(crate) const LINE_WORDING: Wording = Wording {
+    not_json: messages::LINE_NOT_JSON,
+    batch: messages::BATCH_UNSUPPORTED,
+    not_request: messages::NOT_JSON_RPC_REQUEST,
+    strict_responses: false,
+};
 
-fn not_request() -> ProtocolError {
-    ProtocolError::new(error_codes::INVALID_REQUEST, messages::NOT_JSON_RPC_REQUEST)
+/// The refusals of an HTTP POST body.
+pub(crate) const BODY_WORDING: Wording = Wording {
+    not_json: messages::BODY_NOT_JSON,
+    batch: messages::BODY_BATCH,
+    not_request: messages::BODY_NOT_MESSAGE,
+    strict_responses: true,
+};
+
+impl Wording {
+    fn not_json(&self) -> ProtocolError {
+        ProtocolError::new(error_codes::PARSE_ERROR, self.not_json)
+    }
+
+    fn batch(&self) -> ProtocolError {
+        ProtocolError::new(error_codes::INVALID_REQUEST, self.batch)
+    }
+
+    fn not_request(&self) -> ProtocolError {
+        ProtocolError::new(error_codes::INVALID_REQUEST, self.not_request)
+    }
 }
 
 /// Sorts one parsed object: a client's response, a notification, a request, or neither.
-fn classify_object(mut message: Map<String, Value>) -> Incoming {
+fn classify_object(mut message: Map<String, Value>, wording: &Wording) -> Incoming {
     if !message.contains_key("method")
         && (message.contains_key("result") || message.contains_key("error"))
     {
-        return Incoming::Response;
+        let well_formed = message.get("jsonrpc") == Some(&json!("2.0"))
+            && message.get("id").and_then(RequestId::from_value).is_some();
+        return if wording.strict_responses && !well_formed {
+            Incoming::Invalid {
+                id: None,
+                error: wording.not_request(),
+            }
+        } else {
+            Incoming::Response
+        };
     }
     let named = message.get("id").and_then(RequestId::from_value);
     let method = match message.get("method") {
@@ -253,7 +291,7 @@ fn classify_object(mut message: Map<String, Value>) -> Incoming {
         _ => {
             return Incoming::Invalid {
                 id: named,
-                error: not_request(),
+                error: wording.not_request(),
             };
         }
     };
@@ -265,26 +303,27 @@ fn classify_object(mut message: Map<String, Value>) -> Incoming {
         Some(id) => Incoming::Request { id, method, params },
         None => Incoming::Invalid {
             id: None,
-            error: not_request(),
+            error: wording.not_request(),
         },
     }
 }
 
-/// Reads one line as a request, a notification, a client's response, or a message to refuse.
-pub(crate) fn classify(line: &str) -> Incoming {
-    match serde_json::from_str::<Value>(line) {
+/// Reads one message, a stdio line or a POST body, as a request, a notification, a client's
+/// response, or a message to refuse in the transport's wording.
+pub(crate) fn classify(text: &str, wording: &Wording) -> Incoming {
+    match serde_json::from_str::<Value>(text) {
         Err(_) => Incoming::Invalid {
             id: None,
-            error: not_json(),
+            error: wording.not_json(),
         },
         Ok(Value::Array(_)) => Incoming::Invalid {
             id: None,
-            error: batch(),
+            error: wording.batch(),
         },
-        Ok(Value::Object(message)) => classify_object(message),
+        Ok(Value::Object(message)) => classify_object(message, wording),
         Ok(_) => Incoming::Invalid {
             id: None,
-            error: not_request(),
+            error: wording.not_request(),
         },
     }
 }

@@ -207,7 +207,7 @@ The [agents guide](docs/guide/agents.md) covers each of these end to end.
 | [`loomcli-plugins`](crates/loomcli-plugins) | Every first-party plugin and the pack views, one Cargo feature each and no default features. |
 | [`loomcli-prompts`](crates/loomcli-prompts) | Questions (`text`, `secret`, `editor`, `confirm`, `select`, `multiselect`) and progress lines. |
 | [`loomcli-style`](crates/loomcli-style) | Style markup, themes, color resolution, glyphs, and display width. |
-| [`loomcli-mcp`](crates/loomcli-mcp) | The Model Context Protocol server over stdio that the MCP plugin serves through. It knows nothing of core. |
+| [`loomcli-mcp`](crates/loomcli-mcp) | The Model Context Protocol server, over stdio and streamable HTTP, that the MCP plugin serves through. It knows nothing of core. |
 | [`loomcli-testing`](crates/loomcli-testing) | The assembly checks, the mock process, and the context builders for an application's tests. |
 
 The [examples](examples) are the reference's examples, ported declaration for declaration: `jsonkit` and `textstat` are applications, and `explain` and `doctor` are plugin crates outside the pack.

@@ -36,8 +36,12 @@ rustix = { version = "1", default-features = false, features = ["std", "termios"
 signal-hook = { version = "0.3", default-features = false }
 regex = { version = "1", default-features = false, features = ["std", "unicode"] }
 sha2 = { version = "0.10", default-features = false }
+subtle = { version = "2", default-features = false }
 unicode-normalization = { version = "0.1", default-features = false, features = ["std"] }
 toml = { version = "1", default-features = false, features = ["std", "parse", "preserve_order"] }
 saphyr-parser = { version = "0.3", default-features = false }
 unicode-general-category = "1.1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+hyper = { version = "1", default-features = false }
+hyper-util = { version = "0.1", default-features = false }
+uuid = { version = "1", default-features = false }

@@ -1,5 +1,5 @@
-//! The `mcp` Command's server: it serves every opted-in Command as a tool over the host's stdin and
-//! stdout, each call run through `invoke`.
+//! The `mcp` Command's server: it serves every opted-in Command as a tool, each call run through
+//! `invoke`, over the host's stdin and stdout or, with `--http`, over HTTP.
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -19,7 +19,10 @@ use serde_json::{Map, Value, json};
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, ReadBuf};
 
 use super::messages;
+use super::plugin::{ServeInputs, exact_text};
 use super::progress::progress_relay;
+use super::serve_http::{HttpContext, Serving, bind, serve_on};
+use super::settings::McpSettings;
 use super::tools::{
     Property, ToolEntry, excluded_names, listed_tool, properties_of, single_line, tool_entries,
 };
@@ -99,7 +102,7 @@ struct FailedCall {
 /// The tools of one run: its context, through which each call runs `invoke`, and the tool table
 /// derived from its graph.
 struct Tools {
-    context: Context,
+    context: Context<ServeInputs>,
     listing: Vec<Tool>,
     served: HashMap<String, Served>,
 }
@@ -247,9 +250,13 @@ impl ToolSource for Tools {
 }
 
 /// Serves every opted-in Command as a tool over the host's stdin and stdout until stdin ends or
-/// the run's signal is cancelled. The tool table is derived here from the run's graph, which the
-/// build-fault hook already judged.
-pub(super) async fn serve(context: Context) -> Result<(), Error> {
+/// the run's signal is cancelled, or, with `--http`, over HTTP until the run's signal is
+/// cancelled. The tool table is derived here from the run's graph, which the build-fault hook
+/// already judged.
+pub(super) async fn serve(
+    mut context: Context<ServeInputs>,
+    settings: McpSettings,
+) -> Result<(), Error> {
     let graph = Arc::clone(&context.graph);
     let entries = tool_entries(&graph)?;
     let mut listing = Vec::with_capacity(entries.len());
@@ -258,17 +265,35 @@ pub(super) async fn serve(context: Context) -> Result<(), Error> {
         listing.push(listed_tool(&graph, &entry)?);
         served.insert(entry.name.clone(), Served::of(&graph, entry)?);
     }
+    let http = context.inputs.http.take();
     let input = HostInput::new(context.host.stdin());
     let output = HostOutput::new(context.host.stdout());
     let shutdown = context.signal.token();
+    let http_context = HttpContext {
+        name: graph.name.clone(),
+        log: context.log.clone(),
+        out: context.out.clone(),
+        signal: context.signal.clone(),
+    };
     let tools = Tools {
         context,
         listing,
         served,
     };
     let server = McpServer::new(identity_of(&graph), tools);
-    server.run_until(input, output, shutdown).await?;
-    Ok(())
+    let Some(address) = http else {
+        server.run_until(input, output, shutdown).await?;
+        return Ok(());
+    };
+    let listener = bind(&http_context.name, &address).await?;
+    let view = exact_text();
+    let serving = Serving {
+        address: &address,
+        settings: &settings,
+        view: &view,
+        server: &|options| server.http(options),
+    };
+    serve_on(&http_context, serving, listener).await
 }
 
 /// A read of the host's stdin in flight: it owns its buffer, so a read the server stops waiting

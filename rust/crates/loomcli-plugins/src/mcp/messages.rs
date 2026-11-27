@@ -301,3 +301,59 @@ pub(super) fn tool_needs_terminal(path: &[String]) -> String {
     };
     format!("{command} carries mcpCommand and needs a terminal, which no tool call has.")
 }
+
+pub(super) const HTTP_ADDRESS_ISSUE: &str =
+    "Supply a port, such as 8080, or host:port, such as 127.0.0.1:8080 or [::1]:8080.";
+
+/// The cause of a bind failure, by the system error's code, and the step that answers it.
+fn bind_cause(code: &str) -> String {
+    match code {
+        "EADDRINUSE" => "another program is using that port. Run it with another port, or with 0 to take any free port.".to_owned(),
+        "EACCES" => "the system does not permit this program to use that port. Run it with a port at or above 1024.".to_owned(),
+        "EADDRNOTAVAIL" => "that address is not one this machine has. Run it with an address this machine has, or with a port alone.".to_owned(),
+        "ENOTFOUND" | "EAI_AGAIN" => "its host name does not resolve. Run it with an address, or with a host name that resolves.".to_owned(),
+        _ => format!(
+            "listening failed with the system error {}. Run it with another address, or free the one it names.",
+            shown(code)
+        ),
+    }
+}
+
+pub(super) fn bind_failed(name: &str, written: &str, code: &str) -> String {
+    format!(
+        "{} mcp cannot serve at {}, because {}",
+        shown(name),
+        shown(written),
+        bind_cause(code)
+    )
+}
+
+pub(super) fn open_network_warning(written: &str) -> String {
+    format!(
+        "Serving at {}, which other hosts can reach, with no authorize hook, so any host that reaches it can call the tools without credentials. Serve on 127.0.0.1, or put the server behind something that authenticates.",
+        shown(written)
+    )
+}
+
+pub(super) fn cleartext_warning(written: &str) -> String {
+    format!(
+        "Serving at {} over plain HTTP, so requests and their credentials cross the network unencrypted, where anyone on the path can read and replay them. Put TLS in front of the server, such as a reverse proxy that terminates it.",
+        shown(written)
+    )
+}
+
+/// The `debug` log template for a request refused for its `Origin`, whose `origin` field core's
+/// log line escapes.
+pub(super) const ORIGIN_REFUSED_LINE: &str =
+    "Refused a request from origin {origin}, because this server answers no browser request.";
+
+/// The `debug` log line for a request the authorize hook refused.
+pub(super) const UNAUTHORIZED_LINE: &str = "Refused a request the authorize hook did not allow.";
+
+/// The `error` log template for an HTTP connection the server could not accept, such as on
+/// EMFILE.
+pub(super) const SERVER_ERROR_LINE: &str = "The HTTP server could not accept a connection ({code}). It will keep serving; free system resources if this continues.";
+
+/// The `error` log event for a failure of the authorize hook, whose `error` field carries it.
+pub(super) const HOOK_THREW_LINE: &str =
+    "The authorize hook threw, so the request was answered 500.";

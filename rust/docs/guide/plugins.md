@@ -212,11 +212,13 @@ Feature `manifest`; `manifest()`, with `.short(letter)`.
 
 ### MCP
 
-Feature `mcp`; `mcp()`.
+Feature `mcp`; `mcp()`, with `.authorize(hook)`, `.max_body_bytes(limit)`, and `.session_idle(interval)` for the HTTP server.
 
 - **Agent:** `app mcp` serves every Command that carries an `MCP_COMMAND` value as a tool of a Model Context Protocol server over stdin and stdout. Each tool call runs the Command through `invoke`, and its result answers as text; the output of a JSON view also answers as structured content when it is an object, or always under the per-request revision; and a failure answers with its failure form and exit code. The server speaks the per-request revision `2026-07-28` and the handshake revisions `2025-11-25` and `2025-06-18`.
   A client can set the time zone for one tool call by passing an IANA zone name in `params._meta` under `io.github.dbtlr.loomcli/timeZone`. See [MCP tool call time zones](../design/core-api.md#mcp-tool-call-time-zone).
+- **Operator:** `app mcp --http <address>` serves the same tools over the protocol's streamable HTTP transport at `/mcp`, for a client that reaches a server by URL, and writes the endpoint's URL as stdout's one line. The address is a port, such as `8080`, which listens on 127.0.0.1, or `host:port`; port 0 takes any free port, and a non-loopback address writes a warning first. See [MCP over HTTP](../design/core-api.md#mcp-over-http).
 - **Operator:** `app mcp install` registers the server with Claude Code and Codex through each agent's own CLI and records it in the installation record, `app mcp uninstall` removes the registration, and `app mcp config` prints a client configuration.
+- **Author:** `mcp().authorize(|request: McpHttpRequest| async move { … })` judges each HTTP request from its headers: `true` serves it, `false` answers 401, and an `Err` answers 500 and is reported once the server stops. Loom stores no credential; the hook compares what the author reads from their own sources.
 - **Author:** `McpCommandFacts` sets a tool's annotations and description, `MCP_INPUT` and `MCP_ARGUMENT` describe or exclude one input, and an `on_graph_built` check rejects a graph whose tools cannot be served.
 
 ### Completion

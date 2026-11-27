@@ -79,7 +79,9 @@ fn jsonkit() -> App {
                 .action(noop),
         );
     let mcp = Command::new("mcp")
-        .description("Serve this application's tools to an MCP client over stdin and stdout.")
+        .description(
+            "Serve this application's tools to an MCP client, over stdin and stdout or, with --http, over HTTP.",
+        )
         .command(
             Command::new("config")
                 .description("Print the MCP client configuration.")

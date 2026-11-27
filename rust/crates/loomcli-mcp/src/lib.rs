@@ -1,10 +1,13 @@
-//! A Model Context Protocol server over stdio: JSON-RPC framing, protocol revisions, and tool
-//! dispatch.
+//! A Model Context Protocol server over stdio and streamable HTTP: JSON-RPC framing, protocol
+//! revisions, and tool dispatch.
 //!
-//! The server speaks newline-delimited JSON-RPC 2.0 on any pair of tokio streams, in two eras: the
-//! per-request revision, where every request carries its protocol version in `params._meta`, and
-//! the initialize-era revisions, negotiated by `initialize`. It knows nothing of Loom's core: it
-//! serves the tools a caller supplies as a [`ToolSource`].
+//! The server speaks JSON-RPC 2.0 in two eras: the per-request revision, where every request
+//! carries its protocol version in `params._meta`, and the initialize-era revisions, negotiated by
+//! `initialize`. [`McpServer::run`] serves newline-delimited messages on any pair of tokio streams,
+//! and [`McpServer::http`] gives the streamable HTTP transport, which serves each TCP socket its
+//! caller accepts with hyper's HTTP/1.1 connection, one session per initialize-era client. Both
+//! share one connection model. It knows nothing of Loom's core: it serves the tools a caller
+//! supplies as a [`ToolSource`].
 //!
 //! # Differences from the reference
 //!
@@ -36,12 +39,15 @@
 //! # }
 //! ```
 
+mod connection;
+mod http;
 mod json_rpc;
 mod messages;
 mod protocol;
 mod revision;
 mod server;
 
+pub use http::{Authorization, HttpOptions, HttpTransport, RequestHeaders};
 pub use json_rpc::{ProtocolError, RequestId, error_codes};
 pub use protocol::{
     ProgressSink, ProgressUpdate, ServerInfo, Tool, ToolAnnotations, ToolCall, ToolResult,

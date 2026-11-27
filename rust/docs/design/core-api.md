@@ -1629,7 +1629,7 @@ independently of the process's current zone. The real handle uses the same looku
 
 <a name="mcp-tool-call-time-zone"></a>
 
-**MCP tool calls.** The stdio server forwards the optional `params._meta` object in
+**MCP tool calls.** The server, over stdio and over HTTP alike, forwards the optional `params._meta` object in
 `loomcli_mcp::ToolCall::metadata: Option<serde_json::Map<String, serde_json::Value>>`.
 The plugin uses `io.github.dbtlr.loomcli/timeZone` when that key is present. It checks the
 arguments object first, then unlisted argument names, then the metadata value. A non-string
@@ -1638,6 +1638,83 @@ JSON-RPC `result` with one text item, `isError: true`, and no `structuredContent
 `Metadata key "io.github.dbtlr.loomcli/timeZone" requires an IANA time zone name this runtime knows. Use a name such as "Asia/Tokyo".`
 The plugin keeps that sentence in its MCP message module. Without the key, the tool call
 inherits the server's zone.
+
+<a name="mcp-over-http"></a>
+
+**MCP over HTTP.** `mcp --http <address>` serves the same tools over the protocol's streamable
+HTTP transport at `/mcp`, as the reference's [Serving over HTTP](../../../docs/plugins/mcp.md#serving-over-http)
+states. The Rust forms and where each rule is enforced:
+
+- **Settings.** `mcp()` returns `loomcli_plugins::mcp::Mcp`, a builder that converts into a
+  plugin wherever one is installed (`.plugins([mcp()])`), as `logging()` does. Its settings shape
+  the HTTP server alone and none changes a stdio server:
+  - `.authorize(hook)`, the reference's `authorize`. The hook is an async closure,
+    `Fn(McpHttpRequest) -> impl Future<Output = T> + Send`, where `T: IntoAuthorization` is a
+    `bool` or a `Result<bool, E: Into<Error>>`. `McpHttpRequest { headers }` is
+    `#[non_exhaustive]` and holds a fresh copy of the request's headers, `RequestHeaders`, whose
+    `get(name)` compares names without regard to case and joins repeats with `, `, as the
+    platform's `Headers.get` does, and whose `iter()` lists each header line. `true` serves the
+    request, `false` answers 401 with `WWW-Authenticate: Bearer`, and an `Err`, the Rust form of
+    the reference's throw or rejection, answers 500 with `-32603`. The hook runs after the
+    `Origin` check and before the body is read, for every request, a refused path and method
+    included. A test calls a hook directly with `McpHttpRequest::new(headers)`, the headers
+    collected from `(name, value)` pairs into `RequestHeaders`.
+  - `.max_body_bytes(u64)`, the reference's `maxBodyBytes`, 4,194,304 by default.
+  - `.session_idle(Duration)`, the reference's `sessionIdleMs`, 30 minutes by default. An
+    interval no clock reaches ends a session at its deadline, with no 32-bit timer cap.
+  The builder judges none of the values, as the reference's settings type bounds each key.
+- **The option.** `mcp` declares the control option `--http`, a string validated by the address
+  rule: a port, or `host:port` with an IPv6 host in brackets, from 0 through 65535. A refused
+  form is core's usage error, exit 2, with the issue that names the accepted forms. A global
+  option named `http` meets `@loomcli/core/option-declared-twice` at the `global_option` call,
+  under the declaration-fault deviation, where the reference fails the graph build. The
+  children of `mcp` do not declare it.
+- **The bind and the URL line** (`mcp::serve_http`). A port alone binds 127.0.0.1, a name binds
+  its first resolved address, and a bind failure is a `FatalError` whose sentence names the
+  address and the cause by the system error's name. A non-loopback bind warns through
+  `out.warn` before the URL line, which renders through the escaping exact-text view as stdout's
+  one line. A signal cancelled during the bind or the warning writes nothing more. Accept errors
+  are `error` events, and the listener keeps serving.
+- **The transport** (`loomcli_mcp::HttpTransport`, from `McpServer::http(HttpOptions)`). The
+  plugin hands it each accepted socket through `watch(socket)`; `closed()` resolves once the
+  shutdown token is cancelled and every call has settled. `HttpOptions::new(shutdown)` takes
+  `authorize` (answering `Authorization::{Allowed, Refused, Failed}`), `on_origin_refused`,
+  `max_body_bytes`, and `session_idle`. Each socket is served by hyper's HTTP/1.1 connection,
+  with the transport's rules hand-written in its service, in order: `Origin` (403), the hook
+  (401 or 500), the path compared without its query (404), the method (405 with
+  `Allow: POST, DELETE`), a POST's content type (415) and declared length (413), then the body
+  counted as it arrives (413), all before any session work. Every answer sent before the body
+  is consumed carries `Connection: close`; hyper then hands the socket back through
+  `without_shutdown`, and the transport ends its own side and discards what the client still
+  sends for up to 2 seconds before it closes. The 60-second header deadline is hyper's
+  `header_read_timeout`, answered with a raw 408 once hyper returns the timeout and never once
+  shutdown has begun; the 300-second request deadline wraps the service's read of the body and
+  answers 408. A kept-alive response carries `keep-alive: timeout=5`, and a socket that sends no
+  byte of its next request for 6 seconds after a response closes, writing nothing. hyper answers
+  a request line and headers over 16,384 bytes or 2,000 headers with 431 before the service, and
+  the service closes a `CONNECT` with no answer before the hook. On shutdown a socket with no
+  response in flight, one whose headers are half sent included, closes at once with nothing
+  written, and hyper closes any other once its response has ended. A per-request message
+  checks its metadata headers (`-32020`) before the shared connection's checks. An
+  initialize-era client gets a session, whose id is `Uuid::new_v4()` hyphenated lowercase; an
+  unknown session id is answered 404 with no body for every request and notification alike, and
+  no answer repeats a header or a session id a request carried. A call or a subscription answers
+  on an event stream, a streaming body with a comment line every 15 seconds; every other
+  request answers one `application/json` body.
+- **The connection** (`loomcli_mcp`'s `connection` module) is the state stdio and HTTP share: the
+  revision `initialize` negotiated, the requests and subscriptions in flight by id, the
+  request-id rule, and the channel each request's messages go to. One stdio run is one
+  connection, one session is one connection, and one per-request POST is a connection of one
+  request. The run's signal silences a connection and still sends each open subscription its
+  teardown, `notifications/cancelled` and then the closing result, over stdio and over HTTP.
+- **The hook's failure report** (`mcp::serve_http`). Each `Err` is an `error` event that carries it
+  under `error`. When the server stops, the action returns the first one as an `InternalError`
+  under `@loomcli/plugins/mcp/broken-authorize-hook`, whose cause is that error, so the ordinary
+  failure path reports it once: the generic message in a distributed build and the Developer
+  Diagnostic in a development build, with the run keeping its signal's exit code.
+- **Log lines.** Each request refused for its `Origin` is a `debug` event with an `origin` field,
+  each `false` of the hook a `debug` event, each `Err` of the hook and each accept error an
+  `error` event; their sentences live in the plugin's MCP message module.
 
 **Abandoning a child.** `Child::abandon(&self)` tells the process handle that the caller has stopped
 waiting. It gives every current and later `exited()` waiter the same settled answer without waiting
@@ -1680,7 +1757,7 @@ its stream tasks finish normally while the runtime is active.
 | `loomcli-prompts` | `questions` (`text`, `secret`, `editor`, `confirm`, `select`, `select_as`, `multiselect`, `multiselect_as`; each begins at its call and returns its future), `progress` (`progress` over an action's or a middleware's context, `progress_style(ProgressStyleSettings)`), `views`, and `reader`, `link`, `list`, `editor` behind them |
 | `loomcli-testing` | `assert_assembles`, `assert_described`, `mock` (`mock_process`, `MockFields`, `MockTerminal`, `KeyEntry`, `StreamName`, `MockProcess`, `ProgramCall`, `ProgramAnswer`, `Program`, `Write`), `contexts` (`action_context`, `middleware_context`, `failure_hook_context`, `provider_context`, `environment_context`, `view_context`), `log_event`, `log_destination`, `log_line`, `progress_event`, `key` |
 | `loomcli-style` | the style module: marked strings, rendering, color depth, glyphs, width, wrap, pad, and themes; see its crate rustdoc |
-| `loomcli-mcp` | the MCP server over stdio: framing, protocol revisions, and tool dispatch through a `ToolSource`; see its crate rustdoc |
+| `loomcli-mcp` | the MCP server over stdio and streamable HTTP: framing, protocol revisions, the connection state both transports share, the HTTP transport, and tool dispatch through a `ToolSource`; see its crate rustdoc and [MCP over HTTP](#mcp-over-http) |
 | `examples/*` | `jsonkit` and `textstat`, applications, and `explain` and `doctor`, plugin crates, each ported declaration for declaration from the reference's examples |
 
 **The style re-export.** `loomcli_core::style` re-exports `loomcli-style` whole, and the crate root re-exports `style`, `width`, `pad`, `nowrap`, `escape`, `adaptive`, `Glyph`, `Style`, `Switch`, `RenderingPolicy`, `BackgroundPolicy`, `TerminalControls`, `ColorChoice`, and the theme types. `ContextualStyle` is `Style`, the chain a context hands out (`ctx.style.escape(text)`, `ctx.style.token(name).apply(text)`); the reference types its token names, which Rust cannot, and a name no theme declares stays literal when it resolves, as the reference's does at run time. `marks::Background` is `loomcli-style`'s `Background`, and `escape_control_characters` and `split_lines` in `support` are its functions.
@@ -1781,6 +1858,8 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | `sha2` | plugins (the installation record) | SHA-256 digests of installed files. |
 | `reqwest` (rustls) | plugins (`self-update`) | HTTPS requests to GitHub with the platform's certificate verifier and no OpenSSL. |
 | `unicode-normalization` | plugins (`suggestions`) | Comparing names under the normalization the reference's suggestions apply. |
+| `hyper` (`server`, `http1`), `hyper-util` (`tokio`) | mcp | HTTP/1.1 server connections on tokio sockets and timers for `mcp --http`; the MCP transport rules stay hand-written over them, as the reference's are over `node:http`. |
+| `uuid` (`v4`) | mcp | Random version 4 session ids from the system's secure source, as `crypto.randomUUID()` gives. |
 
 `signal-hook`, `rustix`, and `regex` are declared in `[workspace.dependencies]`; core names `signal-hook` and `rustix` for Unix targets, and the validators, the prompts, and the plugins' Markdown subset name `regex`. `loomcli-testing` names `tokio` and `tokio-util` for its scripted children and keyboard.
 

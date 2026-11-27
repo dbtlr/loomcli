@@ -118,7 +118,8 @@ async fn shutdown_serves_a_last_message_that_ends_without_a_line_feed() {
 }
 
 #[tokio::test]
-async fn the_runs_token_aborts_every_call_and_ends_the_run_with_nothing_more_written() {
+async fn the_runs_token_aborts_every_call_answers_none_of_them_and_tears_down_each_subscription_with_its_id()
+ {
     let mut session = open();
     session.send(&bare(1, "subscriptions/listen")).await;
     assert_eq!(session.next().await, acknowledged(1));
@@ -136,6 +137,22 @@ async fn the_runs_token_aborts_every_call_and_ends_the_run_with_nothing_more_wri
     // The run ends with the input still open: cancelling stops reading.
     let ending = session.finish().await;
     assert_eq!(ending.stderr, "started two\naborted two\nresolved\n");
-    assert_eq!(ending.messages.len(), 1);
+    assert_eq!(
+        ending.messages[1..],
+        [
+            json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": 1 } }),
+            json!({
+                "id": 1,
+                "jsonrpc": "2.0",
+                "result": {
+                    "_meta": {
+                        "io.modelcontextprotocol/serverInfo": server_info(),
+                        "io.modelcontextprotocol/subscriptionId": 1,
+                    },
+                    "resultType": "complete",
+                },
+            }),
+        ]
+    );
     assert_eq!(ending.status, 0);
 }
