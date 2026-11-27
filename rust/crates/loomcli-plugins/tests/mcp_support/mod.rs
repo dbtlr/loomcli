@@ -373,6 +373,21 @@ impl Session {
         }
     }
 
+    /// Delivers a signal to the run, as the terminal would.
+    pub fn raise(&self, signal: loomcli_core::ProcessSignal) {
+        self.process.raise(signal);
+    }
+
+    /// What the run has written to stderr so far.
+    pub fn stderr(&self) -> String {
+        self.process.stderr_text()
+    }
+
+    /// Closes stdin and leaves the run serving.
+    pub fn end_stdin(&mut self) {
+        self.input = None;
+    }
+
     /// Closes stdin and waits for the run to end.
     pub async fn close(mut self) -> Ending {
         self.input = None;

@@ -129,7 +129,7 @@ async fn the_root_page_lists_every_plugin_command_and_global() {
             "COMMANDS",
             "  help                  Show help for a command.",
             "  completion <command>  Print or install a shell completion script.",
-            "  mcp [command]         Serve this application's tools to an MCP client over stdin and stdout.",
+            "  mcp [command]         Serve this application's tools to an MCP client, over stdin and stdout or, with --http, over HTTP.",
             "  manpage <command>     Write or install the man pages.",
             "  count                 Count the things.",
             "",

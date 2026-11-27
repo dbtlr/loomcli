@@ -51,3 +51,10 @@ pub(crate) const CALL_WITHOUT_TOOL: &str =
 
 pub(crate) const UNKNOWN_CURSOR: &str =
     "The cursor is not one this server issued. Call tools/list without a cursor.";
+
+pub(crate) const BODY_NOT_JSON: &str =
+    "The request body is not JSON. Send one JSON-RPC message as the body of a POST.";
+
+pub(crate) const BODY_BATCH: &str = "A batch is not a message this server reads. Send each JSON-RPC message as the body of its own POST.";
+
+pub(crate) const BODY_NOT_MESSAGE: &str = "The body is not a JSON-RPC 2.0 request, notification, or response. Send an object with \"jsonrpc\": \"2.0\", a \"method\", and an \"id\" for a request.";

@@ -55,24 +55,6 @@
       ]
     },
     {
-      "id": "jsonkit-completion-protocol-empty",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-completion-protocol-empty-word",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-completion-protocol-path-through-option-first",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
       "id": "jsonkit-completion-script-bash",
       "parts": [
         "stdout"
@@ -182,12 +164,6 @@
     },
     {
       "id": "jsonkit-help-command-keys",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-help-command-mcp",
       "parts": [
         "stdout"
       ]
@@ -331,18 +307,6 @@
       ]
     },
     {
-      "id": "jsonkit-help-mcp-long",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-help-mcp-short",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
       "id": "jsonkit-help-no-color",
       "parts": [
         "stdout"
@@ -404,12 +368,6 @@
     },
     {
       "id": "jsonkit-manifest-completion",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-mcp",
       "parts": [
         "stdout"
       ]

@@ -13,10 +13,15 @@ fn exports_the_per_request_revision_and_the_initialize_era_revisions_latest_firs
 
 #[test]
 fn spells_each_revision_in_one_place() {
-    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut pending = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
     let mut spelling = Vec::new();
-    for entry in std::fs::read_dir(source).unwrap() {
-        let path = entry.unwrap().path();
+    while let Some(path) = pending.pop() {
+        if path.is_dir() {
+            for entry in std::fs::read_dir(path).unwrap() {
+                pending.push(entry.unwrap().path());
+            }
+            continue;
+        }
         let text = std::fs::read_to_string(&path).unwrap();
         if ["2026-07-28", "2025-11-25", "2025-06-18"]
             .iter()

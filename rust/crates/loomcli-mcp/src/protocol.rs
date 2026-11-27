@@ -2,13 +2,13 @@
 
 use std::future::Future;
 
+use std::sync::Arc;
+
 use serde::Serialize;
 use serde_json::{Map, Value};
-use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
-use crate::json_rpc::{ProtocolError, RequestId};
-use crate::server::Event;
+use crate::json_rpc::ProtocolError;
 
 /// Who the server is. Every per-request result carries it in `_meta` under
 /// `io.modelcontextprotocol/serverInfo`, and an `initialize` result carries it as `serverInfo`,
@@ -149,38 +149,29 @@ pub struct ProgressUpdate {
 /// Where a tool sends progress. Each [`ProgressSink::send`] writes one `notifications/progress`
 /// on the call's progress token, until the call is answered, cancelled, or aborted. The sink is
 /// cheap to clone.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ProgressSink {
-    events: UnboundedSender<Event>,
-    id: RequestId,
-    generation: u64,
-    token: Value,
+    send: Arc<dyn Fn(ProgressUpdate) + Send + Sync>,
+}
+
+impl std::fmt::Debug for ProgressSink {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProgressSink")
+            .finish_non_exhaustive()
+    }
 }
 
 impl ProgressSink {
-    pub(crate) fn new(
-        events: UnboundedSender<Event>,
-        id: RequestId,
-        generation: u64,
-        token: Value,
-    ) -> Self {
+    pub(crate) fn new(send: impl Fn(ProgressUpdate) + Send + Sync + 'static) -> Self {
         Self {
-            events,
-            id,
-            generation,
-            token,
+            send: Arc::new(send),
         }
     }
 
     /// Sends one update. An update sent after the call ended is dropped.
     pub fn send(&self, update: ProgressUpdate) {
-        // A closed channel means the run ended, and then there is no client to tell.
-        let _ = self.events.send(Event::Progress {
-            id: self.id.clone(),
-            generation: self.generation,
-            token: self.token.clone(),
-            update,
-        });
+        (self.send)(update);
     }
 }
 
