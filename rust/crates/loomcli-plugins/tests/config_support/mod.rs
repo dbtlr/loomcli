@@ -21,7 +21,9 @@ use loomcli_core::{
     ValidationContext, Validator, failure, override_view,
 };
 use loomcli_plugins::config::extension::{CONFIG_INPUT, ConfigInputFacts};
-use loomcli_plugins::config::{ConfigurationSettings, DirectoryOption, Scope, configuration};
+use loomcli_plugins::config::{
+    ConfigurationReader, ConfigurationSettings, DirectoryOption, Scope, Strict, configuration,
+};
 use loomcli_testing::{MockFields, MockTerminal, mock_process};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -38,6 +40,7 @@ pub struct Settings {
     pub directory: Option<(String, Option<char>, Option<String>)>,
     pub notice: bool,
     pub scopes: Option<Vec<Scope>>,
+    pub strict: Strict,
 }
 
 impl Settings {
@@ -90,6 +93,10 @@ impl Settings {
         }
     }
 
+    pub fn with_strict(self, strict: Strict) -> Self {
+        Self { strict, ..self }
+    }
+
     /// The plugin's settings for a schema type.
     pub fn apply<T: DeserializeOwned + Send + Sync + 'static>(
         &self,
@@ -121,7 +128,7 @@ impl Settings {
         if let Some(scopes) = &self.scopes {
             settings = settings.scopes(scopes);
         }
-        settings
+        settings.strict(self.strict.clone())
     }
 }
 
@@ -338,6 +345,7 @@ pub struct Declared {
     pub provided: bool,
     pub schema: SchemaName,
     pub settings: Settings,
+    pub formats: Vec<ConfigurationReader>,
     /// Overrides the `InputError` view with its problems as JSON.
     pub view_input: bool,
     /// Hands the plugin no JSON Schema, rather than the one the schema publishes.
@@ -420,7 +428,12 @@ pub fn application_of<T>(declared: &Declared, schema: Option<Map<String, Value>>
 where
     T: DeserializeOwned + Serialize + Send + Sync + 'static,
 {
-    let config = configuration::<T>(declared.settings.apply::<T>(schema));
+    let config = configuration::<T>(
+        declared
+            .settings
+            .apply::<T>(schema)
+            .formats(&declared.formats),
+    );
     let provider: Provider<T> = config.provider;
     let mut plugins: Vec<loomcli_core::AnyPlugin> = vec![config.plugin.into(), help().into()];
     if declared.loud {
@@ -717,6 +730,11 @@ impl Run {
         self
     }
 
+    pub fn formats(mut self, readers: &[ConfigurationReader]) -> Self {
+        self.declared.formats = readers.to_vec();
+        self
+    }
+
     pub fn loud(mut self) -> Self {
         self.declared.loud = true;
         self
@@ -767,8 +785,12 @@ impl Run {
 
     /// Runs the case.
     pub async fn ran(&self) -> Ran {
+        self.ran_with(&application(&self.declared)).await
+    }
+
+    pub async fn ran_with(&self, app: &App) -> Ran {
         let process = mock_process(self.fields());
-        let code = application(&self.declared)
+        let code = app
             .run(RunOptions::new().process(Arc::clone(&process) as Arc<dyn ProcessHandle>))
             .await;
         Ran {
@@ -792,8 +814,17 @@ impl Run {
 
     /// Runs the root by name with these values, and answers the exit code, stdout, and stderr.
     pub async fn invoked(&self, values: InvocationValues) -> (Option<u8>, String, String) {
+        self.invoked_with(&application(&self.declared), values)
+            .await
+    }
+
+    pub async fn invoked_with(
+        &self,
+        app: &App,
+        values: InvocationValues,
+    ) -> (Option<u8>, String, String) {
         let process = mock_process(self.fields());
-        let outcome = application(&self.declared)
+        let outcome = app
             .invoke(
                 &[],
                 values,
@@ -826,6 +857,7 @@ pub struct Workspace {
     pub project: PathBuf,
     pub home: PathBuf,
     pub elsewhere: PathBuf,
+    formats: Vec<ConfigurationReader>,
 }
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -852,7 +884,13 @@ impl Workspace {
             project,
             home,
             elsewhere,
+            formats: Vec::new(),
         }
+    }
+
+    pub fn with_formats(mut self, readers: &[ConfigurationReader]) -> Self {
+        self.formats = readers.to_vec();
+        self
     }
 
     /// A run of no words in the project, with the workspace's home.
@@ -864,7 +902,10 @@ impl Workspace {
             home: Some(self.home.clone()),
             env: Vec::new(),
             columns: None,
-            declared: Declared::default(),
+            declared: Declared {
+                formats: self.formats.clone(),
+                ..Declared::default()
+            },
         }
     }
 

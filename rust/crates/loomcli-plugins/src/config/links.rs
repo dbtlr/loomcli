@@ -13,7 +13,11 @@ use serde_json::{Map, Value};
 
 use super::extension::CONFIG_INPUT;
 
-type Shape = Map<String, Value>;
+pub(super) type Shape = Map<String, Value>;
+
+pub(super) fn published_schema(graph: &CommandGraph) -> Option<&Shape> {
+    graph.configuration.as_ref()?.schema.as_ref()
+}
 
 /// An option linked to a configuration path whose keys the schema does not hold.
 pub(crate) const LINK_PATH: DiagnosticRule = diagnostic_rule(
@@ -93,6 +97,11 @@ fn leaves_of_shape<'a>(
     }
 }
 
+/// The terminal shapes at one schema node, following local references and compound shapes.
+pub(super) fn leaves<'a>(shape: &'a Shape, root: &'a Shape) -> Vec<&'a Shape> {
+    leaves_of_shape(shape, root, &mut Vec::new())
+}
+
 /// Whether a shape is open: `additionalProperties` or `patternProperties` with a value other than
 /// `false`.
 fn is_open(shape: &Shape) -> bool {
@@ -106,28 +115,28 @@ fn is_open(shape: &Shape) -> bool {
 }
 
 /// Whether a shape names no keyword but annotations, so it takes any value.
-fn is_any(shape: &Shape) -> bool {
+pub(super) fn is_any(shape: &Shape) -> bool {
     shape
         .keys()
         .all(|keyword| ANNOTATIONS.contains(&keyword.as_str()))
 }
 
 /// Whether a shape describes an array.
-fn is_array_shape(shape: &Shape) -> bool {
+pub(super) fn is_array_shape(shape: &Shape) -> bool {
     shape.get("type").and_then(Value::as_str) == Some("array")
         || shape.contains_key("items")
         || shape.contains_key("prefixItems")
 }
 
 /// What following a link's keys came to.
-enum Reached<'a> {
+pub(super) enum Reached<'a> {
     Held(Vec<&'a Shape>),
     Unchecked,
     Missing,
 }
 
 /// The shapes a key leads to, or whether the shape leaves the key unchecked or does not hold it.
-fn step_into<'a>(leaves: &[&'a Shape], key: &str, root: &'a Shape) -> Reached<'a> {
+pub(super) fn step_into<'a>(leaves: &[&'a Shape], key: &str, root: &'a Shape) -> Reached<'a> {
     let mut next = Vec::new();
     for leaf in leaves {
         if is_array_shape(leaf) || is_any(leaf) {
@@ -152,7 +161,7 @@ fn step_into<'a>(leaves: &[&'a Shape], key: &str, root: &'a Shape) -> Reached<'a
 
 /// Follows a link's keys through the shape.
 fn reach<'a>(path: &str, root: &'a Shape) -> Reached<'a> {
-    let mut leaves = leaves_of_shape(root, root, &mut Vec::new());
+    let mut leaves = leaves(root, root);
     for key in path.split('.') {
         match step_into(&leaves, key, root) {
             Reached::Held(next) => leaves = next,
@@ -160,6 +169,82 @@ fn reach<'a>(path: &str, root: &'a Shape) -> Reached<'a> {
         }
     }
     Reached::Held(leaves)
+}
+
+/// An object declaration reached without losing a requirement. The link walk flattens
+/// compound shapes, which can hide a requirement that strict must respect.
+fn property_declaration<'a>(mut shape: &'a Shape, root: &'a Shape) -> Option<&'a Shape> {
+    let mut followed: Vec<&Shape> = Vec::new();
+    loop {
+        let mut constraints = shape
+            .iter()
+            .filter(|(key, _)| key.as_str() != "$defs" && !ANNOTATIONS.contains(&key.as_str()));
+        if constraints.clone().all(|(key, _)| {
+            matches!(
+                key.as_str(),
+                "type" | "properties" | "required" | "additionalProperties"
+            )
+        }) {
+            return Some(shape);
+        }
+        let (keyword, value) = constraints.next()?;
+        if constraints.next().is_some() || followed.iter().any(|seen| std::ptr::eq(*seen, shape)) {
+            return None;
+        }
+        followed.push(shape);
+        shape = match keyword.as_str() {
+            "$ref" => referenced(root, value.as_str()?)?,
+            "anyOf" | "oneOf" => sole_object_alternative(value.as_array()?)?,
+            "allOf" => {
+                let [member] = value.as_array()?.as_slice() else {
+                    return None;
+                };
+                member.as_object()?
+            }
+            _ => return None,
+        };
+    }
+}
+
+/// The sole alternative that can describe the object present in the file.
+fn sole_object_alternative(alternatives: &[Value]) -> Option<&Shape> {
+    let mut possible = alternatives.iter().filter(|alternative| match alternative {
+        Value::Bool(false) => false,
+        Value::Object(shape) => {
+            types_of(shape).is_none_or(|types| types.iter().any(|kind| kind == "object"))
+        }
+        _ => true,
+    });
+    let shape = possible.next()?.as_object()?;
+    possible.next().is_none().then_some(shape)
+}
+
+/// Whether the published shape declares a property and lets it be absent.
+pub(super) fn declares_optional_key(parent: Option<&str>, key: &str, root: &Shape) -> bool {
+    let shape = parent
+        .into_iter()
+        .flat_map(|parent| parent.split('.'))
+        .try_fold(root, |shape, name| {
+            property_declaration(shape, root)?
+                .get("properties")?
+                .as_object()?
+                .get(name)?
+                .as_object()
+        });
+    let Some(shape) = shape.and_then(|shape| property_declaration(shape, root)) else {
+        return false;
+    };
+    shape
+        .get("properties")
+        .and_then(Value::as_object)
+        .is_some_and(|properties| properties.contains_key(key))
+        && shape.get("required").is_none_or(|required| {
+            required.as_array().is_some_and(|required| {
+                required
+                    .iter()
+                    .all(|name| name.as_str().is_some_and(|name| name != key))
+            })
+        })
 }
 
 /// The JSON type of a value a `const` or `enum` names.
@@ -352,11 +437,7 @@ pub(crate) fn judge_links(graph: &CommandGraph) -> Result<(), Error> {
     if linked.is_empty() {
         return Ok(());
     }
-    let Some(shape) = graph
-        .configuration
-        .as_ref()
-        .and_then(|configuration| configuration.schema.as_ref())
-    else {
+    let Some(shape) = published_schema(graph) else {
         return Ok(());
     };
     match linked.iter().find_map(|link| fault_of(link, shape)) {

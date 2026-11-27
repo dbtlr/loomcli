@@ -6,7 +6,6 @@
 //! that marks an option configuration-bound, the claiming plugin's own options, and the resolver.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::__private::{RawValue, RunState};
@@ -22,7 +21,7 @@ use crate::plugins::{SourceAnswer, SourceValue};
 use crate::support::{BoxFuture, is_prose_line};
 
 use super::groups::{Tier, claims, losing_members};
-use super::pass::{Provenance, Validation};
+use super::pass::{ConfigurationFill, Provenance, Validation};
 use super::{InputIdentity, InputKind, InputValues, OptionDecl};
 
 /// What a configuration source's resolver receives, before its plugin's typed form wraps it.
@@ -249,7 +248,7 @@ struct Answer<'a> {
     target: &'a Requested<'a>,
     fill: Fill,
     label: String,
-    directory: Option<PathBuf>,
+    provenance: ConfigurationFill,
 }
 
 /// A fault the answers rule names.
@@ -303,7 +302,10 @@ fn read_answers<'a>(
             target,
             fill,
             label: answer.label,
-            directory: answer.directory,
+            provenance: ConfigurationFill {
+                directory: answer.directory,
+                strict: answer.strict,
+            },
         });
     }
     Ok(read)
@@ -490,7 +492,7 @@ async fn fill_tiers<'a>(
         };
         scope.values.fill(name, answer.fill);
         provenance.labels.push((name.clone(), answer.label));
-        provenance.fills.push((name.clone(), answer.directory));
+        provenance.fills.push((name.clone(), answer.provenance));
     }
     SourceOutcome {
         provenance,

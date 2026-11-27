@@ -1,7 +1,7 @@
-//! TOML through the `toml` crate's spanned parser (TOML 1.1, so a time written without seconds
-//! reads). An integer reads exact, a date or time as the text the file wrote, sliced from the
-//! source by its span, and a document that does not parse names the place the parser's error
-//! starts.
+//! The configuration reader for TOML 1.1 files.
+//!
+//! Enable the `config-toml` Cargo feature and pass [`TOML`] to
+//! [`ConfigurationSettings::formats`](super::ConfigurationSettings::formats) to read `.toml` files.
 
 use ::toml::Spanned;
 use ::toml::de::{DeTable, DeValue};
@@ -48,6 +48,12 @@ fn table_of(text: &str, table: &DeTable<'_>) -> Result<Value, Unread> {
     }
     Ok(object.build())
 }
+
+/// The TOML configuration reader, available with the `config-toml` feature.
+pub const TOML: super::reading::ConfigurationReader = super::reading::ConfigurationReader {
+    format: super::reading::ReaderFormat::Toml,
+    parse: read_toml,
+};
 
 /// The table a TOML document holds, which is always a table at its top level, or the place where
 /// it breaks. An integer beyond 128 bits breaks at its own place.

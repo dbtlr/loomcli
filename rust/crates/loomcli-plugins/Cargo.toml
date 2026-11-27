@@ -20,6 +20,7 @@ sha2 = { workspace = true, optional = true }
 unicode-normalization = { workspace = true, optional = true }
 toml = { workspace = true, optional = true }
 saphyr-parser = { workspace = true, optional = true }
+unicode-general-category = { workspace = true, optional = true }
 # The MCP plugin serves its tools through the protocol server, over the host streams as tokio I/O.
 loomcli-mcp = { path = "../loomcli-mcp", optional = true }
 # The self-update plugin requests GitHub over HTTPS through reqwest on rustls, resolves redirects
@@ -38,8 +39,10 @@ default = []
 background = []
 color = []
 completion = ["installation", "dep:rustix"]
-# The configuration plugin reads TOML through toml and YAML 1.2 through saphyr-parser.
-config = ["config-extension", "dep:toml", "dep:saphyr-parser"]
+# The configuration plugin reads JSON. Each reader feature adds one optional parser.
+config = ["config-extension", "dep:unicode-general-category"]
+config-toml = ["config", "dep:toml"]
+config-yaml = ["config", "dep:saphyr-parser"]
 dotenv = []
 external-commands = ["dep:rustix"]
 format = ["format-views"]

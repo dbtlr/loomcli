@@ -19,6 +19,7 @@ pub(crate) struct DropError {
     pub(crate) message: String,
     /// The steps, innermost first while the error returns, reversed by [`DropError::path`].
     steps: Vec<Step>,
+    invalid_length: bool,
 }
 
 impl DropError {
@@ -26,6 +27,7 @@ impl DropError {
         Self {
             message,
             steps: Vec::new(),
+            invalid_length: false,
         }
     }
 
@@ -105,7 +107,10 @@ impl de::Error for DropError {
     }
 
     fn invalid_length(_length: usize, expected: &dyn de::Expected) -> Self {
-        Self::new(format!("Invalid length: expected {expected}"))
+        Self {
+            invalid_length: true,
+            ..Self::new(format!("Invalid length: expected {expected}"))
+        }
     }
 
     fn unknown_variant(_variant: &str, expected: &'static [&'static str]) -> Self {
@@ -121,7 +126,7 @@ impl de::Error for DropError {
     }
 
     fn missing_field(field: &'static str) -> Self {
-        Self::new(format!("Missing key: \"{field}\""))
+        Self::new(format!("Missing key: \"{field}\"")).within(Step::Key(field.to_owned()))
     }
 
     fn duplicate_field(field: &'static str) -> Self {
@@ -283,14 +288,45 @@ impl<'de, 'a> de::Deserializer<'de> for ValueDeserializer<'a> {
                 _ => visitor.visit_i128(*number),
             },
             Value::Text(text) => visitor.visit_str(text),
-            Value::Array(items) => visitor.visit_seq(Items {
-                items: items.iter(),
+            Value::Array(array) => visitor.visit_seq(Items {
+                items: array.items.iter(),
             }),
             Value::Object(entries) => visitor.visit_map(Entries {
                 entries: entries.iter(),
                 value: None,
             }),
         }
+    }
+
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, DropError> {
+        let missing = match self.0 {
+            Value::Array(array)
+                if array.original_len == array.items.len() && array.items.len() < len =>
+            {
+                Some(array.items.len())
+            }
+            _ => None,
+        };
+        self.deserialize_any(visitor)
+            .map_err(|error| match missing {
+                Some(index) if error.invalid_length && error.steps.is_empty() => {
+                    error.within(Step::Index(index))
+                }
+                _ => error,
+            })
+    }
+
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, DropError> {
+        self.deserialize_tuple(len, visitor)
     }
 
     fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, DropError> {
@@ -337,7 +373,7 @@ impl<'de, 'a> de::Deserializer<'de> for ValueDeserializer<'a> {
 
     serde::forward_to_deserialize_any! {
         bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf
-        unit unit_struct seq tuple tuple_struct map struct identifier
+        unit unit_struct seq map struct identifier
     }
 }
 
@@ -345,6 +381,7 @@ impl<'de, 'a> de::Deserializer<'de> for ValueDeserializer<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Removal {
     pub(crate) path: Vec<Step>,
+    pub(crate) issue_path: Vec<Step>,
     pub(crate) message: String,
 }
 
@@ -378,7 +415,7 @@ pub(crate) enum Dropped {
 /// as it is made. A file already empty that still fails is the author's defect.
 pub(crate) fn drop_until_passes<T: DeserializeOwned>(
     mut file: Value,
-    removed: &mut dyn FnMut(Removal),
+    removed: &mut dyn FnMut(Removal, &Value),
 ) -> Dropped {
     loop {
         let error = match T::deserialize(ValueDeserializer(&file)) {
@@ -388,30 +425,40 @@ pub(crate) fn drop_until_passes<T: DeserializeOwned>(
         if file.is_empty_object() {
             return Dropped::EmptyRejected(error.message);
         }
-        let path = held_steps(&file, &error.path());
+        let issue_path = error.path();
+        let path = held_steps(&file, &issue_path);
+        removed(
+            Removal {
+                path: path.clone(),
+                issue_path,
+                message: error.message,
+            },
+            &file,
+        );
         if path.is_empty() {
             file = Value::empty_object();
         } else {
             file.remove(&path);
         }
-        removed(Removal {
-            path,
-            message: error.message,
-        });
     }
 }
 
 /// A removed value's path as the `-v` line shows it: keys joined by dots, an array item as its
 /// index in brackets.
 pub(crate) fn shown_path(path: &[Step]) -> String {
+    format_path(path, String::push_str)
+}
+
+pub(super) fn format_path(path: &[Step], write_key: impl Fn(&mut String, &str)) -> String {
     let mut text = String::new();
-    for step in path {
+    for (position, step) in path.iter().enumerate() {
         match step {
             Step::Index(index) => text.push_str(&format!("[{index}]")),
-            Step::Key(key) if text.is_empty() => text.push_str(key),
             Step::Key(key) => {
-                text.push('.');
-                text.push_str(key);
+                if position > 0 {
+                    text.push('.');
+                }
+                write_key(&mut text, key);
             }
         }
     }
@@ -448,7 +495,7 @@ mod tests {
     fn drops<T: DeserializeOwned>(file: Value) -> (Value, Vec<(String, String)>) {
         let mut removed = Vec::new();
         let mut count = 0;
-        let passed = drop_until_passes::<T>(file, &mut |removal| {
+        let passed = drop_until_passes::<T>(file, &mut |removal, _| {
             count += 1;
             assert!(
                 count <= 10,
@@ -709,7 +756,7 @@ mod tests {
             present: bool,
         }
         assert!(matches!(
-            drop_until_passes::<Requires>(Value::empty_object(), &mut |_| {}),
+            drop_until_passes::<Requires>(Value::empty_object(), &mut |_, _| {}),
             Dropped::EmptyRejected(message) if message == "Missing key: \"present\""
         ));
     }

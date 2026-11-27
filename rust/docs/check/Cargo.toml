@@ -21,7 +21,7 @@ loomcli-plugins = { path = "../../crates/loomcli-plugins", features = [
     "box",
     "color",
     "completion",
-    "config",
+    "config-toml",
     "dotenv",
     "external-commands",
     "format",

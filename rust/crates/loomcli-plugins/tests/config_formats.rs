@@ -3,17 +3,18 @@
 //! values, a YAML file's validity, aliases, and a byte order mark. The parsers' own cases, from
 //! `config-formats.test.ts`, are unit tests beside each parser in `src/config`.
 
-#![cfg(feature = "config")]
+#![cfg(all(feature = "config-toml", feature = "config-yaml"))]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 mod config_support;
 
 use config_support::*;
+use loomcli_plugins::config::{toml::TOML, yaml::YAML};
 use serde_json::json;
 
 #[tokio::test]
 async fn the_extension_chooses_the_parser_as_written_for_a_discovered_and_a_named_file() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let values = json_text(&json!({ "limits": { "bytes": "5" }, "total": true }));
     let filled = defaults_with(json!({ "limit": "5", "total": true }));
     for (file, content) in [
@@ -69,7 +70,7 @@ async fn the_extension_chooses_the_parser_as_written_for_a_discovered_and_a_name
 
 #[tokio::test]
 async fn the_first_present_candidate_is_read_and_every_later_one_is_skipped_with_one_warning() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let any = Settings::file(".app.*");
     space.write(".app.json", &json_text(&json!({ "title": "json" })));
     let ran = space.run().settings(any.clone()).ran().await;
@@ -109,7 +110,7 @@ async fn the_first_present_candidate_is_read_and_every_later_one_is_skipped_with
 
 #[tokio::test]
 async fn a_brace_list_orders_its_candidates_as_listed_a_repeat_at_its_first_position() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     space.write(".app.toml", "title = \"toml\"\n");
     space.write(".app.json", &json_text(&json!({ "title": "json" })));
     let listed = space
@@ -130,7 +131,7 @@ async fn a_brace_list_orders_its_candidates_as_listed_a_repeat_at_its_first_posi
 
 #[tokio::test]
 async fn a_pattern_may_list_jsonc_and_star_tries_jsonc_after_json() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     space.write(".app.jsonc", &json_text(&json!({ "title": "jsonc" })));
     for file in [".app.{toml,jsonc}", ".app.*"] {
         let ran = space.run().settings(Settings::file(file)).ran().await;
@@ -145,7 +146,7 @@ async fn a_pattern_may_list_jsonc_and_star_tries_jsonc_after_json() {
 
 #[tokio::test]
 async fn a_toml_integer_beyond_the_safe_range_fills_its_exact_digits_and_a_count_its_nearest() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     space.write(
         ".app.toml",
         "title = \"kept\"\nverbose = 123456789012345678\n[limits]\nbytes = 123456789012345678\n",
@@ -169,7 +170,7 @@ async fn a_toml_integer_beyond_the_safe_range_fills_its_exact_digits_and_a_count
 
 #[tokio::test]
 async fn a_toml_number_fills_as_json_writes_it_and_a_date_or_time_as_written() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let toml = Settings::file(".app.toml");
     space.write(
         ".app.toml",
@@ -227,7 +228,7 @@ async fn a_toml_number_fills_as_json_writes_it_and_a_date_or_time_as_written() {
 
 #[tokio::test]
 async fn a_toml_value_the_option_cannot_take_is_ignored_and_an_invalid_date_is_invalid_toml() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let toml = Settings::file(".app.toml");
     for (content, line) in [
         (
@@ -289,7 +290,7 @@ async fn a_toml_value_the_option_cannot_take_is_ignored_and_an_invalid_date_is_i
 
 #[tokio::test]
 async fn a_counted_option_takes_a_whole_number_of_0_or_more_and_any_other_value_is_ignored() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     space.write(".app.json", &json_text(&json!({ "verbose": 3 })));
     assert_eq!(
         space.run().received().await,
@@ -339,7 +340,7 @@ async fn a_counted_option_takes_a_whole_number_of_0_or_more_and_any_other_value_
 
 #[tokio::test]
 async fn a_yaml_file_reads_under_the_core_schema_with_aliases_resolved() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     space.write(
         ".app.yaml",
         &[
@@ -374,7 +375,7 @@ async fn a_yaml_file_reads_under_the_core_schema_with_aliases_resolved() {
 
 #[tokio::test]
 async fn a_yaml_file_that_reuses_one_profile_across_many_environments_reads_every_alias() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let mut lines = vec![
         "limits: &limits { bytes: 7 }".to_owned(),
         "profile: &profile".to_owned(),
@@ -398,7 +399,7 @@ async fn a_yaml_file_that_reuses_one_profile_across_many_environments_reads_ever
 
 #[tokio::test]
 async fn a_yaml_value_the_option_cannot_take_is_ignored_with_a_v_line() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let yaml = Settings::file(".app.yaml");
     let title = "Ignored option \"--title\" from title in .app.yaml: Use a string or a number.";
     let total = "Ignored option \"--total\" from total in .app.yaml: Use true or false.";
@@ -426,7 +427,7 @@ async fn a_yaml_value_the_option_cannot_take_is_ignored_with_a_v_line() {
 
 #[tokio::test]
 async fn a_yaml_file_outside_one_core_schema_document_with_unique_keys_is_not_valid_yaml() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let yaml = Settings::file(".app.yaml");
     for (content, at) in [
         ("title: a\n---\ntitle: b\n", "line 2, column 1"),
@@ -474,7 +475,7 @@ async fn a_yaml_file_outside_one_core_schema_document_with_unique_keys_is_not_va
 
 #[tokio::test]
 async fn a_yaml_syntax_mistake_breaks_at_the_place_the_reference_names() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let yaml = Settings::file(".app.yaml");
     for (content, at) in [
         ("total: true\n\ttitle: a\n", "line 2, column 1"),
@@ -506,7 +507,7 @@ async fn a_yaml_syntax_mistake_breaks_at_the_place_the_reference_names() {
 #[tokio::test]
 async fn a_yaml_non_specific_tag_an_alias_key_and_a_tab_after_a_colon_read_as_the_reference_reads_them()
  {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     for (content, title) in [
         ("title: ! 5\n", "5"),
         ("&key title: first\n*key : second\n", "second"),
@@ -525,7 +526,7 @@ async fn a_yaml_non_specific_tag_an_alias_key_and_a_tab_after_a_colon_read_as_th
 
 #[tokio::test]
 async fn an_alias_that_names_no_preceding_anchor_is_not_valid_yaml_at_the_alias() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let yaml = Settings::file(".app.yaml");
     space.write_in(&space.home, ".app.yaml", "title: home\n");
     for (content, at) in [
@@ -563,7 +564,7 @@ async fn an_alias_that_names_no_preceding_anchor_is_not_valid_yaml_at_the_alias(
 
 #[tokio::test]
 async fn a_yaml_anchor_that_refers_to_itself_is_not_valid_yaml_at_the_alias() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     space.write(
         ".app.yaml",
         "tree: &t\n  name: root\n  child: *t\nretries: many\n",
@@ -586,7 +587,7 @@ async fn a_yaml_anchor_that_refers_to_itself_is_not_valid_yaml_at_the_alias() {
 
 #[tokio::test]
 async fn a_leading_byte_order_mark_reads_in_every_format_and_an_empty_named_file_is_not_json() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     for (file, content) in [
         (".app.json", json_text(&json!({ "title": "bom" }))),
         (".app.toml", "title = \"bom\"\n".to_owned()),
@@ -611,7 +612,7 @@ async fn a_leading_byte_order_mark_reads_in_every_format_and_an_empty_named_file
 
 #[tokio::test]
 async fn a_json_file_holds_comments_and_trailing_commas_and_a_broken_one_names_where_it_breaks() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     let commented = [
         "{",
         "  // The byte threshold, raised for the archive.",
@@ -645,7 +646,7 @@ async fn a_json_file_holds_comments_and_trailing_commas_and_a_broken_one_names_w
 
 #[tokio::test]
 async fn a_segment_named_after_an_object_prototype_member_answers_only_from_an_own_key() {
-    let space = Workspace::new();
+    let space = Workspace::new().with_formats(&[TOML, YAML]);
     space.write(
         ".app.json",
         &json_text(&json!({ "limits": { "bytes": "1" } })),

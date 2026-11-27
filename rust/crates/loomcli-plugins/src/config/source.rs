@@ -7,28 +7,21 @@
 use std::collections::BTreeMap;
 
 use loomcli_core::{
-    Error, InvokedBy, Issue, Log, LogFields, OptionNode, PathSegment, SourceAnswer, SourceValue,
-    issue_path, read_extension, reported_spelling,
+    Error, InputIdentity, InputKind, InvokedBy, Issue, OptionNode, PathSegment, SourceAnswer,
+    SourceContext, SourceValue, issue_path, read_extension, reported_spelling,
 };
 
 use super::document::Value;
 use super::extension::CONFIG_INPUT;
-use super::lookup::UsableFile;
 use super::messages;
 use super::number::js_number_text;
-use super::shared::directory_of;
+use super::shared::{Loaded, directory_of};
+use super::strict::{self, LinkedProblem, Strict};
 
 /// A value read at a request's path: one the option takes, or the issues that say why not.
 enum Shaped {
     Value(SourceValue),
     Wrong(Vec<Issue>),
-}
-
-/// The value a dotted path leads to in the file's object. A missing key, or a value that is not an
-/// object before the last segment, leads to no value.
-fn value_at<'a>(object: &'a Value, path: &str) -> Option<&'a Value> {
-    path.split('.')
-        .try_fold(object, |current, segment| current.get(segment))
 }
 
 /// The string a string option takes from one value: a string as it is, a finite number as its
@@ -104,18 +97,23 @@ fn shape(request: &OptionNode, value: &Value) -> Shaped {
 
 fn shape_arity(value: &Value, arity: usize, multiple: bool) -> Shaped {
     fn tuple(value: &Value, arity: usize) -> Option<Vec<String>> {
-        let Value::Array(items) = value else {
+        let Value::Array(array) = value else {
             return None;
         };
-        if items.len() != arity {
+        if array.items.len() != arity {
             return None;
         }
-        items.iter().map(|item| text_of(&item.value)).collect()
+        array
+            .items
+            .iter()
+            .map(|item| text_of(&item.value))
+            .collect()
     }
 
     let shaped = if multiple {
         match value {
-            Value::Array(items) => items
+            Value::Array(array) => array
+                .items
                 .iter()
                 .map(|item| tuple(&item.value, arity))
                 .collect::<Option<Vec<_>>>()
@@ -133,70 +131,77 @@ fn shape_arity(value: &Value, arity: usize, multiple: bool) -> Shaped {
 
 fn list_of(value: &Value) -> Shaped {
     match value {
-        Value::Array(items) => shape_list(items),
+        Value::Array(array) => shape_list(&array.items),
         _ => Shaped::Wrong(vec![Issue::new(messages::STRING_LIST_ISSUE)]),
     }
 }
 
-/// The lines one value the option cannot take writes at `-v`, one per issue: the option by its
-/// reported spelling, or by its declared name in an invocation by name, any position, the label,
-/// and the message.
-fn ignored_lines(
-    request: &OptionNode,
-    label: &str,
-    issues: &[Issue],
-    invoked_by: InvokedBy,
-) -> Vec<(&'static str, LogFields)> {
-    let spelling = if invoked_by == InvokedBy::Name {
-        request.name().to_owned()
-    } else {
-        reported_spelling(request)
-    };
-    issues
-        .iter()
-        .map(|issue| {
-            messages::ignored_option(
-                &spelling,
-                issue_path(issue).as_deref(),
-                label,
-                &issue.message,
-            )
-        })
-        .collect()
-}
-
-/// Every request answered from the file, by option name. A value an option cannot take writes its
-/// lines at `-v` and answers nothing.
-pub(crate) fn answer_all(
-    requests: &[OptionNode],
-    usable: &UsableFile,
-    invoked_by: InvokedBy,
-    log: &Log,
+/// Answers each request whose bound path holds a value. A wrong shape logs its issues or, when
+/// strict covers it, contributes the option's problem to the file's failure.
+pub(crate) fn answer_all<O>(
+    context: &SourceContext<O>,
+    loaded: Loaded,
+    strict: &Strict,
 ) -> Result<BTreeMap<String, SourceAnswer>, Error> {
     let mut answers = BTreeMap::new();
-    for request in requests {
+    let mut problems = Vec::new();
+    let Some(usable) = &loaded.usable else {
+        return Ok(answers);
+    };
+    for request in &context.requests {
         let Some(binding) = read_extension(request, &CONFIG_INPUT)? else {
             continue;
         };
-        let Some(value) = value_at(&usable.object, &binding.path) else {
+        let Some(value) = usable.object.at_path(&binding.path) else {
             continue;
         };
-        let label = format!("{} in {}", binding.path, usable.file.shown);
+        let covered = strict.covers_link(&binding.path);
+        let label = messages::source_label(&binding.path, &usable.file.shown);
         match shape(request, value) {
             Shaped::Value(value) => {
+                let answer = SourceAnswer::new(value, label).directory(directory_of(usable));
                 answers.insert(
                     request.name().to_owned(),
-                    SourceAnswer::new(value, label).directory(directory_of(usable)),
+                    if covered { answer.strict() } else { answer },
                 );
             }
             Shaped::Wrong(issues) => {
-                for (template, fields) in ignored_lines(request, &label, &issues, invoked_by) {
-                    log.debug(template, fields);
+                let spelling = if context.invoked_by == InvokedBy::Name {
+                    request.name().to_owned()
+                } else {
+                    reported_spelling(request)
+                };
+                if covered {
+                    let global = context
+                        .graph
+                        .globals
+                        .iter()
+                        .any(|option| option.name() == request.name());
+                    problems.push(LinkedProblem {
+                        input: InputIdentity::new(global, InputKind::Option, request.name()),
+                        spelling,
+                        issues,
+                        label,
+                    });
+                } else {
+                    for issue in issues {
+                        let (template, fields) = messages::ignored_option(
+                            &spelling,
+                            issue_path(&issue).as_deref(),
+                            &label,
+                            &issue.message,
+                        );
+                        context.log.debug(template, fields);
+                    }
                 }
             }
         }
     }
-    Ok(answers)
+    if loaded.file_issues.is_empty() && problems.is_empty() {
+        Ok(answers)
+    } else {
+        Err(strict::failure(loaded.file_issues, problems, context.invoked_by).into())
+    }
 }
 
 #[cfg(test)]

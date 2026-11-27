@@ -6,6 +6,7 @@ use loomcli_core::{Application, Content, FatalError, Inputs, RowViews, RowsResul
 use loomcli_core::{failure, override_view};
 use loomcli_plugins::completion::completion;
 use loomcli_plugins::config::extension::{CONFIG_INPUT, ConfigInputFacts};
+use loomcli_plugins::config::toml::TOML;
 use loomcli_plugins::config::{ConfigurationSettings, Scope, configuration};
 use loomcli_plugins::format::format;
 use loomcli_plugins::help::extension::{
@@ -114,6 +115,7 @@ pub fn textstat() -> Application<TextstatInputs, RowsResult<Row>> {
     let config = configuration::<TextstatFile>(
         ConfigurationSettings::new(file_schema())
             .file(".textstat.{toml,json}")
+            .formats(&[TOML])
             .short('c')
             .scopes(&[Scope::Project { root: Vec::new() }, Scope::User]),
     );

@@ -5,6 +5,7 @@
 //! ```ignore
 //! use loomcli_plugins::config::{ConfigurationSettings, DirectoryOption, Scope, configuration};
 //! use loomcli_plugins::config::extension::{CONFIG_INPUT, ConfigInputFacts};
+//! use loomcli_plugins::config::toml::TOML;
 //!
 //! #[derive(serde::Deserialize, Default)]
 //! #[serde(rename_all = "camelCase")]
@@ -15,6 +16,7 @@
 //! let config = configuration::<Collector>(
 //!     ConfigurationSettings::new(None)
 //!         .file(".collector.{toml,json}")
+//!         .formats(&[TOML])
 //!         .short('c')
 //!         .env("COLLECTOR_CONFIG")
 //!         .directory(DirectoryOption::new("project").short('p'))
@@ -28,10 +30,13 @@
 //! variable names, or else the first of the file pattern's candidates in the walk from the start
 //! directory to the root marker or to the directory below home, then in the home directory, then
 //! in the XDG user folder, each step under the scopes the settings choose. `--no-config` reads
-//! none. JSON with comments, TOML (through `toml`), and YAML 1.2 (through `saphyr-parser`) read by
-//! the file's extension. A value the type rejects is dropped, with one `-v` line, and the rest of
-//! the file stays; a broken discovered file warns once and the run reads no configuration; a
-//! broken `--config` file fails the run with exit 2.
+//! none. The plugin reads JSON with comments and accepts TOML and YAML 1.2 when the application
+//! enables their features and passes their readers. At `-v`, the plugin reports dropped values
+//! followed by keys in the remaining file that the published schema does not describe.
+//! Rejections and unknown keys covered by `Strict` fail the run with exit code 2.
+//! A broken file named by `--config` always fails with code 2. A broken discovered file or file
+//! named by the variable ends the lookup. It fails the run with code 2 when strict is enabled
+//! and otherwise warns once.
 
 #[cfg(feature = "config-extension")]
 pub mod extension;
@@ -61,9 +66,18 @@ mod shared;
 #[cfg(feature = "config")]
 mod source;
 #[cfg(feature = "config")]
-mod toml;
+mod strict;
+#[cfg(feature = "config-toml")]
+pub mod toml;
 #[cfg(feature = "config")]
-mod yaml;
+mod unknown;
+#[cfg(feature = "config-yaml")]
+pub mod yaml;
+
+#[cfg(feature = "config")]
+pub use reading::ConfigurationReader;
+#[cfg(feature = "config")]
+pub use strict::Strict;
 
 /// The configuration plugin's identity, which its sentences name.
 #[cfg(feature = "config")]
@@ -83,7 +97,9 @@ mod plugin {
     use super::extension::CONFIG_INPUT;
     use super::lookup::Reach;
     use super::shared::{Scene, Shared};
-    use super::{IDENTITY, drop, links, pointer, settings, source};
+    use super::{
+        ConfigurationReader, IDENTITY, Strict, drop, links, pointer, settings, source, strict,
+    };
 
     /// The description of `--config`.
     const CONFIG_DESCRIPTION: &str = "Read configuration from this file alone.";
@@ -214,7 +230,9 @@ mod plugin {
         schema: InputSchema,
         short: Option<char>,
         scopes: Option<Vec<Scope>>,
-        candidates: Option<Vec<String>>,
+        file: Option<settings::FilePattern>,
+        formats: Vec<ConfigurationReader>,
+        strict: Strict,
         env: Option<String>,
         directory: Option<DirectoryOption>,
         notice: bool,
@@ -231,7 +249,9 @@ mod plugin {
                 schema,
                 short: None,
                 scopes: None,
-                candidates: None,
+                file: None,
+                formats: Vec::new(),
+                strict: Strict::OFF,
                 env: None,
                 directory: None,
                 notice: false,
@@ -268,14 +288,35 @@ mod plugin {
 
         /// The configuration file's name or relative path, a file pattern; `.<app>.json` by
         /// default. Glob syntax may appear only as the whole extension of its last segment: `*`
-        /// for any format the plugin reads, tried as `toml`, `yaml`, `yml`, `json`, then `jsonc`, or
+        /// for any format the settings read, tried as `toml`, `yaml`, `yml`, `json`, then `jsonc`, or
         /// a brace list such as `{toml,json}`, tried as listed. A file that is not a relative path
         /// panics at this call with `@loomcli/plugins/config/file-path`, and glob syntax elsewhere
         /// or an unreadable listed extension with `@loomcli/plugins/config/file-pattern`.
         #[track_caller]
         pub fn file(self, pattern: &str) -> Self {
             Self {
-                candidates: Some(settings::judge_file(pattern)),
+                file: Some(settings::judge_file(pattern)),
+                ..self
+            }
+        }
+
+        /// Sets the readers for formats beyond JSON. Enable `config-toml` or `config-yaml` to
+        /// obtain the corresponding reader. The list defaults to empty.
+        pub fn formats(self, readers: &[ConfigurationReader]) -> Self {
+            Self {
+                formats: readers.to_vec(),
+                ..self
+            }
+        }
+
+        /// Makes covered file or option values and unknown keys fail the run. Any enabled setting
+        /// also fails a run that finds an unusable file. Strict defaults to off. A malformed
+        /// dotted path panics at this call with `@loomcli/plugins/config/strict-path`.
+        #[track_caller]
+        pub fn strict(self, setting: Strict) -> Self {
+            setting.judge_setting();
+            Self {
+                strict: setting,
                 ..self
             }
         }
@@ -360,8 +401,14 @@ mod plugin {
             .directory
             .as_ref()
             .map(|option| option.name.clone());
+        let candidates = match &settings.file {
+            Some(file) => Some(file.candidates(&settings.formats)),
+            None => None,
+        };
         let shared = Arc::new(Shared::<T>::new(
-            settings.candidates.clone(),
+            candidates,
+            settings.formats.clone(),
+            settings.strict.clone(),
             settings.env.clone(),
             settings.notice,
             settings.reach(),
@@ -407,22 +454,17 @@ mod plugin {
                         directory: directory.as_deref(),
                     };
                     let loaded = shared.load_once(&scene).await?;
-                    match &loaded.usable {
-                        Some(usable) => source::answer_all(
-                            &context.requests,
-                            usable,
-                            context.invoked_by,
-                            &context.log,
-                        ),
-                        None => Ok(std::collections::BTreeMap::new()),
-                    }
+                    source::answer_all(&context, loaded, &shared.strict)
                 }
             },
         )
         .schema(pointer::with_pointer(settings.schema));
         let plugin = plugin
             .extensions([CONFIG_INPUT])
-            .on_graph_built(links::judge_links)
+            .on_graph_built(move |graph| {
+                links::judge_links(graph)?;
+                settings.strict.judge_schema(graph)
+            })
             .source(source);
         let provider = Provider::new("config", move |context: ProviderContext| {
             let shared = Arc::clone(&shared);
@@ -446,6 +488,14 @@ mod plugin {
                     directory: directory.as_deref(),
                 };
                 let loaded = shared.load_once(&scene).await?;
+                if !loaded.file_issues.is_empty() {
+                    return Err(strict::failure(
+                        loaded.file_issues,
+                        Vec::new(),
+                        context.invoked_by,
+                    )
+                    .into());
+                }
                 drop::deserialize_passed::<T>(&loaded.document()).map_err(Error::from)
             }
         });

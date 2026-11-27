@@ -362,6 +362,15 @@ Without a variadic, words fill arguments from the start in declaration order. Af
 
 Precedence is the reference's: a token, then the environment, then the configuration source, then the declared default. An environment binding is the `env` setters above, read under the reference's rules: the first name holding a non-empty value (or, under `env_allow_empty`, the first defined name), a string as it is, a multiple option's value split at its delimiter, a Boolean through the `true`/`false`/`yes`/`no`/`y`/`n`/`on`/`off`/`1`/`0` grammar, and a count as ASCII digits; a value outside its grammar is the option's `invalid` problem, naming the variable. The configuration source is the single slot a plugin claims with `Plugin::source(ConfigurationSource::new(&BINDING, resolver).schema(schema))`; the binding is an option-target extension descriptor and the resolver answers `BTreeMap<String, SourceAnswer>` (`SourceAnswer::new(value, label).directory(dir)`) by option name. Core reaches the slot through `inputs::sources::SourceSlot`, the erased form a `ConfigurationSource` takes once `Plugin::source` claims it: the resolver receives a `SourceContext<O>` whose `options` are the claiming plugin's own validated options extracted as `O`, and whose `out` and `log` are the run's, the log tagged with the plugin. A resolver's foreign error is offered to the translators before it becomes the plugin's `foreign-throw` fault. The hidden `__private::install_source(app, plugin, &BINDING, own, resolver)` installs a source with untyped options for a test. Option groups withdraw lower-tier members before validation.
 
+`SourceAnswer::new(value, label).strict()` sets the answer's `pub strict: bool` field, which defaults to
+`false`. With the flag off, core drops a rejected answer, logs the rejection at debug, and
+applies the option's fallback.
+With the flag on, a validator rejection or an unreadable content path produces an ordinary
+`invalid` input problem and exit code 2. The diagnostic names the option and the source label,
+with the issue's item or word position where applicable. A strict answer produces no `-v` line.
+Core validates the answer once in the ordinary input pass, using the answer's directory when
+supplied. An exclusive group can still withdraw a strict answer before validation. [Reference input sources](../../../docs/core/input-sources.md#configuration-sources)
+
 For a scalar arity option, the environment splits on the declared delimiter, preserves empty
 items and whitespace, and requires exactly `arity` items. An empty variable is unset. A
 nonempty value with the wrong count produces an `invalid` problem that names its variable.
@@ -374,6 +383,110 @@ option falls through without an answer. If the validator rejects one word of a n
 answer, the whole answer drops under ADR-0117. Either failure fails the run in strict mode.
 The link-type correction includes `or an array for a multiple or arity option.` See the exact
 configuration sentences in [ADR-0161](../../../docs/decisions/0161-a-string-option-may-declare-an-arity-and-each-occurrence-takes-that-many-separate-words.md).
+
+### Configuration plugin
+
+`config::configuration(settings)` returns the configuration plugin and its `Provider<T>`.
+The plugin answers options bound with `CONFIG_INPUT` and shares one lazy read per run with the
+provider. `ConfigurationSettings::<T>::new(schema)` takes the file's input-side JSON Schema
+or `None`. The schema describes the file for the manifest, the link check, and unknown-key
+reporting. The serde type `T` validates and deserializes the file.
+
+The `config` feature reads JSON and JSONC. The `config-toml` feature exposes
+`loomcli_plugins::config::toml::TOML`, and `config-yaml` exposes
+`loomcli_plugins::config::yaml::YAML`. Each adds `config` and its own parser dependency.
+An application enables the features for the parsers it builds and passes the corresponding
+sealed `ConfigurationReader` values to `ConfigurationSettings::formats`, for example
+`.formats(&[TOML, YAML])`. Each call sets the full list. Duplicates count once and list order
+has no effect. A Cargo feature makes its reader available to the author. Passing the reader
+enables its format for that configuration instance. A Cargo dependency graph that enables
+`config` alone builds without either parser dependency. The plugin calls a parser only when
+the lookup reads a file in its format.
+
+Naming `TOML` with `config-toml` off, or `YAML` with `config-yaml` off, fails to compile.
+The `textstat` example enables `config-toml` and passes `.formats(&[TOML])`, as the
+reference example passes its TOML reader. The `textstat-config-bad-toml` conformance case
+expects the TOML reader's syntax diagnostic. The examples checked by `rust/docs/check` and
+the plugin's own tests enable the features for the readers they use.
+
+Extensions compare as written. A path ending in `.toml` needs `TOML`, and `.yaml` or `.yml`
+needs `YAML`. Every other extension and a name with no extension read as JSON with comments
+and trailing commas. The `*` file pattern tries `toml`, `yaml`, and `yml` for the readers
+passed, followed by `json` and `jsonc`. Brace patterns use the listed order. The `.file()`
+setter checks path and pattern syntax. At the `configuration()` call, a literal or brace
+candidate that needs an absent reader raises `@loomcli/plugins/config/file-format`. The
+diagnostic marks the file pattern and names the first unsupported extension. The correction
+for `toml` is `Pass TOML, from loomcli_plugins::config::toml with the config-toml feature, in formats.`
+For `yaml` and `yml` it is
+`Pass YAML, from loomcli_plugins::config::yaml with the config-yaml feature, in formats.`
+[Reference readers](../../../docs/plugins/config.md#readers)
+
+When `--config` or the configuration variable names an unsupported format, the plugin judges
+the extension before it checks for the file. `--config` raises an `InputError` with exit code 2
+and lists the accepted formats, starting with JSON. The configuration variable ends lookup
+with a warning and an empty configuration, or raises an `InputError` with code 2 when strict
+is enabled. Both paths use the same step, such as `Supply a JSON or TOML file.`
+[Reference file failures](../../../docs/plugins/config.md#missing-and-broken-files)
+
+Serde reports its first issue in each validation round. A dropped-value line names the
+removed value. A strict failure names the issue's path, which can reach inside that value.
+Both show zero-based array indices from the file as read, including in later rounds. An issue
+past the end of an array shortened by an earlier drop names that array. The unknown-key walk
+uses the published JSON Schema and the keys surviving the drop rule. It skips the top-level
+`$schema` pointer and shares the link check for object keys. An array item's original index
+selects its `prefixItems` entry, with `items` as the fallback. The walk reports unknown keys
+after dropped values at `-v`, in depth-first file order. Each gets the fixed issue
+`Unknown key. Check its spelling, or remove it.`
+An absent JSON Schema leaves unknown keys unchecked. The unknown-key `-v` line and the
+strict unknown-key issue alone quote each empty key segment or segment with edge whitespace
+or an unseen character. For example, they show `sessions.sources[0]."naU+200Bme"` and
+`updates."U+0020chanel"`. Inside quotes, a double quote prints as `\"` and a backslash prints as `\\`.
+An unquoted key keeps both characters as written.
+
+An unseen character is a Unicode format character (Cf), a space separator (Zs) other than
+U+0020, or whitespace at an edge, including ordinary space. It appears as `U+` with at least
+four uppercase hexadecimal digits, except where core already escapes it. A tab, newline,
+or line separator at an edge triggers quoting and keeps its `\uXXXX` escape inside the
+quotes. ESC and bidirectional controls keep their escapes and leave the key unquoted when
+they are the only such characters. [Reference unknown keys](../../../docs/plugins/config.md#naming-unknown-keys)
+
+`ConfigurationSettings::strict` takes `Strict::ALL` to cover the whole file,
+`Strict::paths("delivery", &["storage.cache"])` to cover a nonempty list of paths, or
+`Strict::OFF`, the default. The first argument to `Strict::paths` supplies the required first
+path. The setter checks that each path consists of nonempty object keys separated by dots.
+A malformed path raises `@loomcli/plugins/config/strict-path`. At graph build, after
+checking links, the plugin checks listed paths against the published JSON Schema. A path the
+schema cannot hold or that can only pass through an array raises
+`@loomcli/plugins/config/strict-schema-path`. Listing the array's own path covers its items.
+With no JSON Schema, listed paths are not checked.
+
+A listed path covers itself and its descendants by whole object keys. A schema rejection is
+covered when its issue is at or under a listed path or its removal would discard a value the
+file holds at a listed path. A removal of an ancestor also fails the run when the listed
+key's immediate parent was an object in the file as read and that object lacked the key,
+unless the published JSON Schema shows the key is optional. Publish the JSON Schema to
+allow an optional listed key to be absent when an ancestor is removed. The run fails
+when the published shape leaves optionality uncertain. If the immediate parent was absent
+or held another kind of value, the missing-key rule adds no coverage.
+
+The failure names serde's first issue for the covered removal. When an absent listed key
+covers a removal and a prior rejection caused the missing-key issue, the failure names
+the original rejection. This can name a rejected sibling where the reference names the
+absent listed key. Without a published JSON Schema, an absent optional listed key can
+fail the run when an ancestor is removed.
+
+Covered schema rejections and unknown keys become issues on the
+file's `config` problem, in removal order followed by unknown-key order. The file's problem
+comes first, followed by one problem per covered linked option whose value has the wrong
+shape, in request order. When the provider reads first, the failure holds the file's problem
+alone. The source marks each usable covered answer with `SourceAnswer::strict()` so core can report a
+validator rejection in its own input pass. The source or provider reports one `InputError`
+with code 2 for the problems its read finds. A source failure takes precedence over core's
+collected input problems. Values outside the setting retain the ordinary drop and debug rules.
+Any enabled strict setting also turns an unusable file named by the variable or found by the
+lookup into an `InputError` with code 2. Later candidates skipped unread still produce their
+warning before the failure. `--no-config` skips the read, and an absent file
+follows the ordinary lookup rules. [Reference strict setting](../../../docs/plugins/config.md#the-strict-setting)
 
 ### Where each authoring rule is enforced
 
@@ -1566,7 +1679,9 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | Feature | Module | Also enables |
 | --- | --- | --- |
 | `background`, `color`, `completion`, `dotenv`, `interaction`, `manpage`, `plain`, `self-update`, `skills`, `suggestions`, `theme`, `verbose` | the plugin | |
-| `config` | `config` | `config-extension` |
+| `config` | `config` | `config-extension`, `dep:unicode-general-category` |
+| `config-toml` | `config::toml` | `config`, `dep:toml` |
+| `config-yaml` | `config::yaml` | `config`, `dep:saphyr-parser` |
 | `external-commands` | `external_commands` | `dep:rustix` (Unix) |
 | `format` | `format` | `format-views` |
 | `help` | `help` | `help-extension`, `help-views` |
@@ -1600,7 +1715,9 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | `jiff` (`tzdb-bundle-always`, plus `tzdb-zoneinfo` in core) | core, validators, plugins (`logging`, `self-update`) | The bundled database supplies IANA names that the system database omits. Jiff also reads the system zone, provides civil times for `date_time()` and `time()`, and parses timestamps for the OpenTelemetry log destination. |
 | `loomcli-style`, `serde_json` | core's build script | The baked release facts' reader is the crate's own, and quotes a value as core's messages do. |
 | `regex` | validators, prompts, plugins (`help`, `manpage`) | `text().pattern(…)`, whose syntax differs from a JavaScript `u`-flag `RegExp` (no lookaround, no backreferences), a recorded deviation; the Unicode word classes of the prompts' line editor and of the Markdown subset. |
-| `toml`, `saphyr-parser` | plugins (`config`) | TOML and YAML 1.2 configuration files. |
+| `toml` | plugins (`config-toml`) | TOML configuration files. |
+| `saphyr-parser` | plugins (`config-yaml`) | YAML 1.2 configuration files. |
+| `unicode-general-category` | plugins (`config`) | Classifies the Unicode characters that the unknown-key diagnostic makes visible. |
 | `sha2` | plugins (the installation record) | SHA-256 digests of installed files. |
 | `reqwest` (rustls) | plugins (`self-update`) | HTTPS requests to GitHub with the platform's certificate verifier and no OpenSSL. |
 | `unicode-normalization` | plugins (`suggestions`) | Comparing names under the normalization the reference's suggestions apply. |

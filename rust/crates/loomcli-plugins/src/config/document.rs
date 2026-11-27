@@ -17,13 +17,20 @@ pub(crate) enum Value {
     /// overflowing literal turns into an infinity.
     Number(f64),
     /// A TOML integer, exact.
+    #[cfg_attr(not(feature = "config-toml"), allow(dead_code))]
     Integer(i128),
     /// A string, and a TOML date or time as the text the file wrote.
     Text(String),
     /// An array, each item with the index it held in the file.
-    Array(Arc<Vec<Item>>),
+    Array(Arc<Array>),
     /// An object, its keys unique, in the order the file wrote them.
     Object(Arc<Vec<(String, Value)>>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Array {
+    pub(crate) items: Vec<Item>,
+    pub(crate) original_len: usize,
 }
 
 /// One array item, with the index it held in the file, which a removal never shifts.
@@ -40,6 +47,15 @@ pub(crate) enum Step {
     Index(usize),
 }
 
+impl Step {
+    pub(crate) fn key(&self) -> Option<&str> {
+        match self {
+            Self::Key(key) => Some(key),
+            Self::Index(_) => None,
+        }
+    }
+}
+
 impl Value {
     /// An empty object.
     pub(crate) fn empty_object() -> Self {
@@ -48,13 +64,14 @@ impl Value {
 
     /// An array of these values, each at its own position.
     pub(crate) fn array(values: Vec<Value>) -> Self {
-        Value::Array(Arc::new(
-            values
+        Value::Array(Arc::new(Array {
+            original_len: values.len(),
+            items: values
                 .into_iter()
                 .enumerate()
                 .map(|(index, value)| Item { index, value })
                 .collect(),
-        ))
+        }))
     }
 
     /// The entries of an object, or `None` for any other value.
@@ -73,11 +90,17 @@ impl Value {
             .map(|(_, value)| value)
     }
 
+    /// Follows the object keys of a dotted path.
+    pub(crate) fn at_path(&self, path: &str) -> Option<&Value> {
+        path.split('.').try_fold(self, Self::get)
+    }
+
     /// The value one step leads to, when the document holds it.
     pub(crate) fn child(&self, step: &Step) -> Option<&Value> {
         match (self, step) {
             (Value::Object(_), Step::Key(key)) => self.get(key),
-            (Value::Array(items), Step::Index(index)) => items
+            (Value::Array(array), Step::Index(index)) => array
+                .items
                 .iter()
                 .find(|item| item.index == *index)
                 .map(|item| &item.value),
@@ -123,8 +146,10 @@ impl Value {
             (Value::Object(entries), Step::Key(key)) => {
                 Arc::make_mut(entries).retain(|(name, _)| name != key);
             }
-            (Value::Array(items), Step::Index(index)) => {
-                Arc::make_mut(items).retain(|item| item.index != *index);
+            (Value::Array(array), Step::Index(index)) => {
+                Arc::make_mut(array)
+                    .items
+                    .retain(|item| item.index != *index);
             }
             _ => {}
         }
@@ -137,7 +162,8 @@ impl Value {
                 .iter_mut()
                 .find(|(name, _)| name == key)
                 .map(|(_, value)| value),
-            (Value::Array(items), Step::Index(index)) => Arc::make_mut(items)
+            (Value::Array(array), Step::Index(index)) => Arc::make_mut(array)
+                .items
                 .iter_mut()
                 .find(|item| item.index == *index)
                 .map(|item| &mut item.value),

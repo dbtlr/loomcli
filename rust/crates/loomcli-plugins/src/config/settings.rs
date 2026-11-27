@@ -4,10 +4,13 @@
 
 use loomcli_core::{
     DeclarationError, DiagnosticParts, DiagnosticRule, FailureFacts, Finding, diagnostic_rule,
+    escape_control_characters,
 };
 
 use super::IDENTITY;
-use super::reading::split_extension;
+use super::reading::{
+    ConfigurationReader, ReaderFormat, has_reader, reader_format, split_extension,
+};
 
 /// A configuration plugin `file` setting that is not a relative path.
 pub(crate) const FILE_PATH: DiagnosticRule = diagnostic_rule(
@@ -21,6 +24,13 @@ pub(crate) const FILE_PATTERN: DiagnosticRule = diagnostic_rule(
     "@loomcli/plugins/config/file-pattern",
     "Invalid configuration file pattern",
     "The configuration plugin chooses a file's parser by its extension, so file holds glob syntax only as the whole extension of its name: * for any format the plugin reads, or a brace list of json, jsonc, toml, yaml, and yml, tried in the order listed.",
+);
+
+/// A literal or brace candidate names a format whose reader the application did not pass.
+pub(crate) const FILE_FORMAT: DiagnosticRule = diagnostic_rule(
+    "@loomcli/plugins/config/file-format",
+    "Configuration file format without its reader",
+    "The configuration plugin reads JSON itself and TOML and YAML through the readers the application passes in formats. A file whose extension names toml, yaml, or yml requires the corresponding reader.",
 );
 
 /// A configuration plugin `env` setting that is not an environment variable name.
@@ -154,7 +164,12 @@ pub(crate) fn is_entry_name(name: &str) -> bool {
 
 /// Panics with a settings fault's whole Developer Diagnostic, at the author's line.
 #[track_caller]
-fn raise(rule: DiagnosticRule, sentence: String, correction: &str, finding: Finding) -> ! {
+pub(super) fn raise(
+    rule: DiagnosticRule,
+    sentence: String,
+    correction: &str,
+    finding: Finding,
+) -> ! {
     let fault = DeclarationError::new(
         rule,
         DiagnosticParts::new(sentence)
@@ -164,10 +179,60 @@ fn raise(rule: DiagnosticRule, sentence: String, correction: &str, finding: Find
     panic!("{}", FailureFacts::message(&fault));
 }
 
-/// The candidates of the `file` setting, or the panic of its fault.
+/// The file pattern after path and pattern syntax have been checked.
+pub(crate) struct FilePattern {
+    written: String,
+    names: Vec<String>,
+}
+
+impl FilePattern {
+    /// Check that explicit candidates have their readers and expand a wildcard to readable names.
+    #[track_caller]
+    pub(crate) fn candidates(&self, readers: &[ConfigurationReader]) -> Vec<String> {
+        let wildcard = self.written.ends_with(".*");
+        let mut names = Vec::new();
+        for candidate in &self.names {
+            if let Some((extension, format)) =
+                reader_format(candidate).filter(|(_, format)| !has_reader(readers, *format))
+            {
+                if wildcard {
+                    continue;
+                }
+                let (sentence, correction) = reader_fault(extension, format);
+                raise(
+                    FILE_FORMAT,
+                    sentence,
+                    correction,
+                    Finding::new("configuration", vec![self.written.as_str().into()]).mark("0"),
+                );
+            }
+            names.push(candidate.clone());
+        }
+        names
+    }
+}
+
+/// The declaration diagnostic for a file pattern missing a reader.
+fn reader_fault(extension: &str, format: ReaderFormat) -> (String, &'static str) {
+    let sentence = format!(
+        "Plugin \"{IDENTITY}\" file names {} files, and formats holds no reader for them.",
+        escape_control_characters(extension),
+    );
+    let correction = match format {
+        ReaderFormat::Toml => {
+            "Pass TOML, from loomcli_plugins::config::toml with the config-toml feature, in formats."
+        }
+        ReaderFormat::Yaml => {
+            "Pass YAML, from loomcli_plugins::config::yaml with the config-yaml feature, in formats."
+        }
+    };
+    (sentence, correction)
+}
+
+/// Checks the path and pattern syntax at the setter call.
 #[track_caller]
-pub(crate) fn judge_file(file: &str) -> Vec<String> {
-    file_candidates(file).unwrap_or_else(|fault| {
+pub(crate) fn judge_file(file: &str) -> FilePattern {
+    let names = file_candidates(file).unwrap_or_else(|fault| {
         let (rule, sentence, correction) = fault.parts();
         raise(
             rule,
@@ -175,7 +240,11 @@ pub(crate) fn judge_file(file: &str) -> Vec<String> {
             correction,
             Finding::new("ConfigurationSettings::file", vec![file.into()]).mark("0"),
         )
-    })
+    });
+    FilePattern {
+        written: file.to_owned(),
+        names,
+    }
 }
 
 /// The `env` setting, or the panic of its fault.
