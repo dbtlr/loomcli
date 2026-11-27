@@ -8,10 +8,128 @@
 mod service_support;
 
 use std::fs;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{PermissionsExt, symlink};
 
 use loomcli_core::Build;
 use service_support::{Scenario, not_loaded, ran, run, sandbox};
+
+const UNIT_HOLDS_CONTROL: &str = "notes cannot write its service unit because a path, the description, or an environment variable holds a control character the unit cannot store. Remove the character, then run notes service install again.\n";
+
+#[tokio::test]
+async fn environment_controls_are_refused_before_any_write_or_manager_call() {
+    for platform in ["linux", "darwin"] {
+        for (name, value) in [("LESS\u{1b}", "plain"), ("LESS_TERMCAP_md", "\u{1b}[1m")] {
+            let box_ = sandbox();
+            let scenario = Scenario::default()
+                .platform(platform)
+                .answers(not_loaded())
+                .environment([(name, value)])
+                .output("logs/notes.log");
+            assert_eq!(
+                run(&box_, &["service", "install"], &scenario).await,
+                ran(1, "", UNIT_HOLDS_CONTROL)
+            );
+            assert!(!box_.unit_path(platform).exists());
+            assert!(!box_.record_path(platform).exists());
+            assert!(!box_.home.join("logs").exists());
+            assert!(box_.calls().is_empty());
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_newline_in_the_output_path_refuses_install_before_writing_the_unit() {
+    for platform in ["linux", "darwin"] {
+        let box_ = sandbox();
+        let scenario = Scenario::default()
+            .platform(platform)
+            .answers(not_loaded())
+            .output("logs/a.log\nExecStart=/bin/evil");
+        assert_eq!(
+            run(&box_, &["service", "install"], &scenario).await,
+            ran(1, "", UNIT_HOLDS_CONTROL),
+            "{platform}"
+        );
+        assert!(!box_.unit_path(platform).exists());
+        assert!(!box_.record_path(platform).exists());
+        assert!(!box_.home.join("logs").exists());
+        assert!(box_.calls().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn a_file_at_the_output_folder_refuses_install_before_writing_the_unit() {
+    let box_ = sandbox();
+    let folder = box_.home.join("logs");
+    fs::write(&folder, "").unwrap();
+    let scenario = Scenario::default().output("logs/console.log");
+    assert_eq!(
+        run(&box_, &["service", "install"], &scenario).await,
+        ran(
+            1,
+            "",
+            &format!(
+                "Cannot create the service output folder {} because a file sits where a folder is needed. Remove or rename the file, then run notes service install again.\n",
+                folder.display()
+            )
+        )
+    );
+    assert!(!box_.unit_path("linux").exists());
+    assert!(!box_.linux_record().exists());
+    assert!(box_.calls().is_empty());
+}
+
+#[tokio::test]
+async fn a_file_above_the_output_folder_refuses_install_before_writing_the_unit() {
+    let box_ = sandbox();
+    let blocked = box_.home.join("logs");
+    fs::write(&blocked, "").unwrap();
+    let scenario = Scenario::default().output("logs/nested/x.log");
+    assert_eq!(
+        run(&box_, &["service", "install"], &scenario).await,
+        ran(
+            1,
+            "",
+            &format!(
+                "Cannot create the service output folder {} because a file sits where a folder is needed. Remove or rename the file, then run notes service install again.\n",
+                blocked.join("nested").display()
+            )
+        )
+    );
+    assert!(!box_.unit_path("linux").exists());
+    assert!(!box_.linux_record().exists());
+    assert!(box_.calls().is_empty());
+}
+
+#[tokio::test]
+async fn an_unwritable_output_parent_refuses_install_with_the_permission_sentence() {
+    if rustix::process::geteuid().is_root() {
+        return;
+    }
+    let box_ = sandbox();
+    let parent = box_.home.join("logs");
+    fs::create_dir(&parent).unwrap();
+    let permissions = fs::metadata(&parent).unwrap().permissions();
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o555)).unwrap();
+    let scenario = Scenario::default().output("logs/nested/x.log");
+    let installed = run(&box_, &["service", "install"], &scenario).await;
+    fs::set_permissions(&parent, permissions).unwrap();
+
+    assert_eq!(
+        installed,
+        ran(
+            1,
+            "",
+            &format!(
+                "Cannot create the service output folder {} because you do not have permission to create it. Make the location writable, then run notes service install again.\n",
+                parent.join("nested").display()
+            )
+        )
+    );
+    assert!(!box_.unit_path("linux").exists());
+    assert!(!box_.linux_record().exists());
+    assert!(box_.calls().is_empty());
+}
 
 #[tokio::test]
 async fn a_source_or_development_build_exits_1_with_the_pinned_sentence_and_calls_nothing() {
@@ -187,14 +305,7 @@ async fn a_program_word_holding_a_newline_exits_1_with_nothing_written() {
         &Scenario::default().program(&["/opt/notes\n/bin/notes"]),
     )
     .await;
-    assert_eq!(
-        result,
-        ran(
-            1,
-            "",
-            "notes cannot write its service unit because a path or its description holds a control character. Install notes where its path has none.\n"
-        )
-    );
+    assert_eq!(result, ran(1, "", UNIT_HOLDS_CONTROL));
     assert!(!box_.systemd_path("com.acme.notes").exists());
     assert!(!box_.linux_record().exists());
     assert!(box_.calls().is_empty());
@@ -231,13 +342,12 @@ async fn a_damaged_or_unknown_format_service_json_fails_install_and_uninstall_an
 
 #[tokio::test]
 async fn a_control_character_in_the_description_or_the_home_refuses_and_other_characters_do_not() {
-    let sentence = "notes cannot write its service unit because a path or its description holds a control character. Install notes where its path has none.\n";
     for control in ['\u{0}', '\u{1f}', '\u{7f}', '\u{9f}'] {
         let box_ = sandbox();
         let scenario = Scenario::default().description(Some(&format!("Keep a{control}b")));
         assert_eq!(
             run(&box_, &["service", "install"], &scenario).await,
-            ran(1, "", sentence),
+            ran(1, "", UNIT_HOLDS_CONTROL),
             "{control:?}"
         );
         assert!(box_.calls().is_empty());

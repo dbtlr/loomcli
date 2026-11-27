@@ -14,11 +14,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use loomcli_core::{
-    Application, Build, Command, Context, Group, KillSignal, NoInputs, NoResult, Opt,
-    ProcessHandle, ProcessSignal, ReleaseFacts, RunOptions,
+    AnyPlugin, Application, Build, Command, Context, Env, Group, KillSignal, LogEvent, NoInputs,
+    NoResult, Opt, Plugin, ProcessHandle, ProcessSignal, ReleaseFacts, RunOptions,
 };
 #[cfg(feature = "format")]
 use loomcli_plugins::format::format;
+#[cfg(feature = "logging")]
+use loomcli_plugins::logging::{FileDestination, LogTarget, LoggingDestination, logging};
 use loomcli_plugins::service::{ServiceDetail, service};
 use loomcli_testing::{
     MockFields, MockProcess, MockTerminal, ProgramAnswer, StreamName, mock_process,
@@ -111,6 +113,32 @@ pub enum Probe {
     None,
     Rows,
     Throw,
+    Debug,
+}
+
+#[cfg(feature = "logging")]
+#[derive(Clone)]
+pub enum Logging {
+    Console,
+    Files(Vec<PathBuf>),
+}
+
+/// Observations of a configured output folder during install.
+#[derive(Clone)]
+pub struct OutputFolderWatch {
+    pub path: PathBuf,
+    pub at_manager_calls: Arc<Mutex<Vec<bool>>>,
+    pub log_events: Arc<Mutex<Vec<LogEvent>>>,
+}
+
+impl OutputFolderWatch {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            at_manager_calls: Arc::default(),
+            log_events: Arc::default(),
+        }
+    }
 }
 
 /// What the probe received, recorded for the test.
@@ -147,20 +175,23 @@ impl Drop for Sandbox {
     }
 }
 
-/// A fresh, empty directory under the system's temporary folder, named through no link.
+/// A fresh, empty directory under the workspace's scratch folder, named through no link.
 fn temporary_root() -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "loom-service-{}-{}-{nanos}",
-        std::process::id(),
-        COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::create_dir_all(&root).unwrap();
-    fs::canonicalize(root).unwrap()
+    let scratch = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.scratch/service-tests");
+    fs::create_dir_all(&scratch).unwrap();
+    loop {
+        let root = scratch.join(format!(
+            "{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        match fs::create_dir(&root) {
+            Ok(()) => return fs::canonicalize(root).unwrap(),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(error) => panic!("cannot make a service test sandbox: {error}"),
+        }
+    }
 }
 
 pub fn sandbox() -> Sandbox {
@@ -274,6 +305,12 @@ impl Sandbox {
 /// What a run needs besides the argument words.
 #[derive(Clone)]
 pub struct Scenario {
+    #[cfg(feature = "logging")]
+    pub logging: Option<Logging>,
+    pub environment: Option<Env>,
+    pub output: Option<String>,
+    pub stop_timeout: Option<u64>,
+    pub output_folder_watch: Option<OutputFolderWatch>,
     pub platform: String,
     pub program: Vec<String>,
     pub build: Build,
@@ -295,6 +332,12 @@ pub struct Scenario {
 impl Default for Scenario {
     fn default() -> Self {
         Self {
+            #[cfg(feature = "logging")]
+            logging: None,
+            environment: None,
+            output: None,
+            stop_timeout: None,
+            output_folder_watch: None,
             platform: "linux".to_owned(),
             program: vec!["/opt/notes/bin/notes".to_owned()],
             build: Build::Distributed,
@@ -316,6 +359,41 @@ impl Default for Scenario {
 }
 
 impl Scenario {
+    #[cfg(feature = "logging")]
+    pub fn log_files(mut self, paths: impl IntoIterator<Item = impl Into<PathBuf>>) -> Self {
+        self.logging = Some(Logging::Files(paths.into_iter().map(Into::into).collect()));
+        self
+    }
+
+    #[cfg(feature = "logging")]
+    pub fn log_to_console(mut self) -> Self {
+        self.logging = Some(Logging::Console);
+        self
+    }
+
+    pub fn environment(
+        mut self,
+        variables: impl IntoIterator<Item = (&'static str, &'static str)>,
+    ) -> Self {
+        self.environment = Some(
+            variables
+                .into_iter()
+                .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                .collect(),
+        );
+        self
+    }
+
+    pub fn output(mut self, path: &str) -> Self {
+        self.output = Some(path.to_owned());
+        self
+    }
+
+    pub fn stop_timeout(mut self, milliseconds: u64) -> Self {
+        self.stop_timeout = Some(milliseconds);
+        self
+    }
+
     pub fn platform(self, platform: &str) -> Self {
         Self {
             platform: platform.to_owned(),
@@ -372,6 +450,11 @@ impl Scenario {
         self
     }
 
+    pub fn with_env(mut self, name: &str, value: &str) -> Self {
+        self.env.push((name.to_owned(), Some(value.to_owned())));
+        self
+    }
+
     pub fn home(self, home: &str) -> Self {
         Self {
             home: Some(home.to_owned()),
@@ -403,9 +486,25 @@ impl Scenario {
 /// probe calls, and a group.
 pub fn application(sandbox: &Sandbox, scenario: &Scenario) -> App {
     let mut settings = service(&scenario.label, scenario.run.iter().map(String::as_str));
+    if let Some(variables) = scenario.environment.clone() {
+        settings = settings.environment(move |host| {
+            let mut variables = variables.clone();
+            variables.insert(
+                "PATH".to_owned(),
+                host.env.get("PATH").cloned().unwrap_or_default(),
+            );
+            Ok(variables)
+        });
+    }
+    if let Some(output) = &scenario.output {
+        settings = settings.output(output);
+    }
+    if let Some(timeout) = scenario.stop_timeout {
+        settings = settings.stop_timeout(timeout);
+    }
     if scenario.probe != Probe::None {
         let log = Arc::clone(&sandbox.probe_log);
-        let throws = scenario.probe == Probe::Throw;
+        let behavior = scenario.probe;
         settings = settings.probe(move |probe| {
             let log = Arc::clone(&log);
             Box::pin(async move {
@@ -414,8 +513,12 @@ pub fn application(sandbox: &Sandbox, scenario: &Scenario) -> App {
                     platform: probe.host.platform.clone(),
                     state: serde_json::to_value(probe.state).unwrap(),
                 });
-                if throws {
+                if behavior == Probe::Throw {
                     return Err(loomcli_core::FatalError::new("The probe failed.").into());
+                }
+                if behavior == Probe::Debug {
+                    probe.log.debug("The status probe ran.", ());
+                    return Ok(Vec::new());
                 }
                 match probe
                     .invoke(
@@ -435,37 +538,65 @@ pub fn application(sandbox: &Sandbox, scenario: &Scenario) -> App {
             })
         });
     }
-    let app = Application::new("notes");
+    let mut plugins: Vec<AnyPlugin> = Vec::new();
+    if let Some(watch) = &scenario.output_folder_watch {
+        let events = Arc::clone(&watch.log_events);
+        plugins.push(
+            Plugin::new("fixture/observer")
+                .on_log(move |event, _| {
+                    events.lock().unwrap().push(event.clone());
+                })
+                .into(),
+        );
+        #[cfg(feature = "verbose")]
+        plugins.push(loomcli_plugins::verbose::verbose().into());
+    }
     #[cfg(feature = "format")]
-    let app = app.plugins((format(), settings));
-    #[cfg(not(feature = "format"))]
-    let app = app.plugins((settings,));
+    plugins.push(format().into());
+    #[cfg(feature = "logging")]
+    match &scenario.logging {
+        Some(Logging::Console) => plugins.push(logging().target(LogTarget::Stderr).into()),
+        Some(Logging::Files(paths)) => {
+            let files = paths
+                .iter()
+                .map(|path| {
+                    FileDestination::new()
+                        .file(path.to_string_lossy())
+                        .level(loomcli_core::LogLevel::Error)
+                        .into()
+                })
+                .collect::<Vec<LoggingDestination>>();
+            plugins.push(logging().destinations(files).into());
+        }
+        None => {}
+    }
+    plugins.push(settings.into());
+    let app = Application::new("notes").plugins(plugins);
     let app = match &scenario.description {
         Some(None) => app,
         Some(Some(description)) => app.description(description.clone()),
         None => app.description("Keep notes in sync."),
     };
-    app.command(
-        Command::new("serve")
-            .description("Serve the notes.")
-            .option("port", Opt::string().description("The port to serve on."))
-            .option("verbose", Opt::boolean().description("Write more."))
-            .action(|context: Context| async move { context.out.print("serving").await }),
-    )
-    .command(
-        Command::new("health")
-            .description("Report the health.")
-            .action(|context: Context| async move { context.out.print("ok, v1.5.0").await }),
-    )
-    .command(
-        Command::new("cache")
-            .description("Manage the cache.")
-            .command(
-                Command::new("clear")
-                    .description("Clear the cache.")
-                    .action(|context: Context| async move { context.out.print("cleared").await }),
-            ),
-    )
+    let serve = Command::new("serve")
+        .description("Serve the notes.")
+        .option("port", Opt::string().description("The port to serve on."));
+    app.command(serve.action(|context: Context| async move { context.out.print("serving").await }))
+        .command(
+            Command::new("health")
+                .description("Report the health.")
+                .action(|context: Context| async move { context.out.print("ok, v1.5.0").await }),
+        )
+        .command(
+            Command::new("cache")
+                .description("Manage the cache.")
+                .command(
+                    Command::new("clear")
+                        .description("Clear the cache.")
+                        .action(
+                            |context: Context| async move { context.out.print("cleared").await },
+                        ),
+                ),
+        )
 }
 
 /// The cell the scripts raise the run's interrupt through, filled once the process exists.
@@ -479,6 +610,7 @@ fn manager_program(
     answers: Answers,
     missing: bool,
     cell: ProcessCell,
+    output_folder_watch: Option<OutputFolderWatch>,
 ) -> impl Fn(
     loomcli_testing::ProgramCall,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<ProgramAnswer>> + Send>>
@@ -489,9 +621,17 @@ fn manager_program(
         let calls = Arc::clone(&calls);
         let answers = answers.clone();
         let cell = Arc::clone(&cell);
+        let output_folder_watch = output_folder_watch.clone();
         Box::pin(async move {
             if missing {
                 return Err(io::Error::new(io::ErrorKind::NotFound, "no such program"));
+            }
+            if let Some(watch) = output_folder_watch {
+                watch
+                    .at_manager_calls
+                    .lock()
+                    .unwrap()
+                    .push(watch.path.is_dir());
             }
             let words = std::iter::once(name.to_owned())
                 .chain(call.args.iter().cloned())
@@ -587,6 +727,7 @@ fn fields_of(
                 scenario.answers.clone(),
                 scenario.missing.iter().any(|each| each == name),
                 Arc::clone(cell),
+                scenario.output_folder_watch.clone(),
             ),
         );
     }

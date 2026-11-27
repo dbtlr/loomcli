@@ -4,6 +4,8 @@ use std::path::Path;
 
 use loomcli_core::{escape_control_characters, nowrap};
 
+use super::status::ServiceConsoleCapture;
+
 /// Text escaped as a failure message quotes it.
 pub(super) fn shown(text: &str) -> String {
     escape_control_characters(text)
@@ -52,11 +54,32 @@ pub(super) fn changed(name: &str, path: &Path) -> String {
     )
 }
 
-/// A path or the description holds a control character the unit file cannot hold.
+/// A path, description, or environment variable holds a control character the unit cannot store.
 pub(super) fn control_character(name: &str) -> String {
     format!(
-        "{name} cannot write its service unit because a path or its description holds a control character. Install {name} where its path has none.",
+        "{name} cannot write its service unit because a path, the description, or an environment variable holds a control character the unit cannot store. Remove the character, then run {name} service install again.",
         name = shown(name)
+    )
+}
+
+pub(super) fn output_folder_blocked(name: &str, folder: &Path) -> String {
+    format!(
+        "Cannot create the service output folder {} because a file sits where a folder is needed. Remove or rename the file, then run {} service install again.",
+        shown_path(folder),
+        shown(name)
+    )
+}
+
+pub(super) fn output_folder_unwritable(name: &str, folder: &Path, read_only: bool) -> String {
+    let reason = if read_only {
+        "the file system is read-only"
+    } else {
+        "you do not have permission to create it"
+    };
+    format!(
+        "Cannot create the service output folder {} because {reason}. Make the location writable, then run {} service install again.",
+        shown_path(folder),
+        shown(name)
     )
 }
 
@@ -242,4 +265,24 @@ pub(super) fn unreadable(call: &UnreadableCall<'_>, code: i32) -> String {
         shown(call.target),
         shown(call.report)
     )
+}
+
+/// The redirected console file's path and its absence when it is missing.
+pub(super) fn output_row(path: &str, exists: bool) -> String {
+    let absence = if exists { "" } else { " (file missing)" };
+    format!("{}{absence}", shown(path))
+}
+
+/// A log file's path and the note for a file with no records yet.
+pub(super) fn log_file_row(path: &str, exists: bool) -> String {
+    let absence = if exists { "" } else { " (no records yet)" };
+    format!("{}{absence}", shown(path))
+}
+
+/// Where the manager sends the service's console output by default.
+pub(super) fn manager_log_row(capture: ServiceConsoleCapture) -> &'static str {
+    match capture {
+        ServiceConsoleCapture::Journald => "Service console output goes to journald.",
+        ServiceConsoleCapture::None => "Service console output goes nowhere: launchd discards it.",
+    }
 }

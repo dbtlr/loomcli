@@ -194,3 +194,34 @@ fn the_label_follows_the_grammar_at_the_call() {
         }
     }
 }
+
+#[test]
+fn invalid_unit_settings_mark_the_setter_argument() {
+    let output = panic_message(|| drop(service("com.acme.notes", ["serve"]).output("")))
+        .expect("empty output fails at the setter");
+    let timeout = panic_message(|| drop(service("com.acme.notes", ["serve"]).stop_timeout(0)))
+        .expect("zero stop timeout fails at the setter");
+    for (diagnostic, call, problem, correction) in [
+        (
+            output,
+            ".output(\"\")",
+            "setting \"output\" is empty.",
+            "Supply a file path or omit output.",
+        ),
+        (
+            timeout,
+            ".stop_timeout(0)",
+            "setting \"stop_timeout\" is not a positive whole number.",
+            "Supply a positive whole number of milliseconds or omit stop_timeout.",
+        ),
+    ] {
+        assert!(
+            diagnostic.contains("@loomcli/plugins/service/settings"),
+            "{diagnostic}"
+        );
+        assert!(diagnostic.contains(call), "{diagnostic}");
+        assert!(diagnostic.contains('^'), "{diagnostic}");
+        assert!(diagnostic.contains(problem), "{diagnostic}");
+        assert!(diagnostic.contains(correction), "{diagnostic}");
+    }
+}

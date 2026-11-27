@@ -12,8 +12,9 @@
 //! not record: a file at the unit's path that the record does not list refuses the install and the
 //! uninstall.
 //!
-//! The settings are the unit's reverse-DNS `label` and the `run` words the unit runs the
-//! application with. A label outside the grammar panics at the [`service()`] call with the
+//! The required settings are the unit's reverse-DNS `label` and the `run` words the unit runs the
+//! application with. The builder can also set the unit's environment, output file, and stop
+//! timeout. A label outside the grammar panics at the [`service()`] call with the
 //! `@loomcli/plugins/service/settings` diagnostic. On every graph build the plugin checks that the
 //! `run` words route to a Command that has an action; words that do not fail the build with
 //! `@loomcli/plugins/service/run-unrouted`.
@@ -55,28 +56,33 @@ mod systemd;
 mod tests;
 mod unit;
 
+use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use loomcli_core::{
-    AnyPlugin, BoxFuture, Command, Context, Error, Group, Host, InvocationOutcome,
+    AnyPlugin, BoxFuture, Command, Context, Env, Error, Group, Host, InvocationOutcome,
     InvocationValues, InvokeOptions, Log, NoInputs, NoResult, Plugin, Registration, ResultViews,
     RunSignal, ShutdownEvent, ValueResult, View, ViewContext,
 };
 
 use self::children::{ChildRun, Control, control, install_child, prepare, uninstall_child};
 use self::manager::OnShutdown;
-use self::status::{Subject, status_text};
+use self::status::{Subject, logs_of, output_of, status_text};
 use crate::PACKAGE_NAME;
 use crate::format::json;
 use crate::installation::exists;
 
-pub use self::status::{ServiceDetail, ServiceState, ServiceStatus};
+pub use self::status::{
+    ServiceConsoleCapture, ServiceDetail, ServiceFile, ServiceLogs, ServiceState, ServiceStatus,
+};
 
 /// The rows a probe returns, or the error that fails `status` on the ordinary failure path.
 pub type ProbeRows = Result<Vec<ServiceDetail>, Error>;
 
 /// The probe an application sets: called once by `status` for an installed unit.
-type Probe = Arc<dyn for<'a> Fn(ProbeContext<'a>) -> BoxFuture<'a, ProbeRows> + Send + Sync>;
+type Probe = Box<dyn for<'a> Fn(ProbeContext<'a>) -> BoxFuture<'a, ProbeRows> + Send + Sync>;
+
+type Environment = Box<dyn Fn(&Host) -> Result<Env, Error> + Send + Sync>;
 
 /// What the probe receives from `status`.
 #[non_exhaustive]
@@ -110,6 +116,9 @@ impl ProbeContext<'_> {
 pub struct Service {
     label: String,
     run: Vec<String>,
+    environment: Option<Environment>,
+    output: Option<String>,
+    stop_timeout: Option<NonZeroU64>,
     probe: Option<Probe>,
 }
 
@@ -127,22 +136,61 @@ pub fn service(label: &str, run: impl IntoIterator<Item = impl Into<String>>) ->
     Service {
         label: label.to_owned(),
         run: run.into_iter().map(Into::into).collect(),
+        environment: None,
+        output: None,
+        stop_timeout: None,
         probe: None,
     }
 }
 
 impl Service {
+    /// Sets the unit's environment from the host running `service install`. Use values safe to
+    /// write to a unit file that other local users can read. A callback error fails install
+    /// through the ordinary failure path.
+    pub fn environment<F>(mut self, environment: F) -> Self
+    where
+        F: Fn(&Host) -> Result<Env, Error> + Send + Sync + 'static,
+    {
+        self.environment = Some(Box::new(environment));
+        self
+    }
+
+    /// Sends the unit's stdout and stderr to the same file. A relative path resolves from the
+    /// host's home. Install creates the file's parent folder, and the manager opens the file.
+    ///
+    /// # Panics
+    ///
+    /// An empty path raises the `@loomcli/plugins/service/settings` diagnostic at this call.
+    #[track_caller]
+    pub fn output(mut self, path: impl Into<String>) -> Self {
+        let path = path.into();
+        settings::judge_output(&path);
+        self.output = Some(path);
+        self
+    }
+
+    /// Sets the manager's stop timeout in milliseconds. Set it above the Application's shutdown
+    /// timeout. Loom writes launchd's `ExitTimeOut` in whole seconds rounded up. On macOS 26.4
+    /// and later, launchd caps the effective timeout at 60 seconds.
+    ///
+    /// # Panics
+    ///
+    /// Zero raises the `@loomcli/plugins/service/settings` diagnostic at this call.
+    #[track_caller]
+    pub fn stop_timeout(mut self, milliseconds: u64) -> Self {
+        self.stop_timeout = Some(settings::judge_stop_timeout(milliseconds));
+        self
+    }
+
     /// Rows `status` adds under the unit, once the unit is installed. The probe is called once with
     /// the state `status` read, whatever it is. A probe that returns an error takes the ordinary
     /// failure path.
-    pub fn probe<F>(self, probe: F) -> Self
+    pub fn probe<F>(mut self, probe: F) -> Self
     where
         F: for<'a> Fn(ProbeContext<'a>) -> BoxFuture<'a, ProbeRows> + Send + Sync + 'static,
     {
-        Self {
-            probe: Some(Arc::new(probe)),
-            ..self
-        }
+        self.probe = Some(Box::new(probe));
+        self
     }
 
     /// The plugin: the `service` group and the graph check of the `run` words. Its identity is
@@ -159,12 +207,6 @@ impl From<Service> for AnyPlugin {
     fn from(settings: Service) -> Self {
         settings.plugin().into()
     }
-}
-
-/// What every child shares: the label and the run words.
-struct Shared {
-    label: String,
-    run: Vec<String>,
 }
 
 /// The run a child acts on, read from its action context.
@@ -199,17 +241,17 @@ enum Verb {
 }
 
 /// One child with no arguments and no options, its action reading the run.
-fn child(shared: &Arc<Shared>, name: &str, description: &str, verb: Verb) -> Command {
-    let shared = Arc::clone(shared);
+fn child(settings: &Arc<Service>, name: &str, description: &str, verb: Verb) -> Command {
+    let settings = Arc::clone(settings);
     Command::new(name)
         .description(description)
         .action(move |context: Context| {
-            let shared = Arc::clone(&shared);
+            let settings = Arc::clone(&settings);
             async move {
                 let on_shutdown = shutdown_of(&context);
-                let run = child_run(&context, &shared.label, &on_shutdown);
+                let run = child_run(&context, &settings.label, &on_shutdown);
                 match verb {
-                    Verb::Install => install_child(&run, &context.out, &shared.run).await,
+                    Verb::Install => install_child(&run, &context.out, &settings).await,
                     Verb::Uninstall => uninstall_child(&run, &context.out).await,
                     Verb::Control(each) => control(&run, &context.out, each).await,
                 }
@@ -219,11 +261,8 @@ fn child(shared: &Arc<Shared>, name: &str, description: &str, verb: Verb) -> Com
 
 /// `status`: the checks, then the manager's state, the probe's rows for an installed unit, and one
 /// result. It exits 0 whenever it produced a report.
-fn status_command(
-    shared: &Arc<Shared>,
-    probe: Option<Probe>,
-) -> Command<NoInputs, ValueResult<ServiceStatus>> {
-    let shared = Arc::clone(shared);
+fn status_command(settings: &Arc<Service>) -> Command<NoInputs, ValueResult<ServiceStatus>> {
+    let settings = Arc::clone(settings);
     let views = ResultViews::new()
         .view(
             "text",
@@ -236,21 +275,23 @@ fn status_command(
         .result(views)
         .action(
             move |context: Context<NoInputs, ValueResult<ServiceStatus>>| {
-                let shared = Arc::clone(&shared);
-                let probe = probe.clone();
+                let settings = Arc::clone(&settings);
                 async move {
                     let on_shutdown = shutdown_of(&context);
-                    let run = child_run(&context, &shared.label, &on_shutdown);
+                    let run = child_run(&context, &settings.label, &on_shutdown);
                     let prepared = prepare(&run)?;
+                    // Snapshot the destinations before the manager calls can log to them.
+                    let output = prepared.output_path(&settings).map(output_of);
+                    let logs = logs_of(&context.graph, &context.host, output.is_some())?;
                     let installed = exists(&prepared.unit.path)?;
                     let reading = prepared.backend.read(&prepared.unit, installed).await?;
                     let subject = Subject {
-                        label: &shared.label,
+                        label: &settings.label,
                         unit: &prepared.unit.path,
                         installed,
                     };
                     let state = ServiceState::of(&subject, reading);
-                    let details = match (&probe, installed) {
+                    let details = match (&settings.probe, installed) {
                         (Some(probe), true) => {
                             probe(ProbeContext {
                                 state: &state,
@@ -265,7 +306,11 @@ fn status_command(
                     };
                     context
                         .out
-                        .results(ServiceStatus::of(&state, details))
+                        .results(ServiceStatus {
+                            output,
+                            logs,
+                            ..ServiceStatus::of(&state, details)
+                        })
                         .await
                 }
             },
@@ -274,41 +319,38 @@ fn status_command(
 
 /// The `service` group and its six children.
 fn service_command(settings: Service) -> Command<NoInputs, NoResult, Group> {
-    let shared = Arc::new(Shared {
-        label: settings.label,
-        run: settings.run,
-    });
+    let settings = Arc::new(settings);
     Command::new("service")
         .description("Run this application as a background service.")
         .command(child(
-            &shared,
+            &settings,
             "install",
             "Install the service and start it.",
             Verb::Install,
         ))
         .command(child(
-            &shared,
+            &settings,
             "uninstall",
             "Stop the service and remove it.",
             Verb::Uninstall,
         ))
         .command(child(
-            &shared,
+            &settings,
             "start",
             "Start the service.",
             Verb::Control(Control::Start),
         ))
         .command(child(
-            &shared,
+            &settings,
             "stop",
             "Stop the service.",
             Verb::Control(Control::Stop),
         ))
         .command(child(
-            &shared,
+            &settings,
             "restart",
             "Restart the service.",
             Verb::Control(Control::Restart),
         ))
-        .command(status_command(&shared, settings.probe))
+        .command(status_command(&settings))
 }

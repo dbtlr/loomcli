@@ -15,6 +15,126 @@ use service_support::{
 };
 
 #[tokio::test]
+async fn systemd_renders_environment_output_and_timeout_and_uninstall_keeps_output() {
+    let box_ = sandbox();
+    let bin = box_.root.join("bin");
+    let output = box_.home.join("logs/nested/notes \"%$.log");
+    let zed = "space \"quote\" & < > % $HOME \\tail\nnext\rreturn\ttab";
+    let scenario = Scenario::default()
+        .with_env("PATH", bin.to_str().unwrap())
+        .environment([("ZED", zed), ("EMPTY", "")])
+        .output("logs/nested/notes \"%$.log")
+        .stop_timeout(180_001);
+    let installed = run(&box_, &["service", "install"], &scenario).await;
+    assert_eq!(installed.status, 0, "{}", installed.stderr);
+    assert!(installed.stdout.is_empty());
+    assert!(output.parent().unwrap().is_dir());
+    assert!(!output.exists());
+
+    let directives = [
+        "Environment=\"EMPTY=\"".to_owned(),
+        format!("Environment=\"PATH={}\"", bin.display()),
+        r#"Environment="ZED=space \"quote\" & < > %% $HOME \\tail\nnext\rreturn\ttab""#.to_owned(),
+        format!(
+            "StandardOutput=append:{}/logs/nested/notes \"%%$.log",
+            box_.home.display()
+        ),
+        format!(
+            "StandardError=append:{}/logs/nested/notes \"%%$.log",
+            box_.home.display()
+        ),
+        "TimeoutStopSec=180001ms".to_owned(),
+    ];
+    assert_eq!(
+        fs::read_to_string(box_.unit_path("linux")).unwrap(),
+        box_.pinned_unit().replace(
+            "\n\n[Install]",
+            &format!("\n{}\n\n[Install]", directives.join("\n"))
+        )
+    );
+
+    fs::write(&output, "service output\n").unwrap();
+    let again = scenario
+        .clone()
+        .environment([("EMPTY", ""), ("ZED", zed)])
+        .output("logs/unused/../nested/./notes \"%$.log");
+    let reinstalled = run(&box_, &["service", "install"], &again).await;
+    assert_eq!(reinstalled.status, 0, "{}", reinstalled.stderr);
+    assert!(reinstalled.stderr.contains("is unchanged."));
+    let uninstalled = run(&box_, &["service", "uninstall"], &scenario).await;
+    assert_eq!(uninstalled.status, 0, "{}", uninstalled.stderr);
+    assert_eq!(fs::read_to_string(output).unwrap(), "service output\n");
+}
+
+#[tokio::test]
+async fn launchd_renders_environment_and_output_as_xml_and_rounds_timeout_up() {
+    let box_ = sandbox();
+    let bin = box_.root.join("bin");
+    let output = box_.home.join("logs/notes & < > \" ' %$.log");
+    let scenario = Scenario::darwin()
+        .answers(not_loaded())
+        .with_env("PATH", bin.to_str().unwrap())
+        .environment([
+            (
+                "ZED",
+                "space \"quote\" & < > % $HOME \\tail\nnext\rreturn\ttab",
+            ),
+            ("EMPTY", ""),
+        ])
+        .output(output.to_str().unwrap())
+        .stop_timeout(180_001);
+    let installed = run(&box_, &["service", "install"], &scenario).await;
+    assert_eq!(installed.status, 0, "{}", installed.stderr);
+    assert!(installed.stdout.is_empty());
+    assert!(output.parent().unwrap().is_dir());
+    assert!(!output.exists());
+
+    let path = format!(
+        "  <string>{}/logs/notes &amp; &lt; &gt; &quot; &apos; %$.log</string>",
+        box_.home.display()
+    );
+    let directives = [
+        "  <key>EnvironmentVariables</key>",
+        "  <dict>",
+        "    <key>EMPTY</key>",
+        "    <string></string>",
+        "    <key>PATH</key>",
+        &format!("    <string>{}</string>", bin.display()),
+        "    <key>ZED</key>",
+        "    <string>space &quot;quote&quot; &amp; &lt; &gt; % $HOME \\tail\nnext&#13;return\ttab</string>",
+        "  </dict>",
+        "  <key>StandardOutPath</key>",
+        &path,
+        "  <key>StandardErrorPath</key>",
+        &path,
+        "  <key>ExitTimeOut</key>",
+        "  <integer>181</integer>",
+    ];
+    assert_eq!(
+        fs::read_to_string(box_.unit_path("darwin")).unwrap(),
+        box_.pinned_plist().replace(
+            "\n</dict>",
+            &format!("\n{}\n</dict>", directives.join("\n"))
+        )
+    );
+}
+
+#[tokio::test]
+async fn launchd_escapes_environment_variable_names_as_xml_keys() {
+    let box_ = sandbox();
+    let scenario = Scenario::darwin()
+        .answers(not_loaded())
+        .environment([("A&B<C", "value")]);
+    let installed = run(&box_, &["service", "install"], &scenario).await;
+    assert_eq!(installed.status, 0, "{}", installed.stderr);
+    let plist = fs::read_to_string(box_.unit_path("darwin")).unwrap();
+    assert!(
+        plist.contains("    <key>A&amp;B&lt;C</key>\n    <string>value</string>\n"),
+        "{plist}"
+    );
+}
+
+#[tokio::test]
 async fn a_distributed_install_on_linux_writes_the_pinned_unit_records_it_and_reloads_enables_and_restarts_and_a_second_is_unchanged()
  {
     let box_ = sandbox();

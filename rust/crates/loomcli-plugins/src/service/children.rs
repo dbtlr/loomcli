@@ -2,11 +2,14 @@
 //! `restart`. Each makes the same checks first, then acts through the backend and the installed-files
 //! module, with the unit recorded in the plugin's file `service.json`.
 
+use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use loomcli_core::{Build, Env, Error, FatalError, Host, Out, RunSignal};
 
-use super::backend::{Backend, Unit};
+use super::Service;
+use super::backend::{Backend, Unit, normalized};
 use super::manager::{Manager, OnShutdown};
 use super::messages::{self, Child};
 use super::unit::UnitValues;
@@ -39,6 +42,13 @@ pub(super) struct Prepared<'a> {
     pub(super) backend: Backend,
     home: &'a Path,
     record: PathBuf,
+}
+
+impl Prepared<'_> {
+    /// Resolves the output path against the unit's home without looking at the file system.
+    pub(super) fn output_path(&self, settings: &Service) -> Option<PathBuf> {
+        Some(normalized(&self.home.join(settings.output.as_deref()?)))
+    }
 }
 
 /// The managers' environment: the host's, which on Linux gains `/run/user/<uid>` for an absent
@@ -127,34 +137,81 @@ fn refuse(name: &str, refused: &[Refusal]) -> Result<(), FatalError> {
     }
 }
 
-/// The unit's text, or the refusal of a value the file cannot hold. The description is read on one
-/// line first, as help reads it, so only a path or a character that form keeps is refused.
+/// Renders the unit after checking that its paths, description, and environment can be stored.
 fn render_unit(
     prepared: &Prepared<'_>,
     run: &ChildRun<'_>,
-    words: &[String],
-) -> Result<String, FatalError> {
+    settings: &Service,
+    output: Option<&Path>,
+) -> Result<String, Error> {
     let description = run
         .description
         .map_or_else(|| run.name.to_owned(), single_line);
     let home = prepared.home.to_string_lossy();
-    let all: Vec<String> = run.host.program.iter().chain(words).cloned().collect();
+    let output = output.map(Path::to_string_lossy);
     let holds = run
         .host
         .program
         .iter()
         .map(String::as_str)
         .chain([description.as_str(), &home])
+        .chain(output.as_deref())
         .any(|text| text.chars().any(char::is_control));
     if holds {
-        return Err(FatalError::new(messages::control_character(run.name)));
+        return Err(FatalError::new(messages::control_character(run.name)).into());
     }
+
+    let environment = match &settings.environment {
+        Some(environment) => environment(run.host)?,
+        None => Env::new(),
+    };
+    let mut environment: Vec<_> = environment.into_iter().collect();
+    if environment.iter().any(|(name, value)| {
+        name.chars()
+            .chain(value.chars())
+            .any(|character| character.is_control() && !matches!(character, '\t' | '\n' | '\r'))
+    }) {
+        return Err(FatalError::new(messages::control_character(run.name)).into());
+    }
+    environment
+        .sort_unstable_by(|(left, _), (right, _)| left.encode_utf16().cmp(right.encode_utf16()));
+    let words: Vec<String> = run
+        .host
+        .program
+        .iter()
+        .chain(&settings.run)
+        .cloned()
+        .collect();
     Ok(prepared.backend.render(&UnitValues {
         label: run.label,
-        words: &all,
+        words: &words,
         home: &home,
         description: &description,
+        environment: &environment,
+        output: output.as_deref(),
+        stop_timeout: settings.stop_timeout,
     }))
+}
+
+/// Creates the parent folder without opening the output file.
+fn create_output_folder(name: &str, output: &Path) -> Result<(), Error> {
+    let folder = output.parent().unwrap_or(output);
+    fs::create_dir_all(folder).map_err(|error| {
+        let sentence = match error.kind() {
+            ErrorKind::NotADirectory | ErrorKind::AlreadyExists => {
+                messages::output_folder_blocked(name, folder)
+            }
+            ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => {
+                messages::output_folder_unwritable(
+                    name,
+                    folder,
+                    error.kind() == ErrorKind::ReadOnlyFilesystem,
+                )
+            }
+            _ => return error.into(),
+        };
+        FatalError::new(sentence).into()
+    })
 }
 
 /// A text with each line break, CRLF or one terminator, read as one space.
@@ -227,14 +284,18 @@ async fn write_unit(
 pub(super) async fn install_child(
     run: &ChildRun<'_>,
     out: &Out,
-    words: &[String],
+    settings: &Service,
 ) -> Result<(), Error> {
     let prepared = prepare(run)?;
     require_distributed(run)?;
-    let text = render_unit(&prepared, run, words)?;
+    let output = prepared.output_path(settings);
+    let text = render_unit(&prepared, run, settings, output.as_deref())?;
     let unit = &prepared.unit;
     let files = recorded_files(&prepared, Child::Install)?;
     refuse(run.name, &target_refusals(&[unit.path.as_path()], &files)?)?;
+    if let Some(output) = output {
+        create_output_folder(run.name, &output)?;
+    }
     let unchanged = is_unchanged(&unit.path, &text, &files)?;
     if unchanged {
         out.info(&messages::unchanged(&unit.path)).await?;

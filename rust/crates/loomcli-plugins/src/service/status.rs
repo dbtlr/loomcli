@@ -1,11 +1,17 @@
 //! What `status` reports: the state the manager and the file system gave, the probe's rows, and
 //! the text view that prints them.
 
-use loomcli_core::{ViewContext, nowrap};
+use std::fs;
+use std::path::PathBuf;
+
+use loomcli_core::{
+    CommandGraph, DirectoryFacts, Error, Host, ViewContext, nowrap, read_extension, width,
+};
 use serde::Serialize;
 
 use super::backend::Reading;
-use super::messages::shown;
+use super::messages::{self, shown};
+use crate::logging::extension::{LOGGING_FILES, resolve_logging_files};
 
 /// The spaces between the longest row name and every row's value.
 const GUTTER: usize = 2;
@@ -54,7 +60,45 @@ pub struct ServiceState {
     pub notes: Vec<String>,
 }
 
-/// The result `status` sends: the state, then the probe's rows.
+/// A file destination `status` inspected before calling the service manager.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct ServiceFile {
+    /// The file's absolute path.
+    pub path: String,
+    /// Whether the destination exists. Console output requires a regular file.
+    pub exists: bool,
+}
+
+/// The generated unit's default console capture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ServiceConsoleCapture {
+    /// systemd sends console output to journald.
+    Journald,
+    /// launchd discards console output.
+    None,
+}
+
+/// Log files resolved for the status host, or the manager's capture when it handles console output.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ServiceLogs {
+    /// The logging plugin's files in declaration order.
+    Files {
+        /// Each file's path and existence.
+        files: Vec<ServiceFile>,
+    },
+    /// The manager's console capture when the logging plugin declares no files and output is unset.
+    Manager {
+        /// Where the manager sends console output.
+        capture: ServiceConsoleCapture,
+    },
+}
+
+/// The result `status` sends: the state, the probe's rows, and configured destinations.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct ServiceStatus {
@@ -75,6 +119,12 @@ pub struct ServiceStatus {
     pub notes: Vec<String>,
     /// The probe's rows, or none.
     pub details: Vec<ServiceDetail>,
+    /// The configured stdout and stderr file, when set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<ServiceFile>,
+    /// Where logs go, when the logging plugin provides its file fact.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logs: Option<ServiceLogs>,
 }
 
 /// Where `status` read the state: the label, the unit's path, and whether a file is there.
@@ -111,8 +161,51 @@ impl ServiceStatus {
             pid: state.pid,
             notes: state.notes.clone(),
             details,
+            output: None,
+            logs: None,
         }
     }
+}
+
+/// Inspects the configured console output without creating it.
+pub(super) fn output_of(path: PathBuf) -> ServiceFile {
+    ServiceFile {
+        exists: fs::metadata(&path).is_ok_and(|metadata| metadata.is_file()),
+        path: path.to_string_lossy().into_owned(),
+    }
+}
+
+/// Resolves the logging plugin's file fact against the status host without creating files.
+pub(super) fn logs_of(
+    graph: &CommandGraph,
+    host: &Host,
+    has_output: bool,
+) -> Result<Option<ServiceLogs>, Error> {
+    let Some(facts) = read_extension(&graph.root, &LOGGING_FILES)? else {
+        return Ok(None);
+    };
+    if facts.files.is_empty() {
+        return Ok((!has_output).then_some(ServiceLogs::Manager {
+            capture: if host.platform == "linux" {
+                ServiceConsoleCapture::Journald
+            } else {
+                ServiceConsoleCapture::None
+            },
+        }));
+    }
+    let directories = DirectoryFacts::new(host.env.clone(), &host.home, &host.platform);
+    let resolved = resolve_logging_files(&facts, &graph.name, &directories);
+    let mut files = Vec::with_capacity(resolved.files.len());
+    for file in resolved.files {
+        // A log file resolves whenever the home is absolute, and the service's own checks have
+        // already refused a home that is not, so this error reaches no run.
+        let path = file.path?;
+        files.push(ServiceFile {
+            exists: path.exists(),
+            path: path.to_string_lossy().into_owned(),
+        });
+    }
+    Ok(Some(ServiceLogs::Files { files }))
 }
 
 /// The summary after the label: running with its pid, running, or the state word.
@@ -126,18 +219,27 @@ fn summary_of(status: &ServiceStatus) -> String {
     }
 }
 
-/// A string's length in UTF-16 units, which is how the reference pads its row names.
-fn units(text: &str) -> usize {
-    text.encode_utf16().count()
-}
-
-/// The text view: `<label>: <summary>`, then the unit's path, each detail, and each note as
-/// two-space-indented rows, the names padded to the longest name plus two spaces. Manager words and
-/// paths are escaped, and the unit's path is kept whole for line breaking; the probe's names and
-/// values are printed as the author gives them.
+/// Renders the summary and aligned rows. File paths stay whole and the probe rows appear as given.
 pub(super) fn status_text(status: &ServiceStatus, context: &ViewContext) -> String {
     let quoted = |text: &str| context.style.escape(&shown(text));
     let mut rows: Vec<(String, String)> = vec![("unit".to_owned(), nowrap(&quoted(&status.unit)))];
+    if let Some(output) = &status.output {
+        let row = messages::output_row(&output.path, output.exists);
+        rows.push(("output".to_owned(), nowrap(&context.style.escape(&row))));
+    }
+    match &status.logs {
+        Some(ServiceLogs::Files { files }) => {
+            rows.extend(files.iter().map(|file| {
+                let row = messages::log_file_row(&file.path, file.exists);
+                ("log".to_owned(), nowrap(&context.style.escape(&row)))
+            }));
+        }
+        Some(ServiceLogs::Manager { capture }) => {
+            let row = messages::manager_log_row(*capture);
+            rows.push(("log".to_owned(), context.style.escape(row)));
+        }
+        None => {}
+    }
     rows.extend(
         status
             .details
@@ -150,14 +252,14 @@ pub(super) fn status_text(status: &ServiceStatus, context: &ViewContext) -> Stri
             .iter()
             .map(|note| ("note".to_owned(), quoted(note))),
     );
-    let width = rows.iter().map(|(name, _)| units(name)).max().unwrap_or(0) + GUTTER;
+    let column = rows.iter().map(|(name, _)| width(name)).max().unwrap_or(0) + GUTTER;
     let mut text = format!(
         "{}: {}\n",
         quoted(&status.label),
         quoted(&summary_of(status))
     );
     for (name, value) in &rows {
-        let padding = " ".repeat(width.saturating_sub(units(name)));
+        let padding = " ".repeat(column - width(name));
         text.push_str(&format!("{INDENT}{name}{padding}{value}\n"));
     }
     text
