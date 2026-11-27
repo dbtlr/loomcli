@@ -251,6 +251,21 @@ impl<I, R, S: State> Application<I, R, S> {
         application.retyped()
     }
 
+    /// Applies a reusable set of local options and groups to the root.
+    #[track_caller]
+    pub fn options(
+        self,
+        set: &crate::commands::OptionSet,
+    ) -> Application<I, R, <S as State>::Declared>
+    where
+        S: Open,
+    {
+        let mut application = self;
+        let declared = application.declared();
+        raise(set.apply(&mut declared.root, &declared.global_table));
+        application.retyped()
+    }
+
     /// Declares standalone stdin for the root's action.
     #[track_caller]
     pub fn stdin(self, stdin: Stdin) -> Application<I, R, <S as State>::Declared>
@@ -282,6 +297,22 @@ impl<I, R, S: State> Application<I, R, S> {
         let mut application = self;
         raise(application.declared().root.declare_terminal_need());
         application.retyped()
+    }
+
+    /// Requires each named local option when `option` is supplied on the root.
+    #[track_caller]
+    pub fn requires(self, option: &str, needed: &[&str]) -> Self
+    where
+        S: Open,
+    {
+        let mut app = self;
+        let names = crate::inputs::groups::requirement_members(option, needed);
+        raise(
+            app.declared()
+                .root
+                .declare_group(crate::inspection::OptionGroupKind::Requires, &names),
+        );
+        app
     }
 
     /// Declares that at most one of these root-local options is supplied.

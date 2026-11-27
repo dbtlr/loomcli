@@ -95,6 +95,8 @@ pub mod mcp;
 #[cfg(any(feature = "format-views", feature = "manifest"))]
 #[cfg_attr(not(feature = "format-views"), allow(dead_code))]
 mod messages;
+#[cfg(any(feature = "help-views", feature = "manifest"))]
+mod option_groups;
 #[cfg(feature = "plain")]
 pub mod plain;
 #[cfg(feature = "prose")]

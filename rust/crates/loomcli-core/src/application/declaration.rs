@@ -63,6 +63,7 @@ pub(crate) fn global_site(name: &str, decl: &OptionDecl) -> InputSite {
         receiver: None,
         path: Vec::new(),
         name: name.to_owned(),
+        origin: Default::default(),
         config: decl.literal(),
         subject: format!("Global option {}", quoted(name)),
     }
@@ -380,6 +381,7 @@ impl ApplicationDeclaration {
         )?;
         let mut own = self.own_globals.clone();
         own.push(OptionInput {
+            origin: Default::default(),
             name: name.to_owned(),
             decl,
             extensions,
@@ -435,6 +437,10 @@ impl ApplicationDeclaration {
             DeclarationCall::Passthrough(mode) => (
                 "Global inputs declare passthrough, which only a Command reads.".to_owned(),
                 Finding::new("passthrough", vec![mode.literal()]).mark("0"),
+            ),
+            DeclarationCall::Options(_) => (
+                "Global inputs declare an option set, which only a Command takes.".to_owned(),
+                Finding::new("options", vec![Literal::Opaque]).mark("0"),
             ),
             DeclarationCall::Group(_, names) => (
                 "Global inputs declare an option group, which only a Command declares.".to_owned(),

@@ -48,6 +48,7 @@ pub struct DeclaredDefault {
 
 /// The kind of an option group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub enum OptionGroupKind {
     /// At most one member is supplied.
     #[serde(rename = "exclusive")]
@@ -58,16 +59,70 @@ pub enum OptionGroupKind {
     /// All members or none are supplied.
     #[serde(rename = "requiredTogether")]
     RequiredTogether,
+    /// Supplying one option requires each of the options it names.
+    #[serde(rename = "requires")]
+    Requires,
 }
 
-/// A declared option group. Keys: `kind`, `options`.
+/// A declared relationship over local options, in declaration order.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[non_exhaustive]
-pub struct OptionGroup {
-    /// The group's kind.
-    pub kind: OptionGroupKind,
-    /// The members, by declared name.
-    pub options: Vec<String>,
+#[serde(tag = "kind")]
+pub enum OptionGroup {
+    /// At most one member claims the group.
+    #[non_exhaustive]
+    #[serde(rename = "exclusive")]
+    Exclusive {
+        /// The members, by declared name.
+        options: Vec<String>,
+    },
+    /// At least one member is supplied.
+    #[non_exhaustive]
+    #[serde(rename = "oneRequired")]
+    OneRequired {
+        /// The members, by declared name.
+        options: Vec<String>,
+    },
+    /// All members or none are supplied.
+    #[non_exhaustive]
+    #[serde(rename = "requiredTogether")]
+    RequiredTogether {
+        /// The members, by declared name.
+        options: Vec<String>,
+    },
+    /// Supplying one option requires each of the options it names.
+    #[non_exhaustive]
+    #[serde(rename = "requires")]
+    Requires {
+        /// The declared name of the option that has the requirement.
+        option: String,
+        /// The declared names of the options it needs, in order.
+        requires: Vec<String>,
+    },
+}
+
+impl OptionGroup {
+    /// The kind of relationship this group declares.
+    #[must_use]
+    pub fn kind(&self) -> OptionGroupKind {
+        match self {
+            Self::Exclusive { .. } => OptionGroupKind::Exclusive,
+            Self::OneRequired { .. } => OptionGroupKind::OneRequired,
+            Self::RequiredTogether { .. } => OptionGroupKind::RequiredTogether,
+            Self::Requires { .. } => OptionGroupKind::Requires,
+        }
+    }
+
+    /// Every member's declared name, with a requirement's trigger first.
+    pub fn members(&self) -> impl Iterator<Item = &str> {
+        let (first, others) = match self {
+            Self::Exclusive { options }
+            | Self::OneRequired { options }
+            | Self::RequiredTogether { options } => (None, options),
+            Self::Requires { option, requires } => (Some(option.as_str()), requires),
+        };
+        first.into_iter().chain(others.iter().map(String::as_str))
+    }
 }
 
 /// A result's kind.

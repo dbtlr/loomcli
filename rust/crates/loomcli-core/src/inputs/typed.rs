@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::__private::RawValue;
-use crate::commands::Passthrough;
+use crate::commands::{OptionSet, Passthrough};
 use crate::failures::Error;
 
 use super::{ArgumentDecl, Content, OptionDecl, Stdin};
@@ -42,6 +42,17 @@ pub trait Inputs: Sized + Send + Sync + 'static {
 )]
 pub trait GlobalInputs: Inputs {}
 
+/// Typed local options that can be applied through an `#[inputs(flatten)]` field.
+/// `#[derive(Inputs)]` implements this for a struct marked `#[inputs(option_set)]`.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a typed option set",
+    note = "derive Inputs with #[inputs(option_set)] on a struct of local options"
+)]
+pub trait OptionSetInputs: Inputs {
+    /// Builds this struct's local options and groups.
+    fn option_set() -> OptionSet;
+}
+
 /// The inputs of a declaration that reads none typed. Its action reads by name.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NoInputs;
@@ -64,7 +75,7 @@ impl GlobalInputs for NoInputs {}
 
 /// The builder calls an `Inputs` struct makes, collected in call order and then applied to the
 /// Command, Application, or plugin that takes the struct, at that call, through that declaration's
-/// own `argument()`, `option()`, `stdin()`, `passthrough()`, and group calls.
+/// own `argument()`, `option()`, `options()`, `stdin()`, `passthrough()`, and group calls.
 #[derive(Clone, Default)]
 #[must_use]
 pub struct Declarations {
@@ -76,6 +87,7 @@ pub struct Declarations {
 pub(crate) enum DeclarationCall {
     Argument(String, ArgumentDecl),
     Option(String, OptionDecl),
+    Options(OptionSet),
     Stdin(Stdin),
     Passthrough(Passthrough),
     Group(crate::inspection::OptionGroupKind, Vec<String>),
@@ -98,6 +110,12 @@ impl Declarations {
     pub fn option(mut self, name: &str, option: impl Into<OptionDecl>) -> Self {
         self.calls
             .push(DeclarationCall::Option(name.to_owned(), option.into()));
+        self
+    }
+
+    /// Applies a reusable set at this position in the declaration.
+    pub fn options(mut self, set: &OptionSet) -> Self {
+        self.calls.push(DeclarationCall::Options(set.clone()));
         self
     }
 
@@ -126,6 +144,12 @@ impl Declarations {
     /// Declares that these options are supplied together or not at all.
     pub fn required_together(self, names: &[&str]) -> Self {
         self.group(crate::inspection::OptionGroupKind::RequiredTogether, names)
+    }
+
+    /// Requires each named local option when `option` is supplied.
+    pub fn requires(self, option: &str, needed: &[&str]) -> Self {
+        let names = super::groups::requirement_members(option, needed);
+        self.group(crate::inspection::OptionGroupKind::Requires, &names)
     }
 
     fn group(mut self, kind: crate::inspection::OptionGroupKind, names: &[&str]) -> Self {
@@ -299,6 +323,13 @@ impl InputValues {
     #[must_use]
     pub fn with_option(mut self, name: &str, value: impl IntoInputValue) -> Self {
         self.options.insert(name.to_owned(), value.into_input());
+        self
+    }
+
+    /// Adds the local options extracted from a flattened input set, keyed by declared name.
+    #[must_use]
+    pub fn with_options_from(mut self, set: Self) -> Self {
+        self.options.extend(set.options);
         self
     }
 

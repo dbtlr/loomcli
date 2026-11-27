@@ -818,3 +818,75 @@ fn arity_manpage_entries_repeat_placeholders_and_explain_the_delimiter() {
     assert!(page.contains("2 values separated by"), "{page}");
     assert!(page.contains("default: 800 600"), "{page}");
 }
+
+fn pick() -> Command<NoInputs, NoResult, loomcli_core::Fresh> {
+    Command::new("pick")
+        .description("Pick a format.")
+        .option("json", Opt::boolean().description("Use JSON."))
+        .option("yaml", Opt::boolean().description("Use YAML."))
+        .option("toml", Opt::boolean().description("Use TOML."))
+}
+
+fn pick_page(command: Command<NoInputs, NoResult, loomcli_core::Fresh>) -> String {
+    let app = Application::new("kit").command(command.action(noop));
+    pages_of(&app.inspect().unwrap())
+        .remove("kit-pick.1")
+        .unwrap()
+}
+
+#[test]
+fn an_exclusive_group_prints_its_own_paragraph() {
+    let page = pick_page(pick().exclusive(&["json", "yaml"]));
+    assert!(
+        page.contains(concat!(
+            ".PP\n",
+            r"Use at most one of \-\-json and \-\-yaml.",
+            "\n"
+        )),
+        "{page}"
+    );
+}
+
+#[test]
+fn a_one_required_group_joins_three_spellings() {
+    let page = pick_page(pick().one_required(&["json", "yaml", "toml"]));
+    assert!(
+        page.contains(concat!(
+            ".PP\n",
+            r"Supply at least one of \-\-json, \-\-yaml, and \-\-toml.",
+            "\n"
+        )),
+        "{page}"
+    );
+}
+
+#[test]
+fn a_required_together_group_prints_its_sentence() {
+    let page = pick_page(pick().required_together(&["json", "yaml"]));
+    assert!(
+        page.contains(concat!(
+            ".PP\n",
+            r"Use \-\-json and \-\-yaml together.",
+            "\n"
+        )),
+        "{page}"
+    );
+}
+
+#[test]
+fn a_group_that_claims_stdin_prints_the_caveat() {
+    let page = pick_page(
+        Command::new("pick")
+            .option("file", Opt::content().stdin().description("The file."))
+            .option("url", Opt::string().description("The address."))
+            .one_required(&["file", "url"]),
+    );
+    assert!(
+        page.contains(concat!(
+            ".PP\n",
+            r"Supply at least one of \-\-file and \-\-url (piped stdin does not count).",
+            "\n"
+        )),
+        "{page}"
+    );
+}

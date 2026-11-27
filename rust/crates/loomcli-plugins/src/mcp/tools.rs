@@ -2,12 +2,11 @@
 //! how, all derived from the graph where it is read. The build-fault hook and the `mcp` action
 //! each derive it, so neither stores what the other read.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use loomcli_core::{
-    ArgumentNode, CommandGraph, CommandNode, Error, OptionGroupKind, OptionNode, Polarity,
-    RequiredWhen, read_extension,
+    ArgumentNode, CommandGraph, CommandNode, Error, OptionGroup, OptionGroupKind, OptionNode,
+    Polarity, RequiredWhen, read_extension,
 };
 use loomcli_mcp::{Tool, ToolAnnotations};
 use serde_json::{Map, Value, json};
@@ -436,10 +435,12 @@ fn named_presence(option: &OptionNode) -> Schema {
     schema
 }
 
-/// The extensions this plugin owns, which bind nothing.
-const OWN_EXTENSIONS: [&str; 2] = [
+/// MCP's extensions and the completion value hint carry no source bindings. The hint's identity is
+/// named here ahead of the completion plugin defining it.
+const UNBOUND_EXTENSIONS: [&str; 3] = [
     "@loomcli/plugins/mcp/input",
     "@loomcli/plugins/mcp/argument",
+    "@loomcli/plugins/completion/input",
 ];
 
 /// Another plugin's extension may hold a configuration binding, so an uncertain requirement stays
@@ -456,7 +457,7 @@ fn externally_unbound(option: &OptionNode) -> bool {
         && option
             .extensions()
             .keys()
-            .all(|identity| OWN_EXTENSIONS.contains(&identity.as_str()))
+            .all(|identity| UNBOUND_EXTENSIONS.contains(&identity.as_str()))
 }
 
 /// The named values with which one member claims its exclusive group. A Boolean claims only off
@@ -496,47 +497,86 @@ fn constraints(kind: OptionGroupKind, options: &[&OptionNode]) -> Vec<Schema> {
     if !options.iter().all(|option| externally_unbound(option)) {
         return Vec::new();
     }
+    if kind == OptionGroupKind::Requires {
+        return options
+            .split_first()
+            .map(|(option, needed)| requirement_constraint(option, needed))
+            .into_iter()
+            .collect();
+    }
     let presence: Vec<Value> = options
         .iter()
         .map(|option| Value::Object(named_presence(option)))
         .collect();
-    if kind == OptionGroupKind::OneRequired {
-        return vec![object(json!({ "anyOf": presence }))];
+    match kind {
+        OptionGroupKind::OneRequired => vec![object(json!({ "anyOf": presence }))],
+        OptionGroupKind::RequiredTogether => vec![object(json!({
+            "anyOf": [{ "not": { "anyOf": presence } }, { "allOf": presence }]
+        }))],
+        _ => Vec::new(),
     }
-    vec![object(json!({
-        "anyOf": [{ "not": { "anyOf": presence } }, { "allOf": presence }]
-    }))]
+}
+
+/// Whether supplying a named property always supplies the option.
+fn scalar_value(option: &OptionNode) -> bool {
+    match option {
+        OptionNode::String(node) => !node.multiple,
+        OptionNode::Content(node) => !node.multiple,
+        _ => false,
+    }
+}
+
+/// Key presence suffices for scalar values and for needed Booleans of both polarities.
+/// Otherwise use the same named-value predicates as the other groups.
+fn requirement_constraint(option: &OptionNode, needed: &[&OptionNode]) -> Schema {
+    if scalar_value(option)
+        && needed.iter().all(|member| {
+            scalar_value(member)
+                || matches!(member, OptionNode::Boolean(node) if node.polarity == Polarity::Both)
+        })
+    {
+        let names: Vec<&str> = needed.iter().map(|member| member.name()).collect();
+        return Schema::from_iter([(
+            "dependentRequired".to_owned(),
+            json!({ (option.name()): names }),
+        )]);
+    }
+    let presence: Vec<Schema> = needed.iter().map(|member| named_presence(member)).collect();
+    Schema::from_iter([(
+        "anyOf".to_owned(),
+        json!([{ "not": named_claim(option) }, { "allOf": presence }]),
+    )])
 }
 
 /// The members of a group that the Command declares, in the group's order.
 pub(super) fn group_members<'a>(
     command: &'a CommandNode,
-    names: &[String],
-) -> Vec<&'a Arc<OptionNode>> {
-    let declared: HashMap<&str, &Arc<OptionNode>> = command
-        .options
-        .iter()
-        .map(|option| (option.name(), option))
-        .collect();
-    names
-        .iter()
-        .filter_map(|name| declared.get(name.as_str()).copied())
+    group: &OptionGroup,
+) -> Vec<&'a OptionNode> {
+    group
+        .members()
+        .filter_map(|name| {
+            command
+                .options
+                .iter()
+                .find(|option| option.name() == name)
+                .map(Arc::as_ref)
+        })
         .collect()
 }
 
 /// The constraints a tool's schema states for the Command's option groups. An excluded member is
 /// never supplied in a call, so a group constrains the members the tool lists. A group that also
 /// holds a hidden or control member, which a call may still fill from the server's sources, stays
-/// a rule the run checks alone, and so does a `requiredTogether` group that excludes some members,
-/// which the build-fault hook rejects.
+/// a rule the run checks alone. A requirement is projected only with all its members listed.
 fn group_schemas(command: &CommandNode) -> Result<Vec<Schema>, Error> {
     let mut schemas = Vec::new();
     for group in &command.option_groups {
-        let members = group_members(command, &group.options);
+        let members = group_members(command, group);
         let mut listed = Vec::new();
         for member in &members {
             if !excluded(member)? {
-                listed.push(member.as_ref());
+                listed.push(*member);
             }
         }
         let partial = listed.len() != members.len();
@@ -546,11 +586,15 @@ fn group_schemas(command: &CommandNode) -> Result<Vec<Schema>, Error> {
         }
         if listed.is_empty()
             || !all_exposed
-            || (partial && group.kind == OptionGroupKind::RequiredTogether)
+            || (partial
+                && matches!(
+                    group.kind(),
+                    OptionGroupKind::RequiredTogether | OptionGroupKind::Requires
+                ))
         {
             continue;
         }
-        schemas.extend(constraints(group.kind, &listed));
+        schemas.extend(constraints(group.kind(), &listed));
     }
     Ok(schemas)
 }

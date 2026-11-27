@@ -18,7 +18,7 @@ use crate::help::extension::{CommandExample, HELP_ARGUMENT};
 use crate::help::messages::{CHILD_NAME_ESCAPE, TERMINAL_NEED_LABEL, TERMINAL_NEED_TEXT};
 use crate::help::page::{
     ReadOption, child_suffix, command_help, epilogs_of, notes_escape, option_accepts,
-    option_description, path_of, read_options, usage_forms,
+    option_description, option_group_sentences, path_of, read_options, usage_forms,
 };
 use crate::help::sections::{OrderedSection, SectionMember, ordered_sections};
 
@@ -554,6 +554,10 @@ fn render_page(
     lines.extend(arguments_section(&subject)?);
     lines.extend(stdin_section(&subject));
     lines.extend(section_lines(&subject.option_sections, option_entry));
+    lines.extend(
+        option_group_sentences(command)
+            .flat_map(|sentence| [".PP".to_owned(), text_line(&escape(&sentence))]),
+    );
     lines.extend(examples(&subject));
     lines.extend(environment(&subject));
     lines.extend(notes(&subject)?);

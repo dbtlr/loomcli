@@ -47,10 +47,12 @@ Conventions that hold everywhere below:
 | `options.rendering` | `.rendering(RenderingPolicy)` | open states |
 | `argument(name, config)` | `.argument(name, Arg::…)` | open states |
 | `option(name, config)` | `.option(name, Opt::…)` | open states |
+| `options(set)` | `.options(&set)` | open states |
 | `globalOption(name, config)` | `.global_option(name, Opt::…)` | `TakesGlobals` |
 | (types of globals) | `.globals::<G: GlobalInputs>()` | `TakesGlobals` |
 | (inferred inputs) | `.inputs::<I>()` | `I = NoInputs`, open states |
 | `exclusive`, `oneRequired`, `requiredTogether` | `.exclusive(&[..])`, `.one_required(&[..])`, `.required_together(&[..])` | open states |
+| `requires(option, ...needed)` | `.requires(option, &[..])` | open states |
 | `stdin(config)` | `.stdin(Stdin::new()…)` | open states |
 | `passthrough(config?)` | `.passthrough(Passthrough::new()…)` | open states |
 | `needsTerminal()` | `.needs_terminal()` | open states |
@@ -230,6 +232,112 @@ completed occurrence followed by any words of the open occurrence. Completion of
 again after a completed occurrence. Help, man pages, and MCP use the scalar option's ordinary shape.
 See [ADR-0162](../../../docs/decisions/0162-a-scalar-string-option-may-declare-that-its-last-occurrence-wins.md).
 
+### Option sets
+
+`OptionSet::new()` starts an empty local option set. Its `option(name, Opt::…)` call takes
+the same builders as `Command::option`. Its `exclusive`, `one_required`, `required_together`,
+and `requires` calls relate options already declared in the set. `exclusive` allows at most
+one member to claim the group. `one_required` needs at least one supplied member, and
+`required_together` needs all members whenever one is supplied. `requires` has a single
+trigger. Each call consumes and returns the set, which is `Clone` and `#[must_use]`.
+Cloning a set lets an author add options or groups to one copy while retaining the original
+declaration. [Option-set reference](../../../docs/core/options.md#sharing-options)
+
+```rust
+let output = OptionSet::new()
+	.option("json", Opt::boolean())
+	.option("yaml", Opt::boolean())
+	.exclusive(&["json", "yaml"]);
+let list = Command::new("list").options(&output);
+let show = Command::new("show").options(&output);
+```
+
+`Command::options(&set)` and `Application::options(&set)` borrow the reusable value. Each call
+declares the set's options in their declaration order, followed by its groups in group order,
+at the position of the call. Each Command gets its own declarations. An empty set adds no
+declarations. A later group call can relate a set member to another local option. The action
+can read the values by their declared names. Each Command, including a parent or child that
+shares a set, applies it explicitly. Every projection reads the resulting options and groups
+as if they had been declared one at a time. [Typed option sets](#typed-option-sets)
+
+A set holds local options, including a content option that claims stdin. Arguments, standalone
+stdin, passthrough, and globals have their own declarations. `options(&set)` has the same
+authoring states as `option()`. Hooks on an attached Command still declare individual options
+and groups.
+
+The set checks each entry as it is added, with the option name checked before its settings.
+Ordinary local option faults apply within the set, including duplicate names, spellings,
+variables, and stdin claims, invalid extension values, and conflicting extension descriptor
+identities. Group calls use the same checks as a Command, with `An option set` as the diagnostic
+subject. They require at least two distinct local options. An exclusive group cannot contain
+an individually required option, including a content option with a positive minimum. Applying
+a set checks each entry against the receiver's options and its stdin claim,
+extension descriptors, and, on the root, its globals. A set member that shares a name with a
+Command's own option or an existing global raises `option-declared-twice` at the call that
+brings them together. The TypeScript reference's primary signal is a compile error at
+`options()`. Rust applies the existing derive rule that duplicate names are call faults.
+Attach and build check the applied options as local options. A finding
+on a set entry shows that entry alone, with the applying `options` call and Command when
+applicable. Validators judge defaults and implied values at run start, and a fault identifies
+the Command that applied the entry being checked. A set from an incompatible copy of
+`loomcli-core` has a different Rust type, so the compiler rejects it at the call.
+
+### A one-way requirement
+
+`.requires("password", &["user", "host"])` requires both `user` and `host` when `password`
+is supplied. Either needed option can be supplied independently of `password`. Each name is a
+declared local option name, including when the call appears on the root, an attached Command,
+an option set, or the `Declarations` builder used by `Inputs`. The same declaration can be
+written as `#[inputs(requires("password", "user", "host"))]`. A requirement leaves option
+values and their Rust types as declared. [One-way requirement reference](../../../docs/core/options.md#a-one-way-requirement)
+
+`option-group` faults at the declaring call cover an empty needed slice, an undeclared local
+option, repeated names, and an option named among its own requirements. The call checks each
+name in order. Repeating the first name reports a self-requirement. An exclusive group and a
+requirement that share any two members conflict whichever comes first. A repeated requirement,
+two requirements that need each other's option, and a requirement of an individually required
+option are allowed. A hook's call returns the same declaration fault without adding a group.
+
+An option supplied by argv, the environment, or the configuration source triggers its
+requirement. A Boolean at its absent value does not trigger it. Every supplied needed option
+counts, including a supplied `false`, zero, or empty list. Invocation by name uses its normal
+lowering rules before the check. Defaults and automatically attached stdin do not supply
+options, and a value that stays supplied despite a validation issue still counts. Input tiers
+are independent across the two sides. If an exclusive group withdraws any member of the
+requirement, core skips the whole requirement. An unanswered configuration request leaves that
+option unknown and suppresses a missing-option report for that member.
+
+Core reports each broken requirement after individual input problems, in group declaration
+order, as a group problem with reason `requires` in the exit-2 `InputError`. The `inputs` and
+`spellings` list the option first and then every needed option, and `supplied` lists the members
+that were supplied. Argv failures use reported spellings. Named invocations use declared names.
+The sentence names only the needed options still lacking, and labels the triggering option's
+source when it came from the environment or configuration.
+
+```text
+Option "--password" requires option "--user". Supply it as well, or remove "--password".
+```
+
+Inspection publishes `{ "kind": "requires", "option": "password", "requires": ["user"] }`.
+The manifest publishes the same entry, and help and the man page print
+`Use --password only with --user.` The manifest, help, and the man page omit a group that
+includes a hidden member. Inspection publishes every group.
+The man page prints the same group sentences as help, each in its own paragraph after the
+option entries, with the piped-stdin caveat when a member claims stdin. Completion continues
+to suppress siblings only for exclusive groups.
+
+An MCP tool projects a requirement in `allOf` when it exposes every member and the members
+have no environment binding or potentially binding extensions. MCP's own extensions and
+completion's value hint (`@loomcli/plugins/completion/input`) do not bind values. No Rust crate
+defines that hint yet: the MCP plugin names its identity ahead of the completion plugin gaining
+it. The constraint uses `dependentRequired` when the
+trigger is a scalar string or content option and each needed option is one too or a Boolean of
+`both` polarity. Otherwise it uses `anyOf` with the negated trigger claim and an `allOf` of the
+needed options' named-value presence predicates. Excluding the trigger removes the constraint.
+Excluding a needed option while keeping the trigger raises
+`@loomcli/plugins/mcp/required-input-excluded` at graph build, even when the trigger is hidden
+and can be supplied by the server's sources.
+
 ### Arguments and stdin
 
 `Arg::string()` and `Arg::content()` return `StringArg` and `ContentArg`.
@@ -296,12 +404,13 @@ configuration sentences in [ADR-0161](../../../docs/decisions/0161-a-string-opti
 | An empty `envDelimiter` | Call | `env-delimiter` |
 | One mark of each kind per Application | Call | `interaction-mark`, `color-mark`, `plain-mark`, `verbose-mark`, `quiet-mark`, `background-mark` |
 | A key, spelling, or variable used twice in one scope | Call | `option-declared-twice`, `spelling-taken`, `variable-bound-twice` |
-| A local option that collides with a global, the plugins' included | Call (`option`), attach (`command`) | same three |
+| A local option that collides with a global, the plugins' included | Call (`option`, `options`, `inputs`), attach (`command`) | same three |
 | Only required scalar string arguments follow a variadic. Required arguments precede optional ones up through the variadic. | Call | `argument-after-variadic`, `optional-argument-last` |
 | An argument declared twice | Call | `argument-declared-twice` |
 | Passthrough declared twice | Call | `passthrough-declared-twice` |
 | Terminal need declared twice | Call | `terminal-need-declared-twice` |
-| An option group of fewer than two, repeated, or undeclared members | Call | `option-group` |
+| An option group of fewer than two, repeated, or undeclared members, or a self-requirement | Call. The derive also checks the number of names in a requirement and the number and membership for each group on a typed option set. | `option-group` |
+| An exclusive group contains a required member, or shares at least two members with a `required_together` group or a requirement | Call | `option-group` |
 | Siblings share a name or alias | Attach | `sibling-name-taken` |
 | One Command value at two places | Type: `command()` moves the child, and `Command` is not `Clone`, so one value cannot attach twice; `command-attached-twice` is unreachable | (types) |
 | A Command with neither children nor an action, or arguments, stdin, passthrough, or terminal need on a group | Attach; build for the root and hook contributions | `command-without-action` |
@@ -335,8 +444,16 @@ Each field carries exactly one of:
 - `#[argument(fact, …)]`: an argument, bound in field order.
 - `#[stdin(description = "…")]`: the standalone stdin, on a `Content` or `Option<Content>` field.
 - `#[passthrough(description = "…")]` declares the passthrough mode on a `Vec<String>` field. The description is optional and defaults to the field’s doc comment.
+- `#[inputs(flatten)]`: a field whose type implements `OptionSetInputs`.
 
-The struct may carry `#[inputs(exclusive("a", "b"), one_required(…), required_together(…))]`. Each member is an option's declared name (`dry-run` for a field `dry_run`), not a field identifier: a member that is a field's identifier where that field declares another name is a compile error at the member (`` `dry_run` is the field; a group names the declared name "dry-run" ``). A member that names no field stays a call fault at `inputs::<I>()`, because an option declared before that call may be a member.
+The struct may carry `#[inputs(exclusive("a", "b"), one_required(…), required_together(…), requires("a", "b"))]`.
+Each member uses the declared option name, such as `dry-run` for a field `dry_run`.
+For a directly declared field the derive rejects the field identifier when the declared name
+differs, with `` `dry_run` is the field; a group names the declared name "dry-run" ``. A struct
+with an `#[inputs(flatten)]` field gets no such correction at compile time, because the name may
+be one the flattened set declares; the declaring call raises `option-group` for a name no option
+declares. `requires` takes at least two string literals. For a regular inputs struct, membership is
+checked at `inputs::<I>()`, when options declared earlier or through a flattened set are known.
 
 | Fact | Form | On |
 | --- | --- | --- |
@@ -360,6 +477,45 @@ The struct may carry `#[inputs(exclusive("a", "b"), one_required(…), required_
 | `stdin`, `min`, `max` | flag; `min = 1` | content input |
 | `interaction`, `color`, `plain`, `verbose`, `quiet`, `background` | flags | global option |
 | `builder` | `builder = document_input()`: a shared `ContentOpt` that holds every option fact, its description included; beside it the field states only `name` and, on a `Vec`, `required`, `min`, and `max`, and its doc comment documents the Rust field alone; the field type still decides presence | content option |
+
+### Typed option sets
+
+`#[inputs(option_set)]` on a struct deriving `Inputs` makes it a reusable local option set.
+The derive implements `OptionSetInputs: Inputs` with `option_set() -> OptionSet` using the
+ordinary set builder. The struct uses `#[option]` fields and the same struct-level group
+attributes as other inputs. Each group must name at least two of the set's own declared
+option names. The derive rejects a non-option field, including an `#[inputs(flatten)]` field,
+a run-wide mark, or a group with too few members or a member outside the set.
+Repeated members, self-requirements, group conflicts,
+and cross-option collisions use the builder's declaration faults.
+
+```rust
+#[derive(Inputs)]
+#[inputs(option_set, requires("password", "user"))]
+struct Credentials {
+	#[option]
+	user: Option<String>,
+	#[option]
+	password: Option<String>,
+}
+
+#[derive(Inputs)]
+struct LoginInputs {
+	#[inputs(flatten)]
+	credentials: Credentials,
+	#[option]
+	remember: bool,
+}
+```
+
+The flattened field contributes the set's declarations at that field's position. Its field
+name adds no prefix. The action reads nested Rust fields such as `ctx.inputs.credentials.user`.
+The expansion calls `Declarations::options(&set)` to apply each flattened field and uses the
+same path when the set struct is passed directly to `inputs::<I>()`. The containing struct's
+own groups follow all its fields and can relate a flattened option to another local option.
+Extraction reads the set's fields from the same validated option table. `into_values()`
+merges them back by declared name. A set or a struct with a flattened set is local and the
+derive leaves it ineligible for `GlobalInputs`.
 
 ### Field types
 
@@ -394,7 +550,14 @@ The derive rejects at compile time what the builder would reject at the call for
 - **A type no kind reads**: `Option<bool>`, a `bool` argument, a `count` field that is no unsigned integer, a `#[stdin]` field that is not `Content` or `Option<Content>`.
 - **The grammar**: an unknown fact (the message lists the facts), a fact named twice, a flag given a value, a valued fact given none, two roles on one field, a field with no role, and a tuple struct or an enum.
 
-The rules that read more than one declaration, a name or a spelling taken twice, a run-wide mark on a local option, and a presence rule on a struct used as global options, stay the call's faults, as does a rule on a value the derive cannot read as a literal, such as `short = SHORT` or `aliases = ALIASES`. A type the field and its input disagree on is E0277 at the field type through `IsType`; a struct that is not eligible as global options is E0277 at `globals::<G>()` or `options::<O>()` through `GlobalInputs`. The derive implements `GlobalInputs` only for a struct with no argument, no stdin, no passthrough, no content option, no presence rule, and no option group.
+The rules that read more than one declaration, a name or a spelling taken twice, a run-wide
+mark on a local option, and a presence rule on a struct used as global options stay the
+call's faults, subject to the typed option-set checks above. The call also judges values the
+derive cannot read as literals, such as `short = SHORT` or `aliases = ALIASES`. A type the
+field and its input disagree on is E0277 at the field type through `IsType`. A struct that
+is ineligible for global options is E0277 at `globals::<G>()` or `options::<O>()` through
+`GlobalInputs`. The derive implements `GlobalInputs` only for a struct with no argument, no
+stdin, no passthrough, no content option, no presence rule, no option group, and no option set.
 
 ### Expansion contract
 
@@ -437,7 +600,12 @@ impl loomcli_core::Inputs for SelectInputs {
 
 `IntoInputValue` is the inverse of `FromInputValue`: `Option<T>`, `Vec<T>`, `bool`, an unsigned count, and `Required<T>` for a value validation guarantees. Every read returns `Result`: a name the table does not hold, a `T` the declaration does not produce, and a required read of an absent value are the `input-read` fault. `T` is `String` for an input with no validator, the validator's `Output` with one, and `Content` for a content input; a count beyond the integer type's range reads as its largest value.
 
-`Command::inputs::<I>()` applies `I::declare` through the Command's own `argument()`, `option()`, `stdin()`, `passthrough()`, and group calls, in the order `declare` made them, so every call-time rule applies. `Application::globals::<G>()` applies each option through `global_option()`; a hand-written `GlobalInputs` impl that lists an argument, stdin, passthrough, a group, or a content option faults there under `option-config`. `I::extract` runs at dispatch over the validated values.
+`Command::inputs::<I>()` applies `I::declare` through the Command's own `argument()`, `option()`,
+`options()`, `stdin()`, `passthrough()`, and group calls, in the order `declare` made them,
+so every call-time rule applies. `Application::globals::<G>()` applies each option through
+`global_option()`. A hand-written `GlobalInputs` impl that lists an argument, stdin,
+passthrough, an option set, a group, or a content option faults there under `option-config`.
+`I::extract` runs at dispatch over the validated values.
 
 ### Globals, plugin options, and dynamic reads
 
@@ -999,10 +1167,19 @@ the reference's object-literal order.
 | `BooleanOptionNode` | shared keys through `short`, then `color`, `interaction`, `negative`, `plain`, `polarity`, `schema`, `type` |
 | `CountOptionNode` | shared keys through `short`, then `quiet`, `schema`, `type`, `verbose` |
 | `ResultNode` | `default`, `kind`, `mediaTypes`, `views` |
-| `OptionGroup` | `kind`, `options` |
+| `OptionGroup` | `kind`, `options` for exclusive, one-required, and required-together groups. `kind`, `option`, `requires` for a requirement. |
 | `PassthroughNode` | `description`? |
 | `StdinNode` | `description`?, `required` |
 | `ConfigurationNode` | `schema` |
+
+`OptionGroup` and each of its struct variants are `#[non_exhaustive]`, as is `OptionGroupKind`.
+`OptionGroup` serializes with `#[serde(tag = "kind")]` and variant names `exclusive`,
+`oneRequired`, `requiredTogether`, and `requires`. JSON writes `kind` first, then the fields
+in declaration order. The `Requires` variant carries the triggering `option` and the ordered
+`requires` list. The other three variants each carry their ordered `options` list.
+`kind() -> OptionGroupKind` returns the group's kind. `members()` iterates over declared
+names in order, with the trigger first for a requirement, for every projection to use.
+`OptionGroupKind::Requires` is also the reason of the corresponding `InputProblem::Group`.
 
 `?` marks a key absent when the value is absent. `OptionNode` is an untagged enum of the four option nodes, with the shared accessors `name()`, `long()`, `short()`, `hidden()`, `deprecated()`, and `extensions()`. Children, arguments, options, and globals are `Arc`s, so a context holds the routed node without copying the tree, and every node a reader receives, from a context or from `locate`, is the graph's own: a reader compares by `Arc::ptr_eq`. `extensions` and `mediaTypes` are `serde_json::Map` (insertion order, `preserve_order`). `locate(&graph, words) -> WordPosition` reads a partial invocation with the run's grammar and never fails: the words before the last go through the parser's own walk (`invocation::parse`, with routing left open where they run out at a Command with children), and an empty list reads as one empty word. Core constructs `CommandGraph` (`#[non_exhaustive]`). A clone shares the parser's tables, so `foreign-graph` is unreachable. `WordPosition::Option`'s `counts` and `booleans` are `Vec<(String, _)>` in the order the earlier words first gave each, the reference's insertion-ordered maps. `graph.command(&["cache", "clear"])` finds a node by canonical path.
 
@@ -1059,7 +1236,7 @@ On a result Command the formatter records the views it appended in the `@loomcli
 
 `--fields` is repeatable and each occurrence takes a comma list of literal top-level keys. An empty key is invalid. The transform keeps the named keys in request order, using the first occurrence of a repeated name and omitting keys absent from an individual object. It checks keys against the whole object, the union of keys in an array of objects, or the first row of a rows result. An empty collection stays empty. An unknown key or a value that should be an object but is another kind fails with an input error when the result is emitted. A sequence that stops after writing JSON Lines keeps those lines on stdout. When the failure encoder handles the error, its line replaces the incomplete-result line on stderr.
 
-**Hooks.** `AttachedCommand` exposes the facts (`name`, `path`, `has_action`, `arguments`, `options`, `result`, and `extensions()`, the record `inspect()` would publish at that hook, which `read_extension(&*command, &DESCRIPTOR)` reads typed) and the reference's seven dynamic calls, `argument`, `option`, `exclusive`, `one_required`, `required_together` (each `&[&str]` of declared names), `views(AttachedViews)`, and `extend`, each `&mut self -> Result<&mut Self, DeclarationError>`. A group call meets `option-group` at the call against the local options the Command declares at that point, the author's and every hook's so far, and its group joins the Command's groups, which `inspect()` publishes and validation judges. A call meets every declaration rule at the call; one that faults returns its `DeclarationError` and changes nothing, so `?` chains the calls, and a hook that handles the error continues without that declaration, the reference's catch-and-continue. The hook returns `Result<(), Error>`: a `DeclarationError` reports as itself, any other `Err` is `broken-attach-hook` naming the plugin and the Command, both build faults with exit 1 and the generic message in a distributed build. Calls are exempt from the author's authoring order. A hook edits the Command in place, so what a call added stays whether or not the hook later fails, and a descriptor a call admits joins the build's one registry at the call: a second descriptor under one identity is `two-package-copies` at the `extend` that carries it. Once every hook has run over a Command, core judges what the hooks declared, root first and depth first, before the Command's own table compiles: each hook-declared input against an earlier hook's input, a local option, a global or plugin option, then an argument (`option-declared-twice`, `argument-declared-twice`, `name-shared-across-kinds`), each spelling against every spelling the scope holds (`spelling-taken`), then one stdin target, the argument order, arguments beside children, and each variable once (`inspection::attach`). `on_graph_built` hooks receive the graph a run's action reads, at one address; the first fault ends `inspect()` and a run, and `check()` collects every hook's. `FailureHookContext { application, run, path, invoked_by, view, media_type, style, graph, command, log }`. A failure hook returns `impl IntoHints`: `()`, `Option<String>`, `String`, `Vec<String>`, `Hints`, or a `Result` of one; an `Err` ends the hooks for that failure and reports as `foreign-throw` after core writes the failure's default text. `EnvironmentContext { cwd, env, log }` with `warn()`. The hooks run in installation order after graph build and verbosity, before the declared values validate, with the cancellation checked before each hook and after its answer; a variable the environment defines, an empty one included, wins, the first hook that fills a missing one wins, and on an argv run each accepted addition passes to the handle's `publish_env` before the next hook runs; an invocation by name publishes nothing. Output and the log read the merged environment from each merge on, and the run's later steps read a host with it. A hook's failure class keeps its class; any other error is `foreign-throw`, which no translator is offered.
+**Hooks.** `AttachedCommand` exposes the facts (`name`, `path`, `has_action`, `arguments`, `options`, `result`, and `extensions()`, the record `inspect()` would publish at that hook, which `read_extension(&*command, &DESCRIPTOR)` reads typed) and the dynamic calls `argument`, `option`, `exclusive`, `one_required`, `required_together`, `requires(option, needed)`, `views(AttachedViews)`, and `extend`, each `&mut self -> Result<&mut Self, DeclarationError>`. A group call meets `option-group` at the call against the local options the Command declares at that point, the author's and every hook's so far, and its group joins the Command's groups, which `inspect()` publishes and validation judges. A call meets every declaration rule at the call; one that faults returns its `DeclarationError` and changes nothing, so `?` chains the calls, and a hook that handles the error continues without that declaration, the reference's catch-and-continue. The hook returns `Result<(), Error>`: a `DeclarationError` reports as itself, any other `Err` is `broken-attach-hook` naming the plugin and the Command, both build faults with exit 1 and the generic message in a distributed build. Calls are exempt from the author's authoring order. A hook edits the Command in place, so what a call added stays whether or not the hook later fails, and a descriptor a call admits joins the build's one registry at the call: a second descriptor under one identity is `two-package-copies` at the `extend` that carries it. Once every hook has run over a Command, core judges what the hooks declared, root first and depth first, before the Command's own table compiles: each hook-declared input against an earlier hook's input, a local option, a global or plugin option, then an argument (`option-declared-twice`, `argument-declared-twice`, `name-shared-across-kinds`), each spelling against every spelling the scope holds (`spelling-taken`), then one stdin target, the argument order, arguments beside children, and each variable once (`inspection::attach`). `on_graph_built` hooks receive the graph a run's action reads, at one address; the first fault ends `inspect()` and a run, and `check()` collects every hook's. `FailureHookContext { application, run, path, invoked_by, view, media_type, style, graph, command, log }`. A failure hook returns `impl IntoHints`: `()`, `Option<String>`, `String`, `Vec<String>`, `Hints`, or a `Result` of one; an `Err` ends the hooks for that failure and reports as `foreign-throw` after core writes the failure's default text. `EnvironmentContext { cwd, env, log }` with `warn()`. The hooks run in installation order after graph build and verbosity, before the declared values validate, with the cancellation checked before each hook and after its answer; a variable the environment defines, an empty one included, wins, the first hook that fills a missing one wins, and on an argv run each accepted addition passes to the handle's `publish_env` before the next hook runs; an invocation by name publishes nothing. Output and the log read the merged environment from each merge on, and the run's later steps read a host with it. A hook's failure class keeps its class; any other error is `foreign-throw`, which no translator is offered.
 
 **Extensions.** A descriptor is a constant: `pub const EXPLAIN_COMMAND: Extension<CommandTarget, ExplainFacts> = Extension::new("@loom/explain/command");`, or `Extension::collecting(id)` for one that collects from every layer, whose type names `Collecting` as its third parameter (`pub const TAGS: Extension<CommandTarget, String, Collecting> = Extension::collecting("@acme/tagger/tags");`; the parameter defaults to `Single`), with `.check(fn)` for value rules. `new` and `collecting` bound `V: Serialize + DeserializeOwned`, the schema, so a value is plain data by type and a descriptor that cannot be read back does not compile. `DESCRIPTOR.value(v)` makes an `ExtensionValue<T>` and records the rules' verdict; the `extend()` that carries it reports a rejection, the author's as a call fault and a hook's as its returned error. `read_extension(&node, &DESCRIPTOR)` (with `V: DeserializeOwned + 'static`, whose `TypeId` identifies the descriptor) returns `Result<Option<V>, Error>`, or `Result<Vec<V>, Error>` author first for a collecting one; a value another descriptor under the same identity stored, or one `V` does not deserialize, is a `DeclarationError` on the ordinary failure path (exit 1, the generic message in a distributed build). Targets are `CommandTarget` (`CommandNode`, `Arc<CommandNode>`, `AttachedCommand`), `OptionTarget` (`OptionNode`, `Arc<OptionNode>`), and `ArgumentTarget` (`ArgumentNode`, `Arc<ArgumentNode>`). A descriptor is its identity, its target, whether it collects, and its value type: two descriptors that share an identity and differ in any of the rest are `two-package-copies` where both first reach one declaration or one Application, and a read through one of a value the other stored returns that fault.
 
@@ -1496,7 +1673,7 @@ by the selected Commands in graph order. The Boolean selects whether to include 
 | `README.md` | this page |
 | `application.md` | §1 Application, §9 |
 | `commands.md` | §1, §2 globals, §9 routing |
-| `options.md` | §1 Options, Arguments, rules |
+| `options.md` | §1 Options, Option sets, A one-way requirement, Arguments, rules, §2 Typed option sets |
 | `input-sources.md` | §1 Input sources, §8 source slot, §9 step 11 |
 | `validation.md` | §3 |
 | `declaration-faults.md` | §1 rules table, §6 declaration faults and defects |

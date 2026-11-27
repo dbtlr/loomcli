@@ -25,6 +25,7 @@ enum Role {
     Argument,
     Stdin,
     Passthrough,
+    Flatten,
 }
 
 /// How the field's type wraps its value.
@@ -272,6 +273,8 @@ fn role_of(attribute: &Attribute) -> Option<Role> {
         Some(Role::Stdin)
     } else if attribute.path().is_ident("passthrough") {
         Some(Role::Passthrough)
+    } else if attribute.path().is_ident("inputs") {
+        Some(Role::Flatten)
     } else {
         None
     }
@@ -287,10 +290,27 @@ fn parse_field(field: &Field) -> syn::Result<(Role, FieldAttributes)> {
         if found.is_some() {
             return Err(syn::Error::new_spanned(
                 attribute,
-                "a field is one input: one of #[option], #[argument], #[stdin], or #[passthrough]",
+                "a field is one input: one of #[option], #[argument], #[stdin], #[passthrough], or #[inputs(flatten)]",
             ));
         }
         found = Some(role);
+        if role == Role::Flatten {
+            let mut flatten = None;
+            attribute.parse_nested_meta(|meta| {
+                if meta.path.is_ident("flatten") {
+                    set_flag(&mut flatten, &meta, "flatten")
+                } else {
+                    Err(meta.error("expected #[inputs(flatten)] on a field"))
+                }
+            })?;
+            if flatten.is_none() {
+                return Err(syn::Error::new_spanned(
+                    attribute,
+                    "expected #[inputs(flatten)] on a field",
+                ));
+            }
+            continue;
+        }
         match &attribute.meta {
             syn::Meta::Path(_) => {}
             syn::Meta::List(list) if list.tokens.is_empty() => {}
@@ -312,7 +332,7 @@ fn parse_field(field: &Field) -> syn::Result<(Role, FieldAttributes)> {
                 .ident
                 .as_ref()
                 .map_or_else(|| field.span(), Ident::span),
-            "each field of an Inputs struct carries #[option], #[argument], #[stdin], or #[passthrough]",
+            "each field of an Inputs struct carries #[option], #[argument], #[stdin], #[passthrough], or #[inputs(flatten)]",
         )),
     }
 }
@@ -500,6 +520,12 @@ fn kind_of(role: Role, wrapper: Wrapper<'_>, facts: &FieldAttributes) -> syn::Re
         Role::Option if facts.count.is_some() => Kind::CountOption,
         Role::Option if is_content => Kind::ContentOption,
         Role::Option => Kind::StringOption,
+        Role::Flatten => {
+            return Err(syn::Error::new(
+                wrapper.element().span(),
+                "expected an ordinary input role",
+            ));
+        }
     })
 }
 
@@ -1082,8 +1108,21 @@ fn arity_of<'a>(
     Ok(Some(array))
 }
 
-fn expand_field(field: &Field) -> syn::Result<Expanded> {
-    let (role, facts) = parse_field(field)?;
+fn expand_field(field: &Field, role: Role, facts: FieldAttributes) -> syn::Result<Expanded> {
+    if role == Role::Flatten {
+        let ty = &field.ty;
+        let ident = &field.ident;
+        return Ok(Expanded {
+            declare: quote_spanned!(ty.span()=>
+                let declarations = declarations.options(&<#ty as ::loomcli_core::OptionSetInputs>::option_set());
+            ),
+            extract: quote!(<#ty as ::loomcli_core::Inputs>::extract(values)?),
+            insert: quote!(
+                let values = values.with_options_from(<#ty as ::loomcli_core::Inputs>::into_values(self.#ident));
+            ),
+            global: false,
+        });
+    }
     let wrapper = Wrapper::of(&field.ty);
     let kind = kind_of(role, wrapper, &facts)?;
     reject_foreign_facts(kind, &facts)?;
@@ -1510,56 +1549,92 @@ fn expand_argument(
     }
 }
 
-/// The option groups a struct-level `#[inputs(...)]` declares, and whether it declares any. A
-/// member names a declared name; one that is a field's identifier where the field declares another
-/// name is a compile error at the member. `names` holds each field's identifier and declared name.
-fn struct_groups(
-    input: &DeriveInput,
-    names: &[(String, String)],
-) -> syn::Result<(TokenStream, bool)> {
-    let mut calls = TokenStream::new();
-    let mut any = false;
+/// Whether a struct declares a reusable set and which groups it declares.
+struct StructSettings {
+    option_set: Option<Span>,
+    groups: Vec<(Ident, Vec<LitStr>)>,
+}
+
+fn struct_settings(input: &DeriveInput) -> syn::Result<StructSettings> {
+    let mut settings = StructSettings {
+        option_set: None,
+        groups: Vec::new(),
+    };
     for attribute in &input.attrs {
         if !attribute.path().is_ident("inputs") {
             continue;
         }
         attribute.parse_nested_meta(|meta| {
-            let method = if meta.path.is_ident("exclusive") {
-                quote!(exclusive)
-            } else if meta.path.is_ident("one_required") {
-                quote!(one_required)
-            } else if meta.path.is_ident("required_together") {
-                quote!(required_together)
-            } else {
-                return Err(
-                    meta.error("expected `exclusive`, `one_required`, or `required_together`")
-                );
+            if meta.path.is_ident("option_set") {
+                return set_flag(&mut settings.option_set, &meta, "option_set");
+            }
+            let Some(method) = meta.path.get_ident().filter(|name| {
+                matches!(name.to_string().as_str(), "exclusive" | "one_required" | "required_together" | "requires")
+            }) else {
+                return Err(meta.error("expected `option_set`, `exclusive`, `one_required`, `required_together`, or `requires`"));
             };
             let content;
             syn::parenthesized!(content in meta.input);
-            let members = parse_names(&content)?;
-            for member in &members {
-                let text = member.value();
-                let declared = names.iter().any(|(_, declared)| *declared == text);
-                if let Some((_, declared)) = names
-                    .iter()
-                    .find(|(ident, _)| *ident == text)
-                    .filter(|_| !declared)
-                {
-                    return Err(syn::Error::new(
-                        member.span(),
-                        format!(
-                            "`{text}` is the field; a group names the declared name {declared:?}"
-                        ),
-                    ));
-                }
-            }
-            calls.extend(quote!(let declarations = declarations.#method(&[#(#members),*]);));
-            any = true;
+            settings.groups.push((method.clone(), parse_names(&content)?));
             Ok(())
         })?;
     }
-    Ok((calls, any))
+    Ok(settings)
+}
+
+/// Emits the same group calls the builder takes. Only a set knows its complete scope here: a
+/// struct that flattens a set (`flattens`) may name one of that set's options, which only the call
+/// can check, so a name that is also one of the struct's own field names is not corrected.
+fn struct_groups(
+    settings: &StructSettings,
+    names: &[(String, String)],
+    flattens: bool,
+) -> syn::Result<TokenStream> {
+    let mut calls = TokenStream::new();
+    for (method, members) in &settings.groups {
+        let in_set = settings.option_set.is_some();
+        if (in_set || method == "requires") && members.len() < 2 {
+            return Err(syn::Error::new(
+                method.span(),
+                "an option group names at least two local options",
+            ));
+        }
+        for member in members {
+            let text = member.value();
+            if names.iter().any(|(_, declared)| *declared == text) {
+                continue;
+            }
+            if !flattens && let Some((_, declared)) = names.iter().find(|(ident, _)| *ident == text)
+            {
+                return Err(syn::Error::new(
+                    member.span(),
+                    format!("`{text}` is the field; a group names the declared name {declared:?}"),
+                ));
+            }
+            if in_set {
+                return Err(syn::Error::new(
+                    member.span(),
+                    format!(
+                        "an option set group names only options in that set: {text:?} is undeclared"
+                    ),
+                ));
+            }
+        }
+        if method == "requires" {
+            let Some((option, needed)) = members.split_first() else {
+                return Err(syn::Error::new(
+                    method.span(),
+                    "requires names a local option and at least one needed option",
+                ));
+            };
+            calls.extend(
+                quote!(let declarations = declarations.requires(#option, &[#(#needed),*]);),
+            );
+        } else {
+            calls.extend(quote!(let declarations = declarations.#method(&[#(#members),*]);));
+        }
+    }
+    Ok(calls)
 }
 
 fn parse_names(input: ParseStream<'_>) -> syn::Result<Vec<LitStr>> {
@@ -1589,21 +1664,53 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
             ));
         }
     };
+    let settings = struct_settings(input)?;
     let mut declares = Vec::new();
     let mut extracts = Vec::new();
     let mut inserts = Vec::new();
-    let mut global = true;
+    let mut global = settings.option_set.is_none() && settings.groups.is_empty();
     let mut errors: Option<syn::Error> = None;
     let mut names = Vec::new();
+    let mut flattens = false;
     for field in &fields {
-        if let (Some(ident), Ok((_, facts))) = (&field.ident, parse_field(field))
-            && let Ok(declared) = declared_name(field, &facts)
-        {
-            let ident = ident.to_string();
-            let ident = ident.strip_prefix("r#").unwrap_or(&ident).to_owned();
-            names.push((ident, declared.value()));
-        }
-        match expand_field(field) {
+        let expanded = parse_field(field).and_then(|(role, facts)| {
+            if settings.option_set.is_some() {
+                if role != Role::Option {
+                    return Err(syn::Error::new_spanned(
+                        field,
+                        "an option set takes only #[option] fields",
+                    ));
+                }
+                if let Some(mark) = [
+                    facts.interaction,
+                    facts.color,
+                    facts.plain,
+                    facts.verbose,
+                    facts.quiet,
+                    facts.background,
+                ]
+                .into_iter()
+                .flatten()
+                .next()
+                {
+                    return Err(syn::Error::new(
+                        mark,
+                        "an option set cannot declare a global option mark",
+                    ));
+                }
+            }
+            flattens |= role == Role::Flatten;
+            if let Some(ident) = &field.ident
+                && role != Role::Flatten
+                && let Ok(declared) = declared_name(field, &facts)
+            {
+                let ident = ident.to_string();
+                let ident = ident.strip_prefix("r#").unwrap_or(&ident).to_owned();
+                names.push((ident, declared.value()));
+            }
+            expand_field(field, role, facts)
+        });
+        match expanded {
             Ok(expanded) => {
                 declares.push(expanded.declare);
                 inserts.push(expanded.insert);
@@ -1622,9 +1729,24 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
     if let Some(errors) = errors {
         return Err(errors);
     }
-    let (groups, grouped) = struct_groups(input, &names)?;
-    // A group is a Command's rule, never a global option's.
-    let global = global && !grouped;
+    let groups = struct_groups(&settings, &names, flattens)?;
+    let (option_set_impl, body) = if settings.option_set.is_some() {
+        (
+            quote! {
+                impl #impl_generics ::loomcli_core::OptionSetInputs for #name #type_generics #where_clause {
+                    fn option_set() -> ::loomcli_core::OptionSet {
+                        let declarations = ::loomcli_core::OptionSet::new();
+                        #(#declares)*
+                        #groups
+                        declarations
+                    }
+                }
+            },
+            quote!(declarations.options(&<Self as ::loomcli_core::OptionSetInputs>::option_set())),
+        )
+    } else {
+        (quote!(), quote!(#(#declares)* #groups declarations))
+    };
     let construct = match &data.fields {
         Fields::Unit => quote!(#name),
         _ => quote!(#name { #(#extracts),* }),
@@ -1638,12 +1760,11 @@ pub(crate) fn expand(input: &DeriveInput) -> syn::Result<TokenStream> {
     };
     Ok(quote! {
         #global_impl
+        #option_set_impl
 
         impl #impl_generics ::loomcli_core::Inputs for #name #type_generics #where_clause {
             fn declare(declarations: ::loomcli_core::Declarations) -> ::loomcli_core::Declarations {
-                #(#declares)*
-                #groups
-                declarations
+                #body
             }
 
             fn extract(

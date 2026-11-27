@@ -211,29 +211,6 @@ fn result_entry(node: &ResultNode) -> Value {
     })
 }
 
-/// A listing never advertises a rule that would reveal a hidden member.
-fn visible_option_groups(command: &CommandNode) -> Value {
-    let visible: Vec<&str> = command
-        .options
-        .iter()
-        .filter(|option| !option.hidden())
-        .map(|option| option.name())
-        .collect();
-    Value::Array(
-        command
-            .option_groups
-            .iter()
-            .filter(|group| {
-                group
-                    .options
-                    .iter()
-                    .all(|name| visible.contains(&name.as_str()))
-            })
-            .map(serialized)
-            .collect(),
-    )
-}
-
 /// The failures one Command's `MANIFEST_COMMAND` values declare, in collection order. An entry
 /// identical to an earlier one on the same Command is listed once, at the first.
 fn failures_of(node: &CommandNode) -> Result<Vec<DeclaredFailure>, Error> {
@@ -426,7 +403,7 @@ fn command_entry(node: &CommandNode) -> Result<Value, Error> {
         "result": node.result.as_ref().map_or(Value::Null, result_entry),
         "failures": failures,
         "arguments": node.arguments.iter().map(|argument| argument_entry(argument)).collect::<Vec<_>>(),
-        "optionGroups": visible_option_groups(node),
+        "optionGroups": crate::option_groups::visible_option_groups(node).map(serialized).collect::<Vec<_>>(),
         "options": node.options.iter().filter(|option| !option.hidden()).map(|option| option_entry(option)).collect::<Vec<_>>(),
         "children": children,
     }))

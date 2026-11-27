@@ -18,13 +18,13 @@ use conformance_harness::compare::Part;
 use conformance_harness::runner::assert_part;
 use loomcli_core::{
     Application, Arg, Command, Content, ContentOpt, Context, Done, EX_DATAERR, Error, Failure,
-    FatalError, NoInputs, NoResult, Opt,
+    FatalError, NoInputs, NoResult, Opt, OptionSet,
 };
 use loomcli_plugins::mcp::extension::{
     MCP_COMMAND, MCP_INPUT, McpAnnotations, McpCommandFacts, McpInputFacts,
 };
 use loomcli_plugins::mcp::mcp;
-use loomcli_validators::text;
+use loomcli_validators::{integer, text};
 use mcp_support::{Launch, launch};
 use serde_json::Value;
 
@@ -74,10 +74,24 @@ async fn value_at(context: &Context, path: &str) -> Result<Value, Error> {
 
 /// jsonkit's tools, with `get` reading the document and the rest printing nothing.
 fn jsonkit() -> App {
+    let json_layout = OptionSet::new()
+        .option(
+            "compact",
+            Opt::boolean().description("Print the JSON on one line."),
+        )
+        .option(
+            "indent",
+            Opt::string()
+                .description("Indent nested JSON by this many spaces, from 0 to 8.")
+                .default("2")
+                .validate(integer().min(0).max(8)),
+        )
+        .exclusive(&["compact", "indent"]);
     let get = Command::new("get")
         .description("Read one value at a path.")
         .extend([read_only()])
         .option("file", document())
+        .options(&json_layout)
         .argument(
             "path",
             Arg::string().description("Dot path to read.").required(),
@@ -128,6 +142,7 @@ fn jsonkit() -> App {
                 .multiple()
                 .required(),
         )
+        .options(&json_layout)
         .action(|_: Context| async { Ok(()) });
     let max = Command::new("max")
         .description("Print the deepest nesting level under a path.")

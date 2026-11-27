@@ -12,7 +12,7 @@ use proc_macro::TokenStream;
 
 /// Implements `loomcli_core::Inputs` for a struct whose fields are a Command's inputs.
 ///
-/// Each field carries one of `#[option(...)]`, `#[argument(...)]`, `#[stdin(...)]`, or `#[passthrough(...)]`. The field
+/// Each field carries one input role. The field
 /// type decides the declaration: `bool` is a Boolean option, an integer under `count` a counted
 /// option, `Content` a content input, `Vec<T>` a multiple option or a variadic argument, `Option<T>`
 /// an optional input, and any other `T` a required one, typed by its validator's output.
@@ -26,12 +26,19 @@ use proc_macro::TokenStream;
 /// - `#[stdin(description = "…")]`: the standalone stdin, on a `Content` or `Option<Content>` field.
 /// - `#[passthrough(description = "…")]` declares passthrough on a `Vec<String>` field.
 ///   The description is optional.
+/// - `#[inputs(flatten)]` declares the local options and groups of a field implementing
+///   `OptionSetInputs`. The action reads that field as its own struct.
 ///
-/// The struct may carry `#[inputs(exclusive("a", "b"), one_required(…), required_together(…))]`.
+/// The struct may carry group declarations such as `#[inputs(requires("password", "user"))]`.
+/// The group methods are `exclusive`, `one_required`, `required_together`, and `requires`.
 /// Each member is an option's declared name (`dry-run` for a field `dry_run`), not a field
 /// identifier; a member that is a field's identifier where the field declares another name is a
 /// compile error at the member. A member that names no field is checked at `inputs::<I>()`, because
-/// an option declared before that call may be a member.
+/// an option declared before that call or through a flattened set may be a member.
+///
+/// `#[inputs(option_set)]` makes a struct of local options reusable. Its groups can only name
+/// options it declares, and its fields must use `#[option]`. A reusable set or a struct that
+/// flattens one cannot be used as global options.
 ///
 /// | Fact | Form | On |
 /// | --- | --- | --- |

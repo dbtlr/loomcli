@@ -177,7 +177,7 @@ let command = Command::new("serve")
 - An option's name is the field name with `_` as `-`, or `name = "…"`. Its long spelling is `--<name>`; `short = 'p'` adds `-p`, and `aliases = ["…"]` adds long spellings no listing shows.
 - `default` and `implied` take raw strings, which the validator judges when the run starts, so a default the validator rejects is reported at once.
 - `env = "NOTES_PORT"` binds an environment variable. The precedence is a token, then the environment, then the configuration file (when the [configuration plugin](plugins.md#configuration) links the option), then the default.
-- `#[inputs(exclusive(...), one_required(...), required_together(...))]` declares option groups by their declared names.
+- `#[inputs(exclusive(...), one_required(...), required_together(...), requires(...))]` declares option groups by their declared names.
 - `hidden`, `deprecated = "…"`, and `control` mark an option, and `non_interactive` on an `Option` or `Vec` field makes an input required only when the run cannot ask a question.
 
 The derive rejects at compile time what it can read from one field, such as `required` on a non-`Option` field or a short spelling that is not an ASCII letter. Rules that read several declarations, such as a spelling used twice, are faults at the `inputs::<I>()` call: the call panics at your line with a Developer Diagnostic that names the rule and the fix. The full attribute grammar is the rustdoc of `loomcli_core::Inputs` (the derive).
@@ -258,6 +258,83 @@ async fn main() {
 ```
 
 A read by a name the Command does not declare, or as a type the declaration does not produce, returns the `@loomcli/core/input-read` fault. The derive proves both at compile time, which is why it is the main path; the builder is what a plugin uses for options it declares on Commands it has never seen.
+
+### One-way option requirements
+
+`.requires("password", &["user"])` requires `--user` when the operator supplies `--password`. The operator can supply `--user` on its own. The derive form is `#[inputs(requires("password", "user"))]`. The extended help page says `Use --password only with --user.`
+
+### Sharing local options
+
+Declare common options and their groups once with `OptionSet::new()`. Call `.options(&set)` on each Command that uses them. Each Command gets its own local options, which its action reads by name.
+
+```rust
+use loomcli_core::{Application, Command, Context, Opt, OptionSet, Outcome, RunOptions};
+use loomcli_plugins::help::help;
+use loomcli_testing::{MockFields, mock_process};
+
+async fn show_user(context: Context) -> Outcome {
+	let user = context.option::<Option<String>>("user")?;
+	context.out.print(user.as_deref().unwrap_or("anonymous")).await
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+	let set = OptionSet::new()
+		.option("user", Opt::string().description("The user name."))
+		.option("password", Opt::string().description("The user's password."))
+		.requires("password", &["user"]);
+	let app = Application::new("accounts")
+		.plugins((help(),))
+		.command(Command::new("list").options(&set).action(show_user))
+		.command(Command::new("show").options(&set).action(show_user));
+	for command in ["list", "show"] {
+		let process = mock_process(MockFields::new().argv([command, "--help"]));
+		let code = app.run(RunOptions::new().process(process.clone())).await;
+		assert_eq!(code.get(), 0);
+		assert!(process.stdout_text().contains("Use --password only with --user."));
+	}
+}
+```
+
+With the derive, mark the shared struct with `#[inputs(option_set)]` and each field that uses it with `#[inputs(flatten)]`. The field contributes options under their declared names (`--user` and `--password` here). The action reads the nested Rust fields. jsonkit shares its compact and indent options the same way. See [jsonkit's `JsonLayout`](../../examples/jsonkit/src/json_layout.rs).
+
+```rust
+use loomcli_core::{Application, Command, Context, Inputs, Outcome, RunOptions};
+use loomcli_testing::{MockFields, mock_process};
+
+#[derive(Inputs)]
+#[inputs(option_set, requires("password", "user"))]
+struct Credentials {
+	/// The user name.
+	#[option]
+	user: Option<String>,
+	/// The user's password.
+	#[option]
+	password: Option<String>,
+}
+
+#[derive(Inputs)]
+struct ShowInputs {
+	#[inputs(flatten)]
+	credentials: Credentials,
+}
+
+async fn show_user(context: Context<ShowInputs>) -> Outcome {
+	let user = context.inputs.credentials.user.as_deref().unwrap_or("anonymous");
+	context.out.print(user).await
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+	let app = Application::new("accounts").command(
+		Command::new("show").inputs::<ShowInputs>().action(show_user),
+	);
+	let process = mock_process(MockFields::new().argv(["show", "--user", "ada"]));
+	let code = app.run(RunOptions::new().process(process.clone())).await;
+	assert_eq!(code.get(), 0);
+	assert_eq!(process.stdout_text(), "ada\n");
+}
+```
 
 ### Global options
 

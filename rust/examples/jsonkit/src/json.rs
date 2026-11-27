@@ -8,16 +8,21 @@ use serde_json::{Map, Value};
 /// [`javascript_number`]).
 #[must_use]
 pub fn format_json(value: &Value) -> String {
+    crate::json_layout::JsonLayout::default().format(value)
+}
+
+pub(crate) fn format_with_indent(value: &Value, indent: usize) -> String {
     let mut text = String::new();
-    write_json(&mut text, value, 0);
+    write_json(&mut text, value, 0, indent);
     text
 }
 
-fn write_json(text: &mut String, value: &Value, depth: usize) {
-    const INDENT: usize = 2;
-    let open = |text: &mut String, depth: usize| {
-        text.push('\n');
-        text.push_str(&" ".repeat((depth + 1) * INDENT));
+fn write_json(text: &mut String, value: &Value, depth: usize, indent: usize) {
+    let line = |text: &mut String, depth: usize| {
+        if indent > 0 {
+            text.push('\n');
+            text.push_str(&" ".repeat(depth * indent));
+        }
     };
     match value {
         Value::Null => text.push_str("null"),
@@ -31,11 +36,10 @@ fn write_json(text: &mut String, value: &Value, depth: usize) {
                 if index > 0 {
                     text.push(',');
                 }
-                open(text, depth);
-                write_json(text, item, depth + 1);
+                line(text, depth + 1);
+                write_json(text, item, depth + 1, indent);
             }
-            text.push('\n');
-            text.push_str(&" ".repeat(depth * INDENT));
+            line(text, depth);
             text.push(']');
         }
         Value::Object(members) if members.is_empty() => text.push_str("{}"),
@@ -45,13 +49,12 @@ fn write_json(text: &mut String, value: &Value, depth: usize) {
                 if index > 0 {
                     text.push(',');
                 }
-                open(text, depth);
+                line(text, depth + 1);
                 text.push_str(&quote(key));
-                text.push_str(": ");
-                write_json(text, member, depth + 1);
+                text.push_str(if indent == 0 { ":" } else { ": " });
+                write_json(text, member, depth + 1, indent);
             }
-            text.push('\n');
-            text.push_str(&" ".repeat(depth * INDENT));
+            line(text, depth);
             text.push('}');
         }
     }

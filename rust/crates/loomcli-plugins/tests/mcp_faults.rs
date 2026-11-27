@@ -329,7 +329,7 @@ async fn each_rule_renders_its_headline_sentence_explanation_and_correction() {
         ),
         (
             "required-input-excluded-non-interactive",
-            "-- REQUIRED MCP INPUT EXCLUDED ---- @loomcli/plugins/mcp/required-input-excluded\n\nCommand \"get\" requires option \"file\" and excludes it from its MCP tool, which leaves every call without a value.\n\nAn excluded option is off its Command's MCP tool, and a tool call reads no\nsource for it, so a required option that is excluded, a one-required group whose\nevery member is excluded, and a required-together group that excludes some of\nits members leave calls of the tool missing a value the Command needs.\n\nMake the option optional, or remove exclude from its mcpInput value.\n",
+            "-- REQUIRED MCP INPUT EXCLUDED ---- @loomcli/plugins/mcp/required-input-excluded\n\nCommand \"get\" requires option \"file\" and excludes it from its MCP tool, which leaves every call without a value.\n\nAn excluded option is off its Command's MCP tool, and a tool call reads no\nsource for it, so a required option that is excluded, a one-required group whose\nevery member is excluded, a required-together group that excludes some of its\nmembers, and a requirement that excludes an option it needs and not its option\nleave calls of the tool missing a value the Command needs.\n\nMake the option optional, or remove exclude from its mcpInput value.\n",
         ),
     ];
     for (name, stderr) in expected {

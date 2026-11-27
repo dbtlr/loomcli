@@ -7,7 +7,7 @@ use loomcli_validators::text;
 use serde_json::{Map, Value};
 
 use crate::document_input::document_input;
-use crate::json::format_json;
+use crate::json_layout::JsonLayout;
 use crate::kinds::describe_kind;
 use crate::read_json::read_json;
 
@@ -21,6 +21,9 @@ pub struct SelectInputs {
     // A field names a key, so the empty string can never name one.
     #[option(short = 'F', required, validate = text())]
     pub field: Vec<String>,
+    /// Shared JSON layout options.
+    #[inputs(flatten)]
+    pub layout: JsonLayout,
 }
 
 /// Missing fields warn once while the remaining selection keeps its first-occurrence order.
@@ -58,6 +61,6 @@ pub async fn select_fields(context: Context<SelectInputs>) -> Outcome {
             }
         }
     }
-    out.print(&style.escape(&format_json(&Value::Object(selected))))
+    out.print(&style.escape(&inputs.layout.format(&Value::Object(selected))))
         .await
 }
