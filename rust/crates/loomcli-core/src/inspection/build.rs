@@ -206,6 +206,12 @@ fn command_node(
             .collect(),
         path: path.clone(),
         result: result_node(command),
+        visible_aliases: command
+            .aliases
+            .iter()
+            .filter(|alias| command.visible_aliases.contains(alias))
+            .cloned()
+            .collect(),
     };
     let node = Arc::new(node);
     let grammar = Arc::new(grammar(&node));
@@ -288,14 +294,19 @@ fn option_node(option: &OptionInput, table: &Table) -> OptionNode {
     let [long, negative, short] = table::spellings_of(table, &option.name);
     let facts = option.decl.facts();
     let (extensions, owners) = option.extensions.publish();
-    let aliases: Vec<String> = distinct_aliases(&option.name, &option.decl)
-        .into_iter()
-        .map(|(_, alias)| alias.to_owned())
-        .collect();
+    let mut aliases = Vec::new();
+    let mut visible_aliases = Vec::new();
+    for alias in distinct_aliases(&option.name, &option.decl) {
+        aliases.push(alias.name.to_owned());
+        if alias.visible() {
+            visible_aliases.push(alias.name.to_owned());
+        }
+    }
     let name = option.name.clone();
     match &option.decl {
         OptionDecl::String(config) => OptionNode::String(StringOptionNode {
             aliases,
+            visible_aliases,
             control: facts.control,
             deprecated: facts.deprecated.clone(),
             description: facts.description.clone(),
@@ -330,6 +341,7 @@ fn option_node(option: &OptionInput, table: &Table) -> OptionNode {
         }),
         OptionDecl::Content(config) => OptionNode::Content(ContentOptionNode {
             aliases,
+            visible_aliases,
             control: facts.control,
             deprecated: facts.deprecated.clone(),
             description: facts.description.clone(),
@@ -356,6 +368,7 @@ fn option_node(option: &OptionInput, table: &Table) -> OptionNode {
         }),
         OptionDecl::Boolean(config) => OptionNode::Boolean(BooleanOptionNode {
             aliases,
+            visible_aliases,
             control: facts.control,
             deprecated: facts.deprecated.clone(),
             description: facts.description.clone(),
@@ -376,6 +389,7 @@ fn option_node(option: &OptionInput, table: &Table) -> OptionNode {
         }),
         OptionDecl::Count(config) => OptionNode::Count(CountOptionNode {
             aliases,
+            visible_aliases,
             control: facts.control,
             deprecated: facts.deprecated.clone(),
             description: facts.description.clone(),

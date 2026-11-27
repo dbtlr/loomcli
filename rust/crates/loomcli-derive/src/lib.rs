@@ -46,6 +46,7 @@ use proc_macro::TokenStream;
 /// | `description` | `description = "…"`; default: the doc comment, lines joined by spaces. Use `description = "…"` when the help text holds `<…>` or `[…]`, which rustdoc reads as HTML or a link | both |
 /// | `short`, `short_only` | `short = 'f'`, `short_only` | option |
 /// | `aliases` | `aliases = ["minimum"]` | option |
+/// | `visible_aliases` | `visible_aliases = ["minimum"]` | option |
 /// | `hidden`, `deprecated`, `control` | flags; `deprecated = "Use get instead."` | option |
 /// | `count` | flag; the field is an unsigned integer | option |
 /// | `polarity` | `polarity = "both"` | Boolean option |

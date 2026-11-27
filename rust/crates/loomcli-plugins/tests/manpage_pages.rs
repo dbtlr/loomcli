@@ -550,6 +550,29 @@ fn a_deprecated_command_opens_its_description_with_its_message_and_its_parent_ma
 }
 
 #[test]
+fn a_visible_alias_precedes_details_in_its_own_paragraph() {
+    let graph = plain_app("kit")
+        .description("A kit.")
+        .command(
+            Command::new("list")
+                .description("List.")
+                .extend([HELP_COMMAND
+                    .value(HelpCommandFacts::new().details("Lists every entry in the cache."))])
+                .visible_alias("ls")
+                .action(noop),
+        )
+        .inspect()
+        .unwrap();
+    let pages = pages_of(&graph);
+    assert!(pages["kit-list.1"].contains(concat!(
+        ".SH \"DESCRIPTION\"\n",
+        "Alias: ls\n",
+        ".PP\n",
+        "Lists every entry in the cache.\n",
+    )));
+}
+
+#[test]
 fn a_line_break_in_a_description_a_deprecation_or_the_stdin_description_reads_as_a_space() {
     let graph = plain_app("kit")
         .description("First line.\nSecond line.")

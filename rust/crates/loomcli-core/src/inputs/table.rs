@@ -10,20 +10,20 @@ use crate::failures::DeclarationError;
 use crate::failures::messages::quoted;
 use crate::support::is_declared_name;
 
-use super::{OptionDecl, Polarity};
+use super::{OptionDecl, Polarity, messages, options::AliasList};
 
 /// The correction every declared-name fault gives.
 pub(crate) const DECLARED_NAME_CORRECTION: &str =
     "Use a nonempty name without a leading hyphen, whitespace, or \"=\".";
 
 /// What one spelling is to the option it binds: the long spelling, the generated negative form, the
-/// short spelling, or the long form of the alias at `index` in its `aliases` list.
+/// short spelling, or a long form of the alias at `index` in its declaration list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Role {
     Long,
     Negative,
     Short,
-    Alias { index: usize, negative: bool },
+    Alias { list: AliasList, index: usize },
 }
 
 /// How a spelling reads its value: the next word, an implied value, a Boolean's own value, or one
@@ -153,7 +153,7 @@ pub(crate) fn spelling_mark(role: Role) -> String {
         Role::Long => "0".to_owned(),
         Role::Short => "1.short".to_owned(),
         Role::Negative => "1.polarity".to_owned(),
-        Role::Alias { index, .. } => format!("1.aliases.0.{index}"),
+        Role::Alias { list, index } => format!("1.{}.0.{index}", list.setter()),
     }
 }
 
@@ -204,15 +204,60 @@ pub(crate) fn check_option_config(
     ))
 }
 
-/// The aliases that add a spelling: each alias that repeats neither the option's name nor an
-/// earlier alias, with its index in the list.
-pub(crate) fn distinct_aliases<'a>(name: &str, decl: &'a OptionDecl) -> Vec<(usize, &'a str)> {
-    let mut seen: Vec<&str> = vec![name];
+/// The positive and negative long spellings yielded by a name and the option's polarity.
+fn long_forms(name: &str, polarity: Option<Polarity>) -> [Option<String>; 2] {
+    [
+        (polarity != Some(Polarity::Negative)).then(|| format!("--{name}")),
+        matches!(polarity, Some(Polarity::Both | Polarity::Negative))
+            .then(|| format!("--no-{name}")),
+    ]
+}
+
+/// One alias retained for parsing and inspection, with its diagnostic origin.
+pub(crate) struct DistinctAlias<'a> {
+    pub(crate) name: &'a str,
+    list: AliasList,
+    index: usize,
+}
+
+impl DistinctAlias<'_> {
+    pub(crate) fn visible(&self) -> bool {
+        self.list == AliasList::Visible
+    }
+}
+
+/// The aliases whose first long form is new, in order across the two declaration lists.
+/// A name present in both lists is visible and keeps its first position.
+pub(crate) fn distinct_aliases<'a>(name: &str, decl: &'a OptionDecl) -> Vec<DistinctAlias<'a>> {
+    let facts = decl.facts();
+    if facts.aliases.is_empty() && facts.visible_aliases.is_empty() {
+        return Vec::new();
+    }
+    let polarity = decl.polarity();
+    let mut seen: Vec<String> = long_forms(name, polarity).into_iter().flatten().collect();
     let mut distinct = Vec::new();
-    for (index, alias) in decl.facts().aliases.iter().enumerate() {
-        if !seen.contains(&alias.as_str()) {
-            seen.push(alias);
-            distinct.push((index, alias.as_str()));
+    for list in AliasList::ALL {
+        for (index, alias) in list.names(facts).iter().enumerate() {
+            let forms = long_forms(alias, polarity);
+            if forms
+                .iter()
+                .flatten()
+                .next()
+                .is_none_or(|own| seen.contains(own))
+            {
+                continue;
+            }
+            seen.extend(forms.into_iter().flatten());
+            let (list, index) = facts
+                .visible_aliases
+                .iter()
+                .position(|name| name == alias)
+                .map_or((list, index), |index| (AliasList::Visible, index));
+            distinct.push(DistinctAlias {
+                name: alias,
+                list,
+                index,
+            });
         }
     }
     distinct
@@ -282,23 +327,17 @@ impl<'a, 'b> Compiling<'a, 'b> {
         &mut self,
         option: &'b ScopeOption<'a>,
         long: &str,
-        alias: Option<usize>,
+        alias: Option<Role>,
     ) -> Result<(), DeclarationError> {
-        let polarity = option.decl.polarity();
+        let [positive, negative] = long_forms(long, option.decl.polarity());
         let mut forms = Vec::new();
-        if polarity != Some(Polarity::Negative) {
-            let role = alias.map_or(Role::Long, |index| Role::Alias {
-                index,
-                negative: false,
-            });
-            forms.push((format!("--{long}"), role, positive_form(option.decl)));
+        if let Some(spelling) = positive {
+            let role = alias.unwrap_or(Role::Long);
+            forms.push((spelling, role, positive_form(option.decl)));
         }
-        if matches!(polarity, Some(Polarity::Both | Polarity::Negative)) {
-            let role = alias.map_or(Role::Negative, |index| Role::Alias {
-                index,
-                negative: true,
-            });
-            forms.push((format!("--no-{long}"), role, Form::Boolean { value: false }));
+        if let Some(spelling) = negative {
+            let role = alias.unwrap_or(Role::Negative);
+            forms.push((spelling, role, Form::Boolean { value: false }));
         }
         for (spelling, role, form) in forms {
             let own = matches!(role, Role::Alias { .. })
@@ -322,18 +361,17 @@ impl<'a, 'b> Compiling<'a, 'b> {
     fn add_option(&mut self, option: &'b ScopeOption<'a>) -> Result<(), DeclarationError> {
         let name = option.name;
         check_option_name(name, &option.site)?;
-        for (index, alias) in option.decl.facts().aliases.iter().enumerate() {
-            if !is_declared_name(alias) {
-                return Err(DeclarationError::new(
-                    rules::DECLARED_NAME,
-                    DiagnosticParts::new(format!(
-                        "Option {} declares an alias named {}.",
-                        quoted(name),
-                        quoted(alias)
-                    ))
-                    .finding(option.site.finding(&format!("1.aliases.0.{index}")))
-                    .correction(DECLARED_NAME_CORRECTION),
-                ));
+        for list in AliasList::ALL {
+            for (index, alias) in list.names(option.decl.facts()).iter().enumerate() {
+                if !is_declared_name(alias) {
+                    let mark = spelling_mark(Role::Alias { list, index });
+                    return Err(DeclarationError::new(
+                        rules::DECLARED_NAME,
+                        DiagnosticParts::new(messages::invalid_alias(name, alias))
+                            .finding(option.site.finding(&mark))
+                            .correction(DECLARED_NAME_CORRECTION),
+                    ));
+                }
             }
         }
         let delimiter = match option.decl {
@@ -369,8 +407,12 @@ impl<'a, 'b> Compiling<'a, 'b> {
         let facts = option.decl.facts();
         if !facts.short_only {
             self.add_long_forms(option, name, None)?;
-            for (index, alias) in distinct_aliases(name, option.decl) {
-                self.add_long_forms(option, alias, Some(index))?;
+            for alias in distinct_aliases(name, option.decl) {
+                let role = Role::Alias {
+                    list: alias.list,
+                    index: alias.index,
+                };
+                self.add_long_forms(option, alias.name, Some(role))?;
             }
         }
         if let Some(letter) = facts.short {

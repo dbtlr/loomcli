@@ -1301,11 +1301,11 @@ fn inspect_lists_each_plugins_options_after_the_applications_with_the_nodes_a_gl
     assert_eq!(names, ["file", "cache", "mode", "quiet", "tags", "level"]);
     assert_eq!(
         serde_json::to_string(&*graph.globals[2]).unwrap(),
-        r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--mode","name":"mode","short":"-m","default":{"value":"plain"},"envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"arity":null,"background":false,"envAllowEmpty":false,"lastWins":false,"type":"string"}"#
+        r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--mode","name":"mode","short":"-m","visibleAliases":[],"default":{"value":"plain"},"envDelimiter":null,"implied":null,"multiple":false,"required":false,"requiredWhen":null,"schema":null,"validateOmitted":false,"validated":false,"arity":null,"background":false,"envAllowEmpty":false,"lastWins":false,"type":"string"}"#
     );
     assert_eq!(
         serde_json::to_string(&*graph.globals[1]).unwrap(),
-        r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--cache","name":"cache","short":null,"color":false,"interaction":false,"negative":"--no-cache","plain":false,"polarity":"both","schema":null,"type":"boolean"}"#
+        r#"{"aliases":[],"control":false,"env":[],"extensions":{},"hidden":false,"long":"--cache","name":"cache","short":null,"visibleAliases":[],"color":false,"interaction":false,"negative":"--no-cache","plain":false,"polarity":"both","schema":null,"type":"boolean"}"#
     );
     let level = serde_json::to_value(&*graph.globals[5]).unwrap();
     assert_eq!(level["env"], json!(["FIXTURE_LEVEL"]));

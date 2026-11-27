@@ -16,6 +16,18 @@ pub(crate) fn option_subject(spelling: &str, origin: Option<&str>) -> String {
     format!("Option {}{}", quoted(spelling), origin_clause(origin))
 }
 
+pub(super) fn invalid_alias(name: &str, alias: &str) -> String {
+    format!(
+        "Option {} declares an alias named {}.",
+        quoted(name),
+        quoted(alias)
+    )
+}
+
+pub(super) fn aliases_beside_short_only(setter: &str) -> String {
+    format!("declares {setter} beside short_only, which removes every long spelling")
+}
+
 fn origin_clause(label: Option<&str>) -> String {
     label.map_or_else(String::new, |label| {
         format!(" (from {})", escape_control_characters(label))

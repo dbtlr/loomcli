@@ -130,7 +130,20 @@ impl<I, R, S: State> Command<I, R, S> {
         S: Open,
     {
         let mut command = self;
-        declaration::raise(command.declaration.declare_alias(name));
+        declaration::raise(command.declaration.declare_alias(name, false));
+        command
+    }
+
+    /// Declares a synonym that routes to this Command and appears in help, man pages,
+    /// completion, and the manifest.
+    /// Call it once per alias. An existing alias becomes visible in its original position.
+    #[track_caller]
+    pub fn visible_alias(self, name: &str) -> Self
+    where
+        S: Open,
+    {
+        let mut command = self;
+        declaration::raise(command.declaration.declare_alias(name, true));
         command
     }
 

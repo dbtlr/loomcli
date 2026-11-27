@@ -215,14 +215,15 @@ pub enum ContentType {
 }
 
 /// A string option. Keys, in order: `aliases`, `control`, `deprecated`, `description`, `env`,
-/// `extensions`, `hidden`, `long`, `name`, `short`, `default`, `envDelimiter`, `implied`,
+/// `extensions`, `hidden`, `long`, `name`, `short`, `visibleAliases`, `default`, `envDelimiter`, `implied`,
 /// `multiple`, `required`, `requiredWhen`, `schema`, `validateOmitted`, `validated`, `background`,
 /// `envAllowEmpty`, `type`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct StringOptionNode {
-    /// Unadvertised synonyms.
+    /// All aliases as bare names: the unadvertised list, then the visible list, each in list
+    /// order, without repeats.
     pub aliases: Vec<String>,
     /// Whether it controls the invocation.
     pub control: bool,
@@ -246,6 +247,8 @@ pub struct StringOptionNode {
     pub name: String,
     /// The short spelling.
     pub short: Option<String>,
+    /// The visible aliases as bare names, in the order they appear in `aliases`.
+    pub visible_aliases: Vec<String>,
     /// The declared default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<DeclaredDefault>,
@@ -289,7 +292,8 @@ pub(crate) enum StringType {
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct ContentOptionNode {
-    /// Unadvertised synonyms.
+    /// All aliases as bare names: the unadvertised list, then the visible list, each in list
+    /// order, without repeats.
     pub aliases: Vec<String>,
     /// Whether it controls the invocation.
     pub control: bool,
@@ -313,6 +317,8 @@ pub struct ContentOptionNode {
     pub name: String,
     /// The short spelling.
     pub short: Option<String>,
+    /// The visible aliases as bare names, in the order they appear in `aliases`.
+    pub visible_aliases: Vec<String>,
     /// A content option declares no default; always absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<DeclaredDefault>,
@@ -344,13 +350,14 @@ pub struct ContentOptionNode {
     pub(crate) kind: ContentType,
 }
 
-/// A Boolean option. Keys, in order: the shared keys through `short`, then `color`, `interaction`,
+/// A Boolean option. Keys, in order: the shared keys through `visibleAliases`, then `color`, `interaction`,
 /// `negative`, `plain`, `polarity`, `schema`, `type`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct BooleanOptionNode {
-    /// Unadvertised synonyms.
+    /// All aliases as bare names: the unadvertised list, then the visible list, each in list
+    /// order, without repeats.
     pub aliases: Vec<String>,
     /// Whether it controls the invocation.
     pub control: bool,
@@ -374,6 +381,8 @@ pub struct BooleanOptionNode {
     pub name: String,
     /// The short spelling.
     pub short: Option<String>,
+    /// The visible aliases as bare names, in the order they appear in `aliases`.
+    pub visible_aliases: Vec<String>,
     /// Whether it carries the color mark.
     pub color: bool,
     /// Whether it carries the interaction mark.
@@ -396,13 +405,14 @@ pub(crate) enum BooleanType {
     Boolean,
 }
 
-/// A counted option. Keys, in order: the shared keys through `short`, then `quiet`, `schema`,
+/// A counted option. Keys, in order: the shared keys through `visibleAliases`, then `quiet`, `schema`,
 /// `type`, `verbose`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct CountOptionNode {
-    /// Unadvertised synonyms.
+    /// All aliases as bare names: the unadvertised list, then the visible list, each in list
+    /// order, without repeats.
     pub aliases: Vec<String>,
     /// Whether it controls the invocation.
     pub control: bool,
@@ -426,6 +436,8 @@ pub struct CountOptionNode {
     pub name: String,
     /// The short spelling.
     pub short: Option<String>,
+    /// The visible aliases as bare names, in the order they appear in `aliases`.
+    pub visible_aliases: Vec<String>,
     /// Whether it carries the quiet mark.
     pub quiet: bool,
     /// Always `null`.
@@ -497,6 +509,19 @@ impl OptionNode {
         shared_field!(self, short).as_deref()
     }
 
+    /// All aliases as bare names: the unadvertised list, then the visible list, each in list
+    /// order, without repeats.
+    #[must_use]
+    pub fn aliases(&self) -> &[String] {
+        shared_field!(self, aliases)
+    }
+
+    /// The visible aliases as bare names, in the order they appear in `aliases()`.
+    #[must_use]
+    pub fn visible_aliases(&self) -> &[String] {
+        shared_field!(self, visible_aliases)
+    }
+
     /// Whether it is kept off listings.
     #[must_use]
     pub fn hidden(&self) -> bool {
@@ -532,7 +557,7 @@ pub struct PassthroughNode {
 
 /// One Command. Keys, in order: `optionGroups`, `passthrough`, `stdin` (when declared), `aliases`, `arguments`,
 /// `children`, `deprecated`, `description`, `extensions`, `hasAction`, `hidden`, `name`, `needsTerminal`, `options`,
-/// `path`, `result`.
+/// `path`, `result`, `visibleAliases`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
@@ -544,7 +569,7 @@ pub struct CommandNode {
     /// The standalone stdin declaration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stdin: Option<StdinNode>,
-    /// Aliases, in declaration order.
+    /// All aliases as bare names, in declaration order.
     pub aliases: Vec<String>,
     /// Arguments, in declaration order. Each is shared, so a reader such as `locate` hands back the
     /// graph's own node and a caller compares by `Arc::ptr_eq`.
@@ -575,6 +600,8 @@ pub struct CommandNode {
     pub path: Vec<String>,
     /// The declared result.
     pub result: Option<ResultNode>,
+    /// The visible aliases as bare names, in the order they appear in `aliases`.
+    pub visible_aliases: Vec<String>,
 }
 
 /// The configuration fact. Keys: `schema`.

@@ -11,8 +11,8 @@ use super::pages::{findable, page_file, page_name};
 use super::roff::{Fill, Font, escape, escape_text, escape_unbroken, in_font, request, text_line};
 use crate::help::accepted::accepted;
 use crate::help::cells::{
-    Fact, OptionCellParts, UsageStyle, argument_facts, delimiter_literal, deprecated_facts,
-    option_cell_parts, single_line, split_noun, unbound_option_facts,
+    Fact, OptionCellParts, UsageStyle, argument_facts, command_alias_line, command_facts,
+    delimiter_literal, option_cell_parts, single_line, split_noun, unbound_option_facts,
 };
 use crate::help::extension::{CommandExample, HELP_ARGUMENT};
 use crate::help::messages::{CHILD_NAME_ESCAPE, TERMINAL_NEED_LABEL, TERMINAL_NEED_TEXT};
@@ -208,7 +208,13 @@ fn synopsis(subject: &Subject<'_>) -> Vec<String> {
 /// The masthead facts as paragraphs, then the details.
 fn description(subject: &Subject<'_>) -> Vec<String> {
     let mut lines = Vec::new();
+    if let Some((label, names)) = command_alias_line(subject.command) {
+        lines.push(text_line(&escape(&format!("{label}{names}"))));
+    }
     if subject.command.needs_terminal {
+        if !lines.is_empty() {
+            lines.push(".PP".to_owned());
+        }
         lines.push(text_line(&escape(&format!(
             "{TERMINAL_NEED_LABEL}{TERMINAL_NEED_TEXT}"
         ))));
@@ -238,11 +244,7 @@ fn child_entry(child: &&Arc<CommandNode>) -> Vec<String> {
     };
     entry(
         &tag,
-        &entry_text(
-            child.description.as_deref(),
-            None,
-            &deprecated_facts(child.deprecated.as_deref()),
-        ),
+        &entry_text(child.description.as_deref(), None, &command_facts(child)),
         &[],
     )
 }

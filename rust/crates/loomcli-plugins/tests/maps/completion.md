@@ -4,6 +4,7 @@ Reference tests live in `typescript/packages/plugins/tests`. The plugin's tests 
 
 | Reference file | Status | Notes |
 | --- | --- | --- |
+| `visible-aliases.test.ts` | ported, the completion answer cases | `visible_aliases.rs` checks every Command and option prefix, a used option, and the single-hyphen case. |
 | `option-groups.test.ts` | partly ported here | `option_groups.rs`: three completion cases cover claiming spellings, aliases, and both Boolean polarities. |
 | `option-requires.test.ts` | partly ported here | `option_requires.rs` checks that completion still offers the needed options. |
 | `completion.test.ts` (arity and last-wins additions) | ported | `completion_protocol.rs` checks the closed set at both word positions and repeated offers for last-wins. |

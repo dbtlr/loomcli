@@ -53,7 +53,7 @@ fn notes() -> GroupApplication {
 loomcli_testing::assert_assembles(&notes());
 ```
 
-- `alias(name)` adds another name the operator may type; help lists the Command under its own name.
+- `alias(name)` adds an unadvertised name the operator may type. `visible_alias(name)` advertises the alias beside the Command's own name.
 - `hidden()` keeps a Command off help and completion while it still runs.
 - `deprecated(message)` keeps a Command working and prints the message wherever it is listed.
 - Core sets no depth limit. jsonkit's `stats depth max` routes three levels below the root.
@@ -174,7 +174,7 @@ let command = Command::new("serve")
     .action(serve);
 ```
 
-- An option's name is the field name with `_` as `-`, or `name = "…"`. Its long spelling is `--<name>`; `short = 'p'` adds `-p`, and `aliases = ["…"]` adds long spellings no listing shows.
+- An option's name is the field name with `_` as `-`, or `name = "…"`. Its long spelling is `--<name>` and `short = 'p'` adds `-p`. `aliases = ["…"]` adds unadvertised long spellings and `visible_aliases = ["…"]` adds long spellings that listings show beside the option.
 - `default` and `implied` take raw strings, which the validator judges when the run starts, so a default the validator rejects is reported at once.
 - `env = "NOTES_PORT"` binds an environment variable. The precedence is a token, then the environment, then the configuration file (when the [configuration plugin](plugins.md#configuration) links the option), then the default.
 - `#[inputs(exclusive(...), one_required(...), required_together(...), requires(...))]` declares option groups by their declared names.

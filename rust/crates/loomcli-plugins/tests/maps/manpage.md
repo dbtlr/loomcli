@@ -4,10 +4,12 @@ Reference tests live in `typescript/packages/plugins/tests`. The Rust tests driv
 
 | Reference file | Status | Notes |
 | --- | --- | --- |
+| `visible-aliases.test.ts` | ported, the man page cases | `visible_aliases.rs` checks canonical filenames, entry text, and the alias paragraph. |
+| `manpage-pages.test.ts` (visible alias paragraph) | ported | `manpage_pages.rs` checks the paragraph break between an alias and details. |
 | `manpage-pages.test.ts` (option-group additions) | ported, 4 of 4 | `manpage_pages.rs`: exclusive, one-required, required-together, and the stdin caveat. |
 | `option-requires.test.ts` | partly ported here | `option_requires.rs`: requirements are roff paragraphs after the option entries, in declaration order, and hidden members on either side suppress them. |
 | `manpage-pages.test.ts` (arity addition) | ported | `manpage_pages.rs` checks repeated italic placeholders, fixed-count binding lines, and default display. |
-| `passthrough-mode.test.ts`, `manpage-pages.test.ts` | ported, parsing and terminal cases | `passthrough_mode.rs` checks the synopsis and argument entries for both modes. DESCRIPTION places terminal need before deprecation and details. The alias paragraph belongs to visible aliases. |
+| `passthrough-mode.test.ts`, `manpage-pages.test.ts` | ported, parsing and terminal cases | `passthrough_mode.rs` checks the synopsis and argument entries for both modes. DESCRIPTION places terminal need before deprecation and details. |
 | `manpage.test.ts` | ported, 47 of 47 | `manpage_generate.rs` (generate 8: replace, same bytes under another home and locale, generate equals install, the file, under-a-file, and dangling-link refusals, and no `--out`), `manpage_install.rs` (install 4, advice 11, files the record does not list 8), `manpage_update.rs` (moving and changing the set 7), `manpage_uninstall.rs` (uninstall and the nothing-to lines 4, record checks 3), and `manpage_umask.rs` (the umask 077 rows of the generate case and the install case, in one test because the umask is process-wide). `it.each` rows count one each and run as one test over their rows. The `man -w` and real Fish cases skip when the program is not installed, as the reference's do. The fixture installs `help()` and `manpage()` as the reference's does, so these files build with the features `manpage help`. |
 | `manpage-pages.test.ts` | ported, 15 of 15 | `manpage_pages.rs`: the page set (2), the root page and a child page byte for byte, the delimiter, empty-value, no-description, argument, deprecated, line-break, and authored-section cases, the three collision cases (build fault, every run in a development and a distributed build, a hidden Command), and the ASCII case. |
 | `manpage-roff.test.ts` | ported, 9 of 9 | `manpage_roff.rs`. |

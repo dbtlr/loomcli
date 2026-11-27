@@ -16,8 +16,8 @@ use loomcli_core::{
 use super::accepted::accepted;
 use super::cells::{
     Fact, OptionHelp, ROW_INDENT, Row, UsageStyle, UsageWriter, argument_facts, argument_form,
-    column, deprecated_facts, named_in_usage, option_cell, option_facts, option_form, right_cell,
-    single_line,
+    column, command_alias_line, command_facts, named_in_usage, option_alias_fact, option_cell,
+    option_facts, option_form, right_cell, single_line,
 };
 use super::details::render_details;
 use super::extension::{CommandExample, HELP_ARGUMENT, HELP_COMMAND, HELP_INPUT, HelpCommandFacts};
@@ -128,7 +128,7 @@ fn labeled(
     .collect()
 }
 
-/// `<path> · <description>`, or `<path>` alone, then a deprecated Command's migration message.
+/// The canonical path and description, then the Command's alias, terminal, and deprecation lines.
 fn masthead(path: &str, command: &CommandNode, context: &ViewContext) -> Vec<String> {
     let style = &context.style;
     let name = style.highlight().bold().apply(&style.escape(path));
@@ -141,6 +141,14 @@ fn masthead(path: &str, command: &CommandNode, context: &ViewContext) -> Vec<Str
             context,
         ),
     };
+    if let Some((label, names)) = command_alias_line(command) {
+        lines.extend(labeled(
+            label,
+            &names,
+            |text| style.dim().apply(text),
+            context,
+        ));
+    }
     if command.needs_terminal {
         lines.extend(labeled(
             TERMINAL_NEED_LABEL,
@@ -239,7 +247,7 @@ pub(crate) fn child_suffix(child: &CommandNode) -> Option<&'static str> {
     }
 }
 
-/// One child row: its name, the form it answers to, and its description and deprecation.
+/// One child row: its name and form, its description, and its facts.
 fn child_row(child: &CommandNode, context: &ViewContext) -> Row {
     let style = &context.style;
     let name = style
@@ -254,7 +262,7 @@ fn child_row(child: &CommandNode, context: &ViewContext) -> Row {
         right: right_cell(
             child.description.as_deref(),
             None,
-            &deprecated_facts(child.deprecated.as_deref()),
+            &command_facts(child),
             context,
         ),
     }
@@ -390,12 +398,16 @@ pub(crate) fn option_description(option: &OptionNode) -> Option<&str> {
 /// One option row: its spellings and placeholder, then its description, accepted values, and
 /// facts. A Boolean or counted option takes no value and prints no accepted values.
 fn option_row(option: &ReadOption, context: &ViewContext) -> Row {
+    let mut facts = option_facts(&option.node, &option.help);
+    if let Some(alias) = option_alias_fact(&option.node) {
+        facts.insert(0, alias);
+    }
     Row {
         left: option_cell(&option.node, &option.help, context),
         right: right_cell(
             option_description(&option.node),
             option_accepts(option).as_deref(),
-            &option_facts(&option.node, &option.help),
+            &facts,
             context,
         ),
     }

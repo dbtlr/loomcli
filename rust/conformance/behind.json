@@ -403,91 +403,13 @@
       ]
     },
     {
-      "id": "jsonkit-manifest-alias-ls",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
       "id": "jsonkit-manifest-completion",
       "parts": [
         "stdout"
       ]
     },
     {
-      "id": "jsonkit-manifest-completion-bash",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-debug-hidden",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-doctor",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-fetch-deprecated",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-get",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-get-short",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-held-fault",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-help-command",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-keys",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-manpage-generate",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
       "id": "jsonkit-manifest-mcp",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-missing-argument",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-paths-hidden",
       "parts": [
         "stdout"
       ]
@@ -512,36 +434,6 @@
     },
     {
       "id": "jsonkit-manifest-root-short",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-select",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-stats",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-stats-depth",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-stats-depth-max",
-      "parts": [
-        "stdout"
-      ]
-    },
-    {
-      "id": "jsonkit-manifest-with-format-json",
       "parts": [
         "stdout"
       ]

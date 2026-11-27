@@ -148,9 +148,9 @@ impl UsageStyle for PlainUsage {
 
 fn opening(graph: &CommandGraph, command: &CommandNode) -> Vec<String> {
     let mut blocks = vec![format!("# {}", inline(&path_of(graph, command)))];
-    if !command.aliases.is_empty() {
+    if !command.visible_aliases.is_empty() {
         blocks.push(paragraph(&messages::reference_aliases(
-            &command.aliases,
+            &command.visible_aliases,
             true,
         )));
     }
@@ -291,8 +291,8 @@ fn index_entry(graph: &CommandGraph, command: &CommandNode) -> String {
         entry.push_str(&format!(": {}", inline(description)));
     }
     let mut facts = Vec::new();
-    if !command.aliases.is_empty() {
-        facts.push(messages::reference_aliases(&command.aliases, false));
+    if !command.visible_aliases.is_empty() {
+        facts.push(messages::reference_aliases(&command.visible_aliases, false));
     }
     if command.needs_terminal {
         facts.push("needs a terminal".to_owned());
