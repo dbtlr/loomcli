@@ -155,6 +155,28 @@ async fn each_success_and_failure_line_replaces_its_frame_and_stays_in_scrollbac
     assert!(timed(&shown[3], "✔ Reading rows · "), "{shown:?}");
 }
 
+#[tokio::test(start_paused = true)]
+async fn skipped_and_warned_lines_stay_and_cleared_lines_leave_no_row() {
+    let mock = mock_for(true, &[], vec![]);
+    let app: App = Application::new("progress").action(|ctx: Context| async move {
+        let skipped = progress(&ctx, ProgressSettings::new("Fetching"));
+        let cleared = progress(&ctx, ProgressSettings::new("Reading the cache"));
+        let warned = progress(&ctx, ProgressSettings::new("Installing"));
+        skipped.skip_with("The cache is fresh").await?;
+        cleared.clear().await?;
+        warned.warn_with("Installed 2 of 3 packages").await?;
+        Ok(())
+    });
+    assert_eq!(run_on(app, &mock, None).await, 0);
+    assert_eq!(
+        Marks::default().screen(&mock, None),
+        [
+            "ℹ The cache is fresh · 0.0s",
+            "⚠ Installed 2 of 3 packages · 0.0s"
+        ]
+    );
+}
+
 #[tokio::test]
 async fn on_a_host_that_takes_compat_glyph_forms_the_failure_line_opens_with_a_cross() {
     let (mock, marks) = look(&[("TERM", "linux")]).await;
@@ -648,24 +670,22 @@ async fn a_middlewares_line_stays_open_through_the_action_and_ends_once_the_chai
 
 /// The plain scenario: the documented example's lines and a failing line.
 fn plain_app() -> App {
-    Application::new("progress")
-        .global_option("plain", loomcli_core::Opt::boolean().plain())
-        .action(|ctx: Context| async move {
-            let fetching = progress(&ctx, ProgressSettings::new("Fetching records").total(10.0));
-            for index in 0..10 {
-                fetching.update(ProgressUpdate::new().completed(f64::from(index + 1)));
-            }
-            fetching.end_with("Fetched 10 records").await?;
-            progress(&ctx, ProgressSettings::new("Building the index"))
-                .track(
-                    async { Ok::<_, Error>(812) },
-                    TrackMessages::new().done(|count: &i32| format!("Indexed {count} records")),
-                )
-                .await?;
-            progress(&ctx, ProgressSettings::new("Uploading"))
-                .fail()
-                .await
-        })
+    support::progress::builder().action(|ctx: Context| async move {
+        let fetching = progress(&ctx, ProgressSettings::new("Fetching records").total(10.0));
+        for index in 0..10 {
+            fetching.update(ProgressUpdate::new().completed(f64::from(index + 1)));
+        }
+        fetching.end_with("Fetched 10 records").await?;
+        progress(&ctx, ProgressSettings::new("Building the index"))
+            .track(
+                async { Ok::<_, Error>(812) },
+                TrackMessages::new().done(|count: &i32| format!("Indexed {count} records")),
+            )
+            .await?;
+        progress(&ctx, ProgressSettings::new("Uploading"))
+            .fail()
+            .await
+    })
 }
 
 const PLAIN: &str = "ℹ Fetching records\n✔ Fetched 10 records\nℹ Building the index\n✔ Indexed 812 records\nℹ Uploading\n✘ Uploading\n";
@@ -821,5 +841,344 @@ async fn sigint_writes_the_lines_cancelled_line_the_run_resolves_130_and_the_pro
     assert_eq!(
         Marks::default().screen(&mock, None),
         ["■ Waiting for SIGINT (cancelled)"]
+    );
+}
+
+const PLAIN_ENDS: &str = concat!(
+    "ℹ Fetching records\nℹ Fetched nothing: the cache is fresh\n",
+    "ℹ Fetching more\n⚠ Fetched 118 of 120 records\n",
+    "ℹ Checking\nℹ Checking\nℹ Reading the cache\n",
+);
+
+async fn finish_examples(ctx: Context) -> Result<(), Error> {
+    let cached = progress(&ctx, ProgressSettings::new("Fetching records"));
+    cached
+        .skip_with("Fetched nothing: the cache is fresh")
+        .await?;
+    let counted = progress(&ctx, ProgressSettings::new("Fetching more").total(120.0));
+    counted.update(ProgressUpdate::new().completed(118.0));
+    counted.warn_with("Fetched 118 of 120 records").await?;
+    progress(&ctx, ProgressSettings::new("Checking"))
+        .skip()
+        .await?;
+    progress(&ctx, ProgressSettings::new("Reading the cache"))
+        .clear()
+        .await
+}
+
+#[tokio::test(start_paused = true)]
+async fn plain_outcomes_use_the_matching_lanes_and_clear_adds_no_end() {
+    use support::progress::{app, fields, terminal};
+    for (argv, env, tty) in [
+        (&[][..], ("TERM", "xterm"), false),
+        (&[][..], ("TERM", "dumb"), true),
+        (&[][..], ("ACCESSIBLE", "1"), true),
+        (&["--plain"][..], ("TERM", "xterm"), true),
+    ] {
+        let setup = fields().argv(argv.iter().copied()).env(env.0, env.1);
+        let mock = mock_process(if tty {
+            setup.terminal(terminal(80, 24))
+        } else {
+            setup
+        });
+        assert_eq!(run_on(app(finish_examples), &mock, None).await, 0);
+        assert_eq!(mock.stdout_text(), "");
+        assert_eq!(mock.stderr_text(), PLAIN_ENDS);
+    }
+    let mock = mock_process(fields().argv(["-q"]));
+    assert_eq!(run_on(app(finish_examples), &mock, None).await, 0);
+    assert_eq!(mock.stderr_text(), "⚠ Fetched 118 of 120 records\n");
+    let mock = mock_process(fields().argv(["-q"]).terminal(terminal(80, 24)));
+    assert_eq!(run_on(plain_app(), &mock, None).await, 0);
+    assert_eq!(mock.stderr_text(), "✘ Uploading\n");
+}
+
+#[tokio::test(start_paused = true)]
+async fn invoke_reports_skipped_warned_and_cleared_ends_with_their_labels_and_counts() {
+    let (messages, events) = invoked(support::progress::app(finish_examples)).await;
+    assert_eq!(messages, PLAIN_ENDS);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| (
+                event.id,
+                event.state,
+                event.label.as_str(),
+                event.completed,
+                event.total
+            ))
+            .collect::<Vec<_>>(),
+        [
+            (1, ProgressState::Started, "Fetching records", None, None),
+            (
+                1,
+                ProgressState::Skipped,
+                "Fetched nothing: the cache is fresh",
+                None,
+                None
+            ),
+            (
+                2,
+                ProgressState::Started,
+                "Fetching more",
+                Some(0.0),
+                Some(120.0)
+            ),
+            (
+                2,
+                ProgressState::Updated,
+                "Fetching more",
+                Some(118.0),
+                Some(120.0)
+            ),
+            (
+                2,
+                ProgressState::Warned,
+                "Fetched 118 of 120 records",
+                Some(118.0),
+                Some(120.0)
+            ),
+            (3, ProgressState::Started, "Checking", None, None),
+            (3, ProgressState::Skipped, "Checking", None, None),
+            (4, ProgressState::Started, "Reading the cache", None, None),
+            (4, ProgressState::Ended, "Reading the cache", None, None),
+        ]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_skipped_and_warned_view_uses_compat_glyphs() {
+    let mock = mock_for(true, &[("TERM", "linux")], vec![]);
+    assert_eq!(
+        run_on(support::progress::app(finish_examples), &mock, None).await,
+        0
+    );
+    assert_eq!(
+        Marks::default().screen(&mock, None),
+        [
+            "i Fetched nothing: the cache is fresh · 0.0s",
+            "‼ Fetched 118 of 120 records · 0.0s",
+            "i Checking · 0.0s",
+        ]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn skipped_end_styles_its_entire_line_while_warning_styles_its_glyph() {
+    let mock = mock_for(true, &[("NO_COLOR", ""), ("FORCE_COLOR", "1")], vec![]);
+    let app: App = Application::new("progress")
+        .plugins([support::progress::dim_and_warning_theme()])
+        .action(finish_examples);
+    assert_eq!(run_on(app, &mock, None).await, 0);
+    let stderr = mock.stderr_text();
+    assert!(
+        stderr.contains("\x1b[2mℹ Fetched nothing: the cache is fresh · 0.0s\x1b[22m"),
+        "{stderr:?}"
+    );
+    assert!(
+        stderr.contains("⚠\x1b[39m Fetched 118 of 120 records "),
+        "{stderr:?}"
+    );
+    assert!(!stderr.contains("\x1b[2mFetched 118"), "{stderr:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn clearing_during_a_lend_preserves_the_frame_already_in_scrollback() {
+    let mock = mock_for(true, &[], vec![]);
+    let app = support::progress::app(|ctx| async move {
+        let line = progress(&ctx, ProgressSettings::new("Preparing the release"));
+        ctx.out.lend_terminal(|| async { line.clear().await }).await
+    });
+    assert_eq!(run_on(app, &mock, None).await, 0);
+    assert_eq!(mock.stderr_text(), "◐ Preparing the release · 0.0s\n\n");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_progress_view_override_receives_skipped_and_warned_but_no_cleared_end() {
+    let frames = support::progress::Frames::default();
+    let view = frames.render(|line, _| Ok(format!("{:?} {}", line.state, line.label)));
+    let mock = mock_for(true, &[], vec![]);
+    let app = support::progress::builder()
+        .overrides([view])
+        .action(finish_examples);
+    assert_eq!(run_on(app, &mock, None).await, 0);
+    assert_eq!(
+        Marks::default().screen(&mock, None),
+        [
+            "Skipped Fetched nothing: the cache is fresh",
+            "Warned Fetched 118 of 120 records",
+            "Skipped Checking",
+        ]
+    );
+    assert_eq!(
+        frames
+            .take()
+            .iter()
+            .filter(|frame| frame.data.state != LineState::Running)
+            .count(),
+        3
+    );
+}
+
+async fn repeat_ends(ctx: Context) -> Result<(), Error> {
+    for label in ["Ended", "Failed", "Skipped", "Warned", "Cleared"] {
+        let line = progress(&ctx, ProgressSettings::new(label));
+        match label {
+            "Ended" => line.end().await?,
+            "Failed" => line.fail().await?,
+            "Skipped" => line.skip().await?,
+            "Warned" => line.warn().await?,
+            _ => line.clear().await?,
+        }
+        line.update(ProgressUpdate::new().label("Too late"));
+        line.end_with("Too late").await?;
+        line.fail_with("Too late").await?;
+        line.skip_with("Too late").await?;
+        line.warn_with("Too late").await?;
+        line.clear().await?;
+    }
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn later_ends_and_updates_do_nothing_in_live_plain_and_invoke_output() {
+    let tty = mock_for(true, &[], vec![]);
+    assert_eq!(
+        run_on(support::progress::app(repeat_ends), &tty, None).await,
+        0
+    );
+    assert_eq!(
+        Marks::default().screen(&tty, None),
+        [
+            "✔ Ended · 0.0s",
+            "✘ Failed · 0.0s",
+            "ℹ Skipped · 0.0s",
+            "⚠ Warned · 0.0s",
+        ]
+    );
+    let pipe = mock_for(false, &[], vec![]);
+    assert_eq!(
+        run_on(support::progress::app(repeat_ends), &pipe, None).await,
+        0
+    );
+    let plain = "ℹ Ended\n✔ Ended\nℹ Failed\n✘ Failed\nℹ Skipped\nℹ Skipped\nℹ Warned\n⚠ Warned\nℹ Cleared\n";
+    assert_eq!(pipe.stderr_text(), plain);
+    let (messages, events) = invoked(support::progress::app(repeat_ends)).await;
+    assert_eq!(messages, plain);
+    assert_eq!(
+        events.iter().map(|event| event.state).collect::<Vec<_>>(),
+        [
+            ProgressState::Started,
+            ProgressState::Ended,
+            ProgressState::Started,
+            ProgressState::Failed,
+            ProgressState::Started,
+            ProgressState::Skipped,
+            ProgressState::Started,
+            ProgressState::Warned,
+            ProgressState::Started,
+            ProgressState::Ended,
+        ]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn clearing_a_cancelled_line_leaves_the_cancelled_end() {
+    let mock = mock_for(true, &[], vec![]);
+    let app = support::progress::app(|ctx| async move {
+        let line = progress(&ctx, ProgressSettings::new("Waiting"));
+        ctx.out.info("started").await?;
+        ctx.cancel();
+        line.clear().await
+    });
+    assert_eq!(run_on(app, &mock, None).await, 130);
+    assert_eq!(
+        Marks::default().screen(&mock, None),
+        ["ℹ started", "■ Waiting (cancelled)"]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn clearing_the_middle_line_preserves_its_neighbors_and_an_earlier_lane_message() {
+    let mock = mock_for(true, &[], vec![]);
+    let watched = mock.clone();
+    let app = support::progress::app(move |ctx| {
+        let watched = watched.clone();
+        async move {
+            ctx.out.info("lane line").await?;
+            let above = progress(&ctx, ProgressSettings::new("Above"));
+            let middle = progress(&ctx, ProgressSettings::new("Reading the cache"));
+            let below = progress(&ctx, ProgressSettings::new("Below").total(4.0));
+            assert_eq!(
+                Marks::default().screen(&watched, None),
+                [
+                    "ℹ lane line",
+                    "◐ Above · 0.0s",
+                    "◐ Reading the cache · 0.0s",
+                    "◐ Below ▱▱▱▱▱▱▱▱▱▱ 0/4 · 0.0s",
+                ]
+            );
+            middle.clear().await?;
+            assert_eq!(
+                Marks::default().screen(&watched, None),
+                [
+                    "ℹ lane line",
+                    "◐ Above · 0.0s",
+                    "◐ Below ▱▱▱▱▱▱▱▱▱▱ 0/4 · 0.0s",
+                ]
+            );
+            above.end().await?;
+            below.end().await
+        }
+    });
+    assert_eq!(run_on(app, &mock, None).await, 0);
+    assert_eq!(
+        Marks::default().screen(&mock, None),
+        ["ℹ lane line", "✔ Above · 0.0s", "✔ Below · 0.0s"]
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn clearing_a_failed_line_keeps_its_end_message_in_plain_and_live_output() {
+    for tty in [false, true] {
+        let mock = mock_for(tty, &[], vec![]);
+        let app = support::progress::app(|ctx| async move {
+            let line = progress(&ctx, ProgressSettings::new("Uploading"));
+            line.fail_with("Upload refused").await?;
+            line.clear().await
+        });
+        assert_eq!(run_on(app, &mock, None).await, 0);
+        if tty {
+            assert_eq!(
+                Marks::default().screen(&mock, None),
+                ["✘ Upload refused · 0.0s"]
+            );
+        } else {
+            assert_eq!(mock.stderr_text(), "ℹ Uploading\n✘ Upload refused\n");
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failing_info_view_at_a_piped_progress_start_fails_the_run() {
+    use loomcli_core::lanes;
+    use loomcli_prompts::progress;
+    use loomcli_testing::mock_process;
+    use support::progress::{builder, fields, run, still};
+
+    let mock = mock_process(fields());
+    let failing = override_view(
+        lanes::info(),
+        View::new(|_: &str, _| -> Result<String, Error> {
+            Err(FatalError::new("The info view failed.").into())
+        }),
+    );
+    let action = builder().overrides([failing]).action(|ctx| async move {
+        let root = progress(&ctx, still("Deploying"));
+        root.end().await
+    });
+    assert_eq!(
+        (run(action, &mock).await, mock.stderr_text().as_str()),
+        (1, "✔ Deploying\nThe info view failed.\n")
     );
 }

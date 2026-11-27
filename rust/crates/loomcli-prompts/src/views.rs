@@ -411,6 +411,10 @@ pub enum ProgressState {
     Ended,
     /// The line failed.
     Failed,
+    /// The work was skipped.
+    Skipped,
+    /// The line ended with a warning.
+    Warned,
     /// The run was cancelled.
     Cancelled,
 }
@@ -442,7 +446,8 @@ impl BarCells {
 pub struct ProgressLine {
     /// The state.
     pub state: ProgressState,
-    /// The label while the line runs, and the end message once it has ended or failed.
+    /// The label while the line runs, and the end message once it has ended, failed, been skipped,
+    /// or warned.
     pub label: String,
     /// How much is done.
     pub completed: Option<f64>,
@@ -454,6 +459,20 @@ pub struct ProgressLine {
     pub bar: BarCells,
     /// Milliseconds since `progress()` opened the line.
     pub elapsed: u64,
+    /// Whether the default view shows the estimate.
+    pub estimate: bool,
+    /// Units completed per second.
+    pub rate: Option<f64>,
+    /// Milliseconds of work left.
+    pub remaining: Option<f64>,
+    /// The marked text naming the unit in the rate.
+    pub unit: Option<String>,
+    /// The fitted marked log rows, oldest first.
+    pub log: Vec<String>,
+    /// How deep this line sits in the tree, with zero for its root.
+    pub depth: usize,
+    /// The tasks this frame shows under the line, in opening order.
+    pub tasks: Vec<ProgressLine>,
 }
 
 impl ProgressLine {
@@ -468,6 +487,13 @@ impl ProgressLine {
             frame: String::new(),
             bar: BarCells::new("▰", "▱"),
             elapsed: 0,
+            estimate: false,
+            rate: None,
+            remaining: None,
+            unit: None,
+            log: Vec::new(),
+            depth: 0,
+            tasks: Vec::new(),
         }
     }
 
@@ -490,6 +516,43 @@ impl ProgressLine {
     #[must_use]
     pub fn bar(mut self, bar: BarCells) -> Self {
         self.bar = bar;
+        self
+    }
+
+    /// Supplies the figures, optional unit, and whether the default view draws them.
+    #[must_use]
+    pub fn estimate(
+        mut self,
+        show: bool,
+        rate: Option<f64>,
+        remaining: Option<f64>,
+        unit: Option<String>,
+    ) -> Self {
+        self.estimate = show;
+        self.rate = rate;
+        self.remaining = remaining;
+        self.unit = unit;
+        self
+    }
+
+    /// Supplies the log rows to draw.
+    #[must_use]
+    pub fn log(mut self, rows: Vec<String>) -> Self {
+        self.log = rows;
+        self
+    }
+
+    /// Sets the line's depth in its tree.
+    #[must_use]
+    pub fn depth(mut self, depth: usize) -> Self {
+        self.depth = depth;
+        self
+    }
+
+    /// Supplies the tasks shown beneath this line.
+    #[must_use]
+    pub fn tasks(mut self, tasks: Vec<ProgressLine>) -> Self {
+        self.tasks = tasks;
         self
     }
 
@@ -1581,57 +1644,239 @@ pub(crate) fn elapsed_time(elapsed: u64) -> String {
     format!("{}h {:02}m", elapsed / HOUR, (elapsed % HOUR) / MINUTE)
 }
 
-fn render_progress(data: &ProgressLine, context: &ViewContext) -> String {
-    let style = &context.style;
-    let time = format!(
-        "{} {}",
-        style.dim().apply("·"),
-        style.dim().apply(&elapsed_time(data.elapsed))
-    );
-    match data.state {
-        ProgressState::Cancelled => {
-            return style.dim().apply(&format!(
-                "{} {} (cancelled)",
-                glyph(Glyph::SquareCenter),
-                data.label
-            ));
-        }
-        ProgressState::Ended => {
-            return format!(
-                "{} {} {time}",
-                style.success().apply(&glyph(Glyph::Success)),
-                data.label
-            );
-        }
-        ProgressState::Failed => {
-            return format!(
-                "{} {} {time}",
-                style.error().apply(&glyph(Glyph::Error)),
-                data.label
-            );
-        }
-        ProgressState::Running => {}
+/// Round to the precision of the reported counts before taking a floor or ceiling.
+fn steady(value: f64) -> f64 {
+    format!("{value:.11e}").parse().unwrap_or(value)
+}
+
+fn rate_text(rate: f64, unit: Option<&str>) -> String {
+    let named = unit.map_or_else(String::new, |unit| format!(" {unit}"));
+    if rate == 0.0 {
+        return format!("0{named}/s");
     }
-    let completed = data.completed.unwrap_or(0.0);
-    let measure = match (data.total, data.completed) {
-        (Some(total), _) => {
-            let complete = complete_cells(completed, total);
-            let bar = style
-                .highlight()
-                .apply(&escape(&data.bar.complete.repeat(complete)))
-                + &style
+    let (amount, suffix) = if rate >= 1.0 {
+        (rate, "/s")
+    } else if rate * 60.0 >= 1.0 {
+        (rate * 60.0, "/min")
+    } else {
+        (rate * 3600.0, "/h")
+    };
+    let shown = if amount >= 10.0 {
+        number(steady(amount).floor())
+    } else {
+        format!("{:.1}", steady(amount * 10.0).floor() / 10.0)
+    };
+    format!("{shown}{named}{suffix}")
+}
+
+fn time_left(remaining: f64) -> String {
+    let seconds = steady(remaining / 1000.0).ceil().max(1.0);
+    let minutes = (seconds / 60.0).round();
+    if seconds < 60.0 {
+        format!("about {seconds}s left")
+    } else if minutes < 60.0 {
+        format!("about {minutes}m left")
+    } else {
+        let hours = (seconds / 3600.0).round();
+        format!("about {hours}h left")
+    }
+}
+
+fn leading(text: &str, columns: usize, width: impl Fn(&str) -> usize) -> &str {
+    let mut end = 0;
+    for segment in graphemes(text) {
+        let next = end + segment.len();
+        if width(&text[..next]) > columns {
+            break;
+        }
+        end = next;
+    }
+    &text[..end]
+}
+
+fn progress_row(data: &ProgressLine, context: &ViewContext, depth: usize, fitted: bool) -> String {
+    let style = &context.style;
+    let detail = |text: &str| format!(" {} {}", style.dim().apply("·"), style.dim().apply(text));
+    let mut elapsed = detail(&elapsed_time(data.elapsed));
+    let mut bar = String::new();
+    let mut count = String::new();
+    let mut rate = String::new();
+    let mut left = String::new();
+    let mut dim = false;
+    let mark_style: &Painter<'_>;
+    let highlight = |mark: &str| style.highlight().apply(mark);
+    let success = |mark: &str| style.success().apply(mark);
+    let error = |mark: &str| style.error().apply(mark);
+    let warning = |mark: &str| style.warning().apply(mark);
+    let plain = str::to_owned;
+    let mark = match data.state {
+        ProgressState::Running => {
+            let completed = data.completed.unwrap_or(0.0);
+            if let Some(total) = data.total {
+                let complete = complete_cells(completed, total);
+                let done = style
+                    .highlight()
+                    .apply(&escape(&data.bar.complete.repeat(complete)));
+                let todo = style
                     .dim()
                     .apply(&escape(&data.bar.incomplete.repeat(BAR_CELLS - complete)));
-            format!(" {bar} {}", counts(completed, total))
+                bar = format!(" {done}{todo}");
+                count = format!(" {}", counts(completed, total));
+            } else if data.completed.is_some() {
+                count = format!(" {}", number(completed));
+            }
+            if let Some(measured) = data.rate.filter(|_| data.estimate) {
+                rate = detail(&rate_text(measured, data.unit.as_deref()));
+                if let Some(remaining) = data.remaining {
+                    left = detail(&time_left(remaining));
+                }
+            }
+            mark_style = &highlight;
+            escape(&data.frame)
         }
-        (None, Some(completed)) => format!(" {}", number(completed)),
-        (None, None) => String::new(),
+        ProgressState::Ended => {
+            mark_style = &success;
+            glyph(Glyph::Success)
+        }
+        ProgressState::Failed => {
+            mark_style = &error;
+            glyph(Glyph::Error)
+        }
+        ProgressState::Warned => {
+            mark_style = &warning;
+            glyph(Glyph::Warning)
+        }
+        ProgressState::Skipped => {
+            dim = true;
+            elapsed = format!(" · {}", elapsed_time(data.elapsed));
+            mark_style = &plain;
+            glyph(Glyph::Info)
+        }
+        ProgressState::Cancelled => {
+            dim = true;
+            elapsed = " (cancelled)".to_owned();
+            mark_style = &plain;
+            glyph(Glyph::SquareCenter)
+        }
     };
-    format!(
-        "{} {}{measure} {time}",
-        style.highlight().apply(&escape(&data.frame)),
-        data.label
-    )
+    let indent = "  ".repeat(depth);
+    let paint = |row: &str| {
+        if dim {
+            style.dim().apply(row)
+        } else {
+            row.to_owned()
+        }
+    };
+    let styled_mark = mark_style(&mark);
+    let mut parts = [bar, count, elapsed, rate, left];
+    let text = |label: &str, parts: &[String]| format!("{styled_mark} {label}{}", parts.concat());
+    let drawn = |label: &str, parts: &[String]| indent.clone() + &paint(&text(label, parts));
+    if !fitted {
+        return drawn(&data.label, &parts);
+    }
+    let columns = usize::from(context.columns.unwrap_or(80).max(1));
+    let width = |text: &str| context.width(text);
+    let within =
+        |label: &str, parts: &[String]| width(&(indent.clone() + &text(label, parts))) <= columns;
+    let ellipsis = context.plain(&glyph(Glyph::Ellipsis));
+    let label_plain = context.plain(&data.label);
+    let (first, clipped_label) = label_plain
+        .split_once('\n')
+        .map_or((label_plain.as_str(), None), |(first, _)| {
+            (first, Some(literal(&format!("{first}{ellipsis}"))))
+        });
+    let label = clipped_label.as_deref().unwrap_or(&data.label);
+    for index in [3, 4] {
+        if within(label, &parts) {
+            return drawn(label, &parts);
+        }
+        parts[index].clear();
+    }
+    if within(label, &parts) {
+        return drawn(label, &parts);
+    }
+    let ellipsis = literal(&ellipsis);
+    if within(&ellipsis, &parts) {
+        let room = columns - width(&(indent.clone() + &text("", &parts))) - width(&ellipsis);
+        let kept = leading(first, room, |text| width(&literal(text)));
+        return drawn(&(literal(kept) + &ellipsis), &parts);
+    }
+    for index in [0, 2, 1] {
+        parts[index].clear();
+        if within(&ellipsis, &parts) {
+            return drawn(&ellipsis, &parts);
+        }
+    }
+
+    // Preserve the style of the mark even when only the first columns fit.
+    let plain_mark = context.plain(&mark);
+    let plain_ellipsis = context.plain(&ellipsis);
+    let mut available = columns;
+    let mut fitted = String::new();
+    for (index, piece) in [&indent, &plain_mark, " ", &plain_ellipsis]
+        .into_iter()
+        .enumerate()
+    {
+        let kept = leading(piece, available, |text| width(&escape(text)));
+        if !kept.is_empty() {
+            let marked = escape(kept);
+            if index == 1 {
+                fitted.push_str(&mark_style(&marked));
+            } else {
+                fitted.push_str(&marked);
+            }
+        }
+        if kept != piece {
+            break;
+        }
+        available -= width(&escape(kept));
+    }
+    paint(&fitted)
+}
+
+fn render_progress(data: &ProgressLine, context: &ViewContext) -> String {
+    let mut text = String::new();
+    render_progress_tree(data, context, false, &mut text);
+    text
+}
+
+fn render_progress_tree(
+    data: &ProgressLine,
+    context: &ViewContext,
+    fitted: bool,
+    text: &mut String,
+) {
+    let fitted = fitted || data.state == ProgressState::Running;
+    text.push_str(&progress_row(data, context, data.depth, fitted));
+    for entry in &data.log {
+        text.push('\n');
+        text.push_str(
+            &context
+                .style
+                .dim()
+                .apply(&progress_log_row(entry, context, data.depth)),
+        );
+    }
+    for task in &data.tasks {
+        text.push('\n');
+        render_progress_tree(task, context, fitted, text);
+    }
+}
+
+fn progress_log_row(entry: &str, context: &ViewContext, depth: usize) -> String {
+    let columns = usize::from(context.columns.unwrap_or(80).max(1));
+    let indent = "  ".repeat(depth.saturating_add(1));
+    let text = crate::progress_log::log_text(entry, context);
+    let width = |text: &str| context.width(&escape(text));
+    if width(&(indent.clone() + &text)) <= columns {
+        return escape(&(indent + &text));
+    }
+    let ellipsis = context.plain(&glyph(Glyph::Ellipsis));
+    let ending = indent.clone() + &ellipsis;
+    match columns.checked_sub(width(&ending)) {
+        Some(room) => escape(&(indent + leading(&text, room, width) + &ellipsis)),
+        None => escape(leading(&ending, columns, width)),
+    }
 }
 
 /// A shared handle on the question views, so one question builds each once.

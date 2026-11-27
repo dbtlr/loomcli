@@ -3,6 +3,7 @@
 
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
 
+pub mod progress;
 pub mod screen;
 
 use std::future::Future;

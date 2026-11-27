@@ -108,7 +108,7 @@ impl Entered {
         self.signal.on_abort(move || {
             if let Some(output) = closing.upgrade() {
                 output.stop_messages();
-                output.close_regions(RegionCloser::Cancellation, None);
+                output.cancel_regions();
             }
         });
     }
@@ -753,7 +753,7 @@ async fn closing_on_cancellation<T>(
             closed = true;
             signal.fire();
             output.stop_messages();
-            output.close_regions(RegionCloser::Cancellation, None);
+            output.cancel_regions();
         }
         work.as_mut().poll(context)
     })
@@ -965,7 +965,7 @@ async fn run_body(
     )
     .await?;
     // The chain has unwound, so every region a middleware or a source left open closes.
-    output.close_regions(RegionCloser::Completion, None);
+    output.close_regions(RegionCloser::Completion, None).await;
     output.flush().await;
     Ok(completed)
 }
@@ -1208,7 +1208,7 @@ async fn settle(
     } else {
         RegionCloser::Completion
     };
-    output.close_regions(closer, None);
+    output.close_regions(closer, None).await;
     output.flush().await;
     // The signal decides the code whatever happened before, so this reading comes last.
     if let Some(cancelled) = cancelled() {
@@ -1268,7 +1268,7 @@ async fn report(
     reports: &mut Reports,
 ) -> (bool, FailureForm) {
     let output = scene.output();
-    output.close_regions(RegionCloser::Failure, None);
+    output.close_regions(RegionCloser::Failure, None).await;
     output.wait_for_lends().await;
     if reached.graph.is_some() {
         scene.state.log.failure(failure, form(scene, failure, &[]));

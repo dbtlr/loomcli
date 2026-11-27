@@ -94,3 +94,12 @@ pub(crate) fn type_one_number(highest: usize) -> String {
 pub(crate) fn type_numbers(highest: usize) -> String {
     format!("Type numbers from 1 to {highest}, separated by commas.")
 }
+
+/// The kept log's notice when earlier lines no longer fit its retention limit.
+pub(crate) fn dropped_log_lines(count: usize) -> String {
+    if count == 1 {
+        "1 earlier line was dropped.".to_owned()
+    } else {
+        format!("{count} earlier lines were dropped.")
+    }
+}

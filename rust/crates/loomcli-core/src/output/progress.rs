@@ -57,9 +57,9 @@ impl RegionReports {
         self.build(state, None, plain)
     }
 
-    /// The end event of a region that reported: `Failed` after `end(Failed)` and after a failure,
-    /// `Cancelled` after cancellation, and `Ended` otherwise. It carries the label `end()` received,
-    /// and the last reported label without one. A region that never reported builds none.
+    /// The end event of a region that reported. Its explicit end carries the supplied state and
+    /// label, or keeps the latest reported label. A core close reports the corresponding
+    /// completion, failure, or cancellation. A region that never reported builds no event.
     pub(crate) fn close(
         &mut self,
         closer: RegionCloser,
@@ -69,8 +69,13 @@ impl RegionReports {
     ) -> Option<ProgressEvent> {
         self.id?;
         let built = match closer {
-            RegionCloser::End if state == EndState::Failed => ProgressState::Failed,
-            RegionCloser::End | RegionCloser::Completion => ProgressState::Ended,
+            RegionCloser::End => match state {
+                EndState::Ended => ProgressState::Ended,
+                EndState::Failed => ProgressState::Failed,
+                EndState::Skipped => ProgressState::Skipped,
+                EndState::Warned => ProgressState::Warned,
+            },
+            RegionCloser::Completion => ProgressState::Ended,
             RegionCloser::Failure => ProgressState::Failed,
             RegionCloser::Cancellation => ProgressState::Cancelled,
         };
@@ -240,6 +245,8 @@ mod tests {
         let cases = [
             (RegionCloser::End, EndState::Ended, ProgressState::Ended),
             (RegionCloser::End, EndState::Failed, ProgressState::Failed),
+            (RegionCloser::End, EndState::Skipped, ProgressState::Skipped),
+            (RegionCloser::End, EndState::Warned, ProgressState::Warned),
             (
                 RegionCloser::Completion,
                 EndState::Ended,

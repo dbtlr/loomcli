@@ -27,6 +27,7 @@ fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[must_use]
 pub struct RegionOptions {
     pub(crate) input: bool,
+    pub(crate) report_only: bool,
 }
 
 impl RegionOptions {
@@ -39,7 +40,19 @@ impl RegionOptions {
     /// other region's frame, and one input region is open at a time: a second waits until the first
     /// closes. It draws at every verbosity and under `TERM=dumb`, so a question still asks.
     pub fn input(self) -> Self {
-        Self { input: true }
+        Self {
+            input: true,
+            ..self
+        }
+    }
+
+    /// Opens a region for progress events without a terminal frame.
+    #[doc(hidden)]
+    pub fn __report_only(self) -> Self {
+        Self {
+            report_only: true,
+            ..self
+        }
     }
 }
 
@@ -100,12 +113,16 @@ impl ProgressReport {
 /// What a region runs as it closes: a handler [`Region::on_close`] registered.
 type CloseHandler = Box<dyn FnOnce(&Region) + Send>;
 
+type CoreCloseOrder =
+    Arc<dyn Fn(RegionCloser) -> tokio::sync::oneshot::Receiver<Vec<Region>> + Send + Sync>;
+
 /// What one region holds while the run lasts. Its registry entry lives in the run's output; the
 /// handle and the registry share it.
 pub(crate) struct RegionCell {
     pub(crate) id: u64,
     pub(crate) input: bool,
     pub(crate) live: bool,
+    report_only: bool,
     token: CancellationToken,
     /// Turns true once the region has opened and its pending frame is written, or once it closed
     /// without opening; a waiting draw resolves then.
@@ -125,8 +142,22 @@ struct RegionState {
     pending: Option<Frame>,
     /// The frame a close handler drew, which is the region's last frame.
     last: Option<Frame>,
+    before_close: Vec<String>,
+    after_close: Vec<String>,
     handlers: Vec<CloseHandler>,
+    core_close_order: Option<CoreCloseOrder>,
     reports: RegionReports,
+}
+
+impl RegionState {
+    fn start_close(&mut self, closer: RegionCloser) -> Option<Vec<CloseHandler>> {
+        if self.closed_by.is_some() {
+            return None;
+        }
+        self.closed_by = Some(closer);
+        self.core_close_order = None;
+        Some(std::mem::take(&mut self.handlers))
+    }
 }
 
 impl RegionCell {
@@ -164,6 +195,7 @@ pub(crate) struct Regions {
     waiting: VecDeque<u64>,
     input_owner: Option<u64>,
     ledger: ProgressLedger,
+    last_close: Option<CancellationToken>,
 }
 
 impl Regions {
@@ -186,6 +218,8 @@ impl Regions {
 #[derive(Default)]
 pub(crate) struct CloseWork {
     pub(crate) ops: Vec<ScreenOp>,
+    pub(crate) before: Vec<String>,
+    pub(crate) after: Vec<String>,
     /// How many live regions opened, less how many closed, which the suspend hold counts.
     pub(crate) live: isize,
     pub(crate) wake: Vec<Arc<RegionCell>>,
@@ -215,7 +249,7 @@ impl Region {
         owner: Option<&Mutex<Vec<u64>>>,
     ) -> Region {
         let input = options.input;
-        let live = output.region_live(input);
+        let live = !options.report_only && output.region_live(input);
         let (opened_signal, _) = tokio::sync::watch::channel(false);
         let region = {
             let mut regions = output.regions();
@@ -224,13 +258,14 @@ impl Region {
                 id: regions.next,
                 input,
                 live,
+                report_only: options.report_only,
                 token: CancellationToken::new(),
                 opened_signal,
                 state: Mutex::new(RegionState::default()),
             });
             regions.open.push(Arc::clone(&cell));
             let mut entered = false;
-            let takes_turn = input && output.terminal_input_regions();
+            let takes_turn = !options.report_only && input && output.terminal_input_regions();
             if takes_turn && regions.input_owner.is_some() {
                 regions.waiting.push_back(cell.id);
             } else {
@@ -261,10 +296,17 @@ impl Region {
         region
     }
 
-    /// Closes the region with `Cancellation` when the run has been cancelled and nothing closed it
-    /// yet, so every call after the run's cancellation reads it closed.
+    /// Settles cancellation at the call for ordinary regions. A tree's close goes through its
+    /// queue, so an earlier report or end can finish before the cancellation does.
     fn settle_cancellation(&self) {
-        if self.output.cancelled() && self.cell.state().closed_by.is_none() {
+        if !self.output.cancelled() || self.cell.report_only {
+            return;
+        }
+        let close = {
+            let state = self.cell.state();
+            state.core_close_order.is_none() && state.closed_by.is_none()
+        };
+        if close {
             drop(
                 self.output
                     .close_region(self, RegionCloser::Cancellation, EndState::Ended, None),
@@ -306,6 +348,31 @@ impl Region {
         if state.closed_by.is_none() {
             state.handlers.push(Box::new(handler));
         }
+    }
+
+    /// Lets a progress tree prepare its core close in order with the work it already accepted.
+    /// The receiver also supplies its open task regions in case they opened during the sweep.
+    #[doc(hidden)]
+    pub fn __order_core_close(
+        &self,
+        prepare: impl Fn(RegionCloser) -> tokio::sync::oneshot::Receiver<Vec<Region>>
+        + Send
+        + Sync
+        + 'static,
+    ) -> bool {
+        let mut state = self.cell.state();
+        if state.closed_by.is_some() {
+            return false;
+        }
+        state.core_close_order = Some(Arc::new(prepare));
+        true
+    }
+
+    /// Whether cancellation has reached the run, even if the tree is still draining.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __run_cancelled(&self) -> bool {
+        self.output.cancelled()
     }
 
     /// Replaces the region's frame. The view, the application's override when one applies, runs
@@ -373,22 +440,89 @@ impl Region {
 
     /// Closes the region; its last frame moves into scrollback, ending with a line break core adds
     /// when the frame lacks one, and the regions below close the gap. `state` is the end event's,
-    /// `ended` or `failed`. `label` replaces the last reported label on that event alone and draws
+    /// `ended`, `failed`, `skipped`, or `warned`. `label` replaces the last reported label on that event alone and draws
     /// nothing. The returned future resolves once the close is written, and rejects with stderr's
     /// failure when stderr refused a write before it or refuses this one. A region that is not
     /// live writes nothing and resolves at once; once the region has closed, the call does nothing
     /// and resolves at once.
     pub async fn end(&self, state: EndState, label: Option<&str>) -> Result<(), Error> {
-        self.settle_cancellation();
-        let Some(written) = self
-            .output
-            .close_region(self, RegionCloser::End, state, label)
-        else {
+        self.queue_end(state, label).await
+    }
+
+    /// Stages stderr writes to queue contiguously with the region's closing screen operations.
+    /// A tree that will be written into scrollback places its writes after its running frame clears.
+    #[doc(hidden)]
+    pub fn __close_writes(&self, mut writes: Vec<String>, after_frame: bool) {
+        let mut state = self.cell.state();
+        if !state.finished {
+            let destination = if after_frame {
+                &mut state.after_close
+            } else {
+                &mut state.before_close
+            };
+            destination.append(&mut writes);
+        }
+    }
+
+    /// Renders the frame that moves into scrollback when this region closes.
+    #[doc(hidden)]
+    pub fn __last_frame<D: ?Sized + 'static, V: WholeView<D>>(
+        &self,
+        data: &D,
+        view: &V,
+    ) -> Result<(), Error> {
+        if !self.cell.live {
             return Ok(());
+        }
+        let (identity, view) = view.whole();
+        let frame = self.output.frame(identity, view, data)?;
+        let mut state = self.cell.state();
+        if state.opened && !state.finished {
+            state.last = Some(frame);
+        }
+        Ok(())
+    }
+
+    /// Queues an explicit end the progress tree already accepted and waits for its writes.
+    #[doc(hidden)]
+    pub fn __queue_end(
+        &self,
+        state: EndState,
+        label: Option<&str>,
+    ) -> crate::BoxFuture<'static, Result<(), Error>> {
+        let done = self.end_in_order(RegionCloser::End, state, label);
+        self.output.wake_drainer();
+        done
+    }
+
+    fn queue_end(
+        &self,
+        state: EndState,
+        label: Option<&str>,
+    ) -> crate::BoxFuture<'static, Result<(), Error>> {
+        self.settle_cancellation();
+        self.end_in_order(
+            self.output.effective_closer(RegionCloser::End),
+            state,
+            label,
+        )
+    }
+
+    fn end_in_order(
+        &self,
+        closer: RegionCloser,
+        state: EndState,
+        label: Option<&str>,
+    ) -> crate::BoxFuture<'static, Result<(), Error>> {
+        let Some(written) = self.output.close_region(self, closer, state, label) else {
+            return Box::pin(std::future::ready(Ok(())));
         };
-        self.output.flush().await;
-        // The flush sent the close, whose sender answered before it was dropped.
-        written.await.unwrap_or(Ok(()))
+        let output = Arc::clone(&self.output);
+        Box::pin(async move {
+            output.flush().await;
+            // The flush sent the close, whose sender answered before it was dropped.
+            written.await.unwrap_or(Ok(()))
+        })
     }
 
     /// Builds a progress event for whoever observes the run and draws nothing, whether or not the
@@ -410,31 +544,37 @@ impl Region {
 }
 
 impl Output {
+    fn effective_closer(&self, closer: RegionCloser) -> RegionCloser {
+        if self.cancelled() {
+            RegionCloser::Cancellation
+        } else {
+            closer
+        }
+    }
+
     /// Closes `region` once, whatever closes it: `closed_by` is set, the close handlers run, a
     /// frame one of them draws is the last frame, the signal is cancelled, the end event is built,
-    /// and the region leaves the stack, its screen work queued in stderr's order. A close after the
-    /// run's cancellation reads `Cancellation`, and a later close does nothing. Answers, when the
-    /// close has screen work to write, what that write meets once it reaches stderr.
-    pub(crate) fn close_region(
+    /// and the region leaves the stack, its screen work queued in stderr's order. A later close
+    /// does nothing. Returns a receiver for the result of a close that has screen work to write.
+    fn close_region(
         &self,
         region: &Region,
         closer: RegionCloser,
         state: EndState,
         label: Option<&str>,
     ) -> Option<tokio::sync::oneshot::Receiver<Result<(), Error>>> {
-        let closer = if self.cancelled() {
-            RegionCloser::Cancellation
-        } else {
-            closer
-        };
-        let handlers = {
-            let mut held = region.cell.state();
-            if held.closed_by.is_some() {
-                return None;
-            }
-            held.closed_by = Some(closer);
-            std::mem::take(&mut held.handlers)
-        };
+        let handlers = region.cell.state().start_close(closer)?;
+        self.finish_region_close(region, closer, state, label, handlers)
+    }
+
+    fn finish_region_close(
+        &self,
+        region: &Region,
+        closer: RegionCloser,
+        state: EndState,
+        label: Option<&str>,
+        handlers: Vec<CloseHandler>,
+    ) -> Option<tokio::sync::oneshot::Receiver<Result<(), Error>>> {
         for handler in handlers {
             handler(region);
         }
@@ -457,7 +597,7 @@ impl Output {
         if let Some(event) = event {
             self.deliver_progress(&event);
         }
-        let written = if work.ops.is_empty() {
+        let written = if work.ops.is_empty() && work.before.is_empty() && work.after.is_empty() {
             None
         } else {
             let (sender, receiver) = tokio::sync::oneshot::channel();
@@ -468,18 +608,81 @@ impl Output {
         written
     }
 
-    /// Closes every region still open, or waiting to open, among `only` when it is given, and
-    /// queues their screen work.
-    pub(crate) fn close_regions(self: &Arc<Self>, closer: RegionCloser, only: Option<&[u64]>) {
-        let targets = self.regions().targets(only);
-        for cell in targets {
-            let region = Region {
-                output: Arc::clone(self),
-                cell,
-            };
-            drop(self.close_region(&region, closer, EndState::Ended, None));
+    /// Requests a sweep at the call and waits for it to queue its writes. A later sweep joins
+    /// the same order so it cannot close a task while the first sweep prepares its root.
+    pub(crate) fn close_regions(
+        self: &Arc<Self>,
+        closer: RegionCloser,
+        only: Option<Vec<u64>>,
+    ) -> impl Future<Output = ()> + Send + 'static {
+        let settled = CancellationToken::new();
+        let previous = self.regions().last_close.replace(settled.clone());
+        let settled = settled.drop_guard();
+        let output = self.clone();
+        async move {
+            let _settled = settled;
+            if let Some(previous) = previous {
+                previous.cancelled().await;
+            }
+            let mut targets: VecDeque<_> = output
+                .regions()
+                .targets(only.as_deref())
+                .into_iter()
+                .map(|cell| (cell, None))
+                .collect();
+            while let Some((cell, tree_closer)) = targets.pop_front() {
+                let closer = tree_closer.unwrap_or_else(|| output.effective_closer(closer));
+                let region = Region {
+                    output: output.clone(),
+                    cell,
+                };
+                let handlers = {
+                    let mut state = region.cell.state();
+                    match &state.core_close_order {
+                        Some(prepare) => Err(prepare.clone()),
+                        None => Ok(state.start_close(closer)),
+                    }
+                };
+                match handlers {
+                    Err(prepare) => {
+                        if let Ok(tasks) = prepare(closer).await {
+                            // A progress root has opened, so the waiting regions have already
+                            // been taken and the rest are in opening order. Include tasks that
+                            // opened after the snapshot and give them their root's closer.
+                            for task in tasks {
+                                match targets
+                                    .binary_search_by_key(&task.cell.id, |(cell, _)| cell.id)
+                                {
+                                    Ok(index) => targets[index].1 = Some(closer),
+                                    Err(index) => targets.insert(index, (task.cell, Some(closer))),
+                                }
+                            }
+                        }
+                        drop(output.close_region(&region, closer, EndState::Ended, None));
+                    }
+                    Ok(Some(handlers)) => drop(output.finish_region_close(
+                        &region,
+                        closer,
+                        EndState::Ended,
+                        None,
+                        handlers,
+                    )),
+                    Ok(None) => {}
+                }
+            }
+            output.wake_drainer();
         }
-        self.wake_drainer();
+    }
+
+    /// Starts closing on the signal's caller. A signal raised by a view or observer can return
+    /// while that tree still has work to drain. The run's final sweep waits for this one.
+    pub(crate) fn cancel_regions(self: &Arc<Self>) {
+        let mut close = Box::pin(self.close_regions(RegionCloser::Cancellation, None));
+        if crate::support::poll_once(tokio::task::unconstrained(close.as_mut())).is_none()
+            && let Some(runtime) = self.runtime()
+        {
+            drop(runtime.spawn(close));
+        }
     }
 }
 
@@ -497,6 +700,8 @@ fn release(regions: &mut Regions, cell: &Arc<RegionCell>) -> CloseWork {
             cell.wake();
             return work;
         }
+        work.before = std::mem::take(&mut state.before_close);
+        work.after = std::mem::take(&mut state.after_close);
         state.last.take()
     };
     if cell.live {
@@ -538,10 +743,15 @@ pub enum EndState {
     Ended,
     /// The region ended in failure: its end event is `Failed`.
     Failed,
+    /// The region was skipped.
+    Skipped,
+    /// The region ended with a warning.
+    Warned,
 }
 
 /// A progress event's state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ProgressState {
     /// The region's first report.
     Started,
@@ -553,6 +763,26 @@ pub enum ProgressState {
     Failed,
     /// The run was cancelled.
     Cancelled,
+    /// The region was skipped.
+    Skipped,
+    /// The region ended with a warning.
+    Warned,
+}
+
+impl ProgressState {
+    /// The state name used in progress notifications.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::Updated => "updated",
+            Self::Ended => "ended",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::Skipped => "skipped",
+            Self::Warned => "warned",
+        }
+    }
 }
 
 /// A typed progress event, delivered to `invoke`'s `on_progress` observer, inside the report or

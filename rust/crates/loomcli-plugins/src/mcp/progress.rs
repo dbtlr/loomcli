@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use loomcli_core::{ProgressEvent, ProgressState};
+use loomcli_core::ProgressEvent;
 use loomcli_mcp::{ProgressSink, ProgressUpdate};
 
 /// A number as JavaScript's `String` writes it: plain decimal for magnitudes from 1e-6 up to (not
@@ -54,17 +54,6 @@ fn js_number_text(value: f64) -> String {
     format!("{sign}{body}")
 }
 
-/// The state's name as the message writes it.
-fn state_name(state: ProgressState) -> &'static str {
-    match state {
-        ProgressState::Started => "started",
-        ProgressState::Updated => "updated",
-        ProgressState::Ended => "ended",
-        ProgressState::Failed => "failed",
-        ProgressState::Cancelled => "cancelled",
-    }
-}
-
 /// The counts an event's message carries: `completed/total` with a total, `completed` alone
 /// without one, and none for an event with no `completed`.
 fn counts_of(event: &ProgressEvent) -> String {
@@ -80,7 +69,7 @@ fn counts_of(event: &ProgressEvent) -> String {
 /// The message one progress event sends: its label when it is not empty, its counts, and its
 /// state in parentheses, joined by single spaces, such as `Fetching packages 3/8 (updated)`.
 pub(super) fn progress_message(event: &ProgressEvent) -> String {
-    let state = format!("({})", state_name(event.state));
+    let state = format!("({})", event.state.as_str());
     [event.label.clone(), counts_of(event), state]
         .into_iter()
         .filter(|part| !part.is_empty())

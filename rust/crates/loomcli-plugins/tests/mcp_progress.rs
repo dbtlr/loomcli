@@ -50,6 +50,20 @@ fn progress_app(observed: &Observed) -> App {
                 .end_with("Fetched 3 records.")
                 .await
         });
+    let ends = Command::new("ends")
+        .description("Skip, warn, and clear progress lines.")
+        .extend([opted()])
+        .action(|ctx: Context| async move {
+            progress(&ctx, ProgressSettings::new("Fetching records"))
+                .skip_with("Fetched nothing: the cache is fresh")
+                .await?;
+            let fetching = progress(&ctx, ProgressSettings::new("Fetching more").total(120.0));
+            fetching.update(ProgressUpdate::new().completed(118.0));
+            fetching.warn_with("Fetched 118 of 120 records").await?;
+            progress(&ctx, ProgressSettings::new("Reading the cache"))
+                .clear()
+                .await
+        });
     let pair = Command::new("pair")
         .description("Run two lines.")
         .extend([opted()])
@@ -106,6 +120,7 @@ fn progress_app(observed: &Observed) -> App {
         .command(counted)
         .command(spinner)
         .command(finished)
+        .command(ends)
         .command(pair)
         .command(bare)
         .command(counts)
@@ -284,4 +299,36 @@ async fn a_call_the_client_cancels_sends_no_notification_after_its_cancellation(
     let ending = session.close().await;
     assert_eq!(before, [progress_note("waiting", 1, "Waiting (started)")]);
     assert_eq!(ending.messages, Vec::<Value>::new());
+}
+
+#[tokio::test]
+async fn skipped_and_warned_ends_have_distinct_states_while_clear_reports_ended() {
+    let (before, answer) = tracked_call("ends", "ends").await;
+    assert_eq!(
+        before,
+        [
+            progress_note("ends", 1, "Fetching records (started)"),
+            progress_note("ends", 2, "Fetched nothing: the cache is fresh (skipped)"),
+            progress_note("ends", 3, "Fetching more 0/120 (started)"),
+            progress_note("ends", 4, "Fetching more 118/120 (updated)"),
+            progress_note("ends", 5, "Fetched 118 of 120 records 118/120 (warned)"),
+            progress_note("ends", 6, "Reading the cache (started)"),
+            progress_note("ends", 7, "Reading the cache (ended)"),
+        ]
+    );
+    let text = answer["result"]["content"][0]["text"].as_str().unwrap();
+    let plain: Vec<_> = text
+        .lines()
+        .map(|line| line.split_once(' ').unwrap().1)
+        .collect();
+    assert_eq!(
+        plain,
+        [
+            "Fetching records",
+            "Fetched nothing: the cache is fresh",
+            "Fetching more",
+            "Fetched 118 of 120 records",
+            "Reading the cache",
+        ]
+    );
 }

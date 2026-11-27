@@ -323,6 +323,7 @@ pub(crate) struct Output {
     runtime: Option<tokio::runtime::Handle>,
     /// The live regions this run opened.
     regions: Mutex<Regions>,
+    pub(super) progress_layout: std::sync::OnceLock<Arc<dyn std::any::Any + Send + Sync>>,
     /// How many lends of the terminal have not settled.
     lends: Mutex<usize>,
     lends_settled: tokio::sync::Notify,
@@ -603,6 +604,7 @@ impl Output {
             end_flushed: tokio::sync::Notify::new(),
             runtime: tokio::runtime::Handle::try_current().ok(),
             regions: Mutex::new(Regions::default()),
+            progress_layout: std::sync::OnceLock::new(),
             lends: Mutex::new(0),
             lends_settled: tokio::sync::Notify::new(),
             progress,
@@ -988,11 +990,37 @@ impl Output {
     /// Queues a region's screen work on stderr. A close with nothing to write wakes its waiting
     /// draws at once.
     pub(crate) fn queue_screen(&self, mut work: CloseWork) {
-        if work.ops.is_empty() {
+        let mut jobs: Vec<_> = std::mem::take(&mut work.before)
+            .into_iter()
+            .map(WriteJob::Text)
+            .collect();
+        if !work.ops.is_empty() {
+            jobs.push(WriteJob::Screen(std::mem::take(&mut work.ops)));
+        }
+        jobs.extend(
+            std::mem::take(&mut work.after)
+                .into_iter()
+                .map(WriteJob::Text),
+        );
+        if jobs.is_empty() {
             wake_close(work, Ok(()));
-        } else {
-            let ops = std::mem::take(&mut work.ops);
-            self.enqueue(WriteJob::Screen(ops), Some(work));
+            return;
+        }
+        let mut queue = locked(&self.queue);
+        let mut jobs = jobs.into_iter().peekable();
+        let mut close = Some(work);
+        while let Some(job) = jobs.next() {
+            let place = queue.insert(WriteWork {
+                stream: Stream::Stderr,
+                held_line: None,
+                job,
+                close: if jobs.peek().is_none() {
+                    close.take()
+                } else {
+                    None
+                },
+            });
+            queue.detached.push_back(place);
         }
     }
 
@@ -1065,9 +1093,15 @@ impl Output {
         }
     }
 
-    /// The failures of unawaited log-line views, in call order.
+    /// The failures of views no code awaited, in call order: a log line's, a hook's warning's, and
+    /// a progress start line's.
     pub(crate) fn take_log_view_errors(&self) -> Vec<Error> {
         std::mem::take(&mut *locked(&self.log_view_errors))
+    }
+
+    /// Keeps the failure of a view no code awaits, so the run reports it when it settles.
+    pub(super) fn keep_view_error(&self, error: Error) {
+        locked(&self.log_view_errors).push(error);
     }
 
     /// A synchronous hook queues a rendered warning in call order, like a log line.
@@ -1389,7 +1423,7 @@ impl Output {
         }
         let opened = channel.regions();
         if !opened.is_empty() || !self.stderr_print.load(Ordering::SeqCst) {
-            self.close_regions(closer, Some(&opened));
+            self.close_regions(closer, Some(opened)).await;
             self.flush().await;
         }
     }
@@ -1554,11 +1588,22 @@ impl Output {
         message: Message<'_>,
         stream: Stream,
     ) -> Result<(), Error> {
-        if self.verbosity.load(Ordering::SeqCst) < lane.shown_from() {
-            return Ok(());
+        if let Some(text) = self.prepare_message(lane, message, stream)? {
+            self.write(stream, text).await?;
         }
-        let text = self.render_message(lane, message, stream)?;
-        self.write(stream, text).await
+        Ok(())
+    }
+
+    pub(super) fn prepare_message(
+        &self,
+        lane: Lane,
+        message: Message<'_>,
+        stream: Stream,
+    ) -> Result<Option<String>, Error> {
+        if !self.shows_lane(lane) {
+            return Ok(None);
+        }
+        self.render_message(lane, message, stream).map(Some)
     }
 
     fn render_message(
@@ -1590,22 +1635,29 @@ impl Output {
         view: &View<D>,
         data: &D,
     ) -> Result<usize, Error> {
-        let (text, rows) = {
-            let view = self.views().whole(identity, view);
-            let marked = (view.render)(data, &self.context(Stream::Stderr))?;
-            let terminal = self.host.terminal.stderr();
-            // A terminal that does not redraw keeps the Application's setting, as a pipe does.
-            let renderer = Renderer::new(
-                self.draw_caps(terminal.is_tty && self.redraws()),
-                self.palette.clone(),
-            );
-            (
-                renderer.resolve(&marked),
-                renderer.drawn_rows(&marked, terminal.columns.map(usize::from)),
-            )
-        };
+        let (text, rows) = self.prepare_draw(identity, view, data)?;
         self.write(Stream::Stderr, text).await?;
         Ok(rows)
+    }
+
+    pub(super) fn prepare_draw<D: ?Sized + 'static>(
+        &self,
+        identity: Option<&str>,
+        view: &View<D>,
+        data: &D,
+    ) -> Result<(String, usize), Error> {
+        let view = self.views().whole(identity, view);
+        let marked = (view.render)(data, &self.context(Stream::Stderr))?;
+        let terminal = self.host.terminal.stderr();
+        // A terminal that does not redraw keeps the Application's setting, as a pipe does.
+        let renderer = Renderer::new(
+            self.draw_caps(terminal.is_tty && self.redraws()),
+            self.palette.clone(),
+        );
+        Ok((
+            renderer.resolve(&marked),
+            renderer.drawn_rows(&marked, terminal.columns.map(usize::from)),
+        ))
     }
 
     /// One text write, queued in `stream`'s order. A stdout write issued while a region is open on
