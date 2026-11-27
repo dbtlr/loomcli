@@ -157,6 +157,8 @@ pub(super) fn skills_not_refreshed(path: &str, name: &str) -> String {
 /// The `warn` log event of a refresh whose child failed or could not start.
 pub(super) const SKILLS_REFRESH_FAILED: &str = "Skills were not refreshed after the update.";
 
+pub(super) const SKILLS_REFRESH_SKIPPED: &str = "Skipped the skills refresh: nothing is installed.";
+
 pub(super) const DIRECTORY_WITHOUT_PROJECT_ISSUE: &str = "Add --project, or leave out --directory.";
 
 pub(super) const DIRECTORY_WITHOUT_PROJECT: &str =

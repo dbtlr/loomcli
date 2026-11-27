@@ -41,12 +41,12 @@ fn refresh_application(path: &str, events: Arc<Mutex<Vec<Value>>>) -> App {
                 .action(move |ctx: Context| {
                     let path = path.clone();
                     async move {
-                        refresh_manpages(RefreshContext {
-                            path: Path::new(&path),
-                            host: &ctx.host,
-                            signal: &ctx.signal,
-                            log: &ctx.log,
-                        })
+                        refresh_manpages(RefreshContext::new(
+                            Path::new(&path),
+                            &ctx.host,
+                            &ctx.signal,
+                            &ctx.log,
+                        ))
                         .await?;
                         ctx.out.print("resolved").await
                     }
@@ -102,7 +102,14 @@ async fn it_runs_the_binary_with_manpage_update_host_env_and_host_cwd_pipes_its_
     assert!(printed["cwd"].as_str().unwrap().ends_with("work"));
     assert!(stdout.ends_with("resolved\n"));
     assert!(stderr.contains("child says hello\n"));
-    assert!(events.is_empty());
+    assert_eq!(
+        events,
+        [json!({
+            "level": "info",
+            "message": "Program run.",
+            "fields": {"arguments": ["manpage", "update"], "code": 0, "program": "/loom-test/bin/notes"}
+        })]
+    );
 }
 
 #[tokio::test]

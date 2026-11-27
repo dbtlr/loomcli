@@ -1,6 +1,15 @@
 //! The sentences of the MCP plugin.
 
-use loomcli_core::{escape_control_characters, nowrap};
+use std::path::Path;
+
+use loomcli_core::{LogFields, escape_control_characters, nowrap};
+
+pub(super) fn checked_record(path: &Path) -> (&'static str, LogFields) {
+    (
+        "Checked {path}.",
+        LogFields::new().field("path", path.to_string_lossy()),
+    )
+}
 
 /// Every path, name, agent, and line of agent output a sentence repeats, escaped as a failure
 /// quotes text.

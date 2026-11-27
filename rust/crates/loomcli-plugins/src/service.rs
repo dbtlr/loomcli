@@ -216,6 +216,7 @@ fn child_run<'a, I, R>(
     on_shutdown: OnShutdown<'a>,
 ) -> ChildRun<'a> {
     ChildRun {
+        log: &context.log,
         name: &context.graph.name,
         description: context.graph.description.as_deref(),
         label,

@@ -90,6 +90,8 @@ pub use self::transport::{BodyFuture, HttpsTransport, Transport, TransportRespon
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct AfterReplaceContext {
+    /// The application's declared name.
+    pub name: String,
     /// The version that was replaced.
     pub previous: String,
     /// The version now at `path`.
@@ -108,6 +110,7 @@ impl fmt::Debug for AfterReplaceContext {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("AfterReplaceContext")
+            .field("name", &self.name)
             .field("previous", &self.previous)
             .field("current", &self.current)
             .field("path", &self.path)
@@ -117,15 +120,11 @@ impl fmt::Debug for AfterReplaceContext {
 
 impl AfterReplaceContext {
     /// The context the skills, completion, and manpage plugins' refresh functions read: the new
-    /// binary at `path`, and the run's host, signal, and log.
+    /// binary at `path`, the run's host, signal, and log, and the Application's name.
     #[must_use]
     pub fn refresh(&self) -> RefreshContext<'_> {
-        RefreshContext {
-            path: Path::new(&self.path),
-            host: &self.host,
-            signal: &self.signal,
-            log: &self.log,
-        }
+        RefreshContext::new(Path::new(&self.path), &self.host, &self.signal, &self.log)
+            .name(&self.name)
     }
 }
 
@@ -260,7 +259,7 @@ impl SelfUpdate {
         }
         plugin.middleware(
             Activation::Always,
-            notices::notice_middleware(self.notice_env),
+            notices::notice_middleware(self.notice_env, cache::now),
         )
     }
 }
@@ -381,6 +380,7 @@ async fn run(
     let client = Client {
         transport,
         signal: context.signal.clone(),
+        log: context.log.clone(),
     };
     // A version that passed its validator always reads.
     let named = inputs.version.as_deref().and_then(version_of_argument);

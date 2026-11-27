@@ -36,7 +36,7 @@ async fn provided_is_the_type_for_the_passed_file_and_for_an_empty_file_when_non
         .shown(SchemaName::Typed)
         .ran()
         .await;
-    assert_eq!(found.stderr, "");
+    assert_eq!(found.stderr, read_line(".app.json"));
     // The default fills and the transform runs. A key the type does not describe is never
     // reported, and serde leaves it out of a struct.
     assert_eq!(
@@ -81,9 +81,12 @@ async fn a_value_the_type_rejects_is_dropped_and_named_at_v_alone_and_the_rest_s
         .await;
     assert_eq!(
         loudly.stderr,
-        wrong(&[
-            "Ignored updates.interval in .app.json: Invalid input: expected number, received string"
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored updates.interval in .app.json: Invalid input: expected number, received string"
+            ]
+        )
     );
     assert_eq!(
         loudly.provided(),
@@ -104,7 +107,10 @@ async fn a_wrong_value_at_a_key_falls_back_to_the_types_default() {
     assert_eq!(ran.provided(), json!({ "retries": 3 }));
     assert_eq!(
         ran.stderr,
-        wrong(&["Ignored retries in .app.json: Invalid input: expected int, received string"])
+        read_wrong(
+            ".app.json",
+            &["Ignored retries in .app.json: Invalid input: expected int, received string"]
+        )
     );
 }
 
@@ -129,10 +135,13 @@ async fn an_array_item_with_a_wrong_or_missing_value_is_removed_whole() {
     );
     assert_eq!(
         ran.stderr,
-        wrong(&[
-            "Ignored sessions.sources[0] in .app.json: Invalid input: expected string, received number",
-            "Ignored sessions.sources[2] in .app.json: Invalid input: expected string, received number",
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored sessions.sources[0] in .app.json: Invalid input: expected string, received number",
+                "Ignored sessions.sources[2] in .app.json: Invalid input: expected string, received number",
+            ]
+        )
     );
 }
 
@@ -157,11 +166,14 @@ async fn a_wrong_value_inside_a_map_removes_that_value_and_an_entry_that_then_la
     // serde stops at its first failure, so the drops come one per round, in the file's order.
     assert_eq!(
         ran.stderr,
-        wrong(&[
-            "Ignored owners.alpha.id in .app.json: Invalid input: expected string, received number",
-            "Ignored owners.alpha in .app.json: Missing key: \"id\"",
-            "Ignored owners.beta in .app.json: Missing key: \"id\"",
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored owners.alpha.id in .app.json: Invalid input: expected string, received number",
+                "Ignored owners.alpha in .app.json: Missing key: \"id\"",
+                "Ignored owners.beta in .app.json: Missing key: \"id\"",
+            ]
+        )
     );
 }
 
@@ -180,7 +192,10 @@ async fn a_failure_with_no_path_removes_every_key_and_the_file_passes_as_an_empt
         .await;
     assert_eq!(
         ran.stderr,
-        wrong(&["Ignored every key in .app.json: Pick another mode."])
+        read_wrong(
+            ".app.json",
+            &["Ignored every key in .app.json: Pick another mode."]
+        )
     );
     assert_eq!(ran.provided(), json!({}));
 }
@@ -232,7 +247,10 @@ async fn a_linked_option_takes_the_file_value_not_the_output_and_a_dropped_value
     // The type names the removal once, and the source names no second line for the same value.
     assert_eq!(
         dropped.stderr,
-        wrong(&["Ignored title in .app.json: Invalid input: expected string, received number"])
+        read_wrong(
+            ".app.json",
+            &["Ignored title in .app.json: Invalid input: expected string, received number"]
+        )
     );
 }
 

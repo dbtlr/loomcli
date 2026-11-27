@@ -6,6 +6,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::{fmt, io};
 
+use loomcli_core::Log;
+
+use crate::change_events::{file_removed, file_written, record_leftovers};
+
 use super::disk::{self, Observed, ReplaceOptions, observe};
 use super::folders::{
     FolderFile, changed_references, folder_digests, recovered_folder, remove_folder_leftovers,
@@ -331,10 +335,11 @@ pub enum RegistrationRead {
 /// and writes that file alone; the record directory is the one
 /// [`record_directory`](super::record_directory) resolves, and the plugin's name is its own, or
 /// its name and a target for a plugin with independent targets, such as `skills.claude`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct PluginRecord {
     record: PathBuf,
     plugin: String,
+    log: Option<Log>,
 }
 
 /// What an install will do, written as the pending plugin's file before it touches any target.
@@ -431,12 +436,16 @@ fn kept<T, R>(
 /// or the prior ownership when the swap stopped and something still holds its path. A pending startup line keeps the intended text or the prior one, whichever its file
 /// holds, or no line. Leftover staging files, of targets and of startup files, and the staging and
 /// retired folders beside each listed folder are removed, and the result is written as committed.
-fn recover(path: &Path, pending: &Pending) -> Result<Committed, InstallationError> {
+fn recover(
+    path: &Path,
+    pending: &Pending,
+    log: Option<&Log>,
+) -> Result<Committed, InstallationError> {
     for entry in &pending.files {
-        disk::remove_staging_files(&entry.path)?;
+        disk::remove_staging_files(&entry.path, log)?;
     }
     for folder in &pending.folders {
-        remove_folder_leftovers(&folder.path)?;
+        record_leftovers(log, remove_folder_leftovers(&folder.path)?);
     }
     let mut directories = Vec::new();
     for directory in &pending.directories {
@@ -448,20 +457,21 @@ fn recover(path: &Path, pending: &Pending) -> Result<Committed, InstallationErro
         directories,
         files: kept(&pending.files, recovered_file)?,
         folders: kept(&pending.folders, recovered_folder)?,
-        lines: kept(&pending.lines, recovered_line)?,
+        lines: kept(&pending.lines, |entry| recovered_line(entry, log))?,
         registrations: pending
             .registrations
             .iter()
             .filter_map(recovered_registration)
             .collect(),
     };
-    write_plugin_file(path, &PluginFile::Committed(committed.clone()))?;
+    write_plugin_file(path, &PluginFile::Committed(committed.clone()), log)?;
     Ok(committed)
 }
 
 /// Removes each recorded file whose digest is unchanged and keeps each one someone changed.
 fn remove_recorded(
     files: &[CommittedFile],
+    log: Option<&Log>,
 ) -> Result<(Vec<PathBuf>, Vec<PathBuf>), InstallationError> {
     let mut removed = Vec::new();
     let mut kept = Vec::new();
@@ -469,6 +479,9 @@ fn remove_recorded(
         match observe(&file.path)? {
             Observed::File { digest, .. } if digest == file.digest => {
                 std::fs::remove_file(&file.path)?;
+                if let Some(log) = log {
+                    file_removed(log, &file.path);
+                }
                 removed.push(file.path.clone());
             }
             Observed::Absent => {}
@@ -481,6 +494,7 @@ fn remove_recorded(
 /// Removes each unchanged recorded folder whole and leaves a folder with edited references.
 fn remove_folders(
     folders: &[RecordedFolder],
+    log: Option<&Log>,
 ) -> Result<(Vec<PathBuf>, Vec<PathBuf>), InstallationError> {
     let mut removed = Vec::new();
     let mut kept = Vec::new();
@@ -488,6 +502,9 @@ fn remove_folders(
         if !changed_references(folder)?.is_empty() {
             kept.push(folder.path.clone());
         } else if remove_whole(&folder.path)? {
+            if let Some(log) = log {
+                file_removed(log, &folder.path);
+            }
             removed.push(folder.path.clone());
         }
     }
@@ -594,7 +611,15 @@ impl PluginRecord {
         Self {
             record: record.into(),
             plugin: plugin.into(),
+            log: None,
         }
+    }
+
+    /// Records each completed change through this run's log.
+    #[must_use]
+    pub fn with_log(mut self, log: &Log) -> Self {
+        self.log = Some(log.clone());
+        self
     }
 
     /// The plugin's file's path: `<record>/<plugin>.json`.
@@ -615,11 +640,11 @@ impl PluginRecord {
             PluginFileRead::Missing => None,
             PluginFileRead::Read(file) => Some(file),
         };
-        disk::remove_staging_files(&path)?;
+        disk::remove_staging_files(&path, self.log.as_ref())?;
         Ok(Ok(match file {
             None => Committed::default(),
             Some(PluginFile::Committed(committed)) => committed,
-            Some(PluginFile::Pending(pending)) => recover(&path, &pending)?,
+            Some(PluginFile::Pending(pending)) => recover(&path, &pending, self.log.as_ref())?,
         }))
     }
 
@@ -665,7 +690,7 @@ impl PluginRecord {
         }
         let plan = plan_install(request, &committed, targets)?;
         read_signal(signal)?;
-        carry_out(&path, &plan, request)
+        carry_out(&path, &plan, request, self.log.as_ref())
     }
 
     /// Uninstalls the plugin's files, folders, and startup lines.
@@ -689,20 +714,20 @@ impl PluginRecord {
         signal: &dyn Cancellation,
     ) -> Result<UninstallOutcome, InstallationError> {
         let release: BTreeSet<&Path> = release.iter().map(PathBuf::as_path).collect();
-        let path = self.path();
         let committed = match self.recorded()? {
             Ok(committed) => committed,
             Err(refusal) => return Ok(UninstallOutcome::Refused(vec![refusal])),
         };
         let lines = unlisted_actions(&committed.lines, &release)?;
         read_signal(signal)?;
-        let (removed, kept) = remove_recorded(&committed.files)?;
-        let (removed_folders, kept_folders) = remove_folders(&committed.folders)?;
+        let log = self.log.as_ref();
+        let (removed, kept) = remove_recorded(&committed.files, log)?;
+        let (removed_folders, kept_folders) = remove_folders(&committed.folders, log)?;
         for action in &lines {
-            action.apply()?;
+            action.apply(log)?;
         }
         remove_directories(&committed.directories)?;
-        disk::remove_file_if_present(&path)?;
+        self.delete()?;
         Ok(UninstallOutcome::Uninstalled(Uninstalled {
             removed: removed.into_iter().chain(removed_folders).collect(),
             kept: kept.into_iter().chain(kept_folders).collect(),
@@ -799,6 +824,7 @@ impl PluginRecord {
                     directories: adopted,
                     ..committed
                 }),
+                self.log.as_ref(),
             )?;
         }
         Ok(true)
@@ -866,6 +892,7 @@ impl PluginRecord {
                 }],
                 ..Pending::default()
             }),
+            self.log.as_ref(),
         )
     }
 
@@ -889,6 +916,7 @@ impl PluginRecord {
                 }],
                 ..Committed::default()
             }),
+            self.log.as_ref(),
         )
     }
 
@@ -899,7 +927,7 @@ impl PluginRecord {
     ///
     /// The runtime's error for a removal that fails.
     pub fn remove_staging(&self) -> Result<(), InstallationError> {
-        Ok(disk::remove_staging_files(&self.path())?)
+        Ok(disk::remove_staging_files(&self.path(), self.log.as_ref())?)
     }
 
     /// Deletes the plugin's file, which records nothing once nothing is registered. A file already
@@ -909,7 +937,13 @@ impl PluginRecord {
     ///
     /// The runtime's error for a removal that fails.
     pub fn delete(&self) -> Result<(), InstallationError> {
-        Ok(disk::remove_file_if_present(&self.path())?)
+        let path = self.path();
+        if disk::remove_file_if_present(&path)?
+            && let Some(log) = &self.log
+        {
+            file_removed(log, &path);
+        }
+        Ok(())
     }
 }
 
@@ -1119,8 +1153,9 @@ fn carry_out(
     path: &Path,
     plan: &InstallPlan,
     request: &InstallRequest,
+    log: Option<&Log>,
 ) -> Result<InstallOutcome, InstallationError> {
-    write_plugin_file(path, &PluginFile::Pending(plan.pending.clone()))?;
+    write_plugin_file(path, &PluginFile::Pending(plan.pending.clone()), log)?;
     for directory in &plan.created {
         disk::create_directory(directory, request.directory_mode)
             .map_err(|error| write_failure(directory, error))?;
@@ -1136,16 +1171,19 @@ fn carry_out(
             ReplaceOptions::new().maybe_mode(file.mode),
         )
         .map_err(|error| error.map_io(|error| write_failure(&file.path, error)))?;
+        if let Some(log) = log {
+            file_written(log, &file.path);
+        }
     }
     for folder in &request.folders {
-        write_folder(&folder.path, &folder.files)?;
+        write_folder(&folder.path, &folder.files, log)?;
     }
     for action in &plan.lines {
-        action.apply()?;
+        action.apply(log)?;
     }
-    let (removed, kept) = remove_recorded(&plan.removals)?;
-    let (removed_folders, kept_folders) = remove_folders(&plan.folder_removals)?;
-    write_plugin_file(path, &PluginFile::Committed(plan.committed.clone()))?;
+    let (removed, kept) = remove_recorded(&plan.removals, log)?;
+    let (removed_folders, kept_folders) = remove_folders(&plan.folder_removals, log)?;
+    write_plugin_file(path, &PluginFile::Committed(plan.committed.clone()), log)?;
     Ok(InstallOutcome::Installed(Installed {
         written: request
             .files

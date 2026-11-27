@@ -109,7 +109,9 @@ fn rewrite(
                 .flat_map(|step| &step.placement.release),
         )
         .update(true);
-    let outcome = PluginRecord::new(record, record_name(shell)).install(&request, &run.signal)?;
+    let outcome = PluginRecord::new(record, record_name(shell))
+        .with_log(&run.log)
+        .install(&request, &run.signal)?;
     installed_or_failure(run, outcome, shell, Verb::Update)
 }
 

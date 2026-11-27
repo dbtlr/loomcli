@@ -25,7 +25,10 @@ async fn a_string_option_with_an_implied_value_takes_a_value_by_the_string_rule(
     space.write(".app.json", &json_text(&json!({ "backup": true })));
     assert_eq!(
         space.run().arg(&["-L"]).loud().stderr().await,
-        wrong(&["Ignored option \"--backup\" from backup in .app.json: Use a string or a number."])
+        read_wrong(
+            ".app.json",
+            &["Ignored option \"--backup\" from backup in .app.json: Use a string or a number."]
+        )
     );
 }
 
@@ -58,42 +61,63 @@ async fn a_value_follows_the_option_type_and_one_it_cannot_take_is_ignored_with_
     };
     assert_eq!(
         lines(json_text(&json!({ "total": "yes" }))).await,
-        wrong(&["Ignored option \"--total\" from total in .app.json: Use true or false."])
+        read_wrong(
+            ".app.json",
+            &["Ignored option \"--total\" from total in .app.json: Use true or false."]
+        )
     );
     assert_eq!(
         lines(json_text(&json!({ "limits": { "bytes": { "max": 5 } } }))).await,
-        wrong(&[
-            "Ignored option \"--limit\" from limits.bytes in .app.json: Use a string or a number."
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored option \"--limit\" from limits.bytes in .app.json: Use a string or a number."
+            ]
+        )
     );
     assert_eq!(
         lines(json_text(&json!({ "quiet": "no" }))).await,
-        wrong(&["Ignored option \"--no-quiet\" from quiet in .app.json: Use true or false."])
+        read_wrong(
+            ".app.json",
+            &["Ignored option \"--no-quiet\" from quiet in .app.json: Use true or false."]
+        )
     );
     assert_eq!(
         lines(json_text(&json!({ "fields": "a" }))).await,
-        wrong(&[
-            "Ignored option \"--fields\" from fields in .app.json: Use an array of strings or numbers."
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored option \"--fields\" from fields in .app.json: Use an array of strings or numbers."
+            ]
+        )
     );
     assert_eq!(
         lines(json_text(&json!({ "fields": ["a", {}, null] }))).await,
-        wrong(&[
-            "Ignored option \"--fields\" at 1 from fields in .app.json: Use a string or a number.",
-            "Ignored option \"--fields\" at 2 from fields in .app.json: Use a string or a number.",
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored option \"--fields\" at 1 from fields in .app.json: Use a string or a number.",
+                "Ignored option \"--fields\" at 2 from fields in .app.json: Use a string or a number.",
+            ]
+        )
     );
     assert_eq!(
         lines(json_text(&json!({ "title": null }))).await,
-        wrong(&["Ignored option \"--title\" from title in .app.json: Use a string or a number."])
+        read_wrong(
+            ".app.json",
+            &["Ignored option \"--title\" from title in .app.json: Use a string or a number."]
+        )
     );
     // An overflowing literal parses as an infinity, which is no JSON number.
     assert_eq!(
         lines("{\"title\": 1e400, \"fields\": [-0, 1e21, -1e400]}".to_owned()).await,
-        wrong(&[
-            "Ignored option \"--fields\" at 2 from fields in .app.json: Use a string or a number.",
-            "Ignored option \"--title\" from title in .app.json: Use a string or a number.",
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored option \"--fields\" at 2 from fields in .app.json: Use a string or a number.",
+                "Ignored option \"--title\" from title in .app.json: Use a string or a number.",
+            ]
+        )
     );
     space.write(".app.json", "{\"fields\": [-0, 1e21]}");
     assert_eq!(
@@ -121,10 +145,13 @@ async fn an_empty_array_fills_a_multiple_option_and_a_value_it_cannot_take_falls
     assert!(received.get("title").is_none());
     assert_eq!(
         ran.stderr,
-        wrong(&[
-            "Ignored option \"--limit\" from limits.bytes in .app.json: Use a string or a number.",
-            "Ignored option \"--title\" from title in .app.json: Use a string or a number.",
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored option \"--limit\" from limits.bytes in .app.json: Use a string or a number.",
+                "Ignored option \"--title\" from title in .app.json: Use a string or a number.",
+            ]
+        )
     );
     assert_eq!(
         space
@@ -237,7 +264,7 @@ async fn in_an_invocation_by_name_a_value_the_option_cannot_take_names_its_decla
     assert_eq!(code, None);
     assert_eq!(
         messages,
-        "› Ignored option \"limit\" from limits.bytes in .app.json: Use a string or a number.\n"
+        "› Read configuration from .app.json.\n› Ignored option \"limit\" from limits.bytes in .app.json: Use a string or a number.\n"
     );
 }
 
@@ -329,7 +356,7 @@ async fn configuration_fills_arity_groups_and_ignores_a_wrong_shape_as_one_value
         run().await,
         (
             json!([["800", "600"], [["1", "2"], ["3", "4"]]]),
-            String::new()
+            read_line(".app.json")
         )
     );
     space.write(".app.json", r#"{"size":[800],"points":[[1,2],[3,false]]}"#);
@@ -337,9 +364,12 @@ async fn configuration_fills_arity_groups_and_ignores_a_wrong_shape_as_one_value
     assert_eq!(value, json!([["40", "20"], []]));
     assert_eq!(
         stderr,
-        wrong(&[
-            "Ignored option \"--size\" from size in .app.json: Use an array of 2 strings or numbers.",
-            "Ignored option \"--point\" from points in .app.json: Use an array of arrays, each of 2 strings or numbers.",
-        ])
+        read_wrong(
+            ".app.json",
+            &[
+                "Ignored option \"--size\" from size in .app.json: Use an array of 2 strings or numbers.",
+                "Ignored option \"--point\" from points in .app.json: Use an array of arrays, each of 2 strings or numbers.",
+            ]
+        )
     );
 }

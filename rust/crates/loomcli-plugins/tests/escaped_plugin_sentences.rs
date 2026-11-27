@@ -61,8 +61,11 @@ async fn the_configuration_plugins_lines_escape_the_spelling_of_the_option_a_fil
         (
             0,
             String::new(),
-            "› Ignored option \"--fla\\u202eg\" from flag in .app.json: Use true or false.\n"
-                .to_owned()
+            concat!(
+                "› Read configuration from .app.json.\n",
+                "› Ignored option \"--fla\\u202eg\" from flag in .app.json: Use true or false.\n",
+            )
+            .to_owned()
         )
     );
     assert_eq!(
@@ -70,8 +73,11 @@ async fn the_configuration_plugins_lines_escape_the_spelling_of_the_option_a_fil
         (
             2,
             String::new(),
-            "app: Option \"--fla\\u202eg\" (from flag in .app.json): Use true or false.\n"
-                .to_owned()
+            concat!(
+                "› Read configuration from .app.json.\n",
+                "app: Option \"--fla\\u202eg\" (from flag in .app.json): Use true or false.\n",
+            )
+            .to_owned()
         )
     );
 }

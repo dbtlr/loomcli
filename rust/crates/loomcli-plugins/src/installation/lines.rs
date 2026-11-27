@@ -5,6 +5,10 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
+use loomcli_core::Log;
+
+use crate::change_events::file_written;
+
 use super::InstallationError;
 use super::disk;
 use super::record::{PendingLine, StartupLine};
@@ -337,7 +341,7 @@ impl LineAction {
     /// Carries out the action: an append or a created file for an added line, and a rewrite for
     /// a replaced or removed one. A held, present, no longer held, or released line changes no
     /// startup file.
-    pub(super) fn apply(&self) -> Result<(), InstallationError> {
+    pub(super) fn apply(&self, log: Option<&Log>) -> Result<(), InstallationError> {
         match self {
             LineAction::Add { listed, found, .. } => add_line(listed, found.as_ref()),
             LineAction::Replace {
@@ -360,8 +364,12 @@ impl LineAction {
                     replacement: None,
                 },
             ),
-            _ => Ok(()),
+            _ => return Ok(()),
+        }?;
+        if let Some(log) = log {
+            file_written(log, self.path());
         }
+        Ok(())
     }
 }
 
@@ -427,7 +435,8 @@ pub(super) fn held_line(entry: &PendingLine) -> Result<Option<StartupLine>, Inst
 /// files beside its startup file's real path.
 pub(super) fn recovered_line(
     entry: &PendingLine,
+    log: Option<&Log>,
 ) -> Result<Option<StartupLine>, InstallationError> {
-    disk::remove_staging_files(&real_path_of(&entry.path)?)?;
+    disk::remove_staging_files(&real_path_of(&entry.path)?, log)?;
     held_line(entry)
 }

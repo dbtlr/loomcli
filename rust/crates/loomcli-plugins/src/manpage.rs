@@ -53,6 +53,7 @@ fn child_run(context: &Context) -> ChildRun<'_> {
         host: &context.host,
         signal: &context.signal,
         out: &context.out,
+        log: &context.log,
     }
 }
 
@@ -117,6 +118,8 @@ const REFRESH: Refresh = Refresh {
     words: &["manpage", "update"],
     warning: messages::MAN_PAGES_REFRESH_FAILED,
     not_started: messages::man_pages_not_refreshed,
+    records: || vec![children::PLUGIN.to_owned()],
+    skipped: messages::MAN_PAGES_REFRESH_SKIPPED,
 };
 
 /// An `after_replace` function for the self-update plugin: a page is fixed text and the replaced

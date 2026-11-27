@@ -2,9 +2,13 @@
 
 use std::path::Path;
 
-use loomcli_core::{escape_control_characters, nowrap};
+use loomcli_core::{LogFields, escape_control_characters, nowrap};
 
 use super::status::ServiceConsoleCapture;
+
+pub(super) fn ran_call(call: &str) -> (&'static str, LogFields) {
+    ("Ran {call}.", LogFields::new().field("call", call))
+}
 
 /// Text escaped as a failure message quotes it.
 pub(super) fn shown(text: &str) -> String {

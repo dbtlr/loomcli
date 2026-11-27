@@ -260,7 +260,11 @@ async fn a_toml_value_the_option_cannot_take_is_ignored_and_an_invalid_date_is_i
             .loud()
             .ran()
             .await;
-        assert_eq!((ran.status, ran.stderr), (0, wrong(&[line])), "{content:?}");
+        assert_eq!(
+            (ran.status, ran.stderr),
+            (0, read_wrong(".app.toml", &[line])),
+            "{content:?}"
+        );
     }
     space.write(".app.toml", "");
     let empty = space.run().settings(toml.clone()).ran().await;
@@ -309,9 +313,12 @@ async fn a_counted_option_takes_a_whole_number_of_0_or_more_and_any_other_value_
             (ran.status, ran.stderr),
             (
                 0,
-                wrong(&[
-                    "Ignored option \"--verbose\" from verbose in .app.json: Use a whole number of 0 or more."
-                ])
+                read_wrong(
+                    ".app.json",
+                    &[
+                        "Ignored option \"--verbose\" from verbose in .app.json: Use a whole number of 0 or more."
+                    ]
+                )
             ),
             "{value}"
         );
@@ -421,7 +428,11 @@ async fn a_yaml_value_the_option_cannot_take_is_ignored_with_a_v_line() {
             .loud()
             .ran()
             .await;
-        assert_eq!((ran.status, ran.stderr), (0, wrong(&[line])), "{content:?}");
+        assert_eq!(
+            (ran.status, ran.stderr),
+            (0, read_wrong(".app.yaml", &[line])),
+            "{content:?}"
+        );
     }
 }
 

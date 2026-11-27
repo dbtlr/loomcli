@@ -17,9 +17,9 @@ async fn remove_from(
     agent: Agent,
     recorded: &RecordedRegistration,
 ) -> Result<(), Error> {
-    let file = PluginRecord::new(record, agent.record_name());
+    let file = PluginRecord::new(record, agent.record_name()).with_log(run.log);
     file.write_pending_registration(&run.registration, Some(&recorded.command), None)?;
-    let answer = run.call(agent, agent.remove(&run.registration)).await?;
+    let answer = run.change(agent, agent.remove(&run.registration)).await?;
     file.delete()?;
     if answer.succeeded() {
         return run

@@ -29,7 +29,7 @@ loomcli-mcp = { path = "../loomcli-mcp", optional = true }
 reqwest = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 jiff = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true, features = ["io-util", "macros", "net", "time"] }
+tokio = { workspace = true, optional = true, features = ["io-util", "time"] }
 
 # One feature per plugin, and no default features: an application compiles the plugins it names.
 # A plugin's extension descriptors and its declared views sit behind their own features, so a
@@ -53,7 +53,7 @@ interaction = []
 logging = ["logging-extension", "dep:jiff"]
 manifest = ["manifest-extension"]
 manpage = ["markdown", "installation", "help-views"]
-mcp = ["mcp-extension", "installation", "dep:loomcli-mcp", "dep:tokio", "dep:loomcli-validators"]
+mcp = ["mcp-extension", "installation", "dep:loomcli-mcp", "dep:tokio", "dep:loomcli-validators", "tokio/net", "tokio/macros"]
 plain = []
 self-update = ["installation", "dep:loomcli-validators", "dep:reqwest", "dep:url", "dep:jiff", "dep:rustix"]
 # Service status declares the formatter's JSON view and reads the logging file fact.

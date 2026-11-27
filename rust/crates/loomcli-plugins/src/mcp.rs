@@ -128,7 +128,13 @@ mod plugin {
             .inputs::<InstallInputs>()
             .action(|context: Context<InstallInputs>| async move {
                 let name = context.graph.name.clone();
-                let run = ChildRun::new(&name, &context.host, &context.signal, &context.out);
+                let run = ChildRun::new(
+                    &name,
+                    &context.host,
+                    &context.signal,
+                    &context.out,
+                    &context.log,
+                );
                 let request = InstallRequest {
                     agent: context.inputs.agent.as_deref().and_then(Agent::named),
                     force: context.inputs.force,
@@ -143,7 +149,13 @@ mod plugin {
             .inputs::<UninstallInputs>()
             .action(|context: Context<UninstallInputs>| async move {
                 let name = context.graph.name.clone();
-                let run = ChildRun::new(&name, &context.host, &context.signal, &context.out);
+                let run = ChildRun::new(
+                    &name,
+                    &context.host,
+                    &context.signal,
+                    &context.out,
+                    &context.log,
+                );
                 let agent = context.inputs.agent.as_deref().and_then(Agent::named);
                 uninstall_registrations(&run, agent).await
             })

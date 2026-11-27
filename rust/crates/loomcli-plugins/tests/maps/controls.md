@@ -4,6 +4,7 @@ The plugins are `version`, `color`, `verbose`, `background`, `theme` (the Loom t
 
 | Reference file | Status | Notes |
 | --- | --- | --- |
+| `silent-plugins.test.ts` | Ported, 2 groups | `silent_plugins.rs` compares both streams and the exit status at default, `-v`, and `-vv`. It installs the Rust counterparts of the reference plugins and exercises every pack view. Rust has no `patch-console` plugin. |
 | `visible-aliases.test.ts` | ported, the suggestions case | `visible_aliases.rs` checks canonical suggestions and candidates when the typed word nearly matches a visible alias. |
 | `version.test.ts` | partly ported, 9 of 10 cases | `controls_version.rs`: `--version`, `-V`, lowercase `v` carried once, uppercase `V` after the added `v`, the `0.0.0` sentinel, the routed Command, the postfix, empty settings. Not applicable: "judges no short setting", because the Rust builder has no `short` setting. Added: an application override of the line reading the graph and the postfix, and one building on the default line; the styled line with and without the Loom theme, invalid postfixes panic with the diagnostic, a zero-width space is prose, the option's control mark. |
 | `version-extended.test.ts` | ported, 21 cases | [Extended version test map](version-extended.md). |

@@ -163,6 +163,7 @@ pub(crate) struct Chain {
     globals: InputValues,
     request: Option<Request>,
     unknown_command: Option<Arc<UnknownCommand>>,
+    command_plugin: Option<Arc<str>>,
     graph: Arc<CommandGraph>,
     command: Arc<CommandNode>,
     state: Arc<RunState>,
@@ -210,12 +211,25 @@ pub(crate) async fn run_chain(run: ChainRun<'_>, prepared: Prepared) -> Result<E
         Boundary::Held(fault) => Reaching::Held(fault),
         Boundary::Ready(dispatch) => Reaching::Dispatch(dispatch),
     };
+    let command_plugin = run.path.first().and_then(|top| {
+        run.application
+            .plugins
+            .iter()
+            .find(|plugin| {
+                plugin
+                    .commands
+                    .iter()
+                    .any(|command| command.name.as_ref() == Some(top))
+            })
+            .map(|plugin| Arc::from(plugin.identity.as_str()))
+    });
     let shared = Arc::new(Chain {
         entries,
         options,
         globals,
         request: chain.request,
         unknown_command: chain.unknown_command,
+        command_plugin,
         graph: Arc::clone(run.graph),
         command: run.command,
         state: run.state,
@@ -564,7 +578,7 @@ impl Chain {
             host: Arc::clone(&run.host),
             signal: self.signal.clone(),
             style: crate::style::style(),
-            log: run.log.bind(None),
+            log: run.log.bind(self.command_plugin.clone()),
             // A derived `#[stdin]` field reads the standalone stdin instead.
             stdin: if typed_stdin { None } else { ready.stdin },
             run: Arc::clone(run),

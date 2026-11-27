@@ -33,8 +33,8 @@ impl Scratch {
     fn new() -> Self {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let number = NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let root =
-            std::env::temp_dir().join(format!("loomcli-dotenv-{}-{number}", std::process::id()));
+        let root = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("loomcli-dotenv-{}-{number}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         Self(root)
@@ -1356,3 +1356,7 @@ fn a_name_listed_twice_is_listed_once_and_valid_names_do_not_panic() {
     let _ = dotenv().only(["_A1", "_A1", "a"]).plugin();
     let _ = dotenv().except(Vec::<String>::new()).plugin();
 }
+
+#[cfg(feature = "verbose")]
+#[path = "dotenv_support/lines.rs"]
+mod lines;

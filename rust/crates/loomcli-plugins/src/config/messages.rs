@@ -218,6 +218,22 @@ pub(super) fn no_file_notice(file: &str, app: &str, style: &ContextualStyle) -> 
     )
 }
 
+pub(super) const NO_FILE_FOUND: &str = "Found no configuration file.";
+
+pub(super) fn read_from(file: &str) -> (&'static str, LogFields) {
+    (
+        "Read configuration from {file}.",
+        LogFields::new().field("file", file),
+    )
+}
+
+pub(super) fn looked_for(file: &str) -> (&'static str, LogFields) {
+    (
+        "Looked for {file}: not found.",
+        LogFields::new().field("file", file),
+    )
+}
+
 /// The `-v` line for one removed value: the value at a shown path, kept on one line, or every key.
 pub(super) fn ignored_value(
     key: Option<&str>,

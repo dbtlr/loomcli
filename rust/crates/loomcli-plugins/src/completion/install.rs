@@ -242,7 +242,8 @@ fn install_through(run: &ChildRun, writing: &Writing) -> Result<Installed, Error
                 .map(|line| InstalledLine::new(&line.path, &line.line)),
         )
         .release(plan.placement.release.iter());
-    let file = crate::installation::PluginRecord::new(record, record_name(place.shell()));
+    let file = crate::installation::PluginRecord::new(record, record_name(place.shell()))
+        .with_log(&run.log);
     let outcome = file.install(&request, &run.signal)?;
     installed_or_failure(run, outcome, place.shell(), Verb::Install)
 }

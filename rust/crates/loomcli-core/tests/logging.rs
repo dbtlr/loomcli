@@ -924,14 +924,18 @@ async fn an_action_a_middleware_a_source_and_an_on_failure_hook_each_log_one_eve
 }
 
 #[tokio::test]
-async fn a_plugin_commands_action_logs_under_no_plugin() {
+async fn a_plugin_commands_action_logs_under_its_plugin() {
     let reaching = Some("fixture/reaching".to_owned());
     assert_eq!(
         reached(&["plug"]).await,
         [
             (LogLevel::Info, "from source".to_owned(), reaching.clone()),
             (LogLevel::Info, "from middleware".to_owned(), reaching),
-            (LogLevel::Info, "from plugin command".to_owned(), None),
+            (
+                LogLevel::Info,
+                "from plugin command".to_owned(),
+                Some("fixture/commands".to_owned()),
+            ),
         ]
     );
 }

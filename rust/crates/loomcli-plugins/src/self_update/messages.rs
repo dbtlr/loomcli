@@ -1,8 +1,93 @@
 //! The sentences of the self-update plugin.
 
-use loomcli_core::{escape_control_characters, nowrap};
+use std::path::Path;
+
+use loomcli_core::{LogFields, escape_control_characters, nowrap};
+use url::Url;
 
 use super::request::{NOT_FOUND, RequestError};
+
+pub(super) fn requested(url: &Url) -> (&'static str, LogFields) {
+    let address = format!("{}{}", url.origin().ascii_serialization(), url.path());
+    ("Requested {url}.", LogFields::new().field("url", address))
+}
+
+pub(super) fn resolved(version: &str, channel: &str) -> (&'static str, LogFields) {
+    (
+        "Resolved v{version} on the {channel} channel.",
+        LogFields::new()
+            .field("channel", channel)
+            .field("version", version),
+    )
+}
+
+pub(super) fn verified(asset: &str) -> (&'static str, LogFields) {
+    (
+        "Verified {asset} against SHA256SUMS.",
+        LogFields::new().field("asset", asset),
+    )
+}
+
+pub(super) enum UpdateCheckSkip<'a> {
+    OptedOut(&'a str),
+    Stdout,
+    Stderr,
+    Ci,
+    SelfUpdate,
+    NotRelease(&'a str),
+    NotScript(&'a str),
+    NotAbsolute(String),
+}
+
+pub(super) fn skipped(reason: UpdateCheckSkip<'_>) -> (&'static str, LogFields) {
+    let fields = LogFields::new();
+    match reason {
+        UpdateCheckSkip::OptedOut(variable) => (
+            "Skipped the update check: {variable} is set.",
+            fields.field("variable", variable),
+        ),
+        UpdateCheckSkip::Stdout => (
+            "Skipped the update check: stdout is not a terminal.",
+            fields,
+        ),
+        UpdateCheckSkip::Stderr => (
+            "Skipped the update check: stderr is not a terminal.",
+            fields,
+        ),
+        UpdateCheckSkip::Ci => ("Skipped the update check: CI is set.", fields),
+        UpdateCheckSkip::SelfUpdate => {
+            ("Skipped the update check: self-update is running.", fields)
+        }
+        UpdateCheckSkip::NotRelease(name) => (
+            "Skipped the update check: {name} is not a release build.",
+            fields.field("name", name),
+        ),
+        UpdateCheckSkip::NotScript(name) => (
+            "Skipped the update check: {name} was not installed by install.sh.",
+            fields.field("name", name),
+        ),
+        UpdateCheckSkip::NotAbsolute(variable) => (
+            "Skipped the update check: {variable} is not an absolute path.",
+            fields.field("variable", variable),
+        ),
+    }
+}
+
+pub(super) fn read_update_check(path: &Path) -> (&'static str, LogFields) {
+    (
+        "Read the update check from {path}.",
+        LogFields::new().field("path", path.to_string_lossy()),
+    )
+}
+
+pub(super) fn ignored_update_cache(path: &Path) -> (&'static str, LogFields) {
+    (
+        "Ignored {path}: it is not an update cache this version reads.",
+        LogFields::new().field("path", path.to_string_lossy()),
+    )
+}
+
+pub(super) const STARTED_REFRESH: &str = "Started a refresh of the update check.";
 
 /// A value a sentence repeats, escaped as a failure message quotes text.
 fn shown(text: &str) -> String {

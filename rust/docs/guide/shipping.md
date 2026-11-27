@@ -177,7 +177,9 @@ Feature `service`. `service(label, run)` runs one of the application's own Comma
 
 - `service install` writes the unit, records it in the installation record, loads it, and starts it. It is refused for a source or development build, which the service would outlive.
 - `service uninstall`, `start`, `stop`, and `restart` act on the installed unit.
-- `service status` reports the unit's state as a result with `text` and `json` views, plus the rows the author's `probe` adds.
+- `service status` reports the unit's state as a result with `text` and `json` views. The text view shows an `output` row when the unit has an output file and one `log` row per file the logging plugin writes. When the logging plugin is installed but writes to no file, and the unit has no output file, one `log` row says where the service manager sends the console output: to journald under systemd, and nowhere under launchd. `.probe(probe)` adds rows to the result.
+
+`.environment(callback)` writes the environment values returned by the callback to the unit file only. `.output(path)` sets the unit's stdout and stderr destinations to the same file. `.stop_timeout(milliseconds)` writes the manager's stop timeout as `TimeoutStopSec` on systemd or `ExitTimeOut` on launchd, which takes whole seconds rounded up.
 
 The plugin never touches a file it did not record, and every graph build checks that the `run` words route to a Command with an action.
 

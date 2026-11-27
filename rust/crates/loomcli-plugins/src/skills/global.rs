@@ -255,7 +255,8 @@ async fn write_target(
     let request = InstallRequest::new()
         .folders(entry.wanted.iter().map(|named| named.folder.clone()))
         .force(facts.force);
-    let file = PluginRecord::new(record, record_name(entry.recorded.place.target));
+    let file =
+        PluginRecord::new(record, record_name(entry.recorded.place.target)).with_log(run.log);
     match file.install(&request, run.signal)? {
         InstallOutcome::Refused(refused) => Err(failure_of(run, facts.verb, &refused)),
         InstallOutcome::Installed(done) => {
@@ -335,7 +336,7 @@ pub(super) async fn install_global(
 
 /// Removes one target's recorded folders through the module and states each.
 async fn remove_target(run: &ChildRun<'_>, record: &Path, entry: &Recorded) -> Result<(), Error> {
-    let file = PluginRecord::new(record, record_name(entry.place.target));
+    let file = PluginRecord::new(record, record_name(entry.place.target)).with_log(run.log);
     match file.uninstall(&[], run.signal)? {
         UninstallOutcome::Refused(refused) => {
             let path = refused.first().map_or(record, |refusal| &refusal.path);

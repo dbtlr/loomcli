@@ -18,6 +18,10 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use loomcli_core::Log;
+
+use crate::change_events::record_leftovers;
+
 use sha2::{Digest, Sha256};
 
 use super::reach::read_failure;
@@ -358,11 +362,12 @@ fn remove_staging(staging: &Path) {
     let _ = remove_file_if_present(staging);
 }
 
-/// Removes a file, a gone one being no error, as `rmSync` with `force` does.
-pub(super) fn remove_file_if_present(path: &Path) -> io::Result<()> {
+/// Removes a file and answers whether it was there. A file already gone is no error.
+pub(super) fn remove_file_if_present(path: &Path) -> io::Result<bool> {
     match fs::remove_file(path) {
-        Err(error) if is_missing(&error) => Ok(()),
-        other => other,
+        Ok(()) => Ok(true),
+        Err(error) if is_missing(&error) => Ok(false),
+        Err(error) => Err(error),
     }
 }
 
@@ -398,14 +403,19 @@ pub(super) fn is_marked_entry(entry: &OsString, name: &OsString, suffix: &str) -
 }
 
 /// Removes every staging file a run left beside `path`, and nothing else in its directory.
-pub fn remove_staging_files(path: &Path) -> io::Result<()> {
+pub fn remove_staging_files(path: &Path, log: Option<&Log>) -> io::Result<()> {
     let directory = parent_of(path);
     let name = name_of(path);
+    let mut removed = Vec::new();
     for entry in entries_of(&directory)? {
         if is_marked_entry(&entry, &name, STAGING_SUFFIX) {
-            remove_file_if_present(&directory.join(entry))?;
+            let staging = directory.join(entry);
+            if remove_file_if_present(&staging)? {
+                removed.push(staging);
+            }
         }
     }
+    record_leftovers(log, removed);
     Ok(())
 }
 

@@ -7,6 +7,10 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use loomcli_core::Log;
+
+use crate::change_events::{file_written, record_leftovers};
+
 use super::InstallationError;
 use super::disk::{
     self, Observed, RETIRED_SUFFIX, ReplaceOptions, STAGING_SUFFIX, digest_of, entries_of, exists,
@@ -71,18 +75,22 @@ pub fn remove_whole(path: &Path) -> io::Result<bool> {
 }
 
 /// Removes each leftover `.<name>.<random>.loom-staging` and `.<name>.<random>.loom-retired`
-/// beside the folder at `path`, for that folder's own name alone.
-pub fn remove_folder_leftovers(path: &Path) -> io::Result<()> {
+/// beside the folder at `path` and returns the removed paths.
+pub fn remove_folder_leftovers(path: &Path) -> io::Result<Vec<PathBuf>> {
     let directory = disk::parent_of(path);
     let name = disk::name_of(path);
+    let mut removed = Vec::new();
     for entry in entries_of(&directory)? {
         if is_marked_entry(&entry, &name, STAGING_SUFFIX)
             || is_marked_entry(&entry, &name, RETIRED_SUFFIX)
         {
-            remove_whole(&directory.join(entry))?;
+            let leftover = directory.join(entry);
+            if remove_whole(&leftover)? {
+                removed.push(leftover);
+            }
         }
     }
-    Ok(())
+    Ok(removed)
 }
 
 /// The path of a folder file under `root`, one segment at a time.
@@ -152,14 +160,23 @@ fn swap_in(staging: &Path, path: &Path) -> io::Result<()> {
 /// above the path exists. A failure removes the staging folder and returns the runtime's error;
 /// one between the two renames can leave the path empty and a retired folder beside it, which the
 /// next write of that folder removes.
-pub fn write_folder(path: &Path, files: &[FolderFile]) -> Result<(), InstallationError> {
-    remove_folder_leftovers(path)?;
+pub fn write_folder(
+    path: &Path,
+    files: &[FolderFile],
+    log: Option<&Log>,
+) -> Result<(), InstallationError> {
+    let leftovers = remove_folder_leftovers(path)?;
     let staging = staging_path(path);
     disk::make_directory(&staging).map_err(|error| write_failure(path, error))?;
     let attempt = fill_folder(&staging, files).and_then(|()| Ok(swap_in(&staging, path)?));
     if attempt.is_err() {
         // The write's own error is the one to report; a later write removes the leftover.
         let _ = remove_whole(&staging);
+    } else {
+        record_leftovers(log, leftovers);
+        if let Some(log) = log {
+            file_written(log, path);
+        }
     }
     attempt
 }

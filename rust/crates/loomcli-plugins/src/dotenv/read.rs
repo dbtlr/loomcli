@@ -6,8 +6,9 @@ use std::path::Path;
 
 use loomcli_core::{EnvironmentAdditions, EnvironmentContext, Error};
 
+use super::Names;
 use super::expand::expand_value;
-use super::messages;
+use super::messages::{self, Skip};
 use super::parse::{DotenvAssignment, parse_dotenv};
 
 /// The environment variable that names the mode. The reference reads `NODE_ENV`, and an operator
@@ -69,15 +70,21 @@ fn file_text(path: &Path) -> FileText {
 fn expand_file(
     assignments: &[DotenvAssignment],
     outer: &dyn Fn(&str) -> Option<String>,
-) -> BTreeMap<String, String> {
+) -> Vec<(String, String)> {
     let mut own: BTreeMap<String, String> = BTreeMap::new();
+    let mut order = Vec::new();
     for assignment in assignments {
         let value = expand_value(&assignment.value, assignment.quote, &|name| {
             outer(name).or_else(|| own.get(name).cloned())
         });
-        own.insert(assignment.name.clone(), value);
+        if own.insert(assignment.name.clone(), value).is_none() {
+            order.push(assignment.name.as_str());
+        }
     }
-    own
+    order
+        .into_iter()
+        .filter_map(|name| own.remove_entry(name))
+        .collect()
 }
 
 /// One layer's values and the warnings its file earns, in order.
@@ -86,12 +93,12 @@ fn read_layer(
     file: &str,
     imports: &dyn Fn(&str) -> bool,
     outer: &dyn Fn(&str) -> Option<String>,
-) -> (BTreeMap<String, String>, Vec<String>) {
+) -> (Vec<(String, String)>, Vec<String>) {
     let text = match file_text(path) {
         FileText::Text(text) => text,
-        FileText::Absent => return (BTreeMap::new(), Vec::new()),
+        FileText::Absent => return (Vec::new(), Vec::new()),
         FileText::Unreadable => {
-            return (BTreeMap::new(), vec![messages::file_unreadable(file)]);
+            return (Vec::new(), vec![messages::file_unreadable(file)]);
         }
     };
     let parsed = parse_dotenv(&text, imports);
@@ -108,22 +115,55 @@ fn read_layer(
 /// reads.
 pub(super) async fn read_dotenv(
     context: EnvironmentContext,
-    imports: &(dyn Fn(&str) -> bool + Send + Sync),
+    names: &Names,
 ) -> Result<EnvironmentAdditions, Error> {
-    let mut known: BTreeMap<String, String> = BTreeMap::new();
-    let mode = context.env.get(MODE_VARIABLE).cloned();
-    for file in dotenv_files(mode.as_deref()) {
+    let mut known: BTreeMap<String, (String, &str)> = BTreeMap::new();
+    let imports = |name: &str| names.exclusion(name).is_none();
+    let files = dotenv_files(context.env.get(MODE_VARIABLE).map(String::as_str));
+    for file in &files {
         let (layer, warnings) = {
-            let outer = |name: &str| context.env.get(name).or_else(|| known.get(name)).cloned();
-            read_layer(&context.cwd.join(&file), &file, imports, &outer)
+            let outer = |name: &str| {
+                context
+                    .env
+                    .get(name)
+                    .or_else(|| known.get(name).map(|(value, _)| value))
+                    .cloned()
+            };
+            read_layer(&context.cwd.join(file), file, &imports, &outer)
         };
         for warning in warnings {
             context.warn(&warning).await?;
         }
+        let mut skipped = Vec::new();
+        let mut imported = 0;
         for (name, value) in layer {
-            known.entry(name).or_insert(value);
+            let reason = names
+                .exclusion(&name)
+                .or_else(|| context.env.get(&name).map(|_| Skip::Set))
+                .or_else(|| {
+                    known
+                        .get(&name)
+                        .map(|&(_, specific)| Skip::Specific(specific))
+                });
+            if let Some(reason) = reason {
+                skipped.push(messages::skipped(&name, file, reason));
+            } else {
+                imported += 1;
+            }
+            // Expansion reads names from earlier files even when the import list excludes them.
+            known.entry(name).or_insert((value, file));
+        }
+        if imported > 0 {
+            let (template, fields) = messages::imported(imported, file);
+            context.log.debug(template, fields);
+        }
+        for (template, fields) in skipped {
+            context.log.trace(template, fields);
         }
     }
-    known.retain(|name, _| imports(name));
-    Ok(known)
+    Ok(known
+        .into_iter()
+        .filter(|(name, _)| imports(name))
+        .map(|(name, (value, _))| (name, value))
+        .collect())
 }

@@ -159,7 +159,7 @@ async fn replace_folder(
     if let Some(parent) = folder.parent() {
         fs::create_dir_all(parent)?;
     }
-    write_folder(folder, &loaded.files)?;
+    write_folder(folder, &loaded.files, Some(run.log))?;
     let line = if replacing {
         messages::installed_over(&loaded.name, target.name(), folder)
     } else {

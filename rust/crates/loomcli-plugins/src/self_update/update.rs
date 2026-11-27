@@ -18,6 +18,7 @@ use super::resolve::{Release, download_url, fetch_sums, latest_release};
 use super::sums::{Listing, listing_of};
 use super::version::{Version, compare_versions, parse_version};
 use super::{AfterReplace, AfterReplaceContext};
+use crate::change_events::{binary_replaced, file_written};
 use crate::installation::{
     InstallationError, Observed, ReplaceOptions, digest_of, observe, remove_staging_files,
     replace_file,
@@ -282,6 +283,11 @@ async fn resolve(request: &Request, checked: &Checked) -> Result<Option<Resolved
         request.out.success(&line).await?;
         return Ok(None);
     }
+    if request.named.is_none() && !request.check_only {
+        let (template, fields) =
+            messages::resolved(&found.version.text, request.channel_for(checked));
+        request.log.debug(template, fields);
+    }
     let (release, sums) = with_sums(&request.client, found).await?;
     let digest = listed_digest(&checked.binary.asset, &release, &sums)?;
     Ok(Some(Resolved { release, digest }))
@@ -320,6 +326,8 @@ async fn download(
         ))
         .into());
     }
+    let (template, fields) = messages::verified(&checked.binary.asset);
+    request.log.debug(template, fields);
     Ok(bytes)
 }
 
@@ -333,7 +341,7 @@ fn record_line(path: &str, digest: &str) -> String {
 /// read before the rename propagates as it is.
 fn place_binary(request: &Request, checked: &Checked, bytes: &[u8]) -> Result<(), Error> {
     let path = Path::new(&checked.path);
-    let attempt = remove_staging_files(path)
+    let attempt = remove_staging_files(path, Some(&request.log))
         .map_err(InstallationError::from)
         .and_then(|()| {
             replace_file(
@@ -370,7 +378,7 @@ fn write_record(
 ) -> Result<(), Error> {
     let record = checked.record.join(RECORD_FILE);
     let line = record_line(&checked.path, &digest_of(bytes));
-    remove_staging_files(&record)
+    remove_staging_files(&record, Some(&request.log))
         .map_err(InstallationError::from)
         .and_then(|()| {
             replace_file(
@@ -381,8 +389,9 @@ fn write_record(
         })
         .map_err(|error| {
             FatalError::with_cause(messages::record_write(&request.name, &version.text), error)
-                .into()
-        })
+        })?;
+    file_written(&request.log, &record);
+    Ok(())
 }
 
 /// Downloads the resolved release, places it, rewrites the record, and reports the update. From
@@ -400,6 +409,12 @@ async fn install(request: &Request, checked: &Checked, resolved: &Resolved) -> R
         .await?;
     let bytes = download(request, checked, resolved).await?;
     place_binary(request, checked, &bytes)?;
+    binary_replaced(
+        &request.log,
+        Path::new(&checked.path),
+        &checked.binary.running.text,
+        &release.version.text,
+    );
     write_record(request, checked, &release.version, &bytes)?;
     request
         .out
@@ -430,6 +445,7 @@ pub(crate) async fn update(
     install(request, &checked, &resolved).await?;
     if let Some(hook) = after_replace {
         hook(AfterReplaceContext {
+            name: request.name.clone(),
             previous: checked.binary.running.text.clone(),
             current: resolved.release.version.text.clone(),
             path: checked.path.clone(),

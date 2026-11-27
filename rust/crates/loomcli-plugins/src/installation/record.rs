@@ -11,6 +11,10 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use loomcli_core::Log;
+
+use crate::change_events::file_written;
+
 use serde_json::{Map, Value};
 
 use super::InstallationError;
@@ -615,9 +619,17 @@ pub(super) fn serialize(file: &PluginFile) -> io::Result<String> {
 }
 
 /// Replaces the plugin's file whole, creating the record directory when it is missing.
-pub(super) fn write_plugin_file(path: &Path, file: &PluginFile) -> Result<(), InstallationError> {
+pub(super) fn write_plugin_file(
+    path: &Path,
+    file: &PluginFile,
+    log: Option<&Log>,
+) -> Result<(), InstallationError> {
     let text = serialize(file)?;
     fs::create_dir_all(disk::parent_of(path)).map_err(|error| write_failure(path, error))?;
     disk::replace_file(path, text.as_bytes(), ReplaceOptions::new())
-        .map_err(|error| error.map_io(|error| write_failure(path, error)))
+        .map_err(|error| error.map_io(|error| write_failure(path, error)))?;
+    if let Some(log) = log {
+        file_written(log, path);
+    }
+    Ok(())
 }

@@ -401,6 +401,13 @@ const REFRESH: Refresh = Refresh {
     words: &["skills", "update"],
     warning: messages::SKILLS_REFRESH_FAILED,
     not_started: messages::skills_not_refreshed,
+    records: || {
+        targets::TARGETS
+            .into_iter()
+            .map(global::record_name)
+            .collect()
+    },
+    skipped: messages::SKILLS_REFRESH_SKIPPED,
 };
 
 /// An `after_replace` function for the self-update plugin: it runs the new binary with

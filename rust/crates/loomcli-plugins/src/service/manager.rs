@@ -10,11 +10,12 @@ use std::task::Poll;
 use std::time::Duration;
 
 use loomcli_core::{
-    Child, ChildExit, ChildStream, Env, Error, FatalError, Host, KillSignal, Registration,
+    Child, ChildExit, ChildStream, Env, Error, FatalError, Host, KillSignal, Log, Registration,
     RunSignal, ShutdownEvent, SpawnOptions,
 };
 
 use super::messages;
+use crate::change_events::program_run;
 
 /// The registration of a run-scoped shutdown handler, as the run's context makes it.
 pub(super) type OnShutdown<'a> =
@@ -58,6 +59,7 @@ pub(super) struct Manager<'a> {
     pub(super) host: &'a Host,
     pub(super) signal: &'a RunSignal,
     pub(super) on_shutdown: OnShutdown<'a>,
+    pub(super) log: &'a Log,
 }
 
 /// The code of a call that succeeded.
@@ -103,13 +105,9 @@ impl Manager<'_> {
         )
     }
 
-    /// Runs one call until it exits, or until the run signal ends it, whose cancellation it then
-    /// returns.
-    pub(super) async fn run(&self, call: &Call) -> Result<Answer, Error> {
-        self.signal.throw_if_cancelled()?;
-        let exit = self.start(call).exited().await;
-        self.signal.throw_if_cancelled()?;
-        Ok(answer_of(exit))
+    fn report_read_or_refusal(&self, call: &Call) {
+        let (template, fields) = messages::ran_call(&call.text());
+        self.log.debug(template, fields);
     }
 
     /// Runs one read as `run` does, and ends it with `SIGKILL`, which a manager cannot ignore, once
@@ -125,6 +123,9 @@ impl Manager<'_> {
         let (exit, ran_out) = wait_within(&child, limit).await;
         registration.remove();
         self.signal.throw_if_cancelled()?;
+        if ran_out || matches!(exit, ChildExit::Exited { .. }) {
+            self.report_read_or_refusal(call);
+        }
         Ok(if ran_out {
             Read::TimedOut
         } else {
@@ -132,14 +133,39 @@ impl Manager<'_> {
         })
     }
 
-    /// Runs one call and answers its code and output when it exits with one of the accepted
-    /// codes. A program that cannot be started, and any other code, fail with exit 1.
-    pub(super) async fn expect(
+    /// Reads the manager without a time limit, as during a launchd unload.
+    pub(super) async fn expect_read(
         &self,
         call: &Call,
         accepted: &[i32],
     ) -> Result<(i32, String), Error> {
-        match self.run(call).await? {
+        self.expect(call, accepted, false).await
+    }
+
+    /// Runs and records an accepted change to a unit.
+    pub(super) async fn expect_change(&self, call: &Call, accepted: &[i32]) -> Result<(), Error> {
+        self.expect(call, accepted, true).await.map(|_| ())
+    }
+
+    /// Answers an accepted code and output, or fails the run when the call could not start or
+    /// exited with a refused code.
+    async fn expect(
+        &self,
+        call: &Call,
+        accepted: &[i32],
+        changes_unit: bool,
+    ) -> Result<(i32, String), Error> {
+        self.signal.throw_if_cancelled()?;
+        let exit = self.start(call).exited().await;
+        self.signal.throw_if_cancelled()?;
+        if let ChildExit::Exited { code, .. } = &exit {
+            if changes_unit && accepted.contains(code) {
+                program_run(self.log, call.program, &call.args, *code);
+            } else {
+                self.report_read_or_refusal(call);
+            }
+        }
+        match answer_of(exit) {
             Answer::Missing(error) => Err(FatalError::with_cause(
                 messages::missing_sentence(self.name, call.program),
                 Error::from(error),

@@ -59,6 +59,8 @@ const REFRESH: crate::installation::Refresh = crate::installation::Refresh {
     words: &["completion", "update"],
     warning: messages::COMPLETION_REFRESH_FAILED,
     not_started: messages::completion_not_refreshed,
+    records: || shells::SHELLS.into_iter().map(run::record_name).collect(),
+    skipped: messages::COMPLETION_REFRESH_SKIPPED,
 };
 
 /// The text as it is, with no markup resolved and no newline added, because another program reads
@@ -113,6 +115,7 @@ fn child_run(context: &Context) -> ChildRun {
         host: Arc::clone(&context.host),
         signal: context.signal.clone(),
         out: context.out.clone(),
+        log: context.log.clone(),
     }
 }
 

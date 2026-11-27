@@ -309,6 +309,7 @@ impl<T: DeserializeOwned + Send + Sync + 'static> Shared<T> {
                 Line::Warn(text) => scene.out.warn(&text).await?,
                 Line::Info(text) => scene.out.info(&text).await?,
                 Line::Debug((template, fields)) => scene.log.debug(template, fields),
+                Line::Trace((template, fields)) => scene.log.trace(template, fields),
             }
         }
         read.result()
