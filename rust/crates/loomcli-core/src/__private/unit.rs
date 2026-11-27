@@ -127,6 +127,9 @@ pub fn environment_context(run: &UnitRun) -> EnvironmentContext {
     }
 }
 
+/// The common run ID for a log event and a failure hook fixture.
+pub const FIXTURE_RUN_ID: &str = "00000000000000000000000000000000";
+
 /// The fixed starting value for the testing crate's log event builder.
 #[must_use]
 pub fn log_event() -> crate::LogEvent {
@@ -139,7 +142,7 @@ pub fn log_event() -> crate::LogEvent {
             name: "app".to_owned(),
             version: "0.0.0".to_owned(),
         },
-        run: "0".repeat(32),
+        run: FIXTURE_RUN_ID.to_owned(),
         path: Vec::new(),
         plugin: None,
         failure: None,
@@ -175,8 +178,17 @@ pub fn log_destination(home: std::path::PathBuf, platform: String) -> crate::Log
         platform,
         stderr: None,
         log: Log::inert(),
-        scope: Arc::new(()),
+        scope: Arc::default(),
+        warn: None,
     }
+}
+
+/// Sets the warning callback for the testing crate's log destination builder.
+pub fn set_log_warning(
+    destination: &mut crate::LogDestination,
+    warn: impl Fn(&str) + Send + Sync + 'static,
+) {
+    destination.warn = Some(Arc::new(warn));
 }
 
 /// The fixed starting value for the testing crate's log-line builder.
@@ -487,6 +499,8 @@ pub fn middleware_context<O>(
 pub struct FailureHookParts {
     /// The application name.
     pub application: String,
+    /// The run ID.
+    pub run: String,
     /// The routed path.
     pub path: Vec<String>,
     /// How the run received its inputs.
@@ -508,6 +522,7 @@ pub struct FailureHookParts {
 pub fn failure_hook_context(run: &UnitRun, parts: FailureHookParts) -> FailureHookContext {
     FailureHookContext {
         application: parts.application,
+        run: parts.run,
         path: parts.path,
         invoked_by: parts.invoked_by,
         view: parts.view,

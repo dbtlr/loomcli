@@ -1538,8 +1538,8 @@ async fn a_failure_hook_and_an_environment_hook_log_under_their_plugins_identity
         noted(&seen),
         [
             json!(["preparing", "@acme/env"]),
-            json!(["hinting", "@acme/hint"]),
             json!(["stopped", null]),
+            json!(["hinting", "@acme/hint"]),
         ]
     );
 }

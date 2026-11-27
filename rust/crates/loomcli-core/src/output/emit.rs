@@ -1070,6 +1070,14 @@ impl Output {
         std::mem::take(&mut *locked(&self.log_view_errors))
     }
 
+    /// A synchronous hook queues a rendered warning in call order, like a log line.
+    pub(super) fn warn_from_log(self: &Arc<Self>, text: &str) {
+        match self.render_message(Lane::Warn, Message::new(text), Stream::Stderr) {
+            Ok(text) => self.carry(text),
+            Err(error) => locked(&self.log_view_errors).push(error),
+        }
+    }
+
     /// Text a log hook wrote to its destination's stderr.
     pub(crate) fn carry(self: &Arc<Self>, text: String) {
         if text.is_empty() {
@@ -1549,6 +1557,16 @@ impl Output {
         if self.verbosity.load(Ordering::SeqCst) < lane.shown_from() {
             return Ok(());
         }
+        let text = self.render_message(lane, message, stream)?;
+        self.write(stream, text).await
+    }
+
+    fn render_message(
+        &self,
+        lane: Lane,
+        message: Message<'_>,
+        stream: Stream,
+    ) -> Result<String, Error> {
         let default;
         let (identity, view) = if let Some(look) = message.look {
             look
@@ -1560,7 +1578,7 @@ impl Output {
         if !ends_line(&text) {
             text.push('\n');
         }
-        self.write(stream, text).await
+        Ok(text)
     }
 
     /// One `out.draw` call: rendered with stderr's context, its control sequences kept when stderr

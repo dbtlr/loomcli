@@ -46,7 +46,7 @@ format = ["format-views"]
 # Help supplies its details and examples to the manifest's collecting extension.
 help = ["help-extension", "help-views", "manifest-extension"]
 interaction = []
-logging = []
+logging = ["logging-extension", "dep:jiff"]
 manifest = ["manifest-extension"]
 manpage = ["markdown", "installation", "help-views"]
 mcp = ["mcp-extension", "installation", "dep:loomcli-mcp", "dep:tokio", "dep:loomcli-validators"]
@@ -69,6 +69,7 @@ installation = ["dep:sha2"]
 config-extension = []
 # Help's examples are the manifest's CommandExample, the one type both descriptors take.
 help-extension = ["manifest-extension"]
+logging-extension = ["dep:rustix"]
 manifest-extension = []
 mcp-extension = []
 # Declared-view modules.
@@ -86,7 +87,8 @@ rule = []
 step = []
 table = []
 
-# Completion and external commands ask the system whether the process may write or run a path.
+# Completion, external commands, self-update, and the logging extension ask the system whether the
+# process may write, run, or append to a path.
 [target.'cfg(unix)'.dependencies]
 rustix = { workspace = true, features = ["fs"], optional = true }
 

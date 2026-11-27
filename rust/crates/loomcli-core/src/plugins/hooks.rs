@@ -389,6 +389,8 @@ pub type ReceivedReader = Arc<dyn Fn(&InputProblem) -> Option<SuppliedValue> + S
 pub struct FailureHookContext {
     /// The application name.
     pub application: String,
+    /// The run ID carried by this failure's log event.
+    pub run: String,
     /// The routed path, or the partial path routing walked.
     pub path: Vec<String>,
     /// How the run received its inputs.

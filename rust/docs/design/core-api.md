@@ -685,11 +685,140 @@ The default view uses `Glyph::PointerSmall` with `dim` for `Debug`, `info` for `
 
 **When a line shows.** Core shows log lines at `-v` from `Debug` through `Error`, and at `-vv` adds `Trace`. It shows no lines at default or quiet verbosity. Core renders an eligible line on stderr before handing the event to hooks in installation order. Core sends failure events only to hooks. After graph build each failure core reports produces an `Error` event, or a `Fatal` event with defect details for a declaration fault or defect. The failure form supplies the message.
 
-Each `LogEvent` keeps `time`, `level`, `message`, `fields`, `application`, `run`, `path`, `plugin`, `failure`, and `defect`. The run id is one 32-character hexadecimal string per run, and the path is the route the emitting run has published. Each hook receives a `LogDestination { env, home, platform, stderr, log }`. The environment includes preparation's additions for later events. `LogDestination::run_scope() -> Weak<()>` gives hooks a shared identity for the outermost run. Compare handles with `Weak::ptr_eq` and release associated state after the handle expires. The destination's log belongs to that hook's plugin and records under the outermost run. Its events reach the view and every other installed hook, skipping the receiving hook. The hook's first `Err` reports once after the run's outcome as `foreign-throw` and forces exit 1. `output::RunLog` delivers events. `Plugin::on_log` installs each plugin's hook and the hidden `__private::install_log_hook(app, hook)` installs a test hook after them.
+Each `LogEvent` keeps `time`, `level`, `message`, `fields`, `application`, `run`, `path`, `plugin`, `failure`, and `defect`. The run id is one 32-character hexadecimal string per run, and the path is the route the emitting run has published. Each hook receives a `LogDestination { env, home, platform, stderr, log }`. The environment includes preparation's additions for later events. The destination also offers `warn()` through the outermost run's warning lane. `LogDestination::run_scope() -> Weak<()>` gives hooks a shared identity for the outermost run. Compare handles with `Weak::ptr_eq` and release associated state after the handle expires. The destination's log belongs to that hook's plugin and records under the outermost run. Its events reach the view and every other installed hook, skipping the receiving hook. The hook's first `Err` reports once after the run's outcome as `foreign-throw` and forces exit 1. `output::RunLog` delivers events. `Plugin::on_log` installs each plugin's hook and the hidden `__private::install_log_hook(app, hook)` installs a test hook after them.
 
-Both the line and the hook's destination follow the outermost run, including under `Context::invoke`. A nested invocation captures its own messages without log lines. Under `Application::invoke` the lines follow the invocation's own verbosity and enter its captured `messages`. The destination's `stderr` is `None` for such a run. Console records join stderr's order on a terminal and on a pipe. A line or record reaches the stream in its call when its `OutputStream::write` completes on the first poll and no earlier write or sequence holds its turn, including stdout when both streams share the terminal. A write that returns `Pending` retains its place. On a terminal the queue writes above live regions. After the process-end drain, a log write first sends any writes queued since the drain, then goes below the last frame without redrawing the regions. An abort before the queue drains preserves only writes already handed to the stream.
+Both the line and the hook's destination follow the outermost run, including under `Context::invoke`. A nested invocation captures its own messages without log lines. Under `Application::invoke` the lines follow the invocation's own verbosity and enter its captured `messages`. The destination's `stderr` is `None` for such a run. Its `warn()` writes to that invocation's captured `messages`. Console records join stderr's order on a terminal and on a pipe. A line or record reaches the stream in its call when its `OutputStream::write` completes on the first poll and no earlier write or sequence holds its turn, including stdout when both streams share the terminal. A write that returns `Pending` retains its place. On a terminal the queue writes above live regions. After the process-end drain, a log write first sends any writes queued since the drain, then goes below the last frame without redrawing the regions. An abort before the queue drains preserves only writes already handed to the stream.
 
-**First-party log lines.** Core and first-party plugins declare the reference's templates and use its field names. Core logs a dropped configuration fill as `Ignored option "{option}" from {label}: {issue}`. The templates live as constants in message modules, and writers pass values as fields for the log-line view to escape. The logging plugin uses the destination's `log` to report `Logging to {path}.` at debug once per outermost run after its first record lands. It reports `Rotated {path}.` at trace for a rotation that moved the file. A binary replacement, a successful service-manager change, and each post-update refresh of completions, man pages, or skills appear through their change events alone.
+**First-party log lines.** Core and first-party plugins declare the reference's templates and use its field names. Core logs a dropped configuration fill as `Ignored option "{option}" from {label}: {issue}`. The templates live as constants in message modules, and writers pass values as fields for the log-line view to escape. The logging plugin uses the destination's `log` to report `Logging to {path}.` at debug after the first successful append for each file destination in an outermost run. It reports `Rotated {path}.` at trace for a rotation that moved or removed the file. A binary replacement, a successful service-manager change, and each post-update refresh of completions, man pages, or skills appear through their change events alone.
+
+### Logging plugin
+
+`loomcli_plugins::logging::logging()` defaults to one file at `LogLevel::Info`, with a rotation
+threshold of 10,000,000 bytes and five retained copies. The single-destination builder keeps
+`.level()`, `.target(LogTarget::File | LogTarget::Stderr)`, `.file()`, `.max_bytes()`, `.keep()`,
+and `.on_error()`. `.destinations(list)` replaces the shorthand with an ordered list of
+destinations and carries the variable and failure-hint settings forward. The returned builder
+has no shorthand destination setters. The list takes `IntoList<LoggingDestination>`. The opaque
+`LoggingDestination` implements `From` for each of the three destination builders. A tuple holds
+mixed builders, and `Vec::<LoggingDestination>::new()` disables recording.
+
+```rust
+use loomcli_core::{Application, LogLevel};
+use loomcli_plugins::logging::{ConsoleDestination, FileDestination, logging};
+
+let app = Application::new("ledger").plugins((logging().destinations((
+	FileDestination::new().file("audit.jsonl").level(LogLevel::Debug),
+	ConsoleDestination::new().level(LogLevel::Warn),
+)),));
+```
+
+`FileDestination` has the shorthand file settings and defaults. `ConsoleDestination` writes to
+stderr and has a level setter. `OpenTelemetryDestination` takes an emitter and also has a level
+setter. Each destination defaults to `Info`, filters independently, and accepts every `Fatal`
+event. `LogLevel::Fatal` is also an author-selectable floor and appears as `"fatal"` in the file
+fact. The level variable accepts the five levels listed below. File and console destinations receive identical
+JSON Lines bytes for the same event. A file failure calls that file's `on_error` if set. A callback
+that succeeds, or an absent callback, lets the later destinations write. A callback or emitter
+that returns `Err` stops this installation's delivery for that event and takes the ordinary
+`on_log` hook failure path. Core still delivers the event to later hooks. The shared logging
+reference specifies paths, rotation, and console delivery. See [Logging plugin](../../../docs/plugins/logging.md).
+
+**Operator variables.** The plugin uppercases the application name, replaces each character
+outside `A`–`Z` and `0`–`9` with `_`, and appends `_LOG_LEVEL` or `_LOG_FILE`. For `my-tool`, the
+variables are `MY_TOOL_LOG_LEVEL` and `MY_TOOL_LOG_FILE`. `.level_env()` and `.file_env()` each
+take `LogVariable::Application` (the default), `LogVariable::Named(name)`, or
+`LogVariable::Disabled`. The plugin reads the log destination's environment before filtering
+each event, including events from configuration sources and runs nested in the outermost run.
+An installation without a file destination skips both variables.
+
+An empty or whitespace-only value counts as unset. The level variable trims whitespace and
+matches `trace`, `debug`, `info`, `warn`, or `error` without regard to case. It sets the floor for
+every file destination. The file variable supplies the first file destination's path under the
+same resolution rules as `.file()`. The resolver uses the nonblank path as supplied and checks
+whether the existing file, or the nearest existing directory for a missing file, allows the
+append. A trailing path separator or a directory at the given path rejects the override. A
+value the host cannot resolve is rejected, and the first file keeps the author's path. For
+example, `~/x.jsonl` requires an absolute home and a bare name requires a logs directory. The
+check creates nothing. A writable device accepts records without rotation. Console and
+OpenTelemetry keep their declared levels, and the other file destinations keep their paths.
+
+A rejected override leaves the author's setting in effect for that variable. At the first log
+event with a rejection, the plugin warns at every verbosity, even if no destination records
+the event. It issues one set of warnings per outermost run, level first when both values fail.
+`LogDestination::warn(&self, text: &str)` queues a warning through the outermost run's warning
+lane in call order. An `Application::invoke` run has no destination stderr stream and captures
+the warning in its `messages`. `NAME` and `VALUE` stand for the variable's name and value after
+control-character escaping.
+
+- `Cannot use NAME=VALUE as a log level. Use trace, debug, info, warn, or error; using the application's log levels for this run.`
+- `Cannot append to the log file VALUE named by NAME. Set it to a writable file path; using the application's log file for this run.`
+
+**The file fact.** The module `loomcli_plugins::logging::extension` is available under
+`#[cfg(any(feature = "logging", feature = "logging-extension"))]`. It exports `LOGGING_FILES`,
+`resolve_logging_files`, `resolve_log_file`, `LoggingError`, `LoggingErrorKind`, `LogVariable`,
+`LoggingFilesFacts`, `DeclaredLogFile`, `ResolvedLogFiles`, `ResolvedLogFile`, `RejectedLogVariables`, and
+`RejectedLogVariable`. The writers require `logging`. On every graph build, the
+plugin attaches `LOGGING_FILES` (`@loomcli/plugins/logging/files`) to the root Command. An author
+reads it with `read_extension(&graph.root, &LOGGING_FILES)`. `LoggingFilesFacts::new(files)`
+builds the fact from `DeclaredLogFile::new(level)` entries, with `.file()` for an explicit path
+and `.level_env()` and `.file_env()` on the fact for variable bindings. Authors read the
+`files`, `level_env`, and `file_env` public fields. The fact stores the files
+in declaration order with each declared level and the optional file string. The serialized
+fact omits `file` for the default path and omits `levelEnv` or `fileEnv` for a derived name.
+An explicit variable binding serializes as its name or `false`. With no file destinations, the
+fact contains an empty `files` list. Inspection requires no host.
+
+`resolve_logging_files(&facts, application, &directory_facts)` uses core's `DirectoryFacts`
+for the environment, home, and platform. The plugin uses the same resolver as authors. It
+returns `ResolvedLogFiles` with `files` and `rejected`. Each `ResolvedLogFile` has an effective
+`level` and a `path: Result<PathBuf, LoggingError>` for the absolute path or an unresolved
+directory. `rejected.level` and `rejected.file` each hold an optional `RejectedLogVariable`
+with its name and raw value for the caller. `ResolvedLogFiles`, `ResolvedLogFile`, `RejectedLogVariables`, and
+`RejectedLogVariable` are `#[non_exhaustive]` with public fields. The resolver creates no files
+or directories.
+
+**Failure hints.** `.failure_hint(FailureHint::Runtime)` is the default. It skips `UsageError`
+and its descendants, including `InputError`. `Always` includes usage errors. `Defects` covers
+`InternalError` and `DeclarationError`. `Disabled` suppresses the plugin's hints. For each
+distinct path that received the failure's own record, in declaration order, the report includes
+`Read the log of this run in <path> (run <id>).` The hint uses the actual appended path and
+the failing run's ID, including when a nested invocation writes to the outermost run's file.
+It passes both through `escape_control_characters`. The plugin stores each failure's appended
+paths by run ID, so concurrent runs of one Application each get their own hint. Collecting the
+hint removes that entry. `run_scope()` expiry also releases entries, including when an earlier
+failure hook's `Err` ends hint collection. `LogDestination::hold_for_run` keeps the cleanup
+guard alive until the scope expires.
+
+After graph build, core delivers the failure event to log hooks before collecting failure
+hints. The event's `FailureForm` has empty hints. `FailureHookContext::run` is the same ID the
+event carries. Core adds the collected hints to the form used for reporting and to the named
+invocation's returned form. This order lets the plugin point to a failure that is the file's
+first record and lets other hooks correlate a failure with its log events.
+
+**OpenTelemetry.** `OpenTelemetryDestination::new(emit)` accepts a synchronous
+`F: Fn(OpenTelemetryLogRecord) -> T + Send + Sync + 'static` where `T: IntoOutcome`. The emitter
+owns the record and can forward it to the author's SDK or retain it. The author configures the
+SDK, resource, processors, exporters, and shutdown. `OpenTelemetryLogRecord` is
+`#[non_exhaustive]` with public fields. Loom leaves the integration to the closure because the
+pre-1.0 OpenTelemetry crate changes frequently. The plugin has no OpenTelemetry dependency or
+adapter feature. The compiled Rust guide example forwards the record to an
+`opentelemetry::logs::Logger` and converts its JSON attributes to `AnyValue`.
+See [Forward records to OpenTelemetry](../guide/plugins.md#forward-records-to-opentelemetry).
+
+| Record field | Event data |
+| --- | --- |
+| `timestamp: SystemTime` | The event's instant. |
+| `severity_text: &'static str` | The event's lowercase level. |
+| `severity_number: u8` | `Trace` 1, `Debug` 5, `Info` 9, `Warn` 13, `Error` 17, `Fatal` 21. |
+| `body: String` | The message template as written. |
+| `attributes: serde_json::Map<String, serde_json::Value>` | `loom.fields`, `loom.path`, `loom.plugin`, `loom.run`, `service.name`, and `service.version`. |
+
+Attributes preserve nested arrays, objects, nulls, and core's field redaction. A core event has
+`loom.plugin` set to `null`. A failure adds
+the complete event form at `loom.failure`. A defect adds `exception.type` and `exception.message`,
+and `exception.stacktrace` when the defect carries a stack. The record owns its containers, so an
+emitter can change them independently of events sent to other destinations. The run ID stays an
+attribute. The author's SDK supplies any trace context.
 
 ## 6. Failures
 
@@ -885,7 +1014,7 @@ On a result Command the formatter records the views it appended in the `@loomcli
 
 `--fields` is repeatable and each occurrence takes a comma list of literal top-level keys. An empty key is invalid. The transform keeps the named keys in request order, using the first occurrence of a repeated name and omitting keys absent from an individual object. It checks keys against the whole object, the union of keys in an array of objects, or the first row of a rows result. An empty collection stays empty. An unknown key or a value that should be an object but is another kind fails with an input error when the result is emitted. A sequence that stops after writing JSON Lines keeps those lines on stdout. When the failure encoder handles the error, its line replaces the incomplete-result line on stderr.
 
-**Hooks.** `AttachedCommand` exposes the facts (`name`, `path`, `has_action`, `arguments`, `options`, `result`, and `extensions()`, the record `inspect()` would publish at that hook, which `read_extension(&*command, &DESCRIPTOR)` reads typed) and the reference's seven dynamic calls, `argument`, `option`, `exclusive`, `one_required`, `required_together` (each `&[&str]` of declared names), `views(AttachedViews)`, and `extend`, each `&mut self -> Result<&mut Self, DeclarationError>`. A group call meets `option-group` at the call against the local options the Command declares at that point, the author's and every hook's so far, and its group joins the Command's groups, which `inspect()` publishes and validation judges. A call meets every declaration rule at the call; one that faults returns its `DeclarationError` and changes nothing, so `?` chains the calls, and a hook that handles the error continues without that declaration, the reference's catch-and-continue. The hook returns `Result<(), Error>`: a `DeclarationError` reports as itself, any other `Err` is `broken-attach-hook` naming the plugin and the Command, both build faults with exit 1 and the generic message in a distributed build. Calls are exempt from the author's authoring order. A hook edits the Command in place, so what a call added stays whether or not the hook later fails, and a descriptor a call admits joins the build's one registry at the call: a second descriptor under one identity is `two-package-copies` at the `extend` that carries it. Once every hook has run over a Command, core judges what the hooks declared, root first and depth first, before the Command's own table compiles: each hook-declared input against an earlier hook's input, a local option, a global or plugin option, then an argument (`option-declared-twice`, `argument-declared-twice`, `name-shared-across-kinds`), each spelling against every spelling the scope holds (`spelling-taken`), then one stdin target, the argument order, arguments beside children, and each variable once (`inspection::attach`). `on_graph_built` hooks receive the graph a run's action reads, at one address; the first fault ends `inspect()` and a run, and `check()` collects every hook's. `FailureHookContext { application, path, invoked_by, view, media_type, style, graph, command, log }`. A failure hook returns `impl IntoHints`: `()`, `Option<String>`, `String`, `Vec<String>`, `Hints`, or a `Result` of one; an `Err` ends the hooks for that failure and reports as `foreign-throw` after core writes the failure's default text. `EnvironmentContext { cwd, env, log }` with `warn()`. The hooks run in installation order after graph build and verbosity, before the declared values validate, with the cancellation checked before each hook and after its answer; a variable the environment defines, an empty one included, wins, the first hook that fills a missing one wins, and on an argv run each accepted addition passes to the handle's `publish_env` before the next hook runs; an invocation by name publishes nothing. Output and the log read the merged environment from each merge on, and the run's later steps read a host with it. A hook's failure class keeps its class; any other error is `foreign-throw`, which no translator is offered.
+**Hooks.** `AttachedCommand` exposes the facts (`name`, `path`, `has_action`, `arguments`, `options`, `result`, and `extensions()`, the record `inspect()` would publish at that hook, which `read_extension(&*command, &DESCRIPTOR)` reads typed) and the reference's seven dynamic calls, `argument`, `option`, `exclusive`, `one_required`, `required_together` (each `&[&str]` of declared names), `views(AttachedViews)`, and `extend`, each `&mut self -> Result<&mut Self, DeclarationError>`. A group call meets `option-group` at the call against the local options the Command declares at that point, the author's and every hook's so far, and its group joins the Command's groups, which `inspect()` publishes and validation judges. A call meets every declaration rule at the call; one that faults returns its `DeclarationError` and changes nothing, so `?` chains the calls, and a hook that handles the error continues without that declaration, the reference's catch-and-continue. The hook returns `Result<(), Error>`: a `DeclarationError` reports as itself, any other `Err` is `broken-attach-hook` naming the plugin and the Command, both build faults with exit 1 and the generic message in a distributed build. Calls are exempt from the author's authoring order. A hook edits the Command in place, so what a call added stays whether or not the hook later fails, and a descriptor a call admits joins the build's one registry at the call: a second descriptor under one identity is `two-package-copies` at the `extend` that carries it. Once every hook has run over a Command, core judges what the hooks declared, root first and depth first, before the Command's own table compiles: each hook-declared input against an earlier hook's input, a local option, a global or plugin option, then an argument (`option-declared-twice`, `argument-declared-twice`, `name-shared-across-kinds`), each spelling against every spelling the scope holds (`spelling-taken`), then one stdin target, the argument order, arguments beside children, and each variable once (`inspection::attach`). `on_graph_built` hooks receive the graph a run's action reads, at one address; the first fault ends `inspect()` and a run, and `check()` collects every hook's. `FailureHookContext { application, run, path, invoked_by, view, media_type, style, graph, command, log }`. A failure hook returns `impl IntoHints`: `()`, `Option<String>`, `String`, `Vec<String>`, `Hints`, or a `Result` of one; an `Err` ends the hooks for that failure and reports as `foreign-throw` after core writes the failure's default text. `EnvironmentContext { cwd, env, log }` with `warn()`. The hooks run in installation order after graph build and verbosity, before the declared values validate, with the cancellation checked before each hook and after its answer; a variable the environment defines, an empty one included, wins, the first hook that fills a missing one wins, and on an argv run each accepted addition passes to the handle's `publish_env` before the next hook runs; an invocation by name publishes nothing. Output and the log read the merged environment from each merge on, and the run's later steps read a host with it. A hook's failure class keeps its class; any other error is `foreign-throw`, which no translator is offered.
 
 **Extensions.** A descriptor is a constant: `pub const EXPLAIN_COMMAND: Extension<CommandTarget, ExplainFacts> = Extension::new("@loom/explain/command");`, or `Extension::collecting(id)` for one that collects from every layer, whose type names `Collecting` as its third parameter (`pub const TAGS: Extension<CommandTarget, String, Collecting> = Extension::collecting("@acme/tagger/tags");`; the parameter defaults to `Single`), with `.check(fn)` for value rules. `new` and `collecting` bound `V: Serialize + DeserializeOwned`, the schema, so a value is plain data by type and a descriptor that cannot be read back does not compile. `DESCRIPTOR.value(v)` makes an `ExtensionValue<T>` and records the rules' verdict; the `extend()` that carries it reports a rejection, the author's as a call fault and a hook's as its returned error. `read_extension(&node, &DESCRIPTOR)` (with `V: DeserializeOwned + 'static`, whose `TypeId` identifies the descriptor) returns `Result<Option<V>, Error>`, or `Result<Vec<V>, Error>` author first for a collecting one; a value another descriptor under the same identity stored, or one `V` does not deserialize, is a `DeclarationError` on the ordinary failure path (exit 1, the generic message in a distributed build). Targets are `CommandTarget` (`CommandNode`, `Arc<CommandNode>`, `AttachedCommand`), `OptionTarget` (`OptionNode`, `Arc<OptionNode>`), and `ArgumentTarget` (`ArgumentNode`, `Arc<ArgumentNode>`). A descriptor is its identity, its target, whether it collects, and its value type: two descriptors that share an identity and differ in any of the rest are `two-package-copies` where both first reach one declaration or one Application, and a read through one of a value the other stored returns that fault.
 
@@ -1033,7 +1162,7 @@ The order is the reference's (`invocation.md`, steps 1 to 9; `providers.md`, Clo
 16. **The dispatch boundary.** Core fixes the run's view, media type, and result transform. It raises any held fault, then checks the view and media type assignments (`view-selection`), builds the opted-in providers, extracts `I`, and calls the action.
 17. **The action settles.** Core closes every live region the action left open (`completion`, or `failure` when it failed), then the run's ephemeral provided values, then, on the outermost run, the persistent ones, each lifetime in reverse build order. A close's `Err` follows the rule in [section 8](#8-the-plugin-contract).
 18. **Unwind.** `next.run().await` resolves in each middleware, so its code after the call runs in reverse order, after every value of the run has closed. Then core closes every region still open (one a middleware or a source opened), removes the run's `on_shutdown` handlers while no shutdown is under way, and finishes pending core output.
-19. **The failure path.** Every open region closes with `failure`, and the report waits for every lend of the terminal. A foreign error, unless it is the cancellation echo, is offered to the translators, the application's and then each plugin's; each `on_failure` hook adds hints once graph build has finished, and a hook's `Err` ends the hooks; the failure logs its event to `on_log` with those hints; then the encoder of the media type the run's selection declares writes the form, else a development build writes an author fault's Developer Diagnostic with the hints, else the view registry resolves the failure: at each contributor, the application's overrides and then each plugin's, an override of the failure's class and then of each class it extends, most derived first, else core's default text with the hints under it. Until graph build succeeds the registry holds the application's overrides alone, so a build fault never reaches a plugin's. The failure path reads the routed Command's selected result view and its media type, or the assigned media type alone on a Command with no result. A broken view, encoder, or hook leaves core's default text for the failure, without hints, and the broken contract's report (its Developer Diagnostic after a blank line, or the generic message at most once per run) to the plain fallback path, and forces 1. A hook's first `Err` follows the report of the failure that reached it. Core waits for open streamed messages before the run settles and reports their unhandled failures after the main failure's report, if any. Every region still open closes before the run returns.
+19. **The failure path.** Every open region closes with `failure`, and the report waits for every lend of the terminal. A foreign error, unless it is the cancellation echo, is offered to the translators, the application's and then each plugin's; after graph build, the failure logs its event to `on_log` with empty hints, and each `on_failure` hook then adds hints to the report's form. A hook's `Err` ends the hooks; then the encoder of the media type the run's selection declares writes the form, else a development build writes an author fault's Developer Diagnostic with the hints, else the view registry resolves the failure: at each contributor, the application's overrides and then each plugin's, an override of the failure's class and then of each class it extends, most derived first, else core's default text with the hints under it. Until graph build succeeds the registry holds the application's overrides alone, so a build fault never reaches a plugin's. The failure path reads the routed Command's selected result view and its media type, or the assigned media type alone on a Command with no result. A broken view, encoder, or hook leaves core's default text for the failure, without hints, and the broken contract's report (its Developer Diagnostic after a blank line, or the generic message at most once per run) to the plain fallback path, and forces 1. A hook's first `Err` follows the report of the failure that reached it. Core waits for open streamed messages before the run settles and reports their unhandled failures after the main failure's report, if any. Every region still open closes before the run returns.
 20. **Exit code.** Cancellation outranks a failure's code. A broken view, hook, encoder, or destination forces 1. A completed takeover uses its assigned code or 0. Core ends its listening, calls `set_exit_code` on the handle, and returns the `ExitCode`. After a shutdown, core re-raises the ending signal on the handle's `SignalSource` so the default disposition ends the process with the shell's status, as the reference does; a mock records it as `ended_by`. Core never calls `std::process::exit`.
 
 `run` follows these steps in `invocation::run`, one function per step: host capture, the color choice and the background (`marks::color_choice`, `marks::background_choice`, and `settle_background`, which asks the terminal only when the Application declares the background mark), the run's `output::emit::Output` over both destinations, graph build, the verbosity (`marks::verbosity`, read with `invocation::parse::read_words` in its partial mode), the declared values (`inputs::declared`, every default and implied value through its validator in the default phase, globals first and then each Command depth first), routing and parsing (`invocation::parse`, which holds an unknown command or the first structural fault in word order), the dispatch preparation (`invocation::prepare`: the input-source stage of `inputs::sources`, the interaction decision, and the validation pass of `inputs::pass`, which ranks the held fault, then a group's missing subcommand, then a source's fault, then the `InputError`), the chain (`invocation::chain`: activation, each middleware in installation order, and the dispatch boundary, which raises the held fault, resolves the view selection, builds the providers through `plugins::provided`, calls the action with its context, calls no action on a run already cancelled, fails with `ResultError` of kind `Missing` when the action of a Command that declares a result returns without emitting it, then closes the action's regions and its provided values), and the failure path (`settle`: every open region closed with `Failure`, the held incomplete-result lines once every lend has settled, the failure's report and its log event unless a destination failed or the failure is the echo of a cancelled run, a hook's first `Err` reported last with exit 1, a broken destination's report through the plain fallback path with exit 1 and its log event, every region still open closed, and the signal's code over every other on a cancelled run whose graph build, with its declared values, finished; a cancelled run that fails before then resolves that failure's own code and reports it). While the run's work runs, `closing_on_cancellation` closes every open region with `Cancellation` as the run's signal is cancelled. The caller's `RunOptions::signal` is the parent of the run's token, so its cancellation reads as `Caller`, and the first cause fixes the reason. An invocation by name reads its values through `InvocationValues`' lowering (`invocation::lower`) into the parser's result, with each unlowerable value an `invalid` problem. A step a later stage owns sits between them where this list places it. The parser reads each Command's one table: the global options' spellings beside its own, built with the graph and shared by every clone of it, so a context's `command` and `locate`'s nodes are the graph's own `Arc`s. `ctx.supplied` holds the raw value every tier supplied, by declared name, taken after the input-source stage, so it keeps a configuration fill its validator later drops and leaves out the members an exclusive group withdrew (section 4).
@@ -1170,7 +1299,7 @@ The context builders return the core type one author function receives. They use
 | --- | --- | --- |
 | `action_context::<I, R: UnitResult>(ActionValues::new(inputs))` | `.globals(g)`, `.passthrough(words)`, `.interactive()`, `.process(handle)`, `.graph(graph)`, `.command(path)`, `.provide(&provider, value)`, `.on_log(hook)` | `ctx.inputs` is the inputs read back through `extract(&into_values())`, which `ctx.argument` and `ctx.option` read. The typed inputs supply the tail, with an empty vector by default. The fixture’s `.passthrough(words)` overrides the tail for both the typed field and `ctx.passthrough`. `out.results` writes a value as one JSON line and rows as one JSON line each. |
 | `middleware_context(MiddlewareValues::new(Some(options)))` returns `(MiddlewareContext<O>, Next, MiddlewareProbe)` | `.outcome(ChainOutcome)`, `.own_options(values)`, `.request(values)`, `.invoked_by(InvokedBy)`, `.unknown_command(word, rest)`, `.exit_code(ExitCode)`, `.spelling(name, spelling)`, `.view(name)`, `.media_type(type)`, `.transform(ResultTransform)`, `.plugin(identity)`, `.process`, `.graph`, `.command`, `.on_log` | The invocation defaults to `InvokedBy::Argv`. The unknown command and exit code start at `None`. The exit code, media type, and transform keep the last assignment. An unstated outcome makes `next.run()` fail with `middleware_context has no outcome for this middleware's next to resolve. Add one to its values, such as .outcome(ChainOutcome::Dispatched).` |
-| `failure_hook_context(FailureHookValues::new(app, path))` | `.invoked_by(…)`, `.view(name, media_type)`, `.graph(graph)`, `.on_log`, `.received(reader)` | `command` is the graph's node at the path, or its root. `received` returns `None` unless the test supplies a reader. |
+| `failure_hook_context(FailureHookValues::new(app, path))` | `.invoked_by(…)`, `.view(name, media_type)`, `.graph(graph)`, `.on_log`, `.received(reader)`, `.run(id)` | `run` defaults to the 32 zeroes of `log_event`. `command` is the graph's node at the path, or its root. `received` returns `None` unless the test supplies a reader. |
 | `provider_context(ProviderValues::new(globals))` | `.process`, `.graph`, `.provide(&provider, value)`, `.on_log` | `options` holds the globals' values |
 | `environment_context(EnvironmentValues::new())` | `.process(handle)`, `.on_log(hook)` | `cwd` and `env` come from the process handle. `warn` writes to its stderr. The test calls the hook with the context and receives its additions directly. |
 | `view_context(ViewValues::new())` | `.columns(n)`, `.background(b)`, `.color()` | core's own measures; the test calls `View::render(&data, &ctx)` (or `DeclaredView::render`), or `render_head`, `render_row(&row, index, &ctx)`, and `render_tail(count, &ctx)` on a `RowView` or `DeclaredRowView`, each the view's own function with no registry read |
@@ -1200,9 +1329,11 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | Builder | Returns | Defaults |
 | --- | --- | --- |
 | `log_event(LogEventValues::new())` | `LogEvent` | Time `2026-01-01T00:00:00.000Z`, level `LogLevel::Info`, empty message and fields, application `app` at version `0.0.0`, run id of 32 zeroes, empty path, and no plugin, failure, or defect. |
-| `log_destination(LogDestinationValues::new())` | `LogDestination` | Empty environment, home `/loom-test/home`, platform `linux`, no stderr, and a log that discards events. |
+| `log_destination(LogDestinationValues::new())` | `LogDestination` | Empty environment, home `/loom-test/home`, platform `linux`, no stderr, a log that discards events, and a warning lane that discards warnings. |
 | `log_line(LogLineValues::new())` | `LogLine` | Level `LogLineLevel::Info`, empty marked text and trailing fields, and the default log event. |
 | `progress_event(ProgressEventValues::new())` | `ProgressEvent` | Id `1`, empty label, state `ProgressState::Updated`, and no completed or total count. |
+
+`LogDestinationValues::warn(capture)` supplies a callback to capture warning text.
 
 `LogDestinationValues::log(log: Log)` supplies a log to the fixture. A test can take the log from a unit context built with `.on_log(hook)` and inspect the events the destination publishes. The default log supports `with` and discards events at every level.
 
@@ -1212,15 +1343,17 @@ the corresponding member. A stated destination stream is shared through its `Arc
 
 | Feature | Module | Also enables |
 | --- | --- | --- |
-| `background`, `color`, `completion`, `dotenv`, `interaction`, `logging`, `manpage`, `plain`, `self-update`, `service`, `skills`, `suggestions`, `theme`, `verbose` | the plugin | |
+| `background`, `color`, `completion`, `dotenv`, `interaction`, `manpage`, `plain`, `self-update`, `service`, `skills`, `suggestions`, `theme`, `verbose` | the plugin | |
 | `config` | `config` | `config-extension` |
 | `external-commands` | `external_commands` | `dep:rustix` (Unix) |
 | `format` | `format` | `format-views` |
 | `help` | `help` | `help-extension`, `help-views` |
+| `logging` | `logging` | `logging-extension`, `dep:jiff` |
 | `manifest` | `manifest` | `manifest-extension` |
 | `mcp` | `mcp` | `mcp-extension` |
 | `version` | `version` | `version-views`, `format-views` |
 | `config-extension`, `help-extension`, `manifest-extension`, `mcp-extension` | `<plugin>::extension` | |
+| `logging-extension` | `logging::extension` | `dep:rustix` (Unix) |
 | `format-views`, `help-views`, `version-views` | `<plugin>::views` | |
 | `box`, `heading`, `list`, `prose`, `records`, `rule`, `step`, `table` | the pack view (`box` is module `boxed`) | |
 
@@ -1241,7 +1374,7 @@ the corresponding member. A stated destination stream is shared through its `Arc
 | `serde_json` (`preserve_order`) | core, validators, plugins, examples | JSON in declaration order for the graph, the manifest, the failure form, and log events. |
 | `syn`, `quote`, `proc-macro2` | derive | The standard procedural-macro toolkit. |
 | `url` | validators, plugins (`self-update`) | WHATWG URL parsing, the reference `url()`'s semantics; its output type. |
-| `jiff` (`tzdb-bundle-always`, plus `tzdb-zoneinfo` in core) | core, validators, plugins (`self-update`) | The bundled database supplies IANA names that the system database omits. Jiff also reads the system zone and provides civil times for `date_time()` and `time()`. |
+| `jiff` (`tzdb-bundle-always`, plus `tzdb-zoneinfo` in core) | core, validators, plugins (`logging`, `self-update`) | The bundled database supplies IANA names that the system database omits. Jiff also reads the system zone, provides civil times for `date_time()` and `time()`, and parses timestamps for the OpenTelemetry log destination. |
 | `loomcli-style`, `serde_json` | core's build script | The baked release facts' reader is the crate's own, and quotes a value as core's messages do. |
 | `regex` | validators, prompts, plugins (`help`, `manpage`) | `text().pattern(…)`, whose syntax differs from a JavaScript `u`-flag `RegExp` (no lookaround, no backreferences), a recorded deviation; the Unicode word classes of the prompts' line editor and of the Markdown subset. |
 | `toml`, `saphyr-parser` | plugins (`config`) | TOML and YAML 1.2 configuration files. |

@@ -20,6 +20,7 @@ must_use_candidate = "warn"
 # One version of each dependency for the whole workspace. A crate names a dependency with
 # `workspace = true`; a new dependency is added here first, with the reason in the commit message.
 [workspace.dependencies]
+opentelemetry = { version = "0.33.1", default-features = false, features = ["logs"] }
 conformance-harness = { path = "conformance/harness" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

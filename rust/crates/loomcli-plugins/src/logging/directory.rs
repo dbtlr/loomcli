@@ -2,9 +2,7 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use loomcli_core::{
-    ApplicationDirectory, DirectoryFacts, DirectoryLookup, LogDestination, application_directory,
-};
+use loomcli_core::{ApplicationDirectory, DirectoryFacts, DirectoryLookup, application_directory};
 
 use super::error::LoggingError;
 
@@ -35,28 +33,21 @@ fn normalized(path: &Path) -> PathBuf {
 /// Node's `join`), an absolute one as written, and any other inside
 /// the default directory. Nothing resolves against the working directory. A path the destination's
 /// variables cannot give is the failure that names the missing variable.
-pub(super) fn resolve_log_file(
+pub fn resolve_log_file(
     file: Option<&str>,
     application: &str,
-    destination: &LogDestination,
+    facts: &DirectoryFacts,
 ) -> Result<PathBuf, LoggingError> {
     if let Some(rest) = file.and_then(|file| file.strip_prefix(HOME_PREFIX)) {
-        if !destination.home.is_absolute() {
+        if !facts.home().is_absolute() {
             return Err(LoggingError::unresolved("HOME"));
         }
-        return Ok(normalized(
-            &destination.home.join(rest.trim_start_matches('/')),
-        ));
+        return Ok(normalized(&facts.home().join(rest.trim_start_matches('/'))));
     }
     if let Some(file) = file.filter(|file| Path::new(file).is_absolute()) {
         return Ok(PathBuf::from(file));
     }
-    let facts = DirectoryFacts::new(
-        destination.env.clone(),
-        destination.home.clone(),
-        destination.platform.clone(),
-    );
-    match application_directory(ApplicationDirectory::Logs, application, &facts) {
+    match application_directory(ApplicationDirectory::Logs, application, facts) {
         DirectoryLookup::Path(directory) => {
             let name = file.map_or_else(|| format!("{application}.jsonl"), str::to_owned);
             Ok(normalized(&directory.join(name)))

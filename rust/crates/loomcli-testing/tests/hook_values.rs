@@ -201,10 +201,22 @@ fn a_log_destination_uses_the_mock_facts_and_an_absent_stream() {
     assert_eq!(destination.home, Path::new("/loom-test/home"));
     assert_eq!(destination.platform, "linux");
     assert!(destination.stderr.is_none());
+    destination.warn("Discarded.");
     destination
         .env
         .insert("XDG_STATE_HOME".to_owned(), "/state".to_owned());
     assert!(log_destination(LogDestinationValues::new()).env.is_empty());
+}
+
+#[test]
+fn a_destination_fixture_captures_warning_text() {
+    let captured = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let destination = log_destination(LogDestinationValues::new().warn({
+        let captured = Arc::clone(&captured);
+        move |text| captured.lock().unwrap().push(text.to_owned())
+    }));
+    destination.warn("Using the declared level.");
+    assert_eq!(*captured.lock().unwrap(), ["Using the declared level."]);
 }
 
 #[tokio::test]

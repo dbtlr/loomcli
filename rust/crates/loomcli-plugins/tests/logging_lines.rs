@@ -5,11 +5,12 @@
 
 mod logging_support;
 
+use std::fs;
 use std::sync::{Arc, Mutex};
 
 use logging_support::{Sandbox, lines};
 use loomcli_core::{Application, Context, LogFields, LogLevel, Opt, Plugin, RunOptions};
-use loomcli_plugins::logging::logging;
+use loomcli_plugins::logging::{ConsoleDestination, FileDestination, logging};
 use loomcli_testing::{MockFields, mock_process};
 use serde_json::{Value, json};
 
@@ -69,6 +70,144 @@ async fn log_plugin_lines_reach_the_screen_and_other_hooks_without_recursing() {
     );
     assert!(!rotated[0].contains("hunter2"));
     assert_eq!(lines(&sandbox.file).len(), 1);
+}
+
+#[tokio::test]
+async fn one_installation_writes_debug_to_a_file_and_identical_warn_bytes_to_stderr() {
+    let sandbox = Sandbox::new();
+    let file = sandbox.root.join("notes.jsonl");
+    let app = Application::new("notes")
+        .plugins((logging().destinations((
+            FileDestination::new()
+                .file(file.to_string_lossy())
+                .level(LogLevel::Debug),
+            ConsoleDestination::new().level(LogLevel::Warn),
+        )),))
+        .action(|ctx: Context| async move {
+            ctx.log
+                .debug("Read {file}.", LogFields::new().field("file", "notes.json"));
+            ctx.log
+                .warn("Retry {attempt}.", LogFields::new().field("attempt", 2));
+            Ok(())
+        });
+    let mock = mock_process(MockFields::new());
+    assert_eq!(
+        app.run(RunOptions::new().process(mock.clone())).await.get(),
+        0
+    );
+    let records = lines(&file);
+    assert_eq!(records.len(), 2);
+    for (record, (level, message)) in records
+        .iter()
+        .zip([("debug", "Read {file}."), ("warn", "Retry {attempt}.")])
+    {
+        let event: Value = serde_json::from_str(record).unwrap();
+        assert_eq!(event["level"], level);
+        assert_eq!(event["message"], message);
+    }
+    let raw = fs::read_to_string(&file).unwrap();
+    assert_eq!(
+        mock.stderr_text(),
+        format!("{}\n", raw.lines().nth(1).unwrap())
+    );
+    assert_eq!(mock.stdout_text(), "");
+}
+
+#[tokio::test]
+async fn two_files_filter_independently_and_each_names_its_first_append_and_rotations() {
+    let sandbox = Sandbox::new();
+    let debug = sandbox.root.join("debug.jsonl");
+    let warn = sandbox.root.join("warn.jsonl");
+    let old = format!("{}\n", "x".repeat(500));
+    for file in [&debug, &warn] {
+        fs::write(file, &old).unwrap();
+    }
+    let app = Application::new("notes")
+        .plugins((logging().destinations((
+            FileDestination::new()
+                .file(debug.to_string_lossy())
+                .keep(1)
+                .level(LogLevel::Debug)
+                .max_bytes(600),
+            FileDestination::new()
+                .file(warn.to_string_lossy())
+                .keep(0)
+                .level(LogLevel::Warn)
+                .max_bytes(600),
+        )),))
+        .global_option("verbose", Opt::count().short('v').verbose())
+        .action(|ctx: Context| async move {
+            ctx.log.debug("Read.", ());
+            ctx.log.warn("Retry.", ());
+            Ok(())
+        });
+    let mock = mock_process(MockFields::new().argv(["-vv"]));
+    assert_eq!(
+        app.run(RunOptions::new().process(mock.clone())).await.get(),
+        0
+    );
+    let debug_path = debug.display();
+    let warn_path = warn.display();
+    assert_eq!(
+        mock.stderr_text(),
+        format!(
+            "› Read.\n  ┆ Rotated {debug_path}.\n› Logging to {debug_path}.\n› Retry.\n  ┆ Rotated {warn_path}.\n› Logging to {warn_path}.\n"
+        )
+    );
+    let records = lines(&debug);
+    assert_eq!(records.len(), 2);
+    assert_eq!(lines(&warn), [records[1].clone()]);
+    assert_eq!(
+        fs::read_to_string(debug.with_file_name("debug.1.jsonl")).unwrap(),
+        old
+    );
+    let mock = mock_process(MockFields::new().argv(["-v"]));
+    assert_eq!(
+        app.run(RunOptions::new().process(mock.clone())).await.get(),
+        0
+    );
+    assert_eq!(
+        mock.stderr_text(),
+        format!("› Read.\n› Logging to {debug_path}.\n› Retry.\n› Logging to {warn_path}.\n")
+    );
+}
+
+#[tokio::test]
+async fn file_failures_call_their_own_callbacks_in_declaration_order_and_console_still_writes() {
+    let sandbox = Sandbox::new();
+    let blocked = sandbox.root.join("blocked");
+    fs::write(&blocked, "").unwrap();
+    let failures = Arc::new(Mutex::new(Vec::new()));
+    let file = |name: &'static str| {
+        FileDestination::new()
+            .file(blocked.join(format!("{name}.jsonl")).to_string_lossy())
+            .on_error({
+                let failures = Arc::clone(&failures);
+                move |error| failures.lock().unwrap().push((name, error.kind.as_str()))
+            })
+    };
+    let app = Application::new("notes")
+        .plugins((logging().destinations((
+            file("first"),
+            file("second"),
+            ConsoleDestination::new(),
+        )),))
+        .action(|ctx: Context| async move {
+            ctx.log.warn("Recorded despite file failures.", ());
+            Ok(())
+        });
+    let mock = mock_process(MockFields::new());
+    assert_eq!(
+        app.run(RunOptions::new().process(mock.clone())).await.get(),
+        0
+    );
+    assert_eq!(
+        *failures.lock().unwrap(),
+        [("first", "append"), ("second", "append")]
+    );
+    let event: Value = serde_json::from_str(&mock.stderr_text()).unwrap();
+    assert_eq!(event["level"], "warn");
+    assert_eq!(event["message"], "Recorded despite file failures.");
 }
 
 #[tokio::test]

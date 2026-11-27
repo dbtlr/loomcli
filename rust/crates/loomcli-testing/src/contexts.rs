@@ -495,6 +495,7 @@ pub fn middleware_context<O: Inputs>(
 #[must_use]
 pub struct FailureHookValues {
     pub(crate) application: String,
+    pub(crate) run: String,
     pub(crate) path: Vec<String>,
     pub(crate) invoked_by: InvokedBy,
     pub(crate) view: Option<String>,
@@ -509,6 +510,7 @@ impl FailureHookValues {
     pub fn new(application: &str, path: &[&str]) -> Self {
         Self {
             application: application.to_owned(),
+            run: unit::FIXTURE_RUN_ID.to_owned(),
             path: path.iter().map(|word| (*word).to_owned()).collect(),
             invoked_by: InvokedBy::Argv,
             view: None,
@@ -517,6 +519,12 @@ impl FailureHookValues {
             log: Vec::new(),
             read_received: None,
         }
+    }
+
+    /// Sets the run ID, which defaults to the log event fixture's 32 zeroes.
+    pub fn run(mut self, id: impl Into<String>) -> Self {
+        self.run = id.into();
+        self
     }
 
     /// Sets how the run received its inputs.
@@ -586,6 +594,7 @@ pub fn failure_hook_context(values: FailureHookValues) -> FailureHookContext {
         &run,
         FailureHookParts {
             application: values.application,
+            run: values.run,
             path: values.path,
             invoked_by: values.invoked_by,
             view: values.view,

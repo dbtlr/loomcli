@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::application::declaration::ApplicationDeclaration;
@@ -27,7 +27,7 @@ use super::log_line::LogLineLevel;
 use super::redaction::Redaction;
 
 /// A log event's level. `Fatal` is core's alone.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     /// Trace.
@@ -178,7 +178,7 @@ pub struct LogEvent {
     pub defect: Option<LogDefect>,
 }
 
-/// Where a log hook writes: the outermost run's environment, home, platform, and stderr.
+/// Where a log hook writes: the outermost run's host facts, stderr, and warning lane.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct LogDestination {
@@ -192,17 +192,41 @@ pub struct LogDestination {
     pub stderr: Option<Arc<dyn OutputStream>>,
     /// The hook's log. Its events reach the other hooks under this hook's plugin identity.
     pub log: Log,
-    pub(crate) scope: Arc<()>,
+    pub(crate) scope: Arc<LogRunScope>,
+    pub(crate) warn: Option<Arc<LogWarning>>,
+}
+
+pub(crate) type LogWarning = dyn Fn(&str) + Send + Sync;
+
+#[derive(Default)]
+pub(crate) struct LogRunScope {
+    identity: Arc<()>,
+    retained: Mutex<Vec<Box<dyn Send>>>,
 }
 
 impl LogDestination {
+    /// Queues a warning in the outermost run's warning lane, at every verbosity.
+    /// An invocation by name captures it in its messages.
+    pub fn warn(&self, text: &str) {
+        if let Some(warn) = &self.warn {
+            warn(text);
+        }
+    }
+
     /// The identity and lifetime shared by this outermost run's log destinations.
     ///
     /// Compare these handles with `Weak::ptr_eq`. A hook can release run-local state once the
     /// handle can no longer be upgraded.
     #[must_use]
     pub fn run_scope(&self) -> Weak<()> {
-        Arc::downgrade(&self.scope)
+        Arc::downgrade(&self.scope.identity)
+    }
+
+    /// Holds hook state until the outermost run's destination scope expires.
+    ///
+    /// A value with a destructor can use this to remove run-local entries from shared state.
+    pub fn hold_for_run(&self, state: impl Send + 'static) {
+        locked(&self.scope.retained).push(Box::new(state));
     }
 }
 
@@ -406,7 +430,11 @@ impl RunLog {
                     output: Arc::clone(output),
                 }) as Arc<dyn OutputStream>
             });
-            let scope = Arc::new(());
+            let scope = Arc::new(LogRunScope::default());
+            let warn: Arc<LogWarning> = {
+                let output = Arc::clone(output);
+                Arc::new(move |text| output.warn_from_log(text))
+            };
             let receivers = hooks
                 .into_iter()
                 .enumerate()
@@ -423,6 +451,7 @@ impl RunLog {
                             bound: None,
                         },
                         scope: Arc::clone(&scope),
+                        warn: Some(Arc::clone(&warn)),
                     },
                 })
                 .collect();
@@ -482,6 +511,10 @@ impl RunLog {
         locked(&self.outermost().receivers).len() > usize::from(exclude.is_some())
     }
 
+    pub(crate) fn run_id(&self) -> &str {
+        self.run.get_or_init(new_run_id)
+    }
+
     /// Logs one failure the run reports: `fatal` with the defect the run caught for a declaration
     /// fault or a defect, `error` for every other failure.
     pub(crate) fn failure(&self, failure: &dyn Failure, form: FailureForm) {
@@ -529,7 +562,7 @@ impl RunLog {
             message: parts.message,
             fields: parts.fields,
             application: self.application.clone(),
-            run: self.run.get_or_init(new_run_id).clone(),
+            run: self.run_id().to_owned(),
             path: self.output.route(),
             plugin: parts.plugin,
             failure: parts.failure,

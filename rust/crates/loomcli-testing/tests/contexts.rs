@@ -544,6 +544,7 @@ fn hints(failure: &dyn Failure, ctx: &FailureHookContext) -> Option<String> {
 #[test]
 fn the_hook_reads_the_facts_the_test_stated_and_is_called_with_its_own_failure() {
     let ctx = failure_hook_context(FailureHookValues::new("notes", &[]));
+    assert_eq!(ctx.run, "00000000000000000000000000000000");
     let failure = UnknownCommandError::new("lsit", vec!["list".to_owned()]);
     assert_eq!(
         hints(&failure, &ctx).as_deref(),
@@ -558,12 +559,14 @@ fn an_invocation_by_name_gets_no_hint() {
     let ctx = failure_hook_context(
         FailureHookValues::new("notes", &["list"])
             .invoked_by(InvokedBy::Name)
+            .run("nested")
             .view("json", Some("application/json")),
     );
     let failure = UnknownCommandError::new("lsit", vec!["list".to_owned()]);
     assert_eq!(hints(&failure, &ctx), None);
     assert_eq!(ctx.media_type.as_deref(), Some("application/json"));
     assert_eq!(ctx.path, ["list"]);
+    assert_eq!(ctx.run, "nested");
 }
 
 #[test]
