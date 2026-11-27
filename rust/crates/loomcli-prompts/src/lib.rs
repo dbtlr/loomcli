@@ -13,15 +13,19 @@
 
 mod controls;
 mod editor;
+mod estimate;
+mod height;
 mod line;
 mod lines;
 mod link;
 mod list;
 mod messages;
 mod progress;
+mod progress_log;
 mod question;
 mod questions;
 mod reader;
+mod tree;
 pub mod views;
 
 pub use editor::EditorError;
@@ -30,6 +34,7 @@ pub use progress::{
     Progress, ProgressContext, ProgressParts, ProgressSettings, ProgressStyleSettings,
     ProgressUpdate, Spinner, TrackMessages, progress, progress_style,
 };
+pub use progress_log::ProgressLogOutput;
 pub use questions::{
     Choice, ChoiceEntry, ChoiceSource, ConfirmSettings, EditorSettings, Listed,
     MultiselectSettings, SecretSettings, SelectSettings, Sourced, TextSettings, Verbatim, confirm,

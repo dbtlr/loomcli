@@ -5,19 +5,20 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
 
 use loomcli_core::{
-    BoxFuture, CommandGraph, CommandTarget, Context, EndState, Error, Extension, MiddlewareContext,
-    Out, Plugin, ProgressReport, Region, RegionCloser, RegionOptions, read_extension,
+    BoxFuture, CommandGraph, CommandTarget, Context, Error, Extension, Host, MiddlewareContext,
+    Out, Plugin, Stream, read_extension,
 };
 use serde::{Deserialize, Serialize};
-use tokio::task::JoinHandle;
-use tokio::time::Instant;
+use tokio::runtime::Handle;
 
-use crate::views::{BarCells, ProgressLine, ProgressState, progress_line};
+use crate::height::Layout;
+use crate::progress_log::{ProgressLog, ProgressLogOutput};
+use crate::tree::{End, Tree};
+use crate::views::BarCells;
 
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -43,11 +44,11 @@ impl Spinner {
 }
 
 /// cli-spinners' `circleHalves`, every 80 milliseconds.
-fn default_spinner() -> Spinner {
+pub(crate) fn default_spinner() -> Spinner {
     Spinner::new(["◐", "◓", "◑", "◒"], 80)
 }
 
-fn default_bar() -> BarCells {
+pub(crate) fn default_bar() -> BarCells {
     BarCells::new("▰", "▱")
 }
 
@@ -57,6 +58,11 @@ pub struct ProgressSettings {
     pub(crate) label: String,
     pub(crate) total: Option<f64>,
     pub(crate) spinner: Option<Spinner>,
+    pub(crate) estimate: bool,
+    pub(crate) unit: Option<String>,
+    pub(crate) log_rows: usize,
+    pub(crate) log_limit: usize,
+    pub(crate) keep_tasks: bool,
 }
 
 impl ProgressSettings {
@@ -66,6 +72,11 @@ impl ProgressSettings {
             label: label.into(),
             total: None,
             spinner: None,
+            estimate: false,
+            unit: None,
+            log_rows: 5,
+            log_limit: 1000,
+            keep_tasks: false,
         }
     }
 
@@ -73,6 +84,46 @@ impl ProgressSettings {
     pub fn total(self, total: f64) -> Self {
         Self {
             total: Some(total),
+            ..self
+        }
+    }
+
+    /// Shows the rate and time left while this line runs.
+    pub fn estimate(self) -> Self {
+        Self {
+            estimate: true,
+            ..self
+        }
+    }
+
+    /// Names the unit in the rate, as marked text.
+    pub fn unit(self, unit: impl Into<String>) -> Self {
+        Self {
+            unit: Some(unit.into()),
+            ..self
+        }
+    }
+
+    /// Sets the maximum number of log rows shown while the line runs, default 5.
+    pub fn log_rows(self, rows: usize) -> Self {
+        Self {
+            log_rows: rows,
+            ..self
+        }
+    }
+
+    /// Sets the maximum number of log lines kept at a failure, warning, or cancellation, default 1000.
+    pub fn log_limit(self, limit: usize) -> Self {
+        Self {
+            log_limit: limit,
+            ..self
+        }
+    }
+
+    /// Keeps this group's tasks when it succeeds or is skipped.
+    pub fn keep_tasks(self) -> Self {
+        Self {
+            keep_tasks: true,
             ..self
         }
     }
@@ -168,169 +219,135 @@ impl<V> TrackMessages<V> {
     }
 }
 
-/// The lanes a line writes through off a terminal, whatever result its `out` declares.
-trait Lanes: Send + Sync {
-    fn info(&self, message: String) -> BoxFuture<'static, Result<(), Error>>;
-    fn success(&self, message: String) -> BoxFuture<'static, Result<(), Error>>;
-    fn error(&self, message: String) -> BoxFuture<'static, Result<(), Error>>;
-}
-
-impl<R: 'static> Lanes for Out<R> {
-    fn info(&self, message: String) -> BoxFuture<'static, Result<(), Error>> {
-        let out = self.clone();
-        Box::pin(async move { out.info(&message).await })
-    }
-
-    fn success(&self, message: String) -> BoxFuture<'static, Result<(), Error>> {
-        let out = self.clone();
-        Box::pin(async move { out.success(&message).await })
-    }
-
-    fn error(&self, message: String) -> BoxFuture<'static, Result<(), Error>> {
-        let out = self.clone();
-        Box::pin(async move { out.error(&message).await })
-    }
-}
-
-/// Polls a write once, so it takes its place in stderr's order now, and finishes it on its own
-/// task when it must wait.
-fn drive<F: Future<Output = Result<(), Error>> + Send + 'static>(future: F) {
+/// Starts a write in the current call, finishing it on the run's runtime if it has to wait.
+pub(crate) fn drive<F: Future<Output = Result<(), Error>> + Send + 'static>(
+    runtime: Option<&Handle>,
+    future: F,
+) {
+    let _runtime = runtime.map(Handle::enter);
     let mut future: Pin<Box<F>> = Box::pin(future);
     let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-    if future.as_mut().poll(&mut context).is_pending() {
-        drop(tokio::spawn(future));
+    // The first poll must take its place in stderr's order even if the caller used its budget.
+    let started = Pin::new(&mut tokio::task::unconstrained(future.as_mut())).poll(&mut context);
+    if started.is_pending()
+        && let Some(runtime) = runtime
+    {
+        drop(runtime.spawn(future));
     }
 }
 
-/// What one line shows and how it changes.
-struct LineState {
-    state: ProgressState,
-    label: String,
-    completed: Option<f64>,
-    total: Option<f64>,
-    tick: usize,
-}
-
-/// What a line's handle, its timer, and its region's close share.
-struct Line {
-    region: Region,
-    lanes: Arc<dyn Lanes>,
-    spinner: Spinner,
-    bar: BarCells,
-    started: Instant,
-    state: Mutex<LineState>,
-    timer: Mutex<Option<JoinHandle<()>>>,
-}
-
-impl Line {
-    fn frame(&self) -> ProgressLine {
-        let state = locked(&self.state);
-        let frame = if self.spinner.frames.is_empty() {
-            String::new()
-        } else {
-            self.spinner.frames[state.tick % self.spinner.frames.len()].clone()
-        };
-        let elapsed = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        ProgressLine::new(state.state, state.label.clone())
-            .counts(state.completed, state.total)
-            .frame(frame)
-            .bar(self.bar.clone())
-            .elapsed(elapsed)
-    }
-
-    fn stop_timer(&self) {
-        if let Some(timer) = locked(&self.timer).take() {
-            timer.abort();
-        }
-    }
-
-    async fn finish(&self, state: ProgressState, message: Option<&str>) -> Result<(), Error> {
-        let label = {
-            let mut line = locked(&self.state);
-            if line.state != ProgressState::Running {
-                return Ok(());
-            }
-            line.state = state;
-            if let Some(message) = message {
-                line.label = message.to_owned();
-            }
-            line.label.clone()
-        };
-        self.stop_timer();
-        if self.region.live() {
-            self.region.draw(&self.frame(), &progress_line()).await?;
-        } else if state == ProgressState::Ended {
-            self.lanes.success(label).await?;
-        } else {
-            self.lanes.error(label).await?;
-        }
-        let end = if state == ProgressState::Failed {
-            EndState::Failed
-        } else {
-            EndState::Ended
-        };
-        self.region.end(end, message).await
-    }
-}
-
-/// A progress line an action drives.
+/// A progress line an action drives. Clones share the line, which stays open when a handle drops.
+///
+/// An end takes effect at the call. Its future waits for the queued writes.
+#[derive(Clone)]
 pub struct Progress {
-    line: Arc<Line>,
+    tree: Arc<Tree>,
+    id: Option<usize>,
+    log: Arc<ProgressLog>,
 }
 
 impl Progress {
-    /// Changes what the line shows, reports the change, and draws the next frame. An omitted field
-    /// keeps its value. Once the line has closed it does nothing.
+    /// Changes what the line shows, reports the change, and draws the next frame.
+    /// An omitted field keeps its value. A closed line ignores updates.
     pub fn update(&self, update: ProgressUpdate) {
-        {
-            let mut line = locked(&self.line.state);
-            if line.state != ProgressState::Running {
-                return;
-            }
-            if let Some(completed) = update.completed {
-                line.completed = Some(completed);
-            }
-            if let Some(total) = update.total {
-                line.total = Some(total);
-            }
-            if let Some(label) = &update.label {
-                line.label.clone_from(label);
-            }
+        if let Some(id) = self.id {
+            self.tree.update(id, update);
         }
-        let mut report = ProgressReport::new();
-        if let Some(completed) = update.completed {
-            report = report.completed(completed);
+    }
+
+    /// Opens a line under this one. The caller can schedule its work independently.
+    /// A closed parent returns a closed handle.
+    #[expect(
+        clippy::must_use_candidate,
+        reason = "opening a task has effects without a retained handle"
+    )]
+    pub fn task(&self, settings: ProgressSettings) -> Self {
+        let (id, log) = self
+            .id
+            .and_then(|id| self.tree.open_task(id, settings))
+            .map_or_else(|| (None, self.closed_log()), |(id, log)| (Some(id), log));
+        Self {
+            tree: self.tree.clone(),
+            id,
+            log,
         }
-        if let Some(label) = update.label {
-            report = report.label(label);
-        }
-        if let Some(total) = update.total {
-            report = report.total(total);
-        }
-        self.line.region.report(report);
-        if self.line.region.live() {
-            drive(self.line.region.draw(&self.line.frame(), &progress_line()));
+    }
+
+    fn closed_log(&self) -> Arc<ProgressLog> {
+        let log = ProgressLog::new(0, 0);
+        log.close(false);
+        log
+    }
+
+    fn finish(&self, end: End, label: Option<&str>) -> BoxFuture<'static, Result<(), Error>> {
+        match self.id {
+            Some(id) => self.tree.finish(id, end, label),
+            None => Box::pin(std::future::ready(Ok(()))),
         }
     }
 
     /// Ends the line with its label, leaving its success line in scrollback.
-    pub async fn end(&self) -> Result<(), Error> {
-        self.line.finish(ProgressState::Ended, None).await
+    pub fn end(&self) -> BoxFuture<'static, Result<(), Error>> {
+        self.finish(End::Success, None)
     }
 
     /// Ends the line with `message` in place of its label, on the line and its end event.
-    pub async fn end_with(&self, message: &str) -> Result<(), Error> {
-        self.line.finish(ProgressState::Ended, Some(message)).await
+    pub fn end_with(&self, message: &str) -> BoxFuture<'static, Result<(), Error>> {
+        self.finish(End::Success, Some(message))
     }
 
     /// Ends the line as failed, with its label.
-    pub async fn fail(&self) -> Result<(), Error> {
-        self.line.finish(ProgressState::Failed, None).await
+    pub fn fail(&self) -> BoxFuture<'static, Result<(), Error>> {
+        self.finish(End::Failure, None)
     }
 
     /// Ends the line as failed with `message` in place of its label.
-    pub async fn fail_with(&self, message: &str) -> Result<(), Error> {
-        self.line.finish(ProgressState::Failed, Some(message)).await
+    pub fn fail_with(&self, message: &str) -> BoxFuture<'static, Result<(), Error>> {
+        self.finish(End::Failure, Some(message))
+    }
+
+    /// Ends the line as skipped, with its label.
+    pub fn skip(&self) -> BoxFuture<'static, Result<(), Error>> {
+        self.finish(End::Skip, None)
+    }
+
+    /// Ends the line as skipped with `message` in place of its label.
+    pub fn skip_with(&self, message: &str) -> BoxFuture<'static, Result<(), Error>> {
+        self.finish(End::Skip, Some(message))
+    }
+
+    /// Ends the line with a warning, using its label.
+    pub fn warn(&self) -> BoxFuture<'static, Result<(), Error>> {
+        self.finish(End::Warn, None)
+    }
+
+    /// Ends the line with a warning and `message` in place of its label.
+    pub fn warn_with(&self, message: &str) -> BoxFuture<'static, Result<(), Error>> {
+        self.finish(End::Warn, Some(message))
+    }
+
+    /// Removes the live line and its tasks and reports an ended event with its last label.
+    pub fn clear(&self) -> BoxFuture<'static, Result<(), Error>> {
+        self.finish(End::Clear, None)
+    }
+
+    /// Adds marked text to this line's log. The next frame shows its newest lines.
+    pub fn log(&self, text: &str) {
+        self.log.add(text);
+    }
+
+    /// Reads a stream of marked text through its end, even when this line has ended.
+    pub fn log_stream(
+        &self,
+        chunks: impl Stream<Item = Result<String, Error>> + Send + 'static,
+    ) -> BoxFuture<'static, Result<(), Error>> {
+        self.log.stream(chunks, self.tree.runtime.as_ref())
+    }
+
+    /// Opens a progress log destination for one child program pipe.
+    #[must_use]
+    pub fn log_output(&self) -> ProgressLogOutput {
+        self.log.output()
     }
 
     /// Awaits `work`: its value ends the line with `done`, and its error fails the line with
@@ -341,23 +358,19 @@ impl Progress {
         messages: TrackMessages<V>,
     ) -> Result<V, Error> {
         let outcome = work.await;
-        let running = locked(&self.line.state).state == ProgressState::Running;
+        let running = self.id.is_some_and(|id| self.tree.running(id));
         match outcome {
             Ok(value) => {
                 if running {
                     let message = messages.done.map(|done| done(&value));
-                    self.line
-                        .finish(ProgressState::Ended, message.as_deref())
-                        .await?;
+                    self.finish(End::Success, message.as_deref()).await?;
                 }
                 Ok(value)
             }
             Err(error) => {
                 if running {
                     let message = messages.failed.map(|failed| failed(&error));
-                    self.line
-                        .finish(ProgressState::Failed, message.as_deref())
-                        .await?;
+                    let _ = self.finish(End::Failure, message.as_deref()).await;
                 }
                 Err(error)
             }
@@ -416,22 +429,13 @@ pub fn progress_style(settings: ProgressStyleSettings) -> Plugin {
         })
 }
 
-fn closed_state(closer: Option<RegionCloser>) -> ProgressState {
-    match closer {
-        Some(RegionCloser::Cancellation) => ProgressState::Cancelled,
-        Some(RegionCloser::Failure) => ProgressState::Failed,
-        _ => ProgressState::Ended,
-    }
-}
-
 mod sealed {
     /// Closes [`super::ProgressContext`] to the contexts core builds.
     pub trait Sealed {}
 }
 
-/// What a progress line reads from the context that opens it: the graph its style sits on, a
-/// region of its output, and the lanes it writes through off a terminal. An action's context and a
-/// middleware's context are progress contexts.
+/// The context a progress line opens from. Action and middleware contexts supply the graph,
+/// output, and terminal facts of their run.
 pub trait ProgressContext: sealed::Sealed {
     #[doc(hidden)]
     fn progress_parts(&self) -> ProgressParts;
@@ -441,8 +445,9 @@ pub trait ProgressContext: sealed::Sealed {
 #[doc(hidden)]
 pub struct ProgressParts {
     graph: Arc<CommandGraph>,
-    region: Region,
-    lanes: Arc<dyn Lanes>,
+    out: Out,
+    host: Arc<Host>,
+    layout: Arc<Mutex<Layout>>,
 }
 
 impl<I, R: 'static> sealed::Sealed for Context<I, R> {}
@@ -451,8 +456,9 @@ impl<I, R: 'static> ProgressContext for Context<I, R> {
     fn progress_parts(&self) -> ProgressParts {
         ProgressParts {
             graph: Arc::clone(&self.graph),
-            region: self.out.region(RegionOptions::new()),
-            lanes: Arc::new(self.out.clone()),
+            out: self.out.__progress_out(),
+            host: self.host.clone(),
+            layout: self.out.__progress_layout(),
         }
     }
 }
@@ -463,8 +469,9 @@ impl<O> ProgressContext for MiddlewareContext<O> {
     fn progress_parts(&self) -> ProgressParts {
         ProgressParts {
             graph: Arc::clone(&self.graph),
-            region: self.out.region(RegionOptions::new()),
-            lanes: Arc::new(self.out.clone()),
+            out: self.out.__progress_out(),
+            host: self.host.clone(),
+            layout: self.out.__progress_layout(),
         }
     }
 }
@@ -475,86 +482,18 @@ impl<O> ProgressContext for MiddlewareContext<O> {
 pub fn progress(context: &impl ProgressContext, settings: ProgressSettings) -> Progress {
     let ProgressParts {
         graph,
-        region,
-        lanes,
+        out,
+        host,
+        layout,
     } = context.progress_parts();
     let style = read_extension(&*graph.root, &PROGRESS_STYLE)
         .ok()
         .flatten()
         .unwrap_or_default();
-    let spinner = settings
-        .spinner
-        .or(style.spinner)
-        .unwrap_or_else(default_spinner);
-    let bar = style.bar.unwrap_or_else(default_bar);
-    let line = Arc::new(Line {
-        region: region.clone(),
-        lanes,
-        spinner,
-        bar,
-        started: Instant::now(),
-        state: Mutex::new(LineState {
-            state: ProgressState::Running,
-            label: settings.label.clone(),
-            completed: settings.total.map(|_| 0.0),
-            total: settings.total,
-            tick: 0,
-        }),
-        timer: Mutex::new(None),
-    });
-    let mut report = ProgressReport::new().label(settings.label.clone());
-    if let Some(total) = settings.total {
-        report = report.completed(0.0).total(total);
+    let (tree, log) = Tree::open(out, host, layout, style, settings);
+    Progress {
+        tree,
+        id: Some(0),
+        log,
     }
-    region.report(report);
-    if region.closed_by().is_some() {
-        // A region opened after the run's cancellation closed as it opened.
-        locked(&line.state).state = closed_state(region.closed_by());
-        return Progress { line };
-    }
-    if region.live() {
-        drive(region.draw(&line.frame(), &progress_line()));
-        let ticking = Arc::clone(&line);
-        let signal = region.signal();
-        let interval = Duration::from_millis(line.spinner.interval.max(1));
-        *locked(&line.timer) = Some(tokio::spawn(async move {
-            loop {
-                let sleep = tokio::time::sleep(interval);
-                if crate::reader::unless(&signal, sleep).await.is_none() {
-                    return;
-                }
-                if locked(&ticking.state).state != ProgressState::Running {
-                    return;
-                }
-                locked(&ticking.state).tick += 1;
-                let _ = ticking
-                    .region
-                    .draw(&ticking.frame(), &progress_line())
-                    .await;
-            }
-        }));
-    } else {
-        drive(line.lanes.info(settings.label));
-    }
-    let closing = Arc::clone(&line);
-    region.on_close(move |region| {
-        closing.stop_timer();
-        let label = {
-            let mut state = locked(&closing.state);
-            if state.state != ProgressState::Running {
-                return;
-            }
-            state.state = closed_state(region.closed_by());
-            state.label.clone()
-        };
-        let state = locked(&closing.state).state;
-        if region.live() {
-            drop(region.draw(&closing.frame(), &progress_line()));
-        } else if state == ProgressState::Ended {
-            drive(closing.lanes.success(label));
-        } else if state == ProgressState::Failed {
-            drive(closing.lanes.error(label));
-        }
-    });
-    Progress { line }
 }

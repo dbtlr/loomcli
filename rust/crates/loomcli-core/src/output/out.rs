@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::failures::{Error, FatalError};
 
 use super::emit::{Channel, Lane, Output, Stream};
-use super::region::{Region, RegionOptions};
+use super::region::{EndState, Region, RegionOptions};
 use super::results::{RowSource, RowsResult, ValueResult};
 use super::{NoResult, Render, StreamedMessage, View, WholeView};
 
@@ -111,6 +111,71 @@ impl<R> Clone for Out<R> {
 impl<R> Out<R> {
     fn output(&self) -> &Arc<Output> {
         &self.run.output
+    }
+
+    /// Erases the result type for the prompts library, which only uses stderr.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __progress_out(&self) -> Out {
+        Out {
+            run: Arc::clone(&self.run),
+            channel: Arc::clone(&self.channel),
+            _result: PhantomData,
+        }
+    }
+
+    /// The prompts library's per-run progress layout state.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn __progress_layout<T: Default + Send + Sync + 'static>(&self) -> Arc<T> {
+        Arc::clone(
+            self.output()
+                .progress_layout
+                .get_or_init(|| Arc::new(T::default())),
+        )
+        .downcast()
+        .unwrap_or_else(|_| Arc::new(T::default()))
+    }
+
+    /// Renders a plain progress start and queues it on stderr at the call. No code awaits this
+    /// line, so a failure of the info view is kept for the run to report when it settles.
+    #[doc(hidden)]
+    pub fn __progress_start(&self, label: &str) {
+        let output = self.output();
+        match output.prepare_message(Lane::Info, Message::new(label), Stream::Stderr) {
+            Ok(Some(text)) => output.carry(text),
+            Ok(None) => {}
+            Err(error) => output.keep_view_error(error),
+        }
+    }
+
+    /// Prepares a progress end message through its normal output lane for a region close.
+    #[doc(hidden)]
+    pub fn __progress_message(
+        &self,
+        state: EndState,
+        message: Message<'_>,
+    ) -> Result<Option<String>, Error> {
+        let lane = match state {
+            EndState::Ended => Lane::Success,
+            EndState::Failed => Lane::Error,
+            EndState::Skipped => Lane::Info,
+            EndState::Warned => Lane::Warn,
+        };
+        self.output().prepare_message(lane, message, Stream::Stderr)
+    }
+
+    /// Prepares one progress tree row with stderr's draw policy and a final line break.
+    #[doc(hidden)]
+    pub fn __progress_draw<D: ?Sized + 'static, V: WholeView<D>>(
+        &self,
+        data: &D,
+        view: &V,
+    ) -> Result<String, Error> {
+        let (identity, view) = view.whole();
+        let (mut text, _) = self.output().prepare_draw(identity, view, data)?;
+        text.push('\n');
+        Ok(text)
     }
 
     /// Prints a message to stdout, or to stderr from the action of a Command that declares a result.

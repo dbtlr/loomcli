@@ -346,3 +346,51 @@ async fn a_region_reports_whether_or_not_it_is_live() {
         ]
     );
 }
+
+#[tokio::test]
+async fn a_skipped_or_warned_end_keeps_counts_and_reports_its_plain_end_label() {
+    let run = observed(
+        |app| app,
+        |ctx: Context| async move {
+            let skipped = ctx.out.region(RegionOptions::new());
+            let warned = ctx.out.region(RegionOptions::new());
+            skipped.report(ProgressReport::new().label("Fetching"));
+            warned.report(
+                ProgressReport::new()
+                    .label("Fetching records")
+                    .completed(118.0)
+                    .total(120.0),
+            );
+            let label = format!(
+                "Fetched {}: the cache is fresh",
+                ctx.style.bold().apply("nothing")
+            );
+            skipped.end(EndState::Skipped, Some(&label)).await?;
+            warned
+                .end(EndState::Warned, Some("Fetched 118 of 120 records"))
+                .await
+        },
+        None,
+    )
+    .await;
+    assert_eq!(run.code, 0);
+    assert_eq!(
+        facts(&run.events[2..]),
+        [
+            event(
+                1,
+                ProgressState::Skipped,
+                "Fetched nothing: the cache is fresh",
+                None,
+                None
+            ),
+            event(
+                2,
+                ProgressState::Warned,
+                "Fetched 118 of 120 records",
+                Some(118.0),
+                Some(120.0)
+            ),
+        ]
+    );
+}
