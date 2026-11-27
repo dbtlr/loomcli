@@ -368,6 +368,80 @@ async fn an_immediate_signal_shutdown_drains_the_write_queue_in_that_step() {
     }
 }
 
+#[test]
+fn sigquit_drains_the_last_completed_layout_while_a_lane_view_is_blocked() {
+    // The second view call lays out the second chunk.
+    sigquit_while_the_second_view_call_is_blocked(vec!["first\npartial", " in flight"]);
+}
+
+#[test]
+fn sigquit_drains_the_last_completed_layout_while_the_final_layouts_view_is_blocked() {
+    // The source ends after one chunk, so the second view call lays out the final layout.
+    sigquit_while_the_second_view_call_is_blocked(vec!["first\npartial"]);
+}
+
+/// Prints `parts` as one streamed message, blocks the lane view on its second call, raises
+/// SIGQUIT, and asserts the drain wrote the first call's layout before the view returned.
+fn sigquit_while_the_second_view_call_is_blocked(parts: Vec<&'static str>) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use loomcli_core::{lanes, override_view};
+    use support::streaming::chunks;
+
+    let mock = mock_process(MockFields::new());
+    let (entered, rendering) = mpsc::channel();
+    let (release, blocked) = mpsc::channel();
+    let blocked = Mutex::new(Some(blocked));
+    let calls = AtomicUsize::new(0);
+    let view = View::new(move |text: &str, _| {
+        if calls.fetch_add(1, Ordering::SeqCst) == 1
+            && let Some(blocked) = blocked.lock().unwrap().take()
+        {
+            entered.send(()).unwrap();
+            blocked.recv().unwrap();
+        }
+        text.to_owned()
+    });
+    let app = Application::new("streamed")
+        .overrides([override_view(lanes::print(), view)])
+        .action(move |ctx: Context| {
+            let parts = parts.clone();
+            async move { ctx.out.print(chunks(parts)).await }
+        });
+    let process = mock.clone();
+    let run = std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(app.run(RunOptions::new().process(process)))
+            .get()
+    });
+
+    // The signal cannot start until the second view call has begun. That view stays blocked
+    // until the signal has returned or the test has detected a stalled shutdown.
+    let limit = Duration::from_secs(5);
+    rendering.recv_timeout(limit).unwrap();
+    let (finished, drained) = mpsc::channel();
+    let signalled = std::thread::spawn(move || {
+        mock.raise(ProcessSignal::Quit);
+        finished
+            .send((mock.ended_by(), mock.stdout_text()))
+            .unwrap();
+    });
+    let at_reraise = drained.recv_timeout(limit);
+    release.send(()).unwrap();
+    signalled.join().unwrap();
+    let status = run.join().unwrap();
+    assert_eq!(
+        at_reraise.expect("SIGQUIT did not re-raise while the lane view was blocked"),
+        (Some(ProcessSignal::Quit), "first\npartial\n".to_owned()),
+    );
+    assert_eq!(status, 131);
+}
+
 #[tokio::test]
 async fn log_hook_records_follow_polled_messages_on_pipes_and_shared_terminals() {
     for (terminal, frame, expected) in [

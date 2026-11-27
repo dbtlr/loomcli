@@ -794,6 +794,43 @@ async fn a_failed_write_drops_its_source_and_makes_no_closing_write() {
 }
 
 #[tokio::test]
+async fn a_closed_pipe_resumes_the_panic_from_its_cancellation_layout() {
+    use support::streams::{Scripted, Seen, Swapped};
+
+    let writes = Arc::new(Mutex::new(Vec::new()));
+    let mut process = Swapped::new(mock_process(MockFields::new()));
+    process.stdout = Some(Scripted::refusing(
+        0,
+        std::io::ErrorKind::BrokenPipe,
+        writes.clone(),
+    ));
+    let view = View::new(|text: &str, _| {
+        if text == "first\npartial " {
+            panic!("The view refused the cancellation layout.");
+        }
+        text.to_owned()
+    });
+    let app = Application::new("streamed")
+        .overrides([override_view(lanes::print(), view)])
+        .action(
+            |ctx: Context| async move { ctx.out.print(steps([step("first\npartial ")])).await },
+        );
+
+    assert_panic(
+        tokio::spawn(async move { app.run(RunOptions::new().process(Arc::new(process))).await })
+            .await,
+        "The view refused the cancellation layout.",
+    );
+    assert_eq!(
+        writes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_slice(),
+        &[Seen::Refused("first\n".to_owned())],
+    );
+}
+
+#[tokio::test]
 async fn a_lend_holds_unfinished_rows_and_reclaims_the_terminal_below_the_child() {
     let mock = terminal();
     let process = mock.clone();
@@ -1315,6 +1352,71 @@ async fn a_message_whose_unfinished_row_was_left_as_drawn_does_not_redraw() {
         "\n⚠ one two three four five six seven\nℹ Short more\n",
     )
     .await;
+}
+
+#[tokio::test]
+async fn an_oversize_stream_defers_the_resize_until_it_finishes_a_row() {
+    let mock = terminal();
+    let process = mock.clone();
+    let app = Application::new("streamed").action(move |ctx: Context| {
+        let process = process.clone();
+        async move {
+            let region = ctx.out.region(RegionOptions::new());
+            region
+                .draw("Working", &View::new(|text: &str, _| text.to_owned()))
+                .await?;
+            let ready = Arc::new(tokio::sync::Notify::new());
+            let release = Arc::new(tokio::sync::Notify::new());
+            let long = ctx.out.info(steps([
+                step("one two three four five"),
+                paused_step(&ready, &release, " six"),
+                paused_step(&ready, &release, " seven"),
+                paused_step(&ready, &release, "\n"),
+                paused_step(&ready, &release, ""),
+            ]));
+            ready.notified().await;
+            process.resize(20, 24);
+            release.notify_one();
+            ready.notified().await;
+
+            let warning_started = Arc::new(tokio::sync::Notify::new());
+            let finish_warning = Arc::new(tokio::sync::Notify::new());
+            let warning = ctx.out.warn(steps([
+                step("second message"),
+                paused_step(&warning_started, &finish_warning, ""),
+            ]));
+            warning_started.notified().await;
+            let before = process.stderr_text();
+            assert_eq!(
+                before,
+                concat!(
+                    "Working\r\x1b[Jℹ one two three four five\nWorking",
+                    "\r\x1b[JWorking\r\x1b[J⚠ second message\nWorking",
+                ),
+            );
+
+            process.resize(10, 24);
+            release.notify_one();
+            ready.notified().await;
+            assert_eq!(process.stderr_text(), before);
+
+            release.notify_one();
+            ready.notified().await;
+            assert_eq!(
+                &process.stderr_text()[before.len()..],
+                "\r\x1b[Jℹ one two three four five six seven\nWorking",
+            );
+            release.notify_one();
+            finish_warning.notify_one();
+            long.await?;
+            warning.await?;
+            region.end(EndState::Ended, None).await
+        }
+    });
+    assert_eq!(
+        app.run(RunOptions::new().process(mock.clone())).await.get(),
+        0
+    );
 }
 
 #[tokio::test]
