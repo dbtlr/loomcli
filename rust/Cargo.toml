@@ -29,17 +29,17 @@ tokio-util = { version = "0.7", default-features = false }
 futures-core = { version = "0.3", default-features = false, features = ["std"] }
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "2", features = ["full"] }
-jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-bundle-always"] }
+syn = { version = "3", features = ["full"] }
+jiff = { version = "1.0", default-features = false, features = ["std", "tz-system", "tzdb-bundle-always"] }
 url = "2"
 rustix = { version = "1", default-features = false, features = ["std", "termios", "process", "net"] }
-signal-hook = { version = "0.3", default-features = false }
+signal-hook = { version = "0.4", default-features = false }
 regex = { version = "1", default-features = false, features = ["std", "unicode"] }
-sha2 = { version = "0.10", default-features = false }
+sha2 = { version = "0.11", default-features = false }
 subtle = { version = "2", default-features = false }
 unicode-normalization = { version = "0.1", default-features = false, features = ["std"] }
 toml = { version = "1", default-features = false, features = ["std", "parse", "preserve_order"] }
-saphyr-parser = { version = "0.3", default-features = false }
+saphyr-parser = { version = "0.4", default-features = false }
 unicode-general-category = "1.1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 hyper = { version = "1", default-features = false }
